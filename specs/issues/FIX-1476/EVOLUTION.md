@@ -37,6 +37,27 @@ example of a kind that "remixes slots" off a shared body — because no such sur
 an example of. If one is added to `defineChannelFlow` later, [D1](DECISIONS.md#d1) is re-argued
 rather than re-derived.
 
+<a name="after-merge"></a>
+## What changed after this spec merged
+
+The spec merged on 2026-09-21 at 17:58 UTC ([#1992](https://github.com/fixpoint-labs/flow-state-dev/pull/1992)).
+Five things have moved since, four of them underneath it. Each row's command runs from the repo
+root against `origin/main`.
+
+| What | Was true when | Is true now | Command |
+|---|---|---|---|
+| **`openChannels` took an `orgId`, and refused a board-holding roster without one** | Drafted 13:39 UTC against `994a9365b`, where `OpenChannelsOptions.orgId` and the guard both existed | Gone. `OpenChannelsOptions` is `{ client, userId }`. FIX-1442 ([#1985](https://github.com/fixpoint-labs/flow-state-dev/pull/1985)) merged at 15:36 UTC — **two hours after the draft, two hours before the merge** | `git grep -n "orgId" origin/main -- packages/workforce/src/channel/channel-binder.ts` → 3 hits, all comments |
+| **The binder compared a stored org against the one a boot asked for** | Same base: the `session.orgId !== orgId` branch | Gone with the same change. *"The binder no longer takes an `orgId` at all, and never did have the authority to choose one."* | `git show origin/main:packages/workforce/src/channel/channel-binder.ts \| sed -n '676,684p'` |
+| **kitchen-sink named no organization anywhere** | Zero occurrences at the draft base | 38 across 7 files, landed by FIX-1475's PR-B ([#1996](https://github.com/fixpoint-labs/flow-state-dev/pull/1996)) at 20:35 UTC — **after this spec merged** | `git grep -c orgId origin/main -- 'apps/kitchen-sink/**'` |
+| **[V11](PLAN.md#the-checks) could be graded behaviourally** | A `void openChannels(…)` mutation went red | It goes red or green depending on one event-loop turn, and #1996's module-scope `await flowstate.getRuntime()` moved the margin. Split into V11 + V11b | `git grep -n "const runtime = await flowstate.getRuntime" origin/main -- apps/kitchen-sink/fsdev.config.ts` → `:222` |
+| **[D2](DECISIONS.md#d2)'s third channel was a one-member DM** | Approved at spec review | **Reversed by the product owner** after seeing it built, on [#2007](https://github.com/fixpoint-labs/flow-state-dev/pull/2007) — a two-member DM that notifies neither ([D6](DECISIONS.md#d6)) | — (a decision, not a fact; the words are in D6) |
+
+**The first three are one failure and it is worth naming.** The premises were re-derived once, at
+draft time, and then carried through review and merge without being re-run against a `main` that
+had moved — each was one `git grep` away at any point in those four hours. The fourth is a
+different failure: a check that was never decidable, which no re-derivation would have caught
+because it passed. It took running the same mutation twice, on two bases, to see it.
+
 ## What this supersedes in the app
 
 `apps/kitchen-sink/flows/channel/flow.ts` — the hand-registered built-in instance, added when the

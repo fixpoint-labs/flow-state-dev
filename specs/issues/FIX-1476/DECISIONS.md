@@ -2,8 +2,10 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Five calls. [D1](#d1) is the one to read: it **narrows a lock the Architect set**, on evidence
-the lock was written without. The other four are shape.
+Five calls when this merged; now four live and two amendments. [D5](#d5) is **superseded** — the
+question it answered stopped being the app's to answer. [D6](#d6) is a **reversal by the product
+owner**, after he saw [D2](#d2)'s one-member DM built. [D1](#d1) is still the one to read: it
+**narrows a lock the Architect set**, on evidence the lock was written without. The rest is shape.
 
 ```mermaid
 flowchart TD
@@ -11,12 +13,14 @@ flowchart TD
   D1 -.->|"rejected"| X1["three kind clones: dm, topic, workstream"]
   I --> D2["D2 · three channels, because one cannot show both halves"]
   D2 -.->|"rejected"| X2["one channel · a fourth channel per shape"]
+  D2 --> D6["D6 · REVERSED by the owner · the third is a silent two-member DM"]
+  D6 -.->|"declined"| X6["delete the channel · amend the published page"]
   I --> D3["D3 · the drain rides its own worker kind; one board is unattended"]
   D3 -.->|"rejected"| X3["wire the board onto desk-clerk · attend both boards"]
   I --> D4["D4 · ER-6 vocabulary, checked by review"]
   D4 -.->|"rejected"| X4["a banned-word lint across the set"]
-  I --> D5["D5 · one declared org for the file-declared channels"]
-  D5 -.->|"rejected"| X5["enumerate orgs from the store · drop the boards"]
+  I --> D5["D5 · SUPERSEDED · the framework names the org, not the app"]
+  D5 -.->|"moot"| X5["a declared org constant · enumerate orgs · drop the boards"]
 ```
 
 <a name="d1"></a>
@@ -39,8 +43,8 @@ this set.
 | | |
 |---|---|
 | **Instead of** | One channel carrying everything · a fourth and fifth channel, one per shape a reader might want |
-| **Because** | The constraint is structural: a channel holding boards must be on the built-in kind, and the channel demonstrating `flow:` must not be. One cannot be both, so the minimum honest example is two — and the shape of the example becomes the shape of the rule. The third teaches the mistake the fence itself made: a one-member channel with **no** `flow:` line is what a DM is, and seeing it beside a channel that genuinely needed a kind is how a reader learns which is which |
-| **Locks in** | `support.desk` — built-in, five members, two boards. `support.ada-dm` — built-in, one member, no `flow:`. `support.noticeboard` — `flow: digest`, no boards. A fourth channel needs a lesson none of these three carries |
+| **Because** | The constraint is structural: a channel holding boards must be on the built-in kind, and the channel demonstrating `flow:` must not be. One cannot be both, so the minimum honest example is two — and the shape of the example becomes the shape of the rule. ~~The third teaches the mistake the fence itself made: a one-member channel with **no** `flow:` line is what a DM is, and seeing it beside a channel that genuinely needed a kind is how a reader learns which is which~~ — **the third channel's lesson is reversed by [D6](#d6); the two-channel floor above is not** |
+| **Locks in** | `support.desk` — built-in, five members, two boards. `support.noticeboard` — `flow: digest`, no boards. **The third channel is [D6](#d6)'s**, still built-in and still carrying no `flow:`, but a two-member DM rather than a roster of one. A fourth channel needs a lesson none of these three carries |
 
 <a name="d3"></a>
 ## D3 · The drain rides a worker kind of its own, and one board ships unattended
@@ -61,13 +65,60 @@ this set.
 | **Locks in** | The table in [BUSINESS-RULES.md → The words](BUSINESS-RULES.md#the-words): six terms, each with what it means and what it is not. Stated once here; every other row in the set consumes it without re-deciding it. The one mechanical check is scoped to this issue's own files and says so |
 
 <a name="d5"></a>
-## D5 · The file-declared channels open under one declared org
+## D5 · SUPERSEDED · The app names the caller; the framework names the org
+
+**This card was a real decision when it was written and is not one now.** It asked which
+organization the file-declared channels open under, because `openChannels` refused a
+board-holding roster that was handed no `orgId`. FIX-1442 removed the question: organization
+identity is never optional any more, so the server always has one to give and the binder no
+longer accepts one. Nothing below is a change of mind — there is no longer a choice to have one
+about. The measurement and the timeline are in
+[EVOLUTION.md](EVOLUTION.md#after-merge).
 
 | | |
 |---|---|
-| **Instead of** | Enumerating orgs from the store, as FIX-1475's runtime reload does · dropping `boards:` so no org is needed |
-| **Because** | `openChannels` throws when a board-holding roster is given no `orgId`, because a board's rows are org-scoped storage — and kitchen-sink has no `orgId` anywhere today (verified: zero occurrences under `apps/kitchen-sink`). Something has to name one. Enumerating the store is FIX-1475's mechanism for *runtime-hired* seats and answers a different question: the file-declared tree is fixed at build, and iterating an empty store at boot would open no channels at all on a fresh clone |
-| **Locks in** | One exported constant in its own `workforce/org.ts`, for `openChannels` only — a file of its own rather than a line in `hire.ts`, because [FIX-1475](../FIX-1475/PLAN.md) is editing `hire.ts` in flight and this is one less collision. It is not an authorization boundary: kitchen-sink configures no `resolvePrincipal`. It is **not ignored** on a host that does, either — the principal's org wins at creation, but every later boot compares the *stored* org against this constant and refuses the reopen by name when they differ ([BR-15](BUSINESS-RULES.md)). An adopter must set it to the org their principal resolves. FIX-1475 may later enumerate orgs beside this — this one opens files, that one reloads rows |
+| **Instead of** | *(moot)* One exported constant in `workforce/org.ts` · enumerating orgs from the store · dropping `boards:` so no org is needed. All three answer a question the framework now answers first |
+| **Because** | `OpenChannelsOptions` is `{ client, userId }` — there is no `orgId` field to pass and no guard to satisfy (`packages/workforce/src/channel/channel-binder.ts:113`). The binder's own comment: *"The binder no longer takes an `orgId` at all, and never did have the authority to choose one."* A session's organization comes from the identity the server resolved for the caller, and an app that configures no `resolvePrincipal` gets the framework's `DEFAULT_ORG_ID` — *"the organization every unauthenticated single-organization deployment runs under"* (`packages/core/src/types/auth.ts:38`). A board therefore always has an address |
+| **Locks in** | **No `workforce/org.ts`, and no file in the app naming an organization.** What the app does name is the **caller** — the one identity `openChannels` still takes, as `userId` — in `fsdev.config.ts` beside the open ([S6](PLAN.md#surfaces)). An adopter who adds authentication does not set a value; they open the channels as a caller whose verified identity already carries the organization they want, because a session's organization is fixed at creation and re-opening cannot move it ([BR-11](BUSINESS-RULES.md), [DOCS.md](DOCS.md) §2) |
+
+**What this costs a reader.** The spec used to tell an adopter to control the organization by
+setting a constant. It now tells them to control it by choosing the caller. Those are different
+instructions and only the second one is followable — but if the *first* was what the owner
+wanted the reference app to teach, that is a product call and this card is the wrong place to
+settle it. Flagged rather than assumed.
+
+<a name="d6"></a>
+## D6 · The DM has two members and notifies neither — the owner's reversal, after seeing it built
+
+**This is not a correction. It is a decision the product owner changed after the one-member
+version shipped in front of him**, on [#2007](https://github.com/fixpoint-labs/flow-state-dev/pull/2007).
+He approved the one-member channel at spec review and judged the shape wrong once it existed.
+Recorded as a reversal rather than folded in silently, so what was thought before stays readable.
+
+| | |
+|---|---|
+| **Was** | [D2](#d2)'s third channel: `support.ada-dm`, one member, no `flow:` line. The lesson was *a direct message is not a kind of its own — it is a channel with one member* |
+| **What changed his mind** | A private channel with a roster of one still fans a notification out to that one member, which is not what a DM is. In his words: *"a DM between the user and the agent can just be a session on the agent flow. A DM channel seems far too noisy. Its private and shouldn't have subscriptions, there is no point. DM channel sessions are really between two agents. Its how they communicate in a way that they preserve a transcript that is coherent."* |
+| **Instead of** | Deleting the channel and shipping two · amending the published [channels.md](../../../apps/docs/docs/workforce/channels.md), which still tells readers a direct message is a channel on the built-in kind. **The owner declined both**, and the published page is explicitly out of scope for this amendment |
+| **Locks in** | The third channel stays, on the built-in kind with no `flow:` line, and becomes a **genuine two-party DM that emits no notifications**: exactly two members, both of them seats, and a post that delivers to neither. Its lesson is now *two seats keeping a coherent transcript between themselves*, not *a roster of one* |
+| **A vocabulary trap, flagged** | The owner's words say *agents*; the file says **seats**, and [the words](BUSINESS-RULES.md#the-words) put *agent* in Seat's **is-not** column. So the charter and every `description:` must say members or seats — writing *"two agents"* into a `CHANNEL.md` fails [V10](PLAN.md#the-checks) by rule. The reversal is his; the word is ours, and [D4](#d4) already decided it |
+| **Not decided here** | **The channel's new folder name (and therefore its id), and which second seat joins `support.ada`.** The old id `support.ada-dm` is carried below as `support.<dm>` wherever a rule names it. Both are the implementing agent's, in flight now — every `support.<dm>` in this spec set is a placeholder to be replaced with the shipped id, not a name to build to |
+
+**On "emits no notifications", stated as what the framework can deliver rather than what is
+hoped.** The built-in kind is one factory with one `notify` slot, and [D1](#d1) forbids touching
+`packages/workforce`, so a *framework-level* per-instance opt-out is not available. It does not
+need to be: the notify block is the **app's own** (`workforce/channel-notify.ts`, [S5](PLAN.md#surfaces)),
+and every delivery it is handed carries `channelId` — `channelNotifyInputSchema` declares it as
+*"The channel's session id"* (`packages/workforce/src/channel/channel-flow.ts:523-525`). A block
+that delivers nothing for one channel id is user-space and buys no framework change.
+
+**What that does and does not buy, precisely.** The fan-out is still *dispatched* for every post
+on the built-in kind — it is declared on the factory, and whether it runs is not per-instance.
+What the app controls is whether anything is **delivered**. So the rule this spec can carry is
+*a post in the DM notifies nobody* ([BR-16](BUSINESS-RULES.md)), not *no fan-out is dispatched*.
+If the implementation finds it needs the second, that is a `packages/workforce` change, which
+[D1](#d1) and [PLAN.md → Guardrails](PLAN.md#guardrails) forbid — **raise it as a re-gate, do not
+build it.**
 
 ## Considered and dropped
 
@@ -108,3 +159,10 @@ meant something else, at spec review, before anything is built.
   was read; D1 followed from that, and D2 followed from D1 because the board half and the kind
   half then had to be different channels. D3, D4 and D5 are the calls the Architect's *open
   walls* left to the EM, decided rather than escalated under the epic's EM posture.
+- **Amended (Sep 21, after merge)** — on a follow-up PR from fresh `main`, per
+  [orchestration.md](../../../docs/contributing/orchestration.md) → *Merging and amending a
+  spec*. Two different things in one amendment, and they should not be read as one: [D5](#d5)
+  is a **fact catching up with the code** — FIX-1442 landed two hours after this spec was
+  drafted and removed the precondition D5 existed to satisfy, so the card has no subject left.
+  [D6](#d6) is a **product decision reversed by the owner** after implementation made the shape
+  visible. The first needed no judgement; the second is entirely judgement, and it is his.

@@ -39,6 +39,11 @@ does: one kind, one instance."*), add:
 refusal under *Working the rows*, the escape hatch here — and never joins. A reader who reads
 only this section writes a kind and discovers the board rule as an error message.
 
+**And nothing else on this page.** It still tells readers a direct message is a channel on the
+built-in kind, told apart by its members and its charter. [D6](DECISIONS.md#d6) does not disturb
+that — a two-member DM is still exactly that — and the owner **declined** amending this page when
+asked. Leave it alone.
+
 ## 2 · `apps/kitchen-sink/README.md` → *The support team (`workforce/`)*
 
 **After** the existing paragraph ending *"…adding a kind takes `fsdev gen` and adding a seat
@@ -50,8 +55,9 @@ takes only a restart."*, add:
 > `desk` is the ordinary case: the built-in kind, five members, and two boards declared as plain
 > names — `boards: [followups, escalations]`. The framework mints a ledger per name from where
 > the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that.
-> `ada-dm` is a one-member channel with no `flow:` line, because a direct message is not a kind
-> of its own — it is a channel with one member. `noticeboard` is the case that *is* different:
+> `<dm>` is a two-member channel with no `flow:` line, because a direct message is not a kind of
+> its own — it is a channel between two members that notifies neither, so the transcript stays
+> coherent without the noise. `noticeboard` is the case that *is* different:
 > it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only
 > the most recent lines. A kind of your own cannot hold a board, which is why the boards are on
 > `desk` and not here.
@@ -78,12 +84,17 @@ takes only a restart."*, add:
 > not reach it. `boards:` is the exception — the board list is rebuilt from the files on every
 > boot, so a board added to an open channel's file is usable after a restart.
 >
-> The channels open under one organization, named in `workforce/org.ts`. That is a storage scope,
-> not a permission: this app configures no authentication, so nothing verifies it. If you add
-> authentication, set that value to the organization your callers resolve to. A session's
-> organization is fixed when it is created, so otherwise the first boot opens each channel under
-> the caller's organization, and the next boot compares that against the value in the file, finds
-> them different, and refuses to re-open the channel by name.
+> Channels are opened as one caller, named in `fsdev.config.ts`. The organization the sessions
+> land in is not named there and cannot be: it comes from the identity the server resolves for
+> that caller, and this app configures no authentication, so it is the framework's default. A
+> session's organization is fixed when the session is created and re-opening cannot move it, so
+> if you add authentication, open the channels as a caller whose verified identity already
+> carries the organization you want them in.
+
+**Corrected after merge.** This paragraph used to tell an adopter to set an organization in
+`workforce/org.ts`. There is no such file and no such option — [D5](DECISIONS.md#d5). The
+instruction an adopter can actually follow is *choose the caller*, which is what the text above
+now says.
 
 ## 3 · The three `CHANNEL.md` charters
 
@@ -94,15 +105,16 @@ re-argues it. Proposed bodies:
 
 **`desk/CHANNEL.md`**
 
-> Post what the desk could not close. Anything that outlives the conversation goes on a board:
+> Post what the desk could not close. Anything that has to outlive this channel goes on a board:
 > `followups` for work a seat runs, `escalations` for work a person picks up. Nothing is wired to
 > `escalations` on purpose — the boot warns about it, which is what an unwatched board is
 > supposed to look like.
 
-**`ada-dm/CHANNEL.md`**
+**`<dm>/CHANNEL.md`** — the folder name is the implementer's ([D6](DECISIONS.md#d6))
 
-> One member. A direct message is not a kind of its own; it is this, a channel with a roster of
-> one, on the kind every channel gets when it names none.
+> Two members, and neither is notified. A direct message is not a kind of its own; it is this,
+> the kind every channel gets when it names none, with a roster of two and nothing delivered —
+> what the two keep here is a coherent transcript, not an inbox.
 
 **`noticeboard/CHANNEL.md`**
 
