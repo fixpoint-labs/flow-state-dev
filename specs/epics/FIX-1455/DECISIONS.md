@@ -283,3 +283,20 @@ superseder when the four are closed.
   [`EVOLUTION.md`](EVOLUTION.md). The owner's two answers were folded: the durability proof
   scoped to runtime hire (ER-2 and ER-22 amended), and the five stale tickets split. The shell
   narrative was trimmed to epic altitude with its figures retained for FIX-1477.
+- **Merged, then amended — D8 (Sep 21)** — the set merged at
+  [`10d5eb9b`](https://github.com/fixpoint-labs/flow-state-dev/commit/10d5eb9b11155f1991574114a651c87c22581731)
+  on [PR #1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978), which is the review
+  record and is never reopened. One amendment followed, from fresh `main` on
+  [PR #1986](https://github.com/fixpoint-labs/flow-state-dev/pull/1986): [D8](#d8), the fourth
+  cross-cutting call, answering what D7 left unstated — how you get from a kind to an instance
+  to a session. **One navigator, depth read from the flow's declared `cardinality`.** It
+  **extends** D7 rather than superseding it, so no owner moved: [ER-7](BUSINESS-RULES.md)
+  carries the navigator and [ER-9](BUSINESS-RULES.md) gains the prohibition on a
+  consumer-declared depth, rather than a new rule being minted. Three review passes folded — the
+  Architect stamped it, Cursor approved the direction, and Codex found two structural problems:
+  an `orgId` prop the listing contract cannot honour (removed, and the tenant-scoped limit
+  stated instead, with [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) filed outside
+  this set), and a completion cycle between FIX-1476 and FIX-1477 (broken by giving FIX-1477
+  every rendering surface). The lineage is in [EVOLUTION.md](EVOLUTION.md)'s post-merge table.
+  **D8 is pending the owner's sign-off**; until #1986 merges, the set on `main` is the authority
+  and D8 is a proposal.
