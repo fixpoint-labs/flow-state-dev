@@ -101,8 +101,10 @@ nothing, which is what keeps a roster of a hundred seats from becoming a hundred
    the second component-per-concern the epic exists to prevent, arrived by layout instead of by
    argument.
 
-**Open: one, and it is yours.** The rail's seat rows would come from a list the server publishes
-to anyone who can reach the app, and after durable hire lands that list names every
-organization's seats. Whether the reference app ships that on day one is a business call, not an
-engineering one: [DECISIONS.md → Open](DECISIONS.md#open). The reasoning and what lost:
+**Open: one, and it is yours.** The rail's seat rows would come from a list the server answers to
+anyone who asks it, and after durable hire lands that list names every organization's seats.
+Whether the reference app puts that on screen on day one is a business call, not an engineering
+one — and it is a call about what we **teach**, not a fence: the list is public whatever any
+screen draws, and closing it is [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)'s.
+The full ask: [DECISIONS.md → Open](DECISIONS.md#open). The reasoning and what lost:
 [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).

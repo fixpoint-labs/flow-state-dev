@@ -118,10 +118,11 @@ components from the client packages.`
 > rather than spinning.
 >
 > The roster and the board columns are scoped to an organization, because the collections behind
-> them are. **The flow list is not.** It is the list of kinds your server has registered, and it
-> carries no organization, so the navigator browses **channel kinds** rather than hired seats.
-> Your team is in the roster, which is organization-scoped. When the flow listing carries an
-> organization, a seats section becomes available and this page will say so.
+> them are. **The flow list is not.** Treat it as public information about your deployment's
+> shape: it is the list of kinds your server has registered, it carries no organization, and it
+> is not behind your authentication. So the navigator browses **channel kinds** rather than hired
+> seats, and your team is in the roster, which is organization-scoped. When the flow listing
+> carries an organization, a seats section becomes available and this page will say so.
 
 ## UPDATE · `packages/react/README.md` · a new section after "Render helpers"
 

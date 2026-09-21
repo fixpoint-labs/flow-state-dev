@@ -110,25 +110,36 @@ migration become a follow-up instead of a gate.
 ### The rail's seat list would be published to anybody: ship it, or hold it?
 
 **Plain terms.** The app asks the server "what flows do you have?" to build the left rail. That
-question is answered to anyone who can load the page — no account, no password. Today the answer
-is dull: a chat flow and a few demo workers. Once the durable-hire work in this same epic lands,
-every team somebody hires becomes an entry in that answer, and each entry's name **contains the
-organization it was hired for**. So a stranger — or a customer of ours looking at their own
-copy — could read a list naming every organization on that deployment and who they hired.
+question is answered to anyone who asks it — no account, no password, and the route is classified
+*exempt* from authorization on purpose, as "public flow metadata". Today the answer is dull: a
+chat flow and a few demo workers. Once the durable-hire work in this same epic lands, every team
+somebody hires becomes an entry in that answer, and each entry's name **contains the organization
+it was hired for**. So a stranger — or a customer of ours looking at their own copy — could read
+a list naming every organization on that deployment and who they hired.
+
+**What holding the rows does not buy — say this first, because it is the part that gets
+misread.** The rail is a teaching surface, not a fence. The endpoint is answered to anyone who
+asks it directly, whatever any screen chooses to draw, so not drawing the rows changes **nothing**
+about the exposure. The fence is
+[FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486), and its own locked line is exactly
+this case: *flow listing's kinds may remain a global registry of shapes; what must be org-scoped
+are the instances and sessions consumers browse*. A hired seat is a registered **instance** whose
+id carries its org, so durable hire is what walks the registry across that line.
 
 **The trade-off.** Listing seats in the rail is the picture the epic painted and the thing a
 reader clones. Holding it back means the rail ships with channels only for a few weeks, and you
 find your team in the roster panel on the right, which is already in the layout and is already
 scoped to your organization.
 
-**My recommendation: hold the seat rows until the flow list can be scoped.** The epic's own
-fallback already says this in as many words — if the rail cannot carry both halves, the rail is
-channels only and seats are reached through the panel's roster. Taking it costs no new decision,
-no new component and no new prop: the navigator still ships, still derives its depth, still hosts
-the channels half, and the seat section switches on the day the list carries an organization
-([FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486), already filed, already named as
-this issue's one outside prerequisite). Shipping it and writing the limit into the docs inverts
-what this epic is for: the reference app would be teaching the mistake, in a file people copy.
+**My recommendation: hold the seat rows until the flow list can be scoped — and do not mistake
+that for containment.** The epic's own fallback already says the first half in as many words: if
+the rail cannot carry both halves, the rail is channels only and seats are reached through the
+panel's roster. Taking it costs no new decision, no new component and no new prop — the navigator
+still ships, still derives its depth, still hosts the channels half, and the seat section switches
+on the day the list carries an organization. What it buys is narrow and worth having anyway: the
+reference app stops **teaching** the exposure, in a file people copy, and stops making it
+convenient. What it does not buy is a closed hole. If the exposure itself is the concern rather
+than the lesson, FIX-1486's priority is the lever, not this issue's scope.
 
 **What would change my mind:** if we ship or recommend a gate in front of that endpoint in real
 deployments, so the list is not in fact public. Then the exposure is between organizations on one
@@ -137,8 +148,9 @@ also change if FIX-1486 lands inside this epic's window — then there is nothin
 
 **Cost of being wrong: asymmetric, which is why I lean hard.** If I am wrong to hold it, the rail
 looks thinner than the figure for a few weeks and switching it on is one small change. If I am
-wrong to ship it, an unauthenticated directory of customer names is in the reference app and in
-every app cloned from it, and we find out the way these are always found out.
+wrong to ship it, we have put an unauthenticated directory of customer names on screen in the app
+every reader clones — and taught, by example, that browsing it is the normal thing to do. The
+hole is open either way; the difference is whether we ship the app that walks people to it.
 
 ## How it got here
 
