@@ -133,6 +133,49 @@ describe("resourcesManifestSource", () => {
     expect(entries.find((e) => e.id === "org/charter")!.contract).toContain("you may read");
   });
 
+  // The contract is what an orchestrator plans against, so it has to reflect
+  // BOTH write gates. `writable: false` is enforced in the engine's resource
+  // registry (it throws `resource_read_only`), so advertising a write on the
+  // strength of `llmWritable` alone promises an operation that always fails —
+  // and a planner that believes it plans confidently and wrongly.
+  it("advertises read-only when the store refuses writes, whatever llmWritable says", async () => {
+    const entries = await source.entries(
+      ctxOf([
+        instance("locked", { llmWritable: true, writable: false }),
+        instance("scratch", { llmWritable: true }),
+      ]),
+    );
+
+    const locked = entries.find((e) => e.id === "org/locked")!.contract!;
+    expect(locked).toContain("you may read its content");
+    expect(locked).not.toContain("write");
+    // `writable` omitted defaults to true, so the ordinary case is unchanged.
+    expect(entries.find((e) => e.id === "org/scratch")!.contract).toContain("read and write");
+  });
+
+  // The collection half of the same gate. The server stamps the collection's
+  // config onto every instance ref, so a collection-level `writable: false`
+  // reaches the contract through that same instance `config`.
+  it("advertises read-only for an instance whose collection refuses writes", async () => {
+    const nsConfig = { llmReadable: true, llmWritable: true, writable: false };
+
+    const entries = await source.entries(
+      ctxOf([
+        {
+          pattern: "archive/**",
+          scope: "org",
+          config: nsConfig,
+          create: async () => {},
+          list: async () => [instance("archive/2024", nsConfig)],
+        },
+      ]),
+    );
+
+    const archived = entries.find((e) => e.id === "org/archive/2024")!.contract!;
+    expect(archived).toContain("you may read its content");
+    expect(archived).not.toContain("write");
+  });
+
   it("reaches an agent through the door under the resources domain", async () => {
     const { discover } = discoveryTools(createManifestRegistry([source]));
 

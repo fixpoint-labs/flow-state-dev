@@ -7,7 +7,7 @@
  * answer the model can act on; the only loud failure is at declaration time.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { ManifestEntry } from "@flow-state-dev/contracts";
 import { createManifestRegistry, type BlockManifestSource } from "../src/manifest/registry";
 import { discoveryTools } from "../src/manifest/discovery-tools";
@@ -181,5 +181,77 @@ describe("discover", () => {
     const result = await runForTest(discover, { domain: null, detail: "thin" }, ctx);
 
     expect(result).toEqual({ domains: [] });
+  });
+});
+
+// Cancellation is the one failure the door does NOT degrade. Reporting an
+// abort as a domain's `problem` hands the model a half-catalog that reads as
+// complete, and lets the loop go on paying for the remaining domains' reads
+// after nobody is waiting for the answer (BP-035, cancel-error second path).
+describe("discover under cancellation", () => {
+  it("propagates a reader's abort instead of reporting it as that domain's problem", async () => {
+    const controller = new AbortController();
+    const abortErr = new Error("This operation was aborted");
+    abortErr.name = "AbortError";
+
+    // Aborted DURING the read, not before it: this has to exercise the catch
+    // clause in `readDomain`, not the guard that stops the loop between
+    // domains. A reader that observes `ctx.signal` mid-flight looks like this.
+    const { discover } = discoveryTools(
+      createManifestRegistry([
+        sourceOf("seats", () => {
+          controller.abort();
+          throw abortErr;
+        }),
+      ]),
+    );
+
+    await expect(
+      runForTest(discover, { domain: "seats", detail: "thin" }, createMockContext({ signal: controller.signal })),
+    ).rejects.toThrow(/aborted/i);
+  });
+
+  // An abort-shaped error with no aborted signal is an ordinary reader failure
+  // and must still degrade — otherwise this fix costs the planner its turn.
+  it("still degrades an abort-shaped failure when the caller was never cancelled", async () => {
+    const abortErr = new Error("upstream fetch was aborted");
+    abortErr.name = "AbortError";
+
+    const { discover } = discoveryTools(
+      createManifestRegistry([
+        sourceOf("resources", () => {
+          throw abortErr;
+        }),
+      ]),
+    );
+
+    const result = await runForTest(discover, { domain: "resources", detail: "thin" }, ctx);
+
+    expect(result.domains[0]!.problem).toBe("upstream fetch was aborted");
+    expect(result.domains[0]!.entries).toEqual([]);
+  });
+
+  it("stops between domains once the caller is gone, instead of paying for the rest", async () => {
+    const controller = new AbortController();
+    const later = vi.fn(() => [seat("qa")]);
+
+    const { discover } = discoveryTools(
+      createManifestRegistry([
+        {
+          domain: "seats",
+          entries: () => {
+            controller.abort();
+            return [seat("eng")];
+          },
+        },
+        { domain: "resources", entries: later },
+      ]),
+    );
+
+    await expect(
+      runForTest(discover, { domain: null, detail: "thin" }, createMockContext({ signal: controller.signal })),
+    ).rejects.toThrow();
+    // `resources` is read after `seats` in canonical order; it must not run.
+    expect(later).not.toHaveBeenCalled();
   });
 });

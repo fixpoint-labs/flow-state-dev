@@ -20,7 +20,7 @@
 import type { ManifestEntry } from "@flow-state-dev/contracts";
 import type { BlockContext } from "../types/block";
 import type { ResourceRef } from "../types/resource";
-import { collectExternalCollections, collectReadableResources } from "../tools/resource-tools";
+import { collectReadableExternalCollections, collectReadableResources } from "../tools/resource-tools";
 import type { BlockManifestSource } from "./registry";
 
 /**
@@ -34,10 +34,21 @@ function purposeOf(ref: ResourceRef<any>): string {
   return `Readable resource at ${ref.path}`;
 }
 
-/** How the agent may work with this resource — the deeper half of an entry. */
+/**
+ * How the agent may work with this resource — the deeper half of an entry.
+ *
+ * Writes are advertised only when BOTH gates open: `llmWritable` (the agent is
+ * permitted to ask) and `writable` (the store will accept it — default `true`,
+ * enforced in the engine's resource registry, which throws `resource_read_only`
+ * when it is `false`). Either one alone is a half-truth, and a contract that
+ * promises an operation which always throws is worse than no contract: an
+ * orchestrator plans confidently and wrongly, which is the failure this door
+ * exists to remove. Collection instances carry their collection's config, so
+ * the collection-level `writable` is read through this same expression.
+ */
 function contractOf(ref: ResourceRef<any>): string {
-  const verbs = ref.config?.llmWritable === true ? "read and write" : "read";
-  return `Reachable by uri "${ref.uri}"; you may ${verbs} its content.`;
+  const mayWrite = ref.config?.llmWritable === true && ref.config?.writable !== false;
+  return `Reachable by uri "${ref.uri}"; you may ${mayWrite ? "read and write" : "read"} its content.`;
 }
 
 /**
@@ -60,8 +71,7 @@ export function resourcesManifestSource(): BlockManifestSource {
         });
       }
 
-      for (const ns of collectExternalCollections(ctx)) {
-        if (ns.ref.config?.llmReadable !== true) continue;
+      for (const ns of collectReadableExternalCollections(ctx)) {
         entries.push({
           id: `${ns.scope}/${ns.name}`,
           kind: "collection",

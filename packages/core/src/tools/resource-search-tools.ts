@@ -30,7 +30,7 @@
 import { z } from "zod";
 import picomatch from "picomatch";
 import { handler } from "../blocks/handler";
-import { collectExternalCollections, collectReadableResources } from "./resource-tools";
+import { collectReadableExternalCollections, collectReadableResources } from "./resource-tools";
 import type { ExternalResourceCollectionRef } from "../types/external-resource-collection";
 
 /** Maximum snippet length returned per match, so results stay token-cheap. */
@@ -220,9 +220,7 @@ export function resourceSearchTools() {
       // instances), scored in memory. Computed up front so the pagination model
       // can tell a pure-external search (cursor-pageable) from a mixed one.
       const storeReadable = await collectReadableResources(ctx);
-      const externalCollections = collectExternalCollections(ctx).filter(
-        (ns) => ns.ref.config?.llmReadable === true
-      );
+      const externalCollections = collectReadableExternalCollections(ctx);
 
       // Cursor pagination is only coherent for a SINGLE external collection with
       // no store-backed set to interleave: an opaque cursor can't fan out to

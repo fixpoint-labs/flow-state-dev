@@ -12,10 +12,12 @@
  *   - **Scoped at the registry, not filtered here.** The `domain` argument is
  *     model-supplied. This tool can only reach sources its registry holds, so
  *     naming something out of scope returns nothing to filter (BP-031).
- *   - **Nothing fatal.** An unknown domain, an empty domain and a reader that
- *     throws all degrade to an answer the model can act on. A planner that
- *     loses its turn because one collection was misconfigured is worse than
- *     one that plans with three domains out of four.
+ *   - **Nothing fatal, except cancellation.** An unknown domain, an empty
+ *     domain and a reader that throws all degrade to an answer the model can
+ *     act on. A planner that loses its turn because one collection was
+ *     misconfigured is worse than one that plans with three domains out of
+ *     four. Cancellation is the exception: it is not a domain's problem but
+ *     the caller's, so it propagates instead of being reported as one.
  *   - **Thin by default.** `detail: "full"` adds each entry's `contract`;
  *     every other call pays for the purpose line and no more.
  */
@@ -23,22 +25,30 @@
 import { z } from "zod";
 import { MANIFEST_DOMAINS, isManifestDomain } from "@flow-state-dev/contracts";
 import type { ManifestDomain, ManifestEntry } from "@flow-state-dev/contracts";
+import { isAbortLike } from "../errors/abort";
 import { toError } from "../helpers/to-error";
 import { handler } from "../blocks/handler";
 import type { BlockContext } from "../types/block";
 import type { ManifestRegistry } from "./registry";
 
+/**
+ * One entry as the door returns it, checked against `ManifestEntry` itself.
+ * `contracts` is zero-dependency and carries no zod, so the record and its
+ * wire schema are necessarily two declarations; `satisfies` is what keeps them
+ * one shape — add a required field there and this fails to compile rather than
+ * quietly never reaching a caller.
+ */
+const manifestEntrySchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  purpose: z.string(),
+  contract: z.string().optional(),
+}) satisfies z.ZodType<ManifestEntry>;
+
 /** One domain's answer: its entries, or the problem that stopped it answering. */
 const domainResultSchema = z.object({
   domain: z.string(),
-  entries: z.array(
-    z.object({
-      id: z.string(),
-      kind: z.string(),
-      purpose: z.string(),
-      contract: z.string().optional(),
-    }),
-  ),
+  entries: z.array(manifestEntrySchema),
   problem: z.string().optional(),
 });
 
@@ -64,6 +74,11 @@ async function readDomain(
   try {
     entries = await source.entries(ctx);
   } catch (err: unknown) {
+    // Cancellation is the caller going away, not this domain being broken.
+    // Degrading it to a `problem` would hand the model a half-catalog that
+    // reads as complete, and would let the caller's loop go on paying for the
+    // remaining domains' reads after nobody is waiting for them.
+    if (isAbortLike(err) && ctx.signal?.aborted === true) throw err;
     return { domain, entries: [], problem: toError(err).message };
   }
 
@@ -130,6 +145,10 @@ export function discoveryTools(registry: ManifestRegistry) {
 
       const domains = [];
       for (const domain of wanted) {
+        // Stop between domains rather than starting another reader's
+        // (potentially expensive) collection reads for a caller that is gone.
+        // A source that never looks at `ctx.signal` cannot stop itself.
+        ctx.signal?.throwIfAborted();
         domains.push(await readDomain(registry, domain, input.detail, ctx));
       }
       return { domains };

@@ -243,6 +243,21 @@ export async function collectReadableResources(ctx: BlockContext): Promise<Resou
 }
 
 /**
+ * The readable external collections — the same opt-in gate
+ * `collectReadableResources` applies to store-backed collections, applied to
+ * the read-through ones. One expression in one place: search and the discovery
+ * door both answer from external collections, and a gate written twice is a
+ * gate that can drift so one of them leaks.
+ *
+ * Synchronous and collection-level, like the store-backed gate: it reads
+ * `config` off refs the registry already holds and never calls `list()`, so a
+ * collection that did not opt in is filtered out before anything reaches it.
+ */
+export function collectReadableExternalCollections(ctx: BlockContext): CollectionEntry[] {
+  return collectExternalCollections(ctx).filter((ns) => ns.ref.config?.llmReadable === true);
+}
+
+/**
  * Resolve a scope-qualified resource `uri` (`${scope}/${path}`) to its
  * `ResourceRef` — static resource or collection instance, uniformly. Unlike
  * `resolveResourceByPath`, the uri is unique across scopes (FIX-842), so
