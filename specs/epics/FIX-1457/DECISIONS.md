@@ -190,7 +190,8 @@ multi-user or sign-off pain is real**.
 
 - **A done condition names a producer per leg.** Round 1 gave the single condition a provisional
   owner so a coordinator could tell whether to file or wrap. Applying that per leg is what exposed
-  first two, and now **all three**, unowned legs ([Open 1](#open)).
+  first two and then **all three** unowned legs — and it is why FIX-1481's filing reads as one leg
+  held rather than as the epic being staffed. **Two are still unowned** ([Open 1](#open)).
 - **An exploration may not exit with a downstream-blocking wall open** ([ER-18](BUSINESS-RULES.md)).
   **Now met** — FIX-1467 merged answering the noun (`references/`), the migration
   (`clearShadowedReferences`) and the grant model.
