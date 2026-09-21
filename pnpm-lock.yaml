@@ -853,6 +853,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@flow-state-dev/orchestration':
+        specifier: workspace:*
+        version: link:../../packages/orchestration
       zod:
         specifier: ^3.25.76
         version: 3.25.76

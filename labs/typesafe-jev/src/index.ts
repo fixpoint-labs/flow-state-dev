@@ -6,6 +6,7 @@
  *   systemOneChoice / systemOneScore / systemOneNoul — one-shot wrappers
  *   choice / score / noul — question builders
  *   createSystemOneIndexCapability — index-time classify + deterministic facet search
+ *   createSystemOneSkillClassifier — optional Jev drop-in for skill-activator tier 3
  */
 
 export {
@@ -124,6 +125,26 @@ export {
   type IndexedDocumentFacets,
   type IndexedDocumentState,
 } from "./indexed-docs-resource";
+export {
+  DEMO_SKILLS,
+  SKILL_ACTIVATOR_FLOW_KIND,
+  createSkillActivatorDemoFlow,
+  createSystemOneSkillActivator,
+  type SkillActivatorFlowOptions,
+  type SystemOneSkillActivatorOptions,
+} from "./skill-activator-flow";
+export {
+  SKILLS_COLLECTION_KEY,
+  SYSTEM_ONE_SKILL_CONFIDENCE,
+  SYSTEM_ONE_SKILL_NONE,
+  SYSTEM_ONE_SKILL_QUESTION,
+  createSystemOneSkillClassifier,
+  demoSkillsCollection,
+  listSkillsForChoice,
+  skillsCatalogAnchor,
+  type SkillCatalogEntry,
+  type SystemOneSkillClassifierOptions,
+} from "./skill-classifier";
 export { asTypeSafeState, runTypeSafeDecision } from "./run-decision";
 export {
   DEFAULT_TYPESAFE_MODEL,

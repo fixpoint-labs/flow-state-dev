@@ -25,6 +25,9 @@
  * Tier-3 LLM classification is opt-out via `enableLlmClassifier: false`, and
  * tier-2 keyword matching is opt-out via `enableKeywordMatch: false` — useful
  * in tests and in deployments that only want a subset of the tiers.
+ *
+ * Apps that have System One can pass a drop-in `classifier` block instead of
+ * the built-in generator. This package does not import that surface.
  */
 
 import { z } from "zod";
@@ -66,6 +69,20 @@ export interface SkillActivatorOptions {
    * deployments that want only deterministic tiers.
    */
   enableLlmClassifier?: boolean;
+  /**
+   * Drop-in replacement for the built-in generator classifier. When set
+   * (and `enableLlmClassifier` is not `false`), this block is what
+   * `.tapIf(!resolved)` runs as tier 3.
+   *
+   * The block must take `{ message: string }` and patch sequencer state
+   * (`resolved`, `skills`, `classifierConfidence`) the way
+   * `createSkillClassifierSequencer` does. Apply + the catalog
+   * hallucination guard stay downstream / inside the injected block.
+   *
+   * This package never imports System One — the host passes the block
+   * when that package is installed.
+   */
+  classifier?: BlockDefinition;
   /**
    * When `false`, skillActivator skips tier 2 (keyword scan) entirely. The
    * apply handler runs against whatever the slash tier — and, if enabled,
@@ -162,15 +179,17 @@ export function createSkillActivator(
   }
 
   if (enableLlm) {
-    const classifier = createSkillClassifierSequencer({
-      collectionKey,
-      classifierModel: options.classifierModel,
-      confidenceThreshold:
-        options.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD,
-      maxSkillsInClassifier:
-        options.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS,
-      ...(allowed ? { allowed } : {}),
-    });
+    const classifier =
+      options.classifier ??
+      createSkillClassifierSequencer({
+        collectionKey,
+        classifierModel: options.classifierModel,
+        confidenceThreshold:
+          options.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD,
+        maxSkillsInClassifier:
+          options.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS,
+        ...(allowed ? { allowed } : {}),
+      });
     pipeline = pipeline.tapIf(
       (_input, ctx) => !ctx.sequencer?.state.resolved,
       classifier,

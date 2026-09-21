@@ -17,6 +17,7 @@ the transport (`OPENROUTER_API_KEY` on the host, never on action input).
 | `systemOneChoice` / `systemOneScore` / `systemOneNoul` | handler | One-shot wrappers. Input is the state; output is one answer |
 | `choice` / `score` / `noul` | builders | Question objects for `typesafeEvaluate` |
 | `createSystemOneIndexCapability` | capability | Optional. Classify-on-write + deterministic facet search. Absent = those tools are missing |
+| `createSystemOneSkillClassifier` | handler | Optional drop-in for skill-activator tier 3. Host passes it as `classifier`. Absent = today's generator (or deterministic-only) |
 
 A `generator` is the wrong primitive. Options are yours before the call;
 probabilities come back calibrated; the next step is a child block or an
@@ -88,6 +89,27 @@ pnpm fsdev run system-one-index search -i '{"kind":"ticket"}'
 pnpm fsdev run system-one-index reindex -i '{}'
 ```
 
+## Skill-activator tier 3 (optional inject)
+
+Today's pipeline stays slash → keyword → **tier 3** → apply. This lab
+replaces only tier 3. Orchestration does not import this package.
+
+```ts
+createSkillActivator({
+  classifier: createSystemOneSkillClassifier({ client }),
+});
+```
+
+Jev Choice is over catalog skill names plus `none`. Criteria are each
+skill's description / `when_to_use`. Confidence uses the existing 0.65
+threshold. Apply and the catalog name guard stay in place. Omit the
+classifier (or pass `enableLlmClassifier: false`) and the activator still
+runs — today's generator, or deterministic-only.
+
+```bash
+pnpm fsdev run system-one-skills activate -i '{"message":"the card was charged twice"}'
+```
+
 ## Low-level evaluate
 
 ```ts
@@ -138,5 +160,7 @@ This lab talks only to OpenRouter.
 
 Published package, replacing `generator`, a fifth block kind, workforce hire,
 first-class RAG / embeddings as resource search, baking System One into
-required core, a spec / architecture D-n. The candidate that would move is
-this export surface, still talking to Decisions.
+required core, a hard dep from orchestration into this lab, rewriting slash
+or keyword, reviving the kitchen-sink thinking-style router, a spec /
+architecture D-n. The candidate that would move is this export surface,
+still talking to Decisions.
