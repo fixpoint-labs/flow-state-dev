@@ -98,7 +98,9 @@ await runAction({
 ```
 
 Organizations are opaque, nonempty strings. A whitespace-only id is rejected
-rather than trimmed, and a valid one is stored exactly as given.
+rather than trimmed, and a valid one is stored exactly as given. That check is
+`isValidOrgId`, exported from `@flow-state-dev/core`, so a resolver can apply
+the same rule and refuse with its own message.
 
 A session's organization is fixed when the session is created, like its user.
 Reopening cannot move it; create a new session instead.
@@ -261,6 +263,7 @@ HTTP transport rather than the webhook transport.
 ### MCP / API token over Authorization header
 
 ```ts
+import { isValidOrgId } from "@flow-state-dev/core";
 import {
   createHs256JwtVerifier,
   extractBearerToken,
@@ -283,10 +286,13 @@ defineFlow({
       if (payload === null) {
         throw new PrincipalResolutionError("Invalid token", { status: 401 });
       }
-      return {
-        userId: payload.sub as string,
-        orgId: typeof payload.org === "string" ? payload.org : undefined
-      };
+      const org = payload.org;
+      if (!isValidOrgId(org)) {
+        throw new PrincipalResolutionError("Token carries no organization", {
+          status: 401
+        });
+      }
+      return { userId: payload.sub as string, orgId: org };
     }
   },
   actions: { /* ... */ }
@@ -361,8 +367,9 @@ parameter still works as a filter, but it can only narrow that set, never
 widen it.
 
 `POST /api/flows/:flowId/sessions` takes the new session's `userId` and
-`orgId` from the principal. A `userId` in the request body is ignored when a
-resolver is configured, the same way `orgId` is ignored on action calls.
+`orgId` from the principal. An `orgId` in the request body is never consulted,
+on this route or on an action call. A `userId` in the body is ignored when a
+resolver is configured.
 
 ### Without a resolver
 
@@ -429,8 +436,8 @@ throws at context creation:
 
 - `UserBindingMismatchError` — request supplied a `userId` that doesn't
   match the session's owner.
-- `OrgBindingMismatchError` — request supplied an `orgId` that doesn't
-  match the session's bound org.
+- `OrgBindingMismatchError` — the request resolved to an organization
+  that doesn't match the session's bound org.
 
 This is a structural integrity check, not an identity check. Your auth
 code is what guarantees a request actually represents `userId: A`. The

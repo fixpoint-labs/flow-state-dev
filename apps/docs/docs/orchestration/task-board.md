@@ -698,7 +698,7 @@ const followups = channelBoard("engineering.incidents", "followups");
 const board = taskBoard({ name: "followups", collection: followups, workers });
 ```
 
-The collection is org-scoped, so a channel holding a board must be opened with an org. The channel id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing — the unattended-board warning at hire is what catches it. See [holding a board](../workforce/channels.md#holding-a-board).
+The collection is org-scoped, so its rows sit in the organization the channel runs in. The channel id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing; the unattended-board warning at hire is what catches it. See [holding a board](../workforce/channels.md#holding-a-board).
 
 ## See also
 

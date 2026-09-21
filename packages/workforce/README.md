@@ -1029,15 +1029,13 @@ The two calls are separate because they happen at two different times: an instan
 when the server is built, and a session can only be opened once it is running. `openChannels` needs
 a `userId` because a session belongs to one user, as *What a transcript proves* below explains.
 
-Pass `orgId` alongside it. It is the org each channel session is opened under, and resources
-stored at org scope resolve inside it. File-declared documents are all org-scoped, so a channel
-opened without an org cannot read one. The argument decides the org only on an app that has not
-configured [authentication](https://flow-state.dev/docs/server/authentication); where a
-`resolvePrincipal` is in place, each session takes the org of the verified caller, so open your
-channels as a caller whose identity already carries the org you want. Re-opening cannot move a
-session between orgs. If you pass an `orgId` and a channel at that id is already open under a
-different org, or under none, `openChannels` names that channel and stops; delete that session so
-the next run opens the channel fresh, or drop the `orgId`.
+Every channel session runs in an organization, and your app does not name it. The server binds it
+from the caller's verified identity, which is whatever your
+[`resolvePrincipal`](https://flow-state.dev/docs/server/authentication#every-request-runs-in-an-organization)
+returned; an app that configures no authentication gets the reserved `DEFAULT_ORG_ID`. Storage at
+organization scope resolves against it inside the channel, including file-declared documents and a
+channel board's rows. A session's organization is fixed when the session is created, so open your
+channels as a caller whose verified identity already carries the organization you want them in.
 
 A record declares five keys and no others: `flow` (which kind, optional), `description`, `members`,
 `boards`, and `instructions` (or a body, which is the same setting). The list is closed and checked
@@ -1185,9 +1183,6 @@ Compose it once per board; a seat holding two boards holds sixteen tools and the
 board each writes to. A channel board is org-scoped, so it cannot be declared by a block colocated
 in a seat's own folder; that refuses at hire.
 
-A channel holding a board must be opened with an `orgId` — a board's rows live at org scope, so
-`openChannels` names the channel and stops when there is none.
-
 Pass `hireWorkforce` the roster's minted ids as `channelBoards` and it warns on stderr for any board
 no hired seat declares, naming the channel and the board. It never refuses: a channel may keep a
 board that only people read.
@@ -1282,7 +1277,7 @@ const instances = channelInstances(roster.channels, { inventory: true });
 flowRegistry.registerMany([...seats, ...instances]);
 // server starts here
 
-await openChannels(roster.channels, { client, userId: "u_boot", orgId: "org_acme" });
+await openChannels(roster.channels, { client, userId: "u_boot" });
 
 await openInventory(
   { seats, channels: roster.channels },
@@ -1492,7 +1487,7 @@ membershipPrefix("");
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds?, inventory? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Register these. |
-| `openChannels(manifests, { client, userId, orgId? })` | Runtime. One named session per record, carrying its members, charter and description, opened under `orgId` when one is given. Idempotent. |
+| `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
 | `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |
 | `ChannelManifest` | One channel record: `{ id, declared, body }`. |
 | `channelBoard(channelId, boardName)` | The one declaration for a channel's board, carrying its minted `id`. Pass it to `taskBoard({ collection })`, and to `channelBoardTaskTools`. Throws when the name is not a plain local name. |
@@ -1555,7 +1550,6 @@ membershipPrefix("");
 | `system:` in a `CHANNEL.md` | Collected in `readChannelsDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the channel folder's path |
 | Workforce root unreadable or symlinked, read for channels | `readChannelsDirectory` throws — the root is never followed through a link |
 | Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two channels would share, or `boards:` on a custom kind that does not support them. Also `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad channel, and nothing is registered |
-| Channel holds a board and no org | `openChannels` throws before opening anything, naming every channel that declares `boards:`, because a board's rows live at org scope |
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
