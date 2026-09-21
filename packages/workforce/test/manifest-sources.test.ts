@@ -107,7 +107,7 @@ describe("the seats source", () => {
 });
 
 describe("the channels source", () => {
-  it("projects an open, still-declared channel with its members", async () => {
+  it("projects a registered, still-declared channel with its members", async () => {
     const roster: DeclaredWorkforce = {
       workers: [],
       channels: [channel("engineering.standup", "Where the team reports progress each morning.")]
@@ -131,7 +131,7 @@ describe("the channels source", () => {
         purpose: "Where the team reports progress each morning.",
         contract:
           "2 members: engineering.lead, engineering.scribe. " +
-          "Opened 2026-01-04T09:00:00.000Z. Post to it by its id."
+          "Opened 2026-01-04T09:00:00.000Z. Addressed by its id. Listed here means registered, not open."
       }
     ]);
   });
@@ -172,7 +172,7 @@ describe("the channels source", () => {
 
     const [entry] = await source!.entries(ctx);
     expect(entry!.id).toBe("engineering.standup");
-    expect(entry!.contract).toBe("0 members. Opened at an unrecorded time. Post to it by its id.");
+    expect(entry!.contract).toBe("0 members. Opened at an unrecorded time. Addressed by its id. Listed here means registered, not open.");
   });
 
   it("BR-15 · projects a row that carries neither optional field at all", async () => {
@@ -181,7 +181,30 @@ describe("the channels source", () => {
     const ctx = ctxWith({ channelRows: [{ id: "a.b", kind: "channel" }] });
 
     const [entry] = await source!.entries(ctx);
-    expect(entry!.contract).toBe("0 members. Opened at an unrecorded time. Post to it by its id.");
+    expect(entry!.contract).toBe("0 members. Opened at an unrecorded time. Addressed by its id. Listed here means registered, not open.");
+  });
+
+  it("BR-12a · tells the model how to address a channel, never to post to one", async () => {
+    // A manifest entry means DECLARED plus a row, and neither closes: the
+    // declaration map is built at boot and the inventory is append-only
+    // (FIX-1485). So a channel whose session is long gone still projects, and
+    // a contract that said "post to it" would be the catalog asserting a
+    // liveness it cannot see — the same shape as advertising a write the
+    // engine rejects.
+    //
+    // Graded on the instruction rather than the exact sentence, so a future
+    // rewording that reintroduces the command goes red here even though the
+    // string assertions above were updated with it.
+    const roster: DeclaredWorkforce = { workers: [], channels: [channel("a.b", "Here.")] };
+    const { channels: source } = sourcesOf(roster, { channels: "channelRows" });
+    const ctx = ctxWith({
+      channelRows: [{ id: "a.b", kind: "channel", members: ["x"], openedAt: "2026-01-04T09:00:00.000Z" }]
+    });
+
+    const [entry] = await source!.entries(ctx);
+    expect(entry!.contract).not.toMatch(/\bpost\b|\bsend\b|\bmessage\b/i);
+    // And it still says the one thing it does know, or the entry is useless.
+    expect(entry!.contract).toMatch(/addressed by its id/i);
   });
 });
 

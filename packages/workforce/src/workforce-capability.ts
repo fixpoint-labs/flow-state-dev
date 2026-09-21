@@ -131,7 +131,11 @@ export function createWorkforceCapability(
   // every `discover`, which is what "projected when asked" means.
   const doors = new Map<string, ReturnType<typeof discoveryTools>["discover"]>();
   const doorFor = (selection: readonly ManifestDomain[] | undefined) => {
-    const key = selection === undefined ? "*" : selection.join(",");
+    // Sorted, because the key stands for a SET: a kind that writes
+    // `discover: [seats, channels]` and one that writes `[channels, seats]`
+    // narrow to the same door, and an order-sensitive key would build and hold
+    // a second identical `discoveryTools` instance for the same scope.
+    const key = selection === undefined ? "*" : [...selection].sort().join(",");
     let door = doors.get(key);
     if (door === undefined) {
       door = discoveryTools(narrowToSeatSelection(registry, selection)).discover;

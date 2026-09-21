@@ -110,15 +110,39 @@ Asking for a domain name that does not exist comes back with the four real names
 
 An entry says a thing was **registered or declared** in this workspace. It does not promise the thing is open, running, or still there. Seats and channels are projected from a record that is only ever appended to, so discovery cross-checks those rows against what the tree declares before it lists them — a channel whose declaration is gone does not appear, even though its row remains. Treat an entry as "this exists and here is what it is for", and confirm the state of anything you are about to act on the same way you would without the catalog.
 
-## Turning the skills list out of the prompt
+## Moving skills from the prompt to the door
 
-By default the names and descriptions of the skills an agent can load are also supplied to it as context, so it knows they exist from its first step. In an app with many skills that is the cost discovery exists to remove. Turn it off where the binding is made:
+By default the names and descriptions of the skills an agent can load are also supplied to it as context, so it knows they exist from its first step. In an app with many skills that is the cost discovery exists to remove. Moving them behind the door takes two settings, and the order matters.
+
+**First, put the skills domain behind the door.** Add the source to the capability, with the same `allowed` array the binding was given:
+
+```ts
+createWorkforceCapability({
+  roster: declaredRoster,
+  inventory: { seats: "seatInventory" },
+  sources: [skillsManifestSource({ allowed: ["deep-research", "competitor-scan"] })],
+})
+```
+
+The `discover` tool itself is on as soon as the capability is composed. If you previously turned it off, switch it back on here, since this is what the agent is about to rely on:
+
+```ts
+createWorkforceCapability({ ... }).presets({ door: true })
+```
+
+**Then take the listing out of the prompt**, where the binding is made:
 
 ```ts
 skills.with({ dynamicActivation: true, catalogContext: false })
 ```
 
 Both flags belong in the same call. Preset overrides replace rather than merge, so chaining `.presets()` and `.with()` drops whichever came first.
+
+Do it in that order. Between the two steps an agent has both the prompt listing and the door, which is wasteful but harmless. Reversed, there is a window where it has neither and cannot find a skill to load at all.
+
+There is no third setting to keep in sync. The `loadSkill` tool's own description tells the agent where the names come from, and that sentence follows `catalogContext` automatically: with the listing on it points at the system context, and with it off it tells the agent to call `discover` first. You cannot end up with a tool pointing at a listing that is no longer there.
+
+To check the move landed, have a seat call `discover({ domain: "skills" })`. What comes back is what `loadSkill` will accept, so an empty answer here means the binding and the source disagree about `allowed` rather than that the skills are missing.
 
 ## Not to be confused with
 

@@ -254,3 +254,73 @@ describe("the `discover:` worker-file key", () => {
     expect((seat!.config as { discover?: string[] }).discover).toEqual(["resources"]);
   });
 });
+
+/**
+ * The door cache is keyed by the SET a seat named, not by how it wrote it.
+ *
+ * `controlTools` is resolved once before every step of a tool loop, so the
+ * cache is what keeps that from rebuilding a door per step. Keyed on the raw
+ * join, two kinds that narrow to the same domains in different orders are two
+ * entries and two identical `discoveryTools` instances held for the life of the
+ * capability — the cache still works, it just stops being one door per
+ * narrowing.
+ *
+ * Graded on identity, because that is the whole claim: a behavioural check
+ * cannot tell one shared door from two equal ones. The answers are compared
+ * too, so a key change that quietly reordered what a seat sees goes red here
+ * rather than in a reader's lap.
+ */
+describe("one door per narrowing, however the seat wrote it", () => {
+  /** The `discover` tool this seat would be offered, un-run. */
+  async function resolveDoor(
+    capability: ReturnType<typeof capabilityWithThreeDomains>,
+    discover?: string[]
+  ): Promise<unknown> {
+    const gen = generator({
+      name: "answerer",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [capability]
+    });
+    const tools = await (
+      gen.config as { tools: (i: unknown, c: unknown) => Promise<unknown[]> }
+    ).tools(undefined, ctxForSeat(discover));
+    const door = (tools as Array<{ name?: string }>).find((tool) => tool.name === "discover");
+    if (!door) throw new Error("no discover tool");
+    return door;
+  }
+
+  it("hands two seats that named the same domains in different orders the same door", async () => {
+    // One capability instance: the cache is per-capability, so two of them
+    // would prove nothing.
+    const capability = capabilityWithThreeDomains();
+
+    const written = await resolveDoor(capability, ["seats", "channels"]);
+    const writtenOther = await resolveDoor(capability, ["channels", "seats"]);
+
+    expect(writtenOther).toBe(written);
+  });
+
+  it("and the shared door answers each of them exactly as its own would", async () => {
+    // The sort must normalize the KEY without touching the narrowing: a seat
+    // that wrote its list the other way round still sees the same domains.
+    const capability = capabilityWithThreeDomains();
+
+    const forward = await askDoor(capability, ["seats", "channels"]);
+    const reversed = await askDoor(capability, ["channels", "seats"]);
+
+    expect(reversed).toEqual(forward);
+    expect(forward.domains).toEqual(["seats", "channels"]);
+  });
+
+  it("still keeps a differently-narrowed seat on its own door", async () => {
+    // The guard against over-normalizing: sorting the key must not collapse
+    // two genuinely different sets into one shared door.
+    const capability = capabilityWithThreeDomains();
+
+    const pair = await resolveDoor(capability, ["seats", "channels"]);
+    const single = await resolveDoor(capability, ["seats"]);
+
+    expect(single).not.toBe(pair);
+  });
+});

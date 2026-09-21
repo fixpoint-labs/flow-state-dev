@@ -186,6 +186,15 @@ function seatsSource(roster: DeclaredWorkforce, key: string): BlockManifestSourc
  * `members` and `openedAt` are `== null`-guarded rather than assumed: both
  * carry defaults for rows written before they existed (BP-030), and a row that
  * predates them projects normally instead of failing the entry.
+ *
+ * **The contract states addressing, never liveness.** A manifest entry means
+ * the channel is declared and has an inventory row — both survive a closed or
+ * deleted session, because the declaration map is built at boot and the
+ * inventory is append-only (FIX-1485: rows never close). So the entry says how
+ * the channel is addressed and stops there. Telling the model to post to it
+ * would be the catalog claiming something it cannot see, and the model has no
+ * way to learn otherwise until the post fails. `openedAt` is kept because it is
+ * a recorded past event rather than a claim about now.
  */
 function channelsSource(roster: DeclaredWorkforce, key: string): BlockManifestSource {
   const declared = new Map(roster.channels.map((channel) => [channel.id, channel]));
@@ -209,7 +218,7 @@ function channelsSource(roster: DeclaredWorkforce, key: string): BlockManifestSo
             `${members.length} member${members.length === 1 ? "" : "s"}` +
             `${members.length > 0 ? `: ${members.join(", ")}` : ""}. ` +
             `${openedAt == null ? "Opened at an unrecorded time." : `Opened ${openedAt}.`} ` +
-            `Post to it by its id.`,
+            `Addressed by its id. Listed here means registered, not open.`,
         });
       }
       return entries;

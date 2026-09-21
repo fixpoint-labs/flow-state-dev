@@ -2,13 +2,13 @@
  * The skills manifest source (FIX-817) — the skills domain's projection into
  * the discovery door.
  *
- * Built over `listEnabledSkills`, which is unchanged and still the reader. What
- * this adds is the same two filters the ambient catalog already applies, so the
- * door and `loadSkill` agree on what exists:
+ * Built over `listLoadableInlineSkills`, which applies the same two filters the
+ * ambient catalog and the load tool's own "Available:" line apply, so all three
+ * surfaces and `loadSkill` agree on what exists:
  *
  *   - **`disable-model-invocation`** is dropped by `listEnabledSkills` itself.
- *   - **Mode and `allowed`** are dropped here, exactly as
- *     `buildLoadCatalogContext` drops them: the load tool refuses a
+ *   - **Mode and `allowed`** are dropped by the shared helper, the one place
+ *     that defines loadability: the load tool refuses a
  *     fork/pattern skill and refuses a name outside the binding's `allowed`
  *     set, so advertising either would invite a call that cannot succeed. A
  *     catalog that lies is worse than one that is short.
@@ -43,7 +43,7 @@
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "../tasks";
-import { listEnabledSkills } from "./internal/list-enabled-skills";
+import { listLoadableInlineSkills } from "./internal/list-loadable-inline-skills";
 import { resolveInitialSkills, type InitialSkillsSource } from "./initial-skills";
 import { ensureSeeded } from "./seeding";
 
@@ -95,9 +95,9 @@ export function skillsManifestSource(
       }
 
       const entries: ManifestEntry[] = [];
-      for (const skill of await listEnabledSkills(collection)) {
-        if (skill.mode !== "inline") continue;
-        if (allowedSet && !allowedSet.has(skill.name)) continue;
+      for (const skill of await listLoadableInlineSkills(collection, {
+        allowed: allowedSet,
+      })) {
         entries.push({
           id: skill.name,
           kind: "skill",

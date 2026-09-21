@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
-import { createLoadSkillTool } from "../../src/skills/load-tool";
+import { buildLoadCatalogContext, createLoadSkillTool } from "../../src/skills/load-tool";
 import { skillsManifestSource } from "../../src/skills/manifest-source";
 import { createMockSkillsCollection } from "./mocks";
 
@@ -183,5 +183,84 @@ describe("the skills manifest source advertises only what loadSkill accepts", ()
     await expect(skillsManifestSource().entries(ctx)).rejects.toThrow(
       /Skills collection "skills" is not registered/,
     );
+  });
+});
+
+/**
+ * The three surfaces that answer "which skills can you load?" must name the
+ * same set.
+ *
+ * `listEnabledSkills` is the reader, but it is NOT the answer: a loadable skill
+ * is an enabled one that is also `inline` and also inside the binding's
+ * `allowed` set. That second filter is applied by the discovery door, by the
+ * ambient catalog listing, and by the load tool's own "Available:" line when it
+ * is handed a name it cannot find. Three places, one rule — and the module
+ * header names the failure when they drift: the catalog advertises a skill the
+ * loader refuses.
+ *
+ * The case below is built so that each surface has something to get wrong: one
+ * skill excluded by mode, one by `allowed`, one by `disable-model-invocation`.
+ * A surface that skips either filter names a skill `loadSkill` would refuse,
+ * and this goes red.
+ */
+describe("every surface that lists loadable skills agrees on the set", () => {
+  /** In `allowed` and absent from the collection — the "Unknown skill" path. */
+  const GHOST = "ghost";
+  const ALLOWED = ["permitted", "forked", "disabled", GHOST];
+
+  function buildLibrary(): Collection {
+    const collection = createMockSkillsCollection();
+    put(collection, "permitted", { description: "Enabled, inline, allowed." });
+    // Enabled and inline, but outside the binding's set.
+    put(collection, "excluded", { description: "Not in the allowed set." });
+    // In the allowed set, but a dispatch route rather than a context injection.
+    put(collection, "forked", { description: "Dispatched.", contextMode: "fork" });
+    // In the allowed set and inline, but withheld from the model entirely.
+    put(collection, "disabled", { description: "Private.", disableModelInvocation: true });
+    return collection;
+  }
+
+  /** The names the ambient catalog listing offers, from its `- name: desc` lines. */
+  async function catalogNames(ctx: never): Promise<string[]> {
+    const text = await buildLoadCatalogContext({
+      collectionKey: "skills",
+      allowed: ALLOWED,
+    })(null, ctx as never);
+    if (text === null) return [];
+    return [...text.matchAll(/^- ([^:]+):/gm)].map((m) => m[1]!).sort();
+  }
+
+  /** The names the load tool's own error message offers when it can't find one. */
+  async function availableInRefusal(ctx: never): Promise<string[]> {
+    const message = await loadRefusal(ctx, GHOST, ALLOWED);
+    expect(message).toMatch(/Unknown skill/);
+    const list = /Available: (.*)$/.exec(message!)?.[1] ?? "";
+    return list === "(none)" ? [] : list.split(", ").map((s) => s.trim()).sort();
+  }
+
+  it("the door, the catalog listing and the load tool's refusal name exactly the loadable set", async () => {
+    const ctx = buildCtx(buildLibrary());
+
+    // `permitted` is the only skill that survives all three filters.
+    const loadable = ["permitted"];
+
+    expect(await ids(skillsManifestSource({ allowed: ALLOWED }), ctx)).toEqual(loadable);
+    expect(await catalogNames(ctx)).toEqual(loadable);
+    expect(await availableInRefusal(ctx)).toEqual(loadable);
+  });
+
+  it("each name the three surfaces agree on is one loadSkill actually accepts", async () => {
+    const ctx = buildCtx(buildLibrary());
+
+    // The other half of the claim (the file's thesis): agreement is only worth
+    // something if the set they agree on is the one the tool honours. Without
+    // this, three surfaces could agree on the same wrong answer.
+    for (const name of await ids(skillsManifestSource({ allowed: ALLOWED }), ctx)) {
+      expect(await loadRefusal(ctx, name, ALLOWED)).toBeNull();
+    }
+    // And each withheld name really is refused, for its own reason.
+    expect(await loadRefusal(ctx, "excluded", ALLOWED)).toMatch(/not in this generator/);
+    expect(await loadRefusal(ctx, "forked", ALLOWED)).toMatch(/cannot be loaded inline/);
+    expect(await loadRefusal(ctx, "disabled", ALLOWED)).toMatch(/disable-model-invocation/);
   });
 });
