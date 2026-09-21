@@ -56,24 +56,26 @@ figures point here rather than repeating it.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · **bug** | The file-declared workforce demo is served over the app's real HTTP route | Nothing else in the set can stand on a workforce the app never loads. It is also the only row that tests the file convention against a real build | **In Review** · [PR #1989](https://github.com/fixpoint-labs/flow-state-dev/pull/1989) · goal PASS · direct route, no spec PR |
-| [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | A team hired at runtime — its seats and roster — survives a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | Ready to Spec · blocked by FIX-1429; unblocks when #1989 merges · spec not started |
-| [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | The shipped channel pair — a kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | Ready to Spec · held pending D8’s sign-off |
-| [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages — including the one navigator the rail hosts ([D8](DECISIONS.md#d8)), and every region that renders, both halves of the rail included | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | Ready to Spec · held pending D8’s sign-off |
-| [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478) | `@flow-state-dev/patterns` dropped as a kitchen-sink dependency where Workforce covers it | A reference app teaching two recipes for one job teaches neither | **In Spec Review** · [PR #1988](https://github.com/fixpoint-labs/flow-state-dev/pull/1988) · collapse trigger contested |
+| [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · **bug** | The file-declared workforce demo is served over the app's real HTTP route | Nothing else in the set can stand on a workforce the app never loads. It is also the only row that tests the file convention against a real build | **Done** · [PR #1989](https://github.com/fixpoint-labs/flow-state-dev/pull/1989) merged · goal PASS · direct route, no spec PR |
+| [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | A team hired at runtime — its seats and roster — survives a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | **In Development** · spec [#1990](https://github.com/fixpoint-labs/flow-state-dev/pull/1990) merged · FIX-1429 cleared · implementing in two PRs, packages first |
+| [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | The shipped channel pair — a kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | **In Spec Dev** · D8 signed off, the hold lifted |
+| [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages — including the one navigator the rail hosts ([D8](DECISIONS.md#d8)), and every region that renders, both halves of the rail included | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | **In Spec Dev** · D8 signed off, the hold lifted |
+| [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478) | `@flow-state-dev/patterns` dropped as a kitchen-sink dependency where Workforce covers it | A reference app teaching two recipes for one job teaches neither | **Spec Approved** · spec [#1988](https://github.com/fixpoint-labs/flow-state-dev/pull/1988) merged · implementation queued on the concurrency cap |
 
-0 done · 2 in flight · 3 not started. Four are substance and one (FIX-1429) is a bug the set
+1 done · 4 in flight · 0 not started. Four are substance and one (FIX-1429) is a bug the set
 stands on — and it is the row that has already proven the claim in *why now*.
 
 **Is five really four?** FIX-1478 is the row to weigh: shedding patterns changes no behaviour a
 user can see, and the audit could ride along inside FIX-1477. It stays separate because it is
 the only row whose deliverable is a *deletion*, and deletions that ride along with a feature are
 the ones that get dropped when the feature runs long. Its collapse trigger — *fold into FIX-1477
-if the audit finds fewer than three surfaces with an honest Workforce path* — **has an answer,
-and the answer is under challenge.**
-[#1988](https://github.com/fixpoint-labs/flow-state-dev/pull/1988) counts four and reads the
-trigger as not fired; a review there argues the four are hypothetical rather than shipped, which
-would fire it. **Unsettled until that recount lands**; the row stays separate meanwhile.
+if the audit finds fewer than three surfaces with an honest Workforce path* — **is settled, and
+it did not fire. The unit is the route, not the file.** FIX-1478's merged spec
+([#1988](https://github.com/fixpoint-labs/flow-state-dev/pull/1988)) counts three of five
+pattern-backed routes with an honest team path, clearing the bar by one. Counted by file the
+answer is two and the trigger fires — moving one route into its own file would flip it while
+changing nothing a person sees. On the unit,
+[that spec](../../issues/FIX-1478/SPEC.md) is the more specific authority.
 
 ## How the issues flow into each other
 
@@ -87,13 +89,14 @@ flowchart LR
   W4["FIX-1407 · W4 first cut"] -.->|"boards, inventory, dispatch policy"| C
   classDef done stroke-width:2px
   classDef proposed stroke-dasharray:4 3
-  class W3,W4 done
+  class A,W3,W4 done
 ```
 
-An edge is what one issue hands the next. Dashed edges come from other epics and are consumed,
-not owned. Only FIX-1429 → FIX-1475 is a hard block; the other three start together. FIX-1477
-is last by preference, not by dependency — it can begin against today's shapes and absorb the
-other rows' surfaces as they land.
+An edge is what one issue hands the next. A heavy border is done. Dashed edges come from other
+epics and are consumed, not owned. FIX-1429 → FIX-1475 was the set's one hard block and is now
+**satisfied** — FIX-1429 is done, so nothing in the set is blocked. FIX-1477 is last by
+preference, not by dependency — it can begin against today's shapes and absorb the other rows'
+surfaces as they land.
 
 ## What stays as it is
 
@@ -120,14 +123,12 @@ other rows' surfaces as they land.
    kitchen-sink store.** If wrong: a fifth config persistence layer exists and the reference app
    teaches it. This is an invent-kill from the epic body, restated because it is the one a child
    is most likely to breach quietly.
-
-**Amendment, pending sign-off — [D8](DECISIONS.md#d8): one navigator, and its depth is read from
-the flow's declared `cardinality`.** The three items above were approved as they stand and are not
-reopened. D8 is the fourth cross-cutting call and the only thing this amendment asks for: the app
-has to browse flows that *have* instances, D7 gave the rail a flat seat list, and left unstated
-FIX-1476 and FIX-1477 would each have built half of a browser, differently. If wrong: two
-navigators that diverge, or a depth the app declares and the framework contradicts. Reversible
-cheaply until FIX-1477 merges, and not after. Read the card and its asymmetry before signing.
+4. **[D8](DECISIONS.md#d8) · One navigator, and its depth is read from the flow's declared
+   `cardinality`.** The fourth cross-cutting call, **signed off** when the owner merged
+   [#1986](https://github.com/fixpoint-labs/flow-state-dev/pull/1986) on 2026-09-21 — which is
+   what released FIX-1476 and FIX-1477 into spec. If wrong: two navigators that diverge, or a
+   depth the app declares and the framework contradicts. Reversible cheaply until FIX-1477
+   merges, and not after.
 
 **Open: none.** Both questions were answered by the owner on 2026-09-20
 ([PR #1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978#issuecomment-5753189267)),

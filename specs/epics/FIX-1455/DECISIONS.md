@@ -83,6 +83,10 @@ on. Then this epic returns to design and POC and the fence goes back up.
 | **Because** | A patterns "worker" is a block on a board inside one request. A Workforce worker is a hired seat — a durable flow instance, often another session. Bridging them collapses a multi-session roster and its channels into an in-process loop, which is exactly the thing the epic exists to demonstrate is different |
 | **Locks in** | FIX-1478 audits every `@flow-state-dev/patterns` import in `apps/kitchen-sink` — today five files, all under `flows/chat-agent/` — maps each to a Workforce path or writes a one-line *keep because…*, and drops the package dependency only when no keep-notes remain. The patterns package itself is untouched |
 
+**The five files are the audit surface; the collapse trigger counts *routes*.**
+[FIX-1478's merged spec](../../issues/FIX-1478/SPEC.md) settled the unit and is the more specific
+authority on it: three of five pattern-backed routes have an honest team path, so it did not fire.
+
 <a name="d7"></a>
 ## D7 · The persistent rail stops being a session list and becomes the workforce
 
@@ -182,7 +186,8 @@ are the ones that bind three children each, and an owner moving there moves a fi
   consumes — and needs no rule of its own; a consumer-declared **depth or `levels` prop** is
   [ER-9](BUSINESS-RULES.md) seen from another side; and D8 **extends** [D7](#d7) rather than
   superseding it. `FlowNavigator` stands as a placeholder name for FIX-1477 to settle. **This is
-  a review stamp, not the gate** — the amendment still waits on the owner's sign-off.
+  a review stamp, not the gate** — the owner signed D8 off by merging
+  [#1986](https://github.com/fixpoint-labs/flow-state-dev/pull/1986) on 2026-09-21.
 - **A channel running a kind of its own cannot hold boards.** `boards:` is refused by name on a
   custom kind, because boards belong to the built-in channel kind
   ([channels.md](../../../apps/docs/docs/workforce/channels.md)). FIX-1476's worked example has
@@ -298,5 +303,6 @@ superseder when the four are closed.
   stated instead, with [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) filed outside
   this set), and a completion cycle between FIX-1476 and FIX-1477 (broken by giving FIX-1477
   every rendering surface). The lineage is in [EVOLUTION.md](EVOLUTION.md)'s post-merge table.
-  **D8 is pending the owner's sign-off**; until #1986 merges, the set on `main` is the authority
-  and D8 is a proposal.
+  **D8 is signed off** — the owner merged
+  [#1986](https://github.com/fixpoint-labs/flow-state-dev/pull/1986) on 2026-09-21, which is what
+  released FIX-1476 and FIX-1477 into spec.

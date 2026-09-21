@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 434" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: one lane per row of the set, against time, with a now line at September 21, 2026. A ship-fence band under the axis reads LIFTED on September 20 — the W3 floor is Done and W4's first cut landed, so children may open implementation pull requests, not only specs. Two input lanes from other epics carry bars that reach the now line: the W3 floor FIX-1351, landed, giving seats, channels and skills on disk; and the W4 first cut FIX-1407, landed, giving boards, inventory and dispatch policy, with two strays still in backlog that are not part of the first cut. Then the five lanes of the set. Two of them now carry a bar, because a bar means a row has its first pull request open: FIX-1429, serving the file-declared demo, is in review on pull request 1989 with its goal check passing, and FIX-1478, the patterns shed, is in spec review on pull request 1988 with its collapse trigger contested. The remaining three are drawn as a dashed line with no bar, because nothing has opened for them. FIX-1475, durable hire, does not open until FIX-1429 closes, so its dashed line begins to the right of the others. FIX-1476, channels and boards, and FIX-1477, the UI package split, are both held short of spec on D8's sign-off; FIX-1477's lane runs longest because it absorbs the other rows' surfaces as they land rather than waiting for them. The critical path is drawn in the gutter as two linked dots on FIX-1429 and FIX-1475, the only hard chain in the set. Under a divider, three related lanes that are not in the set: the parked channel-admin capability FIX-1415, the manager-queue lab FIX-1430 consumed as a POC spine, and org-never-optional FIX-1442, soft-related. A final note records the owner's September 20 triage of five stale kitchen-sink tickets: FIX-1372 stays open and is verified at wrap, while FIX-420, FIX-429, FIX-472 and FIX-540 close as superseded by this set. None of the five is a child of this epic.">
+     aria-label="The path: one lane per row of the set, against time, with a now line at September 21, 2026. A ship-fence band under the axis reads LIFTED on September 20 — the W3 floor is Done and W4's first cut landed, so children may open implementation pull requests, not only specs. Two input lanes from other epics carry bars that reach the now line: the W3 floor FIX-1351, landed, giving seats, channels and skills on disk; and the W4 first cut FIX-1407, landed, giving boards, inventory and dispatch policy, with two strays still in backlog that are not part of the first cut. Then the five lanes of the set, and every one of them has now started. FIX-1429, serving the file-declared demo, carries a done bar: pull request 1989 is merged and its goal check passes. The other four carry in-flight bars reaching the now line, each with a dashed line ahead of it because nothing beyond is dated. FIX-1475, durable hire, has its spec merged on pull request 1990 and is implementing in two pull requests, packages first. FIX-1476, channels and boards, and FIX-1477, the UI package split, are both in spec development now that D8 is signed off; FIX-1477's lane runs longest because it absorbs the other rows' surfaces as they land. FIX-1478, the patterns shed, has its spec approved and merged on pull request 1988, with implementation queued on the concurrency cap. The critical path is drawn in the gutter as two linked dots on FIX-1429 and FIX-1475 — the only hard chain in the set, and it is now satisfied, so nothing in the set is blocked. Under a divider, three related lanes that are not in the set: the parked channel-admin capability FIX-1415, the manager-queue lab FIX-1430 consumed as a POC spine, and org-never-optional FIX-1442, soft-related. A final note records the owner's September 20 triage of five stale kitchen-sink tickets: FIX-1372 stays open and is verified at wrap, while FIX-420, FIX-429, FIX-472 and FIX-540 close as superseded by this set. None of the five is a child of this epic.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -10,6 +10,7 @@
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
     .bar   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .done  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.8; }
     .lane  { stroke:var(--ink-3); stroke-width:1; stroke-dasharray:2 4; }
     .axis  { stroke:var(--rule); stroke-width:1; }
     .div   { stroke:var(--rule); stroke-width:1; }
@@ -61,31 +62,33 @@
 
   <g id="lanes-set">
     <text class="t-ln" x="16" y="150">FIX-1429 serve the demo</text>
-    <rect class="bar" x="330" y="141" width="32" height="12" rx="2"/>
-    <path class="lane" d="M368 147 L446 147"/>
-    <text class="t-s" x="656" y="150">in review &#183; #1989 &#183; goal check PASSES</text>
+    <rect class="done" x="330" y="141" width="32" height="12" rx="2"/>
+    <text class="t-s" x="656" y="150">done &#183; #1989 merged &#183; goal check PASSES</text>
 
     <text class="t-ln" x="16" y="172">FIX-1475 durable hire</text>
-    <path class="lane" d="M452 169 L600 169"/>
-    <text class="t-s" x="656" y="172">not started &#183; unblocks when #1989 merges</text>
+    <rect class="bar" x="330" y="163" width="32" height="12" rx="2"/>
+    <path class="lane" d="M368 169 L600 169"/>
+    <text class="t-s" x="656" y="172">in flight &#183; spec #1990 merged &#183; impl, 2 PRs</text>
 
     <text class="t-ln" x="16" y="194">FIX-1476 channels + boards</text>
+    <rect class="bar" x="346" y="185" width="16" height="12" rx="2"/>
     <path class="lane" d="M368 191 L528 191"/>
-    <text class="t-s" x="656" y="194">not started &#183; held on D8&#8217;s sign-off</text>
+    <text class="t-s" x="656" y="194">in flight &#183; spec dev &#183; D8 signed off</text>
 
     <text class="t-ln" x="16" y="216">FIX-1477 UI package split</text>
+    <rect class="bar" x="346" y="207" width="16" height="12" rx="2"/>
     <path class="lane" d="M368 213 L640 213"/>
-    <text class="t-s" x="656" y="216">not started &#183; held on D8 &#183; longest lane</text>
+    <text class="t-s" x="656" y="216">in flight &#183; spec dev &#183; longest lane</text>
 
     <text class="t-ln" x="16" y="238">FIX-1478 patterns shed</text>
     <rect class="bar" x="330" y="229" width="32" height="12" rx="2"/>
     <path class="lane" d="M368 235 L424 235"/>
-    <text class="t-s" x="656" y="238">in spec review &#183; #1988 &#183; trigger contested</text>
+    <text class="t-s" x="656" y="238">spec approved &#183; #1988 &#183; impl on the cap</text>
   </g>
 
   <g id="summary">
-    <text class="t-s" x="200" y="266">2 in flight: FIX-1429 (impl #1989, its goal check PASSES) and FIX-1478 (spec #1988, collapse trigger contested).</text>
-    <text class="t-s" x="200" y="278">3 not started &#8212; FIX-1476 and FIX-1477 held on D8&#8217;s sign-off, FIX-1475 on FIX-1429 (ER-21: the set is open).</text>
+    <text class="t-s" x="200" y="266">1 done: FIX-1429 (#1989 merged, its goal check PASSES). The set&#8217;s one hard chain is satisfied &#8212; nothing is blocked.</text>
+    <text class="t-s" x="200" y="278">4 in flight: FIX-1475 implementing (spec #1990); FIX-1476, FIX-1477 in spec dev; FIX-1478 spec approved (#1988).</text>
   </g>
 
   <g id="related">
@@ -103,12 +106,14 @@
   <g id="legend">
     <rect class="inp" x="16" y="410" width="16" height="12" rx="2"/>
     <text class="t-s" x="40" y="419">input from another epic, landed</text>
-    <rect class="bar" x="220" y="410" width="16" height="12" rx="2"/>
-    <text class="t-s" x="244" y="419">in flight &#8212; its first PR is open</text>
-    <path class="lane" d="M424 416 L460 416"/>
-    <text class="t-s" x="468" y="419">not started &#8212; no duration to draw</text>
-    <circle class="critd" cx="676" cy="416" r="3.2"/>
-    <path class="crit" d="M676 410 L676 422"/>
-    <text class="t-s" x="690" y="419">the one hard chain in the set</text>
+    <rect class="done" x="220" y="410" width="16" height="12" rx="2"/>
+    <text class="t-s" x="244" y="419">done &#8212; merged</text>
+    <rect class="bar" x="330" y="410" width="16" height="12" rx="2"/>
+    <text class="t-s" x="354" y="419">in flight &#8212; work open on it</text>
+    <path class="lane" d="M514 416 L550 416"/>
+    <text class="t-s" x="558" y="419">not started &#8212; no duration to draw</text>
+    <circle class="critd" cx="754" cy="416" r="3.2"/>
+    <path class="crit" d="M754 410 L754 422"/>
+    <text class="t-s" x="768" y="419">the one hard chain</text>
   </g>
 </svg>
