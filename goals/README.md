@@ -63,6 +63,16 @@ What separates a goal check from a dressed-up unit test:
    - For non-flow goals, call the public API directly. Mock only true third-party services (payment, email) you genuinely can't call.
 5. **Print an explicit verdict.** `runGoal` does this: return `{ failures, evidence }` and it prints `PASS — <evidence>` (exit 0) or `FAIL —` with a bulleted list (exit 1), so a later reader (or agent) knows the result without re-deriving the criteria.
 
+## Proving a check can fail
+
+The **Anti-game** field says what a hollow pass would look like. Producing that state is how you find out whether the check actually catches it. Break the code the check covers, run it, and read the failure — if it stays green, or fails for a different reason than you expected, the check is not grading what its name claims.
+
+This is worth doing because checks that cannot fail are the common case, not the rare one. A leg that asserts `!== null` on a row written at file time passes before the worker ever runs. A leg that mounts a component with nothing expanded never exercises the read it was written for. Both look like coverage.
+
+**Commit before every mutation, and revert only the file you mutated.** `git restore .` and `git checkout -- .` in a mutation loop have destroyed uncommitted work twice here. The second time was the dangerous shape: the fix and the mutation lived in the same file, so a revert that looked successful silently threw away the fix and kept the tree green. There is no warning and no recovery, and the outcome is indistinguishable from a clean revert.
+
+Record the result where a later reader will find it. If a leg has no isolating red state — a mutation that fails it also fails a neighbour — say so in `goal.md` rather than leaving the next reader to treat the co-failure as a leak.
+
 ## The shared library (`goals/lib`)
 
 Every goal repeats the same scaffolding around the part that is actually its own. That scaffolding lives in `goals/lib` — import it as `../../lib/index.mts`:
