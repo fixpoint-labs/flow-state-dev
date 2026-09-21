@@ -1,0 +1,56 @@
+{
+  "_comment": "LAB demo: outcome of plan-with-tools → save workflow → run on demand. Equivalent to what createWorkflow + appendWorkflowStep tools persist. Chain: map → http → tool (tool sees http result).",
+  "version": 1,
+  "id": "notify-plan",
+  "title": "Map summary then HTTP notify then log tool",
+  "createdAt": "2026-09-21T00:00:00.000Z",
+  "updatedAt": "2026-09-21T00:00:00.000Z",
+  "flow": {
+    "kind": "dynamic-workflow:notify-plan",
+    "requireUser": false,
+    "defaultModel": "mock-model",
+    "actions": {
+      "run": {
+        "block": "main",
+        "description": "Run dynamic workflow \"Map summary then HTTP notify then log tool\""
+      }
+    },
+    "blocks": {
+      "main": {
+        "type": "sequencer",
+        "steps": ["planMap", "notifyHttp", "emitTool"]
+      },
+      "planMap": {
+        "type": "map",
+        "mappings": {
+          "kind": "plan",
+          "summary": "$.message",
+          "intent": "plan"
+        }
+      },
+      "notifyHttp": {
+        "type": "http",
+        "method": "POST",
+        "url": "https://example.invalid/hooks/dynamic",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Demo": "dynamic-workflow"
+        },
+        "body": {
+          "event": "dynamic-plan",
+          "summary": "$.summary",
+          "intent": "$.intent"
+        }
+      },
+      "emitTool": {
+        "type": "tool",
+        "toolId": "logDynamic",
+        "args": {
+          "ok": "$.ok",
+          "status": "$.status",
+          "accepted": "$.body.accepted"
+        }
+      }
+    }
+  }
+}
