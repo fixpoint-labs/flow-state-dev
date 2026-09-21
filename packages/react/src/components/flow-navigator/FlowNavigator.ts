@@ -137,19 +137,13 @@ const label = {
   whiteSpace: "nowrap"
 } as const;
 
-function rowStyle(depth: number, isSelected: boolean): Record<string, unknown> {
+/** The row's frame. Carries the highlight, so it spans the trailing slot too. */
+function rowContainerStyle(isSelected: boolean): Record<string, unknown> {
   return {
     display: "flex",
     alignItems: "center",
-    gap: 6,
     width: "100%",
     boxSizing: "border-box",
-    padding: `4px 8px 4px ${8 + depth * INDENT_STEP}px`,
-    border: "none",
-    textAlign: "left",
-    font: "inherit",
-    fontSize: "var(--fsd-nav-font-size, 13px)",
-    cursor: "pointer",
     color: isSelected
       ? "var(--fsd-nav-selected-fg, inherit)"
       : "var(--fsd-nav-fg, inherit)",
@@ -157,6 +151,73 @@ function rowStyle(depth: number, isSelected: boolean): Record<string, unknown> {
       ? "var(--fsd-nav-selected-bg, rgba(127, 127, 127, 0.25))"
       : "transparent"
   };
+}
+
+/** The row's activation target. The indent lives here, on the thing you click. */
+function rowButtonStyle(depth: number): Record<string, unknown> {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+    // Without this a flex child refuses to shrink below its content, and the
+    // label's ellipsis never engages.
+    minWidth: 0,
+    boxSizing: "border-box",
+    padding: `4px 4px 4px ${8 + depth * INDENT_STEP}px`,
+    border: "none",
+    textAlign: "left",
+    font: "inherit",
+    fontSize: "var(--fsd-nav-font-size, 13px)",
+    cursor: "pointer",
+    color: "inherit",
+    background: "transparent"
+  };
+}
+
+const trailingStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  flexShrink: 0,
+  paddingRight: 8
+} as const;
+
+/**
+ * One row: its activation button, and the host's trailing content BESIDE it.
+ *
+ * The trailing slot is a sibling of the button, never a child, and that is the
+ * whole reason this helper exists. A host fills the slot with its own
+ * affordances — copy this id, start a session — which are buttons and links.
+ * An interactive element nested inside another is invalid markup that keyboard
+ * and assistive-technology traversal cannot represent, and it leaves the host's
+ * click nowhere to go but up into the row handler, so pressing "copy" would
+ * expand the row as well.
+ *
+ * The highlight sits on the container so it spans both, and the indent stays on
+ * the button so the thing you click is the thing that is indented.
+ */
+function row(options: {
+  readonly depth: number;
+  readonly isSelected?: boolean;
+  readonly button: Record<string, unknown>;
+  readonly content: readonly ReactNode[];
+  readonly trailing: ReactNode;
+}): ReactNode {
+  const { depth, isSelected = false, button, content, trailing } = options;
+
+  return createElement(
+    "div",
+    { style: rowContainerStyle(isSelected) },
+    createElement(
+      "button",
+      { type: "button", ...button, style: rowButtonStyle(depth) },
+      ...content
+    ),
+    trailing === undefined || trailing === null || trailing === false
+      ? null
+      : createElement("span", { style: trailingStyle }, trailing)
+  );
 }
 
 function noteStyle(depth: number): Record<string, unknown> {
@@ -240,18 +301,24 @@ function LeafSessionList(props: {
               return createElement(
                 "li",
                 { key: session.id },
-                createElement(
-                  "button",
-                  {
-                    type: "button",
+                row({
+                  depth,
+                  isSelected,
+                  button: {
                     "aria-current": isSelected ? "true" : undefined,
                     "data-session-id": session.id,
-                    style: rowStyle(depth, isSelected),
                     onClick: () => onSelectSession(session.id, leaf)
                   },
-                  createElement("span", { style: label }, session.title ?? session.id),
-                  slots.rowTrailing?.({ type: "session", leaf, session, isSelected })
-                )
+                  content: [
+                    createElement("span", { style: label }, session.title ?? session.id)
+                  ],
+                  trailing: slots.rowTrailing?.({
+                    type: "session",
+                    leaf,
+                    session,
+                    isSelected
+                  })
+                })
               );
             });
 
@@ -313,24 +380,24 @@ function KindRow(props: {
             return createElement(
               "li",
               { key: instance.id },
-              createElement(
-                "button",
-                {
-                  type: "button",
+              row({
+                depth: 1,
+                button: {
                   "aria-expanded": instanceOpen,
                   "data-instance-id": instance.id,
-                  style: rowStyle(1, false),
                   onClick: () => toggle(key)
                 },
-                twisty(instanceOpen),
-                createElement("span", { style: label }, instance.id),
-                slots.rowTrailing?.({
+                content: [
+                  twisty(instanceOpen),
+                  createElement("span", { style: label }, instance.id)
+                ],
+                trailing: slots.rowTrailing?.({
                   type: "instance",
                   kind: group.kind,
                   instance,
                   isOpen: instanceOpen
                 })
-              ),
+              }),
               instanceOpen
                 ? createElement(LeafSessionList, { leaf, depth: 2, ...leafProps })
                 : null
@@ -341,25 +408,22 @@ function KindRow(props: {
   return createElement(
     "li",
     null,
-    createElement(
-      "button",
-      {
-        type: "button",
+    row({
+      depth: 0,
+      button: {
         "aria-expanded": isOpen,
         "data-kind": group.kind,
         "data-cardinality": group.cardinality,
-        style: rowStyle(0, false),
         onClick: () => toggle(`kind:${group.kind}`)
       },
-      twisty(isOpen),
-      createElement("span", { style: label }, group.kind),
-      slots.rowTrailing?.({
+      content: [twisty(isOpen), createElement("span", { style: label }, group.kind)],
+      trailing: slots.rowTrailing?.({
         type: "kind",
         kind: group.kind,
         cardinality: group.cardinality,
         isOpen
       })
-    ),
+    }),
     children
   );
 }

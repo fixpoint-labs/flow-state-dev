@@ -346,6 +346,116 @@ describe("FlowNavigator · slots (BR-17)", () => {
   });
 });
 
+describe("FlowNavigator · a host affordance is beside the row, not inside it", () => {
+  // `rowTrailing` exists so a host can hang its own affordances off a row —
+  // copy this id, start a session — and those are buttons and links. Rendered
+  // as a CHILD of the row's activation button, two things break at once: the
+  // markup nests one interactive element inside another, which keyboard and
+  // assistive-technology traversal cannot represent, and the host's click has
+  // nowhere to go but up into the row handler.
+  const flows = [
+    entry("chat", "chat", "singleton"),
+    entry("seat-a", "agent", "collection"),
+  ];
+
+  const withAffordance = (server: ReturnType<typeof fakeServer>) =>
+    mount(server, {
+      slots: {
+        rowTrailing: (r: { type: string }) =>
+          createElement(
+            "button",
+            { type: "button", "data-affordance": r.type, onClick: () => {} },
+            "Copy"
+          ),
+      },
+    });
+
+  // Scoped to ONE row's own frame. Two sections mean two `data-affordance`
+  // elements of the same type, and a document-wide lookup silently compares
+  // the agent row against the chat row's affordance — a pair that is unnested
+  // even on the broken code, so the assertion passes for the wrong reason.
+  const trailingOf = (rowButton: HTMLElement) =>
+    rowButton.parentElement!.querySelector<HTMLButtonElement>("[data-affordance]")!;
+
+  it("keeps it out of the kind row's button, and its click off the row handler", async () => {
+    const server = fakeServer(flows, []);
+    withAffordance(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    const trailing = trailingOf(kindRow("agent"));
+    expect(trailing.getAttribute("data-affordance")).toBe("kind");
+    expect(kindRow("agent").contains(trailing)).toBe(false);
+
+    await click(trailing);
+    // Pressing "copy" must not also expand the kind.
+    expect(kindRow("agent").getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelectorAll("[data-instance-id]")).toHaveLength(0);
+  });
+
+  it("keeps it out of the instance row's button, and its click off the row handler", async () => {
+    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "seat-a" }]);
+    withAffordance(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+
+    const trailing = trailingOf(instanceRow("seat-a"));
+    expect(trailing.getAttribute("data-affordance")).toBe("instance");
+    expect(instanceRow("seat-a").contains(trailing)).toBe(false);
+
+    await click(trailing);
+    expect(instanceRow("seat-a").getAttribute("aria-expanded")).toBe("false");
+    // The row never opened, so no leaf read was made.
+    expect(server.listSessions).toHaveBeenCalledTimes(0);
+  });
+
+  it("keeps it out of the session row's button, and its click off the selection handler", async () => {
+    const picked: string[] = [];
+    const server = fakeServer(flows, [{ id: "s1", kind: "chat" }]);
+    mount(server, {
+      onSelectSession: (id: string) => picked.push(id),
+      slots: {
+        rowTrailing: (r: { type: string }) =>
+          createElement(
+            "button",
+            { type: "button", "data-affordance": r.type, onClick: () => {} },
+            "Copy"
+          ),
+      },
+    });
+
+    await waitFor(() => expect(kindRow("chat")).toBeTruthy());
+    await click(kindRow("chat"));
+
+    const sessionRow = await waitFor(() =>
+      document.querySelector<HTMLButtonElement>('[data-session-id="s1"]')!
+    );
+    const trailing = trailingOf(sessionRow);
+    expect(trailing.getAttribute("data-affordance")).toBe("session");
+    expect(sessionRow.contains(trailing)).toBe(false);
+
+    await click(trailing);
+    expect(picked).toEqual([]);
+  });
+
+  it("renders no interactive element inside another, anywhere in the rail", async () => {
+    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "seat-a" }]);
+    withAffordance(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    await click(instanceRow("seat-a"));
+    await waitFor(() => expect(screen.queryByText("s1")).toBeTruthy());
+
+    // Includes `leafToolbar`'s host, which renders inside an `li` rather than
+    // a button — this is the assertion that keeps it that way.
+    const nested = Array.from(
+      document.querySelectorAll("button, a[href]")
+    ).filter((el) => el.parentElement?.closest("button, a[href]") != null);
+    expect(nested).toEqual([]);
+  });
+});
+
 describe("FlowNavigator · selection", () => {
   it("reports the session AND the leaf it was listed under", async () => {
     const picked: unknown[] = [];
