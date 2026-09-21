@@ -62,6 +62,23 @@ curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
 
 Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
 
+Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization (`acme.support.ada`), and is still there after `pnpm build && pnpm start`.
+
+The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no hire path. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
+
+```bash
+export WORKFORCE_ADMIN_TOKENS="acme:dev-token"
+
+curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer dev-token" \
+  -d '{"userId":"you","input":{"seatId":"support.bo","flow":"desk-clerk","settings":{"desk":"back"},"instructions":"You work the back desk."}}'
+```
+
+Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
+
+Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
+
 ## Web Application (`app/`)
 
 - Three-column layout: session sidebar, conversation, artifact panel

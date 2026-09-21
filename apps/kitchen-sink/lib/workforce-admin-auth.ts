@@ -1,0 +1,126 @@
+/**
+ * The admin credential for `workforce-admin`, and the organization it names.
+ *
+ * **Why this flow carries a resolver of its own.** The framework's stock
+ * resolver, `defaultBodyUserIdPrincipalResolver`, reads `userId` *and `orgId`*
+ * straight out of the request body. That is fine for a demonstration flow whose
+ * whole state is the caller's own. It is not fine for `hire` and `fire`, which
+ * write durable state belonging to an organization: under the stock resolver
+ * "the organization comes from the resolved principal" is true and means
+ * nothing, because the caller supplied it. Any caller could hire into any
+ * organization. This is BP-031, and closing it is a resolver rather than a
+ * check inside the action — the action never sees an unverified org at all.
+ *
+ * **Fail-closed.** With no credential configured, `adminPrincipalResolver()`
+ * returns `undefined` and `fsdev.config.ts` does not register the admin flow at
+ * all. A default deployment therefore has no hire path to reach, rather than
+ * one guarded by a check somebody could get wrong.
+ *
+ * Configure it as `WORKFORCE_ADMIN_TOKENS="<org>:<token>[,<org>:<token>…]"`.
+ * Two organizations are supported because the story this app tells is that two
+ * customers can each hold a seat called `support.ada`; one is the ordinary
+ * case and costs the same code.
+ */
+
+import { timingSafeEqual } from "node:crypto";
+import { PrincipalResolutionError } from "@flow-state-dev/engine";
+import type { ResolvePrincipalFn } from "@flow-state-dev/core/types";
+
+/** The env var holding `<org>:<token>` pairs. */
+export const ADMIN_TOKENS_ENV = "WORKFORCE_ADMIN_TOKENS";
+
+/**
+ * The user every admin action runs as.
+ *
+ * A fixed machine identity rather than something off the request: the admin
+ * credential authenticates an operator, not an end user, and the runtime still
+ * needs a `userId` to key its request records by. Nothing user-scoped is read
+ * or written by either action.
+ */
+export const ADMIN_USER_ID = "workforce-admin";
+
+/** Parse `WORKFORCE_ADMIN_TOKENS` into token → org. Malformed entries are skipped. */
+function configuredTokens(): Map<string, string> {
+  const raw = process.env[ADMIN_TOKENS_ENV];
+  const byToken = new Map<string, string>();
+  if (typeof raw !== "string" || raw.trim().length === 0) return byToken;
+
+  for (const entry of raw.split(",")) {
+    const trimmed = entry.trim();
+    if (trimmed.length === 0) continue;
+    // Split at the FIRST colon: an org id can never contain one (it is a
+    // single address segment), and a token might.
+    const at = trimmed.indexOf(":");
+    if (at <= 0 || at === trimmed.length - 1) {
+      console.error(
+        `[workforce-admin] ignoring a malformed ${ADMIN_TOKENS_ENV} entry — expected "<org>:<token>"`
+      );
+      continue;
+    }
+    byToken.set(trimmed.slice(at + 1), trimmed.slice(0, at));
+  }
+  return byToken;
+}
+
+/** Whether any admin credential is configured. Decides whether the flow exists at all. */
+export function adminCredentialConfigured(): boolean {
+  return configuredTokens().size > 0;
+}
+
+/** The organizations that have an admin credential — what the boot reload enumerates from. */
+export function configuredAdminOrgs(): string[] {
+  return [...new Set(configuredTokens().values())].sort();
+}
+
+function bearerToken(header: string | null): string | null {
+  if (header === null) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match === null ? null : match[1]!.trim();
+}
+
+/** Constant-time compare that does not leak length through an early return. */
+function matches(given: string, expected: string): boolean {
+  const a = Buffer.from(given, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * The resolver for `workforce-admin`, or `undefined` when nothing is
+ * configured — in which case the flow is not registered.
+ *
+ * The returned principal's `orgId` is the one the credential is bound to. The
+ * request body is never consulted for it, which is the whole point: a hire
+ * whose body says `orgId: "bravo"` under `acme`'s token writes to `acme`.
+ *
+ * Read once, at module scope, rather than per request: a credential that could
+ * change between two requests of one process would make "which org am I" a
+ * question with two answers in one boot.
+ */
+export function adminPrincipalResolver(): ResolvePrincipalFn | undefined {
+  const byToken = configuredTokens();
+  if (byToken.size === 0) return undefined;
+
+  return (context) => {
+    const header = context.request?.headers?.get("authorization") ?? null;
+    const token = bearerToken(header);
+    if (token === null) {
+      throw new PrincipalResolutionError(
+        "workforce-admin requires an admin credential: send `Authorization: Bearer <token>`.",
+        { status: 401 }
+      );
+    }
+    // Every candidate is compared, and the loop is not broken early, so the
+    // time taken does not depend on which entry matched.
+    let orgId: string | undefined;
+    for (const [expected, org] of byToken) {
+      if (matches(token, expected)) orgId = org;
+    }
+    if (orgId === undefined) {
+      throw new PrincipalResolutionError("Invalid workforce-admin credential.", {
+        status: 401,
+      });
+    }
+    return { userId: ADMIN_USER_ID, orgId };
+  };
+}
