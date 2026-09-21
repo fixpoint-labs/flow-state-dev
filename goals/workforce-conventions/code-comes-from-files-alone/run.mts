@@ -89,14 +89,19 @@ function declaredDesk(seatId: string): string {
   return desk;
 }
 
+/** Whether anything is already answering on the goal's port. */
+async function portInUse(): Promise<boolean> {
+  try {
+    await fetch(`${ORIGIN}/api/flows`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function waitForServer(): Promise<void> {
   for (let i = 0; i < 120; i += 1) {
-    try {
-      const res = await fetch(`${ORIGIN}/api/flows`);
-      if (res.ok) return;
-    } catch {
-      // not listening yet
-    }
+    if (await portInUse()) return;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(`the built app never started on ${ORIGIN}`);
@@ -179,10 +184,24 @@ await runGoal(async () => {
   // ---- (b) each seat answers with the desk its OWN file declared -----------
   let server: ChildProcess | undefined;
   try {
+    // Refuse to start beside something already listening. `next start` would
+    // fail to bind and this check would then grade whatever IS answering —
+    // most reachably a server a previous run left behind, built from a
+    // different tree. That is a pass with no relationship to the build above.
+    if (await portInUse()) {
+      throw new Error(
+        `something is already answering on ${ORIGIN}; stop it first, or this check would grade it ` +
+          `instead of the build it just made`
+      );
+    }
+    // Detached, so the kill below reaches the whole process group. `pnpm start`
+    // is a shim that execs `next start` as a child: signalling only the shim
+    // leaves the server running and the next run grading a stale artifact.
     server = spawn("pnpm", ["start"], {
       cwd: KITCHEN_SINK,
       env: { ...process.env, PORT: String(fixture.port) },
       stdio: ["ignore", "ignore", "ignore"],
+      detached: true,
     });
     await waitForServer();
 
@@ -212,7 +231,13 @@ await runGoal(async () => {
         fixture.seats.map((seatId) => `${seatId} said ${JSON.stringify(seen[seatId] ?? "")}`).join(", ")
     );
   } finally {
-    server?.kill("SIGTERM");
+    if (server?.pid !== undefined) {
+      try {
+        process.kill(-server.pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+    }
   }
 
   // ---- (c) nothing in the app registers the kind by hand -------------------
