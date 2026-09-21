@@ -129,6 +129,22 @@ export {
   type ItemsRendererProps
 } from "./components/ItemsRenderer";
 
+export {
+  FlowNavigator,
+  type FlowCardinality,
+  type FlowNavigatorLeaf,
+  type FlowNavigatorLeafState,
+  type FlowNavigatorProps,
+  type FlowNavigatorRow,
+  type FlowNavigatorSection,
+  type FlowNavigatorSlots
+} from "./components/flow-navigator";
+
+export {
+  useReadFence,
+  type ReadFence
+} from "./hooks/useReadFence";
+
 export type {
   BlockComponentType,
   RendererRegistry

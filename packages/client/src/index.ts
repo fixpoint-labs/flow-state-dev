@@ -21,6 +21,8 @@ export {
   type UpdateSessionMetadataOptions
 } from "./session-client/sessions";
 
+export { sessionQueryFor } from "./session-client/session-query";
+
 export {
   createSSEClient,
   createSSEClientFromResponse,
