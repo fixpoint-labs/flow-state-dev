@@ -135,19 +135,19 @@ addressee and the poster are therefore both in the same payload, so the comparis
 app decides is which of those deliveries turns into a notification.
 
 <a name="author-identity"></a>
-## Which identity the skip compares — **blocked, and it needs a decision above this card**
+## Which identity the skip compares — **decided: `author`**
 
-**The security judgement here is right and is not what is blocked.** It was decided that the skip
-must compare the **verified `principal`** rather than the caller-supplied `author`, because
-`author` is optional and unverified, so comparing on it lets a caller suppress somebody else's
-delivery by claiming their name. As a principle about trust that is correct, and it is the same
-principle [BP-031](../../../docs/contributing/best-practices.md) states.
+**The skip compares the post's `author` against the delivery's `member`.** That was not the first
+answer. The first answer was *compare the verified `principal`, never the caller's claim* — right
+as a principle, and the same one [BP-031](../../../docs/contributing/best-practices.md) states —
+and it was reversed on a fact, not on a preference. The fact is kept here rather than deleted,
+because a reader who remembers the `principal` reasoning will otherwise read this card as the
+rule being quietly weakened.
 
-**It cannot be built at this floor, and that is a fact rather than a preference.** A channel
-session is bound to **one** user. The transcript line's `principal` is server-derived
-(`ctx.session.identity.userId ?? ctx.session.identity.id`, `channel-flow.ts:216`), the fan-out
-carries that same value into every delivery (`principal: line.principal`, `:991`), and the
-file's own header says what follows (`:16-21`):
+**Why `principal` cannot carry it.** A channel session is bound to **one** user. The transcript
+line's `principal` is server-derived (`ctx.session.identity.userId ?? ctx.session.identity.id`,
+`channel-flow.ts:216`), the fan-out carries that same value into every delivery
+(`principal: line.principal`, `:991`), and the file's own header says what follows (`:16-21`):
 
 > a session is bound to ONE user, so the server-derived `principal` on every line of a given
 > channel is the SAME value. The `author` label is caller-supplied, stored with
@@ -161,24 +161,33 @@ member, in any channel. A skip written on it excludes nobody, every poster is st
 [V13](PLAN.md#the-checks)'s first half fails by construction — the rule would be unimplementable
 rather than merely unverified.
 
-**The two ways out, and neither is this issue's to take.**
+**So `author` is the decision, on four things.**
 
-1. **Compare `author`** — the only field that distinguishes participants. It is not unguarded:
-   the post block refuses `author-not-a-member` (`:205`), so a claim can only ever name a
-   declared member, and the header calls it *"a validity check against the declared roster, not
-   authentication."* The residual cost is exactly the one identified: a caller claiming another
-   member's name withholds **that member's notification for that one post**. It cannot forge a
-   delivery, reach a non-member, or alter the transcript's `principal`. This is a real but bounded
-   trust gap, and accepting it is a product call.
-2. **Give the framework a verified per-member identity**, so `principal` means what the decision
-   assumes. That is a `packages/workforce` change, which [D1](#d1) and
-   [PLAN.md → Guardrails](PLAN.md#guardrails) forbid inside this issue.
+1. **It is the framework's own participant discriminator, by design.** `authorVerified: false` is
+   the floor **stating its trust model**, not an oversight this app is exploiting — the field is
+   spelled out on every stored line precisely *"so a reader of a stored line cannot mistake the
+   `author` field for a proven one"* (`:58-62`). Building on the only field that distinguishes
+   participants is using the floor as written.
+2. **The gap is bounded, and these are its exact edges.** A caller naming another **declared**
+   member withholds *that member's notification for that one post*. It cannot forge a delivery,
+   reach a non-member, or alter the transcript's `principal`. What bounds it is the post block's
+   own refusal — `author-not-a-member` (`:205`), *"a validity check against the declared roster,
+   not authentication"* — so a claim can only ever name somebody already in the channel.
+3. **[BP-031](../../../docs/contributing/best-practices.md) does not forbid it, and this is worth
+   saying out loud.** BP-031 governs **auth and routing decisions** made from caller-controllable
+   input. A notification skip grants no access, reaches no new recipient, and changes no durable
+   record — the transcript keeps the post and its server-derived `principal` either way. It
+   decides who is *told*, not who *may*. A reader arriving from the `principal` argument should
+   read this as a rule applied to its actual subject, not as one relaxed.
+4. **The real fix stays named.** Verified per-member identity in `packages/workforce` would let
+   the skip compare a proven value and would close the gap in (2) properly. It is a framework
+   change, so [D1](#d1) and [PLAN.md → Guardrails](PLAN.md#guardrails) put it **out of scope
+   here**; it is filed separately rather than folded in. **If it lands, this card is re-argued
+   rather than re-derived** — the property in [BR-16](BUSINESS-RULES.md) does not change, only
+   the field it compares.
 
-**So this is a re-gate, not an amendment, and it is recorded as blocked rather than written down
-as settled.** Per [PLAN.md → Guardrails](PLAN.md#guardrails): if the work seems to need a
-framework widen, raise it — do not build it. **Nothing in this spec pins the comparison until
-that is answered**; [BR-16](BUSINESS-RULES.md) states the property the owner asked for, which is
-unaffected either way, and [V13](PLAN.md#the-checks) grades that property rather than the field.
+[BR-16](BUSINESS-RULES.md) states the property and [V13](PLAN.md#the-checks) grades the
+observable outcome, so neither has to move when (4) happens.
 
 ## Considered and dropped
 
