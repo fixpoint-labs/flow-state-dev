@@ -159,6 +159,26 @@ describe("the developer tool renders the SHIPPED navigator", () => {
     expect(kindRow("chat")).toBeTruthy();
   });
 
+  it("reads the flow list a bounded number of times, however many rows it draws", async () => {
+    // TWO, and the second one is the point: the navigator reads the flow list
+    // for the rail, and this tool separately keeps its own copy because the
+    // panel outside the rail needs it — for the action bar, and to empty the
+    // workspace when the copy it was on leaves the catalog. The component does
+    // not publish its inventory, deliberately, so a host needing flow data
+    // anywhere else reads it again.
+    //
+    // What matters is that the number is bounded by the HOST and not by the
+    // rows: this fixture draws two kinds and two copies, and a read that had
+    // crept down to the row level would read four or more.
+    mount();
+    await waitFor(() => expect(kindRow("engineer")).toBeTruthy());
+    await click(kindRow("engineer"));
+    await click(instanceRow("engineer-a"));
+    await click(instanceRow("engineer-b"));
+
+    expect(calls.filter((call) => call.url.endsWith("/api/flows"))).toHaveLength(2);
+  });
+
   it("asks the server nothing when a kind holding two copies is opened", async () => {
     mount();
     await waitFor(() => expect(kindRow("engineer")).toBeTruthy());
