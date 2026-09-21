@@ -208,10 +208,10 @@ describe("dynamic workflow builder + run on demand", () => {
 
     await asRuntime(tools.setEntryAction).run(
       {
-      workflowId: "w1",
-      actionName: "run",
-      blockId: "main",
-      description: "entry",
+        workflowId: "w1",
+        actionName: "run",
+        blockId: "main",
+        description: "entry",
       },
       ctx,
     );
