@@ -69,6 +69,9 @@ describe("createSystemOneIndexCapability", () => {
     const cap = createSystemOneIndexCapability({ client });
     expect(cap).not.toHaveProperty("classifyOnWrite");
     expect(cap).not.toHaveProperty("searchTool");
+    expect(cap).not.toHaveProperty("filterByFacets");
+    expect(cap).not.toHaveProperty("needsReindex");
+    expect(cap).not.toHaveProperty("hashIndexedContent");
 
     const viaCap = handler({
       name: "via-cap",

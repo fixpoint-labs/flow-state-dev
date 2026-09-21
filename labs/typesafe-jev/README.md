@@ -70,6 +70,9 @@ execute: async (input, ctx) => {
   await ctx.cap["system-one-index"].ingest({ key: "dup-charge", title, body });
   return ctx.cap["system-one-index"].search({ kind: "ticket" }); // no model
 }
+
+// Pure utils stay module exports — they do not need ctx.
+filterByFacets(hits, { kind: "ticket" });
 ```
 
 Rules this sketch pins:

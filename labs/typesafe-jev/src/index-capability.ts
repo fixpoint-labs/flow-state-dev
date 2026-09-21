@@ -11,7 +11,7 @@
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core";
 import type { TypeSafeDecisionsClient } from "./client";
-import { filterByFacets, hashIndexedContent, needsReindex, type FacetQuery } from "./facets";
+import { type FacetQuery } from "./facets";
 import {
   SEARCH_INDEXED_DOCUMENTS_TOOL,
   createSearchIndexedDocumentsTool,
@@ -45,9 +45,6 @@ export type SystemOneIndexFns = {
   search: (query: FacetQuery) => Promise<SearchOutput>;
   reindex: (input: ReindexInput) => Promise<ReindexOutput>;
   classifyQuery: (query: string) => Promise<ClassifyQueryOutput>;
-  filterByFacets: typeof filterByFacets;
-  needsReindex: typeof needsReindex;
-  hashIndexedContent: typeof hashIndexedContent;
 };
 
 export type SystemOneIndexCapability = DefinedCapability<"system-one-index", SystemOneIndexFns>;
@@ -89,9 +86,6 @@ export function createSystemOneIndexCapability(
         search: (query) => searchIndexedCollection(collection, query, collectionKey),
         reindex: (input) => reindexIndexedCollection(collection, input, options),
         classifyQuery: (query) => classifyQueryEscape(query, options),
-        filterByFacets,
-        needsReindex,
-        hashIndexedContent,
       };
     },
   });
