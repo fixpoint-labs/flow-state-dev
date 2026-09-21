@@ -143,9 +143,9 @@ scoped to your organization.
 **My recommendation: hold the seat rows until the flow list can be scoped — and do not mistake
 that for containment.** It costs no new decision inside this issue, no new component and no new
 prop — the navigator still ships, still derives its depth, still hosts the channels half, and the
-seat section switches on the day the list carries an organization. What it buys is narrow and worth having anyway: the
-reference app stops **teaching** the exposure, in a file people copy, and stops making it
-convenient. What it does not buy is a closed hole. If the exposure itself is the concern rather
+seat section switches on the day the list carries an organization. What it buys is narrow and
+worth having anyway: the reference app stops **teaching** the exposure, in a file people copy,
+and stops making it convenient. What it does not buy is a closed hole. If the exposure itself is the concern rather
 than the lesson, FIX-1486's priority is the lever, not this issue's scope.
 
 **What would change my mind:** if we ship or recommend a gate in front of that endpoint in real
