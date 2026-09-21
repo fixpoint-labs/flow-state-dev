@@ -153,6 +153,13 @@ deployments, so the list is not in fact public. Then the exposure is between org
 deployment rather than to the world, and it becomes a documented limit like any other. It would
 also change if FIX-1486 lands inside this epic's window — then there is nothing to hold.
 
+**The roster panel is the same call, one surface over.** Answering this also answers whether the
+right panel's roster renders at all: reading an org-scoped collection from the shell requires the
+shell's flow to resolve a principal, because without one a session's org is whatever the caller
+sent ([PLAN.md → Blocked on](PLAN.md#blocked-on)). *Ship* means the reference app carries a
+credential path; *hold* means the panel shows its empty state until it does. One decision, two
+regions — not a second sign-off.
+
 **Cost of being wrong: asymmetric, which is why I lean hard.** If I am wrong to hold it, the rail
 looks thinner than the figure for a few weeks and switching it on is one small change. If I am
 wrong to ship it, we have put an unauthenticated directory of customer names on screen in the app

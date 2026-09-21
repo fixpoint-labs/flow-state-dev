@@ -165,7 +165,7 @@ Re-check these against the repo before building; each of them moves.
 
 ## Blocked on
 
-**`Roster` has no read path from this app, and this issue cannot open one.** Verified on
+**`Roster` has no read path from this app, and opening one is a decision above this plan.** Verified on
 `origin/main`: a collection read is session-addressed and authorized on that session
 (`list_collection_state` is `{ kind: "session" }`, `routes/route-auth.ts`), then resolved against
 that session's **owning flow** — `handleListCollectionState` loads the session, calls
@@ -173,13 +173,32 @@ that session's **owning flow** — `handleListCollectionState` loads the session
 declaring `workforce/roster/*` is FIX-1475's `workforce-admin`, behind its own credential. The
 shell's flow declares nothing.
 
-So `S5` needs either the shell's flow declaring the collection with `client.state.read` — which
-puts an org-scoped roster behind whatever principal the shell's session resolves, a security
-decision rather than a layout one — or a standing read surface owned by FIX-1475. **Neither is
-mine to choose**; raised to the epic under
-[ER-19](../../epics/FIX-1455/BUSINESS-RULES.md). Until it is answered, `S5`, `BR-19` and `BR-20`
-are unbuildable and `S8` renders the panel with the roster's empty state. **`BoardColumns` meets
-the same question** the moment a board is read from the shell rather than from a seat's session.
+**The cheap path is not available.** Declaring the collection on the shell's flow and reading it
+looks free, and it is not: a session's org is principal-derived only when there *is* a principal.
+
+```
+orgId: ctx.principal === undefined ? getString(body.orgId) : ctx.principal.orgId,
+```
+
+(`packages/engine/src/routes/session-routes.ts:192`, whose own comment says a caller-supplied org
+"would become an org binding the runtime later trusts".) With no resolver configured, anyone can
+create a session claiming any org and read that org's roster — the same BP-031 hole FIX-1475
+closed on the write side with its fail-closed admin flow, reopened on the read side. The shell's
+flow has no resolver today, and that is asserted rather than incidental:
+`apps/kitchen-sink/test/management-routes-reachable.test.ts:54` pins
+`chat?.authentication?.resolvePrincipal` as `undefined`.
+
+So the real question is narrower than which issue owns the declaration: **does the shell's flow
+carry its own `resolvePrincipal`, or does the roster panel simply not render without a
+credential?** **Not mine to pick.** It is the same call as the
+[Open fork](DECISIONS.md#open) one surface over, and it is answered there rather than in a second
+gate.
+
+**This issue owns whichever answer comes back.** FIX-1475's PR-A and PR-B are green and its goal
+passes on the real path; reopening it to add a read surface would widen a settled issue into
+substrate work it was never gated for. Until the fork is answered, `S5`, `BR-19` and `BR-20` are
+unbuildable and `S8` renders the panel with the roster's empty state. **`BoardColumns` meets the
+same question** the moment a board is read from the shell rather than from a seat's session.
 
 ## Notes from review
 
