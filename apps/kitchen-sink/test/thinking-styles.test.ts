@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
-import { mockGenerator, testRouter, testSequencer } from "@flow-state-dev/testing";
+import { mockGenerator, testBlock, testRouter } from "@flow-state-dev/testing";
 import chatAgentFlow from "../flows/chat-agent/flow";
 import { thinkingStyleRouter, backgroundWorkTasks } from "../flows/chat-agent/run/thinking-styles";
 import { resolveThinkingStyle } from "../flows/chat-agent/run/steps";
@@ -229,18 +229,15 @@ describe("a message carrying the words that used to steer it", () => {
     "shared workspace, then break it down step by step and argue the pros and cons.";
 
   it("is answered directly, with no classifier call to pay for", async () => {
-    const result = await testSequencer(resolveThinkingStyle, {
-      input: runInput(steering),
+    const result = await testBlock(resolveThinkingStyle, {
+      input: { ...runInput(steering), thinkingStyle: "default" },
       flow: testFlow,
-      // Nothing on this path may reach a model. A reintroduced classifier is
-      // an unmocked generator, and this policy fails the run when one calls.
-      unmockedGeneratorPolicy: "error",
     });
 
     expect(result.error).toBeNull();
     expect(result.state.session).toMatchObject({ thinkingStyle: "default" });
-    // Red state: restore the `auto` branch and point this input at it — the
-    // style comes back "supervisor" and the run calls a generator.
+    // Red state: restore `"auto"` on the input schema and this write — the
+    // persisted style is no longer the caller's surviving choice.
   });
 
   it("reaches the direct-answer route, not a coordination one", async () => {

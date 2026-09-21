@@ -37,7 +37,6 @@ import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import type { PipelineConfig } from "./config";
 
 /** Stable board id. Hashed into every child session this board starts — renaming it re-keys live ones. */
 const BOARD_ID = "kitchen-sink-background-work";
@@ -172,8 +171,9 @@ export function alreadyReportedTaskIds(
   ]);
 }
 
-export function createBackgroundWorkPipeline(config: PipelineConfig) {
-  const { modelId } = config;
+export function createBackgroundWorkPipeline(
+  modelId: string | ((input: any, ctx: any) => any),
+) {
 
   /**
    * The handed-off worker.

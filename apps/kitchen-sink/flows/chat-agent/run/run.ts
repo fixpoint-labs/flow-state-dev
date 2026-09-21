@@ -6,9 +6,9 @@
  *     → thinkingStyleRouter → biasCheck (.sideChain) → perspective capture (.sideChainIf)
  *     → mem.captureFromItems (.sideChain) → autoTitle (.sideChain) → incrementRequestCount
  *
- * The router dispatches to the assistant generator (default) or one of the five
- * pattern pipelines; everything after it runs as background `.sideChain()` except the
- * terminal request-count bump.
+ * The router dispatches to the assistant generator (default) or the
+ * background-work board; everything after it runs as background `.sideChain()`
+ * except the terminal request-count bump.
  */
 import { sequencer, utility } from "@flow-state-dev/core";
 import {
