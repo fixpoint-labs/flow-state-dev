@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 352" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The five kitchen-sink surfaces that import the patterns package, placed either side of a fence that separates work a team does from work one request does. Left of the fence, under the heading work a team does with seats, boards and channels, sit four surfaces, all shaded as shed. The supervisor pipeline, importing supervisor, whose team path is a coordinator seat assigning rows to a board that seats drain. The routed-specialists pipeline, importing routedSpecialists and createWorkspace, whose team path is named seats contributing to one shared collection. The evented-actors pipeline, importing createEventActorsWorkspace, actor and eventActors, whose team path is a seat woken by a row filed on the named board it drains. And the thinking-style router, importing planAndExecute, debate, createModerator and createDebateTranscript, whose team path is tasks on a board for the first and two seats plus a moderator in a channel for the second. Right of the fence, under the heading work one request does with blocks in one sequencer, sits one surface shaded as kept: the bias check, importing responseAuditor and AnalyzerResultSchema, whose note reads no seat, board or channel audits a response, so this one stays. A caption beneath the fence records the arithmetic: four of five surfaces have an honest team path, which is three or more, so the epic's collapse trigger does not fire and the issue stays separate. A second caption records the consequence: one keep-note remains, so the package dependency stays in the app's package file, deliberately, and the issue's headline outcome is not reached.">
+     aria-label="The five kitchen-sink source files that import the patterns package, placed either side of a fence that separates work a team does from work one request does. Left of the fence, under the heading work a team does with seats, boards and channels, sit four files, all shaded as shed, carrying five pattern-backed routes between them. The supervisor pipeline, importing supervisor, has a team path: a coordinator seat files rows and a per-seat drain runs them, demonstrated by the manager-queue lab on main. The routed-specialists pipeline, importing routedSpecialists and createWorkspace, has a team path: named seats complete rows on one shared board, the same lab. The evented-actors pipeline, importing createEventActorsWorkspace, actor and eventActors, has NO team path, because nothing in Workforce or orchestration watches topics, re-emits or cascades. The thinking-style router, importing planAndExecute, debate, createModerator and createDebateTranscript, carries two routes and splits: plan-and-execute has a team path in rows on a board, and moderated debate has none, because a channel has members, a charter and a transcript but no moderator, no rounds and no verdict. Right of the fence, under the heading work one request does with blocks in one sequencer, sits one file shaded as kept: the bias check, importing responseAuditor and AnalyzerResultSchema, whose note reads no seat, board or channel audits a response, so this one stays. A caption beneath the fence records the arithmetic: three of the five pattern-backed routes have an honest team path, which is three or more, so the epic's collapse trigger does not fire, but by one rather than by two. A second caption records that the two routes without a team path are shed anyway, on the vocabulary collision rather than on a team path, and that one keep-note remains, so the package dependency stays in the app's package file and the issue's headline outcome is deliberately not reached.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -38,25 +38,25 @@
   <rect class="shed" x="30" y="62" width="600" height="46" rx="3"/>
   <text class="t-f" x="42" y="79">pipelines/supervisor.ts</text>
   <text class="t-i" x="42" y="92">supervisor</text>
-  <text class="t-p" x="42" y="103">team path: a coordinator seat assigns rows to a board that seats drain</text>
+  <text class="t-p" x="42" y="103">team path: coordinator seat files rows, per-seat drain runs them &#8212; manager-queue lab</text>
   <text class="t-shed" x="586" y="79" text-anchor="end">SHED</text>
 
   <rect class="shed" x="30" y="116" width="600" height="46" rx="3"/>
   <text class="t-f" x="42" y="133">pipelines/routed-specialists.ts</text>
   <text class="t-i" x="42" y="146">routedSpecialists &#183; createWorkspace</text>
-  <text class="t-p" x="42" y="157">team path: named seats contribute to one shared collection</text>
+  <text class="t-p" x="42" y="157">team path: named seats complete rows on one shared board &#8212; manager-queue lab</text>
   <text class="t-shed" x="586" y="133" text-anchor="end">SHED</text>
 
   <rect class="shed" x="30" y="170" width="600" height="46" rx="3"/>
   <text class="t-f" x="42" y="187">pipelines/evented-actors.ts</text>
   <text class="t-i" x="42" y="200">createEventActorsWorkspace &#183; actor &#183; eventActors</text>
-  <text class="t-p" x="42" y="211">team path: a seat wakes on a row filed to the named board it drains</text>
+  <text class="t-shed" x="42" y="211">NO team path &#8212; nothing in Workforce watches topics, re-emits or cascades</text>
   <text class="t-shed" x="586" y="187" text-anchor="end">SHED</text>
 
   <rect class="shed" x="30" y="224" width="600" height="46" rx="3"/>
   <text class="t-f" x="42" y="241">thinking-styles/create-router.ts</text>
   <text class="t-i" x="42" y="254">planAndExecute &#183; debate &#183; createModerator &#183; createDebateTranscript</text>
-  <text class="t-p" x="42" y="265">team path: tasks on a board &#183; two seats and a moderator in a channel</text>
+  <text class="t-p" x="42" y="265">planAndExecute &#8212; team path: rows on a board. debate &#8212; NO team path: a channel has no moderator</text>
   <text class="t-shed" x="586" y="241" text-anchor="end">SHED</text>
 
   <rect class="keep" x="662" y="62" width="248" height="100" rx="3"/>
@@ -72,6 +72,6 @@
   <text class="t-cap" x="662" y="208">that job &#8212; never by wrapping a seat in a</text>
   <text class="t-cap" x="662" y="221">pattern factory to make it fit.</text>
 
-  <text class="t-cap" x="16" y="308">4 of 5 have an honest team path. Three or more, so the epic&#8217;s collapse trigger does not fire &#8212; the issue stays separate.</text>
-  <text class="t-cap" x="16" y="326">1 keep-note remains, so the dependency stays in the app&#8217;s package file. The issue&#8217;s headline outcome is deliberately not reached.</text>
+  <text class="t-cap" x="16" y="308">3 of the 5 pattern-backed routes have an honest team path. Three or more, so the collapse trigger does not fire &#8212; by one, not by two.</text>
+  <text class="t-cap" x="16" y="326">The other two are shed anyway, on the vocabulary collision, not on a team path. 1 keep-note remains, so the dependency stays.</text>
 </svg>
