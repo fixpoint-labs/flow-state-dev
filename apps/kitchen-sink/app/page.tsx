@@ -40,7 +40,6 @@ import { ThinkingToggle } from "@/components/thinking-toggle";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
-import { inferThinkingStyle } from "@/lib/item-inference";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
@@ -155,14 +154,6 @@ function KitchenSinkApp() {
 
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; activeSkills?: Array<{ name: string; source: string }> } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; selectedModel: string; thinkingEnabled: boolean } | undefined;
-
-  // Derive resolved thinking style from the most recent request's items.
-  const resolvedThinkingStyle = useMemo(() => {
-    if (session.items.length === 0) return null;
-    const lastRequestId = session.items[session.items.length - 1].requestId;
-    const requestItems = session.items.filter((i) => i.requestId === lastRequestId);
-    return inferThinkingStyle(requestItems);
-  }, [session.items]);
 
   // Derive artifact summaries from the paginated artifact list. Content is
   // loaded lazily via item.fetchContent() when an artifact is opened.
@@ -364,8 +355,6 @@ function KitchenSinkApp() {
         <ClientDataBar
           displayName={userPrefs?.displayName}
           selectedModel={selectedModel}
-          thinkingStyleMode={thinkingStyle}
-          thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
           activeSkills={modeStatus?.activeSkills}
         />
 

@@ -1,33 +1,19 @@
 /**
  * Shared config shape for the thinking-style pipeline builders.
  *
- * The router factory (`../index.ts`) normalizes the public
- * `ThinkingStyleRouterConfig` into this resolved shape (worker defaults filled
- * in) and threads it to each `createXPipeline(config)` builder. Kept in its own
- * type-only module so the five pipeline builders share one definition without
- * importing it back from the factory.
+ * The router factory (`../create-router.ts`) narrows the public
+ * `ThinkingStyleRouterConfig` into this shape and threads it to each
+ * `createXPipeline(config)` builder. Kept in its own type-only module so a
+ * builder shares the definition without importing it back from the factory.
+ *
+ * It carried context, capability and instruction slots while five
+ * coordination-pattern pipelines built sub-agent generators from it. Those
+ * pipelines were removed (FIX-1478); the one builder left declares its worker
+ * bare, on purpose, and reads only the model.
  */
-import type { GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 
-/** Resolvable instructions string — static or computed from input + context. */
-export type InstructionsSlot =
-  | string
-  | ((input: any, ctx: any) => string | Promise<string>);
-
-/** Resolved pipeline config: worker defaults already filled in by the factory. */
+/** Config a pipeline builder is handed by the router factory. */
 export interface PipelineConfig {
   /** Model ID string or a selectModel() resolver. */
   modelId: string | ((input: any, ctx: any) => any);
-  /** Context bundle for the pattern's primary blocks. */
-  context: GeneratorSlot<any, any>;
-  /** Context bundle for sub-agent worker generators. */
-  workerContext: GeneratorSlot<any, any>;
-  /** Capabilities installed on the pattern's primary blocks. */
-  uses?: UsesSlot;
-  /** Capabilities installed on sub-agent worker generators. */
-  workerUses?: UsesSlot;
-  /** Generator history config shared across the pattern's generators. */
-  history?: GeneratorHistoryConfig<any, any>;
-  /** Overall instructions passed to pattern sub-blocks (planner, controller, synthesizer). */
-  instructions?: InstructionsSlot;
 }

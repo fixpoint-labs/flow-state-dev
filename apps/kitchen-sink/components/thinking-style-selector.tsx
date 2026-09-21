@@ -13,20 +13,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  Sparkles,
   MessageSquare,
-  ListChecks,
-  Users,
-  ClipboardList,
-  RadioIcon,
-  Scale,
   Hourglass,
   ChevronDownIcon,
 } from "lucide-react";
 import type { ThinkingStyleInput } from "@/flows/chat-agent/shared/schemas";
 
 // Action-input shape is the source of truth: the selector lets users
-// pick any value the chat-agent flow accepts on input, including "auto".
+// pick any value the chat-agent flow accepts on input.
 // `import type` keeps the runtime schema out of the client bundle.
 export type ThinkingStyle = ThinkingStyleInput;
 
@@ -39,15 +33,14 @@ interface StyleOption {
   color: string;
 }
 
-const STYLE_OPTIONS: StyleOption[] = [
-  {
-    value: "auto",
-    label: "Auto",
-    shortLabel: "Auto",
-    description: "Automatically selects the best approach",
-    icon: Sparkles,
-    color: "text-violet-500 dark:text-violet-400",
-  },
+/**
+ * The styles a person can pick, in menu order.
+ *
+ * `default` is first, which is also what {@link getStyleOption} falls back to
+ * for a value this app no longer has — a session that last ran one of the
+ * removed coordination styles opens on the direct answer rather than blank.
+ */
+export const STYLE_OPTIONS: StyleOption[] = [
   {
     value: "default",
     label: "Default",
@@ -55,47 +48,6 @@ const STYLE_OPTIONS: StyleOption[] = [
     description: "Direct generation with the selected model",
     icon: MessageSquare,
     color: "text-zinc-500 dark:text-zinc-400",
-  },
-  {
-    value: "plan-and-execute",
-    label: "Plan & Execute",
-    shortLabel: "Plan",
-    description: "Decomposes into tasks before generation",
-    icon: ListChecks,
-    color: "text-blue-500 dark:text-blue-400",
-  },
-  {
-    value: "supervisor",
-    label: "Supervisor",
-    shortLabel: "Supervisor",
-    description: "Orchestrates sub-agents with review",
-    icon: Users,
-    color: "text-amber-500 dark:text-amber-400",
-  },
-  {
-    value: "routed-specialists",
-    label: "Routed Specialists",
-    shortLabel: "Specialists",
-    description: "Controller picks which specialist to consult next",
-    icon: ClipboardList,
-    color: "text-emerald-500 dark:text-emerald-400",
-  },
-  {
-    value: "evented-actors",
-    label: "Evented Actors",
-    shortLabel: "Evented",
-    description: "Parallel actors react independently, no controller",
-    icon: RadioIcon,
-    color: "text-cyan-500 dark:text-cyan-400",
-  },
-  {
-    value: "moderated-debate",
-    label: "Moderated Debate",
-    shortLabel: "Debate",
-    description:
-      "Two agents argue opposing positions; a moderator drives the rounds, then a judge picks a winner",
-    icon: Scale,
-    color: "text-rose-500 dark:text-rose-400",
   },
   {
     value: "background-work",
@@ -108,7 +60,18 @@ const STYLE_OPTIONS: StyleOption[] = [
   },
 ];
 
-export function getStyleOption(value: ThinkingStyle): StyleOption {
+/**
+ * The menu entry for `value`, falling back to the first — `Default` — for a
+ * style this app no longer offers.
+ *
+ * The parameter is a bare `string` on purpose: the values that can be stale
+ * are the ones that arrive from outside the type system, such as a style
+ * stored on a session written before FIX-1478 removed it. The server folds
+ * those to `default` in its `modeStatus` projection before they reach the
+ * browser; this fallback is what keeps the first one that ever slips past
+ * harmless instead of rendering nothing.
+ */
+export function getStyleOption(value: string): StyleOption {
   return STYLE_OPTIONS.find((o) => o.value === value) ?? STYLE_OPTIONS[0];
 }
 

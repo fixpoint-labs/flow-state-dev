@@ -26,7 +26,12 @@ import { approvalGate } from "./approval-gate";
 import { askQuestion, collectForm, chooseOption } from "./human-input";
 import { mem } from "./run/cognition";
 import { bashCap } from "./shared/capabilities/features";
-import { modeSchema, sessionStateSchema, userStateSchema } from "./shared/schemas";
+import {
+  coalesceThinkingStyle,
+  modeSchema,
+  sessionStateSchema,
+  userStateSchema,
+} from "./shared/schemas";
 
 const chatAgentFlow = defineFlow({
   kind: "chat-agent",
@@ -115,8 +120,12 @@ const chatAgentFlow = defineFlow({
             }).activeSkills ?? [];
           return {
             currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
-            thinkingStyle:
-              (ctx.state.thinkingStyle as string | undefined) ?? null,
+            // The only surface that reads the stored style raw. A session
+            // written before FIX-1478 holds a style this app removed, and
+            // nothing parses session state on load — so it is folded to
+            // `default` here, before it leaves the server, rather than
+            // reaching a browser that has no entry for it (BP-030).
+            thinkingStyle: coalesceThinkingStyle(ctx.state.thinkingStyle),
             requestCount: Number(ctx.state.requestCount ?? 0),
             features: ctx.state.features ?? { biasCheck: false, search: true, fetch: true, crawl: true },
             activeSkills: activeSkills.map((s) => ({

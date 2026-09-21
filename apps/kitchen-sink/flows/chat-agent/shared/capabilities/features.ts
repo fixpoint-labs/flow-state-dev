@@ -6,14 +6,13 @@
  * (inventory context, no direct tools — bash is the single write path) +
  * optionally MCP. Web tools are toggleable per-request via feature flags.
  *
- * Bash is always available so skills and patterns can rely on shell/Python
- * without having to branch on mode. Artifacts is attached with tools
- * disabled because the bash tool creates artifacts by writing to files
- * under the artifacts mount.
+ * Bash is always available so skills can rely on shell/Python without having
+ * to branch on mode. Artifacts is attached with tools disabled because the
+ * bash tool creates artifacts by writing to files under the artifacts mount.
  *
- * Skills is scoped to `itemVisibility: primary` so worker generators inside
- * plan-and-execute / supervisor / blackboard patterns don't replicate
- * skill bodies into their context. It's attached as a static `uses` entry
+ * Skills is scoped to `itemVisibility: primary` so sub-agent generators — a
+ * board's workers, or a pattern's — don't replicate skill bodies into their
+ * context. It's attached as a static `uses` entry
  * so the framework installs the skills collection resource at build time —
  * dynamic `uses` callbacks only contribute tools and context, not resources.
  */
@@ -83,8 +82,8 @@ const skills = createSkillsLibrary({
   // flow has no project wiring yet — "org" falls through to an ambient
   // org with no persistence identity, which is why nothing seeds.
   scope: "user",
-  // Main-agent only: in plan-and-execute / supervisor / blackboard, the
-  // synthesizer carries skills while step-executors and workers don't.
+  // Main-agent only: the agent answering in the turn carries skills; the
+  // sub-agents it hands work to — a board's workers — don't.
   itemVisibility: { client: true, history: true },
 });
 
@@ -162,8 +161,8 @@ export const featuresCapability = defineCapability({
     // Static: skills library binding — installs the skills collection resource
     // at build time (dynamic uses callbacks can't contribute resources) and
     // binds this generator to the catalog. Scoped to primary agents by the
-    // library's own `itemVisibility` so worker generators in
-    // plan-and-execute / supervisor / blackboard skip it. `tech-brief`'s
+    // library's own `itemVisibility` so sub-agent worker generators skip
+    // it. `tech-brief`'s
     // delegation surface installs because it's bound `active`; the research
     // skills install theirs when the activator puts them in `activeSkills`.
     // (The cast bridges the config-erased `.with()` signature — see
@@ -174,7 +173,7 @@ export const featuresCapability = defineCapability({
     // so readArtifact/updateArtifact tools are disabled here.
     artifactsCapability.presets({ inventory: true, tools: false }),
 
-    // Static: bash — always available. Skills, Artifacts and patterns can rely on
+    // Static: bash — always available. Skills and Artifacts can rely on
     // shell/python without having to branch on mode.
     bashCap,
 
