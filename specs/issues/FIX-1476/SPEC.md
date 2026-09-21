@@ -66,7 +66,7 @@ nobody names is what the warning is for.
     teams/support/
 +     channels/
 +       desk/CHANNEL.md             ← built-in kind · boards: [followups, escalations]
-+       <dm>/CHANNEL.md             ← built-in kind · two members · no boards
++       ada-wren/CHANNEL.md         ← built-in kind · two members · no boards
 +       noticeboard/CHANNEL.md      ← flow: digest · no boards
       workers/
 +       wren/WORKER.md              ← flow: followup-runner

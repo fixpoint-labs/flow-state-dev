@@ -55,9 +55,11 @@ takes only a restart."*, add:
 > `desk` is the ordinary case: the built-in kind, five members, and two boards declared as plain
 > names — `boards: [followups, escalations]`. The framework mints a ledger per name from where
 > the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that.
-> `<dm>` is a two-member channel with no `flow:` line, because a direct message is not a kind of
-> its own — it is a channel with two members in it. Post there and the other member hears about
-> it and you do not, which is true of every channel here: nobody is notified of their own post.
+> `ada-wren` is a two-member channel with no `flow:` line, because a direct message is not a kind
+> of its own — it is a channel with two members in it. Ada works the desk and Wren runs the board
+> the desk's work lands on, so the two have things to say to each other. Post there and the other
+> member hears about it and you do not, which is true of every channel here: nobody is notified of
+> their own post.
 > `noticeboard` is the case that *is* different:
 > it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only
 > the most recent lines. A kind of your own cannot hold a board, which is why the boards are on
@@ -111,11 +113,11 @@ re-argues it. Proposed bodies:
 > `escalations` on purpose — the boot warns about it, which is what an unwatched board is
 > supposed to look like.
 
-**`<dm>/CHANNEL.md`** — the folder name is the implementer's ([D6](DECISIONS.md#d6))
+**`ada-wren/CHANNEL.md`**
 
 > Two members, and a post reaches the other one. A direct message is not a kind of its own; it is
-> this, the kind every channel gets when it names none, with a roster of two — what the two keep
-> here is a coherent transcript between them.
+> this, the kind every channel gets when it names none, with a roster of two — what Ada and Wren
+> keep here is a coherent transcript between them.
 
 **`noticeboard/CHANNEL.md`**
 

@@ -8,10 +8,9 @@ For the rules this issue proves, that state is written once, in
 [PLAN.md → The checks](PLAN.md#the-checks), and the row names the check. Rules the framework
 already owns carry their own red state here, because no check of ours covers them.
 
-**`support.<dm>` is a placeholder, not an id.** The third channel was `support.ada-dm` and is
-being renamed with [D6](DECISIONS.md#d6); the folder name, and so the id, is the implementing
-agent's and is not settled. Every `support.<dm>` in this set is to be replaced with the shipped
-id — a rule that still reads `support.<dm>` when the work lands is a rule nobody finished.
+**`support.ada-wren` is the third channel**, renamed from `support.ada-dm` by
+[D6](DECISIONS.md#d6). The id is minted from the folder, so moving `channels/ada-wren/` re-keys
+it; it holds no `boards:`, which is what makes the rename cost nothing ([D6](DECISIONS.md#d6)).
 
 ## What the tree produces
 
@@ -19,8 +18,8 @@ id — a rule that still reads `support.<dm>` when the work lands is a rule nobo
 |---|---|---|---|
 | BR-1 | `fsdev gen` runs over the app's workforce tree | `channelKinds` names exactly one entry, `digest`, imported from `./flows/channels/digest` | [V1](PLAN.md#the-checks) — the map's content, which is red on `main` today. Staleness is CI's own `fsdev gen --check` over this app and is not copied here |
 | BR-2 | The app boots | No line in `hire.ts` or `fsdev.config.ts` names a channel kind. The kinds map is spread from the generated module; only the built-in is named, under the key the binder seeds | [V2](PLAN.md#the-checks) |
-| BR-3 | `readChannelsDirectory` reads the tree | Three records come back — `support.desk`, `support.<dm>`, `support.noticeboard` — and `errors` is empty | The goal's load leg, treating a non-empty `errors` as fatal, as [channels.md](../../../apps/docs/docs/workforce/channels.md) instructs. **Red:** rename `desk/CHANNEL.md` to `channel.md` and the folder lands in `errors` |
-| BR-4 | The roster is bound | `support.desk` opens on kind `channel`; `support.noticeboard` opens on kind `digest`; `support.<dm>` opens on `channel` because it declares no `flow:` | [V3](PLAN.md#the-checks) |
+| BR-3 | `readChannelsDirectory` reads the tree | Three records come back — `support.desk`, `support.ada-wren`, `support.noticeboard` — and `errors` is empty | The goal's load leg, treating a non-empty `errors` as fatal, as [channels.md](../../../apps/docs/docs/workforce/channels.md) instructs. **Red:** rename `desk/CHANNEL.md` to `channel.md` and the folder lands in `errors` |
+| BR-4 | The roster is bound | `support.desk` opens on kind `channel`; `support.noticeboard` opens on kind `digest`; `support.ada-wren` opens on `channel` because it declares no `flow:` | [V3](PLAN.md#the-checks) |
 | BR-5 | `openChannels` writes the noticeboard's state | The kind's `stateSchema` admits all three keys the binder writes — `members`, `instructions`, `transcript` — so the open session carries them | [V4](PLAN.md#the-checks). Note what the failure is: a schema that omits a key **strips it silently**. Session create never refuses on a state-schema mismatch, so this rule is about a key going missing, not about an error |
 
 ## The boards
@@ -50,7 +49,7 @@ DM is the case that made it visible ([D6](DECISIONS.md#d6)).
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-16 | A post lands in **any** channel on the built-in kind | **The poster is never an addressee.** Every declared member is notified except the one who wrote the post. Both halves are the rule — the poster gets nothing, *and* the others still get theirs — because a check on the first half alone passes when delivery is broken and nobody gets anything. On `desk`'s five members that is four deliveries; on `support.<dm>`'s two it is one, which is why *"a DM notifies only the other one"* needs no rule of its own | [V13](PLAN.md#the-checks). The fan-out hands the app's own notify block both ends of the comparison — the addressee as `member` and the post's `author` — so the skip is user-space and needs no `packages/workforce` change ([S5](PLAN.md#surfaces)). It compares **`author`**, and [D6 → which identity](DECISIONS.md#author-identity) records why that rather than the verified `principal`, what the residual gap is, and why [BP-031](../../../docs/contributing/best-practices.md) does not forbid it. A post naming no author excludes nobody: nothing else in the delivery tells one member from another |
+| BR-16 | A post lands in **any** channel on the built-in kind | **The poster is never an addressee.** Every declared member is notified except the one who wrote the post. Both halves are the rule — the poster gets nothing, *and* the others still get theirs — because a check on the first half alone passes when delivery is broken and nobody gets anything. On `desk`'s five members that is four deliveries; on `support.ada-wren`'s two it is one, which is why *"a DM notifies only the other one"* needs no rule of its own | [V13](PLAN.md#the-checks). The fan-out hands the app's own notify block both ends of the comparison — the addressee as `member` and the post's `author` — so the skip is user-space and needs no `packages/workforce` change ([S5](PLAN.md#surfaces)). It compares **`author`**, and [D6 → which identity](DECISIONS.md#author-identity) records why that rather than the verified `principal`, what the residual gap is, and why [BP-031](../../../docs/contributing/best-practices.md) does not forbid it. A post naming no author excludes nobody: nothing else in the delivery tells one member from another |
 
 **Scope, stated so the diff is not read as a surprise.** BR-16 is general and the notify block is
 **shared** — kitchen-sink passes one block to the built-in factory for every channel it opens. So
@@ -59,7 +58,7 @@ diff is the point of the rule rather than a side effect: notifying somebody of t
 wrong in a five-member channel exactly as it is in a two-member one. (`noticeboard` runs
 `flow: digest`, which declares **no fan-out at all** — [S1](PLAN.md#surfaces) — so it notifies
 nobody today and is unaffected either way.)
-| BR-17 | `support.<dm>` is read | It declares exactly **two** members, both of them seats, and no `flow:` line — it is a channel on the built-in kind, which is what the published [channels.md](../../../apps/docs/docs/workforce/channels.md) already tells readers a direct message is | [V3](PLAN.md#the-checks) covers the kind; the membership is [V14](PLAN.md#the-checks). **Red:** leave the roster at one member and the channel is the shape [D6](DECISIONS.md#d6) reversed |
+| BR-17 | `support.ada-wren` is read | It declares exactly **two** members — `support.ada` and `support.wren`, both seats — and no `flow:` line — it is a channel on the built-in kind, which is what the published [channels.md](../../../apps/docs/docs/workforce/channels.md) already tells readers a direct message is | [V3](PLAN.md#the-checks) covers the kind; the membership is [V14](PLAN.md#the-checks). **Red:** leave the roster at one member and the channel is the shape [D6](DECISIONS.md#d6) reversed |
 
 <a name="the-words"></a>
 ## The words — ER-6, decided here and consumed by every other row
