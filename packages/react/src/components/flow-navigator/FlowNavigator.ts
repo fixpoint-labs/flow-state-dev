@@ -72,8 +72,8 @@ export type FlowNavigatorRow =
  *
  * Every slot is optional and the navigator renders without any of them. They
  * exist so a host's own affordances — copying an instance id, starting a
- * session, refreshing a list, listing a flow's actions — live in the host that
- * wants them instead of being a reason to keep a second navigator.
+ * session, refreshing a list — live in the host that wants them instead of
+ * being a reason to keep a second navigator.
  */
 export type FlowNavigatorSlots = {
   /** Beside a section's label. */
@@ -364,7 +364,11 @@ function KindRow(props: {
     : group.leaf !== null
       ? // A singleton's kind row IS its leaf: there is no copy to pick, so the
         // instance level is not drawn and the sessions hang directly under it.
-        createElement(LeafSessionList, { leaf: group.leaf, depth: 1, ...leafProps })
+        createElement(LeafSessionList, {
+          leaf: group.leaf,
+          depth: 1,
+          ...leafProps
+        })
       : createElement(
           "ul",
           { style: bareList },
@@ -399,7 +403,11 @@ function KindRow(props: {
                 })
               }),
               instanceOpen
-                ? createElement(LeafSessionList, { leaf, depth: 2, ...leafProps })
+                ? createElement(LeafSessionList, {
+                    leaf,
+                    depth: 2,
+                    ...leafProps
+                  })
                 : null
             );
           })

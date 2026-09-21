@@ -2,7 +2,7 @@
  * Tests for the FIX-141 operator-UI surface: the SuspensionsView list/detail
  * pane, the suspension stream-item renderer, and the `suspended` status badge.
  * Mocks `useDevTool` to inject fake debug/recovery clients (the same idiom as
- * use-sessions.test.ts).
+ * `use-session-requests.test.ts`).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";

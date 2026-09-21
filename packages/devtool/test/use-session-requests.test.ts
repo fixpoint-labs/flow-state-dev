@@ -1,11 +1,18 @@
 /**
- * Tests for the request-row refresh sweep gating (FIX-865). Mirrors
- * `use-sessions.test.ts`'s mocking style. Unlike the session-list sweep
- * (unconditional there — FIX-467), the request-row refresh sweep must stay
- * OFF unless the host explicitly opted in via `autoRecoverInterrupted` —
- * merely opening/refreshing a session must not mutate a stale `in_progress`
- * row to `interrupted` as a side effect of a panel that just wants to display
- * it.
+ * Tests for the request-row refresh sweep gating (FIX-865). The request-row
+ * refresh sweep must stay OFF unless the host explicitly opted in via
+ * `autoRecoverInterrupted` — merely opening/refreshing a session must not
+ * mutate a stale `in_progress` row to `interrupted` as a side effect of a
+ * panel that just wants to display it.
+ *
+ * This used to be stated as a contrast with the session-list sweep, which was
+ * unconditional (FIX-467). There is no longer a session-list sweep to contrast
+ * with: the rail's list moved into `FlowNavigator` and `checkInterrupted` did
+ * not go with it, deliberately — a sweep on every leaf expand is a second
+ * round trip a rail should not pay for. The accepted cost is that a request
+ * abandoned by a dead process reads `in_progress` in the rail until the
+ * mount-time sweep or something else clears it. So the gate below is now the
+ * only sweep gate in the panel, not the stricter of two.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";

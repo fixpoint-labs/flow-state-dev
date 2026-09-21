@@ -29,7 +29,7 @@ vi.mock("../src/react/context/devtool-context", () => ({
 }));
 
 import { useChildSessions } from "../src/react/hooks/use-child-sessions";
-import { useReadFence } from "../src/react/hooks/use-read-fence";
+import { useReadFence } from "@flow-state-dev/react";
 
 function row(id: string, overrides: Partial<ChildSessionSummary> = {}): ChildSessionSummary {
   return {

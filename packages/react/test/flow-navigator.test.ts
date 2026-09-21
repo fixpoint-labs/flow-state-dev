@@ -367,6 +367,12 @@ describe("FlowNavigator · a host affordance is beside the row, not inside it", 
             { type: "button", "data-affordance": r.type, onClick: () => {} },
             "Copy"
           ),
+        // The leaf toolbar is filled too, and with a BUTTON. Its host renders
+        // it inside an `li` rather than inside the row's activation button,
+        // and the rail-wide assertion below is what keeps it there — which it
+        // cannot do for a slot no case ever mounts.
+        leafToolbar: () =>
+          createElement("button", { type: "button", onClick: () => {} }, "New session"),
       },
     });
 
