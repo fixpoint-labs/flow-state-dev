@@ -49,7 +49,7 @@ this set.
 |---|---|
 | **Instead of** | Declaring the board on `desk-clerk`, which `ada` and `grace` both run · attending both boards and proving the warning only in a test · adding a second seat that *files* rows so the reference shows both ends |
 | **Because** | A board is declared on a **kind**, and `desk-clerk` is shared, so wiring it there would make every seat on that kind drain it — which reads as ambient and is the exact thing board v1 exists to refuse. A new kind with one seat on it makes *"a seat drains a board only when it is explicitly wired to it"* legible: one seat wired, four not. And the warning is a deliverable of this issue, so the shipped tree has to produce it; a warning only a test sees is a warning nobody reads. Filing is left to the channel's own `fileTask` action, which is the door the docs teach and which `goals/channel-boards/…` already proves from a seat — a second filing seat would re-prove a green goal |
-| **Locks in** | `flows/workers/followup-runner.ts` declares `channelBoard("support.desk", "followups")` as a resource and exposes its `taskBoard` drain; one seat, `support.wren`, runs it. `escalations` is drained by nobody, the warning names it at every boot, and the channel's charter and the app README say in one line that this is deliberate. The channel id and board name **are** retyped in the kind file — explicit wiring is the mechanism, and the warning is the safety net the docs already point at |
+| **Locks in** | `flows/workers/followup-runner.ts` declares `channelBoard("support.desk", "followups")` as a resource and exposes its `taskBoard` drain; one seat, `support.wren`, runs it. `escalations` is drained by nobody and the warning names it at every boot; the app README is the one surface that explains why ([DOCS.md](DOCS.md) §2). The channel id and board name **are** retyped in the kind file — explicit wiring is the mechanism, and the warning is the safety net the docs already point at |
 
 <a name="d4"></a>
 ## D4 · ER-6's vocabulary is six words, and its check is review
@@ -67,7 +67,7 @@ this set.
 |---|---|
 | **Instead of** | Enumerating orgs from the store, as FIX-1475's runtime reload does · dropping `boards:` so no org is needed |
 | **Because** | `openChannels` throws when a board-holding roster is given no `orgId`, because a board's rows are org-scoped storage — and kitchen-sink has no `orgId` anywhere today (verified: zero occurrences under `apps/kitchen-sink`). Something has to name one. Enumerating the store is FIX-1475's mechanism for *runtime-hired* seats and answers a different question: the file-declared tree is fixed at build, and iterating an empty store at boot would open no channels at all on a fresh clone |
-| **Locks in** | One exported constant beside `hire.ts`, for `openChannels` only. It is not an authorization boundary and the app says so: kitchen-sink configures no `resolvePrincipal`, so on a host that does, the session takes the verified caller's org and this value is ignored. FIX-1475 may later enumerate orgs beside this — this one opens files, that one reloads rows |
+| **Locks in** | One exported constant in its own `workforce/org.ts`, for `openChannels` only — a file of its own rather than a line in `hire.ts`, because [FIX-1475](../FIX-1475/PLAN.md) is editing `hire.ts` in flight and this is one less collision. It is not an authorization boundary: kitchen-sink configures no `resolvePrincipal`. It is **not ignored** on a host that does, either — the principal's org wins at creation, but every later boot compares the *stored* org against this constant and refuses the reopen by name when they differ ([BR-15](BUSINESS-RULES.md)). An adopter must set it to the org their principal resolves. FIX-1475 may later enumerate orgs beside this — this one opens files, that one reloads rows |
 
 ## Considered and dropped
 
@@ -78,9 +78,11 @@ this set.
 - **Turn the channel inventory on** (`channelInstances({ inventory: true })`). It is browse-side
   surface, FIX-1477's half of the seam, and FIX-1475 already records that this app opens no
   inventory today.
-- **A `fsdev gen --check` failure as the proof that the kind is generated.** It is already a CI
-  step for the whole repo; asserting it inside this issue's goal would be a second copy of an
-  existing check rather than evidence about this tree.
+- **A `fsdev gen --check` failure as this issue's proof that the kind is generated.** `--check`
+  is a *staleness* gate — it compares the committed module against what the tree renders — and CI
+  already runs it over this very app (`--filter @flow-state-dev/kitchen-sink`), so a copy would
+  assert nothing new. What it never reads is what the map *contains*: it passes today with
+  `channelKinds = {}`. That is [V1](PLAN.md#the-checks)'s assertion, and it is red on `main` now.
 
 <a name="open"></a>
 ## Open
@@ -89,10 +91,9 @@ this set.
 
 The ticket's EM fences lock *"one `ChannelFlow` factory with kind clones (`dm` / `topic` /
 `workstream`), each a real kind file"*, and the 2026-09-20 amendment reaffirmed it while
-correcting `CHANNELS.md`. [D1](#d1) narrows it to one kind. The evidence is three facts on
-`origin/main`, none of which the fence engages with: `DefineChannelFlowOptions` has no `kind`
-field; `defineFlow({ kind: CHANNEL_KIND })` is literal; `holdsBoards` gates `boards:` on the
-`withBoards` method only `defineChannelFlow` attaches.
+correcting `CHANNELS.md`. [D1](#d1) narrows it to one kind, on three facts on `origin/main` the
+fence does not engage with. The evidence is in [D1](#d1) and is not repeated here; a `/simplify`
+review has since confirmed all three against `main` independently.
 
 **This is a narrowing, so it is flagged rather than assumed.** [ER-19](../../epics/FIX-1455/BUSINESS-RULES.md)
 sends a *cross-cutting* question up; this one is inside FIX-1476's own scope, which

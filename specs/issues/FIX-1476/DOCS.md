@@ -79,14 +79,18 @@ takes only a restart."*, add:
 > boot, so a board added to an open channel's file is usable after a restart.
 >
 > The channels open under one organization, named in `workforce/org.ts`. That is a storage scope,
-> not a permission: this app configures no authentication, so nothing verifies it. On a host that
-> does, each session takes the organization of the verified caller and the value in that file is
-> ignored.
+> not a permission: this app configures no authentication, so nothing verifies it. If you add
+> authentication, set that value to the organization your callers resolve to. A session's
+> organization is fixed when it is created, so otherwise the first boot opens each channel under
+> the caller's organization, and the next boot compares that against the value in the file, finds
+> them different, and refuses to re-open the channel by name.
 
 ## 3 · The three `CHANNEL.md` charters
 
 The files are the reference, so each carries its own lesson in its body rather than relying on
-the README. Proposed bodies:
+the README. **One sentence each, and no second explanation** — §2 above is the canonical surface
+for why `escalations` is unwired and what the boot prints; a charter points at the fact, never
+re-argues it. Proposed bodies:
 
 **`desk/CHANNEL.md`**
 

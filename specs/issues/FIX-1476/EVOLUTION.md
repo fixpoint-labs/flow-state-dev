@@ -8,7 +8,7 @@ narrowing is [D1](DECISIONS.md#d1).
 | Earlier | State | What this spec does with it |
 |---|---|---|
 | **The channel file convention (FIX-1352)** — a kind as `flows/channels/<kind>.ts` gathered by `fsdev gen`, an instance as `CHANNEL.md` with an optional `flow:` | Shipped, published in [code-on-disk.md](../../../apps/docs/docs/workforce/code-on-disk.md) and [channels.md](../../../apps/docs/docs/workforce/channels.md) | **Consumed unchanged.** This is the first app tree that uses both halves |
-| **Board v1 (FIX-1385)** — a bare local name list, a minted ledger per name, explicit per-seat drain, the unattended warning, one factory | Shipped, and proven end to end by `goals/channel-boards/it-runs-a-row-a-file-declared-board-holds` (PASS, 2026-09-19) | **Consumed unchanged, and not re-proved.** This issue's check covers the two legs that goal leaves out — the warning and the subset — inside the served app |
+| **Board v1 (FIX-1385)** — a bare local name list, a minted ledger per name, explicit per-seat drain, the unattended warning, one factory | Shipped, and proven end to end by `goals/channel-boards/it-runs-a-row-a-file-declared-board-holds` (PASS, 2026-09-19) | **Consumed unchanged, and not re-proved.** This issue's check adds the two behaviours that goal cannot reach — the warning and the subset drain — and the structural legs proving this app's own tree is wired ([the checks](PLAN.md#the-checks)) |
 | **The epic body's `CHANNELS.md` kind/family file** | Never existed. Zero occurrences anywhere on `origin/main` | Already superseded by the epic's [D4](../../epics/FIX-1455/DECISIONS.md#d4). Named here only so a reader coming from the ticket's pre-amendment text is not left looking for it |
 
 ## What is narrowed, and on what
@@ -18,21 +18,12 @@ narrowing is [D1](DECISIONS.md#d1).
 sequencer per kind."*** Written 2026-09-20 and reaffirmed in the amendment banner the same day.
 
 It is unbuildable as written, on three facts in
-`packages/workforce/src/channel/channel-flow.ts` and `channel-binder.ts`:
-
-1. `DefineChannelFlowOptions` declares exactly `notify`, `boards`, `inventory`. There is no
-   `kind`.
-2. The factory calls `defineFlow({ kind: CHANNEL_KIND, … })`, and `CHANNEL_KIND` is the literal
-   `"channel"`. So *one factory, three kind names* has no expression: a kind under a different
-   name is a different `defineFlow` call with its own graph, which is the *"same body"* clause
-   inverted.
-3. `channelInstances` refuses `boards:` unless `holdsBoards(factory)`, which tests for the
-   `withBoards` method only `defineChannelFlow` attaches. All three clones would be
-   board-incapable — in an issue whose deliverable is the board drain.
-
-`channels.md` says the same thing from the reader's side, and said it before the fence was
-written: *"A standup, a direct message and an announcement channel are all channels on the one
-built-in kind, told apart by their members and their charter, not by being different kinds."*
+`packages/workforce/src/channel/channel-flow.ts` and `channel-binder.ts`: there is no `kind`
+option, `CHANNEL_KIND` is a literal, and `holdsBoards` gates `boards:` on a method only the
+built-in factory attaches — so all three clones would be board-incapable, in an issue whose
+deliverable is the board drain. The full argument, the evidence, and the published `channels.md`
+line that says the same thing from the reader's side are in [D1](DECISIONS.md#d1), and are not
+repeated here.
 
 **What survives the narrowing.** Everything the fence was protecting. *Real kind files, not
 labels* — [S1](PLAN.md#surfaces) is a real file and the generated `channelKinds` map names it.

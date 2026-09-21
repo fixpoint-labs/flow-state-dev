@@ -72,8 +72,11 @@ nobody names is what the warning is for.
 - **The framework.** No package changes, no new API. Every call already ships and is published in
   [channels.md](../../../apps/docs/docs/workforce/channels.md).
 - **Board mechanics as a proof.** `goals/channel-boards/it-runs-a-row-a-file-declared-board-holds`
-  already proves mint → file → drain → completed, and PASSes. This issue's check covers the two
-  legs it leaves out — the **warning** and the **subset** — inside the served app.
+  already proves mint → file → drain → completed, and PASSes, so this issue does not re-prove it.
+  Its own check adds the two **behaviours** that goal cannot reach — the unattended-board
+  **warning** and the **subset** drain — and then proves the app's tree is actually wired: the
+  generated kind map, each channel's kind, the board names, the minted id, the boot, and the
+  vocabulary. Twelve legs, in [PLAN.md → The checks](PLAN.md#the-checks).
 - **Runtime channel administration.** No create, delete or invite verb
   ([ER-16](../../epics/FIX-1455/BUSINESS-RULES.md)); FIX-1415 stays parked.
 - **Rail and navigator UI.** None ships here. The convention is rendered *through* FIX-1477's one
