@@ -196,6 +196,30 @@ function migrateAddActiveRequestsQueuedAt(db: Database.Database): void {
  * existing rows read back as no-tenant (single-tenant), which is the correct
  * pre-isolation semantics. Idempotent on subsequent boots.
  */
+/**
+ * Add the nullable `org_id` column to a `schedule_index` created before
+ * schedules carried an organization (FIX-1442).
+ *
+ * Nullable with **no backfill**: the organization a standing instruction fires
+ * into is not recoverable from the row, and defaulting it would point somebody's
+ * schedule at an organization they never chose. A row that reads back with no
+ * organization is quarantined rather than dispatched, which is the same
+ * `migration-required` treatment every other pre-attribution record gets.
+ */
+function migrateAddScheduleIndexOrgId(db: Database.Database): void {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get("schedule_index");
+  if (tableExists === undefined) return;
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info(?)")
+    .all("schedule_index") as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "org_id")) {
+    db.exec("ALTER TABLE schedule_index ADD COLUMN org_id TEXT");
+  }
+}
+
 function migrateAddTenantId(db: Database.Database): void {
   for (const tableName of ["sessions", "requests", "active_requests"]) {
     const tableExists = db
@@ -400,6 +424,7 @@ const SCHEDULE_INDEX_TABLE = `
 CREATE TABLE IF NOT EXISTS schedule_index (
   user_id      TEXT NOT NULL,
   key          TEXT NOT NULL,
+  org_id       TEXT,
   cron         TEXT NOT NULL,
   timezone     TEXT,
   next_fire_at INTEGER NOT NULL,
@@ -593,6 +618,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   migrateAddFlowId(db);
   migrateAddSuspensionStatusColumns(db);
   migrateAddResourceStateVersioning(db);
+  migrateAddScheduleIndexOrgId(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);

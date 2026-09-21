@@ -81,18 +81,24 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
       publisher = bridge.createPublisher(data.requestId ?? job.id ?? "unknown");
     }
 
-    // A job enqueued before organizations were required carries none, and a
-    // worker runs below principal resolution — there is nothing here that could
-    // recover one, and borrowing the worker's own would run somebody's work in
-    // an organization they never chose. Refused by name so the failure reads as
-    // "drain and attribute this queue", not as a flow error (BR-14, FIX-1442).
-    if (!isValidOrgId(data.orgId)) {
-      throw new OrgRequiredError(flow.kind, "this queued job");
-    }
-    const jobOrgId = data.orgId;
-
     let terminalPublished = false;
     try {
+      // A job enqueued before organizations were required carries none, and a
+      // worker runs below principal resolution — there is nothing here that
+      // could recover one, and borrowing the worker's own would run somebody's
+      // work in an organization they never chose. Refused by name so the
+      // failure reads as "drain and attribute this queue", not as a flow error
+      // (BR-14, FIX-1442).
+      //
+      // Inside the `try`, deliberately. Thrown above it the refusal skipped
+      // every terminal path: the publisher was already created, so it leaked
+      // unclosed and no error terminal ever reached a waiting subscriber, and
+      // the raw error let BullMQ retry a job that cannot become valid.
+      if (!isValidOrgId(data.orgId)) {
+        throw new OrgRequiredError(flow.kind, "this queued job");
+      }
+      const jobOrgId = data.orgId;
+
       const result = await runAction({
         flow,
         actionName: data.actionName as keyof typeof flow.actions & string,
@@ -144,10 +150,14 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
       // any write; retrying can only refuse again, so it fails outright.
       // Matched by name rather than `instanceof` for the same cross-realm
       // reason `UnrecoverableError` is below.
-      const err =
-        (caught as Error | undefined)?.name === "FlowInstanceBindingMismatchError"
-          ? new UnrecoverableError((caught as Error).message)
-          : caught;
+      // `OrgRequiredError` joins it: no attempt of this job can supply the
+      // organization it is missing, so retrying only delays the same failure.
+      const terminalByName =
+        (caught as Error | undefined)?.name === "FlowInstanceBindingMismatchError" ||
+        (caught as Error | undefined)?.name === "OrgRequiredError";
+      const err = terminalByName
+        ? new UnrecoverableError((caught as Error).message)
+        : caught;
       // Publish the error terminal only when BullMQ will NOT retry this
       // job: a non-retryable error or the final configured attempt. Earlier
       // attempts skip the publish so the web-side subscriber stays alive for

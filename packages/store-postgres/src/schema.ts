@@ -276,6 +276,19 @@ END $$;
  * Known singleton rows need no backfill to keep working — the runtime reads a
  * NULL owner on a singleton kind compatibly (BP-030).
  */
+/**
+ * FIX-1442: add the nullable `org_id` column to a `schedule_index` created
+ * before schedules carried an organization.
+ *
+ * Nullable with **no backfill**: the organization a standing instruction fires
+ * into is not recoverable from the row, and defaulting it would point somebody's
+ * schedule at an organization they never chose. A row that reads back with no
+ * organization is quarantined rather than dispatched.
+ */
+const ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION = `
+ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
+`;
+
 const ADD_FLOW_ID_MIGRATION = `
 DO $$
 DECLARE
@@ -418,6 +431,7 @@ const SCHEDULE_INDEX_TABLE = `
 CREATE TABLE IF NOT EXISTS schedule_index (
   user_id      TEXT NOT NULL,
   key          TEXT NOT NULL,
+  org_id       TEXT,
   cron         TEXT NOT NULL,
   timezone     TEXT,
   next_fire_at BIGINT NOT NULL,
@@ -606,6 +620,10 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // FIX-992: add `version` / `lifecycle` to a pre-CAS `resource_state`.
   // Purely additive; existing rows become live at version 1.
   ADD_RESOURCE_STATE_VERSIONING_MIGRATION,
+
+  // FIX-1442: add the nullable `org_id` column to a pre-attribution
+  // `schedule_index`. No backfill — see the migration's note.
+  ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION,
 
   // FIX-1010: clear an invalid index left by an interrupted concurrent build
   // so it is rebuilt below rather than skipped by `IF NOT EXISTS`.

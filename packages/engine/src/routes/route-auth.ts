@@ -19,6 +19,7 @@ import type {
   ResolvedPrincipal
 } from "../transports/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { PrincipalResolutionError } from "../transports/errors";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
@@ -367,6 +368,27 @@ export async function authorizeManagementRoute(
     // Nothing authenticates this record, so there is no identity to withhold
     // the refusal for and no oracle to open: spend it here.
     if (pendingDenial !== undefined) return { denied: pendingDenial };
+
+    // An app with no resolver still has an organization: the framework default
+    // (D3) is what every record it writes is stamped with, so that — not
+    // "nothing" — is the identity to compare against. A record carrying a
+    // DIFFERENT organization was written before the upgrade, from the
+    // caller-controlled `body.orgId` this change removes, and belongs to an
+    // organization nobody on this path can prove they are in.
+    //
+    // This is the half the earlier reading missed. "No resolver, so every
+    // record is under the default, so there is no boundary to skip" is true of
+    // records this app WROTE and false of the ones it inherited — and the
+    // inherited ones are attributed, so the `migration-required` refusal above
+    // does not reach them. Without this, the open path is the one way around
+    // BR-8.
+    if (ownerOrgId !== undefined && ownerOrgId !== DEFAULT_ORG_ID) {
+      return {
+        denied: jsonResponse(403, {
+          error: "Caller's organization does not own the requested resource"
+        })
+      };
+    }
 
     // No authentication governs this route. For a flow-scoped route that means
     // the flow is genuinely open in this app, so leave it alone.

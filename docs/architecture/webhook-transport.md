@@ -111,8 +111,8 @@ live, retrying provider at request time.
 ## Registration-time validation
 
 `validateWebhookConfig` runs inside `defineFlow`, alongside
-`validateSchedulesConfig`, and *before* the resource/`requireOrg`
-aggregation that walks each binding's handler block. No-op when `webhooks` is
+`validateSchedulesConfig`, and *before* the resource aggregation that walks
+each binding's handler block. No-op when `webhooks` is
 absent. Otherwise each provider must declare an `on` map; each binding must
 carry a `block` (the handler) and a function `input`; `sessionId`/`when`, when
 present, must be functions; provider and event keys must be non-empty. Event-key

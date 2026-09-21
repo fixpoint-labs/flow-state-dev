@@ -230,7 +230,9 @@ defineFlow({
       if (rawBody === undefined || !verifyStripe(rawBody, sig)) {
         throw new PrincipalResolutionError("Invalid signature", { status: 401 });
       }
-      return null; // defaultUserId fills in "system"
+      // The organization is required; the user is not. Returning `{ orgId }`
+      // alone lets `defaultUserId` name the system user.
+      return { orgId: process.env.STRIPE_WEBHOOK_ORG_ID! };
     }
   },
   actions: { /* ... */ }
@@ -482,9 +484,6 @@ resolved `userId` yourself — see [Calling a flow without a transport](../advan
 - Run an OAuth provider.
 - Verify that a `userId` actually belongs to the caller. That's your
   middleware or `resolvePrincipal` hook.
-- Honour `requireOrg` — the flag is reserved for future enforcement work
-  and has no runtime effect today. Org-scope state itself is fully
-  supported.
 
 For the contract details and edge cases, see
 `docs/architecture/authentication.md`.

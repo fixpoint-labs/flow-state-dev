@@ -60,6 +60,36 @@ export function createScheduleIndexConformanceTests(
       expect(due[0].cron).toBe("*/5 * * * *");
     });
 
+    /**
+     * The organization survives the round trip (FIX-1442).
+     *
+     * `orgId` is what a dispatched schedule fires into, and it is carried on
+     * the row rather than recomputed at fire time — a schedule is a standing
+     * instruction from the organization that created it. An adapter that
+     * persists every other column but drops this one loses the binding
+     * silently: `claimDue` still returns the row, still fires it, and only the
+     * organization is quietly gone, so `onDispatch` sees `undefined` and the
+     * row is quarantined as if it had never been attributed.
+     *
+     * Asserted through `claimDue` rather than by reading the table, so it holds
+     * for any backend regardless of column naming.
+     */
+    it("carries orgId through upsert and back out of claimDue", async () => {
+      const now = 1_000_000;
+      await index.upsert({
+        userId: "u1",
+        orgId: "org-acme",
+        key: "a",
+        cron: "* * * * *",
+        nextFireAt: now
+      });
+
+      const due = await index.claimDue(now, 10);
+
+      expect(due.length).toBe(1);
+      expect(due[0].orgId).toBe("org-acme");
+    });
+
     it("claimDue advances rows so they don't fire twice for the same horizon", async () => {
       const now = 1_000_000;
       await index.upsert({ userId: "u1", key: "a", cron: "* * * * *", nextFireAt: now });

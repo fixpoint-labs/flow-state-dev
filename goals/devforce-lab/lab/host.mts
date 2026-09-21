@@ -180,7 +180,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const roster = await loadTree(options.root ?? LAB_TREE);
 
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
-  // what makes the seats' `requireOrg: true` reads — and BR-17 — matter.
+  // what makes the seats' document reads — and BR-17 — matter.
   const resources = resourcesFromDocs(roster.documents);
 
   // The controls mutate the RECORD, before the mint, so a perturbed seat
@@ -315,7 +315,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // refusal this rule names therefore has to be asked for where it lives.
       if (inspectOptions?.omitOrg === true) {
         // A session id nothing has used, and that is load-bearing:
-        // `validateDispatch` satisfies a flow's `requiresOrg` from an EXISTING
+        // `validateDispatch` satisfies the org requirement from an EXISTING
         // session's stored org binding. Reusing the ordinary session would hand
         // the request the very org this probe is withholding, and the refusal
         // would never fire — a green that means nothing.

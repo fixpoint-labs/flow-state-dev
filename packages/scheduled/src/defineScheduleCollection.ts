@@ -37,11 +37,14 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
   /**
    * The organization this schedule fires into (FIX-1442).
    *
-   * Must be the organization of the execution that writes the row. It is not a
-   * caller's choice: a row naming any other organization is refused from the
-   * index below and therefore never fires, and a row naming none is a legacy
-   * row, quarantined the same way. Nullable on the schema because both of
-   * those states have to be readable to be diagnosed (BP-030).
+   * Not a caller's choice. A row naming a DIFFERENT organization than the
+   * execution writing it is refused from the index below and therefore never
+   * fires. A row naming NONE is not refused — it makes no claim to contradict,
+   * so the index stamps the writing execution's own (server-derived)
+   * organization on it. Optional on the schema because a row created through
+   * the ordinary `schedules.create({ cron, kind, enabled })` names none, and
+   * because a pre-attribution row has to stay readable to be diagnosed
+   * (BP-030).
    */
   orgId: z.string().optional(),
   cron: z.string(),
@@ -96,8 +99,9 @@ export function defineScheduleCollection(
     onInstanceCreated: async (key, state, ctx) => {
       const typed = state as ScheduleCollectionState;
       if (typed.enabled === false) return;
-      if (!bindingIsTrusted(typed, ctx.orgId, ctx.scopeId, bareKey(key))) return;
-      const row = rowFromState(ctx.scopeId, ctx.orgId, bareKey(key), typed);
+      const orgId = indexOrgFor(typed, ctx.orgId, ctx.scopeId, bareKey(key));
+      if (orgId === null) return;
+      const row = rowFromState(ctx.scopeId, orgId, bareKey(key), typed);
       if (row !== null) await index.upsert(row);
     },
     onInstanceUpdated: async (key, state, _prev, ctx) => {
@@ -112,11 +116,12 @@ export function defineScheduleCollection(
       // The row comes OUT of the index rather than being indexed under either
       // organization, so the schedule stops firing until it is written
       // correctly (BR-19).
-      if (!bindingIsTrusted(typed, ctx.orgId, ctx.scopeId, k)) {
+      const orgId = indexOrgFor(typed, ctx.orgId, ctx.scopeId, k);
+      if (orgId === null) {
         await index.remove(ctx.scopeId, k);
         return;
       }
-      const row = rowFromState(ctx.scopeId, ctx.orgId, k, typed);
+      const row = rowFromState(ctx.scopeId, orgId, k, typed);
       if (row !== null) {
         await index.upsert(row);
       } else {
@@ -165,13 +170,36 @@ function stripPrefix(storageKey: string, pattern: string): string {
  * falls out of it rather than being named: `undefined` is never an execution's
  * org, so such a row is refused by construction and needs no clause of its own.
  */
-function bindingIsTrusted(
+/**
+ * The organization to index this row under, or `null` to refuse it.
+ *
+ * Absent and mismatched are different situations, and collapsing them into one
+ * equality is what silently stopped org-less schedules from ever firing:
+ *
+ *  - **Stores no organization.** The row makes no claim, so there is nothing to
+ *    contradict. `executionOrgId` is server-derived — the organization this
+ *    execution was admitted under, never a caller-supplied field — so stamping
+ *    it is the server recording what it already knows, not a guess about who
+ *    the row belongs to. This is the state every
+ *    `schedules.create(key, { cron, kind, enabled })` produces, which is the
+ *    documented way to create a schedule: refusing it indexed nothing, returned
+ *    success, and left the caller with a schedule that never fired.
+ *  - **Stores a DIFFERENT organization.** That is a claim, and it disagrees
+ *    with the execution writing it. Indexing under either organization would
+ *    point a standing instruction somewhere nobody authorised, so the row stays
+ *    out until it is written from the organization it names (BR-19).
+ *
+ * The stamp lives on the index row rather than the resource state because this
+ * runs in a lifecycle hook, which fires after the write has already committed.
+ */
+function indexOrgFor(
   state: ScheduleCollectionState,
   executionOrgId: string,
   userId: string,
   key: string
-): boolean {
-  if (state.orgId === executionOrgId) return true;
+): string | null {
+  if (state.orgId === undefined || state.orgId === null) return executionOrgId;
+  if (state.orgId === executionOrgId) return executionOrgId;
   // eslint-disable-next-line no-console
   console.warn(
     `[flow-state/scheduled] schedule ${userId}/${key} is not indexed: its stored organization ` +
@@ -179,7 +207,7 @@ function bindingIsTrusted(
       `the organization that created it; write the row from that organization, or attribute a ` +
       `pre-existing row with the upgrade recipe in the persistence guide.`
   );
-  return false;
+  return null;
 }
 
 function rowFromState(

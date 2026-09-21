@@ -831,13 +831,11 @@ it, or pass a map that is missing one of them, and `hireWorkforce` throws, namin
 was not given. A kind that holds none needs no map. A ref passed in both maps is refused as well,
 naming it.
 
-**The flow needs an org identity, and it will not ask for one on its own.** Every file-declared
-document is org-scoped, and a flow collects `requiresOrg` from its blocks, not from its resource
-map. So a flow that installs documents and declares nothing accepts a request carrying only a
-`userId`, builds no org resource registry, and every document is then missing:
-`ctx.resources.get("teams/engineering/handbook")` throws `is not registered`, and
-`readResourceContentTool` says the same. Declare `requireOrg: true` on the blocks that read a
-document, and a request without an org is refused at the door instead of arriving empty:
+**Every file-declared document is org-scoped, and nothing needs declaring for that.** Organization
+identity is unconditional, so every admitted request carries one and the org resource registry is
+always built. A request with no organization is refused at the door rather than arriving empty. The
+`requireOrg` declaration this used to need no longer exists, and a block that still sets it is
+refused when the block is built:
 
 ```ts
 // ./blocks.ts
@@ -846,7 +844,6 @@ import { generator, readResourceContentTool } from "@flow-state-dev/core";
 export const answerQuestion = generator({
   name: "answer-question",
   model: "openai/gpt-5.4-mini",
-  requireOrg: true,
   prompt: "Answer support questions. Check the team handbook before you answer.",
   tools: [readResourceContentTool()],
 });
@@ -1544,7 +1541,7 @@ membershipPrefix("");
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource or `requireOrg`, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this seat's kind, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a seat did not name that its minted flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this seat cannot reach from its place in the tree — including every ref when no `references` map was passed), a seat id that names no place in the tree while its kind holds references, a reference the seat did not name that its minted flow reaches anyway, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this seat's kind, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a seat did not name that its minted flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this seat cannot reach from its place in the tree — including every ref when no `references` map was passed), a seat id that names no place in the tree while its kind holds references, a reference the seat did not name that its minted flow reaches anyway, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
 | A `resources/` slot, `org/`, `teams/`, a team folder, a `workers/` level or a worker folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |

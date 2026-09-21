@@ -62,10 +62,11 @@ function probe(keys: readonly string[]) {
     name: "desk-probe",
     inputSchema,
     outputSchema: z.void(),
-    // Every document is org-scoped, and a flow collects `requiresOrg` from its
-    // blocks rather than from its resource map. Without this the request is
-    // admitted with no org, no org registry is built, and every document reads
-    // as unregistered — a green `reach: []` for the wrong reason.
+    // Every document is org-scoped. Organization identity is unconditional, so
+    // an org registry is always built and no declaration is needed — the older
+    // opt-in let a request be admitted with no org, building no registry and
+    // reading every document as unregistered: a green `reach: []` for the wrong
+    // reason.
     sessionStateSchema: seatState,
     execute: async (_input, ctx) => {
       const reach: string[] = [];

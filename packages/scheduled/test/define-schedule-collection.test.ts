@@ -208,10 +208,21 @@ describe("defineScheduleCollection", () => {
       expect(index.rows.size).toBe(0);
     });
 
-    it("refuses a row with no organization at all, the same as a mismatched one", async () => {
-      // A legacy row predating organizations. Refused by the same equality —
-      // `undefined` is not the execution's org — so no separate clause is
-      // needed, but the behaviour is load-bearing and pinned here.
+    /**
+     * Absent is NOT the same as mismatched, and treating it as such is what
+     * silently stopped org-less schedules from ever firing.
+     *
+     * `schedules.create(key, { cron, kind, enabled })` is the documented way to
+     * make a schedule and produces exactly this state. Refusing it indexed
+     * nothing, returned success, and logged only a server-side warning — the
+     * caller was told their schedule existed and it never fired.
+     *
+     * A row with no organization carries no claim, so there is nothing to
+     * contradict: `ctx.orgId` is server-derived, so stamping it is the server
+     * recording what it already knows. A row naming a DIFFERENT organization is
+     * a claim that disagrees, and that one still stays out (the test above).
+     */
+    it("stamps the execution's own organization on a row that stores none", async () => {
       const index = createFakeIndex();
       const coll = defineScheduleCollection({ pattern: "schedules/*", index });
       await coll.onInstanceCreated!(
@@ -219,7 +230,30 @@ describe("defineScheduleCollection", () => {
         { cron: "0 0 * * 0", kind: "send-digest", enabled: true },
         HOOK_CTX
       );
-      expect(index.rows.size).toBe(0);
+      expect(index.rows.size).toBe(1);
+      expect(index.rows.get("user-1/legacy")?.orgId).toBe(EXEC_ORG);
+    });
+
+    /**
+     * The update half. Without it a create that stamped the org would be undone
+     * the first time the row was edited: the resource state still stores no
+     * organization (the hook fires after the write commits, so it cannot write
+     * one back), so an update that re-applied the strict equality would pull
+     * the row straight back out of the index and the schedule would stop.
+     */
+    it("keeps a row that stores no organization indexed across an update", async () => {
+      const index = createFakeIndex();
+      const coll = defineScheduleCollection({ pattern: "schedules/*", index });
+      const state = { cron: "0 0 * * 0", kind: "send-digest", enabled: true };
+      await coll.onInstanceCreated!("schedules/legacy", state, HOOK_CTX);
+      await coll.onInstanceUpdated!(
+        "schedules/legacy",
+        { ...state, cron: "0 9 * * 1" },
+        state,
+        HOOK_CTX
+      );
+      expect(index.rows.size).toBe(1);
+      expect(index.rows.get("user-1/legacy")?.cron).toBe("0 9 * * 1");
     });
   });
 

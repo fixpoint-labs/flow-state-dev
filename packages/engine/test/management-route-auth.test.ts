@@ -25,7 +25,7 @@
  * exposure.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
@@ -297,7 +297,7 @@ describe("listings scoped to the caller", () => {
     // too, which is a working feature of that app.
     const { router, stores } = buildRouter([secureFlow(), openFlow()]);
     await seedSession(stores, { id: "s-secure", flowKind: "secure", userId: "alice" });
-    await seedSession(stores, { id: "s-open", flowKind: "open", userId: "alice" });
+    await seedSession(stores, { id: "s-open", flowKind: "open", userId: "alice", orgId: DEFAULT_ORG_ID });
 
     const res = await call(router, "GET", ["sessions"]);
     const body = (await res.json()) as { sessions: { id: string }[] };
@@ -312,7 +312,7 @@ describe("listings scoped to the caller", () => {
     // browser-facing flow stays open. One such flow must not take the session
     // list away from the whole app.
     const { router, stores } = buildRouter([openFlow("chat"), secureFlow("digest")]);
-    await seedSession(stores, { id: "s-chat", flowKind: "chat", userId: "alice" });
+    await seedSession(stores, { id: "s-chat", flowKind: "chat", userId: "alice", orgId: DEFAULT_ORG_ID });
 
     const res = await call(router, "GET", ["sessions"]);
     const body = (await res.json()) as { sessions: { id: string }[] };
@@ -639,7 +639,7 @@ describe("apps on the framework default resolver", () => {
     // into the `open` flow is governed by that flow's (absent) resolver, so it
     // behaves as its author configured it.
     const { router, stores } = buildRouter([secureFlow(), openFlow()]);
-    await seedSession(stores, { id: "s-open", flowKind: "open", userId: "alice" });
+    await seedSession(stores, { id: "s-open", flowKind: "open", userId: "alice", orgId: DEFAULT_ORG_ID });
 
     const res = await call(router, "GET", ["sessions", "s-open"]);
 

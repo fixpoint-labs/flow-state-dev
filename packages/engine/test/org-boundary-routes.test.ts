@@ -99,7 +99,19 @@ function buildRouterWithHostResolver(flows: ReturnType<typeof twoAxisFlow>[]) {
 
 async function seedSession(
   stores: StoreRegistry,
-  init: { id: string; flowKind: string; flowId?: string; userId: string; orgId?: string }
+  init: {
+    id: string;
+    flowKind: string;
+    flowId?: string;
+    userId: string;
+    /**
+     * `null` is admitted deliberately: a store that predates the requirement
+     * dual-reads as `orgId?: string | null` (BP-030), so `null` is what a
+     * legacy row actually holds most of the time, not an exotic case. The
+     * record type only says `string`, hence the cast below.
+     */
+    orgId?: string | null;
+  }
 ): Promise<void> {
   const now = Date.now();
   const record: SessionRecord = {
@@ -107,7 +119,7 @@ async function seedSession(
     flowKind: init.flowKind,
     flowId: init.flowId ?? init.flowKind,
     userId: init.userId,
-    ...(init.orgId === undefined ? {} : { orgId: init.orgId }),
+    ...(init.orgId === undefined ? {} : { orgId: init.orgId as string }),
     state: {},
     version: 0,
     createdAt: now,
@@ -335,8 +347,26 @@ describe("C4 · the organization boundary on the management surface", () => {
       // route refuses with `migration-required` must not be handed out by the
       // listing beside it — otherwise the refusal is a formality anyone routes
       // around by listing instead of reading.
+      // All three shapes a row can be unattributed in, because the listing has
+      // to agree with the addressed read on EVERY one of them. `null` is not an
+      // edge case: the legacy shape is dual-read as `orgId?: string | null`
+      // (BP-030), so a row written before the requirement holds `null` as often
+      // as it holds nothing at all. A whitespace-only id is the third — it is a
+      // string, so a presence check admits it, while `isValidOrgId` does not.
       const { router, stores } = buildRouter([twoAxisFlow(), openFlow()]);
-      await seedSession(stores, { id: "legacy", flowKind: "open", userId: "u1" });
+      await seedSession(stores, { id: "legacy-missing", flowKind: "open", userId: "u1" });
+      await seedSession(stores, {
+        id: "legacy-null",
+        flowKind: "open",
+        userId: "u1",
+        orgId: null
+      });
+      await seedSession(stores, {
+        id: "legacy-blank",
+        flowKind: "open",
+        userId: "u1",
+        orgId: "   "
+      });
       await seedSession(stores, {
         id: "ok",
         flowKind: "open",
@@ -346,9 +376,11 @@ describe("C4 · the organization boundary on the management surface", () => {
 
       const listing = await call(router, "GET", ["sessions"]);
       const body = (await listing.json()) as { sessions: { id: string }[] };
-      const addressed = await call(router, "GET", ["sessions", "legacy"]);
 
-      expect(addressed.status).toBe(409);
+      for (const id of ["legacy-missing", "legacy-null", "legacy-blank"]) {
+        const addressed = await call(router, "GET", ["sessions", id]);
+        expect(addressed.status, `${id} addressed read`).toBe(409);
+      }
       expect(body.sessions.map((s) => s.id)).toEqual(["ok"]);
     });
 
@@ -463,6 +495,76 @@ describe("C4 · the organization boundary on the management surface", () => {
       const response = await call(router, "GET", ["sessions", "s1"]);
 
       expect(response.status).toBe(200);
+    });
+
+    /**
+     * The other half of "only". An app with no resolver has exactly one
+     * identity — the framework default — and that is what every record it
+     * writes is stamped with. A record carrying a DIFFERENT organization was
+     * written before the upgrade, from the caller-controlled `body.orgId` this
+     * PR removes, so it belongs to an organization nobody here can prove they
+     * are in.
+     *
+     * Without this the open path is the way around BR-8: the record is
+     * attributed, so the `migration-required` refusal does not apply to it, and
+     * the resolver-less branch returned ALLOWED before ever comparing the
+     * organization.
+     */
+    it("refuses a session stored under some other organization, on the addressed read and the listing alike", async () => {
+      // A MIXED app: the open flow is reached anonymously, and some other flow
+      // authenticates. That is where this refusal is owed and where it can be
+      // enforced — an app in which NOTHING authenticates skips the guard
+      // entirely and deliberately (see the sibling test below).
+      const { router, stores } = buildRouter([twoAxisFlow(), openFlow()]);
+      await seedSession(stores, {
+        id: "mine",
+        flowKind: "open",
+        userId: "u1",
+        orgId: DEFAULT_ORG_ID
+      });
+      await seedSession(stores, {
+        id: "pre-upgrade",
+        flowKind: "open",
+        userId: "u1",
+        orgId: "acme"
+      });
+
+      const addressed = await call(router, "GET", ["sessions", "pre-upgrade"]);
+      const listing = await call(router, "GET", ["sessions"]);
+      const body = (await listing.json()) as { sessions: { id: string }[] };
+
+      expect(addressed.status).toBe(403);
+      expect(body.sessions.map((s) => s.id)).toEqual(["mine"]);
+    });
+
+    /**
+     * The deliberate limit of the rule above, pinned so it is a decision and
+     * not an oversight.
+     *
+     * When NOTHING in the app authenticates, the route guard returns before it
+     * loads any record — the check it would perform costs a store read on every
+     * management request (the DevTool polls these) in an app that will never
+     * enforce anything. Skipping it gives up nothing: with no resolver there is
+     * no caller identity at all, so every requester is the same anonymous
+     * public, and a pre-upgrade row stamped with some other organization is
+     * readable by exactly the same people as one stamped with the default.
+     * There is no boundary between them to cross.
+     *
+     * The moment ONE flow authenticates, the two populations separate and the
+     * refusal above applies.
+     */
+    it("does not pay for the check in an app where nothing authenticates at all", async () => {
+      const { router, stores } = buildRouter([openFlow()]);
+      await seedSession(stores, {
+        id: "pre-upgrade",
+        flowKind: "open",
+        userId: "u1",
+        orgId: "acme"
+      });
+
+      const addressed = await call(router, "GET", ["sessions", "pre-upgrade"]);
+
+      expect(addressed.status).toBe(200);
     });
   });
 });

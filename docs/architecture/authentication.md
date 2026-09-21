@@ -26,11 +26,14 @@ is the reason the hook exists: identity has to come from something the
 caller cannot set.
 
 The framework's own default is the deliberate exception.
-`defaultBodyUserIdPrincipalResolver` reads `body.userId` (and
-`body.orgId`) and returns them as the principal. It is there for early
-development and the framework's tests, not as a security boundary — an
-app still on it is unauthenticated, and the guarantee above does not
-apply to it. `@flow-state-dev/node` refuses to bind such an app to a
+`defaultBodyUserIdPrincipalResolver` reads `body.userId` and returns it as
+the principal. It does **not** read `body.orgId` — the body is
+caller-controlled, so it is not a source an organization may come from
+(BP-031). An app on this resolver runs under the reserved `DEFAULT_ORG_ID`
+instead, and a body still carrying `orgId` is ignored with a once-per-host
+warning. It is there for early development and the framework's tests, not as
+a security boundary — an app still on it is unauthenticated, and the
+guarantee above does not apply to it. `@flow-state-dev/node` refuses to bind such an app to a
 network interface for exactly that reason. Everything below that speaks
 of a "configured" or "custom" resolver means one that is not this
 default.
@@ -67,12 +70,13 @@ two copies of one collection definition isolate from each other too. The
 identity above is still what that bucket is derived from, and an instance id
 is a storage coordinate, never an authorization.
 
-A custom resolver therefore owns the org boundary as well as the user one.
-Return no `orgId` and the runtime builds no org resource registry for the
-request at all — org-scoped resources are absent, not empty. Org binding is
-fixed at session creation and immutable after: a later request claiming a
-different `orgId` is rejected with `OrgBindingMismatchError` rather than
-rebinding the session. Derive `orgId` from the same trusted source as
+A custom resolver therefore owns the org boundary as well as the user one,
+and it may not decline it. Returning no `orgId`, a blank one, or the reserved
+`DEFAULT_ORG_ID` is refused with `401` — organization is unconditional, so
+there is no configuration under which a configured resolver may omit it. Org
+binding is fixed at session creation and immutable after: a later request
+claiming a different `orgId` is rejected with `OrgBindingMismatchError` rather
+than rebinding the session. Derive `orgId` from the same trusted source as
 `userId` — BP-031 covers it identically.
 
 ---

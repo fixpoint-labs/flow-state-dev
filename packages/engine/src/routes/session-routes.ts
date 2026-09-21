@@ -9,6 +9,7 @@ import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { purgeStaleResourceState } from "../context/ensure-session-record";
 import { resolveRecordOwner } from "../context/record-owner";
+import { isOrgAttributed } from "../context/org-attribution";
 import {
   asObject,
   asStringArray,
@@ -108,7 +109,21 @@ export async function handleListSessions(
   // filter at all — and handed out exactly the rows `handleGetSession` answers
   // with `409 migration-required`. A refusal the listing beside it routes
   // around is not a refusal.
-  const visible = flowVisible.filter((s) => s.orgId !== undefined);
+  // `isOrgAttributed`, not a presence check: the legacy shape is dual-read as
+  // `orgId?: string | null` (BP-030), so a presence check withholds the rows
+  // that stored nothing and hands out the ones that stored `null` — which is
+  // what a legacy row usually holds. Same predicate the addressed routes
+  // refuse on, so the two cannot disagree.
+  //
+  // `allowed !== undefined` means nothing authenticated this caller, and such
+  // an app's identity is the framework default (D3). A row stamped with some
+  // OTHER organization predates the upgrade and is refused by the addressed
+  // read, so it is withheld here for the same reason (BR-10) — the store query
+  // above could not scope it, because there was no principal to scope it by.
+  const visible = flowVisible.filter(
+    (s) =>
+      isOrgAttributed(s) && (allowed === undefined || s.orgId === DEFAULT_ORG_ID)
+  );
 
   return jsonResponse(200, {
     // Surface bare session ids — the stored `id` is the namespaced storage key.

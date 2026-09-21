@@ -15,7 +15,7 @@
  * or not the feature exists.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
@@ -123,7 +123,7 @@ function sessionRecord(
 ): SessionRecord {
   const now = Date.now();
   return {
-    orgId: "org_test",
+    orgId: DEFAULT_ORG_ID,
     id,
     flowKind: "chat",
     userId: "alice",
@@ -163,7 +163,7 @@ async function seedRequest(
     flowKind: "chat",
     actionName: "run",
     userId: "alice",
-    orgId: "org_test",
+    orgId: DEFAULT_ORG_ID,
     source: "http",
     startedAtMs: now,
     state: {},
@@ -209,7 +209,7 @@ describe("route registration", () => {
    */
   it("is session-addressed on the path id, not host-wide", async () => {
     const { router, stores } = buildRouter([secureFlow("secure")]);
-    await seedSession(stores, "parent", { flowKind: "secure" });
+    await seedSession(stores, "parent", { flowKind: "secure", orgId: "org_test" });
 
     const anonymous = await call(router, ["sessions", "parent", "children"]);
     expect(anonymous.status).toBe(401);
@@ -222,7 +222,7 @@ describe("route registration", () => {
 
   it("403s a caller who authenticated but does not own the parent", async () => {
     const { router, stores } = buildRouter([secureFlow("secure")]);
-    await seedSession(stores, "parent", { flowKind: "secure", userId: "alice" });
+    await seedSession(stores, "parent", { flowKind: "secure", userId: "alice", orgId: "org_test" });
 
     const res = await call(router, ["sessions", "parent", "children"], {
       headers: { "x-verified-user": "mallory" }
@@ -363,7 +363,7 @@ const PARENT_IDENTITY = {
   // inherits verbatim (BR-11). Matches what `seedSession` writes, so a
   // dispatched child lands in the same organization its parent was listed
   // under — which is what the listing then has to find.
-  orgId: "org_test",
+  orgId: DEFAULT_ORG_ID,
   sessionId: "parent",
   lineageId: "lin_parent"
 };

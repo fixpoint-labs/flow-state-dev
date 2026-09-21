@@ -6,11 +6,11 @@
  * already owns resolution, and this only names the failure when a flow holds
  * the board's handlers and not the board.
  *
- * **`requireOrg: true` belongs on every block that calls this.** A channel
- * board is org-scoped storage, and a flow that installs one while declaring no
- * org requirement accepts an org-less request, builds no org resource registry,
- * and resolves the board as unregistered — a failure that reads as "the board
- * was empty", which is the silent pass this lab exists to refuse.
+ * **Every request reaching this carries an organization.** A channel board is
+ * org-scoped storage, and organization identity is unconditional, so the org
+ * resource registry is always built and the board always resolves. Nothing
+ * needs declaring; the older `requireOrg` opt-in that this depended on is
+ * gone.
  */
 
 import type { BlockContext } from "@flow-state-dev/core/types";
