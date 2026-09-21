@@ -2,54 +2,210 @@
 title: Hiring while the app runs
 sidebar_position: 8
 sidebar_label: Hiring at runtime
-description: "Hire a seat into a running app and have it still be there after a restart. The roster is stored per organization, alongside everything else the app keeps."
+description: "Store a seat hired at runtime, address it per organization, and read the roster back when the app next starts. What the framework gives you, and the admin action you build on top of it."
 ---
 
 # Hiring while the app runs
 
-A `WORKER.md` file declares a seat and the app reads it when it starts. That is the usual way to describe a team, and it does not change. But some teams are not known when the app is built: a customer signs up and needs their own set of workers, or someone adds a seat from a screen rather than from a text editor. For that you hire at runtime.
+A `WORKER.md` file declares a seat and the app reads it at start. That covers a team you know about when you build the app. Some teams you don't: a customer signs up and needs their own set of workers, or someone adds a seat from a screen rather than from a text editor.
 
-A seat hired this way is written down. It is still there after a restart, a redeploy, or a crash, because it lives in the same storage the app already uses for sessions and state.
+For those, you hire while the app is running and write the seat down, so it is still there after a restart, a redeploy, or a crash.
 
-## Setting up the admin credential
+**Hiring at runtime happens over an action you write and guard yourself.** The framework gives you the storage, the address, and the read-back at the next start. The HTTP route that hires, and whatever credential stands in front of it, are yours to build. The `workforce-admin` flow this page walks through is a worked example to copy and adapt, not something the framework ships or that an environment variable switches on.
 
-The hire and fire actions exist only when a credential is configured for them. Set `WORKFORCE_ADMIN_TOKENS` to `<org>:<token>` pairs, separated by commas:
+Seats declared in `WORKER.md` files are unaffected by anything here. They are still read at start, and removing one is still a matter of editing its folder.
 
-```bash
-# One organization.
-WORKFORCE_ADMIN_TOKENS="acme:s3cr3t-acme"
+## What the framework gives you
 
-# Several.
-WORKFORCE_ADMIN_TOKENS="acme:s3cr3t-acme,bravo:s3cr3t-bravo"
-```
+All from `@flow-state-dev/workforce`:
 
-The organization on the left of the colon is the one that token hires into. Everything after the first colon is the token, so a token may contain colons and an organization id may not.
+| Call | What it does |
+| --- | --- |
+| `defineHiredRosterCollection()` | Declares the stored roster: an organization-scoped resource collection at `workforce/roster/*`, one row per hired seat. Takes no options. |
+| `seatAddress(orgId, seatId)` | Returns `<orgId>.<seatId>`, the address a hired seat answers on. Throws when the organization id is not a single address segment. |
+| `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
+| `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems }`. It registers nothing. |
 
-**Give each organization its own token.** A token that appears against two organizations is dropped entirely, along with every organization it names — otherwise which tenant it resolved would come down to the order the pairs are written in. If that leaves no usable token, the hire and fire actions are not registered and there is no hire path to reach.
+Two smaller helpers appear in the example below: `toHiredSeatRow` builds a stored row out of what a hire supplied, and `hiredSeatManifest` turns a row back into the record `hireWorkforce` takes.
 
-The examples below send just the token, which is the part after the colon:
-
-```bash
-export WORKFORCE_ADMIN_TOKEN=s3cr3t-acme
-```
+What you write around all of them: the action that hires, the credential that decides who may call it and which organization they hire into, the call to `flowstate.register()` that puts a minted seat on the air, and the policy for which organizations a start reloads.
 
 ## Hiring a seat
 
-Hiring is a flow action, and it is the one action in the app that verifies a credential of its own. It has to: it writes durable state that belongs to an organization, and the framework's stock request handling reads `orgId` straight out of the request body. Anything that trusted that would let any caller hire into any organization.
+Every seat runs a **flow kind**: one of the flows your app defines, named in a map you pass to `hireWorkforce`, and the same thing a `WORKER.md` names with `flow:`. [Workers on disk](./workers-on-disk.md#when-a-worker-needs-more-than-settings) covers writing one.
 
-So the organization comes from the credential, not from what the request says about itself.
+A hire is a handler in a flow of your own, and the order it works in matters. Refuse what you can refuse before anything is written. Mint the seat, which is where the flow kind's own settings schema runs. Write the row. Register. If registering fails, delete the row you just wrote, so a hire that failed leaves nothing behind.
+
+```ts
+// flows/workforce-admin/hire.ts
+import { handler } from "@flow-state-dev/core";
+import type { JsonObject } from "@flow-state-dev/core";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import {
+  hireWorkforce,
+  hiredSeatManifest,
+  seatAddress,
+  toHiredSeatRow,
+} from "@flow-state-dev/workforce";
+import { z } from "zod";
+
+import { deskClerkFlow } from "../desk-clerk/flow";
+import { registerSeat } from "./registry-access";
+
+/** The kinds a hire may name. Pass this same map to `reloadHiredSeats`. */
+export const kinds = { "desk-clerk": deskClerkFlow };
+
+export const hireSeat = handler({
+  name: "hire-seat",
+  inputSchema: z.object({
+    seatId: z.string().min(1),
+    flow: z.string().min(1),
+    settings: z.record(z.unknown()).default({}),
+    instructions: z.string().optional(),
+  }),
+  outputSchema: z.object({ address: z.string(), orgId: z.string() }),
+  execute: async (input, ctx) => {
+    // From the verified principal. The request body never decides this.
+    const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
+    if (!orgId) throw new Error("This credential resolves no organization.");
+
+    const address = seatAddress(orgId, input.seatId);
+    if (!Object.hasOwn(kinds, input.flow)) {
+      throw new Error(`This app carries no flow kind "${input.flow}".`);
+    }
+
+    const row = toHiredSeatRow({
+      seatId: input.seatId,
+      flow: input.flow,
+      settings: input.settings,
+      instructions: input.instructions ?? null,
+    });
+
+    // Minted from exactly what will be stored, so the row can rebuild the seat
+    // at the next start. The kind's settings schema runs here, before any write.
+    const { manifest } = hiredSeatManifest(orgId, row);
+    const [seat] = hireWorkforce([manifest], { kinds });
+    if (!seat) throw new Error(`"${address}" could not be hired.`);
+
+    const roster = ctx.resources.roster as unknown as ResourceCollectionRef;
+
+    // `create()`, never `upsert()`. Its already-exists throw is what refuses a
+    // second hire of the same seat, including two arriving at once.
+    await roster.create(input.seatId, row as unknown as JsonObject);
+
+    try {
+      registerSeat(seat);
+    } catch (error) {
+      await roster.delete(input.seatId);
+      throw error;
+    }
+
+    return { address, orgId };
+  },
+});
+```
+
+A row holds the seat's id within its organization, the flow kind, the settings bag, and the instructions. The settings bag is stored and handed back verbatim, including keys a later version of the kind adds, because it belongs to that kind's schema rather than to the roster's.
+
+`registerSeat` exists because the flow needs the `FlowState` it is itself registered on, and importing that directly is a cycle. Install it instead:
+
+```ts
+// flows/workforce-admin/registry-access.ts
+import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowState } from "@flow-state-dev/engine";
+
+let app: FlowState | undefined;
+
+/** Call once, immediately after `createFlowState`. */
+export function useFlowState(next: FlowState): void {
+  app = next;
+}
+
+export function registerSeat(seat: FlowInstance): void {
+  if (!app) throw new Error("No FlowState to register into.");
+  app.register(seat);
+}
+
+export function releaseSeat(id: string): boolean {
+  return app?.unregister(id) ?? false;
+}
+```
+
+### The organization has to come from the credential
+
+The organization comes from the credential, not from the request body. A hire writes durable state that belongs to an organization, so it has to come from something the framework can trust. Configure [`resolvePrincipal`](../server/authentication.md) on the flow and the action's `orgId` comes from there; an `orgId` in the body is ignored.
+
+```ts
+// flows/workforce-admin/flow.ts
+import { defineFlow } from "@flow-state-dev/core";
+import { defineHiredRosterCollection } from "@flow-state-dev/workforce";
+import { extractBearerToken, PrincipalResolutionError } from "@flow-state-dev/engine";
+
+import { fireSeat } from "./fire";
+import { hireSeat } from "./hire";
+
+/** Your own scheme. This one reads `<org>:<token>` pairs out of the environment. */
+const orgByToken = new Map(
+  (process.env.ADMIN_CREDENTIALS ?? "")
+    .split(",")
+    .filter(Boolean)
+    .map((pair) => {
+      const at = pair.indexOf(":");
+      return [pair.slice(at + 1), pair.slice(0, at)] as const;
+    })
+);
+
+const workforceAdmin = defineFlow({
+  kind: "workforce-admin",
+  requireUser: true,
+  authentication: {
+    requireUser: true,
+    resolvePrincipal: ({ request }) => {
+      const token = extractBearerToken(request?.headers?.get("authorization") ?? null);
+      const orgId = token === null ? undefined : orgByToken.get(token);
+      if (!orgId) {
+        throw new PrincipalResolutionError("Invalid admin credential.", { status: 401 });
+      }
+      return { userId: "workforce-admin", orgId };
+    },
+  },
+  resources: { roster: defineHiredRosterCollection() },
+  actions: {
+    hire: { block: hireSeat },
+    fire: { block: fireSeat },
+  },
+});
+
+export default workforceAdmin();
+```
+
+Give each organization its own token. A token written against two organizations resolves whichever one the parser saw last, so a copy-paste in an environment variable turns into a cross-tenant decision. Drop every binding for a token that names more than one, rather than picking a winner.
+
+Register the flow only when a usable credential is configured. Then a deployment that has none has no hire route at all, and a call to `/api/flows/workforce-admin/actions/hire` comes back `404 Unknown flow "workforce-admin"` rather than reaching a check that can go wrong.
+
+Once it is registered, a hire is an ordinary action call:
 
 ```bash
+# Convenience for the curl commands on this page. Nothing reads it but your shell;
+# the app reads ADMIN_CREDENTIALS, above.
+export ADMIN_TOKEN=s3cr3t-acme
+
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $WORKFORCE_ADMIN_TOKEN" \
+  -H "authorization: Bearer $ADMIN_TOKEN" \
   -d '{"userId":"you",
        "input":{"seatId":"support.ada","flow":"desk-clerk",
                 "settings":{"desk":"front"},
                 "instructions":"You work the front desk."}}'
 ```
 
-An `orgId` in the body is ignored. The organization's id must be a single address segment: lowercase letters, digits and single hyphens, up to 64 characters, and no dots. A dot would make the address ambiguous, since it is also what joins the organization to the seat.
+```json
+{ "address": "acme.support.ada", "orgId": "acme" }
+```
+
+The organization's id must be a single address segment: lowercase letters, digits and single hyphens, up to 64 characters, and no dots. A dot would make the address ambiguous, since it is also what joins the organization to the seat.
+
+## Calling the seat
 
 The seat answers immediately, on the same route as any other flow. Its address carries the organization that hired it:
 
@@ -61,26 +217,76 @@ curl -X POST localhost:3000/api/flows/acme.support.ada/actions/answer \
 
 The organization is part of the address because two organizations can both want a seat called `support.ada`, and an app serves one flat set of addresses. It identifies the seat. It does not authorize anything: who may call it is still decided by the principal on the request.
 
+## Reading the roster back at the next start
+
+`reloadHiredSeats` reads each organization's stored rows and hires what they name. It registers nothing, so you loop over what comes back:
+
+```ts
+// Wherever you build the FlowState, after createFlowState and useFlowState.
+const runtime = await flowstate.getRuntime();
+
+// Your policy. This one reloads every organization the deployment has a record for.
+const orgIds = [...new Set((await runtime.stores.org.list()).map((r) => r.orgId))];
+
+const { seats, problems } = await reloadHiredSeats({
+  stores: runtime.stores,
+  orgIds,
+  kinds, // the same map the hire action uses
+});
+
+for (const seat of seats) {
+  try {
+    registerSeat(seat);
+  } catch (error) {
+    problems.push(`${seat.id} — ${String(error)}`);
+  }
+}
+```
+
+The organizations are passed in rather than discovered. Which ones a start reloads is your app's policy, and there is no organization-filtered read for the framework to inherit.
+
+`problems` is a list of strings, one per row that did not become a seat, each naming the organization, the row key and the reason. Handle it rather than logging it: the number of rows in the roster and the number of seats answering are two different numbers, and a warning on stderr is not a report.
+
+The call is bounded on both sides, and neither bound returns a partial roster:
+
+- **`maxOrgs`, default 100.** Hand it more organizations than that and it throws before it reads anything, naming both numbers. Raise it with the `maxOrgs` option.
+- **`timeoutMs`, default 10000.** One bound over the whole read, not per organization. The error names the organization the read was waiting on.
+
+A read the store will not complete throws the same way. Nothing is loaded in any of these cases, and instances already running are untouched, so a transient storage failure costs a restart rather than the roster.
+
 ## Firing a seat
+
+Firing is the mirror image: delete the row, then release the address. Inside a `fireSeat` handler taking `{ seatId }`, with `orgId` resolved from the credential the same way:
+
+```ts
+const roster = ctx.resources.roster as unknown as ResourceCollectionRef;
+const existing = await roster.getOptional(input.seatId);
+if (!existing) throw new Error(`This organization hired no seat "${input.seatId}".`);
+
+await roster.delete(input.seatId);
+
+// false when nothing in this process was holding the address.
+const released = releaseSeat(seatAddress(orgId, input.seatId));
+```
 
 ```bash
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/fire \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $WORKFORCE_ADMIN_TOKEN" \
+  -H "authorization: Bearer $ADMIN_TOKEN" \
   -d '{"userId":"you","input":{"seatId":"support.ada"}}'
 ```
 
-The seat is removed from storage straight away, and the address stops answering **on the process that handled the request**. Work that was already running finishes and is saved. Nothing is cancelled and nothing is truncated.
+The row is gone straight away and the address stops answering **on the process that handled the request**. Work already running finishes and is saved. Nothing is cancelled and nothing is truncated.
 
 Firing removes the seat, not its history. Sessions, state and resources it wrote are left alone. If you want those gone, delete them yourself.
 
-You can only fire a seat your organization hired. A seat declared in a `WORKER.md` file is removed by editing that folder, not through this action.
+The roster is organization-scoped, so that `getOptional` is also the fence. Another organization's seat has no row here, and neither does a seat declared in a `WORKER.md` file; both come back undefined and are refused.
 
 ## What is stored, and where
 
-One row per seat, in an organization-scoped collection at `workforce/roster/<seatId>`. It holds what the hire supplied: the flow kind, the settings, and the instructions. It is read through the same storage adapter as everything else the app persists, so a Postgres-backed app keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.
+One row per seat, at `workforce/roster/<seatId>`, in the organization's scope. It is read through the same storage adapter as everything else the app persists, so a Postgres-backed app keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.
 
-The roster is its own thing, and it is **not** the [live inventory](inventory.md). The inventory answers *what was registered in this organization* and never removes a row, which is right for browsing and wrong for a roster you can fire a seat out of. A seat hired at runtime gets a roster row and no inventory row. Anything that wants one list of every seat, declared and hired, joins the two itself.
+The roster is not the [live inventory](./inventory.md). An inventory row means *was registered in this organization* and is never removed. A roster row is removed when the seat is fired. A seat hired at runtime gets a roster row and no inventory row, so anything that wants one list of every seat, declared and hired, joins the two itself.
 
 ## Limits worth knowing before you build on this
 
@@ -90,16 +296,8 @@ The roster is its own thing, and it is **not** the [live inventory](inventory.md
 
 **An address is not a permission.** Any caller your app already lets through can send a request to any seat address it serves, including one another organization hired — for example `POST /api/flows/acme.support.ada/actions/answer` from a caller in another organization. Their request runs against **their own** organization's data, so no records cross. What does cross is the seat's own text: the instructions whoever hired it wrote come back in the answer. If the instructions on your seats are sensitive, do not rely on the address being unguessable. Put your own check in front of them.
 
-**A restart may serve fewer seats than the roster names, and it says so.** If a stored seat names a flow kind the current code no longer has, or carries settings that kind no longer accepts, that seat is skipped. The app starts, every other seat answers, and the skipped ones are reported with the reason. The skipped row is left exactly as it was: nothing is repaired or deleted on your behalf. Fix it by putting the kind back, or by firing the seat.
+**A start may serve fewer seats than the roster names.** If a stored seat names a flow kind the current code no longer has, or carries settings that kind no longer accepts, that seat is skipped and named in `problems`. The app starts and every other seat answers. The skipped row is left exactly as it was: nothing is repaired or deleted on your behalf. Fix it by putting the kind back, or by firing the seat.
 
-**If the roster cannot be read, the app refuses to start.** A storage failure is usually temporary, and a process that fails to start is retried, so whatever was already serving keeps serving. The alternative would be an app that comes up looking healthy with a team quietly missing, which is worse and much harder to notice.
+**Listing flows is not filtered by organization.** `GET /api/flows` returns every registered instance, including the seats other organizations hired, by address — and the framework does not guard that route. Anyone who can reach your app can read the list. If that matters to you, put your own check in front of it and filter before showing it to a customer.
 
-**There is a cap on how many organizations are reloaded at start.** Past it the app refuses to start rather than loading the first few, for the same reason: a partial roster that looks complete is the failure being avoided. Raise the cap deliberately if you need to.
-
-**Listing flows is not filtered by organization.** `GET /api/flows` returns every registered instance, including the seats other organizations hired, by address — and that route is not authenticated. Anyone who can reach your app can read the list. If that matters to you, put your own check in front of it and filter before showing it to a customer.
-
-**A seat that declares a webhook provider is checked at start.** Hire one at runtime whose provider the app did not configure and the mismatch is not reported until the next restart.
-
-## Migrating
-
-Nothing to migrate. Apps that declare their whole team in files behave exactly as before: those seats are still read at start, still fail the start when a file is wrong, and are not affected by anything on this page.
+**A seat hired at runtime skips the webhook start-up check.** [Webhook providers](../server/webhooks.md) are the per-provider mechanics an app configures at mount, and a start refuses when a registered flow subscribes to one the app never configured. That check runs over the flows registered at start, so it does not see a seat hired after it. Until the next start, deliveries to that seat's webhook route come back `404 webhook_not_found`; at the next start the mismatch is raised and the start refuses.

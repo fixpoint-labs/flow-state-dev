@@ -1312,8 +1312,9 @@ seats still hire, the app still starts, and the row is left exactly as it was �
 or deleted on your behalf.
 
 A read the store will not complete rejects, and a set of organizations larger than the cap rejects
-too, naming both numbers. Neither returns a partial roster, because a short roster that looks
-complete is the failure this is guarding against.
+too, naming both numbers. The cap is `maxOrgs`, 100 by default; the read's own bound is `timeoutMs`,
+10000ms by default, and it covers the whole set rather than each organization. Neither returns a
+partial roster, because a short roster that looks complete is the failure this is guarding against.
 
 The roster is **not** the live inventory below, and the two are deliberately separate. An inventory
 row means *was registered in this organization* and is never removed; a roster row has to be
@@ -1583,7 +1584,7 @@ membershipPrefix("");
 | `seatAddress(orgId, seatId)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take it back apart. Throws when the organization is not one legal address segment — without which `acme` + `support.ada` and `acme.support` + `ada` would spell one address. |
 | `toHiredSeatRow(input)` / `parseHiredSeatRow(value)` | Build a row from what a hire supplied, and read a stored value back into one. `parseHiredSeatRow` returns `{ row }` or `{ problem }` — it never throws and never rewrites the stored value. |
 | `hiredSeatManifest(orgId, row)` / `hiredSeatRowFromManifest(orgId, manifest)` | Turn a row into the record `hireWorkforce` mints from, and back. Each returns `{ ... }` or `{ problem }`. |
-| `reloadHiredSeats(options)` | Read each organization's stored roster at boot and hire what it names. Takes `{ stores, orgIds, kinds?, maxOrgs?, timeoutMs? }` and returns `{ seats, problems }`. **It registers nothing** — loop the seats and register one at a time, folding refusals into `problems`. Rejects (loading nothing) past the org cap or when the read does not complete in its bound. |
+| `reloadHiredSeats(options)` | Read each organization's stored roster at boot and hire what it names. Takes `{ stores, orgIds, kinds?, maxOrgs?, timeoutMs? }` and returns `{ seats, problems }`. **It registers nothing** — loop the seats and register one at a time, folding refusals into `problems`. Rejects (loading nothing) past the org cap (`maxOrgs`, default 100) or when the whole read does not complete in its bound (`timeoutMs`, default 10000). |
 | `DEFAULT_MAX_RELOAD_ORGS` / `DEFAULT_ROSTER_READ_TIMEOUT_MS` | The two bounds' defaults: 100 organizations, and 10000 ms for the whole read. |
 | `HiredRosterReload` / `HiredRosterStores` / `ReloadHiredSeatsOptions` / `RowProblem` | What the reload returns, the slice of the runtime's stores it reads through, its options, and the `{ problem }` shape a row that could not be read comes back as. |
 | `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
