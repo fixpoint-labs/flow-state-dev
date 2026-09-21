@@ -43,11 +43,22 @@ id — a rule that still reads `support.<dm>` when the work lands is a rule nobo
 | BR-14 | A `CHANNEL.md`'s `members:` or charter is edited and the app restarts | The open channel keeps what it was opened with. Only `boards:` reaches it | Framework-owned, and stated to readers in [DOCS.md](DOCS.md) rather than worked around. **Red for the docs:** delete the sentence and a reader edits a charter, restarts, and concludes the tree is not read |
 | BR-15 | ~~An adopter's host resolves a principal whose org differs from the one this app declares~~ **Struck (FIX-1442).** An adopter adds authentication to this app | The channels open under whatever organization the server resolves for the caller they are opened as. A session's organization is still fixed at creation, so re-opening cannot move an already-open channel into another one — but nothing compares two organizations at boot, because the app supplies none | Framework-owned. **No red state:** the `session.orgId !== orgId` branch this rule named is gone — `git grep -c orgId origin/main -- packages/workforce/src/channel/channel-binder.ts` → `3`, all three in comments. What an adopter is told instead is in [DOCS.md](DOCS.md) §2: choose the caller, not a constant |
 
-## The DM — added by the owner's reversal
+## Notification, and the DM — added by the owner's reversal
+
+BR-16 is **not about the DM**. It is a general rule about every channel this app opens, and the
+DM is the case that made it visible ([D6](DECISIONS.md#d6)).
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-16 | A post lands in `support.<dm>` | Nobody is notified. The transcript keeps the post; no delivery is made to either member | [V13](PLAN.md#the-checks). The fan-out is declared on the built-in **factory**, so it is still dispatched for this channel like any other — what the app decides is that nothing is delivered ([D6](DECISIONS.md#d6)). The rule is therefore *nobody is notified*, and a rule saying *no fan-out runs* would be one the framework cannot keep without a `packages/workforce` change [D1](DECISIONS.md#d1) forbids |
+| BR-16 | A post lands in **any** channel on the built-in kind | **The poster is never an addressee.** Every declared member is notified except the one who wrote the post. Both halves are the rule — the poster gets nothing, *and* the others still get theirs — because a check on the first half alone passes when delivery is broken and nobody gets anything. On `desk`'s five members that is four deliveries; on `support.<dm>`'s two it is one, which is why *"a DM notifies only the other one"* needs no rule of its own | [V13](PLAN.md#the-checks). **The comparison this rests on is blocked — see [D6 → which identity](DECISIONS.md#author-identity) before implementing.** The property above is what the owner asked for and is not in doubt; which field identifies "the poster" among the addressees is, and the decided answer does not work at this floor |
+
+**Scope, stated so the diff is not read as a surprise.** BR-16 is general and the notify block is
+**shared** — kitchen-sink passes one block to the built-in factory for every channel it opens. So
+applying it changes `desk` and the DM alike, and both notify their own poster today. That wider
+diff is the point of the rule rather than a side effect: notifying somebody of their own post is
+wrong in a five-member channel exactly as it is in a two-member one. (`noticeboard` runs
+`flow: digest`, which declares **no fan-out at all** — [S1](PLAN.md#surfaces) — so it notifies
+nobody today and is unaffected either way.)
 | BR-17 | `support.<dm>` is read | It declares exactly **two** members, both of them seats, and no `flow:` line — it is a channel on the built-in kind, which is what the published [channels.md](../../../apps/docs/docs/workforce/channels.md) already tells readers a direct message is | [V3](PLAN.md#the-checks) covers the kind; the membership is [V14](PLAN.md#the-checks). **Red:** leave the roster at one member and the channel is the shape [D6](DECISIONS.md#d6) reversed |
 
 <a name="the-words"></a>

@@ -22,7 +22,7 @@ Feature · kitchen-sink + one goal check · medium · 1 PR · epic
 | **wants the work to outlive the channel** | Has the `boards:` line documented, and no worked example of it anywhere | Sees two board names in a channel's frontmatter, and a seat that runs the rows on one |
 | **wires a seat to a board** | Guesses. Wiring is explicit on purpose, so there is nothing to copy | Copies four lines: `channelBoard`, the resource entry, `taskBoard`, the drain action |
 | **forgets to wire the second board** | Rows sit `pending` and the app says nothing, because nothing hands hire the roster's board ids | Is told at boot which board nobody watches. The app ships that way so the message is visible |
-| **thinks a DM needs its own kind** | Has one sentence in the docs saying it does not | Sees a two-member channel with no `flow:` line, notifying nobody, beside a channel that genuinely needed a kind ([D6](DECISIONS.md#d6)) |
+| **thinks a DM needs its own kind** | Has one sentence in the docs saying it does not | Sees a two-member channel with no `flow:` line — where a post reaches the other member and not its own author, because that is true of every channel — beside a channel that genuinely needed a kind ([D6](DECISIONS.md#d6)) |
 
 The reference app is where a reader decides what a Workforce app *is*, and today it says a
 workforce is four seats: `channelKinds` is `{}`, no file under `apps/` calls `channelInstances`,
@@ -66,7 +66,7 @@ nobody names is what the warning is for.
     teams/support/
 +     channels/
 +       desk/CHANNEL.md             ← built-in kind · boards: [followups, escalations]
-+       <dm>/CHANNEL.md             ← built-in kind · two members · notifies nobody · no boards
++       <dm>/CHANNEL.md             ← built-in kind · two members · no boards
 +       noticeboard/CHANNEL.md      ← flow: digest · no boards
       workers/
 +       wren/WORKER.md              ← flow: followup-runner
@@ -104,10 +104,13 @@ nobody names is what the warning is for.
 2. **[D3](DECISIONS.md#d3) · One board ships deliberately unattended.** The warning is a
    deliverable, so something has to trigger it. **If wrong:** a reader copies a tree with a
    known-incomplete wiring in it and misses the line saying it is on purpose.
-3. **[D6](DECISIONS.md#d6) · The DM has two members and notifies neither.** *Your reversal, not a
-   new ask* — recorded here so the spec and the code say the same thing. **If wrong:** the
-   reference teaches that a DM is a silent channel between two seats when what you wanted was a
-   seat and a person, and the shape spreads to whatever FIX-1477 renders.
+3. **[D6](DECISIONS.md#d6) · The DM is two seats, and no post notifies its own author — in every
+   channel, not just the DM.** *Your reversal, not a new ask* — recorded here so the spec and the
+   code say the same thing. The general form is deliberate: `desk` notifies its own poster today,
+   and fixing that generally is what leaves a DM needing no kind of its own
+   ([why](DECISIONS.md#no-dm-kind)). **If wrong:** the reference teaches that a DM is two seats
+   when what you wanted was a seat and a person, and the shape spreads to whatever FIX-1477
+   renders.
 4. **[D4](DECISIONS.md#d4) · ER-6's vocabulary is Seat, Kind, Agent, Channel, Board, Team — and
    its check is review, not a mechanism.** Every other child consumes this. **If wrong:** a word
    we did not fence spreads across four children, and renaming it after FIX-1477 publishes

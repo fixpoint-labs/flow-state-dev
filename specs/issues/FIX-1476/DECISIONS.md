@@ -13,8 +13,9 @@ flowchart TD
   D1 -.->|"rejected"| X1["three kind clones: dm, topic, workstream"]
   I --> D2["D2 · three channels, because one cannot show both halves"]
   D2 -.->|"rejected"| X2["one channel · a fourth channel per shape"]
-  D2 --> D6["D6 · REVERSED by the owner · the third is a silent two-member DM"]
-  D6 -.->|"declined"| X6["delete the channel · amend the published page"]
+  D2 --> D6["D6 · REVERSED by the owner · two seats, and no post notifies its author"]
+  D6 -.->|"declined"| X6["delete the channel · amend the published page · a silent DM"]
+  D6 -.->|"refused, and why is written down"| X7["a dm kind: membership is not workflow"]
   I --> D3["D3 · the drain rides its own worker kind; one board is unattended"]
   D3 -.->|"rejected"| X3["wire the board onto desk-clerk · attend both boards"]
   I --> D4["D4 · ER-6 vocabulary, checked by review"]
@@ -88,7 +89,7 @@ wanted the reference app to teach, that is a product call and this card is the w
 settle it. Flagged rather than assumed.
 
 <a name="d6"></a>
-## D6 · The DM has two members and notifies neither — the owner's reversal, after seeing it built
+## D6 · The DM is two seats, and no channel notifies a post's own author — the owner's reversal, after seeing it built
 
 **This is not a correction. It is a decision the product owner changed after the one-member
 version shipped in front of him**, on [#2007](https://github.com/fixpoint-labs/flow-state-dev/pull/2007).
@@ -98,27 +99,86 @@ Recorded as a reversal rather than folded in silently, so what was thought befor
 | | |
 |---|---|
 | **Was** | [D2](#d2)'s third channel: `support.ada-dm`, one member, no `flow:` line. The lesson was *a direct message is not a kind of its own — it is a channel with one member* |
-| **What changed his mind** | A private channel with a roster of one still fans a notification out to that one member, which is not what a DM is. In his words: *"a DM between the user and the agent can just be a session on the agent flow. A DM channel seems far too noisy. Its private and shouldn't have subscriptions, there is no point. DM channel sessions are really between two agents. Its how they communicate in a way that they preserve a transcript that is coherent."* |
-| **Instead of** | Deleting the channel and shipping two · amending the published [channels.md](../../../apps/docs/docs/workforce/channels.md), which still tells readers a direct message is a channel on the built-in kind. **The owner declined both**, and the published page is explicitly out of scope for this amendment |
-| **Locks in** | The third channel stays, on the built-in kind with no `flow:` line, and becomes a **genuine two-party DM that emits no notifications**: exactly two members, both of them seats, and a post that delivers to neither. Its lesson is now *two seats keeping a coherent transcript between themselves*, not *a roster of one* |
+| **What changed his mind** | A private channel with a roster of one still fans a notification out to that one member, which is not what a DM is. In his words: *"a DM between the user and the agent can just be a session on the agent flow. A DM channel seems far too noisy. Its private and shouldn't have subscriptions, there is no point. DM channel sessions are really between two agents. Its how they communicate in a way that they preserve a transcript that is coherent."* Then, on the amendment: *"This is probably a special DM channel flow where the flow knows which DM said something, so it only notifies the other. Otherwise a normal channel flow would notify all subscribers, which would cause the sender to also be notified of their own send."* |
+| **Instead of** | Deleting the channel and shipping two · amending the published [channels.md](../../../apps/docs/docs/workforce/channels.md), which still tells readers a direct message is a channel on the built-in kind. **The owner declined both**, and the published page is explicitly out of scope for this amendment. Also rejected: a **silent** DM, which is what a first reading of the reversal produced and which the requirement above replaces — silence was never what he asked for |
+| **Locks in** | Two things, and only the first is about the DM. **One:** the third channel stays, on the built-in kind with no `flow:` line, with exactly two members, both of them seats. Its lesson is *two seats keeping a coherent transcript between themselves*, not *a roster of one*. **Two:** no post notifies its own author, **in any channel** ([BR-16](BUSINESS-RULES.md)) |
 | **A vocabulary trap, flagged** | The owner's words say *agents*; the file says **seats**, and [the words](BUSINESS-RULES.md#the-words) put *agent* in Seat's **is-not** column. So the charter and every `description:` must say members or seats — writing *"two agents"* into a `CHANNEL.md` fails [V10](PLAN.md#the-checks) by rule. The reversal is his; the word is ours, and [D4](#d4) already decided it |
 | **Not decided here** | **The channel's new folder name (and therefore its id), and which second seat joins `support.ada`.** The old id `support.ada-dm` is carried below as `support.<dm>` wherever a rule names it. Both are the implementing agent's, in flight now — every `support.<dm>` in this spec set is a placeholder to be replaced with the shipped id, not a name to build to |
 
-**On "emits no notifications", stated as what the framework can deliver rather than what is
-hoped.** The built-in kind is one factory with one `notify` slot, and [D1](#d1) forbids touching
-`packages/workforce`, so a *framework-level* per-instance opt-out is not available. It does not
-need to be: the notify block is the **app's own** (`workforce/channel-notify.ts`, [S5](PLAN.md#surfaces)),
-and every delivery it is handed carries `channelId` — `channelNotifyInputSchema` declares it as
-*"The channel's session id"* (`packages/workforce/src/channel/channel-flow.ts:523-525`). A block
-that delivers nothing for one channel id is user-space and buys no framework change.
+**Why the rule is general, and not the DM rule it looks like.** *"Notify the other one"* is what a
+two-member channel wants; *"do not notify the poster"* is what **every** channel wants, and the
+second produces the first for free. `desk` has five members and notifies all five of their own
+posts today — the same defect, just less obvious with a wider roster. Writing the DM-shaped rule
+would have left that in place and made the DM look like a special case, which is precisely the
+conclusion the next paragraph exists to refuse.
 
-**What that does and does not buy, precisely.** The fan-out is still *dispatched* for every post
-on the built-in kind — it is declared on the factory, and whether it runs is not per-instance.
-What the app controls is whether anything is **delivered**. So the rule this spec can carry is
-*a post in the DM notifies nobody* ([BR-16](BUSINESS-RULES.md)), not *no fan-out is dispatched*.
-If the implementation finds it needs the second, that is a `packages/workforce` change, which
-[D1](#d1) and [PLAN.md → Guardrails](PLAN.md#guardrails) forbid — **raise it as a re-gate, do not
-build it.**
+<a name="no-dm-kind"></a>
+**There is no DM kind, and the owner's own words point at one — so this is written down.** The
+reversal reads *"probably a special DM channel flow where the flow knows which DM said
+something."* It does not need one, and the reason is [D2](#d2)'s own test applied to a new fact
+rather than waived: **a kind earns its file when the *workflow* diverges, not when the membership
+does.** A DM differs from a standup by who is in it. The asymmetry he identified — the sender
+should not hear about their own send — is not a DM property at all; it is general, and once it is
+fixed generally there is nothing left for a `dm` kind to do. So [D1](#d1) holds (exactly one file
+under `flows/channels/`, and it is `digest`) and [D2](#d2) holds. **A reader who arrives here from
+the reversal wondering where the DM kind is should read this paragraph, not go looking for the
+file.** Building one would reverse D1, which is the card the whole spec was narrowed around.
+
+**How the exclusion is made, and what the framework hands the block.** The fan-out runs once per
+declared member and hands the app's notify block a `member` — *"The declared member this delivery
+is addressed to"* — alongside `postId`, `body`, `principal` and an optional `author`
+(`channelNotifyInputSchema`, `packages/workforce/src/channel/channel-flow.ts:523-531`). The
+addressee and the poster are therefore both in the same payload, so the comparison is one the
+**app's own** block makes (`workforce/channel-notify.ts`, [S5](PLAN.md#surfaces)). No
+`packages/workforce` change, no new option, nothing [D1](#d1) forbids. The fan-out is still
+*dispatched* per member — that is declared on the factory and is not per-instance — and what the
+app decides is which of those deliveries turns into a notification.
+
+<a name="author-identity"></a>
+## Which identity the skip compares — **blocked, and it needs a decision above this card**
+
+**The security judgement here is right and is not what is blocked.** It was decided that the skip
+must compare the **verified `principal`** rather than the caller-supplied `author`, because
+`author` is optional and unverified, so comparing on it lets a caller suppress somebody else's
+delivery by claiming their name. As a principle about trust that is correct, and it is the same
+principle [BP-031](../../../docs/contributing/best-practices.md) states.
+
+**It cannot be built at this floor, and that is a fact rather than a preference.** A channel
+session is bound to **one** user. The transcript line's `principal` is server-derived
+(`ctx.session.identity.userId ?? ctx.session.identity.id`, `channel-flow.ts:216`), the fan-out
+carries that same value into every delivery (`principal: line.principal`, `:991`), and the
+file's own header says what follows (`:16-21`):
+
+> a session is bound to ONE user, so the server-derived `principal` on every line of a given
+> channel is the SAME value. The `author` label is caller-supplied, stored with
+> `authorVerified: false`, and **is the only thing distinguishing participants**.
+
+So `principal` does not identify a *member*; it identifies the *channel*. Concretely, in this
+app: `desk` declares `members: [support.ada, support.grace, support.iris, support.otto,
+support.wren]`, and every delivery's `principal` is `kitchen-sink`, the caller the config opens
+channels as ([S6](PLAN.md#surfaces)). `member === principal` is therefore **never true**, for any
+member, in any channel. A skip written on it excludes nobody, every poster is still notified, and
+[V13](PLAN.md#the-checks)'s first half fails by construction — the rule would be unimplementable
+rather than merely unverified.
+
+**The two ways out, and neither is this issue's to take.**
+
+1. **Compare `author`** — the only field that distinguishes participants. It is not unguarded:
+   the post block refuses `author-not-a-member` (`:205`), so a claim can only ever name a
+   declared member, and the header calls it *"a validity check against the declared roster, not
+   authentication."* The residual cost is exactly the one identified: a caller claiming another
+   member's name withholds **that member's notification for that one post**. It cannot forge a
+   delivery, reach a non-member, or alter the transcript's `principal`. This is a real but bounded
+   trust gap, and accepting it is a product call.
+2. **Give the framework a verified per-member identity**, so `principal` means what the decision
+   assumes. That is a `packages/workforce` change, which [D1](#d1) and
+   [PLAN.md → Guardrails](PLAN.md#guardrails) forbid inside this issue.
+
+**So this is a re-gate, not an amendment, and it is recorded as blocked rather than written down
+as settled.** Per [PLAN.md → Guardrails](PLAN.md#guardrails): if the work seems to need a
+framework widen, raise it — do not build it. **Nothing in this spec pins the comparison until
+that is answered**; [BR-16](BUSINESS-RULES.md) states the property the owner asked for, which is
+unaffected either way, and [V13](PLAN.md#the-checks) grades that property rather than the field.
 
 ## Considered and dropped
 

@@ -56,8 +56,9 @@ takes only a restart."*, add:
 > names — `boards: [followups, escalations]`. The framework mints a ledger per name from where
 > the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that.
 > `<dm>` is a two-member channel with no `flow:` line, because a direct message is not a kind of
-> its own — it is a channel between two members that notifies neither, so the transcript stays
-> coherent without the noise. `noticeboard` is the case that *is* different:
+> its own — it is a channel with two members in it. Post there and the other member hears about
+> it and you do not, which is true of every channel here: nobody is notified of their own post.
+> `noticeboard` is the case that *is* different:
 > it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only
 > the most recent lines. A kind of your own cannot hold a board, which is why the boards are on
 > `desk` and not here.
@@ -112,9 +113,9 @@ re-argues it. Proposed bodies:
 
 **`<dm>/CHANNEL.md`** — the folder name is the implementer's ([D6](DECISIONS.md#d6))
 
-> Two members, and neither is notified. A direct message is not a kind of its own; it is this,
-> the kind every channel gets when it names none, with a roster of two and nothing delivered —
-> what the two keep here is a coherent transcript, not an inbox.
+> Two members, and a post reaches the other one. A direct message is not a kind of its own; it is
+> this, the kind every channel gets when it names none, with a roster of two — what the two keep
+> here is a coherent transcript between them.
 
 **`noticeboard/CHANNEL.md`**
 
