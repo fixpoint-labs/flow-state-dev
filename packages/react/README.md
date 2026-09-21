@@ -385,6 +385,8 @@ Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
 You give it sections. A section is a label and a set of flow kind names, so an app that declares a channel kind of its own adds that name to the same list.
 
+Leave `kinds` out and the section covers every kind the server registers. That is what you want when the kinds are not yours to write down, such as a tool pointed at whatever deployment is running. An empty array is not the same thing: it is a filter you did name, and it matches nothing.
+
 ```tsx
 import { FlowNavigator } from "@flow-state-dev/react";
 
@@ -407,6 +409,8 @@ Sessions load when you open a single flow instance, which is a singleton's row o
 The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
 
 The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.
+
+`leafToolbar` is handed that instance's session list, a `refresh` for it, and the flow-list entry the row was drawn from. The entry is there so you can show what the flow declares, its actions for example, without reading the flow list a second time to find out.
 
 One limit worth knowing before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. The navigator has no `orgId` prop, because the listing could not honour one, and a filter that silently does nothing is worse than no filter.
 

@@ -235,14 +235,24 @@ describe("the tool's own transport survives the move (BR-29)", () => {
     // handing it a fresh object every render reads as a rebuilt client every
     // render, and the rail spins rather than failing — a hang, not an error.
     // The tool holds its clients in provider state, and this is what says so.
+    //
+    // A LEAF IS OPEN for this, and that is the whole point: with the rail
+    // collapsed the only read in flight is the flow list, so a test that
+    // stopped here would be blind to an unstable SESSION client — which is the
+    // half a host is most likely to get wrong, because it is the one passed
+    // down into a slot-bearing subtree. Opening a leaf puts both fences in
+    // play.
     mount();
     await waitFor(() => expect(kindRow("chat")).toBeTruthy());
+    await click(kindRow("chat"));
+    await waitFor(() => expect(sessionCalls()).toHaveLength(1));
 
     const settled = calls.length;
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 120));
     });
     expect(calls.length).toBe(settled);
+    expect(sessionCalls()).toHaveLength(1);
   });
 });
 

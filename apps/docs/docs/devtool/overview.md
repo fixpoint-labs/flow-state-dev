@@ -58,17 +58,20 @@ fsdev dev --flow-dir ./my-flows
 
 Choose a flow instance by its exact ID. Its kind describes the flow; its ID identifies the copy you inspect.
 
-The navigator lists every registered instance, one row each. For most flows there is a single copy and the two are the same string, so a row just reads `reports`. A flow declared with `cardinality: "collection"` is registered once per copy, each under its own ID, and every copy gets its own row:
+The navigator groups flows by kind, and how far a kind opens comes from how it was declared. A flow declared with `cardinality: "singleton"` has one copy, so its kind row opens straight into sessions. A flow declared with `cardinality: "collection"` is registered once per copy, each under its own ID, and its kind row opens into those copies first:
 
 ```text
-> engineer-a  (engineer)
-> engineer-b  (engineer)
 > reports
+> engineer
+    engineer-a
+    engineer-b
 ```
 
-The ID is the label; the kind sits beside it, muted, when the two differ. A long ID is shortened to fit — hover the row for the full value, or use the copy button beside Sessions to put it on your clipboard. That is the string you address the instance by, so copy it rather than retyping what the row shows.
+Opening a kind asks the server nothing — the copies are already in the flow listing. Sessions are read when you open the row you are going to work in, which is a singleton's kind row or one copy under a collection kind. A kind with a hundred copies under it costs one request when you open the copy you want, not a hundred when you open the kind.
 
-Expand a row to see that copy's sessions and the actions it declares. Two copies of a kind declare the same action names but can run entirely different blocks, so the actions shown are the selected copy's.
+A long ID is shortened to fit, so each copy's row carries a copy button at its end. That is the string you address the instance by, so copy it rather than retyping what the row shows. A singleton's ID is its kind and is already shown whole.
+
+Open a copy to see its sessions, re-read them, or start a new one. The actions that copy declares sit behind the count beside them. Two copies of a kind declare the same action names but can run entirely different blocks, so what you see there belongs to the copy you opened.
 
 ## Session management
 
