@@ -22,11 +22,13 @@
  *      and fails. The two are also required to differ from each other, which
  *      is what makes "keyed by seat" distinguishable from "keyed by kind".
  *
- *   c  the INVERSE probe. A scan of `apps/kitchen-sink/**` finds no literal
- *      that registers the kind outside the generated module. Without it, legs
- *      (a) and (b) are equally consistent with somebody having written the
- *      kind into the app by hand — which is the thing "from files alone"
- *      denies.
+ *   c  the INVERSE probe. A scan of `apps/kitchen-sink/**` finds nothing
+ *      reaching the kind outside the generated module — neither its name as a
+ *      literal nor an import of its module, because a hand wiring can take
+ *      either route and only the second survives a grep for the token.
+ *      Without this leg, (a) and (b) are equally consistent with somebody
+ *      having written the kind into the app by hand — which is the thing
+ *      "from files alone" denies.
  *
  * Real path, real build, no mocking, no model. See goal.md for the contract.
  *
@@ -34,7 +36,7 @@
  */
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { KITCHEN_SINK, loadFixture, runGoal } from "../../lib/index.mts";
 
 interface Fixture {
@@ -79,6 +81,36 @@ function chunksNaming(token: string): number {
     .filter((path) => readFileSync(path, "utf8").includes(token)).length;
 }
 
+/**
+ * Whether `source` (the text of `file`) pulls in the module at `target`.
+ *
+ * The literal scan below cannot see this route, and it is the route a hand
+ * wiring would actually take: importing the kind module binds it to an
+ * identifier, and `{ [deskClerk.kind]: deskClerk }` registers it without the
+ * quoted name ever appearing. The specifier `"./flows/workers/desk-clerk"`
+ * does not contain the substring `"desk-clerk"` — the quote characters are in
+ * the wrong places — so a grep for the token walks straight past it.
+ *
+ * Covers `from "x"`, a bare `import "x"`, `import("x")` and `require("x")`.
+ * Relative and `@/`-aliased specifiers are resolved against the app; a bare
+ * package name is skipped, since nothing publishes this kind. Extensions are
+ * dropped on both sides because the app's imports are written without them.
+ */
+function importsModule(file: string, source: string, target: string): boolean {
+  const bare = (path: string) => path.replace(/\.(ts|tsx|mts|mjs|js|jsx)$/, "");
+  for (const [, specifier] of source.matchAll(
+    /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']([^"']+)["']/g
+  )) {
+    const resolved = specifier.startsWith(".")
+      ? resolve(dirname(file), specifier)
+      : specifier.startsWith("@/")
+        ? join(KITCHEN_SINK, specifier.slice(2))
+        : undefined;
+    if (resolved !== undefined && bare(resolved) === bare(target)) return true;
+  }
+  return false;
+}
+
 /** The `desk:` a seat's own `WORKER.md` declares — the value the answer must carry. */
 function declaredDesk(seatId: string): string {
   const [team, worker] = seatId.split(".");
@@ -89,22 +121,40 @@ function declaredDesk(seatId: string): string {
   return desk;
 }
 
-/** Whether anything is already answering on the goal's port. */
-async function portInUse(): Promise<boolean> {
+/**
+ * The flow index's status, or `undefined` when nothing answered at all.
+ *
+ * The two callers below want different things from this and must not share a
+ * predicate. Refusing to start wants ANY answer — something holding the port
+ * is a reason to stop whatever it is replying. Readiness wants a 200
+ * specifically: a process that answers 4xx/5xx is listening but not serving,
+ * and treating that as ready is how a run grades a server it did not build —
+ * the exact false pass the refusal below exists to prevent, in a weaker form.
+ */
+async function flowIndexStatus(): Promise<number | undefined> {
   try {
-    await fetch(`${ORIGIN}/api/flows`);
-    return true;
+    return (await fetch(`${ORIGIN}/api/flows`)).status;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
+/** Whether anything is already answering on the goal's port. */
+async function portInUse(): Promise<boolean> {
+  return (await flowIndexStatus()) !== undefined;
+}
+
 async function waitForServer(): Promise<void> {
+  let last: number | undefined;
   for (let i = 0; i < 120; i += 1) {
-    if (await portInUse()) return;
+    last = await flowIndexStatus();
+    if (last === 200) return;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error(`the built app never started on ${ORIGIN}`);
+  throw new Error(
+    `the built app never served ${ORIGIN}/api/flows — ` +
+      (last === undefined ? "nothing answered" : `the last answer was ${last}`)
+  );
 }
 
 /**
@@ -251,16 +301,24 @@ await runGoal(async () => {
   ).filter((path) => /\.(ts|tsx|mts|mjs|js|jsx)$/.test(path));
   const registrars = sources
     .filter((path) => path !== GEN_MODULE && path !== KIND_MODULE)
-    .filter((path) => readFileSync(path, "utf8").includes(`"${fixture.kind}"`));
+    .map((path) => {
+      const text = readFileSync(path, "utf8");
+      const routes: string[] = [];
+      if (text.includes(`"${fixture.kind}"`)) routes.push("names it");
+      if (importsModule(path, text, KIND_MODULE)) routes.push("imports its module");
+      return routes.length > 0 ? `${relative(KITCHEN_SINK, path)} (${routes.join(", ")})` : undefined;
+    })
+    .filter((found): found is string => found !== undefined);
   if (registrars.length > 0) {
     failures.push(
-      `the kind is named outside the generated module, so it does not come from files alone: ` +
-        registrars.map((path) => relative(KITCHEN_SINK, path)).join(", ")
+      `the kind is reached outside the generated module, so it does not come from files alone: ` +
+        registrars.join(", ")
     );
   }
   evidence.push(
-    `${sources.length} source files scanned under apps/kitchen-sink; the only literal naming "${fixture.kind}" ` +
-      `is in workforce.gen.ts and in the kind's own module`
+    `${sources.length} source files scanned under apps/kitchen-sink for both routes to the kind — the ` +
+      `literal "${fixture.kind}" and an import of its module — and the only file taking either is ` +
+      `workforce.gen.ts (the kind's own module is itself)`
   );
 
   return { failures, evidence: evidence.join("; ") };

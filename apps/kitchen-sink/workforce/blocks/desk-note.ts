@@ -9,6 +9,15 @@
  * It reads the seat's settings off `ctx.flow.config`, which is what makes it
  * useful as a demonstration: the answer names the desk this particular seat was
  * configured with, so two seats on one kind produce visibly different answers.
+ *
+ * It returns and says nothing else. The block is reachable two ways — as the
+ * `desk-clerk` kind's `answer` action, and as a tool a seat names in its
+ * `WORKER.md` — and only the first of those wants a user-facing utterance. A
+ * seat calling it as a tool already has its own answer to give, so a message
+ * emitted from in here would publish the model's tool argument as a second,
+ * client- and history-visible turn nobody asked for. The utterance therefore
+ * belongs to the action that wants it, and lives in
+ * `flows/workers/desk-clerk.ts`.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -30,18 +39,12 @@ export default handler({
   outputSchema: deskNoteOutput,
   execute: (input, ctx) => {
     const config = ctx.flow.config as { desk?: string; instructions?: string };
-    const desk = config.desk ?? "unassigned";
-    // Say the answer where a caller can hear it. A handler's return value rides
-    // its own `block_trace` row, and trace items are `{ client: false, history:
-    // false }` by type — so without this the demonstration is invisible to
-    // anyone holding the HTTP route, which is the only place a reader meets it.
-    ctx.emit.message(`[${desk} desk] ${input.note}`);
     return {
       answered: input.note,
       // `unassigned` on a kind that declares no desk — this block is reachable
       // both as a flow action and as a seat's tool, and only one of those
       // kinds has the setting.
-      desk,
+      desk: config.desk ?? "unassigned",
       instructions: config.instructions ?? "",
     };
   },
