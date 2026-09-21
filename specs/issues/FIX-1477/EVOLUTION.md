@@ -1,0 +1,22 @@
+# FIX-1477 · Evolution
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · **Evolution**
+
+Three earlier intents reach this issue, and each one is retained, amended or superseded in a
+different way. This page exists because two of them would otherwise be read as still binding —
+the issue's own Linear description says something about *inline* that the code contradicts, and
+the epic's region figure was drawn before the navigator decision.
+
+| Prior intent and precise source | Treatment | Why / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| **"Inline = request / stream / turn-local … reflects what is happening inside this turn."** Source: this issue's own Linear description, *Locked shape definitions*, written 2026-09-20 | **Amended.** The two-shape split is retained; the lifetime claim attached to it is dropped | It is wrong about the code, and the epic corrected it before this spec was written ([D5](../../epics/FIX-1455/DECISIONS.md#d5), and *Decided in review* in the same file). `Conversation` and `RequestGroupRenderer` render the full persisted `session.items`; `Approval` reconstructs a resolution from that same persisted stream; [streaming.md](../../../docs/architecture/streaming.md) makes most item types durable | **Inline names which source a region reads** — the session's item stream — against **resource-backed**, a standing collection. Both survive a reload ([DOCS.md](DOCS.md) → *Two sources*) | No behaviour changes. Read the old way, this issue would have shipped a channel that drops earlier turns and re-arms resolved approvals on reload |
+| **The rail is a channel list beside a seat list — two regions.** Source: [`figures/shell-regions.svg`](../../epics/FIX-1455/figures/shell-regions.svg), retained at the epic and inherited by this issue | **Superseded in part.** What the figure is evidence *for* — that every rail region is resource-backed — is retained and unchanged. Its labelling of the rail as two lists is replaced | The figure predates [D8](../../epics/FIX-1455/DECISIONS.md#d8), which settles that there is one navigator. The epic's plan says so in as many words and hands the redraw to this issue rather than editing it in place | [`figures/where-it-ships-from.svg`](figures/where-it-ships-from.svg), which draws the rail as one navigator with two sections ([D3](DECISIONS.md#d3)), and adds the thing the epic figure did not carry: where each region's code comes from | The epic's figure is not deleted; it stays as authored evidence. A reader who finds it should read the rail labels as superseded and everything else as current |
+| **The flow navigator as a flat list over instances**, with its instance → sessions drill-down and its cardinality branch. Source: `packages/devtool/src/react/components/navigator/` and `src/react/hooks/use-sessions.ts`, shipped by [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) | **Retained and promoted, except the list level and the pre-list sweep.** The drill-down, the cardinality branch and the read fence come across; the flat-over-instances list is replaced, and `checkInterrupted` is deliberately left behind | The file says what it was for: *"two copies of one kind are two rows here, and nothing about a row is derived from its kind"*. That was right for a tool inspecting one server and is wrong for a rail browsing a workforce, which needs the kind above the copies | [PLAN.md](PLAN.md) S2 (grouping by kind — the genuinely new level) over S1 and S3, which carry the branch and the fenced read forward | The developer tool keeps every affordance it has today, through slots, and its folder is deleted, so there is no second copy to drift ([D2](DECISIONS.md#d2)). What the **rail** does not inherit is the stale-request sweep the tool runs before every list: a rail pays only for the list it draws, so an abandoned request reads `in_progress` there until something else sweeps it ([PLAN.md](PLAN.md) → Guardrails) |
+
+**None of the three is wholly superseded**, and two are not designs at all — one is a sentence in
+a ticket and one is a picture. They are here because an implementer who finds them will
+reasonably treat them as current, and two of the three would send the work the wrong way.
+
+Before implementing, compare these against the repository rather than against this page. The
+devtool files in particular are live code and may have moved; [PLAN.md](PLAN.md) →
+*At implement time* names what to re-check.
