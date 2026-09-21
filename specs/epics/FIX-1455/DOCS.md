@@ -41,7 +41,7 @@ Two entries, in the existing list's style:
 
 - [Durable hire](./durable-hire) — a roster hired at runtime, written to your store, reloaded on
   the next boot.
-- [Workforce components](./ui) — browse an org's kinds, instances and sessions, and render its
+- [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a
   roster and boards, with React components.
 
 ---
@@ -116,26 +116,26 @@ components from the client packages.`
 > import { FlowNavigator, Roster, BoardColumns } from "@flow-state-dev/react";
 >
 > // Your channels, and your seats, from the same component.
-> <FlowNavigator kinds={["topic", "dm"]} orgId={orgId} />
-> <FlowNavigator kinds={["agent"]} orgId={orgId} />
+> <FlowNavigator kinds={["topic", "dm"]} />
+> <FlowNavigator kinds={["agent"]} />
 > ```
 >
-> Each takes the org it reads and renders from live data. Generic conversation and item
+> You name the kinds it covers; it renders from live data. Generic conversation and item
 > rendering is unchanged and still comes from the `@flow-state-dev/ui` registry.
 >
 > ## How deep the navigator goes, and why it varies
 >
-> The navigator lists a kind, and what you get when you open it depends on how that flow was
+> The navigator starts at the kind. How many levels sit under it depends on how that flow was
 > declared.
 >
-> A flow with `cardinality: "collection"` has many addressable copies, so it opens in two steps.
-> The seat kind works this way: open `agent` and you get the seats you hired, open a seat and you
-> get that seat's sessions.
+> A flow with `cardinality: "collection"` has many addressable copies, so it is **three levels**:
+> kind, then instances, then sessions. The seat kind works this way — open `agent` and you get the
+> seats you hired, open a seat and you get that seat's sessions.
 >
-> A flow with `cardinality: "singleton"` is one instance whose address is its kind, so it opens in
-> one step. Channel kinds work this way, and the reason is worth knowing: a channel **is** a
-> session on the channel kind. A hundred channels are a hundred sessions on one instance. There is
-> no middle level to show, so the navigator does not draw one.
+> A flow with `cardinality: "singleton"` is one instance whose address is its kind, so it is **two
+> levels**: kind, then sessions. Channel kinds work this way, and the reason is worth knowing: a
+> channel **is** a session on the channel kind. A hundred channels are a hundred sessions on one
+> instance. There is no middle level to show, so the navigator does not draw one.
 >
 > You do not tell it which shape to use. It reads `cardinality` off the flow list. That is
 > deliberate: a depth you passed in would be a second opinion about your own flow, and it would be
@@ -164,6 +164,14 @@ components from the client packages.`
 > because there is no runtime verb behind one. A board column shows the rows a seat drains — a
 > seat is wired to the boards it watches in code, so a column with nothing in it usually means
 > nothing drains that board.
+>
+> **The navigator does not scope by organization.** It shows the flow kinds your server has
+> registered, and under them the sessions the caller can see — which today means the caller's own
+> sessions within their tenant. There is no organization filter, so a user whose sessions span two
+> organizations inside one tenant sees both under the same kind. If that matters for your app,
+> render one navigator per kind you have already partitioned by other means, and treat the session
+> list as tenant-scoped rather than org-scoped. Org-aware listing needs the flow and session
+> inventory to carry an organization, which it does not yet.
 
 ---
 
@@ -171,9 +179,10 @@ components from the client packages.`
 
 Add, in the existing list's style:
 
-> **Workforce** — `FlowNavigator`, `Roster`, `BoardColumns`. Browse an org's kinds, their
-> instances and their sessions, and render its roster and a channel's boards, from live
-> collections. See [Workforce components](https://flow-state.dev/docs/workforce/ui).
+> **Workforce** — `FlowNavigator`, `Roster`, `BoardColumns`. Browse your flow kinds, their
+> instances and their sessions, and render a roster and a channel's boards, from live
+> collections. Session listing is tenant-scoped, not org-scoped. See
+> [Workforce components](https://flow-state.dev/docs/workforce/ui).
 
 ## UPDATE · `apps/kitchen-sink/README.md` · the opening and the "Flows" list
 

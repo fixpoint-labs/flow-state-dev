@@ -21,17 +21,44 @@ absorbs what the other two produce rather than waiting for it. The dependency sh
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
 | **FIX-1429** serve the demo | direct → impl PR | The W3 floor · `workforce/hire.ts`, which nothing imports today | Those seats in the served flow map, over the real HTTP route of the Next-built app. Its own open question (async `fsdev.config` boot vs a post-construction `createFlowState` registry) is resolved toward durable hire | FIX-1475 | Medium |
-| **FIX-1475** durable hire | spec → impl PR | FIX-1429's served workforce · the app's existing Postgres path · D2 | Runtime hire writing org-scoped durable state the next boot reloads — seats and the roster, the proof's scope ([answered](DECISIONS.md#answered-runtime-admin)). Channels and boards stay file-declared; runtime channel administration is FIX-1415's and out (ER-16) | The roster half of the rail (D7) · the epic's proof | Large |
-| **FIX-1476** channels and boards | spec → impl PR | The W4 first cut (boards, inventory) · D4 · **FIX-1477's navigator**, for the channel half of the rail — **its spec must consume the D8 navigator explicitly and must not invent a `ChannelList` of its own** (D8, ER-7, ER-9) | The shipped pair — a channel kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — written as real kind files, one ChannelFlow factory with dm / topic / workstream clones, boards as a bare name list, explicit per-seat drain, the unattended-board warning | The channel half of the rail · boards for FIX-1477 to render | Large |
-| **FIX-1477** UI package split | spec → impl PR | D5 · D7 · D8 · FIX-1475's roster · FIX-1476's boards · the three shell figures below | Inline and resource-backed components as client-package exports; kitchen-sink consuming them; the rebuilt shell's regions — including **the one navigator the rail hosts**, parameterized by kind and deriving its depth from each flow's `cardinality` (D8), promoted out of the devtool rather than re-invented | The rebuild people can copy · **the navigator FIX-1476 fills the channel half of the rail with** | Large |
+| **FIX-1475** durable hire | spec → impl PR | FIX-1429's served workforce · the app's existing Postgres path · D2 | Runtime hire writing org-scoped durable state the next boot reloads — seats and the roster, the proof's scope ([answered](DECISIONS.md#answered-runtime-admin)). Channels and boards stay file-declared; runtime channel administration is FIX-1415's and out (ER-16) | The roster and seat data FIX-1477 renders (D7) · the epic's proof | Large |
+| **FIX-1476** channels and boards | spec → impl PR | The W4 first cut (boards, inventory) · D4 | The shipped pair — a channel kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — written as real kind files, one ChannelFlow factory with dm / topic / workstream clones, boards as a bare name list, explicit per-seat drain, the unattended-board warning. **The convention and its data, not its rendering** — it ships no rail UI, and **its spec must say it consumes the D8 navigator rather than inventing a `ChannelList`** (D8, ER-7, ER-9) | The channels and boards FIX-1477 renders | Large |
+| **FIX-1477** UI package split | spec → impl PR | D5 · D7 · D8 · FIX-1475's roster · FIX-1476's channels and boards · the three shell figures below | Inline and resource-backed components as client-package exports; kitchen-sink consuming them; **every region of the rebuilt shell, both halves of the rail included** — among them **the one navigator**, parameterized by kind and deriving its depth from each flow's `cardinality` (D8), promoted out of the devtool rather than re-invented. Ships **tenant-scoped**; org-aware listing waits on the org-inventory prerequisite (below) and is not in this row | The rebuild people can copy | Large |
 | **FIX-1478** patterns shed | spec → impl PR | D6 · the five `@flow-state-dev/patterns` imports under `flows/chat-agent/` | An audit with a Workforce path or a *keep because…* per surface; the dependency dropped if no keep-notes remain; the six-control strip's justification gone | The freed control row | Small |
+
+**Inherited by FIX-1477 with the navigator — implementation notes, not decisions.** They are
+recorded here because they are the seam's foot-guns and its spec should not rediscover them.
+
+- **Fetch sessions on leaf expand only.** A session list loads when a **leaf** opens — a singleton
+  kind, or a collection instance — and **never** when a kind row opens. Listing sessions for every
+  instance under a kind is an N+1 the moment a roster has more than a handful of seats, and a
+  per-row interrupted-request sweep is the same shape wearing a different name. **This risk is new
+  to this altitude**: the devtool already gates its session fetch on the active instance
+  (`use-sessions` in `flow-item.tsx`), but [D8](DECISIONS.md#d8) adds the kind level *above* what
+  the devtool has, so the level that can fan out did not previously exist.
+- **One flow-inventory subscription, however many mounts.** If the rail mounts the navigator twice
+  with different `kinds` filters, the two share a single subscription rather than each opening
+  their own.
+- **Centralize the session-list query semantics once.** `sessionListQuery` / `useFlow`'s session
+  filter belong in `client` or `react`, with the devtool wrapping the same component — that is
+  [D5](DECISIONS.md#d5)'s *ships once* read from the other side, and the alternative is a second
+  public surface with the same job.
+- **Stress the narrow-width latch with expand-all**, not typography: many seats under one kind,
+  many sessions on one singleton kind. That is the state [D8](DECISIONS.md#d8)'s mind-changer
+  turns on, and a legible collapsed rail proves nothing about it.
+- **No third-party tree component.** It adds a dependency whose semantics do not match, and it
+  removes none of the real work — the grouping, the lazy fetch and the shared selection.
 
 **FIX-1477 owns the regions narrative, and inherits three figures with it.**
 [`shell-regions.svg`](figures/shell-regions.svg) (which region reads which source),
 [`shell-shed.svg`](figures/shell-shed.svg) (what the control strip and the patterns shed free)
 and [`shell-narrow.svg`](figures/shell-narrow.svg) (the yielding order) are authored evidence
 retained in `figures/`. They were drawn at epic altitude and belong at issue altitude: FIX-1477's
-spec takes them over, redrawing rather than re-deriving. The epic keeps only
+spec takes them over, redrawing rather than re-deriving. **`shell-regions.svg` labels the rail as
+a channel list plus a seat list; that labelling predates [D8](DECISIONS.md#d8)** and FIX-1477
+redraws those two as the one navigator when it takes the figure over. What the figure is evidence
+*for* — that every rail region is resource-backed — is unchanged by D8, which is why it is a
+redraw on handover rather than an epic-altitude edit. The epic keeps only
 [D7](DECISIONS.md#d7)'s before/after. What the epic still fixes, and FIX-1477 consumes rather
 than re-decides, is the yielding order itself ([ER-7](BUSINESS-RULES.md)) — it is a seam between
 three children, not one issue's layout call.
@@ -52,18 +79,37 @@ decision). Neither is re-parented here (ER-17).
 2. **FIX-1429 merges** → FIX-1475 can be specced against a workforce the app actually serves.
    Nothing else waits on it.
 3. **FIX-1476 and FIX-1475 merge** → FIX-1477's resource-backed components have real collections
-   to subscribe to, and the rebuilt shell can be assembled. FIX-1477 can *start* before either.
-   The navigator runs the other way: **FIX-1477 ships it and FIX-1476 renders the channel half of
-   the rail with it** ([D8](DECISIONS.md#d8)). That is an exchange, not a second hard chain — it
-   is the arrangement [D7](DECISIONS.md#d7) already set for every shell component, so no lane
-   moves in the path above. What it does change is that FIX-1476 must not ship a channel list of
-   its own in the meantime.
+   to subscribe to, and the rebuilt shell can be assembled. FIX-1477 can *start* before either,
+   against today's shapes.
+   **Rendering runs one way only.** FIX-1477 builds the navigator **and** integrates both halves
+   of the rail with it, including the channel half; FIX-1476 ships the convention and the data and
+   no rail UI at all. An earlier draft of this plan had FIX-1476 rendering through a component
+   FIX-1477 had not shipped yet while FIX-1477 waited on FIX-1476's boards — a completion cycle,
+   in which whichever finished first had to block, ship incomplete, or grow an unplanned
+   follow-up. Assigning every rendering surface to one owner is what removes it, and it is the
+   seam [ER-7](BUSINESS-RULES.md) already states rather than a new arrangement.
 4. **FIX-1478's audit completes** → either the dependency drops and the control strip's
    remaining rationale goes with it, or its keep-notes tell FIX-1477 which surfaces keep their
    controls.
 5. **ER-22, ER-23 and ER-24 all hold** → the epic wraps. ER-24 is in the gate deliberately:
    it is the reusability claim the whole set rests on, and an epic that closed on ER-22 and
    ER-23 alone would have shipped a rebuild nobody outside kitchen-sink had ever imported.
+
+## The one prerequisite outside this set
+
+**Org-scoped flow and session inventory.** [D8](DECISIONS.md#d8) records the evidence: the flow
+list is the global registry, and session listing filters by flow, user and **tenant** — never by
+org. So the navigator FIX-1477 ships is **tenant-scoped**, and a user whose sessions span two orgs
+inside one tenant sees both under one kind. `DOCS.md` states that limit on the page rather than
+documenting an `orgId` prop the stack cannot honour.
+
+**FIX-1477 depends on this prerequisite for its org-aware behaviour only.** The navigator itself is
+**not blocked** — it ships tenant-scoped, and org scoping is added when the inventory can carry an
+org. The prerequisite issue is being filed in parallel and **its FIX- id is pending at the time of
+writing**; cite it here once it lands rather than inferring one. It is the same ground as
+[FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) (*org is never optional — require org
+identity everywhere*), which this set already consumes without owning ([ER-17](BUSINESS-RULES.md)),
+surfacing from the rendering side.
 
 ## Coordination seams to watch
 
@@ -72,7 +118,7 @@ decision). Neither is re-parented here (ER-17).
 | `apps/kitchen-sink/app/page.tsx` — the shell | FIX-1475, FIX-1476, FIX-1477 | FIX-1477 owns the regions (ER-7). The other two fill them and neither re-lays-out the rail. Three parallel rewrites of one 600-line client component is the collision to expect |
 | The boot path — `fsdev.config.ts` / `createFlowState` | FIX-1429 and FIX-1475 | FIX-1429 picks the mechanism and FIX-1475 writes durable state through it. A second registration path and the roster reloads twice |
 | `CHANNEL.md` frontmatter — the boards list | FIX-1476 and FIX-1477 | FIX-1476 owns the shape; FIX-1477 renders it. The UI never widens the frontmatter to make a column easier |
-| The rail's navigator | FIX-1477 builds, FIX-1476 consumes | One component for both halves, depth derived from `cardinality` (D8, ER-7). FIX-1476 does **not** build a channel-only list while it waits — it builds the convention, and adopts the navigator when it lands. **Its spec names the navigator as a consumed surface**; a `ChannelList` appearing in that spec is the seam being breached at spec time, before a line is written. A second navigator is the collision to expect, and ER-9 forbids the `depth` prop that would paper over it |
+| The rail's navigator, and the channel half of the rail | FIX-1477 builds and integrates; FIX-1476 supplies | One component for both halves, depth derived from `cardinality` (D8, ER-7). **FIX-1476 ships no rail UI** — not the navigator, not a channel-only list, not a temporary one. It ships the convention and the data; FIX-1477 renders them. **Its spec names the navigator as the consumed surface**; a `ChannelList` appearing in that spec is the seam being breached before a line is written. Splitting rendering across the two is what created a completion cycle in an earlier draft, and a second navigator is still the collision to expect — ER-9 forbids the `depth` prop that would paper over it |
 | The control strip above the prompt | FIX-1478 and FIX-1477 | FIX-1478 removes what patterns backed; FIX-1477 decides what, if anything, takes the row. Whichever lands second reads the other's notes rather than re-auditing |
 | The Workforce docs pages | FIX-1475, FIX-1476, FIX-1477 | All three will touch them. Whichever lands second links rather than repeats; the wrap's docs polish reconciles (ER-25) |
 
