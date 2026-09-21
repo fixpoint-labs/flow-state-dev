@@ -168,10 +168,20 @@ export async function reloadHiredSeats(
   // multiplies by the org count, so a roster of fifty organizations could
   // legitimately spend fifty times the budget and still be "within bounds",
   // which is not a bound on the boot at all.
-  const readsByOrg = await withTimeout(
-    readEveryOrg(options.stores, orgIds),
+  //
+  // The map is created here and FILLED by the read, so the error factory can
+  // read it at the moment the bound expires. That is the whole of what makes
+  // BR-17's "naming the org and the store" satisfiable: the reads are
+  // sequential, so the first org missing from the map when the timer fires is
+  // exactly the one the boot is stuck on. A label built before the read
+  // starts can only ever name the count. The BOUND is unchanged — it still
+  // covers the whole set (D2); only the attribution is new.
+  const readsByOrg = new Map<string, Record<string, { state: Record<string, unknown> }>>();
+  await withTimeout(
+    readEveryOrg(options.stores, orgIds, readsByOrg),
     options.timeoutMs ?? DEFAULT_ROSTER_READ_TIMEOUT_MS,
-    `the hired roster read for ${orgIds.length} organization${orgIds.length === 1 ? "" : "s"}`
+    "the hired roster read",
+    (label, timeoutMs) => new Error(stalledReadMessage(label, timeoutMs, orgIds, readsByOrg))
   );
 
   const seats: FlowInstance[] = [];
@@ -215,11 +225,19 @@ export async function reloadHiredSeats(
 }
 
 /**
- * Read every organization's roster prefix.
+ * Read every organization's roster prefix, into the caller's map.
  *
- * Sequential. Boot latency scales with the organization count, and
- * parallelising these changes no semantics — do it if the numbers ask for it,
- * with the bound still covering the whole set rather than each read.
+ * Sequential, and that is what {@link stalledReadMessage} reads it as: at any
+ * instant the orgs already in `byOrg` are done and the first one missing is
+ * the one in flight. **Parallelise this and that inference stops holding** —
+ * the bound would still be correct, but the timeout would name an arbitrary
+ * outstanding org rather than the stalled one, so the message would have to
+ * name the whole outstanding set instead.
+ *
+ * Fills the caller's map rather than returning a fresh one for the same
+ * reason: an error factory that only runs on timeout has to be able to see
+ * how far the read got, and a map that is only handed back on success is
+ * never handed back at all in that case.
  *
  * A read that REJECTS is not caught here: a store that will not answer is the
  * fatal half of the rule, and swallowing it would report an organization as
@@ -227,11 +245,44 @@ export async function reloadHiredSeats(
  */
 async function readEveryOrg(
   stores: HiredRosterStores,
-  orgIds: readonly string[]
-): Promise<Map<string, Record<string, { state: Record<string, unknown> }>>> {
-  const byOrg = new Map<string, Record<string, { state: Record<string, unknown> }>>();
+  orgIds: readonly string[],
+  byOrg: Map<string, Record<string, { state: Record<string, unknown> }>>
+): Promise<void> {
   for (const orgId of orgIds) {
     byOrg.set(orgId, await stores.resourceState.getByPrefix("org", orgId, HIRED_ROSTER_PREFIX));
   }
-  return byOrg;
+}
+
+/**
+ * What the boot says when the roster read runs out of its bound (BR-17).
+ *
+ * Names the ORG and the STORE CALL, not just a count. A boot that fails with
+ * "the read for 40 organizations timed out" tells an operator to go looking
+ * through forty tenants; naming the one the read was on, and the exact store
+ * method it was waiting on, is the difference between a report and an alert.
+ *
+ * The `undefined` arm is not defensive padding for an impossible case: the
+ * timer and the final read settle in the same tick often enough that every
+ * org can be in the map when the factory runs, and a message claiming a
+ * stalled org that finished would be worse than one that says it could not
+ * attribute the stall.
+ */
+function stalledReadMessage(
+  label: string,
+  timeoutMs: number,
+  orgIds: readonly string[],
+  readSoFar: ReadonlyMap<string, unknown>
+): string {
+  const stalled = orgIds.find((orgId) => !readSoFar.has(orgId));
+  const progress = `${readSoFar.size} of ${orgIds.length} organization${orgIds.length === 1 ? "" : "s"} had answered`;
+  const where =
+    stalled === undefined
+      ? "no organization was still outstanding when the bound expired"
+      : `it was reading organization "${stalled}" — ` +
+        `stores.resourceState.getByPrefix("org", "${stalled}", "${HIRED_ROSTER_PREFIX}") never answered`;
+  return (
+    `${label} timed out after ${timeoutMs}ms: ${where}. ` +
+    `${progress}. Nothing was loaded — the bound covers the whole set, so a partial ` +
+    `roster is never served as the whole one.`
+  );
 }

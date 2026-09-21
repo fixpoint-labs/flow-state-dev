@@ -219,4 +219,88 @@ describe("V2 · the registry's admission contract survives unregister", () => {
     // throws. Drop the retention line in `unregister` and it admits.
     expect(() => registry.register(ledgerNumber)).toThrow(CrossFlowSchemaConflictError);
   });
+
+  it("known gap · a kind redefined under its own name is admitted and keeps reporting its FIRST schema", () => {
+    // What retention actually costs, pinned. The `unregister` doc used to
+    // claim the replacement "still conflicts against the old declaration" —
+    // it does not, and this is the check that says so. Same-kind pairs are
+    // never compared (exclusion 2 in `validateScope`'s own doc), so the
+    // replacement walks straight in; `indexParticipant` then returns early
+    // because the kind is already a participant, so the schema on file stays
+    // the ORIGINAL one. Nothing throws, and nothing is updated.
+    //
+    // Fixing it means changing what the check keys its identity on, which is
+    // FIX-1207's, not this issue's.
+    const balanceAsString = z.object({ balance: z.string().default("") });
+    const balanceAsNumber = z.object({ balance: z.number().default(0) });
+
+    const ledgerAs = (stateSchema: z.ZodTypeAny) =>
+      defineFlow({
+        kind: "ledger",
+        org: { stateSchema: stateSchema as never },
+        actions: {
+          noop: {
+            inputSchema: z.object({}).passthrough(),
+            block: handler({
+              name: "noop",
+              inputSchema: z.object({}).passthrough(),
+              execute: () => undefined,
+            }),
+          },
+        },
+      })();
+
+    const registry = createFlowRegistry();
+    registry.register(ledgerAs(balanceAsString));
+    expect(registry.describeSharedSchemas().org.stateSchema).toBe(balanceAsString);
+
+    expect(registry.unregister("ledger")).toBe(true);
+
+    // Cost (a): the genuinely different definition is admitted, silently.
+    expect(() => registry.register(ledgerAs(balanceAsNumber))).not.toThrow();
+
+    // Cost (c): the description still reports the schema of a definition that
+    // is no longer registered anywhere. Not merely "some schema" — the OLD
+    // object, and it still refuses the number the live definition requires.
+    const described = registry.describeSharedSchemas().org.stateSchema;
+    expect(described).toBe(balanceAsString);
+    expect(described!.safeParse({ balance: 1 }).success).toBe(false);
+
+    // Cost (b) falls out of the same stale entry: every OTHER kind registered
+    // afterwards is compared against `balanceAsString`, not against the
+    // `balanceAsNumber` definition that is actually live. So a kind that
+    // AGREES with what is running is refused…
+    const agreesWithLive = defineFlow({
+      kind: "ledger-number",
+      org: { stateSchema: balanceAsNumber },
+      actions: {
+        noop: {
+          inputSchema: z.object({}).passthrough(),
+          block: handler({
+            name: "noop",
+            inputSchema: z.object({}).passthrough(),
+            execute: () => undefined,
+          }),
+        },
+      },
+    })();
+    expect(() => registry.register(agreesWithLive)).toThrow(CrossFlowSchemaConflictError);
+
+    // …and a kind that CONTRADICTS what is running is admitted.
+    const contradictsLive = defineFlow({
+      kind: "ledger-string",
+      org: { stateSchema: z.object({ balance: z.string().default("") }) },
+      actions: {
+        noop: {
+          inputSchema: z.object({}).passthrough(),
+          block: handler({
+            name: "noop",
+            inputSchema: z.object({}).passthrough(),
+            execute: () => undefined,
+          }),
+        },
+      },
+    })();
+    expect(() => registry.register(contradictsLive)).not.toThrow();
+  });
 });

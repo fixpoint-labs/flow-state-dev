@@ -175,11 +175,26 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    * and the two schemas would then share one durable cell. The data outlives
    * the registration, so the constraint has to as well.
    *
-   * The cost is stated rather than hidden: a kind that is registered, then
-   * unregistered, then replaced by a genuinely different definition under the
-   * same name still conflicts against the old declaration. That is a process
-   * restart away from fixed, and it is the side of the trade that loses no
-   * data.
+   * The cost is stated rather than hidden, and it is NOT that the replacement
+   * is refused. A kind registered, unregistered, then replaced by a genuinely
+   * different definition under the same name is **admitted**, because
+   * same-kind pairs are never compared — exclusion 2 in {@link
+   * InMemoryFlowRegistry.validateScope}'s own doc, which is where all three of
+   * these come from. What the retained entry costs is:
+   *
+   *   1. the replacement goes in **silently**, however far its schemas have
+   *      moved from the ones on file;
+   *   2. the entry is never updated (`indexParticipant` returns early on a
+   *      kind it already holds), so every OTHER kind registered afterwards is
+   *      compared against the STALE schema — a kind agreeing with what is
+   *      actually running can be refused, and one contradicting it admitted;
+   *   3. `describeSharedSchemas()` reports that stale schema too, so the
+   *      diagnostic view names a definition no longer registered anywhere.
+   *
+   * All three are a process restart away from fixed, and they are the side of
+   * the trade that loses no data. Closing them means changing what identity
+   * the check keys on, which is FIX-1207's — see `validateScope`. Pinned by
+   * the "known gap" case in `test/registry/runtime-registration.test.ts`.
    */
   unregister(id: string): boolean {
     return this.flowsById.delete(id);
