@@ -50,6 +50,7 @@ DM is the case that made it visible ([D6](DECISIONS.md#d6)).
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-16 | A post lands in **any** channel on the built-in kind | **The poster is never an addressee.** Every declared member is notified except the one who wrote the post. Both halves are the rule — the poster gets nothing, *and* the others still get theirs — because a check on the first half alone passes when delivery is broken and nobody gets anything. On `desk`'s five members that is four deliveries; on `support.ada-wren`'s two it is one, which is why *"a DM notifies only the other one"* needs no rule of its own | [V13](PLAN.md#the-checks). The fan-out hands the app's own notify block both ends of the comparison — the addressee as `member` and the post's `author` — so the skip is user-space and needs no `packages/workforce` change ([S5](PLAN.md#surfaces)). It compares **`author`**, and [D6 → which identity](DECISIONS.md#author-identity) records why that rather than the verified `principal`, what the residual gap is, and why [BP-031](../../../docs/contributing/best-practices.md) does not forbid it. A post naming no author excludes nobody: nothing else in the delivery tells one member from another |
+| BR-17 | `support.ada-wren` is read | It declares exactly **two** members — `support.ada` and `support.wren`, both seats — and no `flow:` line — it is a channel on the built-in kind, which is what the published [channels.md](../../../apps/docs/docs/workforce/channels.md) already tells readers a direct message is | [V3](PLAN.md#the-checks) covers the kind; the membership is [V14](PLAN.md#the-checks). **Red:** leave the roster at one member and the channel is the shape [D6](DECISIONS.md#d6) reversed |
 
 **Scope, stated so the diff is not read as a surprise.** BR-16 is general and the notify block is
 **shared** — kitchen-sink passes one block to the built-in factory for every channel it opens. So
@@ -58,7 +59,6 @@ diff is the point of the rule rather than a side effect: notifying somebody of t
 wrong in a five-member channel exactly as it is in a two-member one. (`noticeboard` runs
 `flow: digest`, which declares **no fan-out at all** — [S1](PLAN.md#surfaces) — so it notifies
 nobody today and is unaffected either way.)
-| BR-17 | `support.ada-wren` is read | It declares exactly **two** members — `support.ada` and `support.wren`, both seats — and no `flow:` line — it is a channel on the built-in kind, which is what the published [channels.md](../../../apps/docs/docs/workforce/channels.md) already tells readers a direct message is | [V3](PLAN.md#the-checks) covers the kind; the membership is [V14](PLAN.md#the-checks). **Red:** leave the roster at one member and the channel is the shape [D6](DECISIONS.md#d6) reversed |
 
 <a name="the-words"></a>
 ## The words — ER-6, decided here and consumed by every other row
