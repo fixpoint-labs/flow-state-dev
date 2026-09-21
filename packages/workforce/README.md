@@ -1243,6 +1243,73 @@ usable the next time you run.
 It does repair a channel whose id was claimed before it was opened — a post that arrives first
 leaves an empty session there, and re-running binds it.
 
+## Hiring at runtime, and reloading at boot
+
+`hireWorkforce` turns records into flow instances, whether those records came from files or from
+somewhere else. To keep a runtime hire across restarts, store it and read it back.
+
+```ts
+import { defineHiredRosterCollection, reloadHiredSeats } from "@flow-state-dev/workforce";
+```
+
+`defineHiredRosterCollection()` is an org-scoped resource collection at `workforce/roster/*`, one
+row per hired seat. Install it under the block that does the hiring, and write the row with
+`create()` before you register the seat. `create()` throws when the key already exists, and that
+throw is what refuses a second hire of the same seat, including two arriving at once — so you need
+no lock and no check of your own. Reach for `upsert()` here and you lose the refusal without any
+sign that you did.
+
+If registration then fails, delete the row you just created before reporting the failure. A hire
+that did not take should not leave a seat waiting at the next start.
+
+A row holds the seat's id within its organization, the flow kind, the settings bag and the
+instructions. The envelope is this package's to version; the settings bag is handed back to the
+kind untouched, including keys this version has never heard of, because that bag belongs to the
+kind's own schema.
+
+`reloadHiredSeats` reads those rows back when the app starts:
+
+```ts
+const { seats, problems } = await reloadHiredSeats({
+  stores,           // the runtime's resolved stores
+  orgIds,           // which organizations to reload; you decide the policy
+  kinds,            // the same kinds map you pass to hireWorkforce
+});
+
+for (const seat of seats) {
+  try { flowstate.register(seat); }
+  catch (err) { problems.push(`${seat.id} — ${String(err)}`); }
+}
+```
+
+A reloaded seat is addressed `<orgId>.<seatId>`, so two organizations can both hold a seat called
+`support.ada`. The organization must be a single address segment — lowercase letters, digits and
+single hyphens, up to 64 characters, and no dots, since a dot is what joins the two halves.
+
+Register the seats yourself, one at a time, and fold any refusal into the same list. That is not
+ceremony: a seat the registry refuses is one seat that cannot run, not a reason for the app to fail
+to start, and admitting them as a batch would make it one.
+
+It takes the organizations rather than discovering them, because which organizations an app reloads
+is the app's decision and not one this package can make for it.
+
+`problems` is the part to handle rather than log — the same shape `openInventory` returns, for the
+same reason: the caller owns start-up policy. A row naming a kind you no longer ship, or carrying a
+setting that kind no longer accepts, comes back here with its reason instead of throwing. The other
+seats still hire, the app still starts, and the row is left exactly as it was — nothing is repaired
+or deleted on your behalf.
+
+A read the store will not complete rejects, and a set of organizations larger than the cap rejects
+too, naming both numbers. The cap is `maxOrgs`, 100 by default; the read's own bound is `timeoutMs`,
+10000ms by default, and it covers the whole set rather than each organization. Neither returns a
+partial roster, because a short roster that looks complete is the failure this is guarding against.
+
+The roster is **not** the live inventory below, and the two are deliberately separate. An inventory
+row means *was registered in this organization* and is never removed; a roster row has to be
+deletable, because firing a seat is half of what a roster is for. A seat hired at runtime gets a
+roster row and no inventory row. Anything that wants one list of every seat, declared and hired,
+joins the two itself.
+
 ## The live inventory
 
 The tree tells you what a workforce is meant to be. A `WORKER.md` declares a seat, a `CHANNEL.md`
@@ -1499,6 +1566,15 @@ membershipPrefix("");
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
 | `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. |
+| `defineHiredRosterCollection()` | The hired roster: one org-scoped row per seat hired at runtime, at `workforce/roster/<seatId>`. Takes no options. Write rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
+| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions }`. The envelope is closed; `settings` is a passthrough bag belonging to the kind's own schema. |
+| `HIRED_ROSTER_PREFIX` | The roster's storage prefix, `"workforce/roster/"`. Moving it strands every roster already written. |
+| `seatAddress(orgId, seatId)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take it back apart. Throws when the organization is not one legal address segment — without which `acme` + `support.ada` and `acme.support` + `ada` would spell one address. |
+| `toHiredSeatRow(input)` / `parseHiredSeatRow(value)` | Build a row from what a hire supplied, and read a stored value back into one. `parseHiredSeatRow` returns `{ row }` or `{ problem }` — it never throws and never rewrites the stored value. |
+| `hiredSeatManifest(orgId, row)` / `hiredSeatRowFromManifest(orgId, manifest)` | Turn a row into the record `hireWorkforce` mints from, and back. Each returns `{ ... }` or `{ problem }`. |
+| `reloadHiredSeats(options)` | Read each organization's stored roster at boot and hire what it names. Takes `{ stores, orgIds, kinds?, maxOrgs?, timeoutMs? }` and returns `{ seats, problems }`. **It registers nothing** — loop the seats and register one at a time, folding refusals into `problems`. Rejects (loading nothing) past the org cap (`maxOrgs`, default 100) or when the whole read does not complete in its bound (`timeoutMs`, default 10000). |
+| `DEFAULT_MAX_RELOAD_ORGS` / `DEFAULT_ROSTER_READ_TIMEOUT_MS` | The two bounds' defaults: 100 organizations, and 10000 ms for the whole read. |
+| `HiredRosterReload` / `HiredRosterStores` / `ReloadHiredSeatsOptions` / `RowProblem` | What the reload returns, the slice of the runtime's stores it reads through, its options, and the `{ problem }` shape a row that could not be read comes back as. |
 | `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
 | `defineChannelInventoryCollection()` | The channel inventory: one org-scoped row per open channel, at `inventory/channels/<channelId>`, carrying the channel's `members` and `openedAt`. Takes no options. |
 | `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so one seat's channels can be listed by prefix. Takes no options. |

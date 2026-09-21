@@ -79,8 +79,19 @@ const DOS_DEVICE_SEGMENTS: ReadonlySet<string> = new Set([
  * becomes the name a task board assigns by. They obey the same rule as every
  * other segment for the same reason the rest do — a kind name is half of a
  * minted flow instance id, and both are a path on disk at the same time.
+ *
+ * `Org` is the one label that names **nothing on disk**. It is the leading
+ * segment of a runtime-hired seat's address (`<org>.<seatId>`), and it is
+ * here rather than in a rule of its own because the `.` exclusion below is
+ * precisely what that address needs: org `acme` with seat `support.ada` and
+ * org `acme.support` with seat `ada` both spell `acme.support.ada`, so
+ * admitting a dotted org would make the join non-injective and one seat would
+ * silently answer at the other's address. Sharing the rule does mean an org
+ * inherits two constraints it has no need of — the reserved folder name and
+ * the Windows device names — which costs a handful of unusable org ids and
+ * buys one rule instead of two that can drift.
  */
-export type SegmentLabel = "Team" | "Worker" | "Channel" | "Document" | "Kind" | "Block";
+export type SegmentLabel = "Team" | "Worker" | "Channel" | "Document" | "Kind" | "Block" | "Org";
 
 /**
  * Labels whose segment is a *file* rather than a folder. Held as a set rather
@@ -90,7 +101,11 @@ const FILE_LABELS: ReadonlySet<SegmentLabel> = new Set<SegmentLabel>(["Document"
 
 /** Validate one path segment against the naming rules. Throws on a break. */
 export function validateSegment(segment: string, label: SegmentLabel): void {
-  const what = `${label} ${FILE_LABELS.has(label) ? "file" : "folder"} name`;
+  // `Org` names nothing on disk, so neither "file" nor "folder" is true of it.
+  const what =
+    label === "Org"
+      ? "Organization id"
+      : `${label} ${FILE_LABELS.has(label) ? "file" : "folder"} name`;
 
   if (segment.length > MAX_SEGMENT_LENGTH) {
     throw new Error(`${what} "${segment}" exceeds ${MAX_SEGMENT_LENGTH} characters`);
@@ -106,7 +121,9 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
   }
   if (!SEGMENT_PATTERN.test(segment)) {
     const identity =
-      label === "Document"
+      label === "Org"
+        ? `it becomes the leading segment of a hired seat's address, which is joined with a "."`
+        : label === "Document"
         ? `it becomes part of the document's ref, which is joined with a "/"`
         : label === "Channel"
           ? `it becomes part of the channel's identity, which is joined with a "."`

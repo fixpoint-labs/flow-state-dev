@@ -40,9 +40,29 @@ That's a full API with action execution, session management, SSE streaming with 
 - `getRouter(): Promise<FlowApiRouter>` — resolve the route handlers (first call triggers store init).
 - `ready(): Promise<void>` — eager warmup, idempotent.
 - `dispose(): Promise<void>` — drain in-process background work, close the worker, release pooled resources.
+- `register(flow)` / `unregister(id)` — add or remove one flow after startup.
 - `activeProfile`, `settings`, `meta` — read-only diagnostics.
 
 Construction is synchronous; stores initialize lazily and memoized on the first `getRouter()` / `ready()`. There's no top-level await, so the same instance works in a Next.js Route Handler.
+
+### Registering a flow after startup
+
+`createFlowState({ flows })` takes the flows an app knows about when it starts. To add one later, register it:
+
+```ts
+flowstate.register(seat);      // one instance at a time
+flowstate.unregister(seat.id); // returns false if nothing was registered under that id
+```
+
+Registration runs the same checks construction does: a duplicate id is refused, and so is a flow whose user- or org-scoped schemas conflict with one already registered. A refused registration changes nothing.
+
+`register` takes one flow rather than a list on purpose. Admitting a batch would have to either roll the whole batch back on a refusal or leave the earlier entries admitted, and a caller registering several flows almost always wants to know which one was refused and keep the rest. Loop, and handle each refusal where it happens.
+
+The registry is read once per request, so a flow registered here is served from the next request onward, in this process. A request already running is unaffected either way: it holds the flow instance it resolved, so unregistering does not cancel it, shorten its stream, or discard what it wrote. A request that arrives after an `unregister` gets the same answer it would in a process that never had the flow.
+
+Two things go stale, and both are worth knowing. Anything that reads the flow list and caches it will miss later registrations, so read per request. And an adapter that validates flows when it starts — the webhook adapter checks that every declared provider is configured — has already run, so a flow registered afterwards is not checked until the next start.
+
+`meta.flowKeys` reads the registry, so it lists the ids that are actually being served — including one registered after startup, and not one that has been unregistered.
 
 ### Shutdown
 

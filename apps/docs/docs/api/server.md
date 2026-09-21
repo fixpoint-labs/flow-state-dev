@@ -40,18 +40,33 @@ interface FlowState<TSettings extends object = FlowStateSettings> {
   ready(): Promise<void>;
   /** Drain in-process background work, close the worker, release pooled resources. */
   dispose(): Promise<void>;
+  /** Admit one flow after startup. Throws if it is refused. */
+  register(flow: FlowInstance): void;
+  /** Release one address. False if nothing was registered under that id. */
+  unregister(id: string): boolean;
   /** The active profile name. */
   readonly activeProfile: string;
   /** The settings bag, typed via TSettings. */
   readonly settings: TSettings;
   /** Diagnostics. */
   readonly meta: {
+    /** The instance ids currently registered. */
     flowKeys: string[];
     profileKeys: string[];
     declaredSlots: Record<string, CapabilitySlot[]>;
   };
 }
 ```
+
+#### Registering a flow after startup
+
+`createFlowState({ flows })` takes the flows an app knows about when it starts. `register` adds one later, and `unregister` removes one.
+
+Both run the same checks construction runs, so a duplicate id or a conflicting scope schema is refused and nothing changes. `register` takes one flow rather than a list, because admitting a batch would have to either roll the whole batch back on a refusal or leave the earlier entries admitted — and a caller registering several almost always wants to keep the rest and know which one was refused.
+
+The registry is read once per request, so a flow registered here is served from the next request onward, **in this process**. Other processes pick it up when they next start. A request already running is unaffected by an `unregister`: it holds the flow instance it resolved, so its stream is not truncated and what it wrote is not discarded.
+
+Two things go stale. Anything that caches the flow list misses later registrations, so read it per request. And an adapter that validates flows when it starts — the webhook adapter checks that every declared provider is configured — has already run, so a flow registered afterwards is not checked until the next start.
 
 #### Shutdown
 
