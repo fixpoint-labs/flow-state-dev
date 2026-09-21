@@ -2,8 +2,9 @@
  * Small flow-level steps for the chat turn — state writes and thinking-style
  * resolution that sit around the main router in `run/run.ts`.
  *
- * These only mutate session state (`.tap`-shaped) or compose the classifier;
- * none produce conversational output.
+ * These only mutate session state (`.tap`-shaped) — the requested mode, the
+ * feature flags, the resolved thinking style, the request count. None produce
+ * conversational output.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
