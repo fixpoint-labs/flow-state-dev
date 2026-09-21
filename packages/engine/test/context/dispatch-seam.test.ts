@@ -245,7 +245,6 @@ describe("a dispatcher delivering into an existing session (the `id` policy)", (
       // created.
       const orgRun = (to: string, orgId?: string) =>
         runAction({
-    orgId: DEFAULT_ORG_ID,
           flow,
           actionName: "deliver",
           input: { to, note: "org" },

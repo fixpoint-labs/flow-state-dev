@@ -22,7 +22,6 @@
  */
 
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";

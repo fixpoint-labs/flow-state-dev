@@ -175,29 +175,40 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
  * collection's ownerless row has NO instance whose authentication could
  * govern it, and letting it fall to the host resolver would serve an
  * authenticated collection's history to whoever the host admits. It is
- * refused here with the same `409 migration-required` the record routes
- * answer, before any resolver is picked.
+ * refused with the same `409 migration-required` the record routes answer.
+ *
+ * The refusal is DECIDED here and delivered later: the caller is authenticated
+ * first, and only then is it spent (see `pendingDenial` in
+ * `authorizeManagementRoute`). An anonymous caller gets the ordinary `401`, so
+ * the status cannot be used to probe which ids exist and which predate
+ * organizations.
  */
 function ownerFlowOf(
   ctx: RouteAuthContext,
   record: OwnedRecord & OrgAttributedRecord
 ): { flow?: FlowInstance; denied?: Response } {
+  const owner = resolveRecordOwner(ctx.registry, record);
+  const flow = owner.ok ? owner.flow : undefined;
   // The organization axis is checked FIRST and independently of the owner
   // (FIX-1442). A record can name its owning flow perfectly well and still
   // predate organizations entirely — which is the common case, since `flowId`
   // and `orgId` became required at different times. Folding this into the
   // `!owner.ok` branch below would only refuse rows that failed BOTH, and the
   // rows this rule exists for are exactly the ones that pass the first.
+  //
+  // The owning flow is still handed back with the refusal: the caller has to
+  // be authenticated against the right resolver before the refusal is spent
+  // on them (see `pendingDenial` in `authorizeManagementRoute`).
   if (!isOrgAttributed(record)) {
     return {
+      flow,
       denied: jsonResponse(409, {
         error: "migration-required",
         message: new UnattributedOrgError("this route").message
       })
     };
   }
-  const owner = resolveRecordOwner(ctx.registry, record);
-  if (owner.ok) return { flow: owner.flow };
+  if (owner.ok) return { flow };
   const denied = refuseUnattributedRecord(ctx.registry, record);
   return denied === undefined ? {} : { denied };
 }
@@ -268,6 +279,18 @@ export async function authorizeManagementRoute(
   // listing) — there is nothing to compare against yet.
   let ownerOrgId: string | undefined;
   let sessionId: string | undefined;
+  /**
+   * A refusal this record has already earned, HELD until the caller has been
+   * authenticated.
+   *
+   * `migration-required` names something about the stored record — that it
+   * exists, and that it predates organizations — so handing it to an anonymous
+   * caller turns the route into an oracle: probe an id and the status tells you
+   * which. An attributed record answers 401 to the same probe, and so must this
+   * one. It is spent below, at each exit where the caller is either
+   * authenticated or facing a route that authenticates nobody.
+   */
+  let pendingDenial: Response | undefined;
 
   switch (subject.kind) {
     case "session": {
@@ -278,7 +301,7 @@ export async function authorizeManagementRoute(
       );
       if (session === undefined) return ALLOWED;
       const resolved = ownerFlowOf(ctx, session);
-      if (resolved.denied !== undefined) return { denied: resolved.denied };
+      if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
       owner = session.userId;
       ownerOrgId = session.orgId;
@@ -289,7 +312,7 @@ export async function authorizeManagementRoute(
       const record = await ctx.stores.request.get(subject.requestId);
       if (record !== undefined) {
         const resolved = ownerFlowOf(ctx, record);
-        if (resolved.denied !== undefined) return { denied: resolved.denied };
+        if (resolved.denied !== undefined) pendingDenial = resolved.denied;
         governing = resolved.flow;
         owner = record.userId;
         ownerOrgId = record.orgId;
@@ -305,7 +328,7 @@ export async function authorizeManagementRoute(
       const active = await ctx.stores.activeRequests.get(subject.requestId);
       if (active === undefined) return ALLOWED;
       const resolved = ownerFlowOf(ctx, active);
-      if (resolved.denied !== undefined) return { denied: resolved.denied };
+      if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
       owner = active.userId;
       ownerOrgId = active.orgId;
@@ -329,6 +352,10 @@ export async function authorizeManagementRoute(
   // the host resolver, exactly as an unregistered kind always did.
   const resolver = governing?.authentication?.resolvePrincipal ?? ctx.hostResolver;
   if (isDefaultBodyUserIdPrincipalResolver(resolver)) {
+    // Nothing authenticates this record, so there is no identity to withhold
+    // the refusal for and no oracle to open: spend it here.
+    if (pendingDenial !== undefined) return { denied: pendingDenial };
+
     // No authentication governs this route. For a flow-scoped route that means
     // the flow is genuinely open in this app, so leave it alone.
     if (subject.kind !== "host" && subject.kind !== "user") return ALLOWED;
@@ -375,6 +402,11 @@ export async function authorizeManagementRoute(
     }
     throw error;
   }
+
+  // The caller has now proven who they are, so the held refusal costs nothing
+  // to give. Before the owner and organization checks: a record that cannot be
+  // admitted at all is answered as such rather than as somebody else's.
+  if (pendingDenial !== undefined) return { denied: pendingDenial };
 
   if (owner !== undefined && principal.userId !== owner) {
     // Deliberately not a 404: the caller authenticated, and the record's

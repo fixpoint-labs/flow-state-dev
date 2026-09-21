@@ -116,7 +116,6 @@ async function seedSession(
 ): Promise<void> {
   const now = Date.now();
   const record: SessionRecord = {
-    orgId: "org_test",
     id: init.id,
     flowKind: init.flowKind,
     userId: init.userId,
@@ -142,7 +141,6 @@ async function seedRequest(
 ): Promise<void> {
   const now = Date.now();
   const record: RequestRecord = {
-    orgId: DEFAULT_ORG_ID,
     id: init.id,
     flowKind: init.flowKind,
     actionName: "run",
@@ -510,7 +508,7 @@ describe("user-addressed routes", () => {
       flowKind: init.flowKind,
       actionName: "run",
       userId: init.userId,
-    orgId: init.orgId ?? "org_test",
+      orgId: init.orgId ?? "org_test",
       source: "http",
       startedAt: now,
       lastHeartbeatAt: now

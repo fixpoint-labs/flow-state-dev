@@ -126,6 +126,7 @@ async function seedRequest(
     userId: string;
     orgId?: string;
     sessionId?: string;
+    status?: RequestRecord["status"];
   }
 ): Promise<void> {
   const now = Date.now();
@@ -138,7 +139,7 @@ async function seedRequest(
     ...(init.orgId === undefined ? {} : { orgId: init.orgId }),
     ...(init.sessionId === undefined ? {} : { sessionId: init.sessionId }),
     input: {},
-    status: "completed",
+    status: init.status ?? "completed",
     startedAtMs: now,
     createdAt: now,
     updatedAt: now
@@ -329,6 +330,45 @@ describe("C4 · the organization boundary on the management surface", () => {
       expect(await stores.session.get("legacy")).toEqual(before);
     });
 
+    it("withholds unattributed rows from an anonymous listing too, not only an authenticated one", async () => {
+      // The listing and the addressed read have to agree. A row the addressed
+      // route refuses with `migration-required` must not be handed out by the
+      // listing beside it — otherwise the refusal is a formality anyone routes
+      // around by listing instead of reading.
+      const { router, stores } = buildRouter([twoAxisFlow(), openFlow()]);
+      await seedSession(stores, { id: "legacy", flowKind: "open", userId: "u1" });
+      await seedSession(stores, {
+        id: "ok",
+        flowKind: "open",
+        userId: "u1",
+        orgId: DEFAULT_ORG_ID
+      });
+
+      const listing = await call(router, "GET", ["sessions"]);
+      const body = (await listing.json()) as { sessions: { id: string }[] };
+      const addressed = await call(router, "GET", ["sessions", "legacy"]);
+
+      expect(addressed.status).toBe(409);
+      expect(body.sessions.map((s) => s.id)).toEqual(["ok"]);
+    });
+
+    it("does not answer an anonymous caller differently for a legacy record than for any other", async () => {
+      // The 409 is a refusal that names something about the record, so it is
+      // owed only to a caller who has proven who they are. Handed to an
+      // anonymous one it is an oracle: probe an id, and 409 tells you a record
+      // exists AND that it predates organizations, where an attributed one
+      // answers 401. Both must look the same from outside.
+      const { router, stores } = buildRouter([twoAxisFlow()]);
+      await seedSession(stores, { id: "legacy", flowKind: "secure", userId: "dana" });
+      await seedSession(stores, { id: "attributed", flowKind: "secure", userId: "dana", orgId: "acme" });
+
+      const legacy = await call(router, "GET", ["sessions", "legacy"]);
+      const attributed = await call(router, "GET", ["sessions", "attributed"]);
+
+      expect(legacy.status).toBe(attributed.status);
+      expect(legacy.status).toBe(401);
+    });
+
     it("omits unattributed rows from a listing instead of failing the whole listing", async () => {
       const { router, stores } = buildRouterWithHostResolver([twoAxisFlow()]);
       await seedSession(stores, { id: "legacy", flowKind: "secure", userId: "dana" });
@@ -342,6 +382,71 @@ describe("C4 · the organization boundary on the management surface", () => {
 
       expect(response.status).toBe(200);
       expect(body.sessions.map((s) => s.id)).toEqual(["ok"]);
+    });
+  });
+
+  describe("BR-8/BR-13 · the sweep that mutates", () => {
+    /**
+     * `check-interrupted` is the one management route that WRITES: it marks
+     * in-flight requests `interrupted`. It is user-addressed, so ownership
+     * matches for a person who belongs to two organizations — which is exactly
+     * the shape BR-13 names. A read served across that boundary leaks; a sweep
+     * served across it destroys the other organization's running work.
+     */
+    async function seedStaleRun(
+      stores: StoreRegistry,
+      init: { requestId: string; userId: string; orgId: string }
+    ): Promise<void> {
+      await seedRequest(stores, {
+        id: init.requestId,
+        flowKind: "secure",
+        userId: init.userId,
+        orgId: init.orgId,
+        sessionId: `${init.requestId}-session`,
+        status: "in_progress"
+      });
+      await stores.activeRequests.register({
+        requestId: init.requestId,
+        flowKind: "secure",
+        flowId: "secure",
+        actionName: "run",
+        sessionId: `${init.requestId}-session`,
+        userId: init.userId,
+        orgId: init.orgId,
+        source: "http",
+        input: {},
+        startedAt: Date.now() - 600_000,
+        lastHeartbeatAt: Date.now() - 600_000
+      });
+    }
+
+    it("leaves another organization's in-flight request running", async () => {
+      const { router, stores } = buildRouterWithHostResolver([twoAxisFlow()]);
+      await seedStaleRun(stores, { requestId: "theirs", userId: "dana", orgId: "globex" });
+
+      const response = await call(router, "POST", ["users", "dana", "check-interrupted"], {
+        user: "dana",
+        org: "acme"
+      });
+      const body = (await response.json()) as { interrupted: { requestId: string }[] };
+
+      expect(body.interrupted.map((i) => i.requestId)).toEqual([]);
+      expect((await stores.request.get("theirs"))?.status).toBe("in_progress");
+      expect(await stores.activeRequests.get("theirs")).toBeDefined();
+    });
+
+    it("still sweeps the caller's own organization", async () => {
+      const { router, stores } = buildRouterWithHostResolver([twoAxisFlow()]);
+      await seedStaleRun(stores, { requestId: "mine", userId: "dana", orgId: "acme" });
+
+      const response = await call(router, "POST", ["users", "dana", "check-interrupted"], {
+        user: "dana",
+        org: "acme"
+      });
+      const body = (await response.json()) as { interrupted: { requestId: string }[] };
+
+      expect(body.interrupted.map((i) => i.requestId)).toEqual(["mine"]);
+      expect((await stores.request.get("mine"))?.status).toBe("interrupted");
     });
   });
 

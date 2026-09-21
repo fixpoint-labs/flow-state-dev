@@ -171,7 +171,20 @@ export async function retryRequest(
   const actionName = entry?.actionName ?? originalRecord?.actionName;
   const sessionId = entry?.sessionId ?? originalRecord?.sessionId;
   const userId = entry?.userId ?? originalRecord?.userId;
-  const orgId = entry?.orgId ?? originalRecord?.orgId;
+  // The organization axis, held to the same rule as `flowId` above and for the
+  // same reason: the durable record is authoritative, and an active entry
+  // naming a different organization is an inconsistent identity rather than a
+  // newer answer. Letting the entry win would re-EXECUTE stored work in an
+  // organization that work does not belong to.
+  const recordOrgId = originalRecord?.orgId;
+  const entryOrgId = entry?.orgId;
+  if (recordOrgId !== undefined && entryOrgId !== undefined && recordOrgId !== entryOrgId) {
+    throw new Error(
+      `Cannot retry request ${options.originalRequestId}: its record is attributed to organization ` +
+        `"${recordOrgId}" but its active entry names "${entryOrgId}"`
+    );
+  }
+  const orgId = recordOrgId ?? entryOrgId;
   // Re-dispatch in the same tenant so the retry resolves to the same
   // tenant-namespaced session key (FIX-682). Bare sessionId + tenantId
   // re-derive the key cleanly — no double-namespacing.

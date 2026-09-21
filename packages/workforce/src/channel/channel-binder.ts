@@ -646,10 +646,10 @@ const REPAIR_ATTEMPTS = 3;
  *   returns before any of them is looked at again. Re-opening is not a
  *   migration. `boards:` is NOT one of them: the board list is built onto the
  *   kind from the roster on every bind and never written to the session, so it
- *   does reach a channel that is already open. The one thing that is not silently left behind is an
- *   the open channel is one this principal cannot reach: the same
- *   reasoning makes that unfixable here, so it refuses rather than reporting
- *   the channel opened.
+ *   does reach a channel that is already open. The one case not silently left
+ *   behind is an open channel this principal cannot reach: the same reasoning
+ *   makes that unfixable here, so it refuses rather than reporting the channel
+ *   opened.
  * - **This kind's own empty session** — one the action path minted when
  *   something posted to or read the id before this ran — is adopted: the id is
  *   released and re-created carrying the channel's state. Such a session holds

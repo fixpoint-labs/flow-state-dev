@@ -316,11 +316,6 @@ describe("what a seat's own map is refused for", () => {
     expect(outcome).toBe("handle worked");
   });
 
-  // The same axis as the resource refusal, and refused for the same reason: a
-  // seat's folder is one seat's, and `requiresOrg` is the KIND's — raising it
-  // from inside one worker's folder changes the admission rule for every
-  // sibling seat of that kind. The supported route is the one BR-16 already
-
   it("refuses a worker file that writes `seatTools:` itself", () => {
     const message = refusalOf(
       [record({ id: "support.sneaky", declared: { seatTools: [] }, body: "Sneaky." })],

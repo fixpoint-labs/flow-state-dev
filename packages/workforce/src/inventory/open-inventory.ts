@@ -32,7 +32,6 @@
  */
 
 import { kindOf, orderedById } from "../channel/channel-binder";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   INVENTORY_REGISTER_CHANNEL,
   INVENTORY_REGISTER_SEATS
@@ -205,7 +204,8 @@ function messageOf(error: unknown): string {
  * @throws If no `orgId` was given, or if the roster carries seats and no
  *   `seatWriter` was named. Both are wiring mistakes an app should not boot
  *   past — a run that continued would report success and write where nobody
- *   can read.
+ *   can read. An app with no authentication passes `DEFAULT_ORG_ID`
+ *   explicitly; it is the absent value, not that one, that is refused.
  */
 export async function openInventory(
   roster: InventoryRoster,
@@ -215,13 +215,26 @@ export async function openInventory(
   const channels = orderedById(roster.channels);
 
   // `openInventory` writes through trusted direct execution, below any
-  // resolver, so it names the organization itself (BR-4). It used to REFUSE an
-  // absent one; it now falls back to the development default, matching what
-  // the server binds a channel session to when no resolver is configured
-  // (FIX-1442). An app that authenticates passes its verified organization —
-  // the same one its channel sessions are bound to — or the rows land where
-  // no flow reads them back.
-  const orgId = options.orgId ?? DEFAULT_ORG_ID;
+  // resolver, so it names the organization itself (BR-4) — an ABSENT one is
+  // refused rather than guessed. The inventory is org-scoped storage: an app
+  // that authenticates and forgets to pass its verified organization would
+  // write its entire inventory into a namespace none of its sessions read
+  // back, and the only symptom is an inventory that reads empty everywhere,
+  // which points at nothing.
+  //
+  // Naming `DEFAULT_ORG_ID` explicitly is a different thing and goes through
+  // (D3): a development app with no resolver has its channel sessions bound to
+  // the framework default, and saying so here is how its rows land where those
+  // sessions read them. The refusal is about the caller who said nothing.
+  const orgId = options.orgId;
+  if (orgId === undefined) {
+    throw new Error(
+      `openInventory was given no \`orgId\`. The inventory is org-scoped storage, so a write ` +
+        `with no organization lands where no flow in the app can read it back. Pass the same ` +
+        `organization the channel sessions are opened under — the verified one if the app ` +
+        `authenticates, or \`DEFAULT_ORG_ID\` from \`@flow-state-dev/core\` if it does not.`
+    );
+  }
 
   if (seats.length > 0 && options.seatWriter === undefined) {
     throw new Error(

@@ -464,19 +464,34 @@ describe("what the binder refuses to carry", () => {
     }
   });
 
-  it("writes under the development default when no org is named, never into another org (BR-11)", async () => {
-    // This used to REFUSE a run with no `orgId`, because an org-scoped write
-    // with no org landed where nothing could read it. Since FIX-1442 there is
-    // no such place: an omitted org means the development default, which is
-    // exactly where the session route binds this app's channels. The property
-    // that still matters is the one the refusal was protecting — the rows must
-    // be readable, and must not appear in some other organization.
+  it("refuses a run that names no org, rather than guessing one (BR-4)", async () => {
+    // An app that authenticates has a verified org and is expected to pass it.
+    // Silently substituting the development default writes that app's whole
+    // inventory into a namespace none of its sessions read back, and the only
+    // symptom is an inventory that reads empty everywhere — which points at
+    // nothing. The refusal names the wiring mistake at boot instead.
     const roster = [record("eng.standup")];
     const lab = await host(roster, { inventory: true });
     try {
-      await bind(lab, { channels: roster, orgId: undefined });
+      await expect(bind(lab, { channels: roster, orgId: undefined })).rejects.toThrow(/orgId/);
+      expect(await lab.keys()).toEqual([]);
+    } finally {
+      await lab.dispose();
+    }
+  });
 
-      expect((await lab.keys()).length).toBeGreaterThan(0);
+  it("accepts the development default when a caller names it deliberately (D3)", async () => {
+    // The refusal above is about an ABSENT org, not about this value. A
+    // development app with no resolver binds its sessions to the framework
+    // default, and naming it here is how its inventory lands where those
+    // sessions read it — so the explicit choice goes through, and still lands
+    // in exactly one organization.
+    const roster = [record("eng.standup")];
+    const lab = await host(roster, { inventory: true });
+    try {
+      await bind(lab, { channels: roster, orgId: DEFAULT_ORG_ID });
+
+      expect((await lab.keys(DEFAULT_ORG_ID)).length).toBeGreaterThan(0);
       expect(await lab.keys(OTHER_ORG)).toEqual([]);
     } finally {
       await lab.dispose();

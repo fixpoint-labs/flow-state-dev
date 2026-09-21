@@ -157,9 +157,13 @@ function stripPrefix(storageKey: string, pattern: string): string {
  *
  * The hook observes a write rather than transforming it, so the binding is
  * enforced by refusing to index a row that disagrees — an unindexed schedule
- * never fires, which is the same outcome as rejecting the write and does not
- * require the hook to reach back into storage. A row with no organization at
- * all is a legacy row and is refused for the same reason.
+ * never fires. That is the same outcome as rejecting the write for FIRING
+ * only: the durable row is still overwritten by the disagreeing execution,
+ * because a post-write observer has nothing left to reject.
+ *
+ * The check is a bare equality, and a legacy row with no organization at all
+ * falls out of it rather than being named: `undefined` is never an execution's
+ * org, so such a row is refused by construction and needs no clause of its own.
  */
 function bindingIsTrusted(
   state: ScheduleCollectionState,

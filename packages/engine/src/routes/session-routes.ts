@@ -92,13 +92,23 @@ export async function handleListSessions(
   // Judged per row under its OWNER, not its kind, so an open peer of an
   // authenticated instance does not make that instance's sessions visible.
   const allowed = ctx.anonymousFlowIds;
-  const visible =
+  const flowVisible =
     allowed === undefined
       ? sessions
       : sessions.filter((s) => {
           const owner = resolveRecordOwner(ctx.registry, s);
           return owner.ok && allowed.has(owner.flow.id);
         });
+
+  // Records stored before organizations were required are withheld (BR-14),
+  // on EVERY path to this listing and not only the authenticated one.
+  //
+  // The `orgId` filter above runs only when there is a principal to take an
+  // organization from, so an anonymous listing reached it with no attribution
+  // filter at all — and handed out exactly the rows `handleGetSession` answers
+  // with `409 migration-required`. A refusal the listing beside it routes
+  // around is not a refusal.
+  const visible = flowVisible.filter((s) => s.orgId !== undefined);
 
   return jsonResponse(200, {
     // Surface bare session ids — the stored `id` is the namespaced storage key.

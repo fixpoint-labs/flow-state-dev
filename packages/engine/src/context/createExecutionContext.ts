@@ -820,6 +820,11 @@ export async function createExecutionContext<
       updatedAt: now
     };
     const created = await stores.org.set(seed.id, seed, "absent");
+    // On a lost race, adopt the winner's row — from the conflict if the store
+    // returned it, else by re-reading. The final `?? seed` is reached only by a
+    // store that refused the write AND then reports no row, which is a store
+    // contradicting itself; execution continues on the in-memory template
+    // rather than failing the request, and the next write re-reads.
     orgRecord = created.ok
       ? seed
       : (created.conflict.currentValue ?? (await stores.org.get(resolvedOrgKey)) ?? seed);

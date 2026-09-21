@@ -53,6 +53,12 @@ async function drain(stream: ReadableStream<Uint8Array> | null): Promise<void> {
   }
 }
 
+/**
+ * The org this test's session and caller are both bound to. Anything but the
+ * framework default, so the child's org can only have come from the parent.
+ */
+const SEAM_ORG = "org_acme";
+
 type Seen = {
   hasHost?: boolean;
   hasLiveness?: boolean;
@@ -162,7 +168,7 @@ describe("request-host seam on the shipped router path", () => {
     await stores.session.set(
       "s_live",
       {
-    orgId: DEFAULT_ORG_ID,
+        orgId: DEFAULT_ORG_ID,
         id: "s_live",
         state: {},
         version: 0,
@@ -268,6 +274,11 @@ describe("request-host seam on the shipped router path", () => {
     const router = createFlowApiRouter({
       registry,
       stores,
+      // A real resolver, so the org execution resolves to is `SEAM_ORG` rather
+      // than the framework default. Without it the caller can only ever be in
+      // the default org, the session has to be seeded there too, and the
+      // assertion below stops discriminating anything.
+      resolvePrincipal: () => ({ userId: "u_alice", orgId: SEAM_ORG }),
       // A wired host dispatch operation, as an orchestration deployment has.
       // The router carries `dispatchOperation` through untouched, so the seam
       // reaches the point where it writes the child session record — and
@@ -294,20 +305,20 @@ describe("request-host seam on the shipped router path", () => {
         updatedAt: ts,
         flowKind: "shipped-org",
         userId: "u_alice",
-        // The organization this route resolves to. It used to be "org_acme"
-        // with the dispatch omitting an org entirely, which is what the test
-        // was named for — but a request cannot omit one now (FIX-1442), and a
-        // session bound to a DIFFERENT org than the caller resolved is a
-        // binding mismatch, covered by binding-immutability.test.ts. What this
-        // test is actually about survives unchanged: whatever org execution
-        // resolves, the seam must close over THAT and stamp it on the child.
-        orgId: DEFAULT_ORG_ID,
+        // Deliberately NOT the framework default. A request cannot omit its org
+        // now (FIX-1442) and a session bound to a different org than the caller
+        // resolved is a binding mismatch, so both sides of this test name the
+        // same org — but that org has to be one nothing else would produce. Seed
+        // it as `DEFAULT_ORG_ID` and the assertion below passes for a seam that
+        // hardcodes the default, never reads the resolved identity at all, or
+        // falls back to it: every wrong answer is the expected answer.
+        orgId: SEAM_ORG,
         journal: []
       },
       "any"
     );
 
-    await post(router, "shipped-org", "s_org_bound");
+    await post(router, "shipped-org", "s_org_bound", SEAM_ORG);
 
     expect(seen.error).toBeUndefined();
     // Dispatch was admitted — otherwise the org assertion below would pass
@@ -320,7 +331,7 @@ describe("request-host seam on the shipped router path", () => {
     // produce a child outside the parent's org, and org-scoped child work would
     // then run without the org context its inheritance contract promises.
     const child = await stores.session.get(started[0]!);
-    expect(child?.orgId).toBe(DEFAULT_ORG_ID);
+    expect(child?.orgId).toBe(SEAM_ORG);
   });
 });
 
@@ -349,7 +360,7 @@ describe("request-host seam on the shipped worker path", () => {
     const runtime = await state.getRuntime();
 
     await runAction({
-    orgId: DEFAULT_ORG_ID,
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

@@ -214,6 +214,81 @@ describe("detectInterruptedRequests", () => {
     expect(await stores.activeRequests.get("req_bob")).toBeDefined();
   });
 
+  it("refuses a retry whose active entry names a different organization than the record", async () => {
+    // The durable record is authoritative. An active entry naming a different
+    // organization is an inconsistent identity, not a newer answer — and a
+    // retry is a re-EXECUTION, so taking the entry's value would run stored
+    // work in an organization the stored work does not belong to. The same
+    // file already refuses exactly this shape on the `flowId` axis.
+    runActionMock.mockClear();
+
+    await stores.request.set(
+      "req_org_mismatch",
+      makeRequestRecord("req_org_mismatch", { orgId: "org-acme" }),
+      "any"
+    );
+
+    const flow = { kind: "chat", actions: { run: {} } } as never;
+    const flowRegistry = { get: vi.fn(() => flow) } as never;
+
+    await expect(
+      retryRequest({
+        originalRequestId: "req_org_mismatch",
+        stores,
+        flowRegistry,
+        runtimeConfig: {},
+        registryEntry: {
+          requestId: "req_org_mismatch",
+          flowKind: "chat",
+          actionName: "run",
+          userId: "user_1",
+          orgId: "org-globex",
+          source: "http",
+          startedAt: Date.now(),
+          lastHeartbeatAt: Date.now()
+        }
+      })
+    ).rejects.toThrow(/organization/i);
+
+    // Nothing was dispatched: the refusal lands before any re-execution.
+    expect(runActionMock).not.toHaveBeenCalled();
+  });
+
+  it("retries normally when the entry and the record agree on the organization", async () => {
+    // The control for the refusal above — without it, "it threw" is also what a
+    // retry path that refuses everything would produce.
+    runActionMock.mockClear();
+
+    await stores.request.set(
+      "req_org_agree",
+      makeRequestRecord("req_org_agree", { orgId: "org-acme" }),
+      "any"
+    );
+
+    const flow = { kind: "chat", actions: { run: {} } } as never;
+    const flowRegistry = { get: vi.fn(() => flow) } as never;
+
+    await retryRequest({
+      originalRequestId: "req_org_agree",
+      stores,
+      flowRegistry,
+      runtimeConfig: {},
+      registryEntry: {
+        requestId: "req_org_agree",
+        flowKind: "chat",
+        actionName: "run",
+        userId: "user_1",
+        orgId: "org-acme",
+        source: "http",
+        startedAt: Date.now(),
+        lastHeartbeatAt: Date.now()
+      }
+    });
+
+    expect(runActionMock).toHaveBeenCalledTimes(1);
+    expect(runActionMock.mock.calls[0][0].orgId).toBe("org-acme");
+  });
+
   it("prefers the per-flow voice provider over the router-level one on retry", async () => {
     // Regression: retry used to forward only the router-level provider, so a
     // flow that overrides TTS would synthesize with the wrong backend after
