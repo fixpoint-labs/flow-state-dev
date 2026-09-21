@@ -243,6 +243,14 @@ export { readResourceContentTool, writeResourceContentTool } from "./tools/resou
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";
 export { resourceSearchTools } from "./tools/resource-search-tools";
+// Agent discovery (FIX-817): the manifest-entry shape, the per-scope source
+// registry, the door over it, and the resources domain's projection.
+export { MANIFEST_DOMAINS, isManifestDomain } from "@flow-state-dev/contracts";
+export type { ManifestDomain, ManifestEntry, ManifestSource } from "@flow-state-dev/contracts";
+export { createManifestRegistry } from "./manifest/registry";
+export type { BlockManifestSource, ManifestRegistry } from "./manifest/registry";
+export { discoveryTools } from "./manifest/discovery-tools";
+export { resourcesManifestSource } from "./manifest/resources-source";
 export {
   DEFAULT_MODEL_LOOKUP,
   findModelEntry,

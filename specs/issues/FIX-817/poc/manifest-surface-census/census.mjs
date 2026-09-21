@@ -1,18 +1,32 @@
 /**
  * FIX-817 · Manifest surface census — the spec's factual base, re-derived.
  *
- * The spec claims three counted things about the repository as it stands:
+ * The spec claimed three counted things about the repository before the change:
  *
  *   1. Every domain the ticket names ALREADY has a reader that can enumerate it.
  *   2. NO domain has a scoped, on-demand, model-facing discovery door.
- *   3. Discovery that does reach a model today is either AMBIENT (stuffed into
- *      the prompt every step) or UNGATED (a full-state dump that ignores the
- *      readable gate) — and the ungated one has no caller in the repository.
+ *   3. Discovery that does reach a model is either AMBIENT (stuffed into the
+ *      prompt every step) or UNGATED (an enumeration that ignores the readable
+ *      gate) — and one of the two ungated ones has no caller in the repository.
  *
  * Those three are the whole argument for "this is a missing SHAPE, not a
  * missing capability" (SPEC.md, D1). A reviewer should not have to take them on
  * trust, and a hand-derived list cannot report the entry nobody wrote down. So
  * this walks the tree and asserts them.
+ *
+ * UPDATED AT S2/S3 (PLAN.md → V7). The claims this script gates are the
+ * spec's factual base, and the change invalidates two of them by construction
+ * — a gate that still asserts the pre-change world is not a gate. So the
+ * counts are re-pointed at what the change is supposed to have done, and the
+ * script stays the thing that would catch it if it hadn't:
+ *
+ *   - Claim 2 · doors go 0 → EXACTLY ONE. Not one per domain — that number is
+ *     D1 stated arithmetically.
+ *   - Claim 3a · ungated enumerators go 2 → ZERO, closed the two different
+ *     ways the spec calls for (3b(i) and 3b(ii) name which way each).
+ *   - Claim 1 and the totality assertion are unchanged, and still the point:
+ *     the four readers must survive untouched, and every tool-shaped `name:`
+ *     in the scanned roots must still fall into a named class.
  *
  * TOTALITY, not a spot check — and stated at the width it actually proves.
  * The load-bearing assertion is not "these four tools are classified correctly"
@@ -55,6 +69,13 @@ const PLANT = process.argv.includes("--plant");
 /** Packages whose model-facing tool surface this census covers. */
 const SCAN_ROOTS = [
   "packages/core/src/tools",
+  // Added at S2, with the module. `core`'s model-facing tool surface is these
+  // two directories; a new one has to be listed here or the census stops
+  // covering what it claims to cover. Deliberately not the whole of
+  // `packages/core/src`: that pulls in ~25 block, preset and fixture `name:`
+  // values, and a classification table padded with non-tools is a weaker
+  // totality claim, not a stronger one.
+  "packages/core/src/manifest",
   "packages/orchestration/src",
   "packages/workforce/src",
 ];
@@ -63,10 +84,12 @@ const SCAN_ROOTS = [
  * How each model-facing tool relates to discovery. Every tool the scan finds
  * must land in one of these, or the census fails.
  *
- *   door     — scoped, on-demand, returns a manifest of what is in scope.
- *              The thing FIX-817 is about. Expected to be EMPTY today.
+ *   door     — scoped, on-demand, returns manifest entries for what is in
+ *              scope. The thing FIX-817 builds. Exactly one after S2.
  *   ungated  — enumerates, but ignores the readable/enabled gate, or returns
- *              full state rather than a planning contract.
+ *              full state rather than a planning contract. Expected to be
+ *              EMPTY after S3: both were closed there.
+ *   gated    — enumerates paths, but only over what the caller may read.
  *   act      — acts on a thing the caller already names. Does not enumerate.
  *   content  — reads or writes the content of a thing already identified.
  *   control  — a knob or mode, not a discovery surface at all.
@@ -75,19 +98,24 @@ const SCAN_ROOTS = [
  *              work queue is not a catalog of what exists.
  */
 const CLASSIFICATION = {
+  // --- core/manifest --------------------------------------------------------
+  // S2. The door the spec is about: scoped at its registry, on demand, and it
+  // returns entries with purpose rather than stored state.
+  discover: "door",
   // --- core/tools -----------------------------------------------------------
-  listResources: "ungated",        // dumps instance.state for every collection; no llmReadable gate
+  // `listResources` was REMOVED at S3 — it dumped `instance.state` for every
+  // collection with no `llmReadable` gate and had no caller. Its absence from
+  // the scan is asserted below rather than classified here.
   createResource: "act",
   readResource: "act",
   updateResource: "act",
   deleteResource: "act",
-  // UNGATED, found in review. Its own header says a null pattern lists
-  // everything, "Discovery only — no content is read, no `llmReadable` gate",
-  // and `execute` calls `collectAllResources`, not `collectReadableResources`.
-  // It was hand-labelled "content" here, which is how Claim 3a ever read as
-  // "exactly one". Unlike `listResources` it HAS a caller
-  // (`examples/knowledge-base/src/capability.ts`), so it is gated, not removed.
-  globResources: "ungated",
+  // Was the second ungated enumerator: its own header said a null pattern
+  // listed everything with "no `llmReadable` gate", and `execute` called
+  // `collectAllResources`. Unlike `listResources` it HAS a caller
+  // (`examples/knowledge-base/src/capability.ts`), so S3 gated it rather than
+  // removing it — it now enumerates `collectReadableResources`.
+  globResources: "gated",
   grepResourceContent: "content",
   searchResources: "content",
   readResourceContent: "content",
@@ -248,32 +276,44 @@ note(
     : `unclassified: ${unclassified.join(", ")}`,
 );
 
+// The count this script exists to move. It read 0 while the spec was being
+// written and reads 1 once S2 lands — one door for four domains, not one per
+// domain, which is D1's claim stated as a number.
 const doors = [...found.keys()].filter((n) => CLASSIFICATION[n] === "door");
 note(
-  doors.length === 0,
-  "Claim 2 · no scoped on-demand discovery door exists today",
-  doors.length === 0 ? "0 doors" : `found: ${doors.join(", ")}`,
+  doors.length === 1 && doors[0] === "discover",
+  "Claim 2 · exactly one scoped on-demand discovery door exists (was 0)",
+  `found: ${doors.join(", ") || "none"}`,
 );
 
 const ungated = [...found.keys()].filter((n) => CLASSIFICATION[n] === "ungated");
 note(
-  ungated.length === 2 &&
-    ["globResources", "listResources"].every((n) => ungated.includes(n)),
-  "Claim 3a · the ungated enumerators are exactly listResources and globResources",
+  ungated.length === 0,
+  "Claim 3a · no ungated enumerator remains (was listResources + globResources)",
   `found: ${ungated.join(", ") || "none"}`,
 );
 
-// listResources ignores the gate its own module already defines.
+// Both leaks, closed the two different ways the spec calls for: the one with no
+// caller is gone, the one with a live caller is gated. Read off the source, so
+// a re-introduction under either name fails here rather than in review.
 const resourceTools = readFileSync(join(REPO, "packages/core/src/tools/resource-tools.ts"), "utf8");
-const listBody = resourceTools.slice(resourceTools.indexOf("const listResourcesTool"));
-const bodyToEnd = listBody.slice(0, listBody.indexOf("return {"));
 note(
-  bodyToEnd.includes("collectCollections(ctx)") && !bodyToEnd.includes("collectReadableResources"),
-  "Claim 3b · listResources enumerates via collectCollections, bypassing the llmReadable gate",
-  "collectReadableResources exists in the same module and is not used by it",
+  !/name:\s*"listResources"/.test(resourceTools),
+  "Claim 3b(i) · listResources is gone from resourceTools()",
+  "the ungated full-state enumerator the door replaces",
 );
 
-// ...and nothing in the repository calls it.
+const searchTools = readFileSync(join(REPO, "packages/core/src/tools/resource-search-tools.ts"), "utf8");
+const globBody = searchTools.slice(searchTools.indexOf('name: "globResources"'));
+const globExec = globBody.slice(0, globBody.indexOf("const grepResourceContent"));
+note(
+  globExec.includes("collectReadableResources(ctx)") && !globExec.includes("collectAllResources"),
+  "Claim 3b(ii) · globResources enumerates through the llmReadable gate",
+  "a null pattern no longer lists collections nobody marked readable",
+);
+
+// The removal has to break nothing, which is only true while the factory has
+// no caller anywhere. Re-derived rather than remembered.
 let callers = 0;
 for (const root of ["packages", "apps"]) {
   for (const file of walk(join(REPO, root))) {

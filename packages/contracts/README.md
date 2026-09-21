@@ -35,9 +35,19 @@ a no-non-relative-import scan over `src/`), so it cannot silently regress.
   `normalizeTagName`. Re-exported from `@flow-state-dev/core/helpers`.
 - **Pure leaf types** — `ModelIdentity`, `SuspensionReason`,
   `SuspensionStatus`, `RequestStatus`.
+- **Agent discovery** (`@flow-state-dev/contracts/types/manifest`) — the shared
+  record an agent plans against, `ManifestEntry` (`{ id, kind, purpose,
+  contract? }`), the `ManifestSource` type that projects one domain's existing
+  reader into those entries, and the pinned domain names `MANIFEST_DOMAINS` /
+  `ManifestDomain` / `isManifestDomain`. It lives here because `core`,
+  `orchestration` and `workforce` each project into it and none of them should
+  depend on another to agree on the record. `ManifestSource` is generic over
+  its context type, since this layer knows nothing of `BlockContext`; `core`
+  binds it.
 
 The package barrel (`@flow-state-dev/contracts`) re-exports the item taxonomy,
-the block-instance-id helpers, and the suspension leaf types.
+the block-instance-id helpers, the suspension leaf types, and the manifest
+entry/source surface.
 
 ## Who depends on it
 
