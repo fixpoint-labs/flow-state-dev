@@ -1077,7 +1077,7 @@ Each record is plain data:
 | Field | Description |
 |-------|-------------|
 | `id` | `"<teamId>.<channelName>"`, minted from the two folder names — e.g. `"engineering.standup"`. This is the channel's session id. An `id:` in the frontmatter does not set it, and refuses. |
-| `declared` | The frontmatter exactly as written. A `CHANNEL.md` must set `description`, and cannot set `system:`; either one fails at load. The rest of what a channel may declare (`flow`, `members`, `instructions`) is checked when you call `channelInstances`, so a misspelled key loads without complaint and refuses at registration. |
+| `declared` | The frontmatter exactly as written. A `CHANNEL.md` must set `description`, and cannot set `system:`; either one fails at load. The rest of what a channel may declare (`flow`, `members`, `boards`, `instructions`) is checked when you call `channelInstances`, so a misspelled key loads without complaint and refuses at registration. |
 | `body` | The Markdown below the frontmatter — the channel's charter. |
 
 **A channel is a folder, not a file**, unlike a resource. A loose file in a `channels/` folder is
@@ -1202,8 +1202,10 @@ an audit or approval flow on this and you get a far weaker guarantee than the fi
 
 ### Waking members
 
-`defineChannelFlow({ notify })` takes a block run once per declared member per post. It runs in its
-own request, outside the post's turn, so a slow delivery never delays the next post. A delivery that
+`defineChannelFlow({ notify })` takes a block run once per declared member per post. The roster it
+walks is the whole declared list, the poster included, so a block that should not wake the writer
+compares the delivery's `author` against the `member` it was handed and returns without delivering.
+It runs in its own request, outside the post's turn, so a slow delivery never delays the next post. A delivery that
 fails is recorded; the post stays written and membership is unchanged. Without a slot, posts land and
 nobody is woken.
 

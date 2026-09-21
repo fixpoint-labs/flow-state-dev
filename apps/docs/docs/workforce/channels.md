@@ -24,7 +24,7 @@ Session state is also why the conversation stays in one place. A post is a reque
 :::tip When a channel, and when something else
 
 1. **One-shot, "go do this" → a dispatch** into that flow's own session. Nothing about it wants a shared transcript.
-2. **Back-and-forth, "keep talking" → a channel**, when you want one durable home for the history and posts that land on the channel rather than on the poster. A DM is the one-member case of the same thing, not a separate mechanism.
+2. **Back-and-forth, "keep talking" → a channel**, when you want one durable home for the history and posts that land on the channel rather than on the poster. A direct message is a channel whose roster is two members, not a separate mechanism.
 3. **Claim it and settle it → a [board the channel holds](#holding-a-board).** A row somebody takes and finishes is a [task board](../orchestration/task-substrate.md)'s job, and a channel can keep one so the talk and the work share an address. A board with no conversation around it needs no channel.
 4. **Do not fake a DM by dumping the dialogue into a worker's session.** Session history is machinery: tool calls, refusals, dispatch handles. A channel is what owns a clean transcript.
 5. **Do not hand somebody work by posting it.** A post runs in the channel's session and waking members is a notification; neither one gives anybody a row to claim. File it on a board.
@@ -209,7 +209,7 @@ Both folder names follow [the tree's name rule](./workers-on-disk.md#names-in-th
 
 ### What the file is checked for
 
-`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of four keys is checked later. So a `CHANNEL.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
+`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of five keys is checked later. So a `CHANNEL.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
 
 ### When a folder is wrong
 
@@ -340,6 +340,30 @@ By default a post lands and nobody is told. Give the kind a notify block and it 
 ```ts
 channelInstances(channels, { kinds: { channel: defineChannelFlow({ notify: wakeMember }) } });
 ```
+
+Each call carries one delivery: the channel, the member it is addressed to, and the post. The roster it walks is the whole declared list, the poster included, so the block is called for the member who just wrote.
+
+```ts
+import { handler } from "@flow-state-dev/core";
+import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
+import { z } from "zod";
+
+const wakeMember = handler({
+  name: "wake-member",
+  inputSchema: channelNotifyInputSchema,
+  outputSchema: z.object({ notified: z.string() }),
+  execute: (input: ChannelNotifyInput) => {
+    // input: { channelId, member, postId, body, principal, author? }
+    if (input.author !== undefined && input.member === input.author) {
+      return { notified: "" };
+    }
+    // send to whatever address you hold for `input.member`
+    return { notified: input.member };
+  },
+});
+```
+
+Compare on `author`, not `principal`: `principal` is the id the channel was opened under, the same value for every post, so it never tells one member from another. `author` is the poster's own claim and nothing verifies it, so the skip is only as good as the claim.
 
 The delivery runs in its own request, outside the post's turn, so a slow notification never delays the next post. A delivery that fails is recorded and the rest are still attempted; the post stays written either way, because the transcript is the durable record and waking people is best-effort.
 

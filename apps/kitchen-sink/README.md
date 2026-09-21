@@ -54,24 +54,24 @@ The team also has three channels, under `workforce/teams/support/channels/`. Eac
 
 `desk` is the ordinary case: the built-in kind, five members, and two boards declared as plain names — `boards: [followups, escalations]`. The framework mints a ledger per name from where the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that. `ada-wren` is a direct message between two seats, with no `flow:` line, because a direct message is not a kind of its own — it is a channel with a roster of two. `noticeboard` is the case that *is* different: it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only the most recent lines. A kind of your own cannot hold a board, which is why the boards are on `desk` and not here.
 
-The `followups` board has a seat that runs it. `support.wren` is on the `followup-runner` kind, which names the board in code — `channelBoard("support.desk", "followups")` — declares it as a resource, and exposes its drain. That wiring is explicit on purpose: a seat sees the boards it names and no others.
+The `followups` board has a seat that runs it. `support.wren` is on the `followup-runner` kind, which names the board in code (`channelBoard("support.desk", "followups")`), declares it as a resource, and exposes its drain. A seat sees the boards it names and no others.
 
-Posting to a channel notifies its members, and never the member who wrote the post. That rule lives in `workforce/channel-notify.ts`, which is this app's own fan-out block rather than anything the framework decides — the framework addresses every declared member and the block chooses what to deliver. It applies to all three channels: post to `desk` as `support.ada` and the other four are told, not Ada. In a two-seat direct message the same rule reads as "only the other one hears about it", which is why `ada-wren` needs no special handling.
+Posting to a channel notifies its members, and never the member who wrote the post. That rule lives in `workforce/channel-notify.ts`, which is this app's own fan-out block rather than anything the framework decides: the framework addresses every declared member, and the block chooses what to deliver. It applies to all three channels. Post to `desk` as `support.ada` and the other four are told, not Ada. In a two-seat direct message the same rule reads as "only the other one hears about it".
 
-The check is on the claimed `author`, which the channel does not verify. That is the only field that names the same things `members:` does — the verified `principal` is the id the channel was opened under and is identical for every post, so it cannot identify a writer. An app with a real identity model should compare whatever it resolves a caller to.
+The check is on the claimed `author`, which the channel does not verify, so the skip is only as good as the claim. An app with a real identity model should compare whatever it resolves a caller to.
 
-**`escalations` is left unwired deliberately.** Start the app and the boot says so:
+**Nothing is wired to `escalations`.** Start the app and the boot says so:
 
 ```
 [workforce] channel "support.desk" holds board "escalations" (ledger
 "support.desk.escalations"), and no flow hired in this call declares it. …
 ```
 
-That is the one failure a declared board can produce in silence — rows filed there sit pending with nothing said — so the reference ships in the state that shows you the message. Wire a seat to it the way `followup-runner` wires `followups` and the line goes away.
+That is the one failure a declared board can produce in silence: rows filed there sit pending with nothing said. The reference ships in the state that shows you the message. Wire a seat to it the way `followup-runner` wires `followups` and the line goes away.
 
-Two things about restarts. Channels are opened at boot and opening is idempotent, so restarting over an unchanged tree does nothing. But re-opening is not a migration: a channel that is already open keeps the members and the charter it was opened with, and editing those files does not reach it. `boards:` is the exception — the board list is rebuilt from the files on every boot, so a board added to an open channel's file is usable after a restart.
+Channels are opened at boot and opening is idempotent, so restarting over an unchanged tree does nothing. But re-opening is not a migration: a channel that is already open keeps the members and the charter it was opened with, and editing those files does not reach it. `boards:` is the exception — the board list is rebuilt from the files on every boot, so a board added to an open channel's file is usable after a restart.
 
-Channels are opened as one caller, named in `fsdev.config.ts`. The organization the sessions land in is not named there: it comes from the identity the server resolves for that caller, and this app configures no authentication, so it is the framework's default. A session's organization is fixed when the session is created and re-opening cannot move it, so if you add authentication, open the channels as a caller whose verified identity already carries the organization you want them in.
+Which organization the channel sessions land in comes from the caller's verified identity, not from anything a file declares. This app opens its channels as one caller named in `fsdev.config.ts` and configures no authentication, so they land in the framework's default. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a channel runs in](../docs/docs/workforce/channels.md#which-organization-a-channel-runs-in).
 
 Each seat is addressed by its own id, so a seat answers on the same route as any other flow:
 

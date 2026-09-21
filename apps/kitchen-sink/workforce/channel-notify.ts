@@ -72,9 +72,9 @@ export const notifyMember = handler({
     //
     // The real gap is that the framework carries no verified per-member
     // identity — which is why `principal` cannot do this — and closing it means
-    // changing `packages/workforce`, which this issue's guardrails put out of
-    // scope. A host that maps a verified principal onto a seat should compare
-    // that instead.
+    // changing `packages/workforce`, which is out of scope for this app. A
+    // host that maps a verified principal onto a seat should compare that
+    // instead.
     if (input.author !== undefined && input.member === input.author) {
       return { notified: "" };
     }
