@@ -100,6 +100,13 @@ export interface HiredWorkforce {
    * say so — and because a channel a caller forgets to destructure is a
    * failure that reports nowhere, which is the one outcome collecting rather
    * than throwing is supposed to make impossible.
+   *
+   * **A channel that failed to load is NOT here.** It throws above instead, for
+   * the reason the published channels guide gives: a seat short is a roster
+   * running light, but a channel short is a team with nowhere to talk, and the
+   * seats that did load go on posting into the channels that did open as though
+   * nothing were missing. Degrading is the right answer for a seat and the
+   * wrong one for a channel.
    */
   errors: string[];
 }
@@ -116,6 +123,19 @@ export interface HiredWorkforce {
 export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
   const { workers, errors, skillErrors, teamErrors } = await readWorkforce(workforceRoot);
   const { channels, errors: channelErrors } = await readChannelsDirectory(workforceRoot);
+
+  // FATAL, unlike the worker-side errors below, and the published guide is why:
+  // "a reported folder is a channel your app was supposed to have. Log a warning
+  // and carry on, and the app boots with a team that has nowhere to talk."
+  // A seat that fails to load is one seat short; a channel that fails to load is
+  // a place the team cannot talk, and the rest of the roster keeps posting into
+  // the ones that did open as though nothing were missing.
+  if (channelErrors.length > 0) {
+    throw new Error(
+      `channels: ${channelErrors.length} channel(s) failed to load\n` +
+        channelErrors.map(({ path, error }) => `  ${path}: ${error.message}`).join("\n"),
+    );
+  }
 
   // The generated map, plus the built-in under the key the binder seeds. No
   // kind of this app's own is named here: `channelKinds` carries whatever
@@ -144,7 +164,6 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
       ...errors.map((e) => e.path),
       ...skillErrors.flatMap((seat) => seat.errors.map((e) => e.path)),
       ...teamErrors.map((e) => e.path),
-      ...channelErrors.map((e) => e.path),
     ],
   };
 }

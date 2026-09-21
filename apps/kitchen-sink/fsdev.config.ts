@@ -325,11 +325,20 @@ export const hiredRosterReload: { seats: string[]; problems: string[] } = {
 /**
  * Who every channel session belongs to.
  *
- * A session belongs to one user, so a channel does too. This app configures no
- * authentication, so nothing verifies it; an app that does should open its
- * channels as an identity its callers can reach.
+ * A session belongs to one user, so a channel does too — and sessions are
+ * per-user, so this value decides who can SEE the channels at all. It has to be
+ * the id this app's callers use: `app/page.tsx` and `app/devtool/page.tsx` both
+ * call as `devuser` (overridden per test by `?e2eUserId=`), so a channel opened
+ * under any other id is one the app ships and none of its own pages can list.
+ * That is a reachability rule rather than an authentication one, and it binds
+ * here, where nothing is verified. An app that authenticates should open its
+ * channels as an identity its callers actually resolve to.
+ *
+ * Deliberately a literal rather than an import from `app/`: this module is the
+ * runtime assembly and the pages are its consumers, so importing upward would
+ * invert the dependency. V13 of the goal check reads both and fails on drift.
  */
-const CHANNEL_OWNER = "kitchen-sink";
+const CHANNEL_OWNER = "devuser";
 
 // The session client, over this app's own router rather than over the network:
 // the app is the server, so a loopback fetcher hands the request straight to
