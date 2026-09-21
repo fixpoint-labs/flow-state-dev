@@ -1,8 +1,8 @@
 # FIX-1457 · W5: Workforce release QA — Devtool, a DevForce proof, multi-seat collab
 
-**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+**Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · **an open set · no live proof-producer, 3 named gaps** · Workforce: Layer 2 Abstraction ·
+Epic · **an open set · 1 filed proof-producer, 2 named gaps** · Workforce: Layer 2 Abstraction ·
 Goal 1 — foundation honesty / validate through real usage
 
 > **Recalibrated by the owner on 2026-09-20 (18:05Z).** W5 is **Workforce release QA / polish** —
@@ -28,36 +28,40 @@ claim about what exists. Nothing between them and a launch is more substrate
 
 ## What's in the box
 
-![What's in the box: the objective is Workforce release QA, and the box holds three named exit proofs — ER-Devtool, a documented Devtool checklist green on a live hired Workforce; ER-DevForce, one DevForce path completing with a real artifact; and ER-Collab, two or more seats across at least one channel filing, assigning, draining and handing off. All three are drawn as empty slots marked NO CHILD because nothing in the set produces any of them yet. Beneath the box sits the unchanged substrate they compose and must not extend: boards, inventory, manager-queue, org identity, dispatch honesty, and the references-versus-resources split FIX-1467 settled. A boundary line reads one user, one org. To the side, kitchen-sink FIX-1455 is drawn outside the box as a sibling epic that left the set. Below, a grow-into-later band, and below a fence, everything the set refuses to build — including the four invent-kills the recalibration added and the one it killed. The figure's aria-label carries every item.](figures/end-state.svg)
+![What's in the box: the objective is Workforce release QA, and the box holds three named exit proofs — ER-Devtool, a documented Devtool checklist green on a live hired Workforce; ER-DevForce, one DevForce path completing with a real artifact; and ER-Collab, two or more seats across at least one channel filing, assigning, draining and handing off. ER-Devtool is drawn as a solid held slot because FIX-1481 now owns three of its six rows and rows one to three ride FIX-1320; the other two are drawn as empty slots marked NO CHILD because nothing in the set produces them. Beneath the box sits the unchanged substrate they compose and must not extend: boards, inventory, manager-queue, org identity, dispatch honesty, and the references-versus-resources split FIX-1467 settled. A boundary line reads one user, one org. To the side, kitchen-sink FIX-1455 is drawn outside the box as a sibling epic that left the set. Below, a grow-into-later band, and below a fence, everything the set refuses to build — including the four invent-kills the recalibration added and the one it killed. The figure's aria-label carries every item.](figures/end-state.svg)
 
-**All three slots are empty.** That is what the figure is for: the done condition is three proofs and
-not one has a producer. Beneath them is the substrate they compose and may not extend
-([ER-4](BUSINESS-RULES.md)). Kitchen-sink sits **outside** the box — a sibling epic, not a member
-([D9](DECISIONS.md#d9)).
+**Two of the three slots are still empty, and the third holds a ticket, not a result.** That is what
+the figure is for: the done condition is three proofs, one has a producer and none has been run.
+Beneath them is the substrate they compose and may not extend ([ER-4](BUSINESS-RULES.md)).
+Kitchen-sink sits **outside** the box — a sibling epic, not a member ([D9](DECISIONS.md#d9)).
 
-## The set · as of 2026-09-20
+## The set · as of 2026-09-21
 
-The live table, and **an open one** ([ER-23](BUSINESS-RULES.md)) — the objective names three proofs
-with no ticket, shown here as named gaps rather than left out. **Filing a child is the normal course
-of this epic, not a re-scope.** Refreshed on the epic PR as issues move.
+A dated snapshot of the reviewed scope, and **an open set** ([ER-23](BUSINESS-RULES.md)) — where a
+proof still has no ticket it is shown as a named gap rather than left out. **Filing a child is the
+normal course of this epic, not a re-scope.** Live state is in Linear and the implementation PRs.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| FIX-XXX · Devtool checklist | **ER-Devtool** — the six-area checklist green on a live hired Workforce: roster, channels, boards, inventory, parked rows, resources + references, **with no special wrapper** | The inspector is how the other two proofs are observed at all. Without it, "it worked" is asserted from a log | **No child — named gap.** Not filed. **Rows drafted** in [ER-Devtool](BUSINESS-RULES.md#er-devtool) against what the surfaces expose today; **two of six fail as written now**. **Possible collision with [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320)** — Sign-off 1 |
+| [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481) · Devtool checklist | **ER-Devtool** — the six-area checklist green on a live hired Workforce: roster, channels, boards, inventory, parked rows, resources + references, **with no special wrapper** | The inspector is how the other two proofs are observed at all. Without it, "it worked" is asserted from a log | **Backlog** · filed 2026-09-20. **The first filed proof-producer**, and it owns **three of the six rows** — parked reasons, references vs resources, org-level inventory. **Rows 1–3 ride [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320)**, an epic W5 does not run. That is the split [Sign-off 1](#sign-off) recommended, enacted three-and-three. **Nothing observed yet**; two of six still fail as written |
 | FIX-XXX · DevForce proof path | **ER-DevForce** — the **thinnest** DevForce path that completes and produces a **real artifact**, seats and channels used honestly | A reference app shows Workforce *can* run. A Lab shipping a work product is the evidence a launch claim rests on | **No child — named gap.** Not filed. First build slice is Done ([FIX-1426](https://linear.app/fixpoint-labs/issue/FIX-1426), [FIX-1410](https://linear.app/fixpoint-labs/issue/FIX-1410)); an end-to-end path has no owner. Scope fenced by [ER-11](BUSINESS-RULES.md) |
 | FIX-XXX · multi-seat collab scenario | **ER-Collab** — one graded scenario: ≥2 seats across ≥1 channel, work filed → assigned → drained, and a cross-seat handoff or reply **observed in Devtool** | Multi-seat is the composition W3 and W4 exist to enable and the one nothing has run | **No child — named gap.** Not filed. Composes boards ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)), inventory ([FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)), manager-queue ([FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430)) |
 | [FIX-1467](https://linear.app/fixpoint-labs/issue/FIX-1467) · `references/` vs `resources/` | The isolation convention: read-only handbooks ambient by tree, mutable resources by explicit grant | Settled the noun before anything teaches it. **Not a proving leg** — it never advanced the done condition | **Done · merged 2026-09-20.** Noun is `references/`, migration is `clearShadowedReferences`, grant model settled. **[ER-18](BUSINESS-RULES.md) is met** by it |
 | [FIX-1468](https://linear.app/fixpoint-labs/issue/FIX-1468) · `ReadOnlyResourceRef` | A handle type that omits `writeContent` for read-only documents | FIX-1467's deliberately-deferred type change. Additive, independent | **Backlog** · filed 2026-09-20 as a spin-off. **Not a proving leg** |
 | [FIX-1469](https://linear.app/fixpoint-labs/issue/FIX-1469) · `goals/` labs migration + KS documents | Decides the `goals/` labs document migration; would give kitchen-sink workforce documents | FIX-1467's deferred step S7. **Its kitchen-sink half is now stale** — it was filed while "upgrade kitchen-sink" was a W5 leg, and that leg left with [D9](DECISIONS.md#d9) | **Backlog** · filed 2026-09-20. **Not a proving leg.** Its KS half belongs to [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455); flagged, not moved |
+| [FIX-1474](https://linear.app/fixpoint-labs/issue/FIX-1474) · composed `@seat` notify + board file | A named path to notify another seat **while** filing on a board, composing the existing channel, dispatch and board primitives | Release polish for real collab. **Explicitly not an ER-Collab gate** — its own body keeps ER-Collab on today's separate paths until this lands | **Backlog** · filed 2026-09-20. **Not a proving leg.** Soft-related. Its own invent-kills forbid a new message-board package as W5 substrate ([ER-25](BUSINESS-RULES.md)) |
 | ~~[FIX-1458](https://linear.app/fixpoint-labs/issue/FIX-1458)~~ · humans-in-seats | Would have shaped the multi-person org chart | **Canceled 2026-09-20**, [#1955](https://github.com/fixpoint-labs/flow-state-dev/pull/1955) closed unmerged. Kept so a reader sees it was considered and dropped | **Canceled** · not re-specced, not reopened, no longer a child |
 
-**1 done · 2 backlog spin-offs · 3 named gaps with no child · 1 canceled. Zero live proof-producers.**
+**1 done · 2 backlog spin-offs · 1 backlog polish child · 1 filed proof-producer, not started · 2
+named gaps with no child · 1 canceled.**
 
-**Every exit proof has no producer, and the one child that finished was never a proving leg.**
-FIX-1467 is Done and it settled a convention; it did not advance the done condition, and saying so
-is the point of this row. FIX-1468 and FIX-1469 are its spin-offs and neither is a leg either. So the
-honest reading of this table is that W5's staffed work is complete and **its objective has not been
-started**. Filing the three gaps is the first thing that has to happen ([Open 1](DECISIONS.md#open)).
+**Two of the three exit proofs still have no producer, and nothing has been proved.** FIX-1481 is
+the first filed proof-producer, and it is Backlog — a ticket, not a run, and covering half of one
+proof. FIX-1467 is Done and it settled a convention; it did not advance the done condition, and
+saying so is the point of this row. FIX-1468, FIX-1469 and FIX-1474 are not legs either. So the
+honest reading of this table is that W5 has begun to staff its objective and **has still proved
+nothing**. Filing the remaining two gaps is the next thing that has to happen
+([Open 1](DECISIONS.md#open)).
 **Kitchen-sink is not in this table by design** — FIX-1455 is a sibling epic, soft-related, running
 its own lifecycle ([D9](DECISIONS.md#d9), [ER-15](BUSINESS-RULES.md)).
 
@@ -68,7 +72,7 @@ flowchart LR
   W3["W3 floor · FIX-1351"] -.->|"seats, channels, skills on disk"| S
   W4["W4 first cut · FIX-1407"] -.->|"boards, inventory, dispatch, org identity"| S
   R["FIX-1467 · references vs resources"] -->|"the settled isolation noun"| S["a live hired Workforce"]
-  S -->|"a world to inspect"| T["FIX-XXX · Devtool checklist"]
+  S -->|"a world to inspect"| T["FIX-1481 · Devtool checklist"]
   S -->|"seats and channels to run"| F["FIX-XXX · DevForce proof path"]
   S -->|"two seats and a channel"| C["FIX-XXX · multi-seat collab"]
   T -->|"the lens both are observed through"| F
@@ -78,18 +82,23 @@ flowchart LR
   C --> P
   K["FIX-1455 · kitchen-sink"] -.->|"sibling epic · left the set"| P
   X["FIX-1458 · canceled Sep 20"] -.->|"its invent-kills, as locked constraint"| S
+  I["FIX-1320 · flow instances · Spec Approved"] -.->|"checklist rows 1–3 ride it · W5 does not run it"| T
+  N["FIX-1474 · @seat notify + board file"] -.->|"soft-related polish · not an ER-Collab gate"| C
   classDef done stroke-width:2px
+  classDef filed stroke-width:2px
   classDef proposed stroke-dasharray:4 3
   class R done
-  class T,F,C proposed
-  class K,X proposed
+  class T,N filed
+  class F,C proposed
+  class K,X,I proposed
 ```
 
-An edge is what one node hands the next. **The three dashed nodes in the middle are the named gaps**
-— all three inbound edges to the done condition matter equally, and none has an owner. The Devtool
+An edge is what one node hands the next. **The two dashed nodes in the middle are the named gaps**
+— all three inbound edges to the done condition matter equally, and two have no owner. The Devtool
 checklist is drawn upstream of the other two because both are *observed in Devtool*, which makes it
-the one that cannot be last. Kitchen-sink is dashed and outside the chain: it hands the set nothing
-and the set owes it nothing.
+the one that cannot be last; it is now solid because FIX-1481 holds it, with a dashed edge in from
+FIX-1320 for the three rows W5 does not own. FIX-1474 hangs off collab as polish, not as a gate.
+Kitchen-sink is dashed and outside the chain: it hands the set nothing and the set owes it nothing.
 
 ## What stays as it is
 
@@ -122,8 +131,8 @@ whether CyberForce gets a parallel thin proof this cycle — are explicitly **no
 polish**, so none of them is an ask here. The checklist rows are drafted below as the EM's own work
 ([ER-Devtool](BUSINESS-RULES.md#er-devtool)).
 
-**One live ask**, and it is here because filing against it is about to commit a cycle's capacity to
-the wrong epic.
+**One ask, answered in practice on 2026-09-20 — confirm or correct.** It is kept in full because the
+answer was enacted by a filing rather than stated, and because it commits a cycle's capacity.
 
 1. **Does W5 file its own Devtool child, or does ER-Devtool ride
    [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320)?**
@@ -144,6 +153,12 @@ the wrong epic.
      it, and a self-contained W5 Devtool child is worth the duplication.
    - **If wrong:** one Devtool pass is done twice, or W5's exit proof waits on another epic's
      schedule. Both are real cost; neither is incorrect behaviour.
+   - **What happened.** [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481) was filed on
+     2026-09-20 taking exactly this recommendation — **three** rows to the W5 child (parked reasons,
+     references vs resources, org-level inventory) and **three** riding FIX-1320, not the four-and-four
+     the ask estimated. FIX-1320 is still *Spec Approved* and its UI verification is still unrun, so
+     the *changes my mind* condition has not fired. **Say so here if the split is wrong**; nothing has
+     been built against it.
 
 **Not asked, reported as news.** [D8](DECISIONS.md#d8) — **proof-via-DevForce is in**, and the
 invent-kill that said *don't treat W5 as build DevForce* is **dead**; unbounded Lab delivery stays
@@ -151,8 +166,13 @@ out. [D9](DECISIONS.md#d9) — kitchen-sink left the set. [ER-18](BUSINESS-RULES
 FIX-1467's merge. [ER-15](BUSINESS-RULES.md) was **rewritten**: this epic drives no child epic.
 [D7](DECISIONS.md#d7) (one user, one org) and [D2](DECISIONS.md#d2) (humans are not board drainers)
 stand unchanged. **[FIX-1469](https://linear.app/fixpoint-labs/issue/FIX-1469)'s kitchen-sink half is
-stale** — flagged for routing to FIX-1455, not moved.
+stale** — flagged for routing to FIX-1455, not moved. **Two children were filed on 2026-09-20 and are
+now in the set table**: [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481), the Devtool
+child, and [FIX-1474](https://linear.app/fixpoint-labs/issue/FIX-1474), soft-related polish that is
+**not** an ER-Collab gate.
 
-**Open: one**, and it is structural — no exit proof has a producer
-([Open 1](DECISIONS.md#open)). Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The rules every
-child obeys: [BUSINESS-RULES.md](BUSINESS-RULES.md). The order the work runs in: [PLAN.md](PLAN.md).
+**Open: one**, and it is structural — two of the three exit proofs have no producer, and the third
+has a ticket and no run ([Open 1](DECISIONS.md#open)). Reasoning and what lost:
+[DECISIONS.md](DECISIONS.md). The rules every child obeys: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+The order the work runs in: [PLAN.md](PLAN.md). The reader-facing prose the set owes, and who
+publishes it: [DOCS.md](DOCS.md). What it is written on top of: [EVOLUTION.md](EVOLUTION.md).

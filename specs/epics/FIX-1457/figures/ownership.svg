@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 440" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: a matrix of six cross-cutting rules against four columns. Three columns are the exit proofs and all three are unfiled placeholders — the Devtool checklist, the DevForce proof path and the multi-seat collab scenario. The fourth column is FIX-1467, the exploration that is Done and merged. Row ER-1, a non-human seat owns the task: the collab column owns it, the Devtool column consumes it, the DevForce column consumes it, FIX-1467 is blank. Row ER-2, Waiting-on-you is parked with a reason: the Devtool column owns it and is marked checklist row 4, the collab column consumes it, FIX-1467 and DevForce are blank. Row ER-3, every proof runs on a live hired Workforce: the DevForce column owns it because its path stands the workforce up, and the Devtool and collab columns consume it. Row ER-4, every proof composes and adds no layer: all three proof columns are marked builds if filed. Row ER-18, the downstream-blocking walls: FIX-1467's cell is marked MET, with the noun, the migration and the grant model all answered by its merge, and the Devtool column consumes it at checklist row 6. Last row, the done condition, now three separate rules: the Devtool column holds ER-Devtool marked NO CHILD, the DevForce column holds ER-DevForce marked NO CHILD, and the collab column holds ER-Collab marked NO CHILD — three empty cells on the diagonal, and the done condition owned in zero parts. A legend distinguishes the one committed owner, a consumes cell that must not be re-decided, a conditional cell that applies once the row is filed, a MET cell, and a NO CHILD cell where nothing in the set produces the rule; a blank cell means the row does not touch that rule. Notes record that kitchen-sink FIX-1455 no longer has a column because it left the set on September 20, that ER-1, ER-2 and ER-3 were re-owned rather than left pointing at it, that ER-15 was rewritten and ER-19 retired, and that nineteen further rules bind every row equally and need no column.">
+<svg viewBox="0 0 940 458" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: a matrix of six cross-cutting rules against four columns. Three columns are the exit proofs: the Devtool checklist, now held by FIX-1481, and the DevForce proof path and the multi-seat collab scenario, both still unfiled placeholders. The fourth column is FIX-1467, the exploration that is Done and merged. Row ER-1, a non-human seat owns the task: the collab column owns it, the Devtool column consumes it, the DevForce column consumes it, FIX-1467 is blank. Row ER-2, Waiting-on-you is parked with a reason: the Devtool column owns it as FIX-1481 and is marked checklist row 4, the collab column consumes it, FIX-1467 and DevForce are blank. Row ER-3, every proof runs on a live hired Workforce: the DevForce column owns it because its path stands the workforce up, and the Devtool and collab columns consume it. Row ER-4, every proof composes and adds no layer: the Devtool column is marked builds it, and the DevForce and collab columns are marked builds if filed. Row ER-18, the downstream-blocking walls: FIX-1467's cell is marked MET, with the noun, the migration and the grant model all answered by its merge, and the Devtool column consumes it at checklist row 6. Last row, the done condition, now three separate rules: the Devtool column holds ER-Devtool marked HELD, NOT RUN, the DevForce column holds ER-DevForce marked NO CHILD, and the collab column holds ER-Collab marked NO CHILD — two empty cells on the diagonal, and the done condition owned in one part of three, with nothing yet proved. A legend distinguishes the one committed owner, a consumes cell that must not be re-decided, a conditional cell that applies once the row is filed, a MET cell, a HELD cell where a child is filed but nothing has run, and a NO CHILD cell where nothing in the set produces the rule; a blank cell means the row does not touch that rule. Notes record that kitchen-sink FIX-1455 no longer has a column because it left the set on September 20, that ER-1, ER-2 and ER-3 were re-owned rather than left pointing at it, that ER-15 was rewritten and ER-19 retired, and that nineteen further rules bind every row equally and need no column.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -14,6 +14,7 @@
     .prov  { fill:none; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
     .met   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
     .none  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .held  { fill:none; stroke:var(--accent); stroke-width:1.6; }
     .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-size:9.5px; letter-spacing:.1em; }
     .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
@@ -27,12 +28,14 @@
     .t-prov{ fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
     .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-size:9px; letter-spacing:.06em; }
+    .t-hld { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9px; letter-spacing:.06em; }
   </style>
 
-  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ALL THREE EXIT PROOFS HAVE NO CHILD</text>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE EXIT PROOF IS HELD, TWO HAVE NO CHILD</text>
 
   <g id="columns">
-    <text class="t-colg" x="302" y="44">Devtool &#183; unfiled</text>
+    <text class="t-col" x="302" y="44">FIX-1481 &#183; Devtool</text>
     <text class="t-colg" x="460" y="44">DevForce &#183; unfiled</text>
     <text class="t-colg" x="618" y="44">collab &#183; unfiled</text>
     <text class="t-col" x="784" y="44">FIX-1467 &#183; done</text>
@@ -48,7 +51,7 @@
 
   <g id="r2">
     <text class="t-row" x="16" y="106">ER-2 &#183; Waiting-on-you is parked, with a reason</text>
-    <rect class="own" x="296" y="88" width="150" height="30"/><text class="t-own" x="318" y="107">OWNS &#183; ROW 4</text>
+    <rect class="own" x="296" y="88" width="150" height="30"/><text class="t-own" x="310" y="107">FIX-1481 &#183; OWNS ROW 4</text>
     <rect class="cell" x="454" y="88" width="150" height="30"/>
     <rect class="use" x="612" y="88" width="150" height="30"/><text class="t-use" x="652" y="107">consumes</text>
     <rect class="cell" x="770" y="88" width="150" height="30"/>
@@ -64,7 +67,7 @@
 
   <g id="r4">
     <text class="t-row" x="16" y="174">ER-4 &#183; every proof composes, adds no layer</text>
-    <rect class="prov" x="296" y="156" width="150" height="30"/><text class="t-prov" x="324" y="175">BUILDS IF FILED</text>
+    <rect class="own" x="296" y="156" width="150" height="30"/><text class="t-own" x="336" y="175">BUILDS IT</text>
     <rect class="prov" x="454" y="156" width="150" height="30"/><text class="t-prov" x="482" y="175">BUILDS IF FILED</text>
     <rect class="prov" x="612" y="156" width="150" height="30"/><text class="t-prov" x="640" y="175">BUILDS IF FILED</text>
     <rect class="cell" x="770" y="156" width="150" height="30"/>
@@ -80,7 +83,7 @@
 
   <g id="r6">
     <text class="t-row" x="16" y="242">the done condition &#8212; now three rules</text>
-    <rect class="none" x="296" y="224" width="150" height="30"/><text class="t-non" x="312" y="243">ER-DEVTOOL &#183; NO CHILD</text>
+    <rect class="held" x="296" y="224" width="150" height="30"/><text class="t-hld" x="320" y="243">ER-DEVTOOL &#183; HELD</text>
     <rect class="none" x="454" y="224" width="150" height="30"/><text class="t-non" x="468" y="243">ER-DEVFORCE &#183; NO CHILD</text>
     <rect class="none" x="612" y="224" width="150" height="30"/><text class="t-non" x="632" y="243">ER-COLLAB &#183; NO CHILD</text>
     <rect class="cell" x="770" y="224" width="150" height="30"/>
@@ -97,11 +100,13 @@
     <text class="t-use" x="404" y="306">MET &#8212; satisfied, with what satisfied it recorded</text>
     <rect class="none" x="16" y="316" width="16" height="14"/>
     <text class="t-use" x="40" y="328">NO CHILD &#8212; nothing in the set produces this</text>
-    <text class="t-use" x="380" y="328">A blank cell is different: the row does not touch that rule.</text>
-    <text class="t-use" x="16" y="352">Three empty cells on the diagonal are the finding: each exit proof is its own rule in its own column, and every one is unowned. The done condition is owned in zero parts.</text>
-    <text class="t-use" x="16" y="370">Kitchen-sink FIX-1455 no longer has a column &#8212; it left the set on Sep 20 (D9). ER-1, ER-2 and ER-3 were re-owned rather than left pointing at it; ER-3 was rewritten.</text>
-    <text class="t-use" x="16" y="388">ER-15 was rewritten (this epic drives no child epic) and ER-19 retired, replaced by the three rules on the bottom row. FIX-1458 has had no column since it was canceled.</text>
-    <text class="t-use" x="16" y="406">Nineteen further rules need no column and bind every row equally: 13 prohibitions (ER-5&#8211;14, 22, 24, 25), 4 run-the-set (ER-15&#8211;17, 23), 2 further proofs (ER-20, 21).</text>
-    <text class="t-use" x="16" y="424">The set is open (ER-23) &#8212; a child filed against any of the three bottom-row cells takes that column and inherits every rule.</text>
+    <rect class="held" x="290" y="316" width="16" height="14"/>
+    <text class="t-use" x="314" y="328">HELD &#8212; a child is filed, nothing has run yet</text>
+    <text class="t-use" x="16" y="352">A blank cell is different: the row does not touch that rule. FIX-1481 holds ER-Devtool&#8217;s rows 4&#8211;6; rows 1&#8211;3 ride FIX-1320.</text>
+    <text class="t-use" x="16" y="370">Two empty cells on the diagonal are the finding: each exit proof is its own rule in its own column, and two of the three are unowned. The third is held, not passed.</text>
+    <text class="t-use" x="16" y="388">Kitchen-sink FIX-1455 no longer has a column &#8212; it left the set on Sep 20 (D9). ER-1, ER-2 and ER-3 were re-owned rather than left pointing at it; ER-3 was rewritten.</text>
+    <text class="t-use" x="16" y="406">ER-15 was rewritten (this epic drives no child epic) and ER-19 retired, replaced by the three rules on the bottom row. FIX-1458 has had no column since it was canceled.</text>
+    <text class="t-use" x="16" y="424">Nineteen further rules need no column and bind every row equally: 13 prohibitions (ER-5&#8211;14, 22, 24, 25), 4 run-the-set (ER-15&#8211;17, 23), 2 further proofs (ER-20, 21).</text>
+    <text class="t-use" x="16" y="442">The set is open (ER-23) &#8212; a child filed against either remaining bottom-row cell takes that column and inherits every rule, as FIX-1481 did on Sep 20. A ticket is not a pass.</text>
   </g>
 </svg>

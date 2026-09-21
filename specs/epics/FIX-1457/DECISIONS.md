@@ -1,6 +1,6 @@
 # FIX-1457 · Decisions
 
-[Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)
+[Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The calls above any single issue in W5: what was chosen, what lost, what each locks in.
 **Recalibrated by the owner on 2026-09-20 (18:05Z)** — the epic's identity changed, not just its
@@ -46,7 +46,7 @@ flowchart TD
 |---|---|
 | **Instead of** | The three *surfaces* — reference app, live view, real configuration — whose first leg has now left the set · or a "polish" epic with no pass/fail bar, which is how *looks good* becomes a done condition |
 | **Because** | A QA epic's whole product is **evidence**, and evidence has to be falsifiable. Three named proofs each say what must pass and on what: the inspector is green on a live hire, a Lab shipped something real, two seats collaborated. Each can fail; *polished* cannot |
-| **Locks in** | **[ER-Devtool](BUSINESS-RULES.md#er-devtool), [ER-DevForce](BUSINESS-RULES.md#er-devforce), [ER-Collab](BUSINESS-RULES.md#er-collab)** replace ER-19, which is retired. Every proof runs against a **live hired Workforce** ([ER-3](BUSINESS-RULES.md)) and composes rather than extends ([ER-4](BUSINESS-RULES.md)). **The set is open** ([ER-23](BUSINESS-RULES.md)) — and **no proof has a producer today**, which is [Open 1](#open) |
+| **Locks in** | **[ER-Devtool](BUSINESS-RULES.md#er-devtool), [ER-DevForce](BUSINESS-RULES.md#er-devforce), [ER-Collab](BUSINESS-RULES.md#er-collab)** replace ER-19, which is retired. Every proof runs against a **live hired Workforce** ([ER-3](BUSINESS-RULES.md)) and composes rather than extends ([ER-4](BUSINESS-RULES.md)). **The set is open** ([ER-23](BUSINESS-RULES.md)) — and **two of the three still have no producer**, which is [Open 1](#open) |
 
 **What would change my mind:** a ship date inside this cycle that the three proofs cannot fit. Then
 the bar is cut deliberately to one proof and the other two become named launch follow-ups — not
@@ -108,8 +108,9 @@ belongs to FIX-1455. Its `goals/` labs half stands on its own. Routing is the ow
 | **Locks in** | Every proof composes existing pieces. A proof that needs new L1 has found a **gap in W3 or W4** and comments up ([ER-5](BUSINESS-RULES.md), [ER-17](BUSINESS-RULES.md), [ER-25](BUSINESS-RULES.md) new) |
 
 **What would change my mind:** the Devtool checklist finding that inventory or parked-row reasons
-cannot be rendered without a new L1 type. Two of its six rows fail today, so this is live, not
-theoretical — and [ER-8](BUSINESS-RULES.md) says a failing row is never passed with a status value.
+cannot be rendered without a new L1 type. Two of its six rows fail today and
+[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481) is the child that will hit them, so this
+is live, not theoretical — and [ER-8](BUSINESS-RULES.md) says a failing row is never passed with a status value.
 
 <a name="d2"></a>
 ## D2 · Humans are not board drainers — a locked constraint, no longer a fork
@@ -149,15 +150,16 @@ theoretical — and [ER-8](BUSINESS-RULES.md) says a failing row is never passed
 |---|---|
 | **Instead of** | Forcing W3 ([#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)), W4 ([#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)) or LAB-162 ([#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612)) to wrap to free a slot |
 | **Because** | The board was already at three open epic PRs when W5 opened. The owner chose the breach on 2026-09-19 rather than wrap an epic early and cost it real closure quality |
-| **Locks in** | The cap is knowingly breached, not forgotten. **The arithmetic moved again**: W5's live work is now **zero** — one child Done, two in Backlog, three proofs unfiled — so the slot currently costs nothing and will cost three the moment [Open 1](#open) is answered |
+| **Locks in** | The cap is knowingly breached, not forgotten. **The arithmetic moved again**: W5's *in-flight* work is still **zero** — one child Done and four in Backlog (FIX-1468, FIX-1469, FIX-1474, FIX-1481), two proofs unfiled — so the slot costs nothing today and will cost real capacity the moment anything in Backlog starts or [Open 1](#open) is answered |
 
 ## Who owns what
 
-![Who owns what: a matrix of six cross-cutting rules against the three exit-proof rows of the set — the Devtool checklist, the DevForce proof path and the multi-seat collab scenario — plus a fourth column for the finished exploration FIX-1467. All three proof columns are drawn as unfiled placeholder columns. ER-1's owner is the collab producer; ER-2's is the Devtool producer; ER-3's is the DevForce producer; ER-4 applies to all three once filed; ER-18 is marked MET by FIX-1467; and the done condition splits into three rules, each sitting in its own column and every one of them marked NO CHILD. A note records that kitchen-sink FIX-1455 no longer has a column because it left the set, that ER-1, ER-2 and ER-3 were re-owned rather than left pointing at it, and that ER-15 was rewritten and ER-19 retired. The figure's aria-label carries every cell.](figures/ownership.svg)
+![Who owns what: a matrix of six cross-cutting rules against the three exit-proof rows of the set — the Devtool checklist, the DevForce proof path and the multi-seat collab scenario — plus a fourth column for the finished exploration FIX-1467. The Devtool column is now held by FIX-1481; the other two proof columns are drawn as unfiled placeholder columns. ER-1's owner is the collab producer; ER-2's is FIX-1481, the Devtool producer; ER-3's is the DevForce producer; ER-4 is marked builds it in the Devtool column and builds if filed in the other two; ER-18 is marked MET by FIX-1467; and the done condition splits into three rules, each sitting in its own column — the Devtool one marked HELD because a child is filed and nothing has run, the other two marked NO CHILD. A note records that FIX-1481 holds ER-Devtool's rows 4 to 6 while rows 1 to 3 ride FIX-1320, that kitchen-sink FIX-1455 no longer has a column because it left the set, that ER-1, ER-2 and ER-3 were re-owned rather than left pointing at it, and that ER-15 was rewritten and ER-19 retired. The figure's aria-label carries every cell.](figures/ownership.svg)
 
-**Three empty cells on the diagonal are the finding.** Each exit proof is its own rule in its own
-column and every one reads **NO CHILD** — the done condition is owned in zero parts, where a week ago
-it was owned in one third.
+**Two empty cells on the diagonal are the finding.** Each exit proof is its own rule in its own
+column; ER-Devtool reads **HELD** and the other two read **NO CHILD** — the done condition is owned
+in one part of three, and proved in none. **Held is not passed**: FIX-1481 is Backlog, it covers
+rows 4–6, and rows 1–3 ride an epic W5 does not run.
 
 **Three owners moved when kitchen-sink left, and none was left empty** ([D9](#d9)). ER-1 → the
 ER-Collab producer, ER-2 → the ER-Devtool producer, and ER-3 was **rewritten** from *the reference
@@ -206,11 +208,13 @@ multi-user or sign-off pain is real**.
 
 ## What the end-state POC showed
 
-**None was built, and the recalibration has not changed that.** The question it answers — *does the
-division into issues hold once it's all there?* — needs a division to test, and **all three** proof
-rows are now unfiled. **Revisit the moment the three gaps are filed** ([Open 1](#open)), before any
-of them starts building: whether the Devtool checklist is one child or three, and whether the collab
-scenario is separable from the DevForce path at all, is exactly what a rough end-state falsifies.
+**None was built, and nothing since has changed that.** The question it answers — *does the division
+into issues hold once it's all there?* — needs a division to test, and **two of three** proof rows
+are still unfiled. FIX-1481's filing supplies one third of a division, not a division.
+**Revisit the moment the remaining two gaps are filed** ([Open 1](#open)), before any of them starts
+building: whether the collab scenario is separable from the DevForce path at all, and whether
+ER-Devtool's six rows survive being split across two epics, is exactly what a rough end-state
+falsifies.
 
 ## How it got here
 
@@ -235,19 +239,38 @@ scenario is separable from the DevForce path at all, is exactly what a rough end
   against what the surfaces expose today, two of which **fail as written**. **FIX-1468 and FIX-1469**
   entered the set table, which had never carried them, both marked *not a proving leg*. All three
   figures redrawn. **Not review feedback and not a review round: `reviewRounds` is unchanged.**
+- **Two children filed, and the set table caught up (Sep 20–21).**
+  **[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)** is the **first filed exit-proof
+  producer**: it takes [Sign-off 1](SPEC.md#sign-off)'s recommendation, owning checklist rows 4–6
+  while rows 1–3 ride [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320) — enacted three
+  and three, not the four and four the ask estimated, and still the owner's to correct.
+  **[FIX-1474](https://linear.app/fixpoint-labs/issue/FIX-1474)** is soft-related polish and its own
+  body keeps it **out** of ER-Collab's gate. Every surface that restated *zero producers* was
+  re-derived with them: the set table and its counts, the box, the path and the ownership matrix,
+  ER-2's owner, ER-Devtool's and ER-Collab's *proved by* cells, D5's arithmetic and
+  [Open 1](#open). **Not review feedback and not a review round.**
+- **Migrated to the retained-spec contract (Sep 21).** The set moved from
+  `spec/_epics/living-workforce/` to `specs/epics/FIX-1457/` and gained the two documents the
+  contract requires, [DOCS.md](DOCS.md) and [EVOLUTION.md](EVOLUTION.md). **The epic PR now merges
+  after the objective gate** rather than staying open for the epic's life
+  ([orchestration.md](../../../docs/contributing/orchestration.md#merging-and-amending-a-spec)).
+  No decision, rule or scope changed in the move.
 
 <a name="open"></a>
 ## Open
 
 **One, and it is structural.**
 
-1. **No exit proof has a producer.** [ER-Devtool](BUSINESS-RULES.md#er-devtool),
-   [ER-DevForce](BUSINESS-RULES.md#er-devforce) and [ER-Collab](BUSINESS-RULES.md#er-collab) each
-   have no ticket, no spec and no owner. The set's one finished child, FIX-1467, was **never a
-   proving leg**, and its two Backlog spin-offs are not legs either — so W5's staffed work is
-   complete while its objective is unstarted. Not a question about the objective; a question about
-   whether the epic is staffed to reach it. **Filing is the owner's**, and per
-   [ER-23](BUSINESS-RULES.md) it is normal course, not a re-scope.
+1. **Two of the three exit proofs have no producer, and the third has a ticket and no run.**
+   [ER-DevForce](BUSINESS-RULES.md#er-devforce) and [ER-Collab](BUSINESS-RULES.md#er-collab) have no
+   ticket, no spec and no owner. [ER-Devtool](BUSINESS-RULES.md#er-devtool) is held by
+   [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481) — Backlog, covering rows 4–6, with
+   rows 1–3 riding [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320), an epic W5 does not
+   run. The set's one finished child, FIX-1467, was **never a proving leg**, and FIX-1468, FIX-1469
+   and FIX-1474 are not legs either — so W5 has begun to staff its objective and has proved none of
+   it. Not a question about the objective; a question about whether the epic is staffed to reach it.
+   **Filing is the owner's**, and per [ER-23](BUSINESS-RULES.md) it is normal course, not a
+   re-scope.
 
 **Not open, deliberately.** The recalibration's *Still open* items — the exact Devtool checklist
 rows, which DevForce artifact counts, whether CyberForce gets a parallel thin proof — are marked by

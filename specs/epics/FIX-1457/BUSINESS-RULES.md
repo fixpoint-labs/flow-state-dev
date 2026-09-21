@@ -1,12 +1,14 @@
 # FIX-1457 · Rules every issue in the set obeys
 
-[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md)
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 At epic altitude the rules aren't behaviours of one feature; they're the constraints every child
 spec and implementation must satisfy, and the place a cross-spec review checks. Each says who owns
 it and where it's checked. **The done condition is now three named exit proofs** —
-[ER-Devtool](#er-devtool), [ER-DevForce](#er-devforce), [ER-Collab](#er-collab) — and **none of the
-three has a producer**, flagged in each rule rather than papered over ([Open 1](DECISIONS.md#open)).
+[ER-Devtool](#er-devtool), [ER-DevForce](#er-devforce), [ER-Collab](#er-collab) — and **only
+ER-Devtool has a producer**, [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481), which covers
+half of it. The state of each is flagged in the rule itself rather than papered over
+([Open 1](DECISIONS.md#open)).
 **The set is open** ([ER-23](#er-23)): a child filed later inherits every rule here without this
 document being re-gated.
 
@@ -15,7 +17,7 @@ document being re-gated.
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | **A non-human seat owns the task.** A row that needs a person is **parked by the seat that owns it**, and the person answers through a **flow action carrying the request's own principal** — never by draining the board, never by deriving a second person ([D2](DECISIONS.md#d2), [D7](DECISIONS.md#d7)) | **The ER-Collab producer** — re-owned 2026-09-20 when kitchen-sink left the set; it is the proof that runs seats filing, assigning and draining | That child's gate · cross-spec review · [ER-20](#er-20)'s wrap sweep |
-| ER-2 | A row that needs a person is **parked, with a reason**. **Waiting on you** is that reading — not a new `TaskStatus` value and not a new column — and **Idle** is seat/session runtime ([D3](DECISIONS.md#d3)) | **The ER-Devtool producer** — it renders both, and [row 4](#er-devtool) of the checklist is exactly this | That child's gate · cross-spec review |
+| ER-2 | A row that needs a person is **parked, with a reason**. **Waiting on you** is that reading — not a new `TaskStatus` value and not a new column — and **Idle** is seat/session runtime ([D3](DECISIONS.md#d3)) | **[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)**, the ER-Devtool producer — it renders both, and [row 4](#er-devtool) of the checklist is the row it was filed for | That child's gate · cross-spec review |
 | ER-3 | Every exit proof runs against a **live hired Workforce** — a real hire, real seats, real channels, durable across the run — never a fixture, a mock or a hand-built harness standing in for one. **Rewritten 2026-09-20**: it used to require the kitchen-sink reference app, which is no longer in the set | **The ER-DevForce producer** — its path is what stands a workforce up; the other two observe that one | Each proof's own gate · [ER-20](#er-20)'s wrap sweep |
 | ER-4 | Every proof **composes** the W3 floor and the W4 first cut; none adds a layer of its own ([D1](DECISIONS.md#d1)) | Each of the three, once filed | Each proof's own spec · [ER-20](#er-20)'s wrap sweep |
 
@@ -34,7 +36,7 @@ document being re-gated.
 | ER-13 | No child teaches **nested or child sessions as the work control plane**. `parentSessionId` is provenance | [FIX-1408](https://linear.app/fixpoint-labs/issue/FIX-1408) / [FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440). Boards and tasks nest; sessions link |
 | ER-14 | No child invents a **second skill registry** or a **second memory story** | [FIX-1356](https://linear.app/fixpoint-labs/issue/FIX-1356) / [FIX-1364](https://linear.app/fixpoint-labs/issue/FIX-1364). One register, one honesty story |
 | ER-22 | No child builds **multi-human machinery** — a second principal, an audience routing between people, originator ≠ reviewer, a durable `reviewedBy:`, or an org chart of people as a product | [D7](DECISIONS.md#d7). All of it is [deferred with a revisit condition](DECISIONS.md#later), which is not the same as open. A child that needs it raises it ([ER-17](#er-17)) |
-| ER-24 | **No child nests kitchen-sink under W5 again.** [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) owns the reference-consumer rebuild on its own lifecycle | **New 2026-09-20** ([D9](DECISIONS.md#d9)). It has been nested once already; a named kill is what stops a third pass |
+| <a name="er-24"></a>ER-24 | **No child nests kitchen-sink under W5 again.** [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) owns the reference-consumer rebuild on its own lifecycle | **New 2026-09-20** ([D9](DECISIONS.md#d9)). It has been nested once already; a named kill is what stops a third pass |
 | ER-25 | No child opens a **new substrate epic disguised as polish**. Work that needs new substrate is a **gap in W3 or W4** and is commented up ([ER-17](#er-17)), not built here | **New 2026-09-20.** A QA epic that grows substrate stops being a QA epic, and the growth arrives labelled *polish* |
 
 ## How the set is run
@@ -56,9 +58,9 @@ these three instead.
 
 | # | The epic is done when | Proved by |
 |---|---|---|
-| <a name="er-devtool"></a>**ER-Devtool** | **The documented Devtool checklist below is green on a live hired Workforce** ([ER-3](#what-every-exit-proof-must-satisfy)), **with no special wrapper** — no bespoke debug app, no fixture panel, no code written only to make the inspection possible | **No producer.** Rows drafted below against what the surfaces expose today; **rows 4 and 6 fail as written**, and rows 1–2 are derived from source, **not observed on a running workforce**. Possible overlap with [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320) — [Sign-off 1](SPEC.md#sign-off) |
+| <a name="er-devtool"></a>**ER-Devtool** | **The documented Devtool checklist below is green on a live hired Workforce** ([ER-3](#what-every-exit-proof-must-satisfy)), **with no special wrapper** — no bespoke debug app, no fixture panel, no code written only to make the inspection possible | **[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481), Backlog, for rows 4–6**; rows 1–3 ride [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320), which this epic does not run — the [Sign-off 1](SPEC.md#sign-off) split, enacted. **Nothing has been observed on a running workforce**: rows drafted below against what the surfaces expose today, **rows 4 and 6 fail as written**, and rows 1–2 are derived from source. **A filed ticket is not a green row** |
 | <a name="er-devforce"></a>**ER-DevForce** | **One DevForce path completes and produces a real artifact** — code, a PR, or a work product that exists outside the run — **not a mock and not a transcript**, with seats and channels used honestly rather than stubbed past | **No producer.** The first build slice is Done ([FIX-1426](https://linear.app/fixpoint-labs/issue/FIX-1426), [FIX-1410](https://linear.app/fixpoint-labs/issue/FIX-1410)); an end-to-end path is unfiled. **Which artifact counts is the EM's cut**, leaning on the owner, and is explicitly not blocking ([ER-11](#what-no-child-may-do) fences the size) |
-| <a name="er-collab"></a>**ER-Collab** | **≥2 seats across ≥1 channel**: work **filed**, **assigned**, **drained**, and a **cross-seat handoff or reply observed in Devtool**. One graded scenario, run on the real path | **No producer.** Composes boards ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)), inventory ([FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)), manager-queue ([FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430)), dispatch honesty ([FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440)). *Observed in Devtool* makes it depend on ER-Devtool |
+| <a name="er-collab"></a>**ER-Collab** | **≥2 seats across ≥1 channel**: work **filed**, **assigned**, **drained**, and a **cross-seat handoff or reply observed in Devtool**. One graded scenario, run on the real path | **No producer.** Composes boards ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)), inventory ([FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)), manager-queue ([FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430)), dispatch honesty ([FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440)). *Observed in Devtool* makes it depend on ER-Devtool. **[FIX-1474](https://linear.app/fixpoint-labs/issue/FIX-1474) is not this producer** — its own body keeps this gate on today's separate paths and forbids widening it until that child lands |
 | <a name="er-20"></a>ER-20 | Nothing the set shipped added an L1 type, a status enum value, a second work plane, multi-human machinery, or new substrate under a polish label ([ER-25](#what-no-child-may-do)) | **Two checks.** A cross-spec review over the set's specs before any ships, **and** a wrap-time sweep of the shipped child diffs — a spec-time check cannot see a child that ships what its spec never claimed |
 | ER-21 | The docs teach Workforce as something you **run, watch and prove** — and the person as **someone the work asks a question of**, not a second kind of worker | Whichever children ship the proofs, plus the wrap-time docs polish |
 
@@ -81,7 +83,9 @@ run**: no row below has been observed against a running hired Workforce, which i
 **Two rows fail today and one is half-built, and that is the finding** — ER-Devtool is not a polish
 pass over a working inspector. Rows 4 and 6 need rendering that does not exist; rows 3 and 5 are
 session-scoped where the proof needs an org-level reading. **Rows 1–3 read on the instance and
-session surfaces [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320) already owns**, which is
-[Sign-off 1](SPEC.md#sign-off). **No row may be passed by adding a status enum value**
+session surfaces [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320) already owns** and ride
+it; **rows 4–6 are [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)'s**, filed 2026-09-20
+against exactly the three that do not. That is [Sign-off 1](SPEC.md#sign-off)'s recommendation
+enacted, and it is still the owner's to correct. **No row may be passed by adding a status enum value**
 ([ER-8](#what-no-child-may-do)) or by building a wrapper app — the checklist says *no special
 wrapper* precisely because a bespoke panel would pass every row and prove nothing.
