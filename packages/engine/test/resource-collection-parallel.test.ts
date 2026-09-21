@@ -17,6 +17,7 @@
  * convergence step reads `.list()` in the same request.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineFlow,
@@ -54,6 +55,7 @@ function makeCtx() {
     }
   })();
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: "req_1",
@@ -127,6 +129,7 @@ describe("FIX-744: parallel distinct-key collection writes survive in cache", ()
     const stores = createInMemoryStores();
     const response = createResponseEmitter({ requestId: "req_2", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: Array.from({ length: N }, (_, i) => i),
@@ -172,6 +175,7 @@ describe("FIX-744: parallel distinct-key collection writes survive in cache", ()
       }
     })();
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_1",

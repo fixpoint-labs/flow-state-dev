@@ -132,8 +132,16 @@ export type ScheduleConfig = ActionCore & {
    * established by the dispatch endpoint's `host.resolvePrincipal` call.
    * Static schedules typically rely on the fallback; dynamic schedules
    * almost always set this explicitly.
+   *
+   * The organization may be omitted while the user is named, and then it
+   * alone falls back to the gateway's (FIX-1442). That is for a STATIC
+   * schedule, whose principal is trusted config written in the flow
+   * definition. A dynamic schedule must not reach that fallback — a stored
+   * schedule fires into the organization that created it, not into whichever
+   * one happens to be firing the beat — so its resolver refuses to build a
+   * config without the stored organization (BR-19).
    */
-  principal?: ResolvedPrincipal;
+  principal?: { userId: string; orgId?: string };
 
   /**
    * Optional IANA timezone identifier (e.g., `"America/New_York"`).

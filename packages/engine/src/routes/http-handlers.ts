@@ -385,7 +385,6 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
             kind: flow.kind,
             cardinality: flow.cardinality,
             requireUser: flow.requireUser,
-            requiresOrg: flow.requiresOrg,
             actions: Object.keys(flow.actions),
             actionSchemas: Object.fromEntries(
               Object.entries(flow.actions).map(([name, config]) => [
@@ -563,6 +562,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           runtimeConfig,
+          principal,
           anonymousFlowIds
         });
       }

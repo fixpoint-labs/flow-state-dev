@@ -13,6 +13,7 @@
  * just the end state.
  */
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
@@ -92,6 +93,7 @@ describe("FIX-688: three-wave loading", () => {
   it("Wave 2: loads only the dispatched action's collections, not siblings'", async () => {
     const { stores, getByPrefix } = spyStores();
     await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "a",
       requestId: "r1",
@@ -108,6 +110,7 @@ describe("FIX-688: three-wave loading", () => {
   it("Wave 2: dispatching the sibling action loads its collection, not the other", async () => {
     const { stores, getByPrefix } = spyStores();
     await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "b",
       requestId: "r1",
@@ -124,6 +127,7 @@ describe("FIX-688: three-wave loading", () => {
   it("Wave 1: loads the flow-level single resource regardless of action", async () => {
     const { stores, get } = spyStores();
     await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "b",
       requestId: "r1",
@@ -140,6 +144,7 @@ describe("FIX-688: three-wave loading", () => {
     await stores.resourceState.set("session", "s1", "lazyS", { v: 42 }, "any");
     get.mockClear();
     await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "a",
       requestId: "r1",
@@ -156,6 +161,7 @@ describe("FIX-688: three-wave loading", () => {
     await stores.resourceState.set("session", "s1", "lazyS", { v: 42 }, "any");
     get.mockClear();
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "a",
       input: {},
@@ -174,6 +180,7 @@ describe("FIX-688: three-wave loading", () => {
     const { stores, get } = spyStores();
     await stores.resourceState.set("session", "s1", "lazyS", { v: 9 }, "any");
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "a",
       requestId: "r1",

@@ -1103,7 +1103,6 @@ function createSequencer<
   resolvedInputSchema?: ZodTypeAny,
   accumulatedResources?: DeclaredResources,
   capabilityRefs?: import("../capability/types").CapabilityRef[],
-  accumulatedRequiresOrg?: boolean,
   // The sequencer's OWN declared resources — only its capability-injected
   // resources (a sequencer has no direct `resources` config field). Captured
   // once at the `sequencer()` entry point, before any child resources merge
@@ -1158,7 +1157,6 @@ function createSequencer<
     declaredResources: accumulatedResources,
     ownDeclaredResources,
     resolvedCapabilities: capabilityRefs,
-    requiresOrg: accumulatedRequiresOrg,
     // A chain-level rescue handler is a child like any other — it runs as a real
     // block and may itself contain a board. It is listed here rather than in
     // `config.rescue` (which `buildBlock` folds in on its own) because a
@@ -1184,22 +1182,13 @@ function createSequencer<
     return merged;
   };
 
-  /** OR child blocks' `requiresOrg` flags into the sequencer's accumulator. */
-  const mergeRequiresOrgFrom = (...blocks: Array<BlockDefinition<any, any> | undefined>): boolean => {
-    let merged = accumulatedRequiresOrg ?? false;
-    for (const block of blocks) {
-      if (block?.requiresOrg) merged = true;
-    }
-    return merged;
-  };
-
   /**
    * Append one operation and the block(s) it dispatches, returning the extended
    * chain.
    *
    * **Every chaining method funnels through here, and hands over the child
    * blocks themselves rather than per-rail projections of them.** That is the
-   * whole point: a child block carries `declaredResources`, `requiresOrg` and
+   * whole point: a child block carries `declaredResources` and
    * its place in the walkable graph, and each rail used to be re-derived and
    * re-passed by hand at every one of the ~16 call sites — so the defect rate
    * was sites × rails, and a site that remembered two rails out of three
@@ -1227,7 +1216,6 @@ function createSequencer<
       newInputSchema ?? resolvedInputSchema,
       mergeFrom(...children),
       capabilityRefs,
-      mergeRequiresOrgFrom(...children),
       ownDeclaredResources,
       [...childBlocks, ...children]
     );
@@ -2021,16 +2009,11 @@ function createSequencer<
         (acc, h) => mergeDeclaredResources(acc, h.block.declaredResources),
         accumulatedResources
       );
-      // Bubble: a rescue handler block requiring org makes the whole sequencer require it.
-      const rescueRequiresOrg = handlers.reduce(
-        (acc, h) => acc || Boolean(h.block.requiresOrg),
-        accumulatedRequiresOrg ?? false
-      );
       // A rescue handler is an ordinary block and may itself contain a board (a
       // cleanup drain, say), so it is listed among the children like every
       // other — and `handlers` REPLACES the installed set, so a replaced
       // handler disappears from the walkable graph by not being passed.
-      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources, childBlocks);
+      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, ownDeclaredResources, childBlocks);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -2443,9 +2426,8 @@ function createSequencer<
         lastOutputSchema,
         undefined,
         accumulatedResources,
-        // Preserve the prior implicit positional defaults for capabilityRefs /
-        // accumulatedRequiresOrg; forward only the constant own-resources set.
-        undefined,
+        // Preserve the prior implicit positional default for capabilityRefs;
+        // forward only the constant own-resources set.
         undefined,
         ownDeclaredResources,
         childBlocks
@@ -2511,7 +2493,6 @@ export function sequencer<
     config.inputSchema,
     declaredResources,
     resolvedCapabilities,
-    undefined,
     declaredResources
   );
 }

@@ -8,6 +8,7 @@
  * `interrupted` (as the stale sweeper would after a crash), then continue.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -67,6 +68,7 @@ function buildCrashFlow(kind: string) {
  *  `interrupted` to simulate a crash mid-flight. */
 async function runToInterrupted(flow: FlowInstance, stores: ReturnType<typeof createInMemoryStores>, provider: ReturnType<typeof createCheckpointDurabilityProvider>) {
   const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     input: {},
@@ -127,6 +129,7 @@ describe("ContinuationItem — crash-recovery /continue (FIX-865)", () => {
     const flow = buildCrashFlow("fix865-fresh-run");
     const { stores, provider } = createDurableStores();
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -167,6 +170,7 @@ describe("ContinuationItem — crash-recovery /continue (FIX-865)", () => {
     const { stores, provider } = createDurableStores();
 
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

@@ -5,6 +5,7 @@
  * identity owns persistence.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, toBareStates } from "../src";
@@ -48,6 +49,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
     const sessionId = "sess_fix591";
 
     const writeCtx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "write",
       requestId: "req_write",
@@ -58,6 +60,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
     await writeCtx.resources.a.setState({ count: 7 });
 
     const readCtx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "read",
       requestId: "req_read",
@@ -92,6 +95,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
 
     const stores = createInMemoryStores();
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_aliases",

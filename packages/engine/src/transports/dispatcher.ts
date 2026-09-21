@@ -27,7 +27,14 @@ export interface DispatchEnvelope {
   input: unknown;
   userId: string;
   sessionId?: string;
-  orgId?: string;
+  /**
+   * The organization the run belongs to. Required (FIX-1442): a dispatcher
+   * hands work to a worker that runs BELOW principal resolution, so the
+   * envelope is the only place that worker can learn the organization from.
+   * A durable job written before this field existed is refused on the way
+   * back in rather than run without one — see `context/org-attribution.ts`.
+   */
+  orgId: string;
   tenantId?: string;
   source?: string;
   metadata?: Record<string, unknown>;

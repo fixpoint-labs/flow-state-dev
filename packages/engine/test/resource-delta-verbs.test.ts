@@ -28,6 +28,7 @@ import {
 import type { JsonObject, ResourceRef } from "@flow-state-dev/core/types";
 import { createExecutionContext, createInMemoryStores, type StoreRegistry } from "../src";
 
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 const counter = defineResource({
   scope: "session",
   stateSchema: z.object({}).passthrough(),
@@ -63,6 +64,7 @@ function makeFlow() {
  */
 async function makeCtx(stores: StoreRegistry, requestId: string) {
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow: makeFlow(),
     actionName: "run",
     requestId,
@@ -388,6 +390,7 @@ describe("FIX-1269 delta refusal on a rewriting schema", () => {
 
   const makeDriftedCtx = (stores: StoreRegistry) =>
     createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: makeDriftedFlow(),
       actionName: "run",
       requestId: "req_a",
@@ -499,6 +502,7 @@ describe.each(HANDLE_KINDS)("FIX-1269 a __proto__ field on a %s", (kind) => {
 
   async function protoRef(stores: StoreRegistry): Promise<ResourceRef<JsonObject>> {
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: makeProtoFlow(),
       actionName: "run",
       requestId: "req_a",
@@ -608,6 +612,7 @@ describe.each(HANDLE_KINDS)("FIX-1269 a schema-invalid delta on a %s", (kind) =>
 
   const makeCappedCtx = (stores: StoreRegistry, requestId: string) =>
     createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: makeCappedFlow(),
       actionName: "run",
       requestId,

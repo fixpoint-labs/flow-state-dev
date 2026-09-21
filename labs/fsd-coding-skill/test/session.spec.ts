@@ -1,5 +1,8 @@
 /** Resume stays inside the selected provider via session state — no sidecar. */
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { INTERNAL_SDK_VERSION_READER as CURSOR_GATE, type CursorAgentOptions } from "../../../packages/cursor/src/agent";
@@ -18,8 +21,18 @@ const codexGate = {
   [CODEX_GATE]: () => ({ kind: "version", version: CODEX_SDK }),
 } as CodexAgentOptions;
 
+const dirs: string[] = [];
+afterEach(() => {
+  vi.restoreAllMocks();
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
 describe("provider-safe session continuity", () => {
   it("returns to each provider's own confirmed session on shared stores", async () => {
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), "fsd-coding-sessions-")));
+    dirs.push(cwd);
+    if (process.getuid) vi.spyOn(process as Required<typeof process>, "getuid").mockReturnValue(1000);
+    if (process.geteuid) vi.spyOn(process as Required<typeof process>, "geteuid").mockReturnValue(1000);
     const stores = createInMemoryStores();
     const cursor = scriptedCursor();
     const codex = scriptedCodex();
@@ -27,7 +40,7 @@ describe("provider-safe session continuity", () => {
     for (const harness of ["cursor", "codex", "claude", "cursor", "codex", "claude"] as const) {
       const result = await testFlow({
         flow: createFsdCodingFlow({
-          cwd: "/trusted",
+          cwd,
           harness,
           cursor: { ...cursorGate, resolveCursorClient: cursor.resolve },
           codex: { ...codexGate, resolveCodexClient: codex.resolve },
@@ -45,7 +58,7 @@ describe("provider-safe session continuity", () => {
     expect(cursor.rec.resumed.map((entry) => entry.id)).toEqual(["agent_1"]);
     expect(codex.rec.started).toHaveLength(1);
     expect(codex.rec.resumed.map((entry) => entry.id)).toEqual(["codex-thread"]);
-    expect(claude.rec.cwd).toEqual(["/trusted", "/trusted"]);
+    expect(claude.rec.cwd).toEqual([cwd, cwd]);
     expect(claude.rec.resume).toEqual([undefined, "sess_claude"]);
   });
 

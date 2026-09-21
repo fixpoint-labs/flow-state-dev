@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 366" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What gets shed and the space it frees, drawn so the space is to scale. On the left, what comes out, split into two halves. On screen: the six-control strip above the prompt — mode, thinking style, model, thinking, features and voice — and with it the four-mode zoo of ask, build, interview and debate, and the thinking-style menu whose entries are routed specialists, supervisor and evented actors. Behind the screen: five imports of the patterns package, all under the chat-agent flow — routed-specialists, supervisor, evented-actors, create-router and bias-check — plus the package dependency itself in the app's package.json. A note records that only the first half is visible, so the shed frees far less screen than it frees code. On the right, the same rebuilt shell drawn at scale with the three freed areas shaded and each labelled by who freed it. The centre column's one control row is shaded as freed by decision D6, the patterns shed. The left rail's entire vertical budget is shaded as freed by decision D7, which repurposes it from a session list to the workforce. The right panel is shaded as freed by D7 as well, because it stops being conditional on build mode and becomes standing. A caption states the honest arithmetic: of the three areas that pay for channels, seats and boards, the patterns shed frees exactly one, and the smallest one — the rail and the right panel are paid for by the reallocation decision, not by the deletion.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .out   { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 3; }
+    .shell { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .keep  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .byD6  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .byD7  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-out { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-outl{ fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:8.5px; letter-spacing:.1em; }
+    .t-d6  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-weight:700; font-size:8.5px; letter-spacing:.06em; }
+    .t-d7  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-weight:700; font-size:8.5px; letter-spacing:.06em; }
+    .t-r   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="20">WHAT COMES OUT</text>
+  <text class="t-lbl" x="484" y="20">AND THE SPACE IT FREES — TO SCALE</text>
+
+  <g id="coming-out">
+    <rect class="box" x="16" y="32" width="440" height="268" rx="4"/>
+
+    <rect class="out" x="28" y="44" width="416" height="104" rx="3"/>
+    <text class="t-outl" x="38" y="60">ON SCREEN</text>
+    <text class="t-out" x="38" y="78">the six-control strip above the prompt</text>
+    <text class="t-out" x="38" y="92">mode &#183; thinking style &#183; model &#183; thinking &#183; features &#183; voice</text>
+    <text class="t-out" x="38" y="112">the four-mode zoo &#8212; ask &#183; build &#183; interview &#183; debate</text>
+    <text class="t-out" x="38" y="132">the thinking-style menu &#8212; routed specialists &#183; supervisor &#183; evented actors</text>
+
+    <rect class="out" x="28" y="160" width="416" height="112" rx="3"/>
+    <text class="t-outl" x="38" y="176">BEHIND THE SCREEN</text>
+    <text class="t-out" x="38" y="194">5 imports of @flow-state-dev/patterns, all under flows/chat-agent/</text>
+    <text class="t-out" x="38" y="210">routed-specialists.ts &#183; supervisor.ts &#183; evented-actors.ts</text>
+    <text class="t-out" x="38" y="224">create-router.ts &#183; bias-check.ts</text>
+    <text class="t-out" x="38" y="244">the dependency itself in apps/kitchen-sink/package.json</text>
+    <text class="t-out" x="38" y="262">&#8212; dropped only when no keep-note remains (D6)</text>
+
+    <text class="t-s" x="28" y="290">Only the top half is visible. The shed frees far more code than screen.</text>
+  </g>
+
+  <g id="freed">
+    <rect class="box" x="484" y="32" width="440" height="268" rx="4"/>
+    <rect class="shell" x="500" y="48" width="408" height="216" rx="3"/>
+
+    <rect class="byD7" x="508" y="56" width="92" height="200" rx="2"/>
+    <text class="t-d7" x="513" y="70">FREED BY D7</text>
+    <text class="t-r" x="513" y="86">the rail&#8217;s whole</text>
+    <text class="t-r" x="513" y="98">vertical budget</text>
+    <text class="t-r" x="513" y="118">was: a session</text>
+    <text class="t-r" x="513" y="130">list</text>
+    <text class="t-r" x="513" y="150">now: channels</text>
+    <text class="t-r" x="513" y="162">and seats</text>
+
+    <rect class="keep" x="606" y="56" width="196" height="152" rx="2"/>
+    <text class="t-r" x="612" y="70">CONVERSATION &#8212; unchanged</text>
+    <rect class="byD6" x="606" y="212" width="196" height="24" rx="2"/>
+    <text class="t-d6" x="612" y="227">FREED BY D6 &#8212; ONE CONTROL ROW</text>
+    <rect class="keep" x="606" y="240" width="196" height="16" rx="2"/>
+    <text class="t-r" x="612" y="252">PromptInput</text>
+
+    <rect class="byD7" x="808" y="56" width="98" height="200" rx="2"/>
+    <text class="t-d7" x="813" y="70">FREED BY D7</text>
+    <text class="t-r" x="813" y="86">was: build mode</text>
+    <text class="t-r" x="813" y="98">only</text>
+    <text class="t-r" x="813" y="118">now: standing</text>
+    <text class="t-r" x="813" y="136">boards and</text>
+    <text class="t-r" x="813" y="148">roster</text>
+
+    <text class="t-s" x="500" y="284">Three areas pay for the workforce. The shed frees one &#8212; the smallest.</text>
+  </g>
+
+  <text class="t-s" x="16" y="322">That arithmetic is the reason D7, the rail reallocation, is a sign-off line and the patterns shed is not: shedding patterns is honesty about which</text>
+  <text class="t-s" x="16" y="338">recipe the reference app teaches, and it is worth doing for that alone. It is not where the room for the workforce comes from.</text>
+  <text class="t-s" x="16" y="358">FIX-1478 owns the left half. FIX-1477 owns what, if anything, takes the freed control row (PLAN.md &#8594; coordination seams).</text>
+</svg>

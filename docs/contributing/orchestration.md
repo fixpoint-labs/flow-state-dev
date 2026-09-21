@@ -12,7 +12,7 @@ Two companion docs sit beside this one.
 owes its two audiences — the static reviewer contract, and the per-PR *"Parts worth reviewing
 closely"* block. Every PR we open carries both.
 [`asking-for-decisions.md`](asking-for-decisions.md) is canonical for what an **ask** contains
-— the engineer/product-owner contract and the six-part shape. Every gate, every escalated
+— the engineer/product-owner contract and the six-part shape. Every human decision gate, escalated
 blocker, and every fork put to the user is written to it.
 
 ## The pieces at a glance
@@ -104,7 +104,7 @@ flowchart TD
   IW -->|runs| IL[issue-lifecycle step]
   IL --> CS[issue-spec] & II[issue-implement]
   II --> SI[spec-implementer] & RV[review lenses]
-  EA -->|reads/writes| ES[(epic-spec<br/>epic/&lt;name&gt; branch + epic PR<br/>+ Linear Epic issue doc)]
+  EA -->|reads/writes| ES["retained epic-spec<br/>repository set + review PR<br/>Linear status and links"]
   EPIC[[Linear Epic issue · Kind: Epic]] -.->|parent of| ISS[work issues = sub-issues]
   EA -->|creates / attaches spec| EPIC
 ```
@@ -114,7 +114,7 @@ flowchart TD
 | Store | What it is | Lifetime | Home |
 |---|---|---|---|
 | **Coordinator status table** | The coordinator's **internal working memory** — one row per issue (phase, spec PR#, impl PR#, gate-pending, worktree). Updated constantly. | Session-only | `.orchestration/` (**gitignored — never committed**) |
-| **Epic-spec set table, graph and path** | A **durable, exposed status board** — the set table with every issue's state and PR links, the dependency graph, and the path figure, in the epic-spec's `SPEC.md` and `PLAN.md`, for humans and issue agents to navigate from one place. Refreshed by `epic-agent` whenever a child's phase changes (the wake dispatches it), so it reads as current on the epic PR. *Are we winning* is still the epic report's: a count here says where the set is, not whether it is working. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc + the epic PR body's as-of line and figure pins) |
+| **Epic-spec set table, graph and path** | The reviewed scope, dependencies and ownership, with an explicitly dated status snapshot and links to live Linear issues and implementation PRs. Meaningful scope or direction changes get amendments; status churn does not get commits. | Retained design history | `specs/epics/<EPIC-ISSUE-ID>/` |
 | **Mailbox handle brief** | A **durable, exposed handoff** for agents *outside* this repo, who can see neither Linear nor our PRs — the epic's objective and gate state, per-issue rows, blockers, what's next. Refreshed from the table when state changes. | Life of the epic | `handles/<slug>.md` on the epic's mailbox handle |
 
 They overlap in *content* (all three know the PR numbers) but differ in *purpose and
@@ -122,11 +122,9 @@ audience*: the table is private and ephemeral; the index is public and durable, 
 readers inside this repo; the brief is public and durable, for agents who cannot see
 inside it at all.
 
-**Only the table is a live source.** The set table and the brief are both **projections**
-refreshed *from* it, and neither is ever read back as current state — a cold-resumed
-coordinator rebuilds its table from Linear and the PRs, then rewrites both. That
-direction is what keeps a stale brief from being mistaken for live state: it is a
-bulletin the epic publishes, not a store the epic reads.
+**Live state comes from Linear and implementation PRs.** The coordinator rebuilds its
+session table from them, then refreshes the external brief. A retained spec is approved
+intent, not a status database or proof that its implementation shipped.
 
 ## Worktree branching (base every issue branch on fresh `origin/main`)
 
@@ -192,37 +190,25 @@ creates the epic issue and parents the set's issues under it (via the `epic-agen
 one-parent rule** — an issue that already has a functional parent is linked with
 `relates-to` and flagged, never silently detached.
 
-**Contents and shape:
-[`epic-spec-template.md`](epic-spec-template.md)** — the same four documents as an issue spec
-at epic altitude (`SPEC.md` with the teams table, *what's in the box*, the live set table and
-the dependency graph · `DECISIONS.md` with the cross-cutting calls and the ownership matrix ·
-`BUSINESS-RULES.md` with the rules every child obeys · `PLAN.md` with the path), plus the
-figures ([`spec-figures.md`](spec-figures.md)) and the reviewer contract the epic PR carries.
-Read the template; it is the single source of truth for what each document owes its reader,
-exactly as `spec-template.md` is for an issue spec.
+**Contents and shape:** [`epic-spec-template.md`](epic-spec-template.md) applies the
+issue-spec document set at epic altitude, including the shared documentation narrative
+and conditional design lineage. The [retention policy](#spec-retention-and-authority)
+defines storage and authority; the template defines what each reader is owed.
 
 **Conventions:**
 
-- **Branch `epic/<name>`**; the set lives at `spec/_epics/<name>/` on that branch.
-- **Never-merged epic PR** — the reviewable + commentable surface. Stays open for the life
-  of the *epic*; closes **unmerged** when the epic wraps.
-- **The epic branch is never deleted** — it stays referenceable. Issue spec branches follow
-  the same rule (see "Closing the spec PR"); the difference is only *when* the PR closes.
-- **Dual-synced to the Linear *Epic issue's* document** — same branch + Linear-document
-  pattern as issue specs (BP-037), one altitude up: the epic-spec attaches to the epic
-  issue exactly as a spec attaches to a work issue. **Discovery is native** — a work issue's
-  epic is its **parent** (check `issue.parent`; does it carry the `Epic` Kind label?). No registry, no
-  free-text parsing.
-- **Authored/maintained by the `epic-agent`**, dispatched by the coordinator. The agent
-  **never starts over**: each dispatch it reads the current epic-spec (the set + PR thread
-  are its durable memory) and applies one bounded update. No private `memory:` — the state
-  is the visible set.
-- **Refreshed for the life of the epic.** The set table's status, the dependency graph's
-  placeholders and borders, the path figure, and the epic PR body's as-of line and figure pins
-  move whenever a child's phase changes — the wake dispatches an `epic-agent` refresh on any
-  transition it detected, outside the review budget, so the epic PR reads as current without
-  anyone re-deriving it. The refresh is a commit on the epic PR; the owner's `epic approved`
-  label is the approval channel that survives it (see Gates).
+- **Branch `epic/<name>`**; the set lives at `specs/epics/<EPIC-ISSUE-ID>/`.
+  Existing branches need not be renamed.
+- **Merge after objective approval and required checks**, before ramping children. The
+  original PR then remains the historical review record; wrap does not close it unmerged.
+- **Linear carries status and links**, not a second spec copy. Discovery stays native:
+  a work issue's epic is its parent carrying the `Epic` Kind label.
+- **Authored/maintained by `epic-agent`**, dispatched for a bounded change to the existing
+  set, never a restart. Before merge, edit the open PR; after merge, use a follow-up PR
+  from fresh `main` under [the amendment rule](#merging-and-amending-a-spec).
+- **Live status derives from Linear and implementation PRs.** Phase transitions refresh
+  the coordinator's table and reports, not the merged spec or original PR body. Amend
+  the spec only when scope, dependencies, ownership or direction meaningfully changes.
 - **Reviewed at the same altitude as an issue spec** — the epic-spec is a *direction*
   artifact, so "Spec review: the bar and the convergence rule" below governs its PR too.
   Feedback that doesn't change the epic's objective or a cross-cutting decision belongs to
@@ -238,7 +224,7 @@ belongs to. It is one altitude above the epic-spec and obeys the same law: the e
 free-text parsing, exactly as a work issue's epic is its `parent`. Every epic carries one.
 
 **Contents and shape:
-[`project-spec-template.md`](project-spec-template.md)** — the same four documents at project
+[`project-spec-template.md`](project-spec-template.md)** — the original four documents at project
 altitude (`SPEC.md` with the outcome, the territory figure and the live epics table ·
 `DECISIONS.md` with the calls that bind more than one epic · `BUSINESS-RULES.md` with the rules
 every epic obeys and who owns each · `PLAN.md` with the arc), plus the figures
@@ -269,9 +255,9 @@ project outcome is an ask, carried to the user by whichever epic-lifecycle is ru
 `epic-lifecycle` dispatches `project-agent` when an epic is **created** under the project, its
 **objective is approved**, or it **wraps**. Full table in the template.
 
-**Issue churn is never a trigger.** An issue opening, merging, or stalling moves the *epic* PR. A
-project-spec refreshing on issue events would spend a worktree per transition and tell a reader
-nothing the epic PR does not already say.
+**Issue churn is never a project trigger.** Issue transitions update Linear and
+implementation PR state, from which the epic's live status is derived. Project-spec
+refresh remains limited to the epic-level transitions above.
 
 ### Two epics under one project: skip, don't queue
 
@@ -303,9 +289,9 @@ slot frees, and re-invoking the lifecycle is the only trigger. Say so plainly wh
 something, and name it again at the wrap that frees the slot.
 
 **Enforced at epic setup** (`epic-lifecycle` → "Epic setup") as a question, not a refusal.
-Two rules keep it off the common path: **resolve the requested epic before counting** (a
-resumed epic is not a third one), and **active means its epic PR is open** — wrap closes that
-PR but moves no Linear state, so counting `Epic`-labelled issues jams the cap shut forever.
+Resolve the requested epic before counting (a resumed epic is not a third one).
+Count active epics from Linear lifecycle state and their implementation work, not whether
+the original spec PR is open: approval-time merge does not mean the epic is finished.
 
 ## Which issues get a spec (the two routes)
 
@@ -370,156 +356,54 @@ label on every refresh, so relabelling an issue re-routes it. When the category 
 read, the route defaults to **spec** — failing closed keeps the gate, and the cost of
 being wrong in that direction is one unnecessary document rather than ungated code.
 
-## Gates (three native GitHub signals)
+## Gates (direction approval, then confirmed merge)
 
-Coherence and sign-off run on signals the coordinator can read on any wake, not on
-out-of-band chat approval:
-
-| Gate | Signal | Meaning | Blocks |
+| Gate | Human direction signal | Release condition | Blocks |
 |---|---|---|---|
-| **Spec approval** | an approving comment, an approving GitHub Review, **or the owner's `spec approved` label** on the spec PR | The full spec set (the four documents) is directionally signed off | implementing that issue |
-| **Epic objective** | an approving comment, an approving GitHub Review, **or the owner's `epic approved` label** on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold before their first action) |
+| **Spec approval** | An approving comment, approving review, owner-applied `spec approved` label, or explicit in-session human go-ahead attributable to the reviewed head | Approval plus required repository checks and confirmed spec PR merge | Implementing the issue |
+| **Epic objective** | An approving comment, approving review, owner-applied `epic approved` label, or explicit in-session human go-ahead attributable to the reviewed head | Approval plus required repository checks and confirmed epic spec PR merge | Ramping the epic's children |
 
-The epic-objective gate is the **only** epic-level gate — the epic's *direction* (themes,
-feedback, upward comments) flows continuously and never blocks. The spec-approval gate is
-per issue, and **only spec-route issues have one**: a bug has no spec PR, so its single
-human gate is the merge (see "Which issues get a spec"). The epic-objective gate still
-holds it — a bug under an unapproved epic waits like everything else, it just waits at
-implementation instead of at spec.
+Approval signs off **direction**, not finished implementation detail. Ask it as a
+business decision using [`asking-for-decisions.md`](asking-for-decisions.md): the
+outcome, hard-to-reverse calls, recommendation, and what could change that recommendation.
+Only spec-route issues have a spec gate; bugs keep their direct implementation route,
+but still wait for their parent epic's release condition.
 
-**Both gates sign off a *direction*, not a finished design.** What each gate does and does
-not certify is the subject of the next section; read it before treating an open review
-thread as something that has to be closed before a gate can pass.
+**In-session approval is a human channel.** Record the user's explicit go-ahead as
+`approvedInSession:<reviewed head>`; it authorizes only that revision and becomes stale
+when the head changes. Recording this human decision is not an agent-authored
+self-approval comment, and it waives none of the merge requirements below.
 
-**Both are asked of a product owner, so both are written as business decisions.** A gate
-surfaced as *"the spec PR is open, please approve"* pushes the whole framing job onto the
-person least equipped to do it — they have to open the document, find the direction, and work
-out what approving costs. Surface instead what they are signing off in their own terms: the
-outcome it buys, the calls that are hard to reverse, your recommendation, and what they might
-know that would change it. [`asking-for-decisions.md`](asking-for-decisions.md) is the shape;
-the lifecycles apply it when they surface a gate, and the same rule governs an **escalated
-blocker** — a worker that can't settle a fork returns the parts of the ask, and the
-coordinator (which never read the code) surfaces them without re-deriving.
+**No self-approval or stale-label bypass.** Agents never apply approval labels or count
+their own comments, generated comments, or bot reviews as human sign-off. An approval
+must be attributable to the human and the current reviewed head. A review names its
+commit; comment and label events must establish which head they approved. Mere label
+presence, a cached boolean, an unreadable timeline, or an approval of an earlier head
+cannot authorize a changed revision. Unknown provenance holds the gate.
 
-**Three channels sign off, and the label is one of them.** A comment, an approving GitHub
-Review, or the `spec approved` / `epic approved` **label** — any of the three passes the
-gate. The difference between them is *latency, not authority*: a `labeled` webhook is not in
-the PR-activity stream the coordinator subscribes to (comments, CI, and reviews are), so a
-label is picked up on the next wake rather than waking the session immediately. **The label
-is the owner's alone: the coordinator never writes it, and the scan verifies who did.**
-GitHub labels are writable by every collaborator and every bot with write access, so presence
-is only half the test — the wake reads the most recent `labeled` event and requires its actor
-to be the configured owner login, failing closed when it can't attribute one. Checking *who*
-applied it is a different question from checking *when*, and only the first is asked; the
-second is the staleness rule that would revoke an approval on the next fold.
+Collapse reviews to each human reviewer's latest effective state. An outstanding human
+`CHANGES_REQUESTED` holds the gate; an older approval does not cancel it. Re-read approval
+and repository requirements after any push. A material direction change requires fresh
+human approval; do not carry standing approval into a follow-up amendment.
 
-**One narrow exception, and it rides ignorance rather than doubt.** Attribution needs the PR's
-`labeled` timeline, and some environments expose a PR's labels but not its events at all. There,
-the provenance read fails on *every* wake, so failing closed stops being a safety default and
-becomes a way to silently **revoke** an objective the owner already signed off — an epic that
-re-locks itself forever with the label sitting on the PR. So the wake distinguishes *"I could not
-read who applied it"* from *"I read it, and it was not the owner"*, and a **coordinator-recorded
-approval survives only the first**. The second is a verified rejection and holds the gate, which
-matters because a label is writable by any collaborator: without that split, a push invalidating
-a real comment-approval plus a label from anyone would release the whole epic. Nothing else
-moves — an epic nobody ever approved has no recorded approval to carry, **removal is still the
-revocation** (the label going absent is a different fact from an unreadable applier, and it drops
-the gate on the spot), and a human `CHANGES_REQUESTED` still outranks all of it. It used to mirror detected approvals
-there, and that is exactly what could not stand once the label became an input — a mirrored
-review approval outlives the review it recorded, so a push that correctly reopened the gate
-left the mirror holding it open against content nobody approved. One label cannot be both a
-standing sign-off and the record of a channel that expires.
+**Approval is not merge.** A label is a direction signal, never evidence that GitHub
+merged the PR. Required CI, required approvals and required review-thread resolution
+still apply at merge time. After merge, observe the merged PR and retained revision
+before dispatching implementation. Missing checks or a failed merge leave the issue
+waiting, not implementing. Spec merge authorization does **not** authorize any
+implementation PR merge: those remain human-controlled.
 
-**The difference between them is latency, not authority.** A `labeled` webhook is **not**
-in the PR-activity stream the coordinator subscribes to (comments, CI and reviews are), so
-a label never wakes the session — it is picked up on the next wake or heartbeat poll. A
-comment or review submission is delivered, so either wakes the coordinator immediately.
-Labelling therefore signs off just as validly; it is simply quieter, and the work starts on
-the next wake rather than within seconds.
-
-**A label does not expire on a push, and that is deliberate.** A spec or epic PR takes
-commits for its whole life — every folded review round is one — so invalidating the label
-whenever a commit lands after it would revoke the approval on the next edit and re-hold the
-set. A label is *standing state the owner can remove*, so **removal is the revocation** —
-a control neither a comment nor a review offers. An approving review, by contrast, keeps its
-own staleness rule: a later push supersedes it, exactly as GitHub treats it.
-
-> This corrected an earlier rule that read *"the gate is the fresh approval the wake
-> re-derived, never the label."* Under it, an epic whose owner had signed the objective off
-> by label read as unapproved and its entire set was held indefinitely, with no way for the
-> coordinator to assert the gate — a live scan overrides the carried value by design.
-
-**What counts as approval.** Any of these three, from a human:
-
-- **A comment** that (a) expresses approval — its body says "approved" — **and** (b) is
-  authored by a human: not a bot account, and not a comment whose body marks it as
-  bot-written (the `_Generated by …_` attribution footer, a "written by &lt;bot&gt;"
-  line).
-- **A GitHub Review** whose **current effective state is `APPROVED`**, authored by a human
-  — same bot exclusion as the comment path — **and** whose author is not the PR's own author.
-  GitHub already refuses to let a PR author submit an "Approve" review on their own PR, so a
-  native review approval is inherently a second person's sign-off; the coordinator checks
-  `review.user != pr.user` explicitly anyway rather than depending on that alone. This matters
-  in practice: automated review bots (Cursor Bugbot, Codex, and similar) post Review
-  submissions with a `state`, not just comments, and none of them should trip this gate.
-
-  **Latest-state, not any-state — the reviews list is chronological history.** The reviews
-  endpoint returns *every* review ever submitted, so a lone `state: APPROVED` in it does **not**
-  mean the PR is approved *now*. Collapse to the **latest review per human reviewer** and gate
-  on that: an approval counts only if that reviewer's most-recent review is `APPROVED`, and
-  **no** human reviewer's latest review is `CHANGES_REQUESTED` (a later change-request overrides
-  an earlier approval; a later approval clears an earlier change-request). Otherwise a reviewer
-  who approved and then requested changes would still trip the gate on the stale approval.
-
-  **Fresh against the current head.** Each review carries a `commit_id`. An approval on an
-  earlier commit is **stale** once the author pushes new work — implementation must not start
-  from an unreviewed head. Require the approving review's `commit_id` to be the PR's current
-  head SHA (or, equivalently, treat any substantive push after an approval as re-opening the
-  gate). Because the coordinator re-derives gate state every wake (it never treats a
-  once-seen approval as permanent — see the subscription/refresh discipline), a post-approval
-  push naturally drops the gate back to pending on the next refresh; the rule here is just that
-  the check is "is the *current head* approved," not "was anything ever approved."
-
-- **The `spec approved` / `epic approved` label**, applied by the owner. Presence is the
-  whole test: it does not expire on a push, because a spec or epic PR takes commits for its
-  whole life and expiring it would revoke the approval on the next fold. **Removal is the
-  revocation.** The coordinator never writes these labels — see above. Gate state is still
-  re-derived every wake; the one thing carried across is a recorded objective approval whose
-  label is present but *unattributable* in an environment with no timeline access, which is the
-  narrow exception described above and not a licence to treat any approval as permanent.
-
-Both clauses on the comment and review paths are load-bearing — they exclude the
-coordinator's own footer-signed comments and every review bot, so only a genuine human
-sign-off trips the gate. **A substantive push after a comment-based approval re-opens the
-gate** (the comment carries no `commit_id`, so the coordinator treats a human "approved"
-as approving the state at that moment; new work needs fresh sign-off). That staleness rule
-is the comment/review path's alone — a label is standing state, not a point-in-time act.
-
-**A human `CHANGES_REQUESTED` outranks all three channels.** It is the one signal that
-withholds the gate no matter how approval arrived, and it exists because the label is
-standing: without it, a change request would sit unanswered behind an approval nobody
-retracted.
-
-The epic *issue's* Linear state is a second human-facing mirror of the objective gate, not
-the trigger — the **coordinator writes that mirror** when approval lands on any of the three
-channels, so it doesn't drift. (The epic issue itself is tagged with the **`Epic` label under Linear's
-"Kind" group** — that's what marks a Linear issue as an epic and keeps it filterable off the
-working board.)
+Linear reflects status and links to the canonical repository set and PR history; it is
+not an approval channel or independently edited full-content mirror.
 
 ```mermaid
 flowchart LR
-  subgraph Epic[Epic]
-    EO{{epic approved?}}
-  end
-  subgraph Issue[Per issue]
-    RT{category?}
-    RT -->|feature/enhancement| NS[NEEDS_SPEC] --> SPEC["spec PR: the four documents"]
-    SPEC -->|spec approved| IMPL[implement]
-    RT -->|bug: no spec| IMPL
-    IMPL --> FB[PR feedback] --> MERGE([human merges])
-  end
-  EO -->|approved: release ramp| RT
-  EO -.->|pending: hold| RT
+  EP[epic direction approved] --> EC[required checks] --> EM[epic spec merged]
+  EM --> RT{issue route}
+  RT -->|feature| SP[spec direction approved] --> SC[required checks] --> SM[spec merged]
+  SM --> I[implement]
+  RT -->|bug| I
+  I --> F[implementation review] --> M[human-controlled implementation merge]
 ```
 
 For a **single-PR** issue the goal is proven at implementation completion (before the PR opens),
@@ -558,7 +442,7 @@ altitude: *does acting on this change the approach?* Then pick exactly one dispo
 
 | Disposition | When | What happens |
 |---|---|---|
-| **Fold in** — spec-level | The approach is wrong, won't work, or solves the wrong problem · a decision in `DECISIONS.md` is wrong or missing · a case the rules miss invalidates the design · scope is wrong (a deliverable that shouldn't ship, or a missing one) · the spec contradicts itself | Re-draft the affected document (anti-addenda rule; a figure the change moves is redrawn), mirror repo doc ↔ Linear, reply on the thread |
+| **Fold in** — spec-level | The approach is wrong, won't work, or solves the wrong problem · a decision is wrong or missing · a missed case invalidates the design · scope is wrong · the spec contradicts itself | Re-draft the affected repository document and figures, reply on the thread; after merge use a follow-up amendment, not the original PR or a Linear prose mirror |
 | **Note for the implementer** *(the default)* | Anything below that line: naming, file layout, local structure, which helper, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*", a detail `PLAN.md` deliberately left open | Record **verbatim** under `PLAN.md → Notes from review`, reply once saying it's left for implementation, move on. **Do not rewrite the design prose around it.** |
 | **Drop, specifically for the solution sketch** | A spec may carry rough illustrative code showing the *shape* of the proposed solution (`PLAN.md`'s sketch). Feedback that it lacks error handling, has loose types, misses edge cases, misnames things, or wouldn't compile | Reply once: the sketch is illustrative and deliberately incomplete. **Never** fold, and don't even carry it as a review note — a note implies the implementer should weigh it, and there is nothing to weigh about code that isn't shipping. Only feedback on the sketch's *direction* (wrong layer, wrong composition, won't work at all) is real, and that is ordinary **Fold in** |
 | **Drop** | Already answered in the spec · out of the issue's scope · a preference with no defect behind it · a factual error about the codebase | Reply once with the pointer or the correction. No spec edit, no note. |
@@ -587,13 +471,11 @@ open thread as implementer notes. Spend a third round only when round two surfac
 genuine **spec-level** finding — a new approach question, not more notes. Say so when you
 do, in one line, so the extra round is a visible decision rather than drift.
 
-**The budget bounds folding, not editing — for the epic-spec specifically**, which stays open
-for the life of the epic and has no other home. The zero-cost inline fix above still applies
-to it after convergence: an uncontested correction is a **commit on that open PR**, never a
-sub-issue and never its own spec. Contested means it is a *decision*, which goes to the human
-— also not to a new issue. (Taken once: a fold filed leftover restatements as a Linear issue
-for want of any other mechanism, and the uncategorized child was swept to `spec` and grew a
-300-line spec plus a second PR — two artifacts and a lifecycle to do the work of one commit.)
+**The budget bounds folding, not editing while the review PR is open.** For an epic
+spec, an uncontested correction after convergence is a commit on that still-open PR,
+not a sub-issue or its own spec. After merge, even an uncontested correction uses the
+[follow-up PR path](#merging-and-amending-a-spec); the original remains historical.
+A contested correction is a decision for the human, not a new issue.
 
 **The coordinator has to notice and dispatch it** — an `epic-agent` fold, the same path every
 other edit to that document takes. Nothing automatic delivers it: at budget `epic-wake` routes
@@ -632,10 +514,10 @@ in and gets routed continuously, and the objective gate still turns only on a hu
 
 Three facts make that budget safe rather than reckless:
 
-- **An unresolved thread on a spec PR blocks nothing.** The spec PR is *never merged* — it
-  closes unmerged the moment the spec is approved. It has no merge gate,
-  so open threads have no gating power. Do not drive them to zero; that's a habit borrowed
-  from code PRs, where it's correct, and it does not transfer.
+- **Optional comments do not demand zero-thread convergence.** Triage them into
+  implementer notes or a reasoned reply rather than another design round. Required
+  review-thread policy, required approvals and CI still govern merge; direction
+  approval does not waive them. Resolve required threads according to their disposition.
 - **Nothing is lost by converging.** Below-the-bar feedback lands in the notes section and
   reaches the implementer. Above-the-bar feedback was folded in. There is no third
   category that needs another round to rescue it.
@@ -689,40 +571,85 @@ So the discipline is ours, not theirs:
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
 
-## Closing the spec PR (at approval — branch kept, never merged)
+## Spec retention and authority
 
-**Approval closes it.** Not the merge — it never merges — and not the start of implementation:
-once the gate passes the document has done its job, and an open PR past that point is an
-artifact every wake re-scans for a decision already made. Whoever sees the gate pass does the
-close: the lifecycle at its approval gate, the `issue-worker` under an epic, `issue-implement`
-Step 3 as the backstop when nothing was watching.
+Issue specs live at `specs/issues/<ISSUE-ID>/`; epic specs live at
+`specs/epics/<EPIC-ISSUE-ID>/`. Each requires `SPEC.md`, `DECISIONS.md`,
+`BUSINESS-RULES.md`, `PLAN.md`, and `DOCS.md`. Add `EVOLUTION.md` when the design
+retains, amends or supersedes earlier designs. Authored `figures/`, `assets/`, and
+`poc/<experiment>/` belong inside that same owning directory.
 
-1. **Mirror, then close.** The branch copy is authoritative while the PR is open, so reconcile
-   Linear against the branch head *first* — a close over a stale mirror silently drops the last
-   folded round, and Linear is the only live copy afterwards.
-2. **Close unmerged, with a pointer**: the Linear document, the retained branch, and that
-   implementation is starting. No pointer reads as an abandoned spec.
-3. **Keep the branch.** `spec/<ISSUE-ID>` is never deleted — the rule the epic branch already
-   has. And **never merge it**: merging lands a point-in-time plan on `main`, where it reads as
-   current truth and decays (BP-037). CI enforces the file half; the don't-merge half is ours.
+**Repository content is canonical.** Before merge, read the reviewed PR head; after
+merge, read the retained set on `main`, citing the original PR for its review history.
+Linear holds status and links, not another full-content spec to keep in sync.
+Retained specs are historical intent, not proof of shipped behavior.
+`docs/architecture/*` remains the authority for current system behavior; implementation
+updates architecture and user documentation to reflect what actually ships.
 
-**It stays open where the spec is signed off but not finished** — a POC settlement in flight on
-a load-bearing claim (see "Settling a disputed claim"), or an uncleared cross-spec set, where
-the coherence pass may still hand this spec an alignment edit that earns a review round. Both
-defer cleanup only, never implementation.
+**Research predecessors before choosing a direction.** Search retained designs and
+their evolution records, then compare them against current code and architecture docs.
+Carry relevant findings into review and implementation. `EVOLUTION.md` names precise
+prior decisions, rules or sections, what is retained/amended/superseded, why and with
+what evidence, the replacement decisions, and compatibility or migration consequences.
+It supports multiple predecessors; a dependency is not supersession, and changing one
+decision does not supersede an entire spec. Use real historic PR/Linear provenance when
+no repository artifact exists, never invented local paths. No lineage registry,
+mandatory backlink updates, archive rewrites or historical backfill.
 
-### Re-opening for a POC
+**`DOCS.md` is a draft, not a task list.** Name destination files/sections and
+create/update/remove operations, with actual proposed reader-facing prose and examples,
+including applicable limits, failure behavior and migration. Do not duplicate unchanged
+pages. A justified no-doc-impact statement is valid. Epic drafts own the shared narrative
+and assign issue ownership; issue drafts provide the specifics. Implementation reconciles
+the draft against tested behavior and publishes it to the actual documentation.
+Worked examples live in the [issue](spec-template.md) and [epic](epic-spec-template.md)
+templates, not in another policy copy.
 
-A POC worth building *after* sign-off goes on the same PR: commit it to the retained branch,
-`gh pr reopen`, then close again unmerged once the plan's POC line carries the result on the
-branch and in Linear. A re-opened PR is live — the one exception to a closed spec branch being
-frozen.
+**Projects are the exception, unchanged.** Project specs remain four-document sets at
+`spec/_projects/<slug>/`, on never-merged `project/<slug>` PRs with their existing Linear
+project-content mirror. Do not migrate project lifecycle or historical closed specs.
 
-It does not re-open the gate, does not resume spec review (late feedback is implementer notes),
-and never merges. If the POC *changes the direction*, that fold needs fresh sign-off: keep the
-PR open and escalate it as a **blocker** — no existing approval re-gates itself (a `spec
-approved` label survives pushes; an implementing row can't return to the spec gate). Whoever
-applies the answer folds it and closes the PR.
+## Merging and amending a spec
+
+1. Obtain human direction approval for the reviewed head under [Gates](#gates-direction-approval-then-confirmed-merge).
+2. **The coordinator authorizes and schedules; it never mechanically merges.** Dispatch
+   a bounded **MERGE-ONLY** assignment to the existing `epic-agent` for an epic spec or
+   `issue-worker` for an issue spec, passing the exact PR, reviewed source head, and
+   human-approval provenance (including the head-bound in-session authorization when
+   that is the approval channel).
+   This is an assignment to an existing worker, not a new workflow action.
+3. **The worker executes only that authorized spec merge.** Re-read human approval,
+   the current head, required repository checks/approvals, and required review-thread
+   policy. If any requirement is unmet, return the specific blocker without merging.
+   Merge with an **atomic expected-head precondition** matching the supplied reviewed
+   SHA (for example, `gh pr merge <PR> --match-head-commit <SHA>`); a prior head read
+   alone is not sufficient. Observe the merged PR and return its PR number, reviewed
+   source head, and merge commit as evidence. Never self-approve, bypass repository
+   requirements, or merge an implementation PR. MERGE-ONLY then exits without
+   authoring, review folding, or implementation.
+4. Confirm the returned merge evidence and link the retained set and original PR from
+   Linear. Only then release implementation (or an epic's ramp), preserving any
+   separate cross-spec alignment gate. Keep the original review history; closing
+   a PR unmerged is not approval or merge.
+
+An existing **authorized issue `implement` backstop** may perform this same merge
+contract first, then continue in the same wake. It returns the matching
+`specMerge: { pr, headSha, mergeCommitSha }` receipt; approval alone is never a receipt.
+
+The `spec-merge` gate is an **execution/checks wait**, not another six-part human
+approval ask. Dispatch the bounded assignment once authorized; if checks or required
+threads are pending, report that actual wait and resume on their event. After observed
+merge, continue on the next wake (or in the authorized implement backstop above).
+
+**After merge, use a follow-up PR from fresh `main`.** Amend the owning directory there,
+including later POCs or findings. Link the original review and explain the delta. Never
+reopen, push to, or repurpose the already merged original PR. Materially changed direction
+needs renewed human approval; pause affected implementation until that amendment is
+approved and merged. Routine optional notes do not reopen the whole design.
+
+Epic wrap derives completion from Linear and implementation PRs, reports the outcome,
+and publishes meaningful amendments through that same path. It neither closes the
+original PR unmerged nor creates per-tick status commits.
 
 ## PR feedback: the round cap
 
@@ -805,14 +732,14 @@ reason unrelated to the loop.
 
 A spec is a bet on a direction, and the gate in front of it asks a human to sign that bet
 off. Sometimes the honest answer at that moment is *"this reads right and nobody has checked
-it."* A **spec POC** is how we check: throwaway code committed to the **never-merged** spec
-or epic PR, built so the direction can be validated *before* implementation. The skill is
-[`spec-poc`](../../.agents/skills/spec-poc/SKILL.md).
+it."* A **spec POC** is how we check: experimental code retained under the owning
+issue/epic spec's `poc/<experiment>/`, built to validate direction before implementation.
+The skill is [`spec-poc`](../../.agents/skills/spec-poc/SKILL.md).
 
-The spec PR is the natural home for it, and this is the property that makes the whole thing
-cheap: **it never merges.** Code there can't rot into the codebase, can't accrete public
-surface, and doesn't have to be good. So the cost of being wrong about a direction drops from
-a rewrite to an abandoned branch nobody merges.
+The artifact merges with its spec, but **retention is not production integration**.
+It remains explicitly experimental: outside production imports, workspace packages,
+default builds, test/lint and knip discovery. Keep authored evidence, not dependencies,
+generated output or secrets. The cost of being wrong is a recorded experiment, not an API.
 
 **Two POC mechanisms, and they are not the same one.** They're neighbours in the lifecycle
 and get confused constantly:
@@ -850,7 +777,7 @@ option the author already preferred and puts a human's approval on it.
 
 ```mermaid
 flowchart LR
-  A[spec / epic authoring] -->|trigger fires| P[spec-poc<br/>on the never-merged branch]
+  A[spec / epic authoring] -->|trigger fires| P[spec-poc<br/>inside owning spec directory]
   P --> S{what it showed}
   S -->|premise held| R1["record in the plan's POC line<br/>no change"]
   S -->|premise false| R2[fold before the gate<br/>cheapest version of the discovery]
@@ -869,24 +796,18 @@ flowchart LR
   mentioned was unchecked. Same rule as an in-flight settlement.
 - **It never gates and it never decides.** A POC informs the human's call at the gate; no run
   answers *"should we build this?"*
-- **It never merges, and it is consumed before implementation.** The implementation branch is
-  cut from fresh `origin/main`, never from the spec branch (see "Worktree branching"), so
-  nothing on the spec branch reaches `main` by default. **Whatever an implementation PR does or
-  doesn't carry over from the spec branch, the POC is never part of it** — a characterization
-  test worth keeping is re-written under `tdd` as a real CI spec or a `goals/` entry, graduated
-  rather than copied. The spec PR closes at approval and **its branch is kept** (see "Closing
-  the spec PR"), so a POC stays fetchable after the gate — cite the **PR**, whose diff renders
-  the POC without a checkout, and reach for the branch when you want to run it. A POC worth
-  building *after* approval re-opens that same PR rather than starting a new one.
-- **CI stays green without weakening it.** POCs live in `spec-poc/<ISSUE-ID>-<slug>/`, outside
-  every pnpm workspace, so `turbo`-driven typecheck and test never reach them. That matters
-  because CI runs on every PR into `main`, spec PRs included, and the coordinator reads that
-  signal — a red spec PR is a broken gate. The mechanics live in
-  [`spec-poc/README.md`](../../spec-poc/README.md), next to the directory itself.
+- **Retained, not shipped.** Read the POC before implementation, but do not import it into
+  production or copy it into a package. Graduate a useful contract into a real test or
+  `goals/` entry under the normal implementation discipline. Cut implementation from fresh
+  `origin/main` after confirmed spec merge, not from the spec branch.
+- **Post-merge experiments use follow-up PRs**, never the original merged PR; see
+  [Merging and amending a spec](#merging-and-amending-a-spec).
+- **Keep isolation narrow.** Default test/lint/knip discovery excludes retained experimental
+  code under `specs/issues/*/poc/**` and `specs/epics/*/poc/**`, not production code.
+  Required CI still runs for issue and epic spec branches. See [`specs/README.md`](../../specs/README.md).
 
-  **`spec-poc/` (a directory) is not `poc/…` (a branch).** A settlement runs on a branch named
-  `poc/<ISSUE-ID>-<slug>`; a spec POC is a *directory* named `spec-poc/<ISSUE-ID>-<slug>/` on
-  the spec branch. Two mechanisms, two namespaces — deliberately not the same string.
+The `poc/<experiment>/` directory under a retained spec is not the `poc/<ISSUE-ID>-<slug>`
+branch used for a throwaway claim settlement.
 
 ### Who dispatches it
 
@@ -1055,12 +976,10 @@ rule as every other issue branch, and load-bearing for a different reason.
 approval isn't blocked, a settlement can still be running when the spec is approved and
 implementation starts. Two rules keep that from stranding a `REFUTED` verdict:
 
-- **Keep the spec PR open while a settlement on a load-bearing claim is in flight.** Approval
-  still releases implementation immediately — nothing blocks — but the coordinator *defers the
-  close* until the verdict lands, so the fold has a live artifact and a live thread. Closing it
-  is cleanup, not a precondition for implementing. (If it was already closed, the Linear
-  document is canonical from then on and the fold goes there; the branch is still there, so a
-  fold that genuinely needs the thread back can re-open the PR.)
+- **Record the verdict where the spec now lives.** Before merge, fold it into the open
+  spec PR. After merge, open a follow-up amendment from `main`; the original PR remains
+  historical. An in-flight experiment does not waive required checks or let implementation
+  start before confirmed spec merge.
 - **A late `REFUTED` is a spec blind spot, handled by the path that already exists.** Fold it
   into the spec, tell the in-flight implementation, and re-gate if the direction actually
   changed — exactly what `issue-implement`'s challenger does when it finds the design wrong
@@ -1335,15 +1254,14 @@ reviewer, explaining a design choice, conceding a point, or calling a finding wr
 judgments about a diff it hasn't read, and they belong to the worker that has.
 
 **What stays with the coordinator, because nothing else can hold it:** subscribing to the PR,
-surfacing a gate, recording a human's answer to a blocker, and writing the Linear mirror. None
+surfacing a gate, recording a human's answer to a blocker, and updating Linear status and links. None
 of those acts on review content.
 
-Two reads are the exception, both **small and offloaded to `scout`**, never folded into the
-coordinator: the **spec/epic-PR approval check** ("is there an approving comment or GitHub
-Review from a human?" — the sign-off gate — checks both the PR's comments and its reviews) and
-**epic-PR feedback fan-out** ("which aligned issues does this comment touch?"). Scout returns
-the verdict / target list, including whether the owner's approval label is present; the
-coordinator routes on it and writes the Linear mirror. It never writes the label.
+Two reads are the exception, both **small and offloaded to `scout`**: the
+**spec/epic release check** (human approval provenance, required checks and observed
+merge as separate facts), and **epic feedback fan-out** (which aligned issues a comment
+touches). The coordinator routes on those facts under [Gates](#gates-direction-approval-then-confirmed-merge),
+updates Linear status and links, and never manufactures an approval label.
 
 **What the coordinator reports instead.** The worker's status line is what it has, and it is
 what the user gets: the issue, its phase, the PR, and the worker's one line on what it did. One
@@ -1399,8 +1317,10 @@ it's here:
 
 The test is not "is this big?" — it's **"does doing it mean opening something the coordinator is
 not allowed to hold?"** Reading code, a spec, a diff, a doc or a review thread; editing any file
-outside `.orchestration/`; running a build, a test, or `fsdev run`; writing prose that ships;
-researching an answer; investigating a failure. All of it goes out.
+outside `.orchestration/`; mechanically merging a PR; running a build, a test, or
+`fsdev run`; writing prose that ships; researching an answer; investigating a failure.
+All of it goes out. Spec merge follows the bounded worker contract in
+[Merging and amending a spec](#merging-and-amending-a-spec).
 
 | You ask for… | Where it goes |
 |---|---|

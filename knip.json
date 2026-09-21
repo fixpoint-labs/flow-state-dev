@@ -3,7 +3,7 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/*.mjs", ".omp/extensions/*.ts", ".omp/test/*.mjs"],
-      "ignore": ["spec-poc/**"],
+      "ignore": ["spec-poc/**", "specs/issues/*/poc/**", "specs/epics/*/poc/**"],
       "ignoreBinaries": ["build"],
       "ignoreDependencies": ["@oh-my-pi/pi-coding-agent"]
     },

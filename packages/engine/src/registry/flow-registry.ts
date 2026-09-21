@@ -8,6 +8,15 @@
  * kinds, and an exact id always wins a lookup, even when the string happens to
  * be another kind's name. There is no second resolver and no fallback.
  *
+ * **The registry is mutable after construction.** `register` admits one
+ * instance at any time and `unregister` releases one address; both are reached
+ * from a `FlowState` (see `flowstate/types.ts`), which is how an app hires a
+ * seat while it is running. Two consequences for anything reading this
+ * registry: read it per request rather than caching `list()`, and expect a
+ * `get` to start or stop answering between two requests. Anything that ran a
+ * sweep over `list()` at init — the webhook adapter's provider-coverage check
+ * is the one in this repo — has already run and does not see a later arrival.
+ *
  * `register` is the one admission point: it refuses a duplicate id, a
  * singleton under a custom id (the caller meant a collection and did not say
  * so), and a kind registered under both policies. Direct structural
@@ -51,6 +60,16 @@ export interface FlowRegistry {
   register(flow: FlowInstance): void;
   /** `register`, in order. An element that fails leaves the earlier ones admitted. */
   registerMany(flows: FlowInstance[]): void;
+  /**
+   * Release one address. `true` when an instance was holding it, `false` when
+   * nothing was — an unknown id is an ordinary answer, not an error, because
+   * the caller's question is "is this address free now" and both answers are
+   * yes.
+   *
+   * **The kind keeps its seat in the cross-flow schema view**, even when this
+   * removes its last instance — see {@link InMemoryFlowRegistry.unregister}.
+   */
+  unregister(id: string): boolean;
   /**
    * Resolve an instance by its exact global id, or `undefined`. A singleton
    * answers to its kind (that is its id); a collection member answers to its
@@ -142,6 +161,43 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     for (const flow of flows) {
       this.register(flow);
     }
+  }
+
+  /**
+   * Releases one address, and **deliberately leaves the participant entry for
+   * that kind in place** — including when this was the kind's last instance.
+   *
+   * A kind's declared schemas are a property of the KIND, not of whichever
+   * copies happen to be registered right now. Dropping the participant on the
+   * last unregister would make the cross-flow check answer differently
+   * depending on registration history: a schema that conflicts with this kind
+   * would be refused while an instance existed and admitted a moment later,
+   * and the two schemas would then share one durable cell. The data outlives
+   * the registration, so the constraint has to as well.
+   *
+   * The cost is stated rather than hidden, and it is NOT that the replacement
+   * is refused. A kind registered, unregistered, then replaced by a genuinely
+   * different definition under the same name is **admitted**, because
+   * same-kind pairs are never compared — exclusion 2 in {@link
+   * InMemoryFlowRegistry.validateScope}'s own doc, which is where all three of
+   * these come from. What the retained entry costs is:
+   *
+   *   1. the replacement goes in **silently**, however far its schemas have
+   *      moved from the ones on file;
+   *   2. the entry is never updated (`indexParticipant` returns early on a
+   *      kind it already holds), so every OTHER kind registered afterwards is
+   *      compared against the STALE schema — a kind agreeing with what is
+   *      actually running can be refused, and one contradicting it admitted;
+   *   3. `describeSharedSchemas()` reports that stale schema too, so the
+   *      diagnostic view names a definition no longer registered anywhere.
+   *
+   * All three are a process restart away from fixed, and they are the side of
+   * the trade that loses no data. Closing them means changing what identity
+   * the check keys on, which is FIX-1207's — see `validateScope`. Pinned by
+   * the "known gap" case in `test/registry/runtime-registration.test.ts`.
+   */
+  unregister(id: string): boolean {
+    return this.flowsById.delete(id);
   }
 
   /**

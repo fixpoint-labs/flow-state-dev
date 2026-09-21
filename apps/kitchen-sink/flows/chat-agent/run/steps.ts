@@ -2,8 +2,9 @@
  * Small flow-level steps for the chat turn — state writes and thinking-style
  * resolution that sit around the main router in `run/run.ts`.
  *
- * These only mutate session state (`.tap`-shaped) or compose the classifier;
- * none produce conversational output.
+ * These only mutate session state (`.tap`-shaped) — the requested mode, the
+ * feature flags, the resolved thinking style, the request count. None produce
+ * conversational output.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -13,7 +14,6 @@ import {
   featuresSchema,
   thinkingStyleSessionStateSchema,
 } from "../shared/schemas";
-import { autoClassifyStyle } from "./thinking-styles/classify";
 
 /** Persist the caller's requested mode to session state. */
 export const applyRequestedMode = handler({
@@ -36,30 +36,29 @@ export const applyFeatures = handler({
 });
 
 /**
- * Resolve the turn's thinking style: a manually requested style is written
- * straight to session state; `"auto"` runs the keyword + LLM classifier.
+ * Resolve the turn's thinking style: the caller's requested style is written
+ * straight to session state.
+ *
+ * This used to branch, because `"auto"` ran a keyword scan and then an LLM
+ * classifier to pick one of five coordination routes. With those routes gone
+ * (FIX-1478) the caller's choice is the whole resolution, and the action's
+ * input schema has already refused anything outside the set.
  */
 export const resolveThinkingStyle = sequencer({
   name: "resolve-thinking-style",
   inputSchema,
-})
-  .tapIf(
-    (input) => input.thinkingStyle !== "auto",
-    handler({
-      name: "apply-manual-style",
-      inputSchema,
-      sessionStateSchema: thinkingStyleSessionStateSchema,
-      execute: async (input, ctx) => {
-        if (input.thinkingStyle !== ctx.session.state.thinkingStyle) {
-          await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
-        }
-      },
-    }),
-  )
-  .tapIf(
-    (input) => input.thinkingStyle === "auto",
-    autoClassifyStyle,
-  );
+}).tap(
+  handler({
+    name: "apply-manual-style",
+    inputSchema,
+    sessionStateSchema: thinkingStyleSessionStateSchema,
+    execute: async (input, ctx) => {
+      if (input.thinkingStyle !== ctx.session.state.thinkingStyle) {
+        await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
+      }
+    },
+  }),
+);
 
 /** Bump the per-session request counter and record the last action. */
 export const incrementRequestCount = handler({

@@ -250,7 +250,7 @@ userStateSchema: z.object({
 
 User scope is shared across flows on the same server by default — every flow's user state schema is structurally compared at startup, and incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. See [Authentication](/docs/server/authentication) for the trust model and [Flow Isolation](/docs/advanced/flow-isolation) if you need to keep a flow's user state separate. Isolated state belongs to the particular flow copy that wrote it, so a definition running as several named copies keeps one private record per copy.
 
-**Org** is the team-level boundary. Shared configuration, knowledge bases, settings that an admin controls for everyone. Available when the caller passes an `orgId`; `ctx.org` is `undefined` otherwise.
+**Org** is the team-level boundary. Shared configuration, knowledge bases, settings that an admin controls for everyone. Every request runs in an organization, so org state is there to read on any execution. [Authentication](/docs/server/authentication#every-request-runs-in-an-organization) covers where that organization comes from.
 
 ```ts
 orgStateSchema: z.object({
@@ -260,7 +260,7 @@ orgStateSchema: z.object({
 })
 ```
 
-Org scope is also shared across flows by default with the same registry-time schema check as user scope. Read it inside a block with `ctx.org?.state.config` — and remember the optional chain, since `ctx.org` is `undefined` when no `orgId` was passed. Once a session is bound to an `orgId`, requests claiming a different `orgId` against that session throw `OrgBindingMismatchError` at runtime.
+Org scope is also shared across flows by default with the same registry-time schema check as user scope. Read it inside a block with `ctx.org?.state.config`. `ctx.org` is optional in the types, so `?.` is needed to compile. It is there on every execution. A session is bound to its organization when it is created, and a later request that resolves to a different one against that session throws `OrgBindingMismatchError` at runtime.
 
 For the full operation reference and CAS semantics that apply to all four scopes, see [State Operations](/docs/fundamentals/state-operations). For how `userId` and `orgId` flow into a request — including who's responsible for verifying them — see [Authentication](/docs/server/authentication).
 

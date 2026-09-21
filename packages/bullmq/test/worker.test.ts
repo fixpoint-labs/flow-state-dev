@@ -10,11 +10,20 @@
  * the final attempt is `attemptsMade + 1 >= opts.attempts`.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
 
 vi.mock("@flow-state-dev/engine", () => ({
-  runAction: vi.fn()
+  runAction: vi.fn(),
+  // Matched by NAME in the processor's catch (cross-realm safe), so the mock
+  // only has to carry the same name the real class sets.
+  OrgRequiredError: class OrgRequiredError extends Error {
+    constructor(flowKind: string, seam = "this call") {
+      super(`${seam} requires an organization for flow "${flowKind}".`);
+      this.name = "OrgRequiredError";
+    }
+  }
 }));
 
 import { runAction } from "@flow-state-dev/engine";
@@ -54,6 +63,7 @@ function makeJob(overrides: Record<string, unknown> = {}): Job<FlowJobData> {
       actionName: "send",
       input: {},
       userId: "u1",
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_1"
     },
     attemptsMade: 0,
@@ -213,5 +223,40 @@ describe("createFlowJobProcessor — event sequence resumption", () => {
     expect(runActionMock).toHaveBeenCalledWith(
       expect.objectContaining({ startSequenceNumber: undefined })
     );
+  });
+});
+
+describe("createFlowJobProcessor — a job enqueued before organizations were required", () => {
+  /**
+   * The refusal is correct; where it happened was not. Thrown between the
+   * publisher's creation and the `try`, it skipped every terminal path: no
+   * error terminal, so a web-side subscriber waited forever; no `close()`, so
+   * the publisher leaked; and not an `UnrecoverableError`, so BullMQ retried a
+   * job that can never become valid until its attempts ran out.
+   *
+   * Nothing about such a job changes between attempts — a worker runs below
+   * principal resolution and there is no organization to recover — so the only
+   * correct outcome is one terminal, one close, and no retry.
+   */
+  it("fails it terminally instead of retrying it forever", async () => {
+    const { bridge, publisher } = makeBridge();
+
+    const job = makeJob({
+      data: {
+        flowKind: "chat",
+        actionName: "send",
+        input: {},
+        userId: "u1",
+        requestId: "req_1"
+      }
+    });
+
+    await expect(createFlowJobProcessor(makeDeps(bridge))(job)).rejects.toThrow(
+      UnrecoverableError
+    );
+
+    expect(runActionMock).not.toHaveBeenCalled();
+    expect(publisher.publishTerminal).toHaveBeenCalledTimes(1);
+    expect(publisher.close).toHaveBeenCalledTimes(1);
   });
 });

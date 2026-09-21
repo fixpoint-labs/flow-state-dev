@@ -10,6 +10,7 @@
  * while the reply still delivers.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineFlow,
@@ -197,6 +198,7 @@ function run(
   metadata?: Record<string, unknown>
 ) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName,
     input,

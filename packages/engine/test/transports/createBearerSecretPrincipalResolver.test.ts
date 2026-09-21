@@ -2,6 +2,7 @@
  * Tests for the bearer-secret principal resolver.
  */
 import { describe, it, expect } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createBearerSecretPrincipalResolver,
   PrincipalResolutionError
@@ -139,7 +140,7 @@ describe("createBearerSecretPrincipalResolver", () => {
     expect(() =>
       createBearerSecretPrincipalResolver({
         secret: SECRET,
-        principal: { userId: "" }
+        principal: { userId: "", orgId: DEFAULT_ORG_ID }
       })
     ).toThrow(/principal\.userId/);
   });

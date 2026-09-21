@@ -260,7 +260,6 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
    */
   const holdRow = handler({
     name: "builder-hold-row",
-    requireOrg: true,
     resources: { [options.board.id]: options.board },
     inputSchema: z.object({}).optional(),
     outputSchema: z.object({ taskId: z.string().nullable(), leaseMs: z.number() }),

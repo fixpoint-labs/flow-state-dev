@@ -1,0 +1,60 @@
+<svg viewBox="0 0 940 236" width="940" height="236" role="img"
+     aria-label="Three paths approach a dashed fence representing the scope. Only the path that is both in scope and named by the seat crosses into the manifest the seat sees; a path in scope but not named is withheld by the seat's own file, and a path named but not in scope is refused by the scope."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-ok   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-out  { fill:none; stroke:var(--gone); stroke-width:1.3; stroke-dasharray:4 3; }
+    .n-dest { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .fence  { stroke:var(--ink-2); stroke-width:1.6; stroke-dasharray:7 5; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-bad  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .arr-g  { stroke:var(--code); stroke-width:1.5; fill:none; }
+    .arr-b  { stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:4 3; }
+  </style>
+
+  <g id="fence">
+    <line class="fence" x1="520" y1="18" x2="520" y2="222"/>
+    <text class="t-lbl" x="430" y="14">THE SCOPE</text>
+  </g>
+
+  <g id="path-crosses">
+    <rect class="n-ok" x="16" y="34" width="286" height="36" rx="4"/>
+    <text class="t-b" x="28" y="50">in scope</text>
+    <text class="t-s" x="28" y="64">and named by the seat's discover: list</text>
+    <path class="arr-g" d="M302 52 L693 52"/><path d="M700 52 L693 55.6 L693 48.4 z" fill="var(--code)"/>
+    <text class="t-s" x="536" y="46">crosses</text>
+  </g>
+
+  <g id="path-withheld">
+    <rect class="n-out" x="16" y="100" width="286" height="36" rx="4"/>
+    <text class="t-b" x="28" y="116">in scope</text>
+    <text class="t-s" x="28" y="130">not named by the seat</text>
+    <path class="arr-b" d="M302 118 L493 118"/><path d="M500 118 L493 121.6 L493 114.4 z" fill="var(--gone)"/>
+    <text class="t-bad" x="310" y="112">withheld by the seat's own file</text>
+  </g>
+
+  <g id="path-refused">
+    <rect class="n-out" x="16" y="166" width="286" height="36" rx="4"/>
+    <text class="t-b" x="28" y="182">named by the seat</text>
+    <text class="t-s" x="28" y="196">the scope does not carry it</text>
+    <path class="arr-b" d="M302 184 L493 184"/><path d="M500 184 L493 187.6 L493 180.4 z" fill="var(--gone)"/>
+    <text class="t-bad" x="310" y="178">refused by the scope</text>
+  </g>
+
+  <g id="destination">
+    <rect class="n-dest" x="702" y="28" width="222" height="48" rx="5"/>
+    <text class="t-lbl" x="714" y="46">WHAT THE SEAT SEES</text>
+    <text class="t-b" x="714" y="66">one manifest</text>
+  </g>
+</svg>

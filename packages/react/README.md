@@ -379,6 +379,37 @@ function ChatBubble({ item }: { item: MessageItem }) {
 
 Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
+### FlowNavigator
+
+`FlowNavigator` is a sidebar that browses the flows registered on your server, the instances under them, and each instance's sessions. Reach for it when your app has more than one conversation to switch between and you would otherwise build that list yourself.
+
+You give it sections. A section is a label and a set of flow kind names, so an app that declares a channel kind of its own adds that name to the same list.
+
+```tsx
+import { FlowNavigator } from "@flow-state-dev/react";
+
+<FlowNavigator
+  sections={[
+    { label: "Channels", kinds: ["channel"] },
+    { label: "Seats",    kinds: ["agent"] },
+  ]}
+  selectedSessionId={sessionId}
+  onSelectSession={(picked) => setSessionId(picked)}
+/>
+```
+
+How deep the tree goes comes from each flow's declared `cardinality`. A flow declared `singleton` is a single instance and sits as one row. A flow declared `collection` has many addressable copies, and its row expands into them. There is no `depth` prop, and adding one is not an oversight we left open: a depth you passed in would be a second opinion about your own flow, and it would be wrong the first time that flow changed shape.
+
+`onSelectSession(sessionId, flow)` fires when a session row is picked. The second argument describes the instance that session was listed under: `{ kind, address, cardinality }`, where `address` is the kind name for a singleton and the instance id for one copy of a collection. Selection is yours to keep; pass it back as `selectedSessionId` to mark the current row.
+
+Sessions load when you open a single flow instance, which is a singleton's row or one copy under a collection. Expanding a collection row to see its copies costs no request.
+
+The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
+
+The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.
+
+One limit worth knowing before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. The navigator has no `orgId` prop, because the listing could not honour one, and a filter that silently does nothing is worse than no filter.
+
 ### Presentational components moved to `@flow-state-dev/ui`
 
 `ModelBadge`, `AuditAnnotation`, and `AuditAnnotationProgress` are no longer exported from this package. `ModelBadge` and `AuditAnnotation` live in the [`@flow-state-dev/ui`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/ui) registry (see [Flow-Aware Components](https://flow-state.dev/docs/ui/flow-aware-components)), where you own the source after installing it. Install `ModelBadge` with `fsdev ui add model-badge` and import it from `@/components/flow-state/model-badge`. Audit annotations render through the ui `audit-annotation` component, fed by the `responseAuditor` pattern's emitted component item, so no per-item wiring is needed. `AuditAnnotationProgress` had no consumers and was removed outright; there is no replacement.

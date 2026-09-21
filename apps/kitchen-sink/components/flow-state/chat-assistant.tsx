@@ -50,6 +50,10 @@ export const chatAssistantRenderers: RendererRegistry = {
     "audit-annotation": AuditAnnotation,
     "task-board-meta": TaskBoardMeta,
     "task-change": false,
+    // Substrate bookkeeping, not something a reader of the thread has any part
+    // in. Named rather than left out: an unnamed component type falls through
+    // to the raw-JSON dev fallback.
+    "task-board-recorder-failure": false,
     // Debate's per-round, per-decision, and verdict items are
     // collected and rendered by the <Debate /> container renderer.
     "debate-turn": false,

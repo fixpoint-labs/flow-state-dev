@@ -20,7 +20,6 @@ import {
   moduleDir,
   resolveBaseDir,
 } from "@flow-state-dev/engine/prompt-file";
-import { promptFilters } from "./prompt-filters";
 
 const FLOW_ROOT = resolveBaseDir(
   [moduleDir(import.meta.url, ".."), path.resolve(process.cwd(), "flows/chat-agent")],
@@ -30,9 +29,13 @@ const FLOW_ROOT = resolveBaseDir(
 /**
  * Load a chat-agent `.prompt.md` file. The argument is relative to the
  * `flows/chat-agent` directory (e.g.
- * `"run/thinking-styles/prompts/supervisor-worker.prompt.md"`). Returns a
- * `PromptFile` whose `.prompt` slot renders the `<system>` body and (when the
- * file declares one) a `.user` slot for the `<user>` body. Templates can pipe
- * input through the shared `promptFilters` (e.g. `{{ input.deps | normalizeDeps }}`).
+ * `"run/assistant/prompts/ask.prompt.md"`). Returns a `PromptFile` whose
+ * `.prompt` slot renders the `<system>` body and (when the file declares one)
+ * a `.user` slot for the `<user>` body.
+ *
+ * No Liquid filters are registered: the one view builder this app had
+ * belonged to a coordination-pattern worker removed in FIX-1478. Pass
+ * `{ filters }` here to register one — the convention is in `CLAUDE.md` →
+ * *Prompt templates: data prep stays in TS*.
  */
-export const loadPrompt = createPromptLoader(FLOW_ROOT, { filters: promptFilters });
+export const loadPrompt = createPromptLoader(FLOW_ROOT);

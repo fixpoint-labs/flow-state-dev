@@ -36,6 +36,7 @@
  * runnable work behind rather than an orphaned row.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import {
@@ -301,6 +302,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     const dispatched: RecordedDispatch[] = [];
 
     const parent = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},
@@ -366,6 +368,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // The hand-off left runnable work behind. Replaying the captured envelope
     // through the `task` source is what the real host would have done.
     const child = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: dispatched[0]!.actionName as never,
       input: dispatched[0]!.input,
@@ -400,6 +403,7 @@ describe("a hand-off board's launching request returns while the work is outstan
 
     const dispatched: RecordedDispatch[] = [];
     const parent = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},
@@ -437,6 +441,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     expect(replacement?.createdAt).toBe(addressed?.createdAt);
 
     const child = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: dispatched[0]!.actionName as never,
       input: dispatched[0]!.input,
@@ -482,6 +487,7 @@ describe("a hand-off board's launching request returns while the work is outstan
 
     const dispatched: RecordedDispatch[] = [];
     const parent = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},
@@ -511,6 +517,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     await lapseTheLease(stores, "handoff-lapsed", claimed!);
 
     const child = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: dispatched[0]!.actionName as never,
       input: dispatched[0]!.input,
@@ -557,6 +564,7 @@ describe("a hand-off board's launching request returns while the work is outstan
 
     const dispatched: RecordedDispatch[] = [];
     const parent = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},
@@ -596,6 +604,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     expect(committedLeaseSpan(patched!)).toBeGreaterThan(0);
 
     const child = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: dispatched[0]!.actionName as never,
       input: dispatched[0]!.input,
@@ -639,6 +648,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     };
 
     const first = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},
@@ -653,6 +663,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     await lapseTheLease(stores, "handoff-reclaimed", claimed!);
 
     const second = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},
@@ -668,6 +679,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     expect(reclaimed?.attempts).toBe(2);
 
     const stale = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: dispatched[0]!.actionName as never,
       input: dispatched[0]!.input,
@@ -692,6 +704,7 @@ describe("a hand-off board's launching request returns while the work is outstan
 
     // And the successor's own child runs it — once.
     const successor = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: dispatched[1]!.actionName as never,
       input: dispatched[1]!.input,
@@ -715,6 +728,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     const { flow, ran } = buildFlow({ kind: "handoff-inline", mode: "inline" });
 
     const parent = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "start",
       input: {},

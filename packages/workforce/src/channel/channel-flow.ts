@@ -616,7 +616,8 @@ export const INVENTORY_REGISTER_CHANNEL = "registerChannelInInventory";
  *
  * Lives in `internal.actions`, never the public map — its whole input is the
  * row data, with nothing to check it against. Reachable only by the binder's
- * own direct, trusted `runAction({ source: "internal", ... })` call.
+ * own direct, trusted `runAction({
+    orgId: DEFAULT_ORG_ID, source: "internal", ... })` call.
  */
 export const INVENTORY_REGISTER_SEATS = "registerSeatsInInventory";
 

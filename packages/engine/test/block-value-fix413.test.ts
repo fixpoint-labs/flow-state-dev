@@ -13,6 +13,7 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import type { BlockTraceItem, BlockValue } from "@flow-state-dev/core/items";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { resolveBlockValue, buildItemLookup } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -37,6 +38,7 @@ async function runFlowAndGetBlockOutputs(args: {
     now: () => Date.now()
   });
   await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: args.flow,
     actionName: "run",
     input: args.input,

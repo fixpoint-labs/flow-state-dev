@@ -2,7 +2,9 @@
 
 The canonical reference application for `@flow-state-dev`. A full Next.js app demonstrating every framework building block with a polished UI built on [Vercel AI Elements](https://sdk.vercel.ai/docs/ai-sdk-ui/ai-elements) and [shadcn/ui](https://ui.shadcn.com).
 
-Kitchen sink is a reference app, not a minimal example. It hosts multiple flows, integrates every subsystem (DevTool, skills, thinking style, advisor, patterns), and is the place we test new features end-to-end. For small, focused, copy-paste-able demos see `examples/`.
+Kitchen sink is a reference app, not a minimal example. It hosts multiple flows, integrates every subsystem (DevTool, skills, thinking style, advisor, workforce), and is the place we test new features end-to-end. For small, focused, copy-paste-able demos see `examples/`.
+
+The chat agent either answers in the turn or files the work to a durable board, where a child session picks it up and the result comes back on a later turn. For coordination that happens inside a single request, see the [patterns documentation](../docs/docs/patterns/overview.md); each pattern page carries its own runnable example. The one pattern this app still uses is the response auditor, which annotates an answer after it is produced.
 
 ## Flows
 
@@ -39,6 +41,45 @@ Actions:
 - `personalize` — weave user-specific details into the text using user-scoped episodic + semantic memories captured by `chat-agent` (shared via the same `userId` storage key)
 
 Exported as `richTextComponentFlow` (`kind: "rich-text-component"`). Consumed by the artifact editor UI. Not mounted at a dedicated route.
+
+### The support team (`workforce/`)
+
+A hired team, declared in files rather than wired in code. Each seat is a `WORKER.md` under `workforce/teams/support/workers/`, and its frontmatter is the whole of its configuration — which flow kind it runs, and the settings that kind offers. `support.ada` and `support.grace` both run the `desk-clerk` kind and declare different desks; `support.iris` and `support.otto` run the built-in agent kind with different tools.
+
+Worker kinds, blocks and capabilities are picked up the same way: a file under `workforce/flows/workers/`, `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That generated module is committed, so the *code* an app can run is fixed when you run the command — no code is discovered while the app runs, which is what lets a bundler see it.
+
+The roster is the other half, and it is read at boot: `hireKitchenSinkWorkforce()` walks `workforce/teams/` and hires a seat per `WORKER.md`. So the kinds are decided at generate time and the seats at startup — which is why adding a kind takes `fsdev gen` and adding a seat takes only a restart.
+
+Each seat is addressed by its own id, so a seat answers on the same route as any other flow:
+
+```bash
+# A note to the front desk, from the CLI
+pnpm fsdev run support.ada answer -i '{"note":"is the printer fixed?"}'
+
+# Or over HTTP
+curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
+  -H 'content-type: application/json' \
+  -d '{"input":{"note":"is the printer fixed?"},"userId":"you"}'
+```
+
+Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
+
+Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization (`acme.support.ada`), and is still there after `pnpm build && pnpm start`.
+
+The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no hire path. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
+
+```bash
+export WORKFORCE_ADMIN_TOKENS="acme:dev-token"
+
+curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer dev-token" \
+  -d '{"userId":"you","input":{"seatId":"support.bo","flow":"desk-clerk","settings":{"desk":"back"},"instructions":"You work the back desk."}}'
+```
+
+Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
+
+Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
 
 ## Web Application (`app/`)
 

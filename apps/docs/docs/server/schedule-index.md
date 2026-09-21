@@ -31,9 +31,9 @@ from a single cron beat, you do.
 
 The index trades a small amount of write-side work for a constant-time
 read. Each create/update/delete on the schedule collection mirrors a row
-into a flat `(user_id, key, cron, timezone, next_fire_at)` table. Each
-cron tick claims rows where `next_fire_at <= now`, advances them
-in-place using `cron-parser`, and returns them. The contract is
+into a flat `(user_id, key, org_id, cron, timezone, next_fire_at)`
+table. Each cron tick claims rows where `next_fire_at <= now`, advances
+them in-place using `cron-parser`, and returns them. The contract is
 at-most-once: a row that has been advanced and then fails to dispatch
 is dropped, not retried.
 
@@ -42,6 +42,8 @@ is dropped, not retried.
 ```ts
 export interface ScheduleIndexRow {
   userId: string;
+  /** The organization the schedule fires into. */
+  orgId?: string;
   key: string;
   cron: string;
   timezone?: string;
@@ -58,6 +60,11 @@ export interface ScheduleIndex {
 
 `claimDue` advances internally — in one transaction — so a second
 caller at the same `now` will not see the same row.
+
+`orgId` is the organization the schedule was created under, and the one it
+fires into. A row can exist without one; a schedule with no organization does
+not dispatch — see
+[the organization a schedule fires into](./scheduled.md#the-organization-a-schedule-fires-into).
 
 ## Provided implementations
 
@@ -102,6 +109,7 @@ Postgres:
 CREATE TABLE IF NOT EXISTS schedule_index (
   user_id      text NOT NULL,
   key          text NOT NULL,
+  org_id       text,
   cron         text NOT NULL,
   timezone     text,
   next_fire_at bigint NOT NULL,
@@ -117,6 +125,7 @@ SQLite:
 CREATE TABLE IF NOT EXISTS schedule_index (
   user_id      TEXT NOT NULL,
   key          TEXT NOT NULL,
+  org_id       TEXT,
   cron         TEXT NOT NULL,
   timezone     TEXT,
   next_fire_at INTEGER NOT NULL,
@@ -161,6 +170,10 @@ interface. The shape is small: three methods, async-shaped. Implement
 SKIP LOCKED` (or single-writer serialization, as SQLite does) and the
 rest follows.
 
+`orgId` has to survive the round trip: store what `upsert` hands you and
+return it from `claimDue`. Map your storage's null back to `undefined` rather
+than to an empty string, the way the provided adapters do.
+
 A conformance suite is published at `@flow-state-dev/scheduled/testing`:
 
 ```ts
@@ -173,8 +186,8 @@ createScheduleIndexConformanceTests("my-backend", {
 ```
 
 Drop that inside a vitest file and it will exercise upsert idempotence,
-claim+advance, the bad-cron skip path, no-op remove, and the limit
-parameter.
+claim+advance, the organization round trip, the bad-cron skip path,
+no-op remove, and the limit parameter.
 
 ## At-most-once contract
 

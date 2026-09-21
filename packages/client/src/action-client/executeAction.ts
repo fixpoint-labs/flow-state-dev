@@ -116,7 +116,6 @@ export function createClient(options: CreateClientOptions): Client {
       userId,
       sessionId: sendOptions?.sessionId,
       requestId: sendOptions?.requestId,
-      orgId: sendOptions?.orgId,
       metadata: sendOptions?.metadata
     };
 
@@ -152,7 +151,6 @@ export function createClient(options: CreateClientOptions): Client {
       userId,
       sessionId: sendOptions?.sessionId,
       requestId: sendOptions?.requestId,
-      orgId: sendOptions?.orgId,
       metadata: sendOptions?.metadata
     };
 

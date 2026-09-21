@@ -84,8 +84,8 @@ Then the two checks specific to this altitude:
 S=spec/_projects/<slug>
 # 1. Status is derived, not stale — this must COMPARE, not just list. A table with every
 #    epic wrongly marked "in flight" passes a check that only prints identifiers.
-#    Derive from BOTH sources (Linear state, and the epic PR — wrapping moves no Linear state)
-#    and diff against the committed table. Any line of output is a failure.
+#    Derive lifecycle state from Linear; cross-check child implementation PR outcomes.
+#    A merged epic spec is approved direction, not completed work.
 python3 - "$S/SPEC.md" <<'EOF'
 import json, os, re, subprocess, sys
 
@@ -101,14 +101,14 @@ r = subprocess.run(
      "-d", json.dumps({"query": QUERY})],
     capture_output=True, text=True)
 
-# done := Linear completed OR the epic PR is closed. Wrapping moves no Linear
-# state, so fold the PR half in here before comparing - Linear alone under-reports.
-CLOSED_EPIC_PRS = set()          # fill from the epic PRs you just read
+# Wrap records the epic's terminal state in Linear. Separately inspect child
+# implementation PR outcomes and report contradictions; never use spec PR closure.
 live = {}
 for n in json.loads(r.stdout)["data"]["project"]["issues"]["nodes"]:
     t = n["state"]["type"]
     ident = n["identifier"]
-    live[ident] = ("done" if t == "completed" or ident in CLOSED_EPIC_PRS
+    live[ident] = ("done" if t == "completed"
+                   else "dropped" if t == "canceled"
                    else "in flight" if t == "started" else "not started")
 
 for ident, state in sorted(live.items()):

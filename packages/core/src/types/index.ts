@@ -110,6 +110,8 @@ export type {
   ResolvedPrincipal
 } from "./auth";
 
+export { DEFAULT_ORG_ID, isValidOrgId } from "./auth";
+
 export type {
   ScheduleConfig,
   ScheduleInputContext,

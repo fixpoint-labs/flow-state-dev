@@ -39,6 +39,14 @@
  * answer at run time because a block does not walk folders. `inventory/
  * collections.ts` is canonical for what each one holds and how they join back
  * to the declared records.
+ *
+ * And beside the inventory sits the **roster**: the durable record of seats
+ * hired while the app was running, which files cannot hold because a runtime
+ * hire writes no file. `roster/collections.ts` owns the row,
+ * `roster/reload.ts` owns reading a whole roster back at the next boot, and
+ * the two are a different contract from the inventory's on purpose — a roster
+ * row is deletable because firing a seat is half of what a roster is for,
+ * while an inventory row means *was registered here* and is never removed.
  */
 
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
@@ -46,6 +54,23 @@ export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export { hireWorkforce, type HireOptions } from "./hire";
 export { resourcesFromDocs } from "./resources-from-docs";
+export { referencesFromDocs, referenceBody } from "./references-from-docs";
+export {
+  clearShadowedReferences,
+  describeShadowedReferences,
+  type ClearShadowedReferencesInput,
+  type ClearShadowedReferencesResult,
+  type ReferenceContentStore,
+  type ReferenceInstallFlow,
+  type ShadowedReference,
+} from "./clear-shadowed-references";
+export {
+  SEAT_REFERENCES_KEY,
+  placeOfReference,
+  placeOfSeat,
+  referenceReachableBySeat,
+  type TreePlace,
+} from "./seat-references";
 export { splitResourceModules, type ResourceModuleHalves } from "./split-resource-modules";
 export type {
   ResourceModuleExport,
@@ -57,3 +82,4 @@ export { workerConfigSchema, seatSkillSchema, type WorkerConfig } from "./worker
 export type { WorkerManifest, TeamManifest, ResourceDoc } from "./manifest";
 export * from "./channel";
 export * from "./inventory";
+export * from "./roster";

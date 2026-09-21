@@ -204,7 +204,8 @@ function messageOf(error: unknown): string {
  * @throws If no `orgId` was given, or if the roster carries seats and no
  *   `seatWriter` was named. Both are wiring mistakes an app should not boot
  *   past — a run that continued would report success and write where nobody
- *   can read.
+ *   can read. An app with no authentication passes `DEFAULT_ORG_ID`
+ *   explicitly; it is the absent value, not that one, that is refused.
  */
 export async function openInventory(
   roster: InventoryRoster,
@@ -213,17 +214,25 @@ export async function openInventory(
   const seats = orderedById(roster.seats);
   const channels = orderedById(roster.channels);
 
-  // Refused here rather than left to surface per row, and for the same reason
-  // `openChannels` refuses an org-less roster that declares boards: an
-  // org-scoped write with no org lands where no flow in this app resolves it,
-  // so every read comes back empty and points at the reader.
+  // `openInventory` writes through trusted direct execution, below any
+  // resolver, so it names the organization itself (BR-4) — an ABSENT one is
+  // refused rather than guessed. The inventory is org-scoped storage: an app
+  // that authenticates and forgets to pass its verified organization would
+  // write its entire inventory into a namespace none of its sessions read
+  // back, and the only symptom is an inventory that reads empty everywhere,
+  // which points at nothing.
+  //
+  // Naming `DEFAULT_ORG_ID` explicitly is a different thing and goes through
+  // (D3): a development app with no resolver has its channel sessions bound to
+  // the framework default, and saying so here is how its rows land where those
+  // sessions read them. The refusal is about the caller who said nothing.
   const orgId = options.orgId;
   if (orgId === undefined) {
     throw new Error(
-      `openInventory was given no \`orgId\`, but the inventory is org-scoped storage: ` +
-        `${seats.length} seat${seats.length === 1 ? "" : "s"} and ${channels.length} ` +
-        `channel${channels.length === 1 ? "" : "s"} would be written where no flow can read ` +
-        `them back. Pass the same \`orgId\` you passed \`openChannels\`.`
+      `openInventory was given no \`orgId\`. The inventory is org-scoped storage, so a write ` +
+        `with no organization lands where no flow in the app can read it back. Pass the same ` +
+        `organization the channel sessions are opened under — the verified one if the app ` +
+        `authenticates, or \`DEFAULT_ORG_ID\` from \`@flow-state-dev/core\` if it does not.`
     );
   }
 

@@ -101,7 +101,7 @@ State is read through `ctx.<scope>.state`, which is fully typed from your Zod sc
 execute: async (input, ctx) => {
   const mode = ctx.session.state.mode;          // typed
   const prefs = ctx.user.state.preferences;     // typed
-  const orgConfig = ctx.org?.state.config;  // typed; ctx.org may be undefined
+  const orgConfig = ctx.org?.state.config;  // typed; ctx.org is optional in the types
 }
 ```
 
@@ -131,7 +131,7 @@ type ScopeIdentity = {
 };
 ```
 
-`userId` is required on every action execution. `orgId` is optional — when omitted, `ctx.org` is `undefined`. `sessionId` is optional — when omitted, the framework auto-creates an ephemeral session.
+Both fields are optional on `ScopeIdentity`, but every action execution supplies a `userId` and an `orgId`. Call `runAction` yourself and you pass both: a blank or missing `orgId` throws `OrgRequiredError` before anything is written, so pass the organization you verified, or [`DEFAULT_ORG_ID`](/docs/server/authentication#every-request-runs-in-an-organization) for single-organization development. Through a transport you pass neither. The server takes both from the resolved principal, and nothing in the request body can name the organization. `sessionId` is optional, and when it is omitted the framework auto-creates an ephemeral session.
 
 ## What a write tells you {#what-a-write-tells-you}
 

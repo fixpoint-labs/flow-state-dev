@@ -394,7 +394,7 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     expect(new Set(all).size).toBe(all.length);
   });
 
-  it("collectTaskOwnedItemIds returns task-owned ids and excludes bookends + unattributed", () => {
+  it("collectTaskOwnedItemIds returns task-owned ids and excludes substrate components + unattributed", () => {
     resetItemCounters();
     const t = makeTask({ id: "t1" });
     const owned = makeSideChainMessage("owned", "t1");
@@ -409,7 +409,7 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     const ids = collectTaskOwnedItemIds(items);
     expect(ids.has(owned.id)).toBe(true);
     expect(ids.has(orphan.id)).toBe(false);
-    // Bookend task-change items are never owned.
+    // Substrate components such as task-change are never owned.
     expect([...ids].some((id) => id.startsWith("item_change"))).toBe(false);
   });
 });

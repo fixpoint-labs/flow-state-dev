@@ -26,7 +26,7 @@ function hostFor(flow: ReturnType<ReturnType<typeof defineFlow>>) {
   return createInboundTransportHost({
     registry,
     stores: createInMemoryStores(),
-    resolvePrincipal: async () => ({ userId: "system" }),
+    resolvePrincipal: async () => ({ userId: "system", orgId: "org_test" }),
     runtimeConfig: {}
   });
 }

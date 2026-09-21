@@ -1,4 +1,5 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, beforeEach } from "vitest";
 import {
@@ -114,6 +115,7 @@ describe("handleAbortRequest", () => {
   it("returns 204 when aborting an active request with in-memory controller", async () => {
     registerAbortController("req_active");
     await stores.request.set("req_active", {
+      orgId: DEFAULT_ORG_ID,
       id: "req_active",
       flowKind: "chat",
       actionName: "run",
@@ -143,6 +145,7 @@ describe("handleAbortRequest", () => {
 
   it("returns 202 when request is in-progress but on a different instance (no controller)", async () => {
     await stores.request.set("req_remote", {
+      orgId: DEFAULT_ORG_ID,
       id: "req_remote",
       flowKind: "chat",
       actionName: "run",
@@ -184,6 +187,7 @@ describe("handleAbortRequest", () => {
   it("returns 409 when request is already completed", async () => {
     // Seed a completed request record
     await stores.request.set("req_terminal", {
+      orgId: DEFAULT_ORG_ID,
       id: "req_terminal",
       flowKind: "chat",
       actionName: "run",
@@ -244,6 +248,7 @@ describe("runAction — abort path", () => {
     })();
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { message: "hello" },
@@ -303,6 +308,7 @@ describe("runAction — abort path", () => {
     })();
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { message: "hello" },
@@ -348,6 +354,7 @@ describe("runAction — abort path", () => {
     })();
 
     const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { message: "hello" },
@@ -386,6 +393,7 @@ describe("runAction — abort path", () => {
     })();
 
     await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { message: "hello" },
@@ -428,6 +436,7 @@ describe("runAction — abort path", () => {
 
     const requestId = "req_endpoint_abort";
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -486,6 +495,7 @@ describe("runAction — abort path", () => {
 
     const requestId = "req_emit_abort";
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -552,6 +562,7 @@ describe("runAction — abort path", () => {
 
     const requestId = "req_double_abort";
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -769,6 +780,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -801,6 +813,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -841,6 +854,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -874,6 +888,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -915,6 +930,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -964,6 +980,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1008,6 +1025,7 @@ describe("runAction — cross-process abort delivery", () => {
     await recordAbortIntent(stores, requestId);
 
     const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1080,6 +1098,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1132,6 +1151,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1163,6 +1183,7 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1231,6 +1252,7 @@ describe("runAction — cross-process abort delivery", () => {
 
     await expect(
       runAction({
+        orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: {},
@@ -1310,6 +1332,7 @@ describe("runAction — cross-process abort delivery", () => {
 
     let caught: unknown;
     await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1401,6 +1424,7 @@ describe("runAction — cross-process abort delivery", () => {
     await recordAbortIntent(base, requestId);
 
     const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1606,6 +1630,7 @@ describe("cross-process abort accepted in the teardown window", () => {
     const hookedStores = { ...stores, request };
 
     const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1741,6 +1766,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1824,6 +1850,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1933,6 +1960,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -1994,6 +2022,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -2082,6 +2111,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const resultPromise = runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -2185,6 +2215,7 @@ describe("cross-process abort delivered during the background drain", () => {
     })();
 
     const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

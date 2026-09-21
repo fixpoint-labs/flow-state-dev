@@ -36,9 +36,10 @@ Move this config object to an `fsdev.config.ts` at your project root that defaul
 - `getRouter(): Promise<FlowApiRouter>` — resolve the route handlers. The first call triggers store initialization.
 - `ready(): Promise<void>` — eager warmup. Idempotent. Useful in tests or an `instrumentation.ts` file.
 - `dispose(): Promise<void>` — release pooled resources (database connections) across every declared store.
+- `register(flow): void` / `unregister(id): boolean` — add or remove one flow after startup. See [Registering a flow after startup](/docs/api/server#registering-a-flow-after-startup).
 - `activeProfile: string` — the store profile that resolved at runtime (read-only).
 - `settings` — the settings bag you passed in (read-only).
-- `meta` — diagnostics: `{ flowKeys, profileKeys, declaredSlots }`.
+- `meta` — diagnostics: `{ flowKeys, profileKeys, declaredSlots }`. `flowKeys` is the instance ids currently registered.
 
 Construction validates your config up front. An empty `stores` map or a `defaultProfile` that names a profile you didn't declare throws right away, not on the first request.
 

@@ -662,12 +662,6 @@ export type FlowInstance<
    * on the wire, and no part of any storage key.
    */
   config: FlowConfigValue<TConfigSchema>;
-  /**
-   * True when any block in any action declares `requireOrg: true`. The HTTP
-   * action route uses this to reject requests against unbound sessions before
-   * any execution begins.
-   */
-  requiresOrg: boolean;
   authentication?: AuthenticationConfig;
   actions: TActions;
   /** See {@link FlowDefinition.internal}. Absent when the flow declares none. */
@@ -727,13 +721,11 @@ export type FlowType<
    * supplied one: its `configSchema` does not parse `{}`, or the value that
    * parse produced does not satisfy a block that declared `flowConfigSchema`.
    *
-   * A declaration-derived flag beside `requiresOrg` — the registry reads it
+   * A declaration-derived flag — the registry reads it
    * and refuses a blueprint handed over in place of an instance, rather than
    * behaving differently. The framework never reads INSIDE the bag.
    */
   requiresConfig: boolean;
-  /** Mirror of `FlowInstance.requiresOrg`. */
-  requiresOrg: boolean;
   authentication?: AuthenticationConfig;
   actions: TActions;
   /** Mirror of `FlowInstance.internal`. */

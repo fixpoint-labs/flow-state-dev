@@ -30,9 +30,9 @@ the **position** of an element means. If the thing is a graph, mermaid wins on e
 | Issue | **A rule's picture** — a fence with the paths that cross it | SVG, with a mermaid companion listing the same paths by name | `BUSINESS-RULES.md` | No |
 | Issue | **The build DAG** — surfaces in build order | mermaid `flowchart TD` | `PLAN.md` | No |
 | Epic | **What's in the box** — in the box · composed in by the app · replaced in one line · not built | SVG (containment and a fence) | `SPEC.md` | **Yes** |
-| Epic | **How the issues flow into each other** — the dependency graph, with what each hands the next | mermaid `flowchart LR`, edited in place as issues are filed and finish | `SPEC.md` beside the set table | No (linked) |
+| Epic | **How the issues flow into each other** — the dependency graph, with what each hands the next | mermaid `flowchart LR`, amended when scope or dependencies change | `SPEC.md` beside the dated set table | No (linked) |
 | Epic | **Who owns what** — rule × issue, each rule with exactly one owner | SVG (a matrix) | `DECISIONS.md` | **Yes** |
-| Epic | **The path** — one lane per issue against time, done and in-flight bars, a now line, the critical path | SVG (lanes against time), **redrawn as the set moves** | `PLAN.md` | **Yes** |
+| Epic | **The path** — one lane per issue against time, dated bars, a now line, the critical path | SVG (lanes against time), amended when the plan changes, not per status tick | `PLAN.md` | **Yes** |
 | Project | **The territory** — owned here · the substrate assembled but owned elsewhere · outside the project, with the fence that separates them | SVG (containment and a fence) | `SPEC.md` | **Yes** |
 | Project | **How the epics flow into each other** — the dependency graph, edited in place as epics are filed and wrap | mermaid `flowchart LR` | `SPEC.md` beside the epics table | No (linked) |
 | Project | **The arc** — one lane per epic against time, a now line, **redrawn as the project moves** | SVG (lanes against time) | `PLAN.md` | **Yes** |
@@ -185,9 +185,9 @@ A figure nobody rendered is how a wrong one ships. Headless Chromium is on every
 renders both themes in a second:
 
 ```bash
-# S is the figure: spec/<ISSUE-ID>/figures/…, spec/_epics/<name>/figures/…, or
+# S is the figure: specs/issues/<ISSUE-ID>/figures/…, specs/epics/<EPIC-ISSUE-ID>/figures/…, or
 # spec/_projects/<slug>/figures/… — the rest of the block is altitude-independent.
-S=spec/<ISSUE-ID>/figures/<name>.svg
+S=specs/issues/<ISSUE-ID>/figures/<name>.svg
 H=$(grep -oE 'viewBox="0 0 940 [0-9]+' "$S" | grep -oE '[0-9]+$')
 CH=/opt/pw-browsers/chromium-*/chrome-linux/chrome
 printf '<html><body style="margin:0;background:#FCFCFA"><img src="%s" width="940"></body></html>' "$(realpath "$S")" > /tmp/light.html
@@ -210,16 +210,16 @@ A spec or epic PR body carries the figures the table above marks — one at issu
 epic altitude — as raw-content images pinned to a commit:
 
 ```html
-<img src="https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/spec/<ISSUE-ID>/figures/<name>.svg"
+<img src="https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/specs/issues/<ISSUE-ID>/figures/<name>.svg"
      width="940" alt="What the picture shows, in a sentence" />
 ```
 
 Three facts decide that form:
 
 - **Pin to the commit SHA, never the branch.** GitHub's image proxy caches by URL, so a branch
-  URL shows the first version it ever fetched. When a figure changes, the body is re-pinned to
-  the commit that holds the new one — at epic altitude that happens every time the path is
-  redrawn, and it is part of the refresh, not an afterthought.
+  URL shows the first version it ever fetched. Re-pin changed figures on an open review PR;
+  after merge, pin them on the follow-up amendment, not by rewriting the original PR.
+  The project-spec's standing refresh lifecycle is unchanged.
 - **The blob URL doesn't render; the raw URL does.** `…/blob/<branch>/<path>` is a link to a page.
 - **A relative path resolves against the repo root and 404s.** Absolute, always.
 
@@ -253,7 +253,7 @@ they pasted. Re-pinning on such a PR is a line the person changes, and the refre
 Run against every document you are about to commit, and report the numbers:
 
 ```bash
-D=spec/<ISSUE-ID>            # or spec/_epics/<name>
+D=specs/issues/<ISSUE-ID>    # or specs/epics/<EPIC-ISSUE-ID>; projects stay spec/_projects/<slug>
 
 # 1. Fences balanced, per document — every count must be even
 for f in "$D"/*.md; do echo "$f $(grep -c '^```' "$f")"; done
@@ -273,7 +273,7 @@ done   # want ext=0 themes≥1 aria=1 lines<~150
 # 5. Prose words per document, fences excluded — against the budgets in the template
 for f in "$D"/*.md; do echo "$f $(awk '/^```/{f=!f; next} !f' "$f" | wc -w)"; done
 
-# 6. The nav line — line 3 of every document names all four, the current one bold; must print nothing
+# 6. The nav line — line 3 names the required set (Evolution when present), the current one bold; must print nothing
 for f in "$D"/*.md; do sed -n 3p "$f" | grep -qE 'Spec.*Decisions.*Rules.*Plan' || echo "$f: no nav line"; done
 ```
 

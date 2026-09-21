@@ -103,7 +103,7 @@ async function enqueueViaHost(
     action: "run",
     input: { value: "hi" },
     sessionId: "s_1",
-    principal: { userId: "u_1" }
+    principal: { userId: "u_1", orgId: "org_test" }
   });
 
   // Resolves once the enqueue-time writes committed AND the dispatcher
@@ -209,6 +209,7 @@ describe("external dispatch — queued requests are not dead requests (FIX-999)"
     const flow = registry.get(FLOW_KIND);
     expect(flow).toBeDefined();
     void runAction({
+    orgId: "org_test",
       flow: flow!,
       actionName: "run",
       input: { value: "hi" },

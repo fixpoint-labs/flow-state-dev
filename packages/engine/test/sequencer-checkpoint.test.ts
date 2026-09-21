@@ -8,6 +8,7 @@
  * (`durable: false`) and that legacy stream emission keying is preserved.
  */
 import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -94,6 +95,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     const response = createResponseEmitter({ requestId: "req_basic", now: () => Date.now() });
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -141,6 +143,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     const response = createResponseEmitter({ requestId: "req_cleanup", now: () => Date.now() });
 
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -174,6 +177,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     const flow = buildSimpleFlow();
     const response = createResponseEmitter({ requestId: "req_overwrite", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -212,6 +216,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     const flow = buildSimpleFlow(); // no `durable` flag set
     const response = createResponseEmitter({ requestId: "req_default", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -243,6 +248,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     const flow = buildSimpleFlow({ durable: false });
     const response = createResponseEmitter({ requestId: "req_optout", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -270,6 +276,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     const flow = buildSimpleFlow({ durable: false });
     const response = createResponseEmitter({ requestId: "req_silent", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -340,6 +347,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
 
     const response = createResponseEmitter({ requestId: "req_nested", now: () => Date.now() });
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -414,6 +422,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     try {
       const response = createResponseEmitter({ requestId: "req_invalid", now: () => Date.now() });
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: {},
@@ -490,6 +499,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
 
     const response = createResponseEmitter({ requestId: "req_err", now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -562,6 +572,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     setTimeout(() => abortController.abort(), 30);
 
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -589,6 +600,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     const response = createResponseEmitter({ requestId: "req_keyed", now: () => Date.now() });
 
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

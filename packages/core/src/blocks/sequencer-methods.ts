@@ -130,7 +130,7 @@ export type InlineBlockFactory = (config: any) => BlockDefinition<any, any>;
  * escape the definition-time address check, and its declarations would not
  * bubble. Declared blocks are children of the step on exactly the terms the
  * block-shaped call's element block is: walked for reachability, merged for
- * resources and `requiresOrg`. Redundant with a block-shaped call, which
+ * resources. Redundant with a block-shaped call, which
  * already knows its element.
  */
 export type IterationOptions = {

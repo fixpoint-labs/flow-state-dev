@@ -34,6 +34,7 @@ import {
   type StoreRegistry
 } from "../src";
 
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 const spine = defineResource({
   scope: "session",
   stateSchema: z.object({}).passthrough(),
@@ -65,6 +66,7 @@ function makeFlow() {
 /** One execution context over a shared store — i.e. one in-flight request. */
 async function makeCtx(stores: StoreRegistry, requestId: string) {
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow: makeFlow(),
     actionName: "run",
     requestId,
@@ -296,6 +298,7 @@ describe("FIX-1258: a write after a delete does not revive the resource", () => 
 
     await expect(
       ensureSessionRecord(failing, "sess_ordering", () => ({
+    orgId: DEFAULT_ORG_ID,
         id: "sess_ordering",
         flowKind: "fix1258-revival",
         userId: "user_1",

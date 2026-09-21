@@ -15,6 +15,7 @@ import {
   type CreateModelResolverOptions,
   type FlowStateSettings
 } from "@flow-state-dev/core";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
 import { createRuntimeConfig, resolveStaleSweep, type RuntimeConfig } from "../runtime-config";
@@ -337,9 +338,27 @@ class InternalFlowState<TSettings extends object>
     return this.#options.settings ?? ({} as TSettings);
   }
 
+  register(flow: FlowInstance): void {
+    this.#registry.register(flow);
+  }
+
+  unregister(id: string): boolean {
+    return this.#registry.unregister(id);
+  }
+
   get meta(): FlowState<TSettings>["meta"] {
     return {
-      flowKeys: Object.keys(this.#options.flows),
+      // The REGISTRY, not the construction options. `flowKeys` is a
+      // diagnostic answer to "what does this app serve", and the options map
+      // stopped being that the moment `register` existed: a seat hired at
+      // runtime would be served and absent from this list, and a flow that was
+      // unregistered would be listed and unreachable. Reading the registry
+      // also changes what the strings ARE — instance ids rather than the
+      // arbitrary keys of the `flows` record — which is the more useful answer
+      // of the two, because an id is what a caller puts on a URL. The two
+      // agree for every flow declared the ordinary way, since `createFlowState`
+      // keys its map by the instance it holds.
+      flowKeys: this.#registry.list().map((flow) => flow.id),
       profileKeys: this.#profileKeys,
       declaredSlots: declaredSlots(this.#options.stores),
       devtool: this.#options.devtool

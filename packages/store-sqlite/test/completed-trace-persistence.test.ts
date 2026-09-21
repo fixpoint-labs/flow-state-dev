@@ -13,6 +13,7 @@
  * deterministically without a model.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/engine";
 import type { DurabilityProvider, StoreRegistry } from "@flow-state-dev/engine";
@@ -92,6 +93,7 @@ describe("completed block traces persist on a suspended request (FIX-839)", () =
     const stores = createSQLiteStores({ filename });
     const provider = providerFor(stores);
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

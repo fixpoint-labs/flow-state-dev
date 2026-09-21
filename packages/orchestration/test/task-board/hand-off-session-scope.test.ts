@@ -14,6 +14,7 @@
  * one, and nothing here claims otherwise.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, runAction } from "@flow-state-dev/engine";
@@ -120,6 +121,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
     const base = {
       flowKind: flow.kind,
       userId: "u_1",
+      orgId: DEFAULT_ORG_ID,
       state: {},
       version: 0,
       createdAt: ts,
@@ -153,6 +155,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
     // Filed through the real action path, so the board capability is installed
     // the way it is at runtime rather than reached for off the root context.
     const filed = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { request: "summarize the locking tradeoffs" },
@@ -167,6 +170,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
     // ledger and finds the row it would be dispatched for. Unshared, this list
     // is empty and the start gate reads that as a stale claim.
     const childCtx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_child",

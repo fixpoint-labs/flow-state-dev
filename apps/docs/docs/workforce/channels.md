@@ -152,7 +152,7 @@ Compose it once per board. A worker holding two boards holds sixteen tools, and 
 
 A board that no hired worker declares warns at hire, naming the channel and the board. Nothing is refused: a channel may keep a board that only people read.
 
-Two things are refused, both when you bind the roster. A channel holding a board must be opened with an `orgId`, because a board's rows are stored at org scope; `openChannels` names the channel and stops if there is none. And `boards:` on a channel running a [kind of your own](#registering-a-kind-of-your-own) is refused by name, because boards belong to the built-in channel kind.
+`boards:` on a channel running a [kind of your own](#registering-a-kind-of-your-own) is refused by name when you bind the roster, because boards belong to the built-in channel kind. A board's rows are stored at organization scope, so they sit in [the organization the channel runs in](#which-organization-a-channel-runs-in).
 
 Rename or move a channel's folder and its boards move with it, since a board's id comes from where the channel sits. Rows filed under the old id stay there and nothing migrates them. The unattended-board warning is what makes that visible.
 
@@ -205,7 +205,7 @@ The subpath matters. `@flow-state-dev/workforce/loader` imports `node:fs`, so it
 
 The team folder and the channel folder, joined with a dot. `teams/engineering/channels/standup/` becomes `engineering.standup`, which is the channel's session id: the id you address when you post to it. The team qualifier means marketing can have a `standup` of its own without checking what engineering called theirs.
 
-Both folder names must be lowercase letters, digits, and single hyphens, at most 64 characters each. So `daily-standup` is fine. `Stand Up` and `stand.up` are reported when the tree is read, with the rule in the message.
+Both folder names follow [the tree's name rule](./workers-on-disk.md#names-in-the-tree): lowercase letters, digits and single hyphens, at most 64 characters. So `daily-standup` is fine. `Stand Up` and `stand.up` are reported when the tree is read, with the rule in the message.
 
 ### What the file is checked for
 
@@ -265,19 +265,19 @@ flowRegistry.registerMany(channelInstances(channels));
 await openChannels(channels, { client: sessionClient, userId: "u_42" });
 ```
 
-Pass the org these channels belong to:
-
-```ts
-await openChannels(channels, { client: sessionClient, userId: "u_42", orgId: "org_acme" });
-```
-
-Every channel session is then opened under that org, and resources stored at org scope resolve inside it. [Documents read from the tree](./documents-on-disk.md) are all org-scoped, so in a channel opened without an org, reading one fails with `Resource "…" is not registered`. The `orgId` argument decides the org only on an app that has not configured [authentication](../server/authentication.md); where a `resolvePrincipal` is in place, each session takes the org of the verified caller, so open your channels as a caller whose identity already carries the org you want. Re-opening cannot move a session between orgs. If you pass an `orgId` and a channel at that id is already open under a different org, or under none, `openChannels` names that channel and stops; delete that session so the next run opens the channel fresh, or drop the `orgId`.
-
 `openChannels` is idempotent: a channel that is already open is left alone, so re-running it over an unchanged roster does nothing. The flip side is that re-opening is not a migration. Three settings are written when a channel is created and keep whatever they were opened with: `members`, the charter, and `description`. `flow` is settled then too, since it picks the session's kind. Add a member or rewrite a charter and a channel that is already open does not see it. `boards` is the one that does reach — the board list is built from the files on every bind and is never stored on the channel, so a board added to an open channel's file is usable the next time you run. Re-running does repair one thing: a channel whose id was claimed by a post before it was opened. That leaves an empty session, and re-running binds it.
 
 An empty session is the only thing it will clear out of the way. If the id is held by something else — a session belonging to another flow, or to another user, or one carrying state that is not a readable channel — `openChannels` names it and stops. A channel id that collides with a real session is a configuration problem, and the fix is to rename the channel, not to have startup delete somebody's data.
 
 The one registered instance answers for every session id, and naming a session that does not exist creates an empty one rather than refusing. So a channel is not "a session id somebody used". It is a session that was opened as a channel, carrying members and a charter. Post to an id nobody opened and you get `channel-not-bound`, nothing is written, and the empty session stays inert.
+
+### Which organization a channel runs in
+
+Every channel session runs in an organization, and your app does not name it. The server binds it from the caller's verified identity, which is whatever your [`resolvePrincipal`](../server/authentication.md#every-request-runs-in-an-organization) returned. An app that configures no authentication gets the reserved `DEFAULT_ORG_ID` instead, which is the development case.
+
+Storage at organization scope resolves against that organization inside the channel. [Documents read from the tree](./documents-on-disk.md) are org-scoped, and so are the rows on a [board the channel holds](#holding-a-board). A worker woken by a post runs in the channel's organization too, so the same documents resolve for it.
+
+A session's organization is fixed when the session is created, and re-opening cannot move it. Open your channels as a caller whose verified identity already carries the organization you want them in.
 
 ## Posting and reading
 

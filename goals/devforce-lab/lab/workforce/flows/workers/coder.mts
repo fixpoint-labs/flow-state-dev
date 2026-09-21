@@ -113,8 +113,9 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // the coordinator's dispatcher names in `flowKind`.
     cardinality: "collection",
     configSchema: seatSettingsSchema(),
-    // Installed at flow level, which is why the reading blocks must require an
-    // org: `defineFlow` collects `requiresOrg` from blocks, never from here.
+    // Installed at flow level. Org-scoped, and organization identity is
+    // unconditional, so the org registry is always built for a request that
+    // reaches the reading blocks.
     resources: options.resources,
     actions: {
       [DRAIN_ENTRY]: { block: board.drain, description: "Interim: exists to gate the task entry." },

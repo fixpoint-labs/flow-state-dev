@@ -1,4 +1,5 @@
 import { defineFlow, generator, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores, runAction, ValidationError } from "../src";
@@ -23,6 +24,7 @@ describe("runAction edge behavior", () => {
 
     await expect(
       runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "notReal" as "run",
         input: { value: 1 },
@@ -52,6 +54,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: "not-a-number" },
@@ -94,6 +97,7 @@ describe("runAction edge behavior", () => {
 
     await expect(
       runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: 1 },
@@ -150,6 +154,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 1 },
@@ -183,6 +188,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const success = await runActionInternal({
+    orgId: DEFAULT_ORG_ID,
       flow: successFlow,
       actionName: "run",
       input: { value: 1 },
@@ -224,6 +230,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const failed = await runActionInternal({
+    orgId: DEFAULT_ORG_ID,
       flow: failureFlow,
       actionName: "run",
       input: { value: 1 },
@@ -259,6 +266,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const result = await runActionInternal({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 1 },
@@ -301,6 +309,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 1 },
@@ -339,6 +348,7 @@ describe("runAction edge behavior", () => {
     } as any;
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: malformedFlow,
       actionName: "run",
       input: {},
@@ -378,6 +388,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 1 },
@@ -426,6 +437,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 1 },
@@ -481,6 +493,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 1 },
@@ -525,6 +538,7 @@ describe("runAction edge behavior", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 1 },

@@ -15,6 +15,7 @@
  * only patched one field would go green against code that still loses writes.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineFlow,
@@ -75,6 +76,7 @@ function makeFlow() {
  */
 async function makeCtx(stores: StoreRegistry, requestId: string) {
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow: makeFlow(),
     actionName: "run",
     requestId,

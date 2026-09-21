@@ -5,6 +5,7 @@ import { createExecutionContext, createInMemoryStores, toBareStates } from "../s
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -61,6 +62,7 @@ async function createCtx(collections: Record<string, ReturnType<typeof defineRes
   const stores = createInMemoryStores();
   const flow = makeFlow(collections);
   const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: "req_1",
@@ -823,6 +825,7 @@ describe("per-key state write routing", () => {
   async function ctxWith(stores: ReturnType<typeof createInMemoryStores>) {
     const flow = makeFlow({ files: filesCollection });
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_1",

@@ -3,6 +3,7 @@
  * Action-level override still validates first when provided.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores, runAction } from "../src";
@@ -24,6 +25,7 @@ describe("FIX-552: optional action.inputSchema", () => {
     })();
 
     const ok = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { message: "hello" },
@@ -36,6 +38,7 @@ describe("FIX-552: optional action.inputSchema", () => {
     expect(ok.output).toBe("hello");
 
     const bad = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { message: "" },
@@ -67,6 +70,7 @@ describe("FIX-552: optional action.inputSchema", () => {
     })();
 
     const rejected = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { message: "hi" },
@@ -78,6 +82,7 @@ describe("FIX-552: optional action.inputSchema", () => {
     expect(rejected.error?.message).toMatch(/Action input validation failed/);
 
     const accepted = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { message: "hello" },
@@ -113,6 +118,7 @@ describe("FIX-552: optional action.inputSchema", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { message: "hi" },

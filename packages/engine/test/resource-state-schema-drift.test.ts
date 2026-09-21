@@ -27,6 +27,7 @@ import {
   type StoreRegistry
 } from "../src";
 
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 /**
  * Non-idempotent: parsing an already-parsed value moves `n` again. This is the
  * shape that drifts — `.transform()` whose output is not a fixed point.
@@ -163,6 +164,7 @@ function makeFlow() {
  */
 async function makeCtx(stores: StoreRegistry, requestId: string) {
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow: makeFlow(),
     actionName: "run",
     requestId,

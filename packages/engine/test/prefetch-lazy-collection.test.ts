@@ -7,6 +7,7 @@
  * mutations stay in-memory. Concurrent reads of the same key single-flight.
  */
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
@@ -49,6 +50,7 @@ function spyStores() {
 
 function ctxFor(stores: ReturnType<typeof createInMemoryStores>) {
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId: "r1",

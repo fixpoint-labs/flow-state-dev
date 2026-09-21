@@ -9,6 +9,8 @@ import type {
   FlowInstance,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
+import { isValidOrgId } from "@flow-state-dev/core";
+import { OrgRequiredError } from "../transports/errors";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
@@ -669,6 +671,16 @@ export async function runActionInternal<
     options.metadata,
     options.resolvedActionCore
   );
+  // The trusted-input gate (BR-4, FIX-1442). `orgId` is required by the type,
+  // but this seam is reachable from untyped JavaScript, from an adapter that
+  // assembles the options bag dynamically, and from a durable job replayed out
+  // of a queue written before the field existed — none of which the type
+  // reaches. Checked here, before anything is written, so avoiding the resolver
+  // cannot become a way to run without an organization.
+  if (!isValidOrgId(options.orgId)) {
+    throw new OrgRequiredError(options.flow.kind, "runAction");
+  }
+
   const requestId = options.requestId ?? generateId("req");
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const response = options.responseEmitter ?? createInternalResponseEmitter({

@@ -8,6 +8,7 @@
  * waits.
  */
 import { describe, it, expect } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -90,7 +91,7 @@ function envelope(value: string, sessionId = "s_1") {
     action: "run",
     input: { value },
     sessionId,
-    principal: { userId: "u_1" }
+    principal: { userId: "u_1", orgId: DEFAULT_ORG_ID }
   };
 }
 

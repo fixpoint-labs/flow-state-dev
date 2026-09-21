@@ -1,0 +1,110 @@
+<svg viewBox="0 0 940 396" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: a matrix of the seven cross-cutting rules against the five issues in the set. ER-1, the file-declared seat answers over the app's real route, is built by FIX-1429 and consumed by FIX-1475. ER-2, hire a team and it survives a redeploy, is built by FIX-1475 and consumed by FIX-1477, which renders the roster. ER-3, one channel family and one instance with an explicit per-seat board drain, is decided by FIX-1476 and consumed by FIX-1477. ER-4, every component is imported from a client package, is built by FIX-1477 and consumed by FIX-1475 and FIX-1476. ER-5, one recipe per job on screen, is built by FIX-1478 and consumed by FIX-1477. ER-6, the vocabulary Seat, Kind and Agent, is defined by FIX-1476 and consumed by all four other rows — it is the rule that binds the whole set. ER-7, the shell's regions and whether each is inline or resource-backed, is decided by the epic in decisions D7 and D8, built by FIX-1477, and consumed by FIX-1475 and FIX-1476. Every rule has exactly one owner and no rule is ownerless. Two rows are flagged as the ones to re-check on every refresh, ER-6 and ER-7, because each binds three or more children and an owner moving there moves a figure too. Eighteen further rules bind every row equally and need no column: ten prohibitions ER-8 to ER-17, four rules for how the set is run ER-18 to ER-21, and four proof rules ER-22 to ER-25.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .flag  { fill:none; stroke:var(--accent); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-weight:700; font-size:9.5px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT — EVERY RULE HAS EXACTLY ONE OWNER</text>
+
+  <g id="columns">
+    <text class="t-col" x="316" y="50">FIX-1429</text>
+    <text class="t-col" x="442" y="50">FIX-1475</text>
+    <text class="t-col" x="568" y="50">FIX-1476</text>
+    <text class="t-col" x="694" y="50">FIX-1477</text>
+    <text class="t-col" x="820" y="50">FIX-1478</text>
+  </g>
+
+  <g id="r1">
+    <text class="t-row" x="16" y="79">ER-1 &#183; the seat answers over the real route</text>
+    <rect class="own" x="300" y="60" width="118" height="30"/><text class="t-own" x="330" y="79">BUILDS</text>
+    <rect class="use" x="426" y="60" width="118" height="30"/><text class="t-use" x="448" y="79">consumes</text>
+    <rect class="cell" x="552" y="60" width="118" height="30"/>
+    <rect class="cell" x="678" y="60" width="118" height="30"/>
+    <rect class="cell" x="804" y="60" width="118" height="30"/>
+  </g>
+
+  <g id="r2">
+    <text class="t-row" x="16" y="113">ER-2 &#183; hire it, redeploy, it is still there</text>
+    <rect class="cell" x="300" y="94" width="118" height="30"/>
+    <rect class="own" x="426" y="94" width="118" height="30"/><text class="t-own" x="456" y="113">BUILDS</text>
+    <rect class="cell" x="552" y="94" width="118" height="30"/>
+    <rect class="use" x="678" y="94" width="118" height="30"/><text class="t-use" x="700" y="113">renders it</text>
+    <rect class="cell" x="804" y="94" width="118" height="30"/>
+  </g>
+
+  <g id="r3">
+    <text class="t-row" x="16" y="147">ER-3 &#183; a seat drains a named subset</text>
+    <rect class="cell" x="300" y="128" width="118" height="30"/>
+    <rect class="cell" x="426" y="128" width="118" height="30"/>
+    <rect class="own" x="552" y="128" width="118" height="30"/><text class="t-own" x="578" y="147">DECIDES</text>
+    <rect class="use" x="678" y="128" width="118" height="30"/><text class="t-use" x="700" y="147">renders it</text>
+    <rect class="cell" x="804" y="128" width="118" height="30"/>
+  </g>
+
+  <g id="r4">
+    <text class="t-row" x="16" y="181">ER-4 &#183; every component comes from a package</text>
+    <rect class="cell" x="300" y="162" width="118" height="30"/>
+    <rect class="use" x="426" y="162" width="118" height="30"/><text class="t-use" x="448" y="181">consumes</text>
+    <rect class="use" x="552" y="162" width="118" height="30"/><text class="t-use" x="574" y="181">consumes</text>
+    <rect class="own" x="678" y="162" width="118" height="30"/><text class="t-own" x="708" y="181">BUILDS</text>
+    <rect class="cell" x="804" y="162" width="118" height="30"/>
+  </g>
+
+  <g id="r5">
+    <text class="t-row" x="16" y="215">ER-5 &#183; one recipe per job on screen</text>
+    <rect class="cell" x="300" y="196" width="118" height="30"/>
+    <rect class="cell" x="426" y="196" width="118" height="30"/>
+    <rect class="cell" x="552" y="196" width="118" height="30"/>
+    <rect class="use" x="678" y="196" width="118" height="30"/><text class="t-use" x="700" y="215">reads notes</text>
+    <rect class="own" x="804" y="196" width="118" height="30"/><text class="t-own" x="834" y="215">BUILDS</text>
+  </g>
+
+  <g id="r6">
+    <text class="t-row" x="16" y="249">ER-6 &#183; Seat &#183; Kind &#183; Agent &#8212; none is L1</text>
+    <rect class="use" x="300" y="230" width="118" height="30"/><text class="t-use" x="322" y="249">consumes</text>
+    <rect class="use" x="426" y="230" width="118" height="30"/><text class="t-use" x="448" y="249">consumes</text>
+    <rect class="own" x="552" y="230" width="118" height="30"/><text class="t-own" x="578" y="249">DEFINES</text>
+    <rect class="use" x="678" y="230" width="118" height="30"/><text class="t-use" x="700" y="249">consumes</text>
+    <rect class="use" x="804" y="230" width="118" height="30"/><text class="t-use" x="826" y="249">consumes</text>
+    <rect class="flag" x="298" y="228" width="626" height="34"/>
+  </g>
+
+  <g id="r7">
+    <text class="t-row" x="16" y="289">ER-7 &#183; the shell&#8217;s regions &#183; inline vs resource</text>
+    <rect class="cell" x="300" y="270" width="118" height="30"/>
+    <rect class="use" x="426" y="270" width="118" height="30"/><text class="t-use" x="448" y="289">consumes</text>
+    <rect class="use" x="552" y="270" width="118" height="30"/><text class="t-use" x="574" y="289">consumes</text>
+    <rect class="own" x="678" y="270" width="118" height="30"/><text class="t-own" x="708" y="289">BUILDS</text>
+    <rect class="cell" x="804" y="270" width="118" height="30"/>
+    <rect class="flag" x="298" y="268" width="626" height="34"/>
+  </g>
+
+  <g id="legend">
+    <rect class="own" x="16" y="318" width="16" height="14"/>
+    <text class="t-use" x="40" y="330">the one committed owner — decides, defines or builds it</text>
+    <rect class="use" x="420" y="318" width="16" height="14"/>
+    <text class="t-use" x="444" y="330">consumes it, and must not re-decide it — not a wait</text>
+    <rect class="flag" x="16" y="340" width="16" height="14"/>
+    <text class="t-acc" x="40" y="352">binds three or more children — re-check these two on every refresh; an owner moving here moves a figure too</text>
+    <text class="t-use" x="16" y="370">A blank cell means the row does not touch that rule. ER-7 is decided by the epic (D7 and D8) and built by FIX-1477 — the only rule whose decider is not a child.</text>
+    <text class="t-use" x="16" y="388">Eighteen further rules bind every row equally and need no column: ten prohibitions ER-8–17, four run-the-set ER-18–21, four proofs ER-22–25.</text>
+  </g>
+</svg>

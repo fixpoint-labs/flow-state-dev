@@ -1,0 +1,117 @@
+<svg viewBox="0 0 940 440" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Today's kitchen-sink shell beside the rebuilt shell, drawn at the same scale and aligned region for region so the three columns can be compared directly. Both shells have the same geometry: a narrow persistent rail on the left at 256 pixels, a wide centre column, and a right panel. Today the rail's whole vertical budget is a new-chat button above a scrolling session list, with a theme and devtool link at its foot. The centre holds a client-data bar, the conversation stream, a strip of six controls — mode, thinking style, model, thinking, features and voice — and the prompt input. The right panel is the artifact panel; it is drawn with a dashed border because it only exists in build mode, and it is resizable between 280 and 700 pixels. A note under today's shell records that there is no channel list, no seat roster, no task board and no board column anywhere in the app, and that the app has only two routes: the root, which mounts the chat agent directly with no index or picker, and slash devtool. In the rebuilt shell the rail keeps exactly the same width and changes what it holds: the org and team at the top, then one navigator that browses the workforce. The navigator groups by flow kind and derives how deep it drills from that flow's declared cardinality. Under CHANNELS the kinds topic and dm are singleton flows, so a kind expands straight into its own sessions — general and ops under topic, dm shown collapsed — because a channel is a session on a singleton instance. Under SEATS the agent kind is a collection flow, so it expands into seat instances first — ada expanded, desk-clerk collapsed — and a seat then expands into that seat's own sessions, shown as review under ada. Channels are therefore two levels and seats are three, from the same component. The seats half is still navigation into the roster rather than a second copy of it, and sessions have not disappeared — a channel's history is the session list, scoped to that channel. The centre keeps the channel's turn stream and the prompt input, and loses the six-control strip, so the stream gains that row of height. The right panel is the roster's one home and holds it beside the boards, is drawn with a solid border because it is no longer conditional on a mode, and keeps the same resize range. A note under the rebuilt shell records that channels, seats and boards are all on screen at once, and that the centre column is the only region that survives unchanged.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .shell { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .reg   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .cond  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 3; }
+    .stand { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .keep  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .row   { fill:var(--surface); stroke:var(--rule); stroke-width:.8; }
+    .newrow{ fill:var(--code-soft); stroke:var(--code); stroke-width:.8; }
+    .subrow{ fill:var(--surface); stroke:var(--code); stroke-width:.7; }
+    .gonebar{ fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .div   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-r   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-rn  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-rs  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8px; }
+    .t-rg  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="20">TODAY — ONE PERSISTENT REGION, SPENT ON A SESSION LIST</text>
+  <text class="t-lbl" x="484" y="20">REBUILT — THE SAME REGION, SPENT ON THE WORKFORCE</text>
+  <text class="t-s" x="16" y="36">route: / mounts chat-agent directly &#183; no index, no picker</text>
+  <text class="t-s" x="484" y="36">route: / is the workforce &#183; a channel is what you open</text>
+
+  <g id="today">
+    <rect class="shell" x="16" y="48" width="440" height="252" rx="4"/>
+    <rect class="reg" x="24" y="56" width="76" height="236" rx="3"/>
+    <text class="t-r" x="29" y="70">RAIL 256px</text>
+    <rect class="row" x="29" y="76" width="66" height="13" rx="2"/><text class="t-r" x="33" y="86">+ new chat</text>
+    <rect class="row" x="29" y="94" width="66" height="12" rx="2"/><text class="t-r" x="33" y="103">session</text>
+    <rect class="row" x="29" y="110" width="66" height="12" rx="2"/><text class="t-r" x="33" y="119">session</text>
+    <rect class="row" x="29" y="126" width="66" height="12" rx="2"/><text class="t-r" x="33" y="135">session</text>
+    <rect class="row" x="29" y="142" width="66" height="12" rx="2"/><text class="t-r" x="33" y="151">session</text>
+    <rect class="row" x="29" y="158" width="66" height="12" rx="2"/><text class="t-r" x="33" y="167">session</text>
+    <text class="t-r" x="33" y="184">&#8942; scrolls</text>
+    <text class="t-r" x="29" y="286">theme &#183; devtool</text>
+
+    <rect class="reg" x="106" y="56" width="208" height="18" rx="3"/>
+    <text class="t-r" x="112" y="69">ClientDataBar &#183; user &#183; model &#183; skills</text>
+    <rect class="keep" x="106" y="78" width="208" height="134" rx="3"/>
+    <text class="t-r" x="112" y="92">CONVERSATION</text>
+    <text class="t-s" x="112" y="148">the turn stream</text>
+    <rect class="gonebar" x="106" y="216" width="208" height="26" rx="3"/>
+    <text class="t-rg" x="112" y="228">mode &#183; style &#183; model &#183; thinking</text>
+    <text class="t-rg" x="112" y="238">features &#183; voice &#8212; 6 controls</text>
+    <rect class="reg" x="106" y="246" width="208" height="30" rx="3"/>
+    <text class="t-r" x="112" y="264">PromptInput</text>
+
+    <rect class="cond" x="320" y="56" width="128" height="236" rx="3"/>
+    <text class="t-rg" x="326" y="70">ARTIFACT PANEL</text>
+    <text class="t-rg" x="326" y="84">280&#8211;700px, resizable</text>
+    <text class="t-rg" x="326" y="102">BUILD MODE ONLY &#8212;</text>
+    <text class="t-rg" x="326" y="114">absent the rest of</text>
+    <text class="t-rg" x="326" y="126">the time</text>
+  </g>
+
+  <g id="rebuilt">
+    <rect class="shell" x="484" y="48" width="440" height="252" rx="4"/>
+    <rect class="reg" x="492" y="56" width="76" height="236" rx="3"/>
+    <text class="t-r" x="497" y="70">RAIL 256px</text>
+    <rect class="newrow" x="497" y="76" width="66" height="13" rx="2"/><text class="t-rn" x="501" y="86">org / team</text>
+    <text class="t-rn" x="497" y="101">CHANNELS</text>
+    <rect class="newrow" x="497" y="105" width="66" height="12" rx="2"/><text class="t-rn" x="501" y="114">&#9662;topic</text>
+    <rect class="subrow" x="501" y="120" width="62" height="12" rx="2"/><text class="t-rs" x="505" y="129"># general</text>
+    <rect class="subrow" x="501" y="135" width="62" height="12" rx="2"/><text class="t-rs" x="505" y="144"># ops</text>
+    <rect class="newrow" x="497" y="150" width="66" height="12" rx="2"/><text class="t-rn" x="501" y="159">&#9656;dm</text>
+    <text class="t-rn" x="497" y="176">SEATS</text>
+    <rect class="newrow" x="497" y="180" width="66" height="12" rx="2"/><text class="t-rn" x="501" y="189">&#9662;agent</text>
+    <rect class="subrow" x="501" y="195" width="62" height="12" rx="2"/><text class="t-rs" x="505" y="204">&#9662;ada</text>
+    <rect class="subrow" x="505" y="210" width="58" height="12" rx="2"/><text class="t-rs" x="509" y="219">review</text>
+    <rect class="subrow" x="501" y="225" width="62" height="12" rx="2"/><text class="t-rs" x="505" y="234">&#9656;desk-clerk</text>
+    <text class="t-r" x="497" y="254">one navigator</text>
+    <text class="t-r" x="497" y="265">&#8212; depth from</text>
+    <text class="t-r" x="497" y="276">cardinality,</text>
+    <text class="t-r" x="497" y="287">never declared</text>
+
+    <rect class="reg" x="574" y="56" width="208" height="18" rx="3"/>
+    <text class="t-r" x="580" y="69">channel header &#183; members &#183; boards</text>
+    <rect class="keep" x="574" y="78" width="208" height="164" rx="3"/>
+    <text class="t-r" x="580" y="92">CONVERSATION &#8212; unchanged</text>
+    <text class="t-s" x="580" y="160">the turn stream</text>
+    <text class="t-rn" x="580" y="234">+ the freed control row</text>
+    <rect class="reg" x="574" y="246" width="208" height="30" rx="3"/>
+    <text class="t-r" x="580" y="264">PromptInput</text>
+
+    <rect class="stand" x="788" y="56" width="128" height="236" rx="3"/>
+    <text class="t-rn" x="794" y="70">BOARDS + ROSTER</text>
+    <text class="t-rn" x="794" y="84">280&#8211;700px, resizable</text>
+    <text class="t-rn" x="794" y="102">STANDING &#8212; not</text>
+    <text class="t-rn" x="794" y="114">conditional on a mode</text>
+    <rect class="row" x="794" y="126" width="54" height="80" rx="2"/>
+    <rect class="row" x="854" y="126" width="54" height="80" rx="2"/>
+    <text class="t-r" x="798" y="138">open</text>
+    <text class="t-r" x="858" y="138">claimed</text>
+  </g>
+
+  <path class="div" d="M16 316 L924 316"/>
+  <text class="t-g" x="16" y="334">no channel list &#183; no seat roster &#183; no task board &#183; no board column</text>
+  <text class="t-g" x="16" y="348">anywhere in the app today. Two routes: / and /devtool.</text>
+  <text class="t-s" x="16" y="368">The rail keeps its width and changes its content. The right panel keeps its range and stops being conditional.</text>
+  <text class="t-s" x="16" y="382">One navigator fills the rail. A collection kind drills kind &#8594; instances &#8594; sessions; a singleton kind drills straight</text>
+  <text class="t-s" x="16" y="396">to its sessions, because a channel IS a session on a singleton instance. The depth is read from the flow&#8217;s declared</text>
+  <text class="t-s" x="16" y="410">cardinality, never passed in by the caller &#8212; a channel&#8217;s history IS the session list, scoped.</text>
+  <text class="t-s" x="16" y="424">The centre is the only region that survives unchanged. Region altitude only; the pixel design is FIX-1477&#8217;s (ER-7).</text>
+</svg>

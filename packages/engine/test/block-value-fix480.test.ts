@@ -16,6 +16,7 @@ import {
   sequencer,
 } from "@flow-state-dev/core";
 import type { GeneratorModel } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type {
   BlockTraceItem,
   BlockValue,
@@ -64,6 +65,7 @@ async function runFlow(args: {
     now: () => Date.now(),
   });
   await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: args.flow,
     actionName: "run",
     input: args.input,

@@ -197,12 +197,12 @@ adapter.
 
 `host.validateDispatch` enforces async flow-level pre-conditions.
 Adapters must call it after `resolvePrincipal` and before `dispatch`.
-Currently it enforces `requiresOrg`: when a flow declares
-`requiresOrg: true`, the method checks `envelope.orgId`,
-`principal.orgId`, and the stored session's `orgId` in that order.
-If none provides an org, it throws `OrgRequiredError`. The error is
-transport-agnostic (no HTTP status); the HTTP adapter maps it to
-`400 { error: "OrgRequired", message }`.
+Currently it enforces that the dispatch carries an organization at all. There
+is no per-flow opt-in — organization is unconditional — so the method checks
+`principal.orgId` and the stored session's `orgId`, never a caller-supplied
+`envelope.orgId` (BP-031). If neither provides one, it throws
+`OrgRequiredError`. The error is transport-agnostic (no HTTP status); the HTTP
+adapter maps it to `400 { error: "OrgRequired", message }`.
 
 `host.dispatch` is fire-and-forget: it returns a synchronous
 `DispatchHandle` whose `liveStream` and `requestId` are available
@@ -421,8 +421,8 @@ notification adapters plug into the same harness.
 - `host.dispatch` called with an unknown `flowKind` → throws synchronously
   (the call path is fire-and-forget, so synchronous throw is the only
   meaningful failure shape).
-- `host.validateDispatch` called for a `requiresOrg` flow without an org
-  on the envelope, principal, or stored session → throws `OrgRequiredError`.
+- `host.validateDispatch` called without an org on the principal or the
+  stored session → throws `OrgRequiredError`.
   The HTTP adapter maps this to `400 { error: "OrgRequired" }`; other
   adapters map it to their native error shape.
 - Adapter constructed but never passed to `createFlowApiRouter` → no

@@ -7,7 +7,7 @@
  * item (not timestamp windows). The fixtures stamp `taskId` the way the
  * runtime does. Cases cover the boundary conditions the substrate cares about:
  * single-task happy path, the concurrent-overlap bug, retries, abandoned
- * tasks, cross-collection isolation, and bookend exclusion.
+ * tasks, cross-collection isolation, and substrate-component exclusion.
  */
 import { describe, expect, it } from "vitest";
 import type { ComponentItem, MessageItem, OutputItem, SourceItem } from "@flow-state-dev/core/items";

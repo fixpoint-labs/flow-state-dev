@@ -22,8 +22,8 @@ the framework's HTTP handler.
 ## Who's responsible for what
 
 **Your job.** Verify the credentials your transport carries — session
-cookie, JWT, signed webhook header — and produce a `userId` (and optionally
-`orgId`) that the framework can trust. If the credential is missing or
+cookie, JWT, signed webhook header — and produce a `userId` and an `orgId`
+that the framework can trust. If the credential is missing or
 invalid, reject the request before it reaches the framework, or throw
 `PrincipalResolutionError` from inside the resolver.
 
@@ -48,6 +48,70 @@ is internally consistent with the rest of the runtime. Two checks:
 The framework does not — and cannot — verify that `userId: A` actually
 belongs to whoever sent the request. That's the credential your middleware
 or resolver verified before the framework ever saw the call.
+
+## Every request runs in an organization
+
+There is no such thing as a request without one. A session, a request, a
+dispatched child, a scheduled job: each carries an organization, and the
+server checks it on reads and on execution alongside the user.
+
+It comes from one of two places, and never from the caller:
+
+- **A configured resolver** returns the organization it verified. If it
+  returns none, a blank one, or the reserved default below, the request is
+  refused with 401. Returning `null` is refused too: `defaultUserId` fills in
+  a user, never an organization.
+- **No configured resolver at all**, which is the development case. The
+  framework supplies `DEFAULT_ORG_ID`, exported from `@flow-state-dev/core`,
+  and warns once per host that it has done so.
+
+```ts
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+```
+
+`DEFAULT_ORG_ID` is a reserved id for running a single organization without
+authentication. It is not a security boundary, and a configured resolver
+cannot claim it.
+
+**A machine caller** with no end user returns the organization on its own and
+lets `defaultUserId` name the system user:
+
+```ts
+authentication: {
+  resolvePrincipal: async (ctx) => ({ orgId: await verifyServiceToken(ctx) }),
+  defaultUserId: "system"
+}
+```
+
+**Calling the runtime directly**, below any transport, means there is no
+resolver to supply an identity, so you pass one:
+
+```ts
+await runAction({
+  flow,
+  actionName: "chat",
+  input,
+  userId,
+  orgId: DEFAULT_ORG_ID, // or the organization you verified
+  stores
+});
+```
+
+Organizations are opaque, nonempty strings. A whitespace-only id is rejected
+rather than trimmed, and a valid one is stored exactly as given. That check is
+`isValidOrgId`, exported from `@flow-state-dev/core`, so a resolver can apply
+the same rule and refuse with its own message.
+
+A session's organization is fixed when the session is created, like its user.
+Reopening cannot move it; create a new session instead.
+
+A stored session or request can carry no organization at all. The server
+preserves such a record and refuses to serve it until an operator attributes
+it offline. An **authenticated** caller who addresses one gets
+`409 migration-required`. A caller your resolver could not identify gets the
+ordinary `401`, exactly as they would for a record that does carry an
+organization. Listings omit the record either way. See
+[Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to).
 
 ## What `requireUser: true` does (and doesn't)
 
@@ -95,7 +159,9 @@ defineFlow({
 ```
 
 The resolver returns a `ResolvedPrincipal`, a partial `{ userId?, orgId? }`,
-or `null`. Throwing a `PrincipalResolutionError` lets you pick the response
+or `null`. Whichever shape it returns, it must yield an organization — see
+[Every request runs in an organization](#every-request-runs-in-an-organization).
+Throwing a `PrincipalResolutionError` lets you pick the response
 status (401 for invalid signature, 403 for valid signature on a forbidden
 resource, etc.).
 
@@ -166,7 +232,9 @@ defineFlow({
       if (rawBody === undefined || !verifyStripe(rawBody, sig)) {
         throw new PrincipalResolutionError("Invalid signature", { status: 401 });
       }
-      return null; // defaultUserId fills in "system"
+      // The organization is required; the user is not. Returning `{ orgId }`
+      // alone lets `defaultUserId` name the system user.
+      return { orgId: process.env.STRIPE_WEBHOOK_ORG_ID! };
     }
   },
   actions: { /* ... */ }
@@ -195,6 +263,7 @@ HTTP transport rather than the webhook transport.
 ### MCP / API token over Authorization header
 
 ```ts
+import { isValidOrgId } from "@flow-state-dev/core";
 import {
   createHs256JwtVerifier,
   extractBearerToken,
@@ -217,10 +286,13 @@ defineFlow({
       if (payload === null) {
         throw new PrincipalResolutionError("Invalid token", { status: 401 });
       }
-      return {
-        userId: payload.sub as string,
-        orgId: typeof payload.org === "string" ? payload.org : undefined
-      };
+      const org = payload.org;
+      if (!isValidOrgId(org)) {
+        throw new PrincipalResolutionError("Token carries no organization", {
+          status: 401
+        });
+      }
+      return { userId: payload.sub as string, orgId: org };
     }
   },
   actions: { /* ... */ }
@@ -276,12 +348,17 @@ debug endpoints.
 The framework resolves a principal through your hook on each of those
 requests, then checks that the principal owns what the URL addressed. A
 session or request belongs to the `userId` it was created under, so a caller
-holding a valid credential for a different user gets a `403`:
+holding a valid credential for a different user gets a `403`. The record's
+organization is checked as well, so one person who belongs to two
+organizations cannot reach the first one's session while acting for the
+second:
 
 ```
-GET /api/flows/sessions/abc123   no credential                    -> 401
-GET /api/flows/sessions/abc123   bob's, session belongs to alice  -> 403
-GET /api/flows/sessions/abc123   alice's                          -> 200
+GET /api/flows/sessions/abc123   no credential                      -> 401
+GET /api/flows/sessions/abc123   bob's, session belongs to alice    -> 403
+GET /api/flows/sessions/abc123   alice's, session belongs to acme,
+                                 alice is acting for globex         -> 403
+GET /api/flows/sessions/abc123   alice's, acting for acme           -> 200
 ```
 
 Listing endpoints scope to the caller instead of rejecting. `GET
@@ -290,8 +367,9 @@ parameter still works as a filter, but it can only narrow that set, never
 widen it.
 
 `POST /api/flows/:flowId/sessions` takes the new session's `userId` and
-`orgId` from the principal. A `userId` in the request body is ignored when a
-resolver is configured, the same way `orgId` is ignored on action calls.
+`orgId` from the principal. An `orgId` in the request body is never consulted,
+on this route or on an action call. A `userId` in the body is ignored when a
+resolver is configured.
 
 ### Without a resolver
 
@@ -358,8 +436,8 @@ throws at context creation:
 
 - `UserBindingMismatchError` — request supplied a `userId` that doesn't
   match the session's owner.
-- `OrgBindingMismatchError` — request supplied an `orgId` that doesn't
-  match the session's bound org.
+- `OrgBindingMismatchError` — the request resolved to an organization
+  that doesn't match the session's bound org.
 
 This is a structural integrity check, not an identity check. Your auth
 code is what guarantees a request actually represents `userId: A`. The
@@ -413,9 +491,6 @@ resolved `userId` yourself — see [Calling a flow without a transport](../advan
 - Run an OAuth provider.
 - Verify that a `userId` actually belongs to the caller. That's your
   middleware or `resolvePrincipal` hook.
-- Honour `requireOrg` — the flag is reserved for future enforcement work
-  and has no runtime effect today. Org-scope state itself is fully
-  supported.
 
 For the contract details and edge cases, see
 `docs/architecture/authentication.md`.

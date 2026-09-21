@@ -662,6 +662,37 @@ export interface BlockContext<
   _reserveItemIndex?(): number;
 
   /**
+   * @internal Emit a component item and AWAIT its delivery (FIX-963).
+   *
+   * `ctx.emit.component` returns `void` and discards both emitter promises, so
+   * a rejection there is unobservable — fine for the items it was built for
+   * (progress, snapshots, scaffolding), where losing one costs a render. It is
+   * not fine for an item whose entire purpose is to report that something
+   * failed: a report that can be dropped in silence is not a report, and a
+   * substrate emitting one would be reproducing the defect inside its own fix.
+   *
+   * So this variant resolves only once the item has been added and completed,
+   * and it **rejects rather than swallowing**. A caller that needs the emission
+   * to have happened awaits this one; everything else keeps using
+   * `ctx.emit.component`, which is unchanged.
+   *
+   * Absent in a hand-built context. A caller whose correctness depends on the
+   * guarantee must treat absence as a failure rather than falling back to the
+   * fire-and-forget emitter, which would silently give up exactly the property
+   * it reached for this seam to get.
+   */
+  _emitComponentAwaited?(
+    component: string,
+    data: Record<string, unknown>,
+    options?: {
+      key?: string;
+      itemVisibility?: ItemVisibility;
+      agentName?: string;
+      transient?: boolean;
+    }
+  ): Promise<void>;
+
+  /**
    * @internal Top up the per-scope resource caches with an action's or block's
    * declared resources at dispatch time (FIX-688 Waves 2 & 3). Loads only the
    * eager entries not already cached; with `loadLazySingles: true` (per-block
@@ -891,14 +922,6 @@ export interface BlockConfig<
   rescue?: RescueHandlerSpec[];
 
   /**
-   * Opt-in flag declaring this block requires the session to be bound to an
-   * org. Bubbles up via `mergeDeclaredResources` so a flow rejects requests
-   * without `orgId` when any block in any action declares it. Per-block
-   * (not flow-wide) — block authors opt in deliberately.
-   */
-  requireOrg?: boolean;
-
-  /**
    * What this block requires of whatever flow installs it (FIX-1331): a Zod
    * schema the flow's create-time config bag must satisfy.
    *
@@ -1030,13 +1053,6 @@ export interface BlockDefinition<
    * own declarations without re-loading children's.
    */
   ownDeclaredResources?: DeclaredResources;
-  /**
-   * Computed at build time: true when this block declares `requireOrg: true`,
-   * or — for sequencers — when any child block requires it. Bubbled by
-   * `mergeDeclaredResources` and surfaced on the flow as `flow.requiresOrg`
-   * for HTTP-layer enforcement.
-   */
-  requiresOrg: boolean;
   /**
    * Every block this block statically composes: a sequencer's step/tap/branch
    * children and its chain-level rescue handlers, a router's routes, a rescue

@@ -7,6 +7,7 @@
  * runtime facts rather than shape ones.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -53,6 +54,7 @@ async function bind(
       flowKind: CHANNEL_KIND,
       flowId: CHANNEL_KIND,
       userId: USER_ID,
+      orgId: DEFAULT_ORG_ID,
       description,
       state: { members, instructions, transcript: [] },
       lineageId: `lin_${sessionId}`,
@@ -85,6 +87,7 @@ describe("the channel kind", () => {
       await bind(runtime.stores, "engineering.standup", ["engineering.lead"], "Post status.");
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "post",
         input: { body: "shipped the reader" },
@@ -110,6 +113,7 @@ describe("the channel kind", () => {
       await bind(runtime.stores, "engineering.standup", ["engineering.lead"], "Post status.");
 
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "post",
         input: { body: "shipped the reader", author: "engineering.lead" },
@@ -135,6 +139,7 @@ describe("the channel kind", () => {
       await bind(runtime.stores, "engineering.standup", ["engineering.lead"], "Post status.");
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "post",
         input: { body: "forged", principal: "u_someone_else" },
@@ -159,6 +164,7 @@ describe("the channel kind", () => {
       await bind(runtime.stores, "engineering.standup", ["engineering.lead"], "Post status.");
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "post",
         input: { body: "not mine to send", author: "marketing.intern" },
@@ -186,6 +192,7 @@ describe("the channel kind", () => {
 
       await Promise.all([
         runAction({
+    orgId: DEFAULT_ORG_ID,
           flow: instance,
           actionName: "post",
           input: { body: "standup line" },
@@ -195,6 +202,7 @@ describe("the channel kind", () => {
           runtimeConfig: { ...runtime.runtimeConfig }
         }),
         runAction({
+    orgId: DEFAULT_ORG_ID,
           flow: instance,
           actionName: "post",
           input: { body: "triage line" },
@@ -229,6 +237,7 @@ describe("the channel kind", () => {
       );
 
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "post",
         input: { body: "shipped the reader" },
@@ -239,6 +248,7 @@ describe("the channel kind", () => {
       });
 
       const read = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: instance,
         actionName: "read",
         input: {},

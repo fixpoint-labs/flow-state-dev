@@ -39,11 +39,8 @@ flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 That record names no `flow:`, so it is hired into the built-in `agent` kind and needs no `kinds`
 argument. Its body becomes its instructions and steers its answers.
 
-The built-in stores each worker's skills at org scope, so **a request to one of these workers has
-to resolve to an org**. One that resolves to a `userId` alone fails with `Resource "skills" is not
-registered` before the model is reached. On the default principal resolver, send an `orgId` with
-the request; if you configure your own `resolvePrincipal`, return the org from there. Either way,
-a caller cannot name its own org.
+The built-in stores each worker's skills at org scope. Organization identity is unconditional, so
+every admitted request carries one and a caller cannot name its own org.
 
 To run a worker on a flow you wrote, name that flow's `kind` in the record's `flow:` and pass the
 flow under the same key:
@@ -94,6 +91,11 @@ Each record is plain data:
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
 lowercase letters, digits and single hyphens, at most 64 characters.
 
+A `WORKER.md` may also carry `resources:`, a list of the [file-declared
+documents](#reading-documents-from-files) that seat may touch. The loader carries it through onto `declared` untouched, the way it carries every key it does
+not name; [the hire step](#the-documents-a-seat-may-touch) is where a ref meets the documents it
+could match.
+
 ### The optional team file
 
 A team may also carry a `TEAM.md` at `<root>/teams/<teamId>/TEAM.md`: a required `description`,
@@ -117,8 +119,11 @@ const { workers, teams, errors, skillErrors, teamErrors } = await readWorkforce(
 | `errors` | One entry per worker slot that failed: a seat the app does not have. |
 | `skillErrors` | One entry per seat whose skills loaded short, carrying that seat's id and its own error list. |
 
-`errors` and `skillErrors` are collected rather than thrown. Treating either as fatal is the
-caller's call.
+All three are collected rather than thrown. Treating any of them as fatal is the caller's call.
+`errors` and `teamErrors` are flat `{ path, error, kind }` lists, where `kind` is that reader's own
+closed union of conditions — narrow on it rather than matching `error.message`. `skillErrors` is one
+entry per affected seat, `{ worker, errors }`, so it needs flattening before it reads like the other
+two.
 
 A `TEAM.md` refuses `id:`, `flow:`, `instructions:` and `teamInstructions:` — the first two because
 the convention derives them, the last two because the body is already the instructions.
@@ -254,6 +259,7 @@ const seats = hireWorkforce(roster.workers);
 | `workers` | One `WorkerManifest` per worker, each carrying its own resolved skills. The records `hireWorkforce` takes. |
 | `teams` | One `TeamManifest` per team that wrote a [`TEAM.md`](#the-optional-team-file). A team without one is absent, not present-and-empty. |
 | `documents` | One `ResourceDoc` per [document](#reading-documents-from-files), from every `resources/` folder the convention reads. |
+| `references` | One `ResourceDoc` per [reference](#reading-documents-from-files), from every `references/` folder, each carrying the `filePath` it was read from. |
 | `channels` | One `ChannelManifest` per [channel](#declaring-channels-in-files) under `teams/<id>/channels/`. There is no `org/channels/` level, the way there is for documents. |
 | `problems` | Everything that did not load. Empty for a tree that loads cleanly. |
 
@@ -290,8 +296,9 @@ roster.problems;
 //    error: Error('CHANNEL.md in "standup/" must declare a non-empty `description`') }]
 ```
 
-`layer` is one of `worker`, `skill`, `team`, `document` or `channel`, and the entries arrive in that
-order: worker slots, then each seat's skills, then team files, then documents, then channels. `path`
+`layer` is one of `worker`, `skill`, `team`, `document`, `reference` or `channel`, and the entries
+arrive in that order: worker slots, then each seat's skills, then team files, then documents, then
+references, then channels, and last a `reference` entry per basename claimed in both slots. `path`
 is the path that failed, relative to the root. `error` is the original `Error`, `cause` chain
 intact.
 
@@ -338,10 +345,94 @@ const seats = hireWorkforce(workers, { kinds: { "custom-agent": customAgentFlow,
 flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 ```
 
-The factory reads **`flow`**, which names the kind to instantiate, and **`description`**, the roster
-label. Everything else is that worker's settings, handed to the flow
+The factory reads three keys of its own: **`flow`**, which names the kind to instantiate,
+**`description`**, the roster label, and **[`resources`](#the-documents-a-seat-may-touch)**, the
+documents this seat may touch. Everything else is that worker's settings, handed to the flow
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
+
+### The documents a seat may touch
+
+A `WORKER.md` may list the [file-declared documents](#reading-documents-from-files) that seat is
+allowed to reach, chosen from the ones its kind was installed with:
+
+```md
+---
+description: Holds the engineering board and breaks work into tasks.
+flow: custom-agent
+resources:
+  - teams/engineering/handbook
+  - teams/engineering/board-notes: rw
+---
+```
+
+A ref on its own is read-only: the seat reads the document, and a write is refused both at the
+resource handle and through the model's own write tool. `<ref>: rw` grants writes, and
+`<ref>: ro` spells the default out.
+
+**Absent and empty are different answers.** A seat whose file has no `resources:` key reaches every
+document its kind installed, and writes the ones that allow writes. `resources: []` is how a file
+says a seat gets none.
+
+**Only documents are narrowed.** The stores, boards and anything else the kind declares at flow
+level stay reachable and writable whatever a seat's list says, and so do the resources the kind's
+own blocks declare.
+
+For a ref to resolve, the hire step has to be told which entries in the kind's map are documents.
+Hand it the same catalog you spread into the flow:
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { hireWorkforce, resourcesFromDocs, workerConfigSchema } from "@flow-state-dev/workforce";
+import { readResourcesDirectory } from "@flow-state-dev/workforce/loader";
+import { inputSchema, runTurn } from "./blocks";
+import { boardResource } from "./resources";
+
+const { documents } = await readResourcesDirectory("./workforce");
+const catalog = resourcesFromDocs(documents);
+
+const customAgentFlow = defineFlow({
+  kind: "custom-agent",
+  cardinality: "collection",
+  configSchema: workerConfigSchema(),
+  resources: { board: boardResource, ...catalog },
+  actions: { run: { inputSchema, block: runTurn } },
+});
+
+const seats = hireWorkforce(workers, {
+  kinds: { "custom-agent": customAgentFlow },
+  documents: catalog,
+});
+```
+
+One catalog, spread into the flow and passed to the hire. Which entries in that map are documents
+is what the `documents` option answers: `board` above is not one, and no seat's list governs it.
+
+`documents` is consulted only for a seat that declares `resources:`. A roster where none does hires
+the same whether it is passed or not, and a seat that does declare one while `documents` is absent
+is refused, naming what is missing.
+
+Every problem with a list refuses the whole roster, naming the seat: a `resources:` that is not a
+list at all, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document
+matches, a ref naming a document the app declared but did not install on this seat's kind, a mode
+that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says
+`writable: false`, a ref colliding with a name the kind's own blocks already declare, and a ref the
+kind does declare at flow level while what it holds there is not the document the app passed — the
+two cannot be told apart, so the hire refuses rather than guessing.
+
+One more is checked on the seat after it is built rather than on the list: if a document the seat
+did **not** name is reachable anyway — because one of the kind's blocks declares that same document,
+and a block's declaration is merged back in after a seat's narrowed map replaces the flow-level one
+— the hire refuses, naming the ref and the kind. Keep such a document at flow level and let the
+block reach it from there, or grant it to the seat deliberately.
+
+`resources:` never reaches the kind's settings. It is the factory's key, like `flow` and
+`description`, so a kind that declares a `resources` setting of its own does not receive one from a
+file.
+
+`references:` is the sibling key, over the documents in `references/` folders. It narrows within a
+wall the tree already imposes rather than selecting from everything the kind installed, and its
+entries take no mode — see [What a seat reaches](#what-a-seat-reaches).
 
 ### What a hireable kind must admit
 
@@ -534,8 +625,9 @@ workforce/
 ```
 
 `fsdev gen` walks those folders and writes `workforce/workforce.gen.ts` beside them, exporting
-`kinds`, `channelKinds`, `blocks` and `seatBlocks` — four parameters `hireWorkforce`,
-`channelInstances`, a task board and a worker kind's tool catalog already take.
+`kinds`, `channelKinds`, `blocks` and `seatBlocks` — parameters `hireWorkforce`,
+`channelInstances`, a task board and a worker kind's tool catalog already take. The same file
+carries `resourceModules`, covered in [Resource modules from files](#resource-modules-from-files).
 
 ```ts
 import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
@@ -655,20 +747,34 @@ A team's shared documents — a handbook, a glossary, an escalation procedure �
 instead of `defineResource` stanzas. Frontmatter is settings and the body is the document, the same
 bargain `WORKER.md` makes.
 
-**A resource is a file, not a folder.** A document is `<name>.md` directly in `resources/`, unlike
-a worker or a skill, which is a folder with a fixed file inside it. A directory in a `resources/`
-slot lands in `errors` rather than being passed over.
+**Two folders, one namespace.** The convention reads `references/` and `resources/` at the same four
+levels and mints refs for both by the same rule, so one basename claimed in both at one level is
+refused rather than resolved. What differs is what the document is once installed:
 
-Four places are read — the org level, a team, and a worker's own folder under either of those:
+| Folder | Content an agent reads | Writable | Reach |
+| --- | --- | --- | --- |
+| `references/` | the file, re-read whenever an execution context is built | no. `writable`, `llmWritable`, `render` and `flowIsolation` come from the folder, and a file declaring any of them is refused | the org's, the seat's own team's, and the seat's own folder's — derived from the tree |
+| `resources/` | the file's body seeds a row; the row is the source from then on | yes, unless the file says otherwise | every document the flow was installed with |
+
+A reference changes when someone edits the file and deploys. A `resources/` document can change from
+inside the product. Put standing material an author owns under `references/`, and anything an agent
+writes under `resources/`.
+
+**A document is a file, not a folder.** It is `<name>.md` directly in the slot, unlike a worker or a
+skill, which is a folder with a fixed file inside it. A directory in either slot lands in `errors`
+rather than being passed over.
+
+Four places are read, in both slots — the org level, a team, and a worker's own folder under either
+of those:
 
 | Path | Ref |
 |------|-----|
-| `<root>/org/resources/<name>.md` | `<name>` |
-| `<root>/teams/<teamId>/resources/<name>.md` | `teams/<teamId>/<name>` |
-| `<root>/teams/<teamId>/workers/<worker>/resources/<name>.md` | `teams/<teamId>/workers/<worker>/<name>` |
-| `<root>/org/workers/<worker>/resources/<name>.md` | `workers/<worker>/<name>` |
+| `<root>/org/<slot>/<name>.md` | `<name>` |
+| `<root>/teams/<teamId>/<slot>/<name>.md` | `teams/<teamId>/<name>` |
+| `<root>/teams/<teamId>/workers/<worker>/<slot>/<name>.md` | `teams/<teamId>/workers/<worker>/<name>` |
+| `<root>/org/workers/<worker>/<slot>/<name>.md` | `workers/<worker>/<name>` |
 
-A worker's `resources/` folder is how two seats each get their own `runbook` without their authors
+A worker's own folder is how two seats each get their own `runbook` without their authors
 coordinating a name. The ref drops `org/` for an org worker, exactly as an org document's does.
 
 ```md
@@ -683,32 +789,49 @@ Escalate anything customer-visible within 15 minutes.
 ```
 
 `readResourcesDirectory` walks all four and returns one record per document; `resourcesFromDocs`
-turns those records into the resource map you already pass to a flow.
+turns those records into the resource map you already pass to a flow. `readReferencesDirectory` and
+`referencesFromDocs` are the same pair over `references/`. Both maps spread into one flow, and both
+are passed to `hireWorkforce`:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { resourcesFromDocs } from "@flow-state-dev/workforce";
-import { readResourcesDirectory } from "@flow-state-dev/workforce/loader";
+import { hireWorkforce, referencesFromDocs, resourcesFromDocs } from "@flow-state-dev/workforce";
+import { readReferencesDirectory, readResourcesDirectory } from "@flow-state-dev/workforce/loader";
 import { answerQuestion } from "./blocks";
 import { ticketResource } from "./resources";
 
-const { documents, errors } = await readResourcesDirectory("./workforce");
-if (errors.length) throw new Error(`resources: ${errors.length} document(s) failed to load`);
+const references = await readReferencesDirectory("./workforce");
+const resources = await readResourcesDirectory("./workforce");
+for (const { errors } of [references, resources]) {
+  if (errors.length) throw new Error(`workforce: ${errors.length} document(s) failed to load`);
+}
+
+const documents = resourcesFromDocs(resources.documents);
+const referenceMap = referencesFromDocs(references.documents);
 
 export const supportFlow = defineFlow({
   kind: "support",
   actions: { answer: { block: answerQuestion } },
-  resources: { ticket: ticketResource, ...resourcesFromDocs(documents) },
+  resources: { ticket: ticketResource, ...documents, ...referenceMap },
+});
+
+const seats = hireWorkforce(workers, {
+  kinds: { support: supportFlow },
+  documents,
+  references: referenceMap,
 });
 ```
 
-**The flow needs an org identity, and it will not ask for one on its own.** Every file-declared
-document is org-scoped, and a flow collects `requiresOrg` from its blocks, not from its resource
-map. So the flow above accepts a request carrying only a `userId`, builds no org resource registry,
-and every document is then missing: `ctx.resources.get("teams/engineering/handbook")` throws
-`is not registered`, and `readResourceContentTool` says the same. Declare `requireOrg: true` on the
-blocks that read a document, and a request without an org is refused at the door instead of arriving
-empty:
+`references` is what tells the hire which entries on a kind's map are references, and the tree wall
+applies only to the entries it names. So once a kind holds references, the option is required: omit
+it, or pass a map that is missing one of them, and `hireWorkforce` throws, naming every reference it
+was not given. A kind that holds none needs no map. A ref passed in both maps is refused as well,
+naming it.
+
+**Every file-declared document is org-scoped, and nothing needs declaring for that.** Organization
+identity is unconditional, so every admitted request carries one and the org resource registry is
+always built. A request with no organization is refused at the door rather than arriving empty, so a
+block reads a document with nothing extra declared:
 
 ```ts
 // ./blocks.ts
@@ -717,7 +840,6 @@ import { generator, readResourceContentTool } from "@flow-state-dev/core";
 export const answerQuestion = generator({
   name: "answer-question",
   model: "openai/gpt-5.4-mini",
-  requireOrg: true,
   prompt: "Answer support questions. Check the team handbook before you answer.",
   tools: [readResourceContentTool()],
 });
@@ -729,32 +851,51 @@ Each record is plain data:
 |-------|-------------|
 | `ref` | The document's identity and storage key, taken from where the file sits — see the table above. It is also the accessor key, so a team's handbook is `ctx.resources["teams/engineering/handbook"]` and one seat's runbook is `ctx.resources["teams/pentest/workers/recon/runbook"]`. |
 | `declared` | The frontmatter exactly as written. A file that declares one of the refused settings below produces no record at all, so nothing is stripped here. |
-| `body` | The Markdown below the frontmatter, verbatim. It becomes the resource's content. |
+| `body` | The Markdown below the frontmatter, verbatim. For a `resources/` document it becomes the resource's content. |
+| `filePath` | The absolute path the file was read from. A reference is served from it, so a hand-built reference record must set it and `referencesFromDocs` throws without it. Carried on a `resources/` record too, where nothing reads it. |
 
 **Merge the map yourself.** A flow copy created with `supportFlow({ resources })` *replaces* the
 definition's map rather than merging with it, so passing `resourcesFromDocs(documents)` there on its
 own drops whatever resources the flow kind declared. Spread it into your own map, as above.
 
-**A folder is a namespace, not a visibility boundary — at every level.** Every file-declared
-document is org-scoped, and a flow's resource tools reach every installed document marked
-`llmReadable` with no per-team filter. Installing a whole tree on one flow makes every team's
+### What a seat reaches
+
+**A reference is walled by where its file sits.** A seat reaches the org's references, its own
+team's, and its own folder's. Another team's and a teammate's are not on its map at all, so
+`ctx.resources.get` on one throws `is not registered`. No install-side filter is involved and there
+is no setting that widens the wall: a reference reaches more people by moving up the tree. Seats are
+read from `teams/<teamId>/workers/<name>/`, so a reference under `org/workers/<name>/references/`
+sits beside the org level rather than above any seat, and no seat reaches it.
+
+A `references:` list in a `WORKER.md` narrows within that wall. Each entry is a ref on its own —
+there is no mode, since nothing writes a reference. An entry naming a reference the seat could not
+already reach refuses the whole roster, and so does a malformed list or a duplicated ref. Leaving
+the key out means every reference at or above the seat; `references: []` means none.
+
+**A `resources/` folder is a namespace, not a visibility boundary — at every level.** Every
+file-declared document is org-scoped, and a flow's resource tools reach every installed document
+marked `llmReadable` with no per-team filter. Installing a whole tree on one flow makes every team's
 documents reachable from it. To give a team's seats only its own, filter the records before
 installing:
 
 ```ts
 const engineering = resourcesFromDocs(
-  documents.filter((d) => d.ref.startsWith("teams/engineering/")),
+  resources.documents.filter((d) => d.ref.startsWith("teams/engineering/")),
 );
 ```
 
-This holds for a worker's folder too, and it is the thing most worth being clear about: putting a
-document under `workers/recon/` addresses it to that seat, it does not keep it from the others. Every
-seat hired into one kind shares that kind's flow definition, so by default all of them read the same
-row.
+This holds for a worker's folder too: putting a `resources/` document under `workers/recon/`
+addresses it to that seat, it does not keep it from the others. Every seat hired into one kind
+shares that kind's flow definition, so by default all of them read the same row.
 
-**To make a document that seat's alone, say so in the document.** A file whose frontmatter carries
-`flowIsolation: true` gets one row per seat: the seat that writes it reads it back, and a sibling
-seat asking for the same document gets its own empty copy rather than an error.
+**Filtering decides what a kind installs; a seat's own file decides what that seat reaches.** A
+`resources:` list in a `WORKER.md` narrows one seat within a kind and can take a document
+read-only — see [The documents a seat may touch](#the-documents-a-seat-may-touch). A ref for a
+document this kind was not installed with is refused at the hire, so the filter above holds.
+
+**To make a `resources/` document that seat's alone, say so in the document.** A file whose
+frontmatter carries `flowIsolation: true` gets one row per seat: the seat that writes it reads it
+back, and a sibling seat asking for the same document gets its own empty copy rather than an error.
 
 ```md
 ---
@@ -763,11 +904,48 @@ flowIsolation: true
 ---
 ```
 
-Both sentences are owed together. A worker folder without that line is an address, not a boundary.
+A worker folder without that line is an address, not a boundary. It is a `resources/` setting: a
+`references/` file declaring it is refused, and a reference's boundary is where its file sits.
+
+### Moving a document from `resources/` to `references/`
+
+Moving the file is the whole job unless something wrote that document while it lived in
+`resources/`. The written body is still stored, and a stored body wins over the file, so agents keep
+reading the old write.
+
+```ts
+import { clearShadowedReferences, describeShadowedReferences } from "@flow-state-dev/workforce";
+
+const result = await clearShadowedReferences({
+  references: referenceMap,
+  orgId,
+  content: stores.content,
+  installedOn: { id: flow.id, isolatesOrgState: false },
+  // dryRun: true,
+});
+console.log(describeShadowedReferences(result));
+// references: 1 of 4 were shadowed by a stored write and have been cleared — teams/engineering/handbook.
+// Each now serves its file again.
+```
+
+The result is `{ cleared, checked, dryRun, scopeId }`. Each entry in `cleared` is
+`{ ref, shadowedContent }`, carrying the body that had been served in the file's place — the last
+place that text exists, so log or keep it before deciding the clear was right. `dryRun: true`
+reports the same finding, deletes nothing, and makes the sentence read "WOULD be cleared". Running
+it again over a migrated tree clears nothing, and it never touches a `resources/` document.
+
+`installedOn` is `{ id, isolatesOrgState }` for the flow the references are installed on. A flow
+that isolates its org scope stores content under a different address, so a wrong value here looks in
+the wrong place, finds nothing, and reports success. Read `isolatesOrgState` off the flow. For an org
+or flow id containing `:` or a backslash it throws. That address needs the engine's own escaping, so
+clear those rows with the engine's store helpers instead.
+
+### What a file may and may not declare
 
 **`description` is required.** A file without one lands in `errors`. It reaches the resource with
 the rest of the frontmatter, and nothing puts it in front of a model. Write it for whoever opens the
-tree.
+tree. Frontmatter never reaches an agent either way: a reference is served with its `---` block
+stripped, and a `resources/` document is installed with its parsed body.
 
 **The convention owns identity, storage and content.** Where a document lives decides all three, so
 a file may not declare any of `scope`, `ref`, `stateSchema`, `default`, `content`, `contentFile`,
@@ -776,20 +954,27 @@ so is `prefetchMode: "lazy"`: a file-declared document is always loaded eagerly.
 carried through as written, so `llmReadable`, `llmWritable`, `writable`, `allowedExtensions` and
 `metadata` all reach the resource.
 
+A `references/` file may not declare `writable`, `llmWritable`, `render` or `flowIsolation` either,
+`writable: false` included, even though it agrees with the folder. A reference is read-only on both
+doors: `writeContent()` throws a `FlowError` with code `resource_read_only`, and the model is never
+offered the write tool for it. A document that needs to be written belongs in `resources/`.
+
 A document that needs a state schema, a render function, reactive bindings or an edge graph stays in
-code — those are functions, and a Markdown file cannot hold one. Session- and user-scoped resources
+code. Those are functions, and a Markdown file cannot hold one. Session- and user-scoped resources
 are not file-declared.
 
 Document, team and worker folder names all follow one rule: lowercase letters, digits and
 single hyphens, at most 64 characters. A worker folder's documents load whether or not the folder
-holds a `WORKER.md` — this reader answers a question about a file, and a slot with no seat file is
-reported separately by `readWorkforceDirectory`. A non-`.md` file in the slot is passed over in silence. An
-absent `org/` root or `resources/` folder is not an error — a team may have no documents.
+holds a `WORKER.md`, and a slot with no seat file is reported separately by
+`readWorkforceDirectory`. A non-`.md` file in the slot is passed over in silence. An absent `org/`
+root or document folder is not an error. A team may have no documents.
 
-`readResourcesDirectory` throws only when `root` itself cannot be read or is a symlink. Everything
-else lands in `errors`, one entry per thing that should have produced a document and did not. Each
-entry is `{ kind, path, error }`, keyed by a path relative to the root, with `kind` naming the
-condition (see [Error Semantics](#error-semantics)):
+### What did not load
+
+Either reader throws only when `root` itself cannot be read or is a symlink. Everything else lands
+in `errors`, one entry per thing that should have produced a document and did not. Each entry is
+`{ kind, path, error }`, keyed by a path relative to the root, with `kind` naming the condition (see
+[Error Semantics](#error-semantics)):
 
 ```ts
 errors;
@@ -799,8 +984,12 @@ errors;
 //                  the document as "handbook.md" in this resources/ folder instead.') }]
 ```
 
-`resourcesFromDocs` throws instead of collecting, because a record that cannot become a resource is a
-startup misconfiguration.
+Neither reader sees the other's slot, so neither reports a basename claimed by both.
+`readDeclaredRoster` reads the whole tree and puts that collision in its `problems`, naming both
+files; `hireWorkforce` throws on the same collision for a catalog that never passed a loader.
+
+`resourcesFromDocs` and `referencesFromDocs` throw instead of collecting, because a record that
+cannot become a resource is a startup misconfiguration.
 
 ## Channels
 
@@ -840,15 +1029,13 @@ The two calls are separate because they happen at two different times: an instan
 when the server is built, and a session can only be opened once it is running. `openChannels` needs
 a `userId` because a session belongs to one user, as *What a transcript proves* below explains.
 
-Pass `orgId` alongside it. It is the org each channel session is opened under, and resources
-stored at org scope resolve inside it. File-declared documents are all org-scoped, so a channel
-opened without an org cannot read one. The argument decides the org only on an app that has not
-configured [authentication](https://flow-state.dev/docs/server/authentication); where a
-`resolvePrincipal` is in place, each session takes the org of the verified caller, so open your
-channels as a caller whose identity already carries the org you want. Re-opening cannot move a
-session between orgs. If you pass an `orgId` and a channel at that id is already open under a
-different org, or under none, `openChannels` names that channel and stops; delete that session so
-the next run opens the channel fresh, or drop the `orgId`.
+Every channel session runs in an organization, and your app does not name it. The server binds it
+from the caller's verified identity, which is whatever your
+[`resolvePrincipal`](https://flow-state.dev/docs/server/authentication#every-request-runs-in-an-organization)
+returned; an app that configures no authentication gets the reserved `DEFAULT_ORG_ID`. Storage at
+organization scope resolves against it inside the channel, including file-declared documents and a
+channel board's rows. A session's organization is fixed when the session is created, so open your
+channels as a caller whose verified identity already carries the organization you want them in.
 
 A record declares five keys and no others: `flow` (which kind, optional), `description`, `members`,
 `boards`, and `instructions` (or a body, which is the same setting). The list is closed and checked
@@ -996,9 +1183,6 @@ Compose it once per board; a seat holding two boards holds sixteen tools and the
 board each writes to. A channel board is org-scoped, so it cannot be declared by a block colocated
 in a seat's own folder; that refuses at hire.
 
-A channel holding a board must be opened with an `orgId` — a board's rows live at org scope, so
-`openChannels` names the channel and stops when there is none.
-
 Pass `hireWorkforce` the roster's minted ids as `channelBoards` and it warns on stderr for any board
 no hired seat declares, naming the channel and the board. It never refuses: a channel may keep a
 board that only people read.
@@ -1059,6 +1243,73 @@ usable the next time you run.
 It does repair a channel whose id was claimed before it was opened — a post that arrives first
 leaves an empty session there, and re-running binds it.
 
+## Hiring at runtime, and reloading at boot
+
+`hireWorkforce` turns records into flow instances, whether those records came from files or from
+somewhere else. To keep a runtime hire across restarts, store it and read it back.
+
+```ts
+import { defineHiredRosterCollection, reloadHiredSeats } from "@flow-state-dev/workforce";
+```
+
+`defineHiredRosterCollection()` is an org-scoped resource collection at `workforce/roster/*`, one
+row per hired seat. Install it under the block that does the hiring, and write the row with
+`create()` before you register the seat. `create()` throws when the key already exists, and that
+throw is what refuses a second hire of the same seat, including two arriving at once — so you need
+no lock and no check of your own. Reach for `upsert()` here and you lose the refusal without any
+sign that you did.
+
+If registration then fails, delete the row you just created before reporting the failure. A hire
+that did not take should not leave a seat waiting at the next start.
+
+A row holds the seat's id within its organization, the flow kind, the settings bag and the
+instructions. The envelope is this package's to version; the settings bag is handed back to the
+kind untouched, including keys this version has never heard of, because that bag belongs to the
+kind's own schema.
+
+`reloadHiredSeats` reads those rows back when the app starts:
+
+```ts
+const { seats, problems } = await reloadHiredSeats({
+  stores,           // the runtime's resolved stores
+  orgIds,           // which organizations to reload; you decide the policy
+  kinds,            // the same kinds map you pass to hireWorkforce
+});
+
+for (const seat of seats) {
+  try { flowstate.register(seat); }
+  catch (err) { problems.push(`${seat.id} — ${String(err)}`); }
+}
+```
+
+A reloaded seat is addressed `<orgId>.<seatId>`, so two organizations can both hold a seat called
+`support.ada`. The organization must be a single address segment — lowercase letters, digits and
+single hyphens, up to 64 characters, and no dots, since a dot is what joins the two halves.
+
+Register the seats yourself, one at a time, and fold any refusal into the same list. That is not
+ceremony: a seat the registry refuses is one seat that cannot run, not a reason for the app to fail
+to start, and admitting them as a batch would make it one.
+
+It takes the organizations rather than discovering them, because which organizations an app reloads
+is the app's decision and not one this package can make for it.
+
+`problems` is the part to handle rather than log — the same shape `openInventory` returns, for the
+same reason: the caller owns start-up policy. A row naming a kind you no longer ship, or carrying a
+setting that kind no longer accepts, comes back here with its reason instead of throwing. The other
+seats still hire, the app still starts, and the row is left exactly as it was — nothing is repaired
+or deleted on your behalf.
+
+A read the store will not complete rejects, and a set of organizations larger than the cap rejects
+too, naming both numbers. The cap is `maxOrgs`, 100 by default; the read's own bound is `timeoutMs`,
+10000ms by default, and it covers the whole set rather than each organization. Neither returns a
+partial roster, because a short roster that looks complete is the failure this is guarding against.
+
+The roster is **not** the live inventory below, and the two are deliberately separate. An inventory
+row means *was registered in this organization* and is never removed; a roster row has to be
+deletable, because firing a seat is half of what a roster is for. A seat hired at runtime gets a
+roster row and no inventory row. Anything that wants one list of every seat, declared and hired,
+joins the two itself.
+
 ## The live inventory
 
 The tree tells you what a workforce is meant to be. A `WORKER.md` declares a seat, a `CHANNEL.md`
@@ -1093,7 +1344,7 @@ const instances = channelInstances(roster.channels, { inventory: true });
 flowRegistry.registerMany([...seats, ...instances]);
 // server starts here
 
-await openChannels(roster.channels, { client, userId: "u_boot", orgId: "org_acme" });
+await openChannels(roster.channels, { client, userId: "u_boot" });
 
 await openInventory(
   { seats, channels: roster.channels },
@@ -1281,18 +1532,21 @@ membershipPrefix("");
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
-| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, and every `resources/` folder the convention reads, returning what they hold on `files` and `resourceModules`, each ordered by path. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
-| `renderWorkforceCode(files, modules)` | Render a discovery's `files` and its `resourceModules` as a module of static imports exporting `kinds`, `channelKinds`, `blocks` and `resourceModules`. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(manifests, { kinds, seatBlocks })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, and `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`. |
+| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, every `resources/` folder the convention reads, and every `blocks/` folder inside the team tree, returning what they hold on `files`, `resourceModules` and `seatBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
+| `renderWorkforceCode(files, modules, seatBlocks?)` | Render a discovery's `files`, `resourceModules` and `seatBlocks` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `seatBlocks` and `resourceModules`. Pass all three: the third parameter defaults to `[]`, so omitting it renders an empty `seatBlocks` map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
+| `hireWorkforce(manifests, { kinds, seatBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, the per-seat tree wall is derived against it, and a kind holding references it was not given refuses the whole roster. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills` and `seatTools`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
 | `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
 | `readResourcesDirectory(root)` | Read every `resources/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
 | `resourcesFromDocs(documents)` | Turn document records into the flow resource map, keyed by each document's ref. Spread it into your own `resources`. |
+| `readReferencesDirectory(root)` | Read every `references/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document, each carrying its `filePath`. Same result shape and same error kinds as `readResourcesDirectory`. Ships from the `./loader` subpath (Node only). |
+| `referencesFromDocs(references)` | Turn reference records into the flow resource map, keyed by ref. Each entry is served from its file and is read-only. Throws naming the ref for a record with no `filePath`. |
+| `clearShadowedReferences(input)` / `describeShadowedReferences(result)` | Clear the stored rows left behind when a document moves from `resources/` to `references/`, for one org, and render the result as one log line. Takes `{ references, orgId, content, installedOn, dryRun? }`; returns `{ cleared, checked, dryRun, scopeId }`. |
 | `splitResourceModules(resourceModules)` | Split the generated map into `{ capabilities, resources }` — the capabilities a worker kind installs through `uses`, and the resources that merge into the one resource map. Installs nothing: you pass both on, at your own call site. Throws naming the ref when an entry can be neither. |
-| `DeclaredRoster` / `DeclaredProblem` | What `readDeclaredRoster` returns: `{ workers, teams, documents, channels, problems }`, and one problem: `{ layer, path, error, worker? }`, where `layer` is `worker`, `skill`, `team`, `document` or `channel`. |
+| `DeclaredRoster` / `DeclaredProblem` | What `readDeclaredRoster` returns: `{ workers, teams, documents, references, channels, problems }`, and one problem: `{ layer, path, error, worker? }`, where `layer` is `worker`, `skill`, `team`, `document`, `reference` or `channel`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body, skills? }`. |
-| `ResourceDoc` | One document record: `{ ref, declared, body }`. |
+| `ResourceDoc` | One document record: `{ ref, declared, body, filePath? }`. |
 | `mintResourceRef(teamId, workerName, name)` | The one rule that names a resource, whichever door read it — the ref a document or a module called `name` in that folder gets. Throws naming the segment that breaks the rules. Ships from the `./loader` subpath (Node only). |
 | `ResourceModules` | The generated `resourceModules` map: one entry per discovered module, keyed by its ref. |
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
@@ -1300,7 +1554,7 @@ membershipPrefix("");
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds?, inventory? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Register these. |
-| `openChannels(manifests, { client, userId, orgId? })` | Runtime. One named session per record, carrying its members, charter and description, opened under `orgId` when one is given. Idempotent. |
+| `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
 | `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |
 | `ChannelManifest` | One channel record: `{ id, declared, body }`. |
 | `channelBoard(channelId, boardName)` | The one declaration for a channel's board, carrying its minted `id`. Pass it to `taskBoard({ collection })`, and to `channelBoardTaskTools`. Throws when the name is not a plain local name. |
@@ -1312,6 +1566,15 @@ membershipPrefix("");
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
 | `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. |
+| `defineHiredRosterCollection()` | The hired roster: one org-scoped row per seat hired at runtime, at `workforce/roster/<seatId>`. Takes no options. Write rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
+| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions }`. The envelope is closed; `settings` is a passthrough bag belonging to the kind's own schema. |
+| `HIRED_ROSTER_PREFIX` | The roster's storage prefix, `"workforce/roster/"`. Moving it strands every roster already written. |
+| `seatAddress(orgId, seatId)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take it back apart. Throws when the organization is not one legal address segment — without which `acme` + `support.ada` and `acme.support` + `ada` would spell one address. |
+| `toHiredSeatRow(input)` / `parseHiredSeatRow(value)` | Build a row from what a hire supplied, and read a stored value back into one. `parseHiredSeatRow` returns `{ row }` or `{ problem }` — it never throws and never rewrites the stored value. |
+| `hiredSeatManifest(orgId, row)` / `hiredSeatRowFromManifest(orgId, manifest)` | Turn a row into the record `hireWorkforce` mints from, and back. Each returns `{ ... }` or `{ problem }`. |
+| `reloadHiredSeats(options)` | Read each organization's stored roster at boot and hire what it names. Takes `{ stores, orgIds, kinds?, maxOrgs?, timeoutMs? }` and returns `{ seats, problems }`. **It registers nothing** — loop the seats and register one at a time, folding refusals into `problems`. Rejects (loading nothing) past the org cap (`maxOrgs`, default 100) or when the whole read does not complete in its bound (`timeoutMs`, default 10000). |
+| `DEFAULT_MAX_RELOAD_ORGS` / `DEFAULT_ROSTER_READ_TIMEOUT_MS` | The two bounds' defaults: 100 organizations, and 10000 ms for the whole read. |
+| `HiredRosterReload` / `HiredRosterStores` / `ReloadHiredSeatsOptions` / `RowProblem` | What the reload returns, the slice of the runtime's stores it reads through, its options, and the `{ problem }` shape a row that could not be read comes back as. |
 | `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
 | `defineChannelInventoryCollection()` | The channel inventory: one org-scoped row per open channel, at `inventory/channels/<channelId>`, carrying the channel's `members` and `openedAt`. Takes no options. |
 | `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so one seat's channels can be listed by prefix. Takes no options. |
@@ -1345,19 +1608,24 @@ membershipPrefix("");
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource or `requireOrg`, a skill name reaching one seat from both the app's `skills` and its own folders, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this seat's kind, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a seat did not name that its minted flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this seat cannot reach from its place in the tree — including every ref when no `references` map was passed), a seat id that names no place in the tree while its kind holds references, a reference the seat did not name that its minted flow reaches anyway, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
 | A `resources/` slot, `org/`, `teams/`, a team folder, a `workers/` level or a worker folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |
 | A setting the convention derives, or `prefetchMode: "lazy"`, in a document file | Collected in `readResourcesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the file's path |
 | Workforce root unreadable or symlinked, read for documents | `readResourcesDirectory` throws — the root is never followed through a link |
 | Document cannot become a resource | `resourcesFromDocs` throws naming the ref — a setting the convention derives, a lazy `prefetchMode`, or frontmatter `defineResource` itself rejects |
+| Any of the four conditions above, in a `references/` folder | `readReferencesDirectory` reports the same `kind`s at the same paths, and throws on the same root conditions |
+| `writable`, `llmWritable`, `render` or `flowIsolation` in a reference file | Collected in `readReferencesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the file's path — at either value |
+| One basename claimed by a `references/` and a `resources/` file at one level | Collected in `readDeclaredRoster`'s `problems` on the `reference` layer, naming both files. Neither single-folder reader sees it |
+| Reference cannot become a resource | `referencesFromDocs` throws naming the ref — a setting the convention derives, a lazy `prefetchMode`, a record with no `filePath`, or frontmatter `defineResource` itself rejects |
+| One ref passed to `hireWorkforce` as both a document and a reference | `hireWorkforce` throws before hiring anything, naming every ref in both maps |
+| A reference row cannot be addressed | `clearShadowedReferences` throws when the org id — or, for a flow that isolates its org scope, the flow id — contains `:` or a backslash |
 | A `channels/` slot, `teams/` or a team folder unreadable or symlinked | Collected in `readChannelsDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | Channel folder fails to load | Collected in `readChannelsDirectory`'s `errors` as `kind: "channel-load-failed"`, keyed by the folder's path — an unusable name, a symlink, or a missing, unreadable or malformed `CHANNEL.md` |
 | `system:` in a `CHANNEL.md` | Collected in `readChannelsDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the channel folder's path |
 | Workforce root unreadable or symlinked, read for channels | `readChannelsDirectory` throws — the root is never followed through a link |
 | Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two channels would share, or `boards:` on a custom kind that does not support them. Also `instructions:` given both in the frontmatter and as a body. Collected: one error names every bad channel, and nothing is registered |
-| Channel holds a board and no org | `openChannels` throws before opening anything, naming every channel that declares `boards:`, because a board's rows live at org scope |
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |

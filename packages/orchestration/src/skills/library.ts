@@ -189,7 +189,14 @@ export interface SkillsBindingConfig {
   active?: string[];
   /**
    * Skill names the load tool (`dynamicActivation`) may pull from. Omit for the
-   * whole catalog. Contributes these skills' declared `allowed-tools` too.
+   * whole catalog.
+   *
+   * It does NOT contribute these skills' declared `allowed-tools` — nothing
+   * does; `allowed-tools` renders as an intent note and grants nothing. What it
+   * does contribute is the catalog registration on the `activeState` path:
+   * `activeState` + `allowed` sets `contributesRuntimeTools` below, and an
+   * `activeState` binding with neither `allowed` nor `dynamicActivation`
+   * registers no catalog tools at all.
    */
   allowed?: string[];
   /**

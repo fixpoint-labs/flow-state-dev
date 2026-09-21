@@ -19,6 +19,7 @@
  * copy, or writes a reason that leans on the body to finish its sentence.
  */
 import { readFileSync } from "node:fs";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -401,6 +402,7 @@ describe("what the client actually reads off a session that never ran", () => {
         id: "legacy",
         flowKind: "analysis",
         userId: "u1",
+        orgId: DEFAULT_ORG_ID,
         state: {
           ticker: "AMD",
           date: "2026-05-06",

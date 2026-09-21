@@ -426,7 +426,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           flowKind: create.flowKind,
           flowId: create.flowKind,
           userId: create.userId,
-          orgId: create.orgId,
+          // `openChannels` no longer names an org (FIX-1442); this stand-in for
+          // the session route binds what the real route binds.
+          orgId: create.orgId ?? LAB_ORG_ID,
           description: create.description,
           state: create.state ?? {},
           lineageId: `lin_${id}`,
@@ -462,7 +464,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     },
   };
 
-  await openChannels(channels, { client, userId: LAB_USER_ID, orgId: LAB_ORG_ID });
+  await openChannels(channels, { client, userId: LAB_USER_ID });
 
   const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
   if (channelInstance === undefined) {

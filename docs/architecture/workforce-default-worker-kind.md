@@ -65,6 +65,15 @@ at boot:
 |---|---|---|
 | **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
 | **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. `tools` is the one of the three that is **reserved** — see below. |
+| **The hire step's** | `flow`, `description`, `resources` | Never a kind's. Read and removed before admission, so no `configSchema` sees them — see `resources` below. |
+
+**`resources` is taken outright, and is not a setting at all (FIX-1381).** Where `tools` is a key a
+kind declares and the hire step reads, `resources` is a key the hire step *consumes*: it names the
+documents that seat may touch, it is removed from the bag before admission, and it never reaches a
+kind's `configSchema`. So a kind may not declare a `resources` setting of its own — one that did
+would simply stop receiving an authored value. The narrowed map it produces replaces the kind's
+flow-level resource map for that seat; `packages/workforce/src/seat-resources.ts` is canonical for
+the grant shapes and the refusals.
 
 **`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then the kind's catalog), and the ones that resolved to the seat's own folders are moved onto `seatTools` as live blocks. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
 

@@ -12,6 +12,7 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { NetworkError } from "../src/errors/flow-error";
 import {
   createInMemoryStores,
@@ -72,6 +73,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const response = createResponseEmitter({ requestId, now: () => Date.now() });
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 5,
@@ -135,6 +137,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const requestId = "req_nested";
     const response = createResponseEmitter({ requestId, now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 0,
@@ -191,6 +194,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const requestId = "req_parallel";
     const response = createResponseEmitter({ requestId, now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 0,
@@ -252,6 +256,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const requestId = "req_rescue";
     const response = createResponseEmitter({ requestId, now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 0,
@@ -308,6 +313,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     const requestId = "req_foreach";
     const response = createResponseEmitter({ requestId, now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: [1, 2, 3],
@@ -357,6 +363,7 @@ describe("FIX-398: deterministic blockInstanceId", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 1,

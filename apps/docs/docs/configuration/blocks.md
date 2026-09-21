@@ -26,7 +26,6 @@ These appear on handlers, generators, routers, and (where noted) sequencers.
 | `container` | `{ component?, label?, metadata? }` | — | UI container metadata. |
 | `retry` | `RetryPolicy` | — | `{ maxAttempts?, baseDelayMs?, maxDelayMs?, retryableErrors? }`. |
 | `rescue` | `RescueHandlerSpec[]` | — | Per-block recovery. The first matching `when` runs and its output replaces the throw. Sequencers use `.rescue()` on the chain instead. |
-| `requireOrg` | `boolean` | — | The flow rejects requests whose session has no `orgId`. |
 | `cacheable` | `true` or `BlockCacheableConfig` | off | Memoize this block's result when it is installed as a **generator tool**. No effect as a sequencer step. |
 | `onCompleted` / `onErrored` | hook | — | After success or failure. |
 | `uses` | capability list | — | Install capabilities (resources, context, tools, maybe a model). |

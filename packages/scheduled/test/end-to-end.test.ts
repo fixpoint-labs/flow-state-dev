@@ -42,7 +42,7 @@ function buildRouter() {
       authentication: {
         resolvePrincipal: createBearerSecretPrincipalResolver({
           secret: SECRET,
-          principal: { userId: "system" }
+          principal: { userId: "system", orgId: "org_sys" }
         }),
         requireUser: true
       },
@@ -68,7 +68,7 @@ function buildRouter() {
           if (ctx.source === "scheduled") {
             const resolver = createBearerSecretPrincipalResolver({
               secret: SECRET,
-              principal: { userId: "system" }
+              principal: { userId: "system", orgId: "org_sys" }
             });
             return resolver(ctx);
           }
@@ -82,7 +82,7 @@ function buildRouter() {
             return {
               cron: "0 9 * * MON",
               block: sendDigest,
-              principal: { userId: "u_1" }
+              principal: { userId: "u_1", orgId: "org_sys" }
             };
           }
           return null;

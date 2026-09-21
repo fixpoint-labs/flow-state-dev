@@ -25,6 +25,7 @@
  * derived from what it says it is derived from.
  */
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createExecutionContext, createFlowRegistry, createInMemoryStores } from "../src";
@@ -64,6 +65,7 @@ function contextFor(stores: StoreRegistry, sessionId: string, userId: string, re
     requestId,
     sessionId,
     userId,
+    orgId: DEFAULT_ORG_ID,
     stores
   });
 }
@@ -92,7 +94,9 @@ async function dispatchFromRoot(stores: StoreRegistry): Promise<string> {
     identity: {
       userId: "u_alice",
       tenantId: undefined,
-      orgId: undefined,
+      // The running request's organization, inherited by the child (BR-11) and
+      // matching what the create-session route binds the root to.
+      orgId: DEFAULT_ORG_ID,
       sessionId: ROOT_ID,
       lineageId: (await stores.session.get(ROOT_ID))!.lineageId!
     }

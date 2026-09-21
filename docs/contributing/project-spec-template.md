@@ -29,9 +29,10 @@ as the project does.
 
 ## The four documents, at project altitude
 
-The shape is [`spec-template.md`](spec-template.md)'s and the altitude shift is the whole of this
-file. Budgets are **smaller than an epic's**, not larger — a project-spec that out-weighs the epic
-specs beneath it has stopped coordinating and started designing.
+Projects keep the original four-document shape below; the issue/epic template's added
+`DOCS.md` and conditional `EVOLUTION.md` do not migrate this standing project artifact.
+Budgets are **smaller than an epic's**, not larger — a project-spec that out-weighs the epic
+it is supposed to orient has lost its altitude.
 
 | File | At epic altitude | At project altitude | Budget |
 |---|---|---|---|
@@ -41,7 +42,7 @@ specs beneath it has stopped coordinating and started designing.
 | `PLAN.md` | The path: issues against time | **The arc**: epics against time · what each epic consumes and releases · what is deliberately not next | ~700 |
 | `figures/` | Three the PR body carries | **Two** the PR body carries: the territory, and the arc once there are two epics. A third — the rule × epic matrix — only once `BUSINESS-RULES.md` carries three or more rules | — |
 
-**The nav line is the same at every altitude.** Line 3 of every document is
+**Project navigation keeps its four-document line.** Line 3 of every project document is
 `[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)` with
 the current one bold and unlinked.
 

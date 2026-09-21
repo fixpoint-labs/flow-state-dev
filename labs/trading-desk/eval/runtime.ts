@@ -1,3 +1,4 @@
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 /** Framework-native execution boundary for the trading-desk eval CLI. */
 import {
   runAction,
@@ -85,6 +86,7 @@ export async function withEvalRuntime<T>(
           }
           const userId = storedSession?.userId ?? "cli-user";
           const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
             flow,
             actionName,
             input,

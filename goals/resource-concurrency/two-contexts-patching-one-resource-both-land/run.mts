@@ -15,6 +15,7 @@
  * Run: pnpm tsx goals/resource-concurrency/two-contexts-patching-one-resource-both-land/run.mts
  */
 import { mkdtempSync, rmSync } from "node:fs";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -70,6 +71,7 @@ async function main(): Promise<GoalResult> {
     const contexts = await Promise.all(
       WRITERS.map((w) =>
         createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
           flow: makeFlow(),
           actionName: "run",
           requestId: w.requestId,

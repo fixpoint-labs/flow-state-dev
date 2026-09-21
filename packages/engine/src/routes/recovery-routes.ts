@@ -3,7 +3,7 @@
  */
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord, resolveRecordOwner } from "../context/record-owner";
-import type { StoreRegistry } from "../stores/types";
+import type { ActiveRequestEntry, StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
 import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
@@ -295,9 +295,18 @@ export async function handleListActiveRequests(
   // request and session ids. Reached anonymously in a mixed app, it withholds
   // the entries of any flow that authenticates instead.
   const callerId = ctx.principal?.userId;
+  const callerOrgId = ctx.principal?.orgId;
   const allowed = ctx.anonymousFlowIds;
   const entries = all.filter((entry) => {
-    if (callerId !== undefined) return entry.userId === callerId;
+    // Both axes, for the reason BR-8 gives on the addressed routes: one person
+    // in two organizations passes the user check while looking at the other
+    // organization's in-flight work. An entry with no organization at all is a
+    // legacy row and is withheld here rather than attributed to the caller
+    // (BR-14) — `entry.orgId === callerOrgId` does that by construction, since
+    // an authenticated caller's org is never undefined.
+    if (callerId !== undefined) {
+      return entry.userId === callerId && entry.orgId === callerOrgId;
+    }
     if (allowed === undefined) return true;
     // Each entry is judged under its own OWNER, not its kind: an open peer of
     // an authenticated instance must not make the latter's runs visible.
@@ -352,6 +361,37 @@ export async function handleListActiveRequests(
  * Records whose status was already terminal (completed/failed/aborted) are
  * silently deregistered and excluded from the response.
  */
+/**
+ * Which entries this sweep may touch, or `undefined` for unrestricted.
+ *
+ * The two clauses are mutually exclusive by construction: `route-auth` hands
+ * back a principal or an anonymous flow allow-list, never both.
+ *
+ * The authenticated clause is the organization axis, and it matters more here
+ * than on any read route. This route is user-addressed, so its `userId` comes
+ * from the path and ownership is satisfied by one person belonging to two
+ * organizations (BR-13) — and unlike every other management route, this one
+ * MUTATES: it sweeps in-flight rows to `interrupted`. Without the org check a
+ * caller acting for one organization takes down the other's running work.
+ * `handleListActiveRequests` filters on the same pair for the read half.
+ *
+ * An entry with no organization is a legacy row and is left alone rather than
+ * swept under a guess (BR-14) — `entry.orgId === callerOrgId` does that by
+ * construction, since an authenticated caller's org is never undefined.
+ */
+function sweepAdmits(
+  ctx: RecoveryRouteContext
+): ((entry: ActiveRequestEntry) => boolean) | undefined {
+  const callerOrgId = ctx.principal?.orgId;
+  if (callerOrgId !== undefined) return (entry) => entry.orgId === callerOrgId;
+  const allowed = ctx.anonymousFlowIds;
+  if (allowed === undefined) return undefined;
+  return (entry) => {
+    const owner = resolveRecordOwner(ctx.registry, entry);
+    return owner.ok && allowed.has(owner.flow.id);
+  };
+}
+
 export async function handleCheckInterruptedRequests(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "check_interrupted_requests" }>,
@@ -390,13 +430,7 @@ export async function handleCheckInterruptedRequests(
     // because it only widens or narrows which heartbeat-governed entries are
     // considered, never which queued ones survive.
     queuedGraceMs: ctx.runtimeConfig.queuedGraceMs,
-    ownedBy:
-      ctx.anonymousFlowIds === undefined
-        ? undefined
-        : (entry) => {
-            const owner = resolveRecordOwner(ctx.registry, entry);
-            return owner.ok && ctx.anonymousFlowIds!.has(owner.flow.id);
-          },
+    ownedBy: sweepAdmits(ctx),
     logger: ctx.runtimeConfig.logger
   });
 

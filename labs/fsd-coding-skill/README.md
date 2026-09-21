@@ -11,22 +11,19 @@ scope.
 
 ## Run
 
-From this directory (`fsdev` config search is cwd-only), pass the host values
-on each command; no shell exports are required:
+All four doors run through a **supervised live stream**. From this directory
+(`fsdev` config search is cwd-only), follow the canonical
+[launch instructions](../../.agents/skills/fsd-coding/SKILL.md#pass-values-on-each-invocation)
+for the managed process, host environment, and `bash -o pipefail` pipeline with
+`tee` and `jq --unbuffered`.
 
-```bash
-env -u FSD_CODING_MODEL \
-  FSD_CODING_HARNESS=codex \
-  FSD_CODING_CWD=/absolute/path/to/target-checkout \
-  FSD_CODING_NETWORK_ACCESS=0 FSD_CODING_ADD_DIR= \
-  pnpm fsdev run fsd-coding implement -i '{"task":"<what to build>"}' --session work-1
-```
+`progress.jq` projects bounded live events while `tee` retains the raw NDJSON
+locally; `--capture` is completion-only. Follow the skill's
+[progress and evidence rules](../../.agents/skills/fsd-coding/SKILL.md#follow-progress-without-filling-the-context)
+for incremental log reads, permission failures, and artifact verification.
 
-Command tools with `cwd` and `env` fields can pass these values directly.
-Resolve the target checkout from the outer session before running from this
-lab; it may be a different repository or linked worktree. The lab's process
-directory is not a safe target default. `FSD_CODING_CWD` must reach the child
-process, but need not exist in the parent shell.
+Resolve the target checkout before running from this lab; it may be a different
+repository or linked worktree. The lab directory is not a safe target default.
 
 The outer agent resolves the harness, checkout, model, and permissions from
 owner choices and trusted session context, following
@@ -38,6 +35,12 @@ signed-in Claude Code / Anthropic credentials. OMP is an outer harness, not
 one of these target adapters. Codex and Cursor keep their SDK version gates.
 Claude uses `@flow-state-dev/claude-code/sdk` (`claudeCodeAgent`), with the
 optional peer `@anthropic-ai/claude-agent-sdk`.
+Follow the skill's
+[Claude permission policy](../../.agents/skills/fsd-coding/SKILL.md#claude-permission-policy)
+for operation. Trusted programmatic callers of `createFsdCodingFlow` may use
+`options.claude` to **replace** `disallowedTools` or `sandbox` and choose
+`permissionMode`; the factory owns `cwd`, `detached`, and `name`. These are
+programmatic configuration options, not an `FSD_CODING_*` environment escape.
 
 For a model override, add `FSD_CODING_MODEL=<supported-target-model-id>`.
 
@@ -73,12 +76,9 @@ failures — missing SDK, version-gate, invalid host flags, or adapter
 construction — use the same construction path, so `fixFsd` cannot recover
 them. Fix the host or environment, then retry the original door once.
 
-```bash
-pnpm fsdev run fsd-coding fixFsd \
-  -i '{"repro":"<verbatim error and command>","notes":"<intent>"}' \
-  --session work-1
-```
-The snippet shows only the command; reuse the original tool `cwd` and `env`.
+Use the same supervised streaming command with `FSD_DOOR=fixFsd` and
+`FSD_INPUT='{"repro":"<verbatim error and command>","notes":"<intent>"}'`.
+Choose new raw-trace and capture paths, preserving the original host settings.
 
 Keep the same host flags and `--session`. Then retry the original door once.
 Report both outputs if it fails again.
@@ -103,8 +103,10 @@ pnpm --filter @flow-state-dev/fsd-coding-skill test
 pnpm --filter @flow-state-dev/fsd-coding-skill typecheck
 ```
 
-Tests inject scripted clients through each adapter's existing client seam.
-A live door needs a signed-in harness for the host's selection.
+Adapter tests inject scripted clients through each adapter's existing seam.
+The focused `test/progress.spec.ts` exercises the real `jq` subprocess, including
+emission before stdin closes; it needs `jq` on `PATH`, not provider credentials.
+A live coding door needs a signed-in harness for the selected host.
 
 The outer agent's mandatory path is
 [the fsd-coding skill](../../.agents/skills/fsd-coding/SKILL.md).

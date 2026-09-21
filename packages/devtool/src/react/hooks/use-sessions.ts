@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
+import { sessionQueryFor, type FlowListEntry, type SessionSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 import { describeReadError } from "../lib/instance-ownership";
 import { useReadFence } from "./use-read-fence";
@@ -60,7 +60,10 @@ export function useSessions(flow: Pick<FlowListEntry, "id" | "cardinality"> | nu
           });
       }
       const result = await sessionClient.listSessions({
-        ...(cardinality === "collection" ? { flowId } : { flowKind: flowId }),
+        ...sessionQueryFor(
+          flowId,
+          cardinality === undefined ? [] : [{ id: flowId, cardinality }]
+        ),
         userId: config.userId,
       });
       if (!stillCurrent()) return;

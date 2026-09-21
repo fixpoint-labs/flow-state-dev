@@ -424,6 +424,46 @@ A worker's result is not always the last word on its task. A coordinator can can
 
 The board drops those results. A cancel stays cancelled, output the worker recorded for itself stays, and a second worker's claim is left alone. The drop is silent and affects exactly one task: the rest of the board keeps draining, and under `onError: "fail"` the error that surfaces is the worker's own rather than a conflict on the write-back.
 
+### When the board cannot record a result
+
+A task going wrong and the board failing to write down what happened are different events, and `onError` governs only the first.
+
+Saving a result is two steps: the store commits the write, then the change is announced to everything watching the board. The second step can fail on its own, when a block reacting to task changes throws or a resource hook rejects, and by then the work is already saved. When that happens the board says so. It emits a `task-board-recorder-failure` item:
+
+```ts
+// A task-board-recorder-failure item:
+{
+  component: "task-board-recorder-failure",
+  data: {
+    collectionId: "research",
+    taskId: "summarise-findings",
+    recorder: "complete",   // "complete" or "fail": which settlement it was recording
+    verdict: "committed",   // "committed" or "undetermined"
+    error: "task-change subscriber threw",
+  },
+}
+```
+
+The item is persisted, so it is still there after the run. The [`chatAssistantRenderers`](/docs/ui/flow-aware-components#chatassistant) registry maps it to `false`, so it does not appear in a chat thread; read it off the run's items. `verdict` is what the board could establish about the write:
+
+| `verdict` | Means |
+| --- | --- |
+| `committed` | The result is saved. Only the announcement failed. |
+| `undetermined` | The board cannot tell whether the result was saved. |
+
+Then the run fails, after every other task has finished. `onError: "skip"` does not suppress it — `skip` governs tasks, not the board's own bookkeeping.
+
+`undetermined` is never reported as "it wasn't saved". It is a permanent answer, not a transient one, and you get it in these cases:
+
+- **On a task store you wrote yourself.** A store built against `TaskCollectionRef` keeps no record of which write landed, so the board can never answer better than `undetermined`. There is no way to opt in.
+- **On rows a persistent store already held.** Rows written by an earlier release of the board carry none, and nothing adds one, so they answer `undetermined` for as long as they live. Rows the board creates give a definite answer.
+
+A row the board is unsure about is handed back rather than left claimed, so it settles or returns to the queue on the same pass instead of waiting out its lease.
+
+On a [seat that hands off](#seats-that-hand-off) there is no batch to drain and no run to defer to, so the failure fails that child session directly — again regardless of `onError`.
+
+Nothing retries a failed announcement. The item and the run's failure are the whole of what the board does about it.
+
 A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `unpark`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. A task handed back out because its worker died is not one of those paths: it is bounded by its own allowance and settles `errored` once that runs out.
 
 `maxTotalRetries` bounds what the board **spends**: it counts failure retries across every task, and at the bound the next failing task settles instead of re-dispatching. `maxIterations` bounds how long a worker loops, per worker, including idle polls that claim nothing — at `concurrency: 4` a board can spend four times `maxIterations` before every worker has tripped. Neither `reclaim()` nor `unblock` spends the retry budget, so on a board looping through those, `maxIterations` is what ends it.
@@ -570,6 +610,8 @@ A board run produces two item streams:
 
 Renderers like `<TaskPlan />` subscribe to both: `task-board-meta` for the board-level status header, `task-change` for per-task rows.
 
+A board that could not record a result emits one more item, `task-board-recorder-failure`. It carries no key, so each failure in a run is its own entry rather than replacing the last. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).
+
 ## Commanding the board with its capability
 
 You pick where a board stores its tasks once, on `taskBoard({...})`. After that, the only thing other blocks touch is `board.capability`. List it in a block's `uses` and the board's tasks are on `ctx.cap.<name>`, the board name verbatim. Hyphenated names work through bracket access (`ctx.cap["my-board"]`).
@@ -656,7 +698,7 @@ const followups = channelBoard("engineering.incidents", "followups");
 const board = taskBoard({ name: "followups", collection: followups, workers });
 ```
 
-The collection is org-scoped, so a channel holding a board must be opened with an org. The channel id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing — the unattended-board warning at hire is what catches it. See [holding a board](../workforce/channels.md#holding-a-board).
+The collection is org-scoped, so its rows sit in the organization the channel runs in. The channel id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing; the unattended-board warning at hire is what catches it. See [holding a board](../workforce/channels.md#holding-a-board).
 
 ## See also
 

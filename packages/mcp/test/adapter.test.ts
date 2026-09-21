@@ -400,7 +400,7 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
   it("tools/call dispatches to host with source='mcp' and resolved principal", async () => {
     const adapter = createMcpTransportAdapter();
     const host = withFlow(
-      createMockTransportHost({ resolvePrincipal: () => ({ userId: "u_mcp" }) }),
+      createMockTransportHost({ resolvePrincipal: () => ({ userId: "u_mcp", orgId: "org_mcp" }) }),
       buildFlow()
     );
     const response = await callAdapter(adapter, host, "POST", "billing", {

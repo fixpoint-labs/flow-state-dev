@@ -307,9 +307,9 @@ Everything below `"run"` is a workspace two runs can be inside at the same
 time. That's usually what you want — runs building on each other is the point
 of a session — but it's also the only way one run sees another's partial work.
 
-`"user"` and `"org"` fall back to the session when the context carries no user
-or org identity, so anonymous callers get their own workspace rather than
-sharing one.
+`"user"` falls back to the session when the context carries no user identity,
+so anonymous callers get their own workspace rather than sharing one. An
+`"org"` workspace always has an organization to key on.
 
 ### Sync lifecycle
 

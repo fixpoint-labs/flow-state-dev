@@ -1,3 +1,4 @@
+import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   AnyResourceRef,
@@ -212,62 +213,101 @@ function createEmitMessage(
   };
 }
 
+type EmitComponentOptions = {
+  key?: string;
+  itemVisibility?: ItemVisibility;
+  agentName?: string;
+  transient?: boolean;
+};
+
+/**
+ * Build the `ComponentItem` both component emitters send. Shared so the
+ * fire-and-forget emitter and the awaited one (FIX-963) cannot drift on item
+ * shape, index reservation, or keying — only on how they treat the emitter
+ * promises.
+ */
+function buildComponentItem(
+  emCtx: EmissionContext,
+  component: string,
+  data: Record<string, unknown>,
+  options?: EmitComponentOptions,
+): ComponentItem {
+  const itemIndex = emCtx.nextItemIndex();
+  // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
+  // Default non-transient; the block's `transient` flag governs only the
+  // auto-emitted block_trace item. Per-call
+  // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
+  // with dedup).
+  // FIX-491: when a `key` is supplied, derive a deterministic item ID from
+  // the key so subsequent emissions upsert in place — `itemsById` collapses
+  // to one entry per `(requestId, key)`. The SSE event log still appends
+  // an `item.added` + `item.done` event per emission; clients reconcile by
+  // item ID and overwrite. `data` is replaced wholesale, never merged.
+  return {
+    id:
+      options?.key !== undefined
+        ? `item_component_keyed:${options.key}`
+        : `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+    type: "component",
+    status: "completed",
+    transient: options?.transient === true ? true : undefined,
+    requestId: emCtx.requestId,
+    itemIndex,
+    provenance: emCtx.provenance(),
+    ts: Date.now(),
+    ownedBy: emCtx.ownedBy,
+    taskId: emCtx.taskId,
+    itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
+    agentName: options?.agentName ?? emCtx.agentName,
+    component,
+    data,
+    ...(options?.key !== undefined ? { key: options.key } : {}),
+  };
+}
+
 function createEmitComponent(
   emCtx: EmissionContext
 ): (
   component: string,
   data: Record<string, unknown>,
-  options?: {
-    key?: string;
-    itemVisibility?: ItemVisibility;
-    agentName?: string;
-    transient?: boolean;
-  },
+  options?: EmitComponentOptions,
 ) => void {
   return function emitComponent(
     component: string,
     data: Record<string, unknown>,
-    options?: {
-      key?: string;
-      itemVisibility?: ItemVisibility;
-      agentName?: string;
-      transient?: boolean;
-    },
+    options?: EmitComponentOptions,
   ): void {
-    const itemIndex = emCtx.nextItemIndex();
-    // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
-    // Default non-transient; the block's `transient` flag governs only the
-    // auto-emitted block_trace item. Per-call
-    // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
-    // with dedup).
-    // FIX-491: when a `key` is supplied, derive a deterministic item ID from
-    // the key so subsequent emissions upsert in place — `itemsById` collapses
-    // to one entry per `(requestId, key)`. The SSE event log still appends
-    // an `item.added` + `item.done` event per emission; clients reconcile by
-    // item ID and overwrite. `data` is replaced wholesale, never merged.
-    const item: ComponentItem = {
-      id:
-        options?.key !== undefined
-          ? `item_component_keyed:${options.key}`
-          : `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-      type: "component",
-      status: "completed",
-      transient: options?.transient === true ? true : undefined,
-      requestId: emCtx.requestId,
-      itemIndex,
-      provenance: emCtx.provenance(),
-      ts: Date.now(),
-      ownedBy: emCtx.ownedBy,
-      taskId: emCtx.taskId,
-      itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
-      agentName: options?.agentName ?? emCtx.agentName,
-      component,
-      data,
-      ...(options?.key !== undefined ? { key: options.key } : {}),
-    };
-
+    const item = buildComponentItem(emCtx, component, data, options);
     void emCtx.response.emitItemAdded(item);
     void emCtx.response.emitItemDone(item);
+  };
+}
+
+/**
+ * The awaited component emitter behind `ctx._emitComponentAwaited` (FIX-963).
+ *
+ * Identical to {@link createEmitComponent} except that it settles on the
+ * emission instead of discarding it: the returned promise resolves once the
+ * item has been added and completed, and **rejects** if either step does. No
+ * `.catch()` — a caller reaches for this emitter precisely because it needs a
+ * failed emission to be loud, and swallowing here would hand it the silence it
+ * was trying to avoid.
+ */
+function createEmitComponentAwaited(
+  emCtx: EmissionContext
+): (
+  component: string,
+  data: Record<string, unknown>,
+  options?: EmitComponentOptions,
+) => Promise<void> {
+  return async function emitComponentAwaited(
+    component: string,
+    data: Record<string, unknown>,
+    options?: EmitComponentOptions,
+  ): Promise<void> {
+    const item = buildComponentItem(emCtx, component, data, options);
+    await emCtx.response.emitItemAdded(item);
+    await emCtx.response.emitItemDone(item);
   };
 }
 
@@ -535,10 +575,7 @@ export async function createExecutionContext<
   // `packages/engine/src/stores/scope-keys.ts` and FIX-431.
   const userKey = resolveUserStorageKey(userId, flow);
   const optionsOrgId = options.orgId;
-  const optionsOrgKey =
-    optionsOrgId !== undefined
-      ? resolveOrgStorageKey(optionsOrgId, flow)
-      : undefined;
+  const optionsOrgKey = resolveOrgStorageKey(optionsOrgId, flow);
 
   // Window the cross-turn history load to the most recent N completed
   // requests (FIX-685). This bounds the store read and the default
@@ -720,9 +757,20 @@ export async function createExecutionContext<
   // create a new one. The previous code (`optionsOrgId ?? sessionRecord?.orgId`)
   // silently let the request override the session's stored value, vacating
   // the immutability guarantee FIX-428 promises.
-  const sessionOrgId = sessionRecord.orgId;
-  if (optionsOrgId !== undefined && optionsOrgId !== sessionOrgId) {
-    throw new OrgBindingMismatchError(sessionId, sessionOrgId ?? "<unbound>", optionsOrgId);
+  //
+  // Attribution is checked FIRST, and the order carries the whole difference
+  // for an operator. A session stored before organizations were required has no
+  // org at all, so comparing it against this request's would report a *binding
+  // mismatch* — "you asked for the wrong organization" — when the truth is that
+  // nobody ever recorded the right one. One of those is fixed by changing the
+  // request and the other only by the offline migration, so they must not share
+  // an answer (BR-14).
+  if (!isOrgAttributed(sessionRecord)) {
+    throw new UnattributedOrgError("executing against this session");
+  }
+  const sessionOrgId = sessionRecord.orgId as string;
+  if (optionsOrgId !== sessionOrgId) {
+    throw new OrgBindingMismatchError(sessionId, sessionOrgId, optionsOrgId);
   }
 
   const resolvedOrgId = sessionOrgId;
@@ -745,20 +793,23 @@ export async function createExecutionContext<
   // along with the shared ones.
   const lineageId = resolveLineageId({ id: sessionKey, lineageId: sessionRecord.lineageId });
 
-  const resolvedOrgKey =
-    resolvedOrgId !== undefined
-      ? resolveOrgStorageKey(resolvedOrgId, flow)
-      : undefined;
+  const resolvedOrgKey = resolveOrgStorageKey(resolvedOrgId, flow);
   let orgRecord: OrgRecord | undefined = loadedOrg;
-  if (
-    orgRecord === undefined &&
-    resolvedOrgKey !== undefined &&
-    resolvedOrgKey !== optionsOrgKey
-  ) {
+  if (orgRecord === undefined && resolvedOrgKey !== optionsOrgKey) {
     orgRecord = await stores.org.get(resolvedOrgKey);
   }
-  if (resolvedOrgId !== undefined && resolvedOrgKey !== undefined && orgRecord === undefined) {
-    orgRecord = {
+  if (orgRecord === undefined) {
+    // First session into this organization initializes its shared record.
+    //
+    // `"absent"` and not `"any"` (BR-20, FIX-1442). An organization record is
+    // SHARED — every session in the org reads and writes the same row — so two
+    // first sessions racing here are not two copies of one private record, they
+    // are two initializers of one shared one. An unconditional write lets the
+    // slower initializer land on top of state and resources the winner has
+    // already committed, silently discarding them. Create-if-absent instead,
+    // and adopt the winner's row: the loser's blank template is exactly the
+    // thing that must not win.
+    const seed: OrgRecord = {
       id: resolvedOrgKey,
       orgId: resolvedOrgId,
       userId,
@@ -768,7 +819,15 @@ export async function createExecutionContext<
       createdAt: now,
       updatedAt: now
     };
-    await stores.org.set(orgRecord.id, orgRecord, "any");
+    const created = await stores.org.set(seed.id, seed, "absent");
+    // On a lost race, adopt the winner's row — from the conflict if the store
+    // returned it, else by re-reading. The final `?? seed` is reached only by a
+    // store that refused the write AND then reports no row, which is a store
+    // contradicting itself; execution continues on the in-memory template
+    // rather than failing the request, and the next write re-reads.
+    orgRecord = created.ok
+      ? seed
+      : (created.conflict.currentValue ?? (await stores.org.get(resolvedOrgKey)) ?? seed);
   }
 
   // The request-host seam (FIX-999), built ONCE here. Every nested scope
@@ -983,8 +1042,8 @@ export async function createExecutionContext<
   };
 
   // Bare identity id for a scope (not the storage key) — used to derive the
-  // per-resource bucket. `undefined` when the scope is absent this request
-  // (org with no orgId).
+  // per-resource bucket. Every scope is present on every request now: an org
+  // with no orgId is no longer a reachable runtime state (BR-12).
   const scopeIdentityId = (scope: ContentScopeType): string | undefined =>
     scope === "session" ? sessionKey : scope === "user" ? userId : resolvedOrgId;
 
@@ -1247,9 +1306,7 @@ export async function createExecutionContext<
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
     loadScopeContentByBuckets("session", sessionFlowLevelConfigs),
     loadScopeContentByBuckets("user", userFlowLevelConfigs),
-    resolvedOrgId !== undefined
-      ? loadScopeContentByBuckets("org", orgFlowLevelConfigs)
-      : Promise.resolve<Record<string, string>>({})
+    loadScopeContentByBuckets("org", orgFlowLevelConfigs)
   ]);
 
   const initialSessionContent = normalizeScopeResourceContent(
@@ -1262,7 +1319,7 @@ export async function createExecutionContext<
   );
   const initialOrgContent = normalizeScopeResourceContent(
     orgFlowLevelConfigs,
-    resolvedOrgId !== undefined ? orgContentFromStore : undefined
+    orgContentFromStore
   );
 
   // Resource state lives in ResourceStateStore exclusively (FIX-689), the
@@ -1273,9 +1330,7 @@ export async function createExecutionContext<
   const [sessionStateFromStore, userStateFromStore, orgStateFromStore] = await Promise.all([
     loadScopeStateByBuckets("session", sessionFlowLevelConfigs),
     loadScopeStateByBuckets("user", userFlowLevelConfigs),
-    resolvedOrgId !== undefined
-      ? loadScopeStateByBuckets("org", orgFlowLevelConfigs)
-      : Promise.resolve<Record<string, VersionedResourceState>>({})
+    loadScopeStateByBuckets("org", orgFlowLevelConfigs)
   ]);
 
   const initialSessionState = normalizeScopeResources(
@@ -1288,7 +1343,7 @@ export async function createExecutionContext<
   );
   const initialOrgState = normalizeScopeResources(
     orgFlowLevelConfigs,
-    resolvedOrgId !== undefined ? toBareStates(orgStateFromStore) : undefined
+    toBareStates(orgStateFromStore)
   );
 
   // FIX-992: the version each key was read at, kept beside the state cache and
@@ -1297,8 +1352,7 @@ export async function createExecutionContext<
   // it is create-if-absent rather than a blind overwrite.
   const initialSessionVersions = toVersions(sessionStateFromStore);
   const initialUserVersions = toVersions(userStateFromStore);
-  const initialOrgVersions =
-    resolvedOrgId !== undefined ? toVersions(orgStateFromStore) : {};
+  const initialOrgVersions = toVersions(orgStateFromStore);
 
   // FIX-701 Wave 1: record the flow-eager preloads (content + state loaded in
   // the two parallel bursts above). These run before any block dispatch, so
@@ -2214,13 +2268,14 @@ export async function createExecutionContext<
     scope,
     scopeId,
     userId,
-    orgId: orgRef.current?.orgId ?? optionsOrgId,
+    orgId: orgRef.current?.orgId ?? resolvedOrgId,
     tenantId: options.tenantId,
     flowKind: flow.kind,
     signal: options.signal,
   });
 
   const userResources = createScopeResourceRegistry({
+    orgId: resolvedOrgId,
     scope: "user",
     scopeId: userId,
     configs: userResourceConfigs,
@@ -2236,6 +2291,7 @@ export async function createExecutionContext<
   });
 
   const sessionResources = createScopeResourceRegistry({
+    orgId: resolvedOrgId,
     scope: "session",
     scopeId: sessionKey,
     configs: sessionResourceConfigs,
@@ -2254,6 +2310,7 @@ export async function createExecutionContext<
     orgRef.current === undefined
       ? undefined
       : createScopeResourceRegistry({
+          orgId: resolvedOrgId,
           scope: "org",
           scopeId: orgRef.current!.orgId,
           configs: orgResourceConfigs,
@@ -3781,6 +3838,10 @@ export async function createExecutionContext<
     // round so a tool's `activeStatusMessage` does not linger past the
     // tool's lifetime.
     context._peekStatus = (): string => statusSlot.message;
+    // FIX-963: the awaited component emitter. Deliberately NOT on `ctx.emit`
+    // — `emit.component` stays `void`, and a caller that needs delivery to be
+    // observable asks for it by name.
+    context._emitComponentAwaited = createEmitComponentAwaited(activeEmCtx);
 
     Object.defineProperty(context, "sequencer", {
       enumerable: true,

@@ -9,6 +9,7 @@
  * `("user", "evil", ...)` which won't find a resource owned by another
  * user.
  */
+import { isValidOrgId } from "@flow-state-dev/core";
 import type {
   BlockDefinition,
   ScheduleConfig,
@@ -103,10 +104,21 @@ export function createResourceCollectionScheduleResolver(
     const block = blocks[state.kind];
     if (block === undefined) return null;
 
+    // The stored TARGET organization, and nothing else (BR-19, FIX-1442).
+    //
+    // Not the organization of the gateway that fired this beat, and not
+    // whichever organization the target user is currently acting as: a
+    // schedule is a standing instruction from the organization that created
+    // it, and both of those alternatives would let a fire land somewhere the
+    // creator never chose. A row written before schedules carried one has no
+    // target to validate, so it does not dispatch at all — it is quarantined
+    // until an operator attributes it, exactly like any other legacy record.
+    if (!isValidOrgId(state.orgId)) return null;
+
     const config: ScheduleConfig = {
       cron: state.cron,
       block,
-      principal: { userId: parsed.userId }
+      principal: { userId: parsed.userId, orgId: state.orgId }
     };
     if (state.input !== undefined) config.input = state.input;
     if (typeof state.timezone === "string") config.timezone = state.timezone;

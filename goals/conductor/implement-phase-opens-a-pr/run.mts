@@ -33,6 +33,7 @@
  * Run: pnpm tsx goals/conductor/implement-phase-opens-a-pr/run.mts
  */
 import { execFileSync } from "node:child_process";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -295,6 +296,7 @@ await runGoal(async () => {
 
     const call = async <T,>(action: string, input: unknown): Promise<T> => {
       const result = (await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: built.flow as never,
         actionName: action as never,
         input: input as never,

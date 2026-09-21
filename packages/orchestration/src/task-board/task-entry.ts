@@ -169,14 +169,29 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
   // The same recorders the inline drain composes, bound to this board's
   // collection. Reused rather than reimplemented: they own the ticket-fenced
   // write-back and the rule for when lease renewal stops.
+  // FIX-963 — the third settlement site, and the one with nowhere to defer to.
+  // There is no batch around this task and no drain tail to report at, so a
+  // recorder that cannot announce a committed write raises where it stands and
+  // fails the child run. Nothing is abandoned by that: there is no sibling here
+  // to protect. `recordError` refuses to let `onError` swallow the raise.
+  //
+  // This is also the recorders' default, so the option is redundant. It is
+  // passed anyway: the gate's raise is a property of the composition — no tail
+  // follows it — and stating it here is what makes that visible next to the
+  // `.rescue()` it travels through, rather than resting on a default one file
+  // away that a later change to the drain could be tempted to flip.
+  const recorderFailure = { onRecorderFailure: "raise" as const };
+
   const recordSuccess = createRecordSuccess({
     name: `${name}-gate-record-success`,
     collection: collectionFactory,
+    recorderFailure,
   });
   const recordError = createRecordError({
     name: `${name}-gate-record-error`,
     collection: collectionFactory,
     onError,
+    recorderFailure,
   });
 
   return (entry: ActionCore, target: string): ActionCore => {

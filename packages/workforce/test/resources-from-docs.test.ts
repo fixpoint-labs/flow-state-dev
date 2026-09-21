@@ -176,27 +176,29 @@ describe("resourcesFromDocs", () => {
   });
 
   /**
-   * Every file-declared document is org-scoped, and a flow does not derive its
-   * org requirement from a flow-level resource — `requiresOrg` is collected off
-   * the blocks. So a flow that installs documents and never declares
-   * `requireOrg` accepts a user-only request and then has no documents on it:
-   * the org registry is never built, and every ref resolves as unregistered.
+   * Every file-declared document is org-scoped.
    *
-   * The convention cannot close that from here (it is pure, and runs long
-   * before a principal exists), so it is documented instead — in the README, on
-   * the docs page, and on `resourcesFromDocs` itself. These specs are what make
-   * that instruction falsifiable: they run the real execution path and show
-   * both halves.
+   * This used to be a documented trap: a flow's org requirement was collected
+   * off its BLOCKS, so a flow that installed documents and never declared
+   * `requireOrg` would accept a user-only request, build no org registry, and
+   * resolve every document ref as unregistered. The convention could not close
+   * it — it is pure, and runs long before a principal exists — so it was
+   * written down in three places instead, and these specs made the instruction
+   * falsifiable by running both halves.
+   *
+   * FIX-1442 removes the trap rather than documenting it. Every request carries
+   * an organization, so the org registry is always built and a declared
+   * document always arrives. There is no longer a flag to get wrong, which is
+   * why the "declare requireOrg" half of this is gone.
    */
-  describe("a file-declared document needs an org identity to reach a block", () => {
+  describe("a file-declared document reaches a block with no declaration needed", () => {
     const documents = [doc("teams/engineering/handbook", {}, "QUARRY-3157")];
 
-    /** A flow whose block reads the handbook, with and without the documented flag. */
-    function buildFlow(declareRequireOrg: boolean) {
+    /** A flow whose block reads the handbook and declares nothing about orgs. */
+    function buildFlow() {
       const seen: string[] = [];
       const read = handler({
         name: "read-handbook",
-        ...(declareRequireOrg ? { requireOrg: true } : {}),
         execute: async (_input: unknown, ctx) => {
           try {
             seen.push(
@@ -212,38 +214,30 @@ describe("resourcesFromDocs", () => {
       return {
         seen,
         flow: defineFlow({
-          kind: `support-${declareRequireOrg ? "org" : "bare"}`,
+          kind: "support-docs",
           actions: { answer: { block: read } },
           resources: { ...resourcesFromDocs(documents) },
         }),
       };
     }
 
-    it("is not registered on a request that carries no org", async () => {
-      const { flow, seen } = buildFlow(false);
+    it("arrives with its own body on an ordinary request", async () => {
+      const { flow, seen } = buildFlow();
 
       await testFlow({ flow, action: "answer", input: {}, userId: "u1" });
-
-      expect(seen).toEqual([
-        'refused: Resource "teams/engineering/handbook" is not registered',
-      ]);
-    });
-
-    it("arrives with its own body once the request carries one", async () => {
-      const { flow, seen } = buildFlow(false);
-
-      await testFlow({ flow, action: "answer", input: {}, userId: "u1", seed: { org: {} } });
 
       expect(seen).toEqual(["QUARRY-3157"]);
     });
 
-    it("only demands an org when a block says so — installing documents does not", () => {
-      // The documented fix, and the reason it is needed: the flow-level
-      // resource map contributes nothing to `requiresOrg`, so the transport
-      // door has nothing to refuse an org-less request with until a block
-      // declares `requireOrg`.
-      expect(buildFlow(false).flow.requiresOrg).toBe(false);
-      expect(buildFlow(true).flow.requiresOrg).toBe(true);
+    it("arrives the same way when the harness seeds an org explicitly", async () => {
+      // The control for the case above: seeding the org changes nothing, which
+      // is what "no declaration needed" means. Before FIX-1442 these two
+      // returned different answers.
+      const { flow, seen } = buildFlow();
+
+      await testFlow({ flow, action: "answer", input: {}, userId: "u1", seed: { org: {} } });
+
+      expect(seen).toEqual(["QUARRY-3157"]);
     });
   });
 

@@ -5,6 +5,7 @@
  * re-dispatch a retry within the original tenant.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -42,6 +43,7 @@ async function run(
   opts: { tenantId?: string; by: number; requestId: string; seen?: { sessionIdentityId?: string } }
 ): Promise<void> {
   await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: buildCountingFlow(opts.seen),
     actionName: "run",
     input: { by: opts.by },
@@ -110,6 +112,7 @@ describe("tenant store-key isolation", () => {
 
     await expect(
       runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: buildCountingFlow(),
         actionName: "run",
         input: { by: 99 },

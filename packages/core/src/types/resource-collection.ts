@@ -41,6 +41,14 @@ export type CollectionHookContext = {
    * into a per-user schedule index).
    */
   scopeId: string;
+  /**
+   * The organization the execution that fired this hook was admitted under
+   * (FIX-1442). Server-derived, never the caller's — a hook that persists a
+   * binding for later trusted use (a dynamic schedule's target organization)
+   * takes it from here rather than from the state it was handed, which the
+   * caller wrote.
+   */
+  orgId: string;
 };
 
 export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {

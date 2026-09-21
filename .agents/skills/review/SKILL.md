@@ -129,6 +129,11 @@ branch/PR name), the target scope, intent, spec/brief version, and verification 
 Provide readable base/head source snapshots and a diff, including surrounding code
 and callers needed by the lenses; reviewers cannot use shell/git to recover them.
 Capture line counts for Restraint. Snapshot the relevant authority documents too.
+For spec-backed work, snapshot the canonical retained set, including `DOCS.md` and
+applicable `EVOLUTION.md`, exact predecessor anchors, and approved/merged revision
+provenance. Read current code/docs separately: historical intent is not shipped behavior.
+Check documentation publication, partial/multiple-predecessor evolution, and POC isolation
+through the existing lenses. Do not substitute a Linear mirror or superseded design.
 
 For a dirty working diff, include both the committed change and the complete
 staged/unstaged delta: capture `git diff --binary HEAD`, plus the bytes and paths of

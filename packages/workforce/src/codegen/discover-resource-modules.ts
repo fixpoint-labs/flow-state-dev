@@ -35,6 +35,7 @@ import path from "node:path";
 import {
   DOCUMENT_EXTENSION,
   IGNORED_ENTRIES,
+  REFERENCES_SLOT,
   RESOURCES_SLOT,
   WORKERS_LEVEL,
   classify,
@@ -42,6 +43,7 @@ import {
   openRoot,
   openStructuralDirectory,
   refusedSymlink,
+  siblingSlotPath,
   unreadable,
   walkTeams,
 } from "../loader";
@@ -249,11 +251,37 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
   // ONE ref between them, and a silent winner is the failure this convention
   // exists to remove — so the pair is refused here, where both names are in
   // hand, rather than by a second walk of Door A's tree.
-  const documents = new Set(
-    entries
-      .filter((entry) => entry.endsWith(DOCUMENT_EXTENSION))
-      .map((entry) => entry.slice(0, -DOCUMENT_EXTENSION.length)),
+  // Basename -> the path of the document file claiming it, so the refusal names
+  // the file an author has to go and change.
+  const documents = new Map<string, string>();
+  for (const entry of entries) {
+    if (!entry.endsWith(DOCUMENT_EXTENSION)) continue;
+    documents.set(entry.slice(0, -DOCUMENT_EXTENSION.length), `${slotPath}/${entry}`);
+  }
+
+  // **And the `references/` slot beside it**, which mints into the SAME
+  // namespace from a different folder. `references/handbook.md` and
+  // `resources/handbook.ts` at one level are one ref between them, exactly as
+  // two files in this folder are — the only difference is that the pair sits
+  // one directory apart, so the listing above cannot see it.
+  //
+  // Read here rather than by teaching the whole walk a second slot: modules
+  // live in `resources/` only, so what this door needs from `references/` is
+  // its basenames and nothing else. An absent or unreadable sibling is silent —
+  // the Markdown door reports that folder's own problems, and reporting them
+  // here too would double every entry in a tree with one bad slot. A resources/
+  // file wins the map only because it was inserted first; either path names a
+  // real claimant, and the pair is refused whichever is quoted.
+  const referenceSlotPath = siblingSlotPath(slotPath, RESOURCES_SLOT, REFERENCES_SLOT);
+  const siblings = await openStructuralDirectory(
+    path.join(path.dirname(slotDir), REFERENCES_SLOT),
+    referenceSlotPath,
   );
+  for (const entry of siblings.entries ?? []) {
+    if (!entry.endsWith(DOCUMENT_EXTENSION)) continue;
+    const name = entry.slice(0, -DOCUMENT_EXTENSION.length);
+    if (!documents.has(name)) documents.set(name, `${referenceSlotPath}/${entry}`);
+  }
 
   for (const entryName of entries) {
     if (IGNORED_ENTRIES.has(entryName)) continue;
@@ -296,9 +324,10 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
       continue;
     }
 
-    if (documents.has(name)) {
+    const claimant = documents.get(name);
+    if (claimant !== undefined) {
       ctx.problems.push(
-        `"${entryPath}" and "${slotPath}/${name}${DOCUMENT_EXTENSION}" both declare ` +
+        `"${entryPath}" and "${claimant}" both declare ` +
           `"${ref}" — a document and a module cannot share a ref`,
       );
       continue;

@@ -24,11 +24,11 @@ finds the conflicts and hands them back.
 > [`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)),
 > coherence is mostly built in *up front*, so this skill narrows to a **conformance check**
 > with a reduced procedure:
-> 1. **Read the current epic-spec first** — from the same source order `issue-spec`
->    uses: the `epic/<name>` branch head while the epic PR is open (else the Epic issue's
->    attached Linear document), plus the epic PR thread. The epic-agent may have folded in
->    feedback the issue specs haven't picked up yet; skip this and you can report "clean"
->    while the specs have drifted from the latest epic direction.
+> 1. **Read the current epic-spec first** at `specs/epics/<EPIC-ISSUE-ID>/`,
+>    using its approved review head before merge or `main` plus merged amendments after.
+>    Read the original PR for review history, not a Linear content mirror. Include `DOCS.md`,
+>    applicable `EVOLUTION.md`, and exact predecessor anchors; compare intent with current
+>    code/docs rather than assuming approved designs shipped.
 > 2. Check each issue spec **adheres** to the epic's objective, themes, and decisions.
 > 3. Flag **residual inter-spec conflicts** the epic didn't settle.
 >
@@ -42,8 +42,8 @@ finds the conflicts and hands them back.
 Aligning specs to each other only helps if each is already sound; cross-aligning to a spec
 that's still wrong propagates the flaw into its siblings. So the precondition is:
 
-- Every spec in the set has cleared its own spec-approval gate (the four documents present
-  and signed off — see `issue-spec`), **and**
+- Every spec has a revision-bound human approval for its five required documents and
+  applicable evolution (whether its original PR is open or merged), **and**
 - The user has explicitly approved running the cross-spec pass.
 
 The coordinator enforces this gate (it invokes this skill; see `epic-lifecycle` → "Cross-spec
@@ -51,12 +51,14 @@ coherence"). If invoked standalone, confirm both conditions before reading anyth
 
 ## What you're given
 
-The **spec set** — a list of issue IDs / spec PR#s. For each, read the current spec text
-(the spec PR head copy while the PR is open, else the Linear document — same reconciliation
-rule as `issue-implement` Step 1). Read the whole set: `SPEC.md` and `DECISIONS.md` carry the
-scope and decisions; `BUSINESS-RULES.md` the cases; `PLAN.md` the surfaces, sequence, and PR
-plan where most collisions live. Check the epic's `BUSINESS-RULES.md` too — the rules every
-child obeys, each with an owner, are what conformance is measured against.
+Read each current retained set at `specs/issues/<ISSUE-ID>/`: approved review head before
+merge, `main` and merged amendments afterward. Include rules, plan, `DOCS.md`, and
+applicable `EVOLUTION.md` as well as scope/decisions. Check shared epic documentation
+ownership, overlapping target operations, conflicting predecessor supersession, and
+compatibility promises. Partial supersession is not whole-spec replacement; dependencies
+are not supersession. Follow actual PR/Linear provenance for designs without repo files.
+The caller routes post-merge alignment through new amendment PRs from `main`, with
+renewed approval for material changes; never reopen or push an original merged PR.
 
 ## What to look for (across the set, not within one)
 

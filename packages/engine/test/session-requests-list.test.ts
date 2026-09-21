@@ -9,6 +9,7 @@
  * that completed before the view opened.
  */
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { handleListSessionRequests } from "../src/routes/session-routes";
 import { createInMemoryStores } from "../src";
 import type { FlowRegistry } from "../src/registry/flow-registry";
@@ -19,6 +20,7 @@ const registry = { get: () => undefined, list: () => [] } as unknown as FlowRegi
 
 function sessionRecord(id: string): SessionRecord {
   return {
+    orgId: DEFAULT_ORG_ID,
     id,
     flowKind: "demo",
     userId: "u1",

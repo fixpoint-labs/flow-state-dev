@@ -277,9 +277,9 @@ Usually that's the point — runs building on each other is what a session is
 for. It's also the only way one run reads another's partial work, so a flow
 that fans several agents out at once wants `run`.
 
-`user` and `org` fall back to the session when the context carries no user or
-org identity. An anonymous caller gets their own workspace rather than joining
-a shared one.
+`user` falls back to the session when the context carries no user identity, so
+an anonymous caller gets their own workspace rather than joining a shared one.
+An `org` workspace always has an organization to key on.
 
 ## Sync lifecycle
 

@@ -16,6 +16,7 @@
  * session.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -151,6 +152,7 @@ function run(
   sessionId = "s_sender"
 ) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName,
     input,

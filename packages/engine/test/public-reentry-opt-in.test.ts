@@ -24,6 +24,7 @@
  *   closed.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
@@ -60,6 +61,7 @@ async function seedFailedRequest(
   await stores.request.set(
     requestId,
     {
+    orgId: DEFAULT_ORG_ID,
       id: requestId,
       flowKind: "custom-transport",
       actionName: "run",

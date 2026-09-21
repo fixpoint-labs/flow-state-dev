@@ -25,6 +25,7 @@
  * turned off everywhere.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler, requireRequestHost } from "@flow-state-dev/core";
 import {
@@ -174,6 +175,7 @@ describe("liveness is not advertised on a runtime-only init (FIX-999)", () => {
     const runtime = await state.getRuntime();
 
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

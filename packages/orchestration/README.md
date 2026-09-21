@@ -328,6 +328,29 @@ reports `terminationReason: "retry-budget-exhausted"` alongside `counts.retries`
 the limit in force. See the
 [Task board guide](https://flow-state.dev/docs/orchestration/task-board).
 
+**When the board cannot record a result.** Saving a result is a commit followed by a
+change announcement, and the announcement can fail on its own. The board's two
+recorders correlate every result write (`beginTaskWrite` / `didWriteLand`, above) and
+report one that landed — or that they cannot account for — on a persisted
+`task-board-recorder-failure` component item carrying `{ collectionId, taskId,
+recorder: "complete" | "fail", verdict: "committed" | "undetermined", error, runId? }`.
+The drain then **fails the run**, after every other task has finished, with a
+`TaskBoardRecorderFailureError` (`code: "task-board-recorder-failure"`) naming every
+affected task; on a handed-off row, which has no batch to drain, the failure fails that
+child run instead. `onError` is not consulted on this path — it is a policy about a task
+going wrong, not about the board's bookkeeping. A write that demonstrably committed
+nothing is unchanged and still takes the ordinary error path. `verdict: "undetermined"`
+is the permanent answer on a caller-supplied `TaskCollectionRef`, and on rows that
+predate write provenance; such a row is also released rather than left claimed. If the
+report itself cannot be emitted, the run fails immediately with a
+`TaskBoardReportFailureError` instead. `task-board-recorder-failure` is excluded from
+per-task item attribution — it is the substrate's, not the worker's — and is suppressed in
+`chatAssistantRenderers`; an app with its own renderer registry should add
+`component: { "task-board-recorder-failure": false }`, as it already does for `task-change`.
+The recorders themselves (`createRecordSuccess` / `createRecordError`) **raise** a recorder
+failure by default; only a composition that supplies a tail able to read the report — which
+`taskBoard()`'s drain does — passes `recorderFailure: { onRecorderFailure: "defer" }`.
+
 #### Handing tasks off through a dispatcher seat
 
 A seat under `workers` is a block. Put a `dispatcher({ action, session })`
@@ -415,7 +438,9 @@ adopted }`, and a refused dispatch fails the row through the board's ordinary
 error path, throwing the same `DispatchRefusedError` (with its `refused` code)
 that a `dispatcher()` block throws. The child settles its own row, and the board's `onError` reaches it:
 `"skip"` settles the row and lets the child's request complete, `"fail"` also fails
-that request.
+that request. The one thing `onError` does not govern is the board failing to record
+what it saved — see the recorder-failure note under
+[taskBoard()](#taskboard) — which fails the child run under either setting.
 
 `taskBoard()` refuses a board that hands off unless all of these hold, naming the
 board and the fix:
@@ -527,6 +552,15 @@ choose the skills it holds. `toolSeatFence` is the host's ceiling: return the ke
 board worker may be seated with for this execution, and the seats are narrowed to
 them — an empty array means none. It only narrows, and it leaves the declared agent
 roster alone.
+
+A binding that contributes the catalog contributes all of it, never the subset a
+skill's `allowed-tools` names. It contributes the catalog when it preloads skills
+(`active`), when it installs the load tool (`dynamicActivation`), and when it
+pairs `activeState` with `allowed`; an `activeState` binding with neither
+contributes no catalog tools at all. `registerCatalogTools: false` turns that
+grant off while leaving the validation on, for a host that owns tool registration
+itself; pair it with `toolSeatFence` so a held skill's delegated workers cannot
+reach past the same fence.
 
 Every delegation board also gets an on-demand **default worker**: it materializes on
 demand and runs any task whose assignee is unset, so a task with no named agent still

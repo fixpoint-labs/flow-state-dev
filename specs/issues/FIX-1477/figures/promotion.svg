@@ -1,0 +1,63 @@
+<svg viewBox="0 0 940 340" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two hosts sit above one shared component. The devtool supplies its own row chrome — a copy-id button, a new-session button, the actions list — and kitchen-sink supplies its own; both draw their rows through one navigator shipped from the react package, which owns the grouping by kind, the cardinality branch, the fetch-on-leaf-expand rule and the shared selection. Below that, the client package owns the one session-list query that sends an instance id for a collection kind and a kind for a singleton. The devtool's own navigator folder is deleted, which is what makes this a promotion rather than a second copy.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .host  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .pkg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone{ fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/>
+    </marker>
+  </defs>
+
+  <text class="t-lbl" x="24" y="26">TWO HOSTS · EACH BRINGS ONLY ITS OWN SKIN</text>
+
+  <g id="devtool">
+    <rect class="host" x="120" y="38" width="330" height="82" rx="5"/>
+    <text class="t-b" x="134" y="60">packages/devtool</text>
+    <text class="t-s" x="134" y="78">copy-id · new session · refresh · actions list</text>
+    <text class="t-s" x="134" y="94">slate chrome, its own Button</text>
+    <text class="t-gone" x="134" y="112">its navigator/ folder is deleted</text>
+  </g>
+
+  <g id="kitchen-sink">
+    <rect class="host" x="486" y="38" width="330" height="82" rx="5"/>
+    <text class="t-b" x="500" y="60">apps/kitchen-sink</text>
+    <text class="t-s" x="500" y="78">CHANNELS and SEATS headings</text>
+    <text class="t-s" x="500" y="94">shadcn chrome, the app's own tokens</text>
+    <text class="t-gone" x="500" y="112">its session list is deleted</text>
+  </g>
+
+  <path class="arr" marker-end="url(#a)" d="M285 120 V158"/>
+  <path class="arr" marker-end="url(#a)" d="M651 120 V158"/>
+
+  <text class="t-lbl" x="24" y="152">SHIPPED ONCE</text>
+
+  <g id="react">
+    <rect class="pkg" x="120" y="162" width="696" height="76" rx="5"/>
+    <text class="t-b" x="134" y="184">@flow-state-dev/react · one navigator</text>
+    <text class="t-s" x="134" y="202">groups instances under their kind · derives depth from cardinality · fetches sessions on leaf expand only</text>
+    <text class="t-s" x="134" y="220">one selection · one flow-list read per host · rows and icons come in as slots, so it drags in no CSS framework</text>
+  </g>
+
+  <path class="arr" marker-end="url(#a)" d="M468 238 V266"/>
+
+  <g id="client">
+    <rect class="pkg" x="120" y="270" width="696" height="52" rx="5"/>
+    <text class="t-b" x="134" y="292">@flow-state-dev/client · the session-list query</text>
+    <text class="t-s" x="134" y="310">an instance id for a collection kind, a kind for a singleton — the one place that branch is written</text>
+  </g>
+</svg>

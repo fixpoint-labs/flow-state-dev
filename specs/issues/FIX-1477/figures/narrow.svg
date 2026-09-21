@@ -1,0 +1,67 @@
+<svg viewBox="0 0 940 320" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Three widths side by side. At full width the rail, the channel stream and the boards-and-roster panel all show. At large and below the boards and roster panel yields first and becomes a sheet opened from the header, while the rail and the stream keep their places. Below small the rail yields too and becomes a drawer, and the stream takes the whole column. The stream is the one region present at all three widths.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; } }
+    .frame { fill:none; stroke:var(--rule); stroke-width:1.2; }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .side  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .yield { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-n   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+  </style>
+
+  <g id="wide">
+    <text class="t-lbl" x="24" y="24">WIDE · ALL THREE</text>
+    <rect class="frame" x="24" y="36" width="286" height="160" rx="4"/>
+    <rect class="side" x="34" y="46" width="46" height="140" rx="3"/>
+    <text class="t-s" x="39" y="64">rail</text>
+    <text class="t-s" x="39" y="78">chan</text>
+    <text class="t-s" x="39" y="92">seats</text>
+    <rect class="keep" x="85" y="46" width="160" height="140" rx="3"/>
+    <text class="t-b" x="94" y="66">channel stream</text>
+    <text class="t-s" x="94" y="82">the turn stream</text>
+    <rect class="side" x="250" y="46" width="50" height="140" rx="3"/>
+    <text class="t-s" x="255" y="64">boards</text>
+    <text class="t-s" x="255" y="78">roster</text>
+    <text class="t-s" x="24" y="216">nothing has yielded</text>
+  </g>
+
+  <g id="lg">
+    <text class="t-lbl" x="328" y="24">LG AND BELOW · BOARDS YIELD FIRST</text>
+    <rect class="frame" x="328" y="36" width="286" height="160" rx="4"/>
+    <rect class="side" x="338" y="46" width="46" height="140" rx="3"/>
+    <text class="t-s" x="343" y="64">rail</text>
+    <text class="t-s" x="343" y="78">chan</text>
+    <text class="t-s" x="343" y="92">seats</text>
+    <rect class="keep" x="389" y="46" width="172" height="140" rx="3"/>
+    <text class="t-b" x="398" y="66">channel stream</text>
+    <text class="t-s" x="398" y="82">wider, unchanged</text>
+    <rect class="yield" x="568" y="46" width="36" height="34" rx="3"/>
+    <text class="t-g" x="580" y="68">≡</text>
+    <text class="t-g" x="328" y="216">boards and roster become a sheet</text>
+  </g>
+
+  <g id="sm">
+    <text class="t-lbl" x="632" y="24">BELOW SM · THE RAIL YIELDS TOO</text>
+    <rect class="frame" x="632" y="36" width="286" height="160" rx="4"/>
+    <rect class="yield" x="642" y="46" width="36" height="34" rx="3"/>
+    <text class="t-g" x="654" y="68">≡</text>
+    <rect class="keep" x="686" y="46" width="222" height="140" rx="3"/>
+    <text class="t-b" x="695" y="66">channel stream</text>
+    <text class="t-s" x="695" y="82">still the whole column</text>
+    <text class="t-g" x="632" y="216">the rail becomes a second drawer</text>
+  </g>
+
+  <g id="order">
+    <text class="t-n" x="24" y="254">1 · boards and the roster yield first — a board is something you go and look at, not something you watch.</text>
+    <text class="t-n" x="24" y="276">2 · the rail yields second — the channel you are in is named in the header; the list of the others is navigation.</text>
+    <text class="t-n" x="24" y="298">3 · the channel stream never yields — an app whose stream collapses has stopped demonstrating the thing it exists to demonstrate.</text>
+  </g>
+</svg>

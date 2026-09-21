@@ -7,6 +7,7 @@
  *   - minimal: no observability snapshots
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { StateSnapshotItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
@@ -51,6 +52,7 @@ function getSnapshots(items: unknown[]): StateSnapshotItem[] {
 async function runWithLevel(level: "verbose" | "normal" | "minimal") {
   const response = createResponseEmitter({ requestId: `req_${level}` });
   await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: buildThreeStepFlow(),
     actionName: "run",
     input: {},

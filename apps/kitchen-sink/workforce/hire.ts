@@ -7,8 +7,13 @@
  * from the `teams/` folders. Adding a kind means adding a file and re-running
  * the command — there is no second place to edit.
  *
- * Deliberately isolated: this subtree is the whole of the app's Layer 2 usage,
- * and nothing in `flows/` or `app/` reaches into it.
+ * This subtree is the whole of the app's Layer 2 usage. Nothing in `flows/` or
+ * `app/` reaches into it; the one edge out is `fsdev.config.ts`, which awaits
+ * the hire below and spreads the seats into the map it serves. That edge is
+ * what makes the demonstration real — until it existed the bundler never
+ * resolved `workforce.gen.ts`'s imports, so the claim this tree exists to
+ * prove (a generated module of static imports survives a production build)
+ * was asserted and untested (FIX-1429).
  */
 import {
   defineAgentWorkerFlow,
@@ -47,6 +52,18 @@ const { capabilities } = splitResourceModules(resourceModules);
  */
 const agent = defineAgentWorkerFlow({ uses: capabilities, catalog: blocks });
 
+/**
+ * The kinds a seat may be hired into — generated, plus the built-in `agent`
+ * carrying this tree's capabilities and tool catalog.
+ *
+ * Exported because a runtime hire and the boot reload must hire against the
+ * SAME map the file-declared roster does. Calling `defineAgentWorkerFlow` a
+ * second time elsewhere would build a *different* kind under the same name, so
+ * a seat hired over `workforce-admin` would carry a different tool catalog from
+ * its file-declared neighbours for no reason anyone stated.
+ */
+export const kitchenSinkKinds = { ...kinds, agent };
+
 /** This directory — the workforce root, read at run time the way Markdown always is. */
 export const workforceRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -84,7 +101,7 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
     // `seatBlocks` registers what each worker's own folder holds, for that
     // worker alone. It grants nothing: a seat still names the block in its
     // `tools:` before the model can call it.
-    seats: hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks }),
+    seats: hireWorkforce(workers, { kinds: kitchenSinkKinds, seatBlocks }),
     errors: [
       ...errors.map((e) => e.path),
       ...skillErrors.flatMap((seat) => seat.errors.map((e) => e.path)),

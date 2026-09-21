@@ -8,6 +8,7 @@
  * in-memory stores, mirroring the FIX-811 suspension-resume suite.
  */
 import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
@@ -129,6 +130,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { which: "a" },
@@ -196,6 +198,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -259,6 +262,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { n: 21 },
@@ -304,6 +308,7 @@ describe("router decision cannot be honored on resume (FIX-814)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -358,6 +363,7 @@ describe("router decision cannot be honored on resume (FIX-814)", () => {
 
     const { stores, provider } = createDurableStores();
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

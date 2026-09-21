@@ -20,6 +20,7 @@
  * `stateChanges`.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores, type StoreRegistry, toBareStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
@@ -439,7 +440,7 @@ async function preSeedSessionWithTuple(
       id: sessionId,
       flowKind: commitFlow.kind,
       userId: "test-user",
-      orgId: undefined,
+      orgId: DEFAULT_ORG_ID,
       title: "NVDA · 2026-05-06 · fast · fixture",
       // Tuple keys live flat on the record's metadata bag — matching the real
       // app's `createSession({ metadata: tuple })`. `findSessionForTuple` reads
