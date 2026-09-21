@@ -282,6 +282,8 @@ Firing removes the seat, not its history. Sessions, state and resources it wrote
 
 The roster is organization-scoped, so that `getOptional` is also the fence. Another organization's seat has no row here, and neither does a seat declared in a `WORKER.md` file; both come back undefined and are refused.
 
+**The release step is not fenced the way the row check is.** `releaseSeat` unregisters whatever currently holds the address, whether or not this action is what put it there. If you also declare seats in files, and one of them could end up at an address a hire once used, keep a record of which addresses your hire action registered and release only those.
+
 ## What is stored, and where
 
 One row per seat, at `workforce/roster/<seatId>`, in the organization's scope. It is read through the same storage adapter as everything else the app persists, so a Postgres-backed app keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.
