@@ -16,16 +16,21 @@
  * was asserted and untested (FIX-1429).
  */
 import {
+  channelBoardIds,
+  channelInstances,
   defineAgentWorkerFlow,
+  defineChannelFlow,
   hireWorkforce,
   splitResourceModules,
+  type ChannelManifest,
 } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
-import { blocks, kinds, resourceModules, seatBlocks } from "./workforce.gen";
+import notify from "./channel-notify";
+import { blocks, channelKinds, kinds, resourceModules, seatBlocks } from "./workforce.gen";
 
 /**
  * What a `.ts` file in a `resources/` folder turned into.
@@ -67,9 +72,22 @@ export const kitchenSinkKinds = { ...kinds, agent };
 /** This directory — the workforce root, read at run time the way Markdown always is. */
 export const workforceRoot = dirname(fileURLToPath(import.meta.url));
 
-/** One hired seat, plus what the loader could not read. */
+/** One hired seat, the channels the tree declared, plus what the loader could not read. */
 export interface HiredWorkforce {
   seats: FlowInstance[];
+  /**
+   * One instance per DISTINCT channel kind the roster selected — never one per
+   * channel. Register these beside the seats; a channel is a named session on
+   * the instance its `CHANNEL.md` selected.
+   */
+  channelFlows: FlowInstance[];
+  /**
+   * The channel records themselves, handed back so the caller can open them
+   * once the runtime exists. Opening needs a session client, and there is no
+   * session client until the FlowState is built — so this module builds the
+   * instances and the caller opens the sessions.
+   */
+  channels: ChannelManifest[];
   /**
    * Everything the loader could not read, by path — from **all three** of its
    * error channels, not just the worker one.
@@ -97,15 +115,36 @@ export interface HiredWorkforce {
  */
 export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
   const { workers, errors, skillErrors, teamErrors } = await readWorkforce(workforceRoot);
+  const { channels, errors: channelErrors } = await readChannelsDirectory(workforceRoot);
+
+  // The generated map, plus the built-in under the key the binder seeds. No
+  // kind of this app's own is named here: `channelKinds` carries whatever
+  // files live under `flows/channels/`, and `channel` is the framework's own
+  // seed, rebuilt only to give it this app's fan-out block.
+  const channelFlows = channelInstances(channels, {
+    kinds: { ...channelKinds, channel: defineChannelFlow({ notify }) },
+  });
+
   return {
     // `seatBlocks` registers what each worker's own folder holds, for that
     // worker alone. It grants nothing: a seat still names the block in its
     // `tools:` before the model can call it.
-    seats: hireWorkforce(workers, { kinds: kitchenSinkKinds, seatBlocks }),
+    //
+    // `channelBoards` is what lets the hire say which declared board no seat
+    // drains. Without it the check has no roster to read and says nothing —
+    // which is the silence this app ships to make visible.
+    seats: hireWorkforce(workers, {
+      kinds: kitchenSinkKinds,
+      seatBlocks,
+      channelBoards: channelBoardIds(channels),
+    }),
+    channelFlows,
+    channels,
     errors: [
       ...errors.map((e) => e.path),
       ...skillErrors.flatMap((seat) => seat.errors.map((e) => e.path)),
       ...teamErrors.map((e) => e.path),
+      ...channelErrors.map((e) => e.path),
     ],
   };
 }
