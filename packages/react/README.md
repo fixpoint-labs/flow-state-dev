@@ -379,9 +379,11 @@ function ChatBubble({ item }: { item: MessageItem }) {
 
 Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
-### Workforce components
+### FlowNavigator
 
-`FlowNavigator` browses your flow kinds and their sessions. It brings no CSS framework and no icon set — style it with CSS custom properties and fill it through slots. Navigator depth is read from each flow's declared `cardinality`; there is no depth prop. The flow listing carries no organization, so the navigator is not organization-scoped.
+`FlowNavigator` is a sidebar that browses the flows registered on your server, the instances under them, and each instance's sessions. Reach for it when your app has more than one conversation to switch between and you would otherwise build that list yourself.
+
+You give it sections. A section is a label and a set of flow kind names, so an app that declares a channel kind of its own adds that name to the same list.
 
 ```tsx
 import { FlowNavigator } from "@flow-state-dev/react";
@@ -391,11 +393,20 @@ import { FlowNavigator } from "@flow-state-dev/react";
     { label: "Channels", kinds: ["channel"] },
     { label: "Seats",    kinds: ["agent"] },
   ]}
-  onSelectSession={setSessionId}
+  selectedSessionId={sessionId}
+  onSelectSession={(picked) => setSessionId(picked)}
 />
 ```
 
-A section is a label and a set of kind names and nothing else, so an app that declares a channel kind of its own adds that name to the same list. Sessions are read only when a leaf opens — a singleton kind, or one instance of a collection kind — so opening a kind row asks your server for nothing. Pass your own `client` and `sessionClient` when your deployment authenticates, so every read carries the transport you already configured.
+How deep the tree goes comes from each flow's declared `cardinality`. A flow declared `singleton` is a single instance and sits as one row. A flow declared `collection` has many addressable copies, and its row expands into them.
+
+`onSelectSession(sessionId, flow)` fires when a session row is picked. The second argument describes the instance that session was listed under: `{ kind, address, cardinality }`, where `address` is the kind name for a singleton and the instance id for one copy of a collection. Selection is yours to keep; pass it back as `selectedSessionId` to mark the current row.
+
+Sessions load when you open a single flow instance, which is a singleton's row or one copy under a collection. Expanding a collection row to see its copies costs no request.
+
+The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
+
+The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.
 
 ### Presentational components moved to `@flow-state-dev/ui`
 

@@ -111,20 +111,24 @@ const requests = await sessions.listSessionRequests("sess_1", {
 
 ### Listing one flow's sessions
 
-How a flow's sessions are filed depends on how the flow was declared, so `sessionQueryFor` builds the filter for you from the flow list you already have:
+Where a flow's sessions are filed depends on how the flow was declared, so `sessionQueryFor` reads the flow list and builds the right filter:
 
 ```ts
-import { createClient, createSessionClient, sessionQueryFor } from "@flow-state-dev/client";
+import { createClient, sessionQueryFor } from "@flow-state-dev/client";
 
-const flows = await createClient({ flowKind: "chat", userId }).listFlows();
+const userId = "user_42";
+const flows = await createClient({ flowKind: "chat", userId, baseUrl: "/api" }).listFlows();
 
+// `sessions` is the session client created above.
 const rows = await sessions.listSessions({
   ...sessionQueryFor("engineer-a", flows),
   userId,
 });
 ```
 
-A `cardinality: "collection"` flow has many addressable copies, so a copy's sessions are filed under its exact id. A `cardinality: "singleton"` flow is one instance whose address is its kind, so its sessions are filed under the kind. Exactly one of the two filters is returned, never both — the server intersects them, so sending both narrows the listing to rows that agree on both. An address the flow list does not carry reads as a singleton.
+A `cardinality: "collection"` flow has many addressable copies, so a copy's sessions are filed under its exact id. A `cardinality: "singleton"` flow is one instance whose address is its kind, so its sessions are filed under the kind. An address the flow list does not carry reads as a singleton.
+
+You get back exactly one key: `{ flowId: address }` for a copy of a collection flow, `{ flowKind: address }` otherwise. Spread it into `listSessions` alongside whatever else you are filtering by.
 
 ### Child sessions
 
@@ -261,7 +265,7 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 - `createRecoveryClient(options)` — Sweep stale requests and retry interrupted/failed ones
 - `createResourceClient(options)` — Resource content fetch, CRUD, paginated state reads, and manifest
 - `client.abortRequest(requestId)` — Signal the server to abort an in-progress request
-- `sessionQueryFor(address, flows)` — The session-listing filter for one flow address
+- `sessionQueryFor(address, flows)` — Build the `listSessions` filter (`flowId` or `flowKind`) for one flow address
 - `ClientHttpError` — Typed HTTP error class
 
 ### Resource client methods (collections)
