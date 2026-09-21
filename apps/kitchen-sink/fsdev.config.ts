@@ -249,6 +249,10 @@ export const hiredRosterReload: { seats: string[]; problems: string[] } = {
   // there is no org-filtered read path to inherit. Here that is every org this
   // deployment has a record for; `orgId` rather than `id`, since the record's
   // id is a storage key that carries the flow when org state is isolated.
+  // Deliberately every stored org, not just the ones with a configured admin
+  // credential: a hired seat should keep running after its org's token is
+  // rotated out of `WORKFORCE_ADMIN_TOKENS`, since firing it is a separate act
+  // from revoking who can hire and fire.
   const orgIds = [
     ...new Set((await runtime.stores.org.list()).map((record) => record.orgId)),
   ].sort();

@@ -68,8 +68,15 @@ function stubRegistrar(options: { refuse?: boolean } = {}) {
  * is how every successful hire in this file first failed with "the workforce
  * registrar has not been installed". The flow's own resolver is never
  * exercised through `runAction` (that is transport-level), so it does not
- * matter that the module evaluated before the env was stubbed; V9 and V10 call
- * `adminPrincipalResolver()` directly, and it re-reads the env each call.
+ * matter that the module evaluated before the env was stubbed.
+ *
+ * Two different lifetimes are in play here, and only one of them is what V9
+ * and V10 exercise. Calling `adminPrincipalResolver()` directly — which is
+ * what V9 and V10 do — re-reads the env on that call, so stubbing the env
+ * first and calling it after sees the stub. The resolver `flow.ts` actually
+ * wires in (`resolvePrincipal: adminPrincipalResolver()`) is called once, at
+ * module evaluation, and closes over whatever the env held at that moment;
+ * changing the env afterwards does not reach an already-imported flow.
  */
 function adminFlow(): FlowInstance {
   return workforceAdminFlow as FlowInstance;

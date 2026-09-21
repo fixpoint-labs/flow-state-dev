@@ -23,7 +23,7 @@
  */
 
 import { timingSafeEqual } from "node:crypto";
-import { PrincipalResolutionError } from "@flow-state-dev/engine";
+import { extractBearerToken, PrincipalResolutionError } from "@flow-state-dev/engine";
 import type { ResolvePrincipalFn } from "@flow-state-dev/core/types";
 
 /** The env var holding `<org>:<token>` pairs. */
@@ -67,17 +67,6 @@ export function adminCredentialConfigured(): boolean {
   return configuredTokens().size > 0;
 }
 
-/** The organizations that have an admin credential — what the boot reload enumerates from. */
-export function configuredAdminOrgs(): string[] {
-  return [...new Set(configuredTokens().values())].sort();
-}
-
-function bearerToken(header: string | null): string | null {
-  if (header === null) return null;
-  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-  return match === null ? null : match[1]!.trim();
-}
-
 /** Constant-time compare that does not leak length through an early return. */
 function matches(given: string, expected: string): boolean {
   const a = Buffer.from(given, "utf8");
@@ -103,7 +92,7 @@ export function adminPrincipalResolver(): ResolvePrincipalFn | undefined {
 
   return (context) => {
     const header = context.request?.headers?.get("authorization") ?? null;
-    const token = bearerToken(header);
+    const token = extractBearerToken(header);
     if (token === null) {
       throw new PrincipalResolutionError(
         "workforce-admin requires an admin credential: send `Authorization: Bearer <token>`.",
