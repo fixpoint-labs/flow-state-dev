@@ -3,9 +3,8 @@
  *
  * The drill-down itself is `FlowNavigator`, shipped from
  * `@flow-state-dev/react`. What lives in this file is the tool's SKIN — a
- * handful of CSS custom properties — and the four affordances that are the
- * tool's own: copy a copy's id, refresh a list, start a session, and see what
- * actions a flow declares.
+ * handful of CSS custom properties — and the three affordances that are the
+ * tool's own: copy a copy's id, refresh a list, and start a session.
  *
  * There is no grouping, no cardinality branch, no fetch-on-leaf-expand rule
  * and no read fence here, because a second copy of any of them is the defect
@@ -25,8 +24,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
-  ChevronDown,
-  ChevronRight,
   Copy,
   Inbox,
   Plus,
@@ -169,8 +166,7 @@ function CopyInstanceId({ flowId }: { flowId: string }) {
 }
 
 /**
- * The strip above an open leaf's sessions: refresh, start one, and what the
- * flow declares.
+ * The strip above an open leaf's sessions: refresh, and start one.
  *
  * The failed and empty states are the navigator's and are not repeated here —
  * it draws its own retry line and its own "no sessions yet", and a second copy
@@ -231,10 +227,7 @@ function LeafToolbar({
         refresh={refresh}
         sessionRefreshKey={sessionRefreshKey}
       />
-      <div className="flex items-center gap-1 py-1">
-        <span className="flex-1 truncate text-[10px] font-medium uppercase text-slate-500">
-          Sessions
-        </span>
+      <div className="flex items-center justify-end gap-1 py-1">
         <Button
           variant="ghost"
           size="sm"
@@ -264,50 +257,7 @@ function LeafToolbar({
           {error}
         </p>
       )}
-      <DeclaredActions actions={leaf.entry?.actions ?? []} />
     </>
-  );
-}
-
-/**
- * What the flow declares it can be asked to do.
- *
- * Read off the leaf's own flow-list entry — the one the navigator drew the row
- * from — rather than looked up in a second copy of the flow list, which can
- * disagree with the row beside it.
- *
- * Collapsed by default. It is reference material sitting above the list an
- * operator is actually scanning, and a flow declaring a dozen actions would
- * otherwise push the sessions off a 256px rail.
- */
-function DeclaredActions({ actions }: { actions: readonly string[] }) {
-  const [open, setOpen] = useState(false);
-  if (actions.length === 0) return null;
-
-  return (
-    <div>
-      <button
-        type="button"
-        className="flex w-full items-center gap-1 rounded px-2 py-0.5 text-left text-[10px] font-medium uppercase text-slate-500 hover:bg-slate-800/60"
-        aria-expanded={open}
-        onClick={() => setOpen((previous) => !previous)}
-      >
-        {open ? (
-          <ChevronDown className="h-3 w-3 shrink-0" />
-        ) : (
-          <ChevronRight className="h-3 w-3 shrink-0" />
-        )}
-        <span>
-          {actions.length} action{actions.length === 1 ? "" : "s"}
-        </span>
-      </button>
-      {open &&
-        actions.map((action) => (
-          <div key={action} className="px-2 py-0.5 pl-6 text-xs text-slate-400">
-            {action}
-          </div>
-        ))}
-    </div>
   );
 }
 

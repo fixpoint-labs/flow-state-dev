@@ -61,14 +61,6 @@ export type FlowNavigatorKindGroup = {
    * collection kind, whose leaves are its instances.
    */
   readonly leaf: FlowNavigatorLeaf | null;
-  /**
-   * The flow-list entry `leaf` was built from, so a slot filling that leaf can
-   * read what the flow DECLARES — its actions, whether it requires a user —
-   * rather than reading the flow list a second time to find out. `null`
-   * alongside a `null` leaf, for the same reason: a collection kind's entries
-   * are its instances, and each instance row carries its own.
-   */
-  readonly entry: FlowListEntry | null;
 };
 
 /** One section's rows. */
@@ -122,13 +114,12 @@ export function groupFlowsIntoSections(
         : "singleton";
 
       return cardinality === "collection"
-        ? { kind, cardinality, instances: entries, leaf: null, entry: null }
+        ? { kind, cardinality, instances: entries, leaf: null }
         : {
             kind,
             cardinality,
             instances: [],
             leaf: { kind, address: entries[0]?.id ?? kind, cardinality },
-            entry: entries[0] ?? null,
           };
     });
 

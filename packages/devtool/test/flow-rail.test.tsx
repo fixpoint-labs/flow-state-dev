@@ -276,7 +276,7 @@ describe("the tool's own transport survives the move (BR-29)", () => {
   });
 });
 
-describe("the tool's four affordances, as slots", () => {
+describe("the tool's three affordances, as slots", () => {
   it("copies a copy's id from beside the row, without opening it", async () => {
     const writeText = vi.fn();
     vi.stubGlobal("navigator", { ...globalThis.navigator, clipboard: { writeText } });
@@ -303,7 +303,6 @@ describe("the tool's four affordances, as slots", () => {
     await click(kindRow("engineer"));
     await click(instanceRow("engineer-a"));
     await waitFor(() => expect(screen.queryByTitle("New session")).toBeTruthy());
-    await click(screen.getByRole("button", { name: /2 actions/ }));
 
     const nested = Array.from(document.querySelectorAll("button, a[href]")).filter(
       (el) => el.parentElement?.closest("button, a[href]") != null,
@@ -323,29 +322,6 @@ describe("the tool's four affordances, as slots", () => {
 
     await waitFor(() => expect(sessionCalls()).toHaveLength(2));
     expect(onRefreshActiveSession).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows what the flow declares, read off the row's own entry", async () => {
-    mount();
-    await waitFor(() => expect(kindRow("engineer")).toBeTruthy());
-    await click(kindRow("engineer"));
-
-    // engineer-b FIRST, and alone: it declares none, so nothing about actions
-    // is on screen. Opening it second would leave its peer's disclosure open
-    // beside it and the absence would be unprovable.
-    await click(instanceRow("engineer-b"));
-    await waitFor(() => expect(screen.queryByTitle("New session")).toBeTruthy());
-    expect(screen.queryByRole("button", { name: /action/ })).toBeNull();
-
-    // Its same-kind peer declares two. A lookup by KIND rather than by the
-    // opened row's own entry would have given both rows the same answer, which
-    // is the mistake a second flow-list read invites.
-    await click(instanceRow("engineer-a"));
-    const disclosure = await screen.findByRole("button", { name: /2 actions/ });
-    expect(screen.queryByText("inspect")).toBeNull();
-    await click(disclosure);
-    expect(screen.getByText("inspect")).toBeTruthy();
-    expect(screen.getByText("halt")).toBeTruthy();
   });
 
   it("starts a session on the copy the row names, and lists it", async () => {
