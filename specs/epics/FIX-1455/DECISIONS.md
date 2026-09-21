@@ -3,8 +3,9 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The calls that sit above any single issue. Six of them are locks the epic body and the Architect
-already made — they are recorded here so no child reopens them, not re-argued. **One is new:
-[D7](#d7)**, what the app's persistent rail is for. That is the one to read.
+already made — they are recorded here so no child reopens them, not re-argued. **Two are new:
+[D7](#d7)**, what the app's persistent rail is for, and **[D8](#d8)**, how you browse the
+workforce inside it. Those are the two to read.
 
 ## The tree
 
@@ -18,6 +19,8 @@ flowchart TD
   D5 -.->|"rejected"| X5["a Workforce UI package beside react"]
   E --> D7["D7 · the rail becomes the workforce"]
   D7 -.->|"rejected"| X7["a fourth column · a channels tab"]
+  D7 --> D8["D8 · one navigator, depth from cardinality"]
+  D8 -.->|"rejected"| X8["two navigators · a fixed three-level tree"]
 ```
 
 D3, D4 and D6 are vocabulary and invent-kill locks with no live alternative; they are cards
@@ -69,7 +72,7 @@ on. Then this epic returns to design and POC and the fence goes back up.
 |---|---|
 | **Instead of** | A third "Workforce UI" package beside `react` and `client` · leaving the components in the app and letting readers copy files |
 | **Because** | The rebuild's value is that it can be imported, not that it can be admired. A shape that needs kitchen-sink-specific plumbing to work is a design finding for FIX-1477's spec, not a licence to leave it in the app |
-| **Locks in** | **Inline** = renders from the session's item stream. **Resource-backed** = subscribes to a standing collection outside it. The split names the **source** a region reads, never how long its content lives: the items are durable, so an inline region still shows earlier channel turns and already-resolved approvals after a reload. **Where each ships:** Workforce-specific chrome — the channel list, the seat list, the roster, board columns — from `react` / `client`; generic conversation and item rendering from the `@flow-state-dev/ui` registry the app already consumes through `components/flow-state/`. `ui` is an existing package, not a third Workforce UI package, so routing to it satisfies [ER-9](BUSINESS-RULES.md) rather than breaching it. Kitchen-sink defines no UI API of its own; if it has to, that is a cross-cutting question and comes up here. **A component ships once.** Any component Labs or another consumer would also need is exported from its one package and imported there — not copied, and not re-exported through a second package. Two copies of a component with one behaviour is the same defect as a kitchen-sink-only UI API, reached from the other side |
+| **Locks in** | **Inline** = renders from the session's item stream. **Resource-backed** = subscribes to a standing collection outside it. The split names the **source** a region reads, never how long its content lives: the items are durable, so an inline region still shows earlier channel turns and already-resolved approvals after a reload. **Where each ships:** Workforce-specific chrome — the navigator over channels and seats ([D8](#d8)), the roster, board columns — from `react` / `client`; generic conversation and item rendering from the `@flow-state-dev/ui` registry the app already consumes through `components/flow-state/`. `ui` is an existing package, not a third Workforce UI package, so routing to it satisfies [ER-9](BUSINESS-RULES.md) rather than breaching it. Kitchen-sink defines no UI API of its own; if it has to, that is a cross-cutting question and comes up here. **A component ships once.** Any component Labs or another consumer would also need is exported from its one package and imported there — not copied, and not re-exported through a second package. Two copies of a component with one behaviour is the same defect as a kitchen-sink-only UI API, reached from the other side |
 
 <a name="d6"></a>
 ## D6 · Patterns is shed as a dependency, and never bridged to seats
@@ -87,24 +90,51 @@ on. Then this epic returns to design and POC and the fence goes back up.
 |---|---|
 | **Instead of** | A fourth column for channels · a tab strip inside the existing rail · a `/workforce` route beside `/` |
 | **Because** | The app has exactly one persistent region and it is spent on a session list. A fourth column does not fit — the centre already loses its minimum below `sm`, and the right panel is 280–700px on its own. A tab strip hides whichever half you are not looking at, which is the opposite of a reference. A separate route says the workforce is a subsystem you visit, when the claim is that it is the app. Sessions do not disappear: a channel's history *is* the session list, scoped |
-| **Locks in** | The rail is org → channels → **seat list**. The right panel holds boards and **the roster**, and stops being conditional on build mode. Three children build against those regions: FIX-1476 fills the channel half of the rail, FIX-1475 fills the roster, FIX-1477 ships the components for both. Reversible cheaply until FIX-1477 merges, and not after |
+| **Locks in** | The rail is org → **channels and seats**, browsed through the one navigator [D8](#d8) settles — not a flat list of either. The right panel holds boards and **the roster**, and stops being conditional on build mode. **FIX-1477 renders every region**; the other two supply what fills them — FIX-1476 the channel and board convention and its data, FIX-1475 the durable roster. One owner for everything that renders is what keeps the three from finishing in a circle. Reversible cheaply until FIX-1477 merges, and not after |
 
-![Today's shell beside the rebuilt shell, aligned region for region: a 256 pixel rail holding a session list becomes a rail holding the org's channels and its seat list; the centre column keeps the turn stream and loses its six-control strip; the build-mode-only artifact panel becomes a standing boards and roster panel](figures/shell-before-after.svg)
+![Today's shell beside the rebuilt shell, aligned region for region: a 256 pixel rail holding a flat session list becomes a rail holding one navigator over the org's channel kinds and seat kinds — a singleton channel kind opening straight into its sessions, a collection seat kind opening into its seats and then into each seat's sessions; the centre column keeps the turn stream and loses its six-control strip; the build-mode-only artifact panel becomes a standing boards and roster panel](figures/shell-before-after.svg)
 
 Read it by column width, not by label. The rail keeps its width and changes its content; the
 right panel stops being conditional on a mode. The centre survives unchanged, because the turn
 stream is the one thing the app already gets right.
 
-**The roster has one home: the right panel.** The rail carries a *seat list* — names and presence,
-read from the same collection, and navigation into the roster rather than a second copy of it.
-The two words are not interchangeable and the figure draws the difference: the rail shows bare
-seat names while `BOARDS + ROSTER` is the panel. A child that renders roster detail in the rail,
-or a bare name list in the panel, has breached this card and not merely styled it differently.
+**The roster has one home: the right panel.** The rail carries the **seats half of the navigator**
+— seat kinds, the instances under them, and the sessions under an instance, read from the same
+collection and drilled through. It is navigation into the roster, not a second copy of it. The two
+are not interchangeable and the figure draws the difference: the rail shows seat names you drill
+through while `BOARDS + ROSTER` is the panel. A child that renders roster detail in the rail, or a
+bare name list in the panel, has breached this card and not merely styled it differently.
+**Drilling is not roster detail** — an expanded seat shows that seat's sessions, which is
+navigation, and nothing about its load, its boards or its persona ([D8](#d8)).
 
-**What would change my mind:** a rendered narrow-width pass showing the rail cannot hold channels
-and a seat list together without one of them becoming a scroll-within-a-scroll. Then the seat list
-leaves the rail entirely — the rail is channels only, and seats are reached through the panel's
-roster. It does not move the roster, which is already there.
+**What would change my mind:** a rendered narrow-width pass showing the rail cannot hold the
+channels half and the seats half together without one of them becoming a scroll-within-a-scroll.
+Then the seats half leaves the rail entirely — the rail is channels only, and seats are reached
+through the panel's roster. It does not move the roster, which is already there.
+
+<a name="d8"></a>
+## D8 · One navigator, and its depth is read from the flow's cardinality
+
+| | |
+|---|---|
+| **Instead of** | Two navigators, one per concern — FIX-1476 builds the channel one, FIX-1477 builds the seat one, and they diverge by the end of the first week · a hard-coded three-level tree, which is wrong for every channel · a `/workforce` route to hang a browser off, which [D7](#d7) already rejected · rebuilding the drill-down from scratch when [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) shipped it in the devtool and it is Done |
+| **Because** | The app has to browse flows that *have* instances: the kinds in the rail, the instances under a kind that has them, and that instance's sessions when you click in. The framework already answers *how deep* and the answer is one field. `FlowCardinality` is `"singleton" \| "collection"` (`packages/core/src/types/flow.ts`), and `resolveInstanceId` (`packages/core/src/flow/defineFlow.ts`) makes a `collection` flow demand an explicit instance id while a `singleton` defaults its id to its kind. A hired seat is a collection instance — `packages/workforce/src/agent-worker-flow.ts` declares `cardinality: "collection"` and `hireWorkforce()` returns one `FlowInstance` per seat, keyed by its manifest id. A channel kind is a singleton — `packages/workforce/src/channel/channel-flow.ts` declares it and states the rule in the same breath: *one kind is one instance, and a hundred channels are a hundred sessions on that one instance*. **The asymmetry is the whole point.** Seats are three levels — kind → seats → sessions. Channels are two — kind → sessions — because a channel **is** a session on a singleton instance. **A fake middle level for channels is an invent-kill**, not a tidiness preference: a uniform three-level tree would draw a single-node level above every channel list, inventing an instance the framework does not have. Two navigators are the same mistake from the other side — they encode the asymmetry twice and drift. Nobody declares which: `FlowListEntry` carries `id`, `kind` and `cardinality` out of `@flow-state-dev/client`, and the session list already branches on exactly that field — `packages/devtool/src/react/hooks/use-sessions.ts` sends `{ flowId }` for a collection and `{ flowKind: flowId }` for a singleton |
+| **Locks in** | **One navigator component, parameterized by kind, deriving its depth from the flow's declared cardinality.** The rail hosts it, for channels and for seats alike. **FIX-1477 builds it — and integrates both halves of the rail with it; FIX-1476 consumes it** — the seam [ER-7](BUSINESS-RULES.md) already owns, sharpened rather than a new row, so no owner moves in the matrix. *Consuming* here means FIX-1476's convention is rendered through the navigator, **not** that FIX-1476 writes rail code: it ships no rail UI at all. Splitting the rendering between them is what put the two issues in a completion cycle in an earlier draft of [PLAN.md](PLAN.md). It ships from the client packages under [D5](#d5) (Workforce chrome → `react` / `client`) and is **resource-backed** in D5's sense: it reads the standing flow and session collections, never one session's item stream. **Depth is derived, never declared by the consumer.** A `depth` or `levels` prop — even a kitchen-sink-only one — is the invent-kill under [ER-9](BUSINESS-RULES.md) reached from a new side: it lets the app hold an opinion the framework already holds, and the first kind whose cardinality changes makes the app wrong and silent about it. **Two filters are fine; two implementations are not** — the rail may mount the component once with internal `CHANNELS` and `SEATS` sections, or mount it twice with different `kinds` filters, and FIX-1477 picks which. What it may not do is grow a second component per concern, because two wrappers called `ChannelList` and `SeatList` are the outcome this card exists to prevent, reached by renaming rather than by arguing. **The navigator is not org-scoped, and this epic does not make it so.** Verified on `origin/main`: the flow list is the global registry (`packages/engine/src/routes/http-handlers.ts` ≈381–397, and `FlowListEntry` carries no org), `ListSessionsOptions` has no org filter (`packages/client/src/session-client/sessions.ts` ≈31–38), `handleListSessions` filters by flow, user and **tenant** only (`packages/engine/src/routes/session-routes.ts` ≈58–72), and **the org is missing from the listing shape, not from the system**: `SessionSummary` has no `orgId` (`packages/client/src/types/index.ts` ≈132–147) while `SessionDetail` extends it and adds one (same file, ≈152–153), and a session is stamped with an org at create time (`session-routes.ts` ≈192, derived from the principal per BP-031). That is what makes this a **listing-contract gap rather than a data-model gap** — and why post-filtering is not a workaround: a navigator would have to fetch detail per session to learn the org, which is the N+1 on the exact path the lazy-load note in [PLAN.md](PLAN.md) exists to prevent. The precise consequence, stated no wider than the code supports: `handleListSessions` filters by **tenant and user**, so the exposure is **between organizations inside a single tenant**, not across tenants — a user whose sessions span two orgs in one tenant sees both under one kind. **Org-scoped flow and session inventory is a prerequisite, and it is not in this set** — it is [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486), filed against the engine/client substrate under the *Framework simplification & cleanup* project, which **blocks FIX-1477's org-aware behaviour only**. It sits alongside [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) (*org is never optional*, a flat related issue with no sub-issues), not under it. Both are consumed rather than owned here ([ER-17](BUSINESS-RULES.md)). The navigator ships tenant-scoped and `DOCS.md` says so in its limits; it does **not** publish an `orgId` prop the stack cannot honour, because a reference app that documents a silently-failing filter inverts the objective this set exists for. **Reversible cheaply until FIX-1477 merges**; after that it is a published component API with consumers outside this repo ([ER-24](BUSINESS-RULES.md)) |
+
+**A promotion of the drill-down; the kind level above it is new work.** Spine item 3 is lifting a
+proven pattern out of the devtool into packages people can import — but *proven* covers two of the
+three levels, not all three, and overselling that is how a real cost goes unbudgeted. FIX-1324
+shipped the **instance → sessions drill-down and the cardinality branch**, and those come across
+whole. The **grouping level above them is new**: today's navigator list is deliberately flat over instances —
+*"two copies of one kind are two rows here"* (`packages/devtool/src/react/components/navigator/flow-list.tsx`)
+— so gathering rows under their kind is the part FIX-1477 adds. The navigator pattern exists in
+`packages/devtool` only; `packages/client` and `packages/react` have no instance-list surface today,
+which is why this is a promotion rather than a re-export.
+
+**What would change my mind:** the same narrow-width evidence [D7](#d7) names, one level lower — a
+rendered pass showing three levels of indentation cannot be read in a 256px rail. Then the rail
+stops at kind → instances and a seat's sessions are reached from the panel, which costs the rail a
+level and costs the card nothing else: the depth is still derived, and it is still one component.
 
 ## Who owns what
 
@@ -146,6 +176,13 @@ are the ones that bind three children each, and an owner moving there moves a fi
   rewrite** — the name list, the explicit per-seat drain, the unattended warning and the single
   factory are all still locked — and FIX-1476 writes the demo kinds as real
   `flows/channels/*.ts` files rather than labels.
+- **[D8](#d8) was stamped by the Architect on the amendment PR**
+  ([#1986](https://github.com/fixpoint-labs/flow-state-dev/pull/1986)), which settled three
+  things so no child reopens them: the seam is **ER-7's already** — FIX-1477 builds, FIX-1476
+  consumes — and needs no rule of its own; a consumer-declared **depth or `levels` prop** is
+  [ER-9](BUSINESS-RULES.md) seen from another side; and D8 **extends** [D7](#d7) rather than
+  superseding it. `FlowNavigator` stands as a placeholder name for FIX-1477 to settle. **This is
+  a review stamp, not the gate** — the amendment still waits on the owner's sign-off.
 - **A channel running a kind of its own cannot hold boards.** `boards:` is refused by name on a
   custom kind, because boards belong to the built-in channel kind
   ([channels.md](../../../apps/docs/docs/workforce/channels.md)). FIX-1476's worked example has
@@ -246,3 +283,20 @@ superseder when the four are closed.
   [`EVOLUTION.md`](EVOLUTION.md). The owner's two answers were folded: the durability proof
   scoped to runtime hire (ER-2 and ER-22 amended), and the five stale tickets split. The shell
   narrative was trimmed to epic altitude with its figures retained for FIX-1477.
+- **Merged, then amended — D8 (Sep 21)** — the set merged at
+  [`10d5eb9b`](https://github.com/fixpoint-labs/flow-state-dev/commit/10d5eb9b11155f1991574114a651c87c22581731)
+  on [PR #1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978), which is the review
+  record and is never reopened. One amendment followed, from fresh `main` on
+  [PR #1986](https://github.com/fixpoint-labs/flow-state-dev/pull/1986): [D8](#d8), the fourth
+  cross-cutting call, answering what D7 left unstated — how you get from a kind to an instance
+  to a session. **One navigator, depth read from the flow's declared `cardinality`.** It
+  **extends** D7 rather than superseding it, so no owner moved: [ER-7](BUSINESS-RULES.md)
+  carries the navigator and [ER-9](BUSINESS-RULES.md) gains the prohibition on a
+  consumer-declared depth, rather than a new rule being minted. Three review passes folded — the
+  Architect stamped it, Cursor approved the direction, and Codex found two structural problems:
+  an `orgId` prop the listing contract cannot honour (removed, and the tenant-scoped limit
+  stated instead, with [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) filed outside
+  this set), and a completion cycle between FIX-1476 and FIX-1477 (broken by giving FIX-1477
+  every rendering surface). The lineage is in [EVOLUTION.md](EVOLUTION.md)'s post-merge table.
+  **D8 is pending the owner's sign-off**; until #1986 merges, the set on `main` is the authority
+  and D8 is a proposal.

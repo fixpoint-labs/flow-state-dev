@@ -22,9 +22,12 @@ boards ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)), inventory
 *ship* work behind both; as of 2026-09-20 that fence is lifted ([D1](DECISIONS.md#d1)). The
 cost of waiting is not a missing demo. The argument for building the file convention the way we
 did is that it survives a production build, and the only app that could test that claim never
-imports the generated module: after a real `pnpm build`, `desk-clerk` and `desk-note` appear in
-**0** compiled chunks against **5** each for the three wired kinds (FIX-1429). The reference app
-is where that claim is either true or merely asserted.
+imported the generated module: after a real `pnpm build`, `desk-clerk` and `desk-note` appeared
+in **0** compiled chunks against **5** each for the three wired kinds. The reference app is
+where that claim is either true or merely asserted — and on
+[#1989](https://github.com/fixpoint-labs/flow-state-dev/pull/1989) it is now **true**: FIX-1429
+wires the module in, both kinds compile into **3** chunks each, and the goal check
+`code-comes-from-files-alone` moved off `NOT RUN` to **PASS** — the set's first proven goal.
 
 ## What's in the box
 
@@ -38,38 +41,46 @@ keeps it a *consumer*: nothing in this epic ships an API that only kitchen-sink 
 
 The app has two routes and one persistent region: a 256px rail spent entirely on a session
 list. There is no channel list, no seat roster and no board anywhere in it. That is the
-real-estate contest this epic resolves, and the one call the epic body had not already made.
-[D7](DECISIONS.md#d7) makes it, and pins the before-and-after beside the card. The regions
-themselves — their hooks, their tags, their narrow-width order — are FIX-1477's, under
+real-estate contest this epic resolves, and the calls the epic body had not already made.
+[D7](DECISIONS.md#d7) makes it, and pins the before-and-after beside the card.
+[D8](DECISIONS.md#d8) makes the second half of it: what fills the rail is **one navigator**, and
+how deep it drills is read from each flow's declared `cardinality` rather than declared by the
+app — which is why seats are three levels and channels are two. The regions themselves — their
+hooks, their tags, their narrow-width order — are FIX-1477's, under
 [ER-7](BUSINESS-RULES.md).
 
-## The set · as of 2026-09-20
+## The set · as of 2026-09-21
 
 This table is the live one. It is refreshed on the epic PR as issues move; the plan and the
 figures point here rather than repeating it.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · **bug** | The file-declared workforce demo is served over the app's real HTTP route | Nothing else in the set can stand on a workforce the app never loads. It is also the only row that tests the file convention against a real build | Backlog · direct route, no spec PR |
-| [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | A team hired at runtime — its seats and roster — survives a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | Backlog · blocked by FIX-1429 |
-| [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | The shipped channel pair — a kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | Backlog |
-| [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | Backlog |
-| [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478) | `@flow-state-dev/patterns` dropped as a kitchen-sink dependency where Workforce covers it | A reference app teaching two recipes for one job teaches neither | Backlog |
+| [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · **bug** | The file-declared workforce demo is served over the app's real HTTP route | Nothing else in the set can stand on a workforce the app never loads. It is also the only row that tests the file convention against a real build | **In Review** · [PR #1989](https://github.com/fixpoint-labs/flow-state-dev/pull/1989) · goal PASS · direct route, no spec PR |
+| [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | A team hired at runtime — its seats and roster — survives a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | Ready to Spec · blocked by FIX-1429; unblocks when #1989 merges · spec not started |
+| [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | The shipped channel pair — a kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | Ready to Spec · held pending D8’s sign-off |
+| [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages — including the one navigator the rail hosts ([D8](DECISIONS.md#d8)), and every region that renders, both halves of the rail included | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | Ready to Spec · held pending D8’s sign-off |
+| [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478) | `@flow-state-dev/patterns` dropped as a kitchen-sink dependency where Workforce covers it | A reference app teaching two recipes for one job teaches neither | **In Spec Review** · [PR #1988](https://github.com/fixpoint-labs/flow-state-dev/pull/1988) · collapse trigger contested |
 
-0 done · 0 in flight · 5 not started. Four are substance and one (FIX-1429) is a bug the set
-stands on. **Is five really four?** FIX-1478 is the row to weigh: shedding patterns changes no
-behaviour a user can see, and the audit could ride along inside FIX-1477. It stays separate
-because it is the only row whose deliverable is a *deletion*, and deletions that ride along with
-a feature are the ones that get dropped when the feature runs long. Its collapse trigger: if the
-audit finds fewer than three surfaces with an honest Workforce path, fold the remainder into
-FIX-1477's PR and close it.
+0 done · 2 in flight · 3 not started. Four are substance and one (FIX-1429) is a bug the set
+stands on — and it is the row that has already proven the claim in *why now*.
+
+**Is five really four?** FIX-1478 is the row to weigh: shedding patterns changes no behaviour a
+user can see, and the audit could ride along inside FIX-1477. It stays separate because it is
+the only row whose deliverable is a *deletion*, and deletions that ride along with a feature are
+the ones that get dropped when the feature runs long. Its collapse trigger — *fold into FIX-1477
+if the audit finds fewer than three surfaces with an honest Workforce path* — **has an answer,
+and the answer is under challenge.**
+[#1988](https://github.com/fixpoint-labs/flow-state-dev/pull/1988) counts four and reads the
+trigger as not fired; a review there argues the four are hypothetical rather than shipped, which
+would fire it. **Unsettled until that recount lands**; the row stays separate meanwhile.
 
 ## How the issues flow into each other
 
 ```mermaid
 flowchart LR
   A["FIX-1429 · serve the file-declared demo"] -->|"a workforce the app actually loads"| B["FIX-1475 · durable hire"]
-  C["FIX-1476 · channels and boards"] -->|"boards to render"| D["FIX-1477 · UI package split"]
+  C["FIX-1476 · channels and boards"] -->|"channels and boards to render"| D["FIX-1477 · UI package split"]
   B -->|"a roster to render"| D
   E["FIX-1478 · patterns shed"] -->|"the freed control row"| D
   W3["FIX-1351 · W3 floor"] -.->|"seats, channels, skills on disk"| A
@@ -109,6 +120,14 @@ other rows' surfaces as they land.
    kitchen-sink store.** If wrong: a fifth config persistence layer exists and the reference app
    teaches it. This is an invent-kill from the epic body, restated because it is the one a child
    is most likely to breach quietly.
+
+**Amendment, pending sign-off — [D8](DECISIONS.md#d8): one navigator, and its depth is read from
+the flow's declared `cardinality`.** The three items above were approved as they stand and are not
+reopened. D8 is the fourth cross-cutting call and the only thing this amendment asks for: the app
+has to browse flows that *have* instances, D7 gave the rail a flat seat list, and left unstated
+FIX-1476 and FIX-1477 would each have built half of a browser, differently. If wrong: two
+navigators that diverge, or a depth the app declares and the framework contradicts. Reversible
+cheaply until FIX-1477 merges, and not after. Read the card and its asymmetry before signing.
 
 **Open: none.** Both questions were answered by the owner on 2026-09-20
 ([PR #1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978#issuecomment-5753189267)),
