@@ -57,9 +57,9 @@ takes only a restart."*, add:
 > the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that.
 > `ada-wren` is a two-member channel with no `flow:` line, because a direct message is not a kind
 > of its own — it is a channel with two members in it. Ada works the desk and Wren runs the board
-> the desk's work lands on, so the two have things to say to each other. Post there and the other
-> member hears about it and you do not, which is true of every channel here: nobody is notified of
-> their own post.
+> the desk's work lands on, so the two have things to say to each other. Post there as yourself
+> and the other member hears about it and you do not — true of every channel here, not just this
+> one. A post that does not say who wrote it goes to everyone, because there is nobody to skip.
 > `noticeboard` is the case that *is* different:
 > it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only
 > the most recent lines. A kind of your own cannot hold a board, which is why the boards are on
@@ -92,7 +92,10 @@ takes only a restart."*, add:
 > that caller, and this app configures no authentication, so it is the framework's default. A
 > session's organization is fixed when the session is created and re-opening cannot move it, so
 > if you add authentication, open the channels as a caller whose verified identity already
-> carries the organization you want them in.
+> carries the organization you want them in — **and give the boot's session client credentials
+> your resolver accepts.** Once a resolver is configured, the caller named in the request body is
+> ignored in favour of the resolved identity, so an uncredentialed boot either fails or opens the
+> channels as somebody else.
 
 **Corrected after merge.** This paragraph used to tell an adopter to set an organization in
 `workforce/org.ts`. There is no such file and no such option — [D5](DECISIONS.md#d5). The

@@ -13,7 +13,7 @@ flowchart TD
   D1 -.->|"rejected"| X1["three kind clones: dm, topic, workstream"]
   I --> D2["D2 · three channels, because one cannot show both halves"]
   D2 -.->|"rejected"| X2["one channel · a fourth channel per shape"]
-  D2 --> D6["D6 · REVERSED by the owner · two seats, and no post notifies its author"]
+  D2 --> D6["D6 · REVERSED by the owner · two seats, and a post skips its named author"]
   D6 -.->|"declined"| X6["delete the channel · amend the published page · a silent DM"]
   D6 -.->|"refused, and why is written down"| X7["a dm kind: membership is not workflow"]
   I --> D3["D3 · the drain rides its own worker kind; one board is unattended"]
@@ -80,7 +80,8 @@ about. The measurement and the timeline are in
 |---|---|
 | **Instead of** | *(moot)* One exported constant in `workforce/org.ts` · enumerating orgs from the store · dropping `boards:` so no org is needed. All three answer a question the framework now answers first |
 | **Because** | `OpenChannelsOptions` is `{ client, userId }` — there is no `orgId` field to pass and no guard to satisfy (`packages/workforce/src/channel/channel-binder.ts:113`). The binder's own comment: *"The binder no longer takes an `orgId` at all, and never did have the authority to choose one."* A session's organization comes from the identity the server resolved for the caller, and an app that configures no `resolvePrincipal` gets the framework's `DEFAULT_ORG_ID` — *"the organization every unauthenticated single-organization deployment runs under"* (`packages/core/src/types/auth.ts:38`). A board therefore always has an address |
-| **Locks in** | **No `workforce/org.ts`, and no file in the app naming an organization.** What the app does name is the **caller** — the one identity `openChannels` still takes, as `userId` — in `fsdev.config.ts` beside the open ([S6](PLAN.md#surfaces)). An adopter who adds authentication does not set a value; they open the channels as a caller whose verified identity already carries the organization they want, because a session's organization is fixed at creation and re-opening cannot move it ([BR-11](BUSINESS-RULES.md), [DOCS.md](DOCS.md) §2) |
+| **Locks in** | **Scoped to the channel path, and only there: no `workforce/org.ts`, and no `orgId` argument anywhere in the channel-opening path.** It says nothing about the rest of the app — kitchen-sink names organizations in 38 places across 7 files (the workforce-admin flow, the boot reload, their tests), all of it org-aware code that predates this issue and none of it this issue's to touch. What the app *does* name on the channel path is the **caller** — the one identity `openChannels` takes, as `userId` — in `fsdev.config.ts` beside the open ([S6](PLAN.md#surfaces)) |
+| **And one limit on that, which the owner should see** | *"Open the channels as a caller whose verified identity carries the organization you want"* holds **only while the app is on the framework's default resolver.** `openChannels` names its caller through the request body, and the session route takes `ctx.principal?.userId ?? getString(body.userId)` (`packages/engine/src/routes/session-routes.ts:178`) — so **the moment an adopter configures `resolvePrincipal`, the named caller is ignored** unless the boot client also sends credentials that resolver accepts. [S6](PLAN.md#surfaces) carries that requirement. This does not rescue the old constant, which the framework no longer accepts at all — but it does mean the replacement instruction is thinner than this card first claimed, and it **sharpens rather than answers** the open question in [SPEC.md](SPEC.md) sign-off 1: a reference app that genuinely demonstrates multi-organization channels needs a real principal resolver, which is a separate issue |
 
 **What this costs a reader.** The spec used to tell an adopter to control the organization by
 setting a constant. It now tells them to control it by choosing the caller. Those are different
@@ -182,12 +183,18 @@ rather than merely unverified.
 4. **The real fix stays named.** Verified per-member identity in `packages/workforce` would let
    the skip compare a proven value and would close the gap in (2) properly. It is a framework
    change, so [D1](#d1) and [PLAN.md → Guardrails](PLAN.md#guardrails) put it **out of scope
-   here**; it is filed separately rather than folded in. **If it lands, this card is re-argued
+   here**; it is filed as **FIX-1493** rather than folded in. **If it lands, this card is re-argued
    rather than re-derived** — the property in [BR-16](BUSINESS-RULES.md) does not change, only
    the field it compares.
 
 [BR-16](BUSINESS-RULES.md) states the property and [V13](PLAN.md#the-checks) grades the
 observable outcome, so neither has to move when (4) happens.
+
+**And the hole this leaves is a rule, not a footnote.** `author` is *optional*, so a post that
+names none has nobody to exclude and every member is notified — the poster included. That is
+[BR-16a](BUSINESS-RULES.md#the-dm), with its own leg in [V13](PLAN.md#the-checks), because an
+exception carried only in prose is how an unconditional-sounding rule survives without ever being
+tested against its own worst case. FIX-1493 is what closes it.
 
 ## Considered and dropped
 
