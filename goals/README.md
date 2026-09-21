@@ -48,6 +48,7 @@ A title (`<describe> › it <behaviour>`), then the fields, then a verdict log. 
 - **Anti-game** (required) — what a hollow pass would look like, and what the check must therefore **not** assert on. If you can't name a way to fake it, the goal is mechanism-shaped, not outcome-shaped — rework it. This is the most important field.
 - **Model** — for a model-backed goal, the real model id (never a mock); use `openai/gpt-5.4-mini` unless the goal needs a stronger one. For a **model-free** goal (real path, no LLM — e.g. suspend/resume, CRUD persistence), state `n/a` (or `none`) here — that is a valid, well-formed goal, not a malformed one, and it needs no model credential.
 - **Run** — the exact command.
+- **Controls** — any `GOAL_CONTROL=<name>` runs this goal understands, and the legs each must fail. Omit if the goal has none.
 - **Verdict log** — a table, one row per run: date, commit, model, verdict, notes. This is what makes the goal a regression record. Append; don't overwrite.
 
 ## Script techniques
@@ -65,13 +66,21 @@ What separates a goal check from a dressed-up unit test:
 
 ## Proving a check can fail
 
-The **Anti-game** field says what a hollow pass would look like. Producing that state is how you find out whether the check actually catches it. Break the code the check covers, run it, and read the failure — if it stays green, or fails for a different reason than you expected, the check is not grading what its name claims.
+[BP-003](../docs/contributing/best-practices.md) says a check you cannot make fail has verified nothing. **Anti-game** names the hollow pass; this is how a goal produces it.
 
-This is worth doing because checks that cannot fail are the common case, not the rare one. A leg that asserts `!== null` on a row written at file time passes before the worker ever runs. A leg that mounts a component with nothing expanded never exercises the read it was written for. Both look like coverage.
+Checks that cannot fail are the common case, not the rare one. A leg asserting `!== null` on a row written at *file* time passes before the worker ever runs. A leg that mounts a component with nothing expanded never exercises the read it exists for. Both look like coverage.
 
-**Commit before every mutation, and revert only the file you mutated.** `git restore .` and `git checkout -- .` in a mutation loop have destroyed uncommitted work twice here. The second time was the dangerous shape: the fix and the mutation lived in the same file, so a revert that looked successful silently threw away the fix and kept the tree green. There is no warning and no recovery, and the outcome is indistinguishable from a clean revert.
+**Prefer a named control over an ad-hoc mutation.** A control is a flag the run already understands, so the red state is reproducible by anyone, on any checkout, without touching the tree:
 
-Record the result where a later reader will find it. If a leg has no isolating red state — a mutation that fails it also fails a neighbour — say so in `goal.md` rather than leaving the next reader to treat the co-failure as a leak.
+```bash
+GOAL_CONTROL=by-name pnpm tsx goals/channel-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
+```
+
+`run.mts` reads `process.env.GOAL_CONTROL` and passes it to the harness, which degrades the one behaviour the control names. Declare each one in `goal.md` under **Controls**, with the legs it must fail — *"Must FAIL, and must name legs (d)/(e) rather than leg 0"* — because a control that fails the wrong leg is itself a check that cannot fail. Record the run in the **Verdict log** as a `FAIL (expected)` row with what it printed.
+
+**When no control fits, mutate the code — and commit first.** `git restore -- <path>` on the one file you touched, never `git restore .` or `git checkout -- .`. The trap is a fix and a mutation living in the same uncommitted file: the revert looks successful, keeps the tree green, and throws the fix away.
+
+**Say when a leg has no isolating red state** — when the mutation that fails it also fails a neighbour. Put it in the **Verdict log** notes or **Anti-game**, so the next reader reads the co-failure as a known property rather than a leak.
 
 ## The shared library (`goals/lib`)
 
