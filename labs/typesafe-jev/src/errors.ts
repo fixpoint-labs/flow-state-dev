@@ -1,5 +1,5 @@
 /**
- * Failures from the evaluate call, the System 2 fallback, or host config.
+ * Failures from the evaluate call or host config.
  * Extends FlowError so `code` survives engine normalization.
  */
 
@@ -12,11 +12,12 @@ export type TypeSafeErrorCode =
   | "invalid_state"
   | "unexpected_answer"
   | "http"
-  | "invalid_response";
+  | "invalid_response"
+  | "unsupported_model";
 
 /**
  * Typed failure for the evaluator. `missing_api_key` means the host did
- * not supply a Gateway / TypeSafe / language-model credential.
+ * not supply a Gateway / TypeSafe credential for a string model id.
  */
 export class TypeSafeError extends FlowError {
   override readonly code: TypeSafeErrorCode;

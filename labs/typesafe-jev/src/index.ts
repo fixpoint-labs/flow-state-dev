@@ -9,9 +9,9 @@
  *   createSystemOneSkillClassifier — optional skill-activator tier 3
  *   createSystemOneMemoryDecision — sketch: optional memory classifier
  *
- * Prefer AI SDK `experimental_evaluate` (Gateway / Jev) when the model
- * is evaluation-capable; fall back to System 2 structured output when
- * it is not. Not a published package. No OpenRouter Decisions client.
+ * Thin wrap of AI SDK `experimental_evaluate`. Prefer Jev. Accept any
+ * evaluation-capable model string or `evaluationModel(...)` instance.
+ * Not a published package. No OpenRouter Decisions. No generator+Zod shim.
  */
 
 export {
@@ -203,25 +203,14 @@ export {
 } from "./skill-classifier";
 export {
   hasEvaluateCredentials,
-  hasSystem2Credentials,
   isEvaluationCapable,
-  type EvaluateMode,
+  resolveEvaluateModel,
 } from "./capability";
 export { asTypeSafeState, runEvaluate, runTypeSafeDecision } from "./run-evaluate";
 export type { RunEvaluateOptions } from "./run-evaluate";
-export {
-  formatSystem2Prompt,
-  structuredAnswersSchema,
-  structuredToAnswers,
-  system2Evaluate,
-  type GenerateStructuredFn,
-  type StructuredAnswers,
-  type System2EvaluateOptions,
-} from "./system-2";
 export { fromSdkResult, toSdkQuestions } from "./sdk-map";
 export {
   DEFAULT_EVALUATE_MODEL,
-  DEFAULT_SYSTEM2_MODEL,
   DEFAULT_TYPESAFE_MODEL,
   answerSchema,
   answersSchema,

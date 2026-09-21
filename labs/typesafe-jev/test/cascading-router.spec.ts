@@ -10,7 +10,6 @@ import {
 } from "../src/cascading-flow";
 import { cascadeGateOpen } from "../src/cascading-router";
 import type { TypeSafeEvaluateOutput } from "../src/schemas";
-import type { StructuredAnswers } from "../src/system-2";
 import { scriptedClient } from "./scripted-client";
 
 const TICKET = {
@@ -148,19 +147,20 @@ describe("cascadingRouter", () => {
     expect(result.selectedRoute).toBe("review");
   });
 
-  it("still compiles a tree on the System 2 path with synthetic confidence", async () => {
-    const block = createCascadingTriageRouter({
-      mode: "system-2",
-      generate: async ({ prompt }): Promise<StructuredAnswers> => {
-        if (prompt.includes("How urgent")) {
-          return { urgency: { type: "choice", choice: "low" } };
-        }
-        return { department: { type: "choice", choice: "billing" } };
+  it("takes ambiguous when an LM adapter omits confidence and probabilities", async () => {
+    const { client, calls } = scriptedClient({
+      model: "gpt-5.4-mini",
+      path: "evaluate",
+      answers: {
+        department: { type: "choice", choice: "billing" },
       },
     });
-    const result = await testRouter(block, { input: TICKET });
+    const result = await testRouter(createCascadingTriageRouter({ client }), {
+      input: TICKET,
+    });
     expect(result.error).toBeNull();
-    expect(result.selectedRoute).toBe("billing-queue");
+    expect(result.selectedRoute).toBe("review");
+    expect(calls).toHaveLength(1);
   });
 
   it("fail-closes a gate when confidence is absent", () => {

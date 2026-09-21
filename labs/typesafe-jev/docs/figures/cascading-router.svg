@@ -119,5 +119,5 @@
   <path class="fail" d="M152 510 H430"/>
   <path class="fail" d="M248 510 H430"/>
 
-  <text class="muted" x="36" y="690" font-size="12">System 2 still compiles the tree: a definite structured choice carries synthetic confidence 1. Absent confidence still fail-closes.</text>
+  <text class="muted" x="36" y="690" font-size="12">LM adapters (openai.evaluationModel, …) omit TypeSafe confidence and choice/score distributions. Those edges fail-closed — never guess.</text>
 </svg>

@@ -67,8 +67,6 @@ export interface SystemOneRouterConfig<
    */
   minConfidence?: number;
   model?: unknown;
-  fallbackModel?: string;
-  mode?: "evaluate" | "system-2";
   apiKey?: string;
   client?: EvaluateClient;
 }
@@ -175,8 +173,6 @@ export function systemOneRouter<
           [SYSTEM_ONE_ROUTE_QUESTION]: choice(instructions, criteria),
         },
         model: config.model,
-        fallbackModel: config.fallbackModel,
-        mode: config.mode,
         apiKey: config.apiKey,
         client: config.client,
       });

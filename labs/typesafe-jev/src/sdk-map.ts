@@ -106,11 +106,10 @@ function fromSdkAnswer(
     return { type: "boolean", probability: raw.probability };
   }
   if (raw.type === "choice") {
-    const probabilities = raw.probabilities ?? { [raw.choice]: 1 };
     return {
       type: "choice",
       choice: raw.choice,
-      probabilities,
+      ...(raw.probabilities !== undefined ? { probabilities: raw.probabilities } : {}),
       ...(confidence !== undefined ? { confidence } : {}),
     };
   }
@@ -122,7 +121,7 @@ function fromSdkAnswer(
     type: "score",
     score: raw.score,
     legend,
-    probabilities: raw.probabilities ?? {},
+    ...(raw.probabilities !== undefined ? { probabilities: raw.probabilities } : {}),
     ...(confidence !== undefined ? { confidence } : {}),
   };
 }

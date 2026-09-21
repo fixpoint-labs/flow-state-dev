@@ -38,8 +38,6 @@ export interface IndexBlockOptions {
   client?: EvaluateClient;
   apiKey?: string;
   model?: unknown;
-  fallbackModel?: string;
-  mode?: "evaluate" | "system-2";
   collectionKey?: string;
   schemaVersion?: number;
   minConfidence?: number;

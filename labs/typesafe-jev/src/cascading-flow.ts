@@ -9,7 +9,6 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { cascadingRouter } from "./cascading-router";
 import type { EvaluateClient } from "./client";
-import type { GenerateStructuredFn } from "./system-2";
 
 export const CASCADING_FLOW_KIND = "cascading-triage";
 
@@ -30,9 +29,6 @@ export interface CascadingTriageOptions {
   client?: EvaluateClient;
   apiKey?: string;
   model?: unknown;
-  fallbackModel?: string;
-  mode?: "evaluate" | "system-2";
-  generate?: GenerateStructuredFn;
 }
 
 function leaf(path: CascadeOutput["path"]) {
@@ -60,9 +56,6 @@ export function createCascadingTriageRouter(options: CascadingTriageOptions = {}
     client: options.client,
     apiKey: options.apiKey,
     model: options.model,
-    fallbackModel: options.fallbackModel,
-    mode: options.mode,
-    generate: options.generate,
     ambiguous: reviewLeaf,
     root: {
       id: "department",

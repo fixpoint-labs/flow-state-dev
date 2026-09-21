@@ -7,7 +7,7 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "description": "DNM lab: evaluator stand-in via AI SDK experimental_evaluate (Gateway / Jev) with System 2 structured-output fallback. Private. Not a published package.",
+  "description": "DNM lab: evaluator stand-in via AI SDK experimental_evaluate (Jev + evaluationModel adapters). Private. Not a published package.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root .",

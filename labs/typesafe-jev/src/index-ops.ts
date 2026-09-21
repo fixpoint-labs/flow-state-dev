@@ -34,8 +34,6 @@ export interface IndexOpOptions {
   client?: EvaluateClient;
   apiKey?: string;
   model?: unknown;
-  fallbackModel?: string;
-  mode?: "evaluate" | "system-2";
   collectionKey?: string;
   schemaVersion?: number;
   minConfidence?: number;
@@ -148,8 +146,6 @@ export async function ingestIndexedDocument(
     apiKey: options.apiKey,
     client: options.client,
     model: options.model,
-    fallbackModel: options.fallbackModel,
-    mode: options.mode,
   });
   const facets = facetsFromAnswers(decision.answers, contentHash, {
     schemaVersion,
@@ -199,8 +195,6 @@ export async function reindexIndexedCollection(
       apiKey: options.apiKey,
       client: options.client,
       model: options.model,
-      fallbackModel: options.fallbackModel,
-      mode: options.mode,
     });
     const facets = facetsFromAnswers(decision.answers, contentHash, {
       schemaVersion,
@@ -225,8 +219,6 @@ export async function classifyQueryEscape(
     apiKey: options.apiKey,
     client: options.client,
     model: options.model,
-    fallbackModel: options.fallbackModel,
-    mode: options.mode,
   });
   const facets = facetsFromAnswers(decision.answers, hashIndexedContent(query, ""), {
     minConfidence,

@@ -56,7 +56,10 @@ export function createAiSdkEvaluateClient(
 
   return {
     async evaluate(request) {
-      const model = request.model ?? defaultModel;
+      const model =
+        defaultModel !== undefined && typeof defaultModel === "object"
+          ? defaultModel
+          : (request.model ?? defaultModel);
       const evaluateFn = options.evaluate ?? loadExperimentalEvaluate;
       try {
         const result = await evaluateFn({
@@ -64,7 +67,16 @@ export function createAiSdkEvaluateClient(
           state: request.state,
           questions: toSdkQuestions(request.questions),
         });
-        const modelId = typeof model === "string" ? model : DEFAULT_EVALUATE_MODEL;
+        const modelId =
+          typeof model === "string"
+            ? model
+            : request.model ??
+              (model !== null &&
+              typeof model === "object" &&
+              "modelId" in model &&
+              typeof (model as { modelId?: unknown }).modelId === "string"
+                ? (model as { modelId: string }).modelId
+                : DEFAULT_EVALUATE_MODEL);
         return fromSdkResult(request.questions, result, modelId);
       } catch (error) {
         if (error instanceof TypeSafeError) throw error;

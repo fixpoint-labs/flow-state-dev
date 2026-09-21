@@ -15,9 +15,9 @@ describe("isEvaluationCapable", () => {
     expect(isEvaluationCapable({ doEvaluate: async () => ({}) })).toBe(true);
   });
 
-  it("treats a language model id as System 2", () => {
-    expect(isEvaluationCapable("openai/gpt-5.4-mini")).toBe(false);
-    expect(isEvaluationCapable("anthropic/claude-sonnet-4.6")).toBe(false);
+  it("treats other evaluate strings as the same experimental_evaluate surface", () => {
+    expect(isEvaluationCapable("openai/gpt-5.4-mini")).toBe(true);
+    expect(isEvaluationCapable("anthropic/claude-sonnet-4.6")).toBe(true);
   });
 });
 
@@ -59,6 +59,20 @@ describe("createAiSdkEvaluateClient", () => {
       confidence: 0.77,
     });
     expect(out.answers.severity).toMatchObject({ type: "score", score: 1.2, confidence: 0.64 });
+  });
+
+  it("does not invent probabilities when an LM adapter omitted them", async () => {
+    const client = createAiSdkEvaluateClient({
+      evaluate: async () => ({
+        answers: { team: { type: "choice", choice: "billing" } },
+      }),
+    });
+    const out = await client.evaluate({
+      state: "x",
+      questions: { team: choice("Which team?", { billing: "Pay" }) },
+    });
+    expect(out.answers.team).toEqual({ type: "choice", choice: "billing" });
+    expect("probabilities" in (out.answers.team ?? {})).toBe(false);
   });
 
   it("does not invent confidence when TypeSafe omitted it", async () => {

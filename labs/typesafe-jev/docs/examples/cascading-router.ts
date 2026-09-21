@@ -2,8 +2,9 @@
  * Teaching excerpt: cascadingRouter with confidence-gated edges.
  *
  * Two-level tree. A branch is taken only when choice matches and
- * confidence (and optional probability) clears the gate. Missing or
- * low confidence lands on `ambiguous` — never the high branch.
+ * confidence (and optional probability) clears the gate. Missing
+ * confidence or probabilities (LM adapters) land on `ambiguous`.
+ * Same factory accepts `typesafe-ai/jev` or `openai.evaluationModel(...)`.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";

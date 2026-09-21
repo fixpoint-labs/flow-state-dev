@@ -6,10 +6,10 @@
  * optional selected-option probability) clears the gate. Missing or low
  * confidence goes to `ambiguous`. Never guess.
  *
- * TypeSafe confidence comes from the evaluate path (`providerMetadata`).
- * System 2 has no calibrated confidence: the documented substitute is the
- * synthetic `confidence: 1` on a definite structured choice, so a tree
- * still compiles without Jev. Missing confidence still fail-closes.
+ * TypeSafe confidence comes from `providerMetadata.typesafe.confidence`.
+ * LM adapters (openai/anthropic/google.evaluationModel) omit TypeSafe
+ * confidence and choice/score distributions. Missing values fail-close.
+ * Never invent a substitute so a branch can sneak through.
  *
  * `evaluatedRouter` is reserved as a later single-level name. Use this
  * factory for trees; `systemOneRouter` remains the existing one-level map.
@@ -28,8 +28,6 @@ import {
   type ChoiceQuestion,
   type TypeSafeEvaluateOutput,
 } from "./schemas";
-import type { GenerateStructuredFn } from "./system-2";
-
 export const CASCADING_AMBIGUOUS = "ambiguous";
 
 export const DEFAULT_CASCADE_QUESTION = "route";
@@ -85,12 +83,9 @@ export interface CascadingRouterConfig<
   /** Fail-closed exit. Required — missing/low confidence never picks a high branch. */
   ambiguous: BlockDefinition<TInputSchema, TOutputSchema>;
   model?: unknown;
-  fallbackModel?: string;
-  mode?: "evaluate" | "system-2";
   apiKey?: string;
   client?: EvaluateClient;
   evaluate?: EvaluateFn;
-  generate?: GenerateStructuredFn;
 }
 
 function isLeaf<I extends ZodTypeAny, O extends ZodTypeAny>(
@@ -235,12 +230,9 @@ export function cascadingRouter<
             [questionId]: choice(current.instructions, criteriaOf(current)),
           },
           model: config.model,
-          fallbackModel: config.fallbackModel,
-          mode: config.mode,
           apiKey: config.apiKey,
           client: config.client,
           evaluate: config.evaluate,
-          generate: config.generate,
         });
 
         const answer = result.answers[questionId];

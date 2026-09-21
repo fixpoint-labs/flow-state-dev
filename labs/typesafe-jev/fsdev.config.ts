@@ -1,8 +1,8 @@
 /**
  * fsdev config for the evaluator POC lab.
  *
- * Evaluate goes through AI SDK `experimental_evaluate` (Gateway / Jev)
- * or System 2 `generateObject`. Host keys are never action input.
+ * Evaluate goes through AI SDK `experimental_evaluate` (Jev or an
+ * evaluationModel adapter). Host keys are never action input.
  *
  *   cd labs/typesafe-jev
  *   pnpm fsdev run system-one route -i '{"message":"let us plan the launch"}'
@@ -28,7 +28,7 @@ import {
 
 function neverResolvesAModel(): never {
   throw new Error(
-    "typesafe-jev demo actions do not resolve a chat model through fsdev; evaluate uses experimental_evaluate or System 2 generateObject.",
+    "typesafe-jev demo actions do not resolve a chat model through fsdev; evaluate uses experimental_evaluate.",
   );
 }
 

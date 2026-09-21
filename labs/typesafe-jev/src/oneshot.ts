@@ -34,8 +34,6 @@ interface OneshotBase<TInputSchema extends ZodTypeAny> {
   name: string;
   inputSchema: TInputSchema;
   model?: unknown;
-  fallbackModel?: string;
-  mode?: "evaluate" | "system-2";
   apiKey?: string;
   client?: EvaluateClient;
 }
@@ -81,8 +79,6 @@ export function systemOneChoice<TInputSchema extends ZodTypeAny>(
           [config.name]: choice(config.instructions, config.criteria),
         },
         model: config.model,
-        fallbackModel: config.fallbackModel,
-        mode: config.mode,
         apiKey: config.apiKey,
         client: config.client,
       });
@@ -115,8 +111,6 @@ export function systemOneNoul<TInputSchema extends ZodTypeAny>(
           [config.name]: noul(config.instructions, config.criteria),
         },
         model: config.model,
-        fallbackModel: config.fallbackModel,
-        mode: config.mode,
         apiKey: config.apiKey,
         client: config.client,
       });
@@ -149,8 +143,6 @@ export function systemOneBoolean<TInputSchema extends ZodTypeAny>(
           [config.name]: boolean(config.instructions, config.criteria),
         },
         model: config.model,
-        fallbackModel: config.fallbackModel,
-        mode: config.mode,
         apiKey: config.apiKey,
         client: config.client,
       });
@@ -183,8 +175,6 @@ export function systemOneScore<TInputSchema extends ZodTypeAny>(
           [config.name]: score(config.instructions, config.criteria),
         },
         model: config.model,
-        fallbackModel: config.fallbackModel,
-        mode: config.mode,
         apiKey: config.apiKey,
         client: config.client,
       });

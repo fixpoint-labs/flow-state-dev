@@ -35,8 +35,6 @@ export interface CreateSystemOneIndexCapabilityOptions {
   client?: EvaluateClient;
   apiKey?: string;
   model?: unknown;
-  fallbackModel?: string;
-  mode?: "evaluate" | "system-2";
   /** Resource accessor. Default `"indexed-docs"`. */
   collectionKey?: string;
   schemaVersion?: number;

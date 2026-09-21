@@ -3,7 +3,7 @@
  *
  * Compatible with `createSkillActivator({ classifier })`. Orchestration
  * does not import this module — the host passes the block when an
- * evaluate-capable (or System 2) classifier is installed. Tiers 1–2
+ * evaluate-capable classifier is installed. Tiers 1–2
  * (slash / keyword) and apply stay as-is.
  *
  * Choice is over catalog skill names plus `none`. Criteria are each
@@ -42,8 +42,6 @@ export interface SystemOneSkillClassifierOptions {
   client?: EvaluateClient;
   apiKey?: string;
   model?: unknown;
-  fallbackModel?: string;
-  mode?: "evaluate" | "system-2";
   collectionKey?: string;
   collection?: ReturnType<typeof defineSkillsCollection>;
   confidenceThreshold?: number;
@@ -175,8 +173,6 @@ export function createSystemOneSkillClassifier(
         client: options.client,
         apiKey: options.apiKey,
         model: options.model,
-        fallbackModel: options.fallbackModel,
-        mode: options.mode,
       });
 
       const answer = result.answers[SYSTEM_ONE_SKILL_QUESTION];

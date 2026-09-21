@@ -44,8 +44,6 @@ export interface SystemOneMemoryDecisionOptions {
   client?: EvaluateClient;
   apiKey?: string;
   model?: unknown;
-  fallbackModel?: string;
-  mode?: "evaluate" | "system-2";
   name?: string;
   storeThreshold?: number;
 }
@@ -90,8 +88,6 @@ export function createSystemOneMemoryDecision(
         client: options.client,
         apiKey: options.apiKey,
         model: options.model,
-        fallbackModel: options.fallbackModel,
-        mode: options.mode,
       });
 
       const storeAnswer = result.answers[MEMORY_STORE_QUESTION];

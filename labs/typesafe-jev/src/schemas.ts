@@ -9,9 +9,6 @@ import { z } from "zod";
 /** Jev on AI Gateway. */
 export const DEFAULT_EVALUATE_MODEL = "typesafe-ai/jev";
 
-/** Language-model fallback when the configured model cannot evaluate. */
-export const DEFAULT_SYSTEM2_MODEL = "openai/gpt-5.4-mini";
-
 /** @deprecated Use DEFAULT_EVALUATE_MODEL. */
 export const DEFAULT_TYPESAFE_MODEL = DEFAULT_EVALUATE_MODEL;
 
@@ -78,8 +75,9 @@ export const noulAnswerSchema = z.object({
 export const choiceAnswerSchema = z.object({
   type: z.literal("choice"),
   choice: z.string(),
-  probabilities: z.record(z.string(), z.number()),
-  /** Missing on evaluate when TypeSafe did not return it — fail-closed. */
+  /** LM adapters omit distributions. Missing → fail-closed on probability gates. */
+  probabilities: z.record(z.string(), z.number()).optional(),
+  /** TypeSafe-only. Missing → fail-closed on confidence gates. */
   confidence: z.number().optional(),
 });
 
@@ -87,7 +85,7 @@ export const scoreAnswerSchema = z.object({
   type: z.literal("score"),
   score: z.number(),
   legend: z.record(z.string(), z.string()),
-  probabilities: z.record(z.string(), z.number()),
+  probabilities: z.record(z.string(), z.number()).optional(),
   confidence: z.number().optional(),
 });
 
@@ -106,7 +104,7 @@ export const usageSchema = z.object({
   cost: z.number().optional(),
 });
 
-export const evaluatePathSchema = z.enum(["evaluate", "system-2"]);
+export const evaluatePathSchema = z.enum(["evaluate"]);
 
 export const evaluateInputSchema = z.object({
   state: stateSchema,
