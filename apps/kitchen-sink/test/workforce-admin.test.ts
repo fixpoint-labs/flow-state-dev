@@ -25,6 +25,24 @@
  *         leaves a live row, so the seat appears at the next boot although the
  *         caller was told the hire failed.
  *   V15 — unregister by address alone: the foreign instance goes offline.
+ *
+ *   V9b — bind tokens with `byToken.set(token, org)`: with
+ *         `acme:secret,bravo:secret` the later write silently wins, so acme's
+ *         own credential resolves the BRAVO organization. Produced: the
+ *         principal came back as `bravo`.
+ *   V11 (settings shadow) — spread the row as `{ flow, ...settings }` in
+ *         `packages/workforce/src/roster/rows.ts`: the hire is ACCEPTED and
+ *         registers an `agent` under a row that says `desk-clerk`, and the
+ *         fire that follows deletes the row and leaves it registered
+ *         (`released: false`).
+ *   V15b — gate `fire` on `liveKind !== storedKind` alone: a file-declared
+ *         seat carrying the row's OWN kind is unregistered (`released: true`).
+ *
+ * `fire` releases an address only when BOTH clauses hold — this app registered
+ * it from a roster row, AND the live kind still matches the stored one.
+ * Neither subsumes the other, and V15b and V15 are the two red states that say
+ * so: drop the provenance clause and V15b fails, drop the kind clause and V15
+ * fails.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -35,7 +53,11 @@ import {
   adminCredentialConfigured,
   adminPrincipalResolver,
 } from "../lib/workforce-admin-auth";
-import { setWorkforceRegistrarImpl, type WorkforceRegistrar } from "../lib/workforce-registrar";
+import {
+  setWorkforceRegistrarImpl,
+  workforceRegistrar,
+  type WorkforceRegistrar,
+} from "../lib/workforce-registrar";
 import workforceAdminFlow from "../flows/workforce-admin/flow";
 
 const modelResolver = createMockModelResolver({ policy: "allow" });
@@ -168,6 +190,49 @@ describe("V9 · the admin door is fail-closed", () => {
   });
 });
 
+describe("V9b · a token two organizations share resolves neither", () => {
+  it("drops BOTH bindings rather than letting config order pick a tenant", () => {
+    // `byToken.set(token, org)` keeps the last write and discards the first
+    // silently, so with a shared secret acme's own admin credential resolves
+    // the BRAVO organization — a cross-tenant authorization decision made by
+    // the order two entries are written in. Dropping only the later binding
+    // would still leave acme's operator holding a credential bravo knows.
+    //
+    // Red state: go back to `byToken.set(...)` per entry. `resolve` is defined
+    // (the map has one live entry), and the principal comes back as bravo.
+    vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:shared,${OTHER_ORG}:shared`);
+
+    // The only token collided, so nothing is configured — which is what makes
+    // `fsdev.config.ts` leave the admin flow out of the `flows` map entirely.
+    expect(adminCredentialConfigured()).toBe(false);
+    expect(adminPrincipalResolver()).toBeUndefined();
+  });
+
+  it("leaves an uncollided token working, and refuses the shared one", async () => {
+    vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:shared,${OTHER_ORG}:shared,carol:tok-carol`);
+    const resolve = adminPrincipalResolver();
+    expect(resolve).toBeDefined();
+
+    const envelope = { flowKind: "workforce-admin", action: "hire", input: {} };
+    const withToken = (token: string) => ({
+      source: "http" as const,
+      request: new Request("http://x", { headers: { authorization: `Bearer ${token}` } }),
+      envelope,
+    });
+
+    // Neither org the shared secret named — not the first, not the last.
+    expect(() => resolve!(withToken("shared"))).toThrow(/Invalid/i);
+    expect(await resolve!(withToken("tok-carol"))).toMatchObject({ orgId: "carol" });
+  });
+
+  it("treats one organization written twice under one token as one binding", () => {
+    // Not a collision: it is the same binding spelled twice, and failing it
+    // closed would refuse a config that names exactly one tenant.
+    vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:tok-acme,${ORG}:tok-acme`);
+    expect(adminCredentialConfigured()).toBe(true);
+  });
+});
+
 describe("V10 · the organization comes from the credential, never the body", () => {
   it("returns acme for acme's token even when the request body names bravo", async () => {
     const resolve = adminPrincipalResolver()!;
@@ -258,6 +323,50 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     expect(await storedRow(stores, "support.ada")).toMatchObject({
       settings: { desk: "front" },
     });
+  });
+
+  it("hires the kind the ROW names, not one hidden in the settings bag", async () => {
+    // `settings` is a passthrough bag, so `settings.flow` is storable, and
+    // `settingsOf` strips `flow` as reserved before the kind validates —
+    // nothing downstream objects. With `hiredSeatManifest` spreading
+    // `{ flow: row.flow, ...row.settings }`, this hire mints and registers an
+    // `agent` while the stored row says `desk-clerk` forever.
+    //
+    // The follow-on is the worse half, and it is asserted below: `fire` then
+    // reads a stored kind of `desk-clerk` against a live kind of `agent`,
+    // deletes the row, and leaves the instance registered — an address that
+    // answers with no row anywhere saying it should, for the life of the
+    // process.
+    //
+    // Red state: restore that spread order in
+    // `packages/workforce/src/roster/rows.ts` and the kind assertion reads
+    // "agent" and the fire assertions read `released: false` with the seat
+    // still held.
+    const registrar = stubRegistrar();
+    const flow = adminFlow();
+    const stores = createInMemoryStores();
+
+    // Only the shadow key, deliberately: adding a `desk-clerk` setting would
+    // make the shadowed `agent` kind REFUSE the bag, and the hire would fail
+    // loudly — which is not the defect. The defect is that it succeeds.
+    const hired = await callAdmin(flow, stores, "hire", {
+      seatId: "support.ada",
+      flow: "desk-clerk",
+      settings: { flow: "agent" },
+    });
+    expectAccepted(hired);
+
+    expect(registrar.held.get("acme.support.ada")?.kind).toBe("desk-clerk");
+    expect(await storedRow(stores, "support.ada")).toMatchObject({ flow: "desk-clerk" });
+
+    // The stored kind and the live kind agree, so the mismatch branch in
+    // `fire` is unreachable for this row: the seat is released and nothing is
+    // stranded.
+    const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
+    expectAccepted(fired);
+    expect(fired.output).toMatchObject({ released: true });
+    expect(registrar.held.has("acme.support.ada")).toBe(false);
+    expect(await storedRow(stores, "support.ada")).toBeUndefined();
   });
 
   it("refuses a kind this app does not carry before anything is written", async () => {
@@ -424,6 +533,51 @@ describe("fire", () => {
     const result = await callAdmin(flow, stores, "fire", { seatId: "support.ada" }, ORG);
     expectRefused(result, /hired no seat/);
     expect(await storedRow(stores, "support.ada", OTHER_ORG)).toBeDefined();
+  });
+
+  it("V15b · leaves a FILE-DECLARED seat of the row's OWN kind alone (BR-28)", async () => {
+    // BR-28 is written in terms of provenance: "the address … is held by an
+    // instance that did NOT come from this org's row → nothing is
+    // unregistered". V15 above checks a foreign instance of a DIFFERENT kind,
+    // which a kind-equality check also catches — which is exactly why this
+    // gap survived. Here the kinds MATCH, so only real provenance can tell
+    // them apart.
+    //
+    // Reachable, not theoretical: hire a seat; later add a
+    // `workforce/teams/` folder declaring one at the same address with the
+    // same kind; restart. The file seat registers first, the reload's
+    // duplicate is skipped and named (BR-21), and the row survives. That is
+    // the state set up below.
+    //
+    // Red state: gate `fire` on `liveKind !== storedKind` again and this
+    // fails — the file-declared seat is unregistered, contradicting the
+    // refusal `fire` itself raises three lines earlier, which promises such a
+    // seat is removed by editing its folder.
+    const registrar = stubRegistrar();
+    const flow = adminFlow();
+    const stores = createInMemoryStores();
+
+    await callAdmin(flow, stores, "hire", {
+      seatId: "support.ada",
+      flow: "desk-clerk",
+      settings: { desk: "front" },
+    });
+
+    // The restart: the address is released and re-taken by a seat this app did
+    // NOT register from the row — same address, same kind.
+    workforceRegistrar.unregister("acme.support.ada");
+    registrar.held.set("acme.support.ada", {
+      id: "acme.support.ada",
+      kind: "desk-clerk",
+    } as unknown as FlowInstance);
+
+    const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
+
+    expectAccepted(fired);
+    expect(fired.output).toMatchObject({ released: false });
+    // The row goes — this org did hire it. The file-declared seat stays.
+    expect(await storedRow(stores, "support.ada")).toBeUndefined();
+    expect(registrar.held.has("acme.support.ada")).toBe(true);
   });
 
   it("V15 · leaves an address alone when a foreign instance holds it", async () => {

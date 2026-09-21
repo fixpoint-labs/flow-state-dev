@@ -39,12 +39,32 @@ export const ADMIN_TOKENS_ENV = "WORKFORCE_ADMIN_TOKENS";
  */
 export const ADMIN_USER_ID = "workforce-admin";
 
-/** Parse `WORKFORCE_ADMIN_TOKENS` into token → org. Malformed entries are skipped. */
+/**
+ * Parse `WORKFORCE_ADMIN_TOKENS` into token → org. Malformed entries are
+ * skipped.
+ *
+ * **A token naming more than one organization drops ALL of its bindings**,
+ * later one and earlier one alike. `Map#set` would keep the last write and
+ * discard the first silently, which turns a copy-paste in an env var into a
+ * cross-tenant authorization decision made by config order: with
+ * `acme:secret,bravo:secret`, acme's own admin credential resolves the BRAVO
+ * organization and hires into it. Dropping the later binding alone would still
+ * leave acme's operator holding a credential bravo also knows.
+ *
+ * Failing closed here has a second effect worth knowing rather than
+ * discovering: {@link adminCredentialConfigured} reads this map, so a config
+ * whose ONLY token collides leaves the admin flow unregistered altogether —
+ * no hire path at all, rather than one pointing at the wrong tenant.
+ *
+ * The same organization listed twice under one token is not a collision: it is
+ * one binding written twice, and it resolves.
+ */
 function configuredTokens(): Map<string, string> {
   const raw = process.env[ADMIN_TOKENS_ENV];
   const byToken = new Map<string, string>();
   if (typeof raw !== "string" || raw.trim().length === 0) return byToken;
 
+  const orgsByToken = new Map<string, Set<string>>();
   for (const entry of raw.split(",")) {
     const trimmed = entry.trim();
     if (trimmed.length === 0) continue;
@@ -57,7 +77,24 @@ function configuredTokens(): Map<string, string> {
       );
       continue;
     }
-    byToken.set(trimmed.slice(at + 1), trimmed.slice(0, at));
+    const token = trimmed.slice(at + 1);
+    const orgs = orgsByToken.get(token);
+    if (orgs === undefined) orgsByToken.set(token, new Set([trimmed.slice(0, at)]));
+    else orgs.add(trimmed.slice(0, at));
+  }
+
+  for (const [token, orgs] of orgsByToken) {
+    if (orgs.size > 1) {
+      // The organizations, never the token — this line goes to a log.
+      console.error(
+        `[workforce-admin] one ${ADMIN_TOKENS_ENV} token is shared by ${orgs.size} organizations ` +
+          `(${[...orgs].join(", ")}) — dropping every binding for it, because which organization it ` +
+          `resolves would otherwise depend on the order they are written in. Give each organization ` +
+          `its own token.`
+      );
+      continue;
+    }
+    byToken.set(token, [...orgs][0]!);
   }
   return byToken;
 }

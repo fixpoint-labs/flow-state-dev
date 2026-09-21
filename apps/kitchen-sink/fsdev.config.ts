@@ -24,7 +24,7 @@ import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
-import { setWorkforceRegistrarImpl } from "@/lib/workforce-registrar";
+import { setWorkforceRegistrarImpl, workforceRegistrar } from "@/lib/workforce-registrar";
 import { adminCredentialConfigured } from "@/lib/workforce-admin-auth";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
@@ -266,7 +266,11 @@ export const hiredRosterReload: { seats: string[]; problems: string[] } = {
 
   for (const seat of reload.seats) {
     try {
-      flowstate.register(seat);
+      // Through the registrar, not `flowstate.register`: these seats came from
+      // roster rows, and that provenance is what `fire` checks before it
+      // releases an address (BR-28). Registering them directly would leave
+      // every reloaded seat unfireable after a restart.
+      workforceRegistrar.registerFromRoster(seat);
       hiredRosterReload.seats.push(seat.id);
     } catch (error) {
       // One seat the registry refuses is one seat that cannot run, not a

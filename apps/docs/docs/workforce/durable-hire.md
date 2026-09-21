@@ -11,11 +11,33 @@ A `WORKER.md` file declares a seat and the app reads it when it starts. That is 
 
 A seat hired this way is written down. It is still there after a restart, a redeploy, or a crash, because it lives in the same storage the app already uses for sessions and state.
 
+## Setting up the admin credential
+
+The hire and fire actions exist only when a credential is configured for them. Set `WORKFORCE_ADMIN_TOKENS` to `<org>:<token>` pairs, separated by commas:
+
+```bash
+# One organization.
+WORKFORCE_ADMIN_TOKENS="acme:s3cr3t-acme"
+
+# Several.
+WORKFORCE_ADMIN_TOKENS="acme:s3cr3t-acme,bravo:s3cr3t-bravo"
+```
+
+The organization on the left of the colon is the one that token hires into. Everything after the first colon is the token, so a token may contain colons and an organization id may not.
+
+**Give each organization its own token.** A token that appears against two organizations is dropped entirely, along with every organization it names — otherwise which tenant it resolved would come down to the order the pairs are written in. If that leaves no usable token, the hire and fire actions are not registered and there is no hire path to reach.
+
+The examples below send just the token, which is the part after the colon:
+
+```bash
+export WORKFORCE_ADMIN_TOKEN=s3cr3t-acme
+```
+
 ## Hiring a seat
 
 Hiring is a flow action, and it is the one action in the app that verifies a credential of its own. It has to: it writes durable state that belongs to an organization, and the framework's stock request handling reads `orgId` straight out of the request body. Anything that trusted that would let any caller hire into any organization.
 
-So the organization comes from the credential, not from what the request says about itself. **With no admin credential configured, the action is not registered at all** and there is no hire path to reach.
+So the organization comes from the credential, not from what the request says about itself.
 
 ```bash
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \

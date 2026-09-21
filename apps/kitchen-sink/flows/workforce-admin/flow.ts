@@ -162,8 +162,11 @@ const hire = handler({
     // seat that hires is a seat the stored row can rebuild at the next boot.
     // This is also where the kind's own settings schema runs, which is why it
     // happens before anything is written.
+    // No reason arm to check: `hiredSeatManifest` returns `{ manifest }`
+    // only. The one thing it throws over is a bad org or seat id, via
+    // `seatAddress` — and `address` above already made that call, so it threw
+    // before this line if it was going to.
     const record = hiredSeatManifest(orgId, row);
-    if ("problem" in record) throw new Error(record.problem);
     const [seat] = hireWorkforce([record.manifest], { kinds: kitchenSinkKinds });
     if (seat === undefined) {
       throw new Error(`"${address}" could not be hired, and no reason was given.`);
@@ -174,7 +177,10 @@ const hire = handler({
     await rosterOf(ctx).create(input.seatId, asStored(row));
 
     try {
-      workforceRegistrar.register(seat);
+      // `registerFromRoster`, not `register`: this records that the address is
+      // held by an instance THIS app minted from a roster row, which is what
+      // `fire` checks before releasing it (BR-28).
+      workforceRegistrar.registerFromRoster(seat);
     } catch (error) {
       // The row this call created, removed — a hire that failed leaves nothing
       // behind. If the delete also fails, the stranded row is skipped and named
@@ -223,14 +229,38 @@ const fire = handler({
     const storedKind = String(existing.state.flow);
     await rows.delete(input.seatId);
 
-    // Released ONLY when the live instance is the one this row minted. The
-    // address grammar is supposed to make a mismatch unreachable; the check is
-    // here because a guarantee nobody checks is how this goes wrong.
+    // Released ONLY when the address is held by the instance this row minted
+    // (BR-28). **Two clauses, because neither subsumes the other**, and each
+    // fails a case the other admits:
+    //
+    //   - PROVENANCE (`isFromRoster`) is what BR-28 is actually written in
+    //     terms of. Kind equality alone is a weaker proxy: a seat declared in
+    //     `workforce/teams/` at this address carrying the row's OWN kind
+    //     passes it, and firing would unregister a file-declared seat —
+    //     contradicting the refusal a few lines above, which promises such a
+    //     seat is removed by editing its folder. Reachable: hire a seat, later
+    //     add a folder declaring one at the same address with the same kind,
+    //     restart. The file seat registers first, the reload's duplicate is
+    //     skipped and named (BR-21), and the row survives.
+    //   - KIND still matters because a mark can go STALE. Provenance records
+    //     that this app registered the address; it cannot see the address
+    //     being re-taken by a different instance afterwards. When the kinds
+    //     disagree, whatever is there now is not what the mark refers to.
+    //
+    // `kindAt` gates both, and only when something is actually there: an
+    // address nothing holds is the ordinary stranded-row cleanup (a sibling
+    // process's registration, or a compensating delete that failed), which
+    // falls through to `released: false` with nothing to report.
     const liveKind = workforceRegistrar.kindAt(address);
-    if (liveKind !== undefined && liveKind !== storedKind) {
+    const mintedHere = workforceRegistrar.isFromRoster(address);
+    if (liveKind !== undefined && (!mintedHere || liveKind !== storedKind)) {
       console.error(
-        `[workforce-admin] removed the roster row for "${address}", but the address is held by a flow of ` +
-          `kind "${liveKind}" rather than the stored "${storedKind}" — leaving it registered.`
+        `[workforce-admin] removed the roster row for "${address}" (kind "${storedKind}"), but the ` +
+          `address is held by a flow of kind "${liveKind}" that ` +
+          (mintedHere
+            ? "no longer matches the stored kind"
+            : "this app did not register from that row") +
+          " — leaving it registered."
       );
       return { address, orgId, released: false };
     }
