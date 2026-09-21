@@ -198,3 +198,8 @@ it. If it comes back the other way, D1's shape is wrong and the spec is re-opene
   it is the transport's, not this issue's.
 - [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) — flow listing carries no org
   identity. BR-25 depends on it staying true and cites it; nothing here works around it.
+- **[FIX-1480](https://linear.app/fixpoint-labs/issue/FIX-1480) owns the seat-facing hire** —
+  the `tools:` door a seat reaches itself — and **composes this roster** rather than standing up
+  a second hire store. This issue owns the admission door, the durable org-scoped roster, and
+  kitchen-sink's `workforce-admin` hire/fire as the **reference HTTP path only**: it is not the
+  API Labs copies, and nothing here should be documented as though it were.
