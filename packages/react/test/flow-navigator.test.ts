@@ -238,6 +238,20 @@ describe("FlowNavigator · sections", () => {
     await click(screen.getByText("Retry"));
     await waitFor(() => expect(kindRow("chat")).toBeTruthy());
   });
+
+  it("does not answer 'nothing registered' from a read that failed", async () => {
+    const server = fakeServer([], []);
+    server.listFlows.mockRejectedValue(new Error("offline"));
+    mount(server);
+
+    await screen.findByRole("alert");
+
+    // The failure is reported once, above, with its retry. Repeating it per
+    // section as "No seats on this server" states the registry is empty on the
+    // strength of a request that never came back.
+    expect(document.querySelectorAll("[data-empty-section]")).toHaveLength(0);
+    expect(screen.queryByText(/on this server/)).toBeNull();
+  });
 });
 
 describe("FlowNavigator · the published props are an allow-list (V5, BR-3, BR-24)", () => {

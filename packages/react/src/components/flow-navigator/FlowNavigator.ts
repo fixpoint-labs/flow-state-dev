@@ -414,9 +414,12 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
     [inventory.flows, props.sections]
   );
 
-  // The flow list is what tells a section whether it is empty, so until it has
-  // answered once, no section can say.
-  const stillLoading = inventory.isLoading && inventory.flows.length === 0;
+  // "Nothing registered" is a claim about the server, and only a flow list that
+  // SUCCEEDED supports one. Two states have no answer to report: a read still
+  // in flight, and a read that failed. The failure is reported once, above,
+  // with its retry — repeating it per section as "no seats on this server"
+  // would be the same missing answer wearing a confident face.
+  const answered = !inventory.isLoading && inventory.error === null;
 
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set<string>());
   const toggle = useCallback((key: string) => {
@@ -465,11 +468,10 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
           slots.sectionHeader?.(view.section)
         ),
         view.kinds.length === 0
-          ? stillLoading
-            ? // "Nothing registered" is an answer about the server, and it is
-              // not one we have yet — every section is empty while the flow
-              // list is in flight.
-              createElement("p", { style: noteStyle(0) }, "Loading flows…")
+          ? !answered
+            ? inventory.error !== null
+              ? null
+              : createElement("p", { style: noteStyle(0) }, "Loading flows…")
             : // Not an error, and the other sections are unaffected: a kind the
               // server does not have is a section with nothing in it.
               (slots.emptySection?.(view.section) ??
