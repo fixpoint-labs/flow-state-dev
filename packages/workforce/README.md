@@ -39,11 +39,8 @@ flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
 That record names no `flow:`, so it is hired into the built-in `agent` kind and needs no `kinds`
 argument. Its body becomes its instructions and steers its answers.
 
-The built-in stores each worker's skills at org scope, so **a request to one of these workers has
-to resolve to an org**. One that resolves to a `userId` alone fails with `Resource "skills" is not
-registered` before the model is reached. On the default principal resolver, send an `orgId` with
-the request; if you configure your own `resolvePrincipal`, return the org from there. Either way,
-a caller cannot name its own org.
+The built-in stores each worker's skills at org scope. Organization identity is unconditional, so
+every admitted request carries one and a caller cannot name its own org.
 
 To run a worker on a flow you wrote, name that flow's `kind` in the record's `flow:` and pass the
 flow under the same key:
@@ -833,9 +830,8 @@ naming it.
 
 **Every file-declared document is org-scoped, and nothing needs declaring for that.** Organization
 identity is unconditional, so every admitted request carries one and the org resource registry is
-always built. A request with no organization is refused at the door rather than arriving empty. The
-`requireOrg` declaration this used to need no longer exists, and a block that still sets it is
-refused when the block is built:
+always built. A request with no organization is refused at the door rather than arriving empty, so a
+block reads a document with nothing extra declared:
 
 ```ts
 // ./blocks.ts

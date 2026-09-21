@@ -257,6 +257,91 @@ describe("defineScheduleCollection", () => {
     });
   });
 
+  /**
+   * FIX-1442 review, round 3 — what `(userId, key)` identity means across
+   * organizations.
+   *
+   * The schedule collection is USER-scoped (`scope: "user"` is forced above),
+   * and a user-scoped resource's storage identity is the bare `userId` — the
+   * organization never enters it (`resolveResourceScopeId`). So two
+   * organizations cannot hold two different schedules at one `(userId, key)`:
+   * they hold the SAME resource, and the index's `PRIMARY KEY (user_id, key)`
+   * mirrors that key space exactly rather than collapsing anything.
+   *
+   * What that leaves is not a key collision but an ATTRIBUTION one, and only
+   * for a row whose state names no organization. The stamp lands on the index
+   * row and never on the state (the hook fires after the write commits), so
+   * the state stays org-less forever, `indexOrgFor` returns the writing
+   * execution's org every time, and BR-19's disagreement check — the whole
+   * enforcement of the binding — never engages for that row. These tests pin
+   * that, so the gap is visible rather than inferred.
+   */
+  describe("cross-organization writes at one (userId, key)", () => {
+    /** A second execution: same user, a different organization. */
+    const OTHER_ORG_CTX = { ...HOOK_CTX, orgId: "org-globex" };
+
+    it("re-stamps an org-less row with whichever organization last wrote it", async () => {
+      const index = createFakeIndex();
+      const coll = defineScheduleCollection({ pattern: "schedules/*", index });
+      // The documented create path: `schedules.create(key, {cron,kind,enabled})`
+      // names no organization.
+      const state = { cron: "0 0 * * 0", kind: "send-digest", enabled: true };
+      await coll.onInstanceCreated!("schedules/digest", state, HOOK_CTX);
+      expect(index.rows.get("user-1/digest")?.orgId).toBe(EXEC_ORG);
+
+      // The same user, acting under a different organization, edits the row.
+      await coll.onInstanceUpdated!(
+        "schedules/digest",
+        { ...state, cron: "0 9 * * 1" },
+        state,
+        OTHER_ORG_CTX
+      );
+
+      // Still one row — same key space — but it now fires into org-globex.
+      // BR-19 did not engage: the state named no organization to disagree with.
+      expect(index.rows.size).toBe(1);
+      expect(index.rows.get("user-1/digest")?.orgId).toBe("org-globex");
+    });
+
+    it("lets a second organization unschedule an org-less row by disabling it", async () => {
+      const index = createFakeIndex();
+      const coll = defineScheduleCollection({ pattern: "schedules/*", index });
+      const state = { cron: "0 0 * * 0", kind: "send-digest", enabled: true };
+      await coll.onInstanceCreated!("schedules/digest", state, HOOK_CTX);
+      expect(index.rows.size).toBe(1);
+
+      await coll.onInstanceUpdated!(
+        "schedules/digest",
+        { ...state, enabled: false },
+        state,
+        OTHER_ORG_CTX
+      );
+      expect(index.rows.size).toBe(0);
+    });
+
+    /**
+     * The control, and the reason the two above are about attribution rather
+     * than about the key: once the state NAMES an organization, BR-19 does
+     * engage from the other organization, and the row comes out instead of
+     * being re-pointed. An attributed row is protected; an org-less one is not.
+     */
+    it("refuses the same cross-organization update once the state names an org", async () => {
+      const index = createFakeIndex();
+      const coll = defineScheduleCollection({ pattern: "schedules/*", index });
+      const state = bound({ cron: "0 0 * * 0", kind: "send-digest", enabled: true });
+      await coll.onInstanceCreated!("schedules/digest", state, HOOK_CTX);
+      expect(index.rows.get("user-1/digest")?.orgId).toBe(EXEC_ORG);
+
+      await coll.onInstanceUpdated!(
+        "schedules/digest",
+        { ...state, cron: "0 9 * * 1" },
+        state,
+        OTHER_ORG_CTX
+      );
+      expect(index.rows.size).toBe(0);
+    });
+  });
+
   it("logs and skips when cron fails to parse", async () => {
     const index = createFakeIndex();
     const coll = defineScheduleCollection({ pattern: "schedules/*", index });

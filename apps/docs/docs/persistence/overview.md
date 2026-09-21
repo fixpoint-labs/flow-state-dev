@@ -225,7 +225,13 @@ A non-zero count on an installation that has ever authenticated its callers is a
    WHERE org_id IS NULL AND <your predicate>;
    ```
 
-   Run the same predicate over `requests` and over your schedule rows, so a request never lands in a different organization than its session and a schedule never fires into one. Then **rebuild the schedule indexes from the attributed rows only**. An index rebuilt from everything puts unattributed schedules back in the dispatch path.
+   Run the same predicate over `requests` and over your schedule rows, so a request never lands in a different organization than its session and a schedule never fires into one.
+
+   Then **rebuild the schedule indexes one organization at a time.** A rebuild writes each schedule again, and a schedule whose stored state names no organization takes the organization doing the rebuild. Rebuild the whole table in one pass and every unattributed schedule silently becomes that organization's. Attribute the schedule state in the backfill above first, then rebuild per organization from the rows that name it.
+
+   A schedule whose stored organization disagrees with the execution writing it is kept out of the index rather than corrected, so it stops firing until it is written from the organization it names. A row sitting in the index with no organization at all is quarantined: it stays in the table and never dispatches.
+
+   The `schedule_index` table carries an `org_id` column, added for you on the next schema init. There is no DDL of your own to write here.
 
    User-scope storage does not move. A user id is keyed globally, across all organizations.
 4. **Read back.** Re-run the inventory and check the blob agrees with the column, as above with `$.orgId` / `data->>'orgId'`. Every count should be zero, or be a row you deliberately left quarantined. Confirm the reserved-id check is still clean. Then restart the schedulers, bring the writers back, and read a session and an org-scoped resource through each organization before you admit traffic.

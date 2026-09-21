@@ -32,16 +32,6 @@ No `kinds` argument, no flow of your own. The body becomes the worker's instruct
 
 The settings a worker writes for itself are `instructions`, `model`, `tools`, the `skills` switches below, and `capabilities` — which picks presets from the capabilities the kind carries, covered in [Capabilities on disk](./capabilities-on-disk.md). Three more reach the seat in the same bag, put there by the hire rather than by the file: the team's instructions, the skills the worker's folders hold, and the blocks its `tools:` resolved out of its own levels. A file that declares one of those three is refused by name. `flow: agent` names the same kind explicitly, and hires the same way.
 
-## A request needs an org
-
-A worker's **skills** — the folders of instructions it can pull into a turn, covered [below](#skills) — are stored at org scope, so a request has to be bound to an org before the worker can run. One carrying only a `userId` fails before the model is reached:
-
-```
-Resource "skills" is not registered
-```
-
-The request has to resolve to an org. An app on the default principal resolver does that by sending an `orgId` with the request; an app that configures its own `resolvePrincipal` has to return the org from there, because the route reads the resolved principal and ignores a body `orgId`. A caller cannot name its own org. [The client reference](/docs/configuration/client) covers how a request carries one.
-
 ## Tools
 
 A worker names its tools by key in `tools:`, and each key is resolved against what is registered for that worker: its own `blocks/` folder first, then its team's, then the kind's **catalog**. That last one is a map from key to tool your app passes when it builds the kind, since a file on disk can only carry a name. The first match wins. A key nothing registers is refused at the hire, by name, and the refusal names both doors. An empty `tools:`, or none at all, means no tools, whatever is registered.
@@ -105,7 +95,7 @@ A replacement declares `kind: "agent"`, like any other kind passed under its own
 
 ## Skills
 
-A worker's skills are that worker's. Each one keeps its own copy, so two workers on one roster never read each other's instructions.
+A worker's skills are that worker's, and they are stored at organization scope. Each one keeps its own copy, so two workers on one roster never read each other's instructions.
 
 Which skills a worker gets is decided by where the folders sit. Three places feed one worker:
 

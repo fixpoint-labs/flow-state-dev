@@ -230,6 +230,8 @@ export const seats = hireWorkforce(roster.workers, {
 
 Every file-declared document is installed at `org` scope. A `resources/` entry carries the file's body as its starting content; a `references/` entry points at the file itself, which is read whenever an execution context is built. Editing a reference in your repository reaches agents on the next request, and a read already in flight keeps the body it started with.
 
+Every request runs in an organization, so a block reads a document straight off `ctx.resources`. [Authentication](/docs/server/authentication#every-request-runs-in-an-organization) covers where that organization comes from. Each organization gets its own copy of a `resources/` document, so what one organization's agents write is not what another's read.
+
 `documents` and `references` tell the hire which entries on a kind's map are which. [The tree wall](#who-reaches-what) is derived against the `references` map, so a kind holding references has to be hired with it. Omit it, or pass one that is missing a reference the kind installed, and `hireWorkforce` throws, naming every reference it was not given. The whole roster is refused, so no seat is hired:
 
 ```
@@ -245,19 +247,6 @@ A kind holding no references needs no map, and a roster hires the same whether y
 Spread the maps rather than passing one on its own. A flow copy created with `supportFlow({ resources })` *replaces* the definition's map instead of merging with it, so a copy handed only `documentMap` loses whatever the flow kind declared.
 
 Both functions throw rather than collecting. A record that cannot become a resource stops startup, naming the ref.
-
-### The request needs an org
-
-A document is stored at org scope, so a request has to be bound to an org before a block can read one. The flow does not work that out from its resource map. It takes the requirement from its blocks, through [`requireOrg`](/docs/configuration/blocks).
-
-Install documents and declare nothing, and the flow accepts a request carrying only a `userId`. No org resource registry gets built, so the documents are simply not there:
-
-```ts
-await ctx.resources.get("teams/engineering/handbook").readContent();
-// Error: Resource "teams/engineering/handbook" is not registered
-```
-
-Put `requireOrg: true` on the blocks that read a document, as the example in [Letting a model read a document](#letting-a-model-read-a-document) does. The flow then turns away a request with no org up front, instead of running it and coming up empty. How a request carries its org is covered in [the client reference](/docs/configuration/client).
 
 ## Who reaches what
 
@@ -330,13 +319,10 @@ import { generator, readResourceContentTool } from "@flow-state-dev/core";
 export const answerQuestion = generator({
   name: "answer-question",
   model: "openai/gpt-5.4-mini",
-  requireOrg: true,
   prompt: "Answer support questions. Check the team handbook before you answer.",
   tools: [readResourceContentTool()],
 });
 ```
-
-`requireOrg: true` is there because documents are org-scoped. See [The request needs an org](#the-request-needs-an-org).
 
 The documents are already declared on the flow, so the generator does not declare them again. The tool addresses a document by its scope-qualified uri, the same handle the [search tools](/docs/resources/searching) return. See [LLM access patterns](/docs/resources/overview#llm-access-patterns).
 
