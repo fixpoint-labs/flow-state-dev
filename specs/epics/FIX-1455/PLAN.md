@@ -8,11 +8,13 @@ and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
 
 ## The path
 
-![The path: lanes against time with a now line at September 20, 2026, and a ship-fence band under the axis reading lifted. Two input lanes from other epics — the W3 floor FIX-1351, landed, and the W4 first cut FIX-1407, landed with two strays left in backlog. Then the five rows of the set, none started: FIX-1429 opens at the now line, FIX-1475 begins only after it, and FIX-1476, FIX-1477 and FIX-1478 all open at the now line beside it. FIX-1477's lane runs longest because it absorbs the other rows' surfaces as they land. The critical path runs FIX-1429 to FIX-1475 to the proof](figures/path.svg)
+![The path: lanes against time with a now line at September 21, 2026, and a ship-fence band under the axis reading lifted. Two input lanes from other epics — the W3 floor FIX-1351, landed, and the W4 first cut FIX-1407, landed with two strays left in backlog. Then the five rows of the set. Two carry a bar, because a bar means a row's first pull request is open: FIX-1429 in review on 1989 with its goal check passing, and FIX-1478 in spec review on 1988 with its collapse trigger contested. The other three are dashed lines with no bar — FIX-1475 begins only after FIX-1429, and FIX-1476 and FIX-1477 are held on D8's sign-off, FIX-1477's lane running longest because it absorbs the other rows' surfaces as they land. The critical path runs FIX-1429 to FIX-1475 to the proof](figures/path.svg)
 
 One hard chain and three lanes beside it. FIX-1429 is the only row that gates another, and it
-gates the substance — nothing durable can be hired into a workforce the app never loads. The
-three independent lanes start together at the now line; FIX-1477's runs longest because it
+gates the substance — nothing durable can be hired into a workforce the app never loads. Two
+lanes now carry bars, because two rows have an open PR: FIX-1429 in implementation and FIX-1478
+in spec review. The three that do not are held, and the figure says on what — FIX-1475 on
+FIX-1429, FIX-1476 and FIX-1477 on D8's sign-off. FIX-1477's lane still runs longest because it
 absorbs what the other two produce rather than waiting for it. The dependency shape itself is in
 [the spec](SPEC.md#how-the-issues-flow-into-each-other); this adds time to it.
 
@@ -65,17 +67,21 @@ three children, not one issue's layout call.
 
 ## Where it is
 
-Status lives in one place: [the set table in the spec](SPEC.md#the-set--as-of-2026-09-20). The
+Status lives in one place: [the set table in the spec](SPEC.md#the-set--as-of-2026-09-21). The
 lanes above carry the same state as a picture of time and are redrawn when it moves. The two
-inputs from other epics, verified 2026-09-20: **FIX-1351** (W3 floor) is Done, 19 of 20 children
-Done and one Duplicate; **FIX-1407** (W4) is In Review with its first cut landed — FIX-1385,
-FIX-1405 and FIX-1408 all Done — carrying only FIX-1461 (docs) and FIX-1460 (a dead-helper
-decision). Neither is re-parented here (ER-17).
+inputs from other epics, re-verified 2026-09-21 and unchanged: **FIX-1351** (W3 floor) is Done,
+19 of 20 children Done and one Duplicate; **FIX-1407** (W4) is In Review with its first cut
+landed — FIX-1385, FIX-1405 and FIX-1408 all Done — carrying only FIX-1461 (docs) and FIX-1460
+(a dead-helper decision), both still Backlog. Neither is re-parented here (ER-17).
 
 ## What unblocks what, from here
 
 1. **The objective is signed off** → FIX-1429 starts immediately (no spec gate, ER-20), and
-   FIX-1476, FIX-1477 and FIX-1478 enter spec in parallel.
+   FIX-1476, FIX-1477 and FIX-1478 enter spec in parallel. **Done, in part:** FIX-1429 is in
+   review on [#1989](https://github.com/fixpoint-labs/flow-state-dev/pull/1989) with its goal
+   check passing, and FIX-1478 is in spec review on
+   [#1988](https://github.com/fixpoint-labs/flow-state-dev/pull/1988). FIX-1476 and FIX-1477
+   are held short of spec pending D8's sign-off, since D8 is what their specs consume.
 2. **FIX-1429 merges** → FIX-1475 can be specced against a workforce the app actually serves.
    Nothing else waits on it.
 3. **FIX-1476 and FIX-1475 merge** → FIX-1477's resource-backed components have real collections

@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 420" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: one lane per row of the set, against time, with a now line at September 20, 2026. A ship-fence band under the axis reads LIFTED on September 20 — the W3 floor is Done and W4's first cut landed, so children may open implementation pull requests, not only specs. Two input lanes from other epics carry bars that reach the now line: the W3 floor FIX-1351, landed, giving seats, channels and skills on disk; and the W4 first cut FIX-1407, landed, giving boards, inventory and dispatch policy, with two strays still in backlog that are not part of the first cut. Then the five lanes of the set, none of which has started, so each is drawn as a dashed line with no bar rather than a zero-width rectangle. FIX-1429, serving the file-declared demo, opens at the now line and is the shortest lane; it is a bug on the direct route with no spec gate. FIX-1475, durable hire, does not open until FIX-1429 closes, so its dashed line begins to the right of the others. FIX-1476, channels and boards, opens at the now line. FIX-1477, the UI package split, opens at the now line and runs longest, because it absorbs the other rows' surfaces as they land rather than waiting for them. FIX-1478, the patterns shed, opens at the now line and is the shortest of the three independents. The critical path is drawn in the gutter as two linked dots on FIX-1429 and FIX-1475, the only hard chain in the set. Under a divider, three related lanes that are not in the set: the parked channel-admin capability FIX-1415, the manager-queue lab FIX-1430 consumed as a POC spine, and org-never-optional FIX-1442, soft-related. A final note records the owner's September 20 triage of five stale kitchen-sink tickets: FIX-1372 stays open and is verified at wrap, while FIX-420, FIX-429, FIX-472 and FIX-540 close as superseded by this set. None of the five is a child of this epic.">
+<svg viewBox="0 0 940 434" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path: one lane per row of the set, against time, with a now line at September 21, 2026. A ship-fence band under the axis reads LIFTED on September 20 — the W3 floor is Done and W4's first cut landed, so children may open implementation pull requests, not only specs. Two input lanes from other epics carry bars that reach the now line: the W3 floor FIX-1351, landed, giving seats, channels and skills on disk; and the W4 first cut FIX-1407, landed, giving boards, inventory and dispatch policy, with two strays still in backlog that are not part of the first cut. Then the five lanes of the set. Two of them now carry a bar, because a bar means a row has its first pull request open: FIX-1429, serving the file-declared demo, is in review on pull request 1989 with its goal check passing, and FIX-1478, the patterns shed, is in spec review on pull request 1988 with its collapse trigger contested. The remaining three are drawn as a dashed line with no bar, because nothing has opened for them. FIX-1475, durable hire, does not open until FIX-1429 closes, so its dashed line begins to the right of the others. FIX-1476, channels and boards, and FIX-1477, the UI package split, are both held short of spec on D8's sign-off; FIX-1477's lane runs longest because it absorbs the other rows' surfaces as they land rather than waiting for them. The critical path is drawn in the gutter as two linked dots on FIX-1429 and FIX-1475, the only hard chain in the set. Under a divider, three related lanes that are not in the set: the parked channel-admin capability FIX-1415, the manager-queue lab FIX-1430 consumed as a POC spine, and org-never-optional FIX-1442, soft-related. A final note records the owner's September 20 triage of five stale kitchen-sink tickets: FIX-1372 stays open and is verified at wrap, while FIX-420, FIX-429, FIX-472 and FIX-540 close as superseded by this set. None of the five is a child of this epic.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -9,6 +9,7 @@
               --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .bar   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
     .lane  { stroke:var(--ink-3); stroke-width:1; stroke-dasharray:2 4; }
     .axis  { stroke:var(--rule); stroke-width:1; }
     .div   { stroke:var(--rule); stroke-width:1; }
@@ -31,7 +32,7 @@
   <g id="axis">
     <path class="axis" d="M200 42 L924 42"/>
     <text class="t-s" x="200" y="34">Sep 16</text>
-    <text class="t-now" x="300" y="34">now &#183; Sep 20</text>
+    <text class="t-now" x="362" y="34" text-anchor="middle">now &#183; Sep 21</text>
     <text class="t-s" x="632" y="34">ahead &#183; no dates set</text>
   </g>
 
@@ -41,7 +42,7 @@
     <text class="t-fen" x="212" y="62">LIFTED Sep 20 &#8212; W3 Done, W4 first cut landed; children may open impl PRs, not only specs</text>
   </g>
 
-  <path class="now" d="M330 74 L330 250"/>
+  <path class="now" d="M362 74 L362 250"/>
 
   <g id="critical-path">
     <path class="crit" d="M190 150 L190 172"/>
@@ -60,47 +61,54 @@
 
   <g id="lanes-set">
     <text class="t-ln" x="16" y="150">FIX-1429 serve the demo</text>
-    <path class="lane" d="M334 147 L430 147"/>
-    <text class="t-s" x="656" y="150">not started &#183; direct route, no spec gate</text>
+    <rect class="bar" x="330" y="141" width="32" height="12" rx="2"/>
+    <path class="lane" d="M368 147 L446 147"/>
+    <text class="t-s" x="656" y="150">in review &#183; #1989 &#183; goal check PASSES</text>
 
     <text class="t-ln" x="16" y="172">FIX-1475 durable hire</text>
-    <path class="lane" d="M446 169 L600 169"/>
-    <text class="t-s" x="656" y="172">not started &#183; opens only after FIX-1429</text>
+    <path class="lane" d="M452 169 L600 169"/>
+    <text class="t-s" x="656" y="172">not started &#183; unblocks when #1989 merges</text>
 
     <text class="t-ln" x="16" y="194">FIX-1476 channels + boards</text>
-    <path class="lane" d="M334 191 L520 191"/>
-    <text class="t-s" x="656" y="194">not started &#183; independent, starts at the gate</text>
+    <path class="lane" d="M368 191 L528 191"/>
+    <text class="t-s" x="656" y="194">not started &#183; held on D8&#8217;s sign-off</text>
 
     <text class="t-ln" x="16" y="216">FIX-1477 UI package split</text>
-    <path class="lane" d="M334 213 L640 213"/>
-    <text class="t-s" x="656" y="216">not started &#183; longest &#8212; absorbs, does not wait</text>
+    <path class="lane" d="M368 213 L640 213"/>
+    <text class="t-s" x="656" y="216">not started &#183; held on D8 &#183; longest lane</text>
 
     <text class="t-ln" x="16" y="238">FIX-1478 patterns shed</text>
-    <path class="lane" d="M334 235 L412 235"/>
-    <text class="t-s" x="656" y="238">not started &#183; independent &#183; small</text>
+    <rect class="bar" x="330" y="229" width="32" height="12" rx="2"/>
+    <path class="lane" d="M368 235 L424 235"/>
+    <text class="t-s" x="656" y="238">in spec review &#183; #1988 &#183; trigger contested</text>
   </g>
 
-  <text class="t-s" x="200" y="266">no bars yet &#8212; nothing has started; a lane gets a rectangle when its first PR opens (ER-21: the set is open)</text>
+  <g id="summary">
+    <text class="t-s" x="200" y="266">2 in flight: FIX-1429 (impl #1989, its goal check PASSES) and FIX-1478 (spec #1988, collapse trigger contested).</text>
+    <text class="t-s" x="200" y="278">3 not started &#8212; FIX-1476 and FIX-1477 held on D8&#8217;s sign-off, FIX-1475 on FIX-1429 (ER-21: the set is open).</text>
+  </g>
 
   <g id="related">
-    <path class="div" d="M16 278 L924 278"/>
-    <text class="t-lbl" x="16" y="294">RELATED — NOT IN THE SET</text>
-    <text class="t-lng" x="16" y="314">FIX-1415 channel admin</text>
-    <text class="t-s" x="656" y="314">parked &#183; runtime create/delete/invite verbs</text>
-    <text class="t-lng" x="16" y="334">FIX-1430 manager-queue lab</text>
-    <text class="t-s" x="656" y="334">W4-side &#183; consumed as a POC spine</text>
-    <text class="t-lng" x="16" y="354">FIX-1442 org never optional</text>
-    <text class="t-s" x="656" y="354">soft-related &#183; consumed, not re-decided</text>
-    <text class="t-s" x="16" y="376">Triaged Sep 20: FIX-1372 stays open, verified at wrap; FIX-420, FIX-429, FIX-472, FIX-540 close as superseded. Not children either way.</text>
+    <path class="div" d="M16 290 L924 290"/>
+    <text class="t-lbl" x="16" y="306">RELATED — NOT IN THE SET</text>
+    <text class="t-lng" x="16" y="326">FIX-1415 channel admin</text>
+    <text class="t-s" x="656" y="326">parked &#183; runtime create/delete/invite verbs</text>
+    <text class="t-lng" x="16" y="346">FIX-1430 manager-queue lab</text>
+    <text class="t-s" x="656" y="346">W4-side &#183; consumed as a POC spine</text>
+    <text class="t-lng" x="16" y="366">FIX-1442 org never optional</text>
+    <text class="t-s" x="656" y="366">soft-related &#183; consumed, not re-decided</text>
+    <text class="t-s" x="16" y="388">Triaged Sep 20: FIX-1372 stays open, verified at wrap; FIX-420, FIX-429, FIX-472, FIX-540 close as superseded. Not children either way.</text>
   </g>
 
   <g id="legend">
-    <rect class="inp" x="90" y="398" width="16" height="12" rx="2"/>
-    <text class="t-s" x="114" y="407">input from another epic, landed</text>
-    <path class="lane" d="M300 404 L336 404"/>
-    <text class="t-s" x="344" y="407">not started &#8212; no duration to draw</text>
-    <circle class="critd" cx="540" cy="404" r="3.2"/>
-    <path class="crit" d="M540 398 L540 410"/>
-    <text class="t-s" x="554" y="407">the one hard chain in the set</text>
+    <rect class="inp" x="16" y="410" width="16" height="12" rx="2"/>
+    <text class="t-s" x="40" y="419">input from another epic, landed</text>
+    <rect class="bar" x="220" y="410" width="16" height="12" rx="2"/>
+    <text class="t-s" x="244" y="419">in flight &#8212; its first PR is open</text>
+    <path class="lane" d="M424 416 L460 416"/>
+    <text class="t-s" x="468" y="419">not started &#8212; no duration to draw</text>
+    <circle class="critd" cx="676" cy="416" r="3.2"/>
+    <path class="crit" d="M676 410 L676 422"/>
+    <text class="t-s" x="690" y="419">the one hard chain in the set</text>
   </g>
 </svg>
