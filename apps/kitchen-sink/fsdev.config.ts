@@ -20,6 +20,7 @@ import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
 import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { createSessionClient } from "@flow-state-dev/client";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
@@ -28,13 +29,12 @@ import { setWorkforceRegistrarImpl, workforceRegistrar } from "@/lib/workforce-r
 import { adminCredentialConfigured } from "@/lib/workforce-admin-auth";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
-import channelFlow from "@/flows/channel/flow";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import workforceAdminFlow from "@/flows/workforce-admin/flow";
 import { hireKitchenSinkWorkforce, kitchenSinkKinds } from "@/workforce/hire";
-import { reloadHiredSeats } from "@flow-state-dev/workforce";
+import { openChannels, reloadHiredSeats } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -105,9 +105,23 @@ const adminFlows: Record<string, FlowInstance<any, any>> = adminCredentialConfig
   ? { workforceAdmin: workforceAdminFlow }
   : {};
 
+// One instance per channel KIND the tree selected, never one per channel — a
+// channel kind is a singleton, so its address is its kind and every channel is
+// a named session on it. `seatFlows` above goes the other way, one entry per
+// seat, because a seat kind is a `collection` and every seat is its own
+// addressable copy. Both lines follow the kind's declared cardinality; neither
+// is this app choosing a convention.
+//
+// These replace the hand-registered built-in this app used to carry: only the binder hands a kind the ledgers a roster minted, so
+// an instance built by hand answers no board call however many `boards:` lines
+// the tree declares.
+const channelFlows = Object.fromEntries(
+  workforce.channelFlows.map((instance) => [instance.id, instance])
+);
+
 const flowstate = createFlowState({
   flows: {
-    channel: channelFlow,
+    ...channelFlows,
     chatAgent: chatAgentFlow,
     richTextComponent: richTextComponentFlow,
     weeklyDigest: weeklyDigestFlow,
@@ -296,6 +310,66 @@ export const hiredRosterReload: { seats: string[]; problems: string[] } = {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// The channels the tree declared, opened.
+//
+// After `createFlowState`, not beside the file hire above, because opening a
+// channel is a session create and there is no session route until the
+// FlowState exists. Awaited at module scope for the reason the hire is: both
+// the Next route handlers and the `fsdev` CLI import this module, so finishing
+// here is what guarantees no request arrives before the channels are open.
+//
+// Unguarded on every boot, deliberately. Opening is idempotent — an open
+// channel is left exactly as it is — and the board list is the one thing
+// re-opening carries, so a "first boot only" flag would strand a board added
+// to a `CHANNEL.md` later.
+// ---------------------------------------------------------------------------
+
+/**
+ * Who every channel session belongs to.
+ *
+ * A session belongs to one user, so a channel does too — and sessions are
+ * per-user, so this value decides who can SEE the channels at all. It has to be
+ * the id this app's callers use: `app/page.tsx` and `app/devtool/page.tsx` both
+ * call as `devuser` (overridden per test by `?e2eUserId=`), so a channel opened
+ * under any other id is one the app ships and none of its own pages can list.
+ * That is a reachability rule rather than an authentication one, and it binds
+ * here, where nothing is verified. An app that authenticates should open its
+ * channels as an identity its callers actually resolve to.
+ *
+ * Deliberately a literal rather than an import from `app/`: this module is the
+ * runtime assembly and the pages are its consumers, so importing upward would
+ * invert the dependency. V13 of the goal check reads both and fails on drift.
+ */
+const CHANNEL_OWNER = "devuser";
+
+// The session client, over this app's own router rather than over the network:
+// the app is the server, so a loopback fetcher hands the request straight to
+// the handler the Next route would have called.
+const channelSessions = createSessionClient({
+  fetcher: async (input, init) => {
+    const router = await flowstate.getRouter();
+    // The client builds `/api/flows/...`; the catch-all handler takes the
+    // segments beneath that prefix as its `path` param.
+    const url = new URL(String(input), "http://kitchen-sink.local");
+    const path = url.pathname
+      .replace(/^\/api\/flows\/?/, "")
+      .split("/")
+      .filter((segment) => segment.length > 0)
+      .map(decodeURIComponent);
+    const method = (init?.method ?? "GET").toUpperCase();
+    if (method !== "GET" && method !== "POST" && method !== "PATCH" && method !== "DELETE") {
+      throw new Error(`[workforce] the channel session client does not issue ${method}`);
+    }
+    return await router[method](new Request(url, init), { params: { path } });
+  },
+});
+
+await openChannels(workforce.channels, {
+  client: channelSessions,
+  userId: CHANNEL_OWNER,
+});
 
 export default flowstate;
 

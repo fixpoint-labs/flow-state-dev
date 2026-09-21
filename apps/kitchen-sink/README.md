@@ -50,6 +50,29 @@ Worker kinds, blocks and capabilities are picked up the same way: a file under `
 
 The roster is the other half, and it is read at boot: `hireKitchenSinkWorkforce()` walks `workforce/teams/` and hires a seat per `WORKER.md`. So the kinds are decided at generate time and the seats at startup — which is why adding a kind takes `fsdev gen` and adding a seat takes only a restart.
 
+The team also has three channels, under `workforce/teams/support/channels/`. Each one is a folder with a `CHANNEL.md` in it, and each is here to show a different thing.
+
+`desk` is the ordinary case: the built-in kind, five members, and two boards declared as plain names — `boards: [followups, escalations]`. The framework mints a ledger per name from where the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that. `ada-wren` is a direct message between two seats, with no `flow:` line, because a direct message is not a kind of its own — it is a channel with a roster of two. `noticeboard` is the case that *is* different: it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only the most recent lines. A kind of your own cannot hold a board, which is why the boards are on `desk` and not here.
+
+The `followups` board has a seat that runs it. `support.wren` is on the `followup-runner` kind, which names the board in code (`channelBoard("support.desk", "followups")`), declares it as a resource, and exposes its drain. A seat sees the boards it names and no others.
+
+Posting to a channel notifies its members, and never the member who wrote the post. That rule lives in `workforce/channel-notify.ts`, which is this app's own fan-out block rather than anything the framework decides: the framework addresses every declared member, and the block chooses what to deliver. It applies to all three channels. Post to `desk` as `support.ada` and the other four are told, not Ada. In a two-seat direct message the same rule reads as "only the other one hears about it".
+
+The check is on the claimed `author`, which the channel does not verify, so the skip is only as good as the claim. An app with a real identity model should compare whatever it resolves a caller to.
+
+**Nothing is wired to `escalations`.** Start the app and the boot says so:
+
+```
+[workforce] channel "support.desk" holds board "escalations" (ledger
+"support.desk.escalations"), and no flow hired in this call declares it. …
+```
+
+That is the one failure a declared board can produce in silence: rows filed there sit pending with nothing said. The reference ships in the state that shows you the message. Wire a seat to it the way `followup-runner` wires `followups` and the line goes away.
+
+Channels are opened at boot and opening is idempotent, so restarting over an unchanged tree does nothing. But re-opening is not a migration: a channel that is already open keeps the members and the charter it was opened with, and editing those files does not reach it. `boards:` is the exception — the board list is rebuilt from the files on every boot, so a board added to an open channel's file is usable after a restart.
+
+Which organization the channel sessions land in comes from the caller's verified identity, not from anything a file declares. This app opens its channels as one caller named in `fsdev.config.ts` and configures no authentication, so they land in the framework's default. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a channel runs in](../docs/docs/workforce/channels.md#which-organization-a-channel-runs-in).
+
 Each seat is addressed by its own id, so a seat answers on the same route as any other flow:
 
 ```bash

@@ -8,17 +8,22 @@
 // typecheck before anything has been generated.
 
 import type { BlockDefinition } from "@flow-state-dev/core";
-import type { HireOptions, ResourceModules } from "@flow-state-dev/workforce";
+import type { ChannelInstancesOptions, HireOptions, ResourceModules } from "@flow-state-dev/workforce";
 import block_desk_note from "./blocks/desk-note";
+import channel_digest from "./flows/channels/digest";
 import worker_desk_clerk from "./flows/workers/desk-clerk";
+import worker_followup_runner from "./flows/workers/followup-runner";
 import resource_teams__support__research from "./teams/support/resources/research";
 import seatblock_support__iris__desk_summary from "./teams/support/workers/iris/blocks/desk-summary";
 
 export const kinds = {
   "desk-clerk": worker_desk_clerk,
+  "followup-runner": worker_followup_runner,
 } satisfies NonNullable<HireOptions["kinds"]>;
 
-export const channelKinds = {};
+export const channelKinds = {
+  "digest": channel_digest,
+} satisfies NonNullable<ChannelInstancesOptions["kinds"]>;
 
 export const blocks = {
   "desk-note": block_desk_note,
