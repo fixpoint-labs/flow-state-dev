@@ -1,0 +1,108 @@
+<svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Checklist rows 4, 6 and 5, today beside after. Row 4: a parked task row gains a Reason column, so the reason no longer hides inside a JSON expander. Row 6: two identical resource-tree rows gain a read-only mark on the sealed one. Row 5, the org-level inventory, stays on the far side of a dashed fence, unbuilt here.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-cell { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .n-new  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-hid  { fill:none; stroke:var(--ink-3); stroke-width:1; stroke-dasharray:3 2; }
+    .n-out  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 5; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-new  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:700; font-size:9px; }
+    .t-out  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
+  </style>
+
+  <g id="headers">
+    <text class="t-lbl" x="124" y="22">TODAY</text>
+    <text class="t-lbl" x="540" y="22">AFTER</text>
+    <line class="fence" x1="524" y1="8" x2="524" y2="322"/>
+  </g>
+
+  <g id="lane-row4-parked-reason">
+    <text class="t-lbl" x="16" y="52">ROW 4</text>
+    <text class="t-b" x="16" y="70">a parked task</text>
+    <rect class="n-box" x="124" y="36" width="384" height="84" rx="5"/>
+    <rect class="n-cell" x="136" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="182" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="228" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="274" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="320" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="366" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="412" y="48" width="42" height="15" rx="2"/>
+    <text class="t-s" x="136" y="78">seven columns · none of them the reason</text>
+    <rect class="n-hid" x="136" y="86" width="240" height="24" rx="3"/>
+    <text class="t-s" x="144" y="101">&#9656; view &#8250; JSON &#8250; feedback</text>
+
+    <rect class="n-box" x="540" y="36" width="384" height="84" rx="5"/>
+    <rect class="n-cell" x="552" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="598" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="644" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-new"  x="690" y="48" width="70" height="15" rx="2"/>
+    <text class="t-new" x="697" y="59">Reason</text>
+    <rect class="n-cell" x="764" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="810" y="48" width="42" height="15" rx="2"/>
+    <rect class="n-cell" x="856" y="48" width="42" height="15" rx="2"/>
+    <text class="t-s" x="552" y="78">the reason is on the row, at a glance</text>
+    <rect class="n-hid" x="552" y="86" width="240" height="24" rx="3"/>
+    <text class="t-s" x="560" y="101">&#9656; view &#8250; JSON &#8250; unchanged</text>
+  </g>
+
+  <g id="lane-row6-read-only">
+    <text class="t-lbl" x="16" y="150">ROW 6</text>
+    <text class="t-b" x="16" y="168">two documents</text>
+    <rect class="n-box" x="124" y="134" width="384" height="72" rx="5"/>
+    <rect class="n-cell" x="136" y="146" width="120" height="16" rx="2"/>
+    <text class="t-s" x="142" y="157">handbook</text>
+    <rect class="n-cell" x="262" y="146" width="30" height="16" rx="2"/>
+    <text class="t-s" x="267" y="157">org</text>
+    <rect class="n-cell" x="136" y="168" width="120" height="16" rx="2"/>
+    <text class="t-s" x="142" y="179">scratchpad</text>
+    <rect class="n-cell" x="262" y="168" width="30" height="16" rx="2"/>
+    <text class="t-s" x="267" y="179">org</text>
+    <text class="t-s" x="136" y="198">identical rows · one is sealed and nothing says so</text>
+
+    <rect class="n-box" x="540" y="134" width="384" height="72" rx="5"/>
+    <rect class="n-cell" x="552" y="146" width="120" height="16" rx="2"/>
+    <text class="t-s" x="558" y="157">handbook</text>
+    <rect class="n-cell" x="678" y="146" width="30" height="16" rx="2"/>
+    <text class="t-s" x="683" y="157">org</text>
+    <rect class="n-new" x="714" y="146" width="66" height="16" rx="2"/>
+    <text class="t-new" x="720" y="157">read-only</text>
+    <rect class="n-cell" x="552" y="168" width="120" height="16" rx="2"/>
+    <text class="t-s" x="558" y="179">scratchpad</text>
+    <rect class="n-cell" x="678" y="168" width="30" height="16" rx="2"/>
+    <text class="t-s" x="683" y="179">org</text>
+    <text class="t-s" x="552" y="198">the mark comes from the two flags, not from the folder</text>
+  </g>
+
+  <g id="lane-row5-inventory">
+    <text class="t-lbl" x="16" y="238">ROW 5</text>
+    <text class="t-b" x="16" y="256">the inventory</text>
+    <rect class="n-box" x="124" y="222" width="384" height="72" rx="5"/>
+    <text class="t-s" x="136" y="244">reachable only behind FSDEV_DEBUG_ENDPOINTS=1,</text>
+    <text class="t-s" x="136" y="258">and the reference app writes no inventory rows</text>
+    <text class="t-s" x="136" y="280">nothing opens it &#183; nothing serves it &#183; nothing reads it</text>
+
+    <rect class="n-out" x="540" y="222" width="384" height="72" rx="5"/>
+    <text class="t-out" x="552" y="244">not built here</text>
+    <text class="t-s" x="552" y="262">waits on the org-level reader, and on an app</text>
+    <text class="t-s" x="552" y="276">that opens an inventory at all &#183; see D2</text>
+  </g>
+
+  <g id="key">
+    <rect class="n-new" x="124" y="306" width="14" height="10" rx="2"/>
+    <text class="t-s" x="144" y="315">what this issue adds</text>
+    <rect class="n-out" x="266" y="306" width="14" height="10" rx="2"/>
+    <text class="t-s" x="286" y="315">named and deliberately not built</text>
+  </g>
+</svg>
