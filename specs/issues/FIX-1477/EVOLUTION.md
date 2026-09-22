@@ -51,15 +51,23 @@ so an empty `200` can no longer pass. Recorded rather than quietly repaired, bec
 same failure as the three rows above wearing a different coat — and it says the habit this page
 is about is easier to slip than the page makes it sound.
 
-**A third time, in the prose rather than the code.** Review then found that the requirement this
-amendment had just added — that `S8` bind the shell's session to the viewer's organization —
-had **no check that could fail without it**. V11 and V12 both run in the tokenless default
-organization, where the hire and the read land in the same place by accident; an implementation
-could drop the resolver entirely, pass every listed check, and ship precisely the correct-and-empty
-panel two sections of this spec warn about. Now V13, with its red state stated. Worth its own
-line because the pattern is not "a claim went stale" but **"a requirement was written without
-the check that makes it real"** — which is this epic's signature defect, recurring inside the
-amendment written to correct unfalsifiable checks.
+<a name="unchecked-requirements"></a>
+**And a second defect, distinct from the stale-premise one above: requirements written without
+the check that makes them real.** Three rounds of review found three, none of them a claim that
+had gone stale — each was a rule the spec stated and nothing could fail:
+
+| The requirement | What passed anyway | Now |
+|---|---|---|
+| `S8` binds the shell's session to the viewer's organization | Every check ran in the tokenless default organization, where the hire and the read coincide by accident. Drop the resolver entirely and all of them stay green, shipping the correct-and-empty panel two sections of this spec warn about | **V13** |
+| [BR-20](BUSINESS-RULES.md) — the skipped-seat count and list are *shown, not only logged* | `Roster` takes a `problems` prop and renders it, and **nothing fills it**. The boot's report is a module export read only by `console.log`. A roster of the seats that loaded looks complete, which is the exact failure BR-20 exists for | **V14**, plus the gap named and priced at [BR-20's transport](PLAN.md#br20-transport) |
+| [BR-19](BUSINESS-RULES.md) / [BR-21](BUSINESS-RULES.md) — *the organization's seats*, *the rows that board holds*, both unqualified | The list route pages at 50 and returns a cursor. A panel that reads page one and stops satisfies every field assertion and truncates silently at 51 | **V11**, now seeded past one page |
+
+**This is the more valuable of the two patterns on this page.** A stale claim is caught by
+re-reading the artifact; an unchecked requirement is invisible to re-reading, because the prose
+is *correct* — it simply has nothing standing behind it. Two of these three were introduced by
+this amendment, inside the document written to correct unfalsifiable checks. The habit that
+would have caught all three is the one the Checks table already states and the prose kept
+forgetting: **name the red state when you write the rule, not when someone asks for it.**
 
 Before implementing, compare these against the repository rather than against this page. The
 devtool files in particular are live code and may have moved; [PLAN.md](PLAN.md) →
