@@ -122,10 +122,14 @@ leafSessions(leaf):
     guard the response on the leaf still being the open one (V4)
 ```
 
-**POC:** none built. The two premises a POC would test — that the cardinality branch is one field
-and that the drill-down already works — are already shipped and running in the developer tool,
-so the evidence is the code rather than an experiment. The genuinely new level, grouping rows
-under their kind, is cheaper to build with V2 red in front of it than to sketch.
+**POC:** none for the navigator. Its two premises — that the cardinality branch is one field and
+that the drill-down already works — are shipped and running in the developer tool, so the
+evidence is the code rather than an experiment, and the genuinely new level (grouping rows under
+their kind) is cheaper to build with V2 red in front of it than to sketch.
+
+**POC for the panels:** [`poc/read-gate/`](poc/read-gate/README.md). It settles the two premises
+that could not be read off the code — how a session with no resolved identity binds its
+organization, and what actually refuses `S5` and `S6` a browser read.
 
 ## At implement time
 

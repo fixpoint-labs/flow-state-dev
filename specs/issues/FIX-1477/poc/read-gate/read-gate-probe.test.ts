@@ -63,14 +63,13 @@ describe("FIX-1477 · the collection-state read gate", () => {
 
   it("refuses a channel board ledger with 403, and the ledger declares no client config", async () => {
     const ledger = channelBoard("eng.feature", "triage");
-    // eslint-disable-next-line no-console
-    console.log(
-      "LEDGER DECL ->",
-      JSON.stringify({
-        hasClientKey: "client" in (ledger as unknown as Record<string, unknown>),
-        client: (ledger as unknown as { client?: unknown }).client ?? null
-      })
-    );
+
+    // Asserted, not logged. This half of the claim is *why* the 403 below
+    // happens, so it has to be able to fail on its own: add
+    // `client: { state: { read: true } }` anywhere on the ledger's declaration
+    // and this line goes red before the route is ever called.
+    expect("client" in (ledger as unknown as Record<string, unknown>)).toBe(false);
+
     const { router, sessionId } = await build({ "eng.feature.triage": ledger });
     const result = await readState(router, sessionId, "eng.feature.triage");
     // eslint-disable-next-line no-console

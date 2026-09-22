@@ -17,8 +17,11 @@ experiments were written to make each half falsifiable rather than argued.
 
 ## How to run them
 
-Neither file sits in a package, so each is copied into the package whose internals it drives
-and run there. From the repository root:
+Neither file sits in a package, so each is copied into the package whose test config and
+resolved dependencies it needs, and run there. Both import `@flow-state-dev/*` by package name
+rather than by relative path; `read-gate-probe` additionally reaches into `workforce`'s own
+source for the two declarations under test, which is what pins it to that package. From the
+repository root:
 
 ```bash
 cp specs/issues/FIX-1477/poc/read-gate/premise-proof.test.ts   packages/engine/test/zz-poc-premise.test.ts
@@ -32,16 +35,18 @@ rm packages/engine/test/zz-poc-premise.test.ts packages/workforce/test/zz-poc-ga
 
 ## What was observed
 
-Run against `main` at `0c076f9cb`. Both files green:
+Run against `main` at `119661150`. Both files green:
 
 ```
 premise-proof      2 passed
 read-gate-probe    3 passed
   ROSTER ->          403 {"error":"State read not permitted for \"roster\""}
-  LEDGER DECL ->     {"hasClientKey":false,"client":null}
   BOARD ->           403 {"error":"State read not permitted for \"eng.feature.triage\""}
   ROSTER + OPT-IN -> 200 null
 ```
+
+That the board ledger declares no `client` config is **asserted**, not printed — it is half of
+what the second case claims, so it has to be able to fail by itself.
 
 **The red state, which is the part that makes green mean anything.** In
 `premise-proof.test.ts`, the shell plants nothing under `victim-org` and sees nothing from it,
@@ -55,7 +60,9 @@ the line's own comment now says `body.orgId` is deliberately not consulted, at a
 In `read-gate-probe.test.ts` the red state is built in and needs no edit: the third case is
 the same collection shape as the first, differing by the single `client: { state: { read:
 true } }` line, and it returns 200 where the first returns 403. Delete that line and the case
-fails.
+fails. The declaration assertion has its own, checked separately: assigning
+`client: { state: { read: true } }` onto the ledger before the route is called turns it red
+(`expected true to be false`) without touching the engine.
 
 ## Limits
 

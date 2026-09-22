@@ -20,8 +20,12 @@ import {
   handler
 } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
-import type { SessionRecord } from "../src";
+import {
+  createFlowApiRouter,
+  createFlowRegistry,
+  createInMemoryStores,
+  type SessionRecord
+} from "@flow-state-dev/engine";
 
 const rowSchema = z.object({ label: z.string().default("") });
 
