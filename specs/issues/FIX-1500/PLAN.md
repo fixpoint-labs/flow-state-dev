@@ -18,7 +18,7 @@ half is checkable with no app running and the app half is the only one that wait
 | S5 | `react` · `SeatDetail` | One seat's kind, skills, channels and declared boards. Host-passed `PanelRowSource`, the same seam `Roster` and `BoardColumns` take — **it must not build its own client** (BR-27). Each section has a distinct empty state; a section that failed to read says so rather than rendering as empty | BR-5 – BR-8 BR-27 |
 | S6 | `react` · the panels' shared read | `usePanelRows` forwards `topicPrefix`, which the client's `listCollectionItems` already accepts (`packages/client/src/resource-client/resources.ts:105`–`:109`) and the hook does not pass today. This is what makes a seat's channels a read at the source rather than a scan | BR-6 |
 | S7 | kitchen-sink · the hire door | One action on the flow the rail's session runs on, calling S1. **The organization is the one the session is already bound to** — the principal-or-default-org binding the engine applies when the session is created, which is the same resolution the panels' reads go through. Never from the body, and **not** `workforce-admin`'s credential-derived org either: that is also "not the body" and is the wrong source, because it is the operator's organization rather than this session's ([D1](DECISIONS.md#d1), BR-2). **The flow must declare every collection the rail reads, under slash-free refs** — a read resolves its ref against the session's *owning flow*, and `chat-agent` today declares only memory's user resources (`flows/chat-agent/flow.ts:144`). Making a collection browser-readable does **not** make it reachable; the ref has to exist on this flow too. Today that is the roster; whatever [Open 1](DECISIONS.md#open) adds is declared here as well | BR-1 – BR-3 BR-11 – BR-15 |
-| S8 | kitchen-sink · the rail | A seat row opens `SeatDetail`; a channel row opens its declared boards and mounts `BoardColumns` per board; the hire affordance calls S7 and then refreshes the roster by whichever mechanism [Open 2](DECISIONS.md#open) settles — **`RosterProps` publishes no refresh, ref or version today** (`packages/react/src/components/panels/Roster.ts`), so this is not a call the host can make as written. **No create affordance for a channel or a board** | BR-16 BR-21 – BR-24 |
+| S8 | kitchen-sink · the rail | A seat row opens `SeatDetail`; a channel row opens its declared boards and mounts `BoardColumns` per board; the hire affordance calls S7 and then refreshes the roster by a **specified, checked remount** ([the remount call](DECISIONS.md#d4)) — **`RosterProps` publishes no refresh, ref or version** (`packages/react/src/components/panels/Roster.ts`), and this issue adds none. **No create affordance for a channel or a board** | BR-16 BR-21 – BR-24 |
 | S9 | Docs · changesets | **Each public surface's documentation rides its own PR, not a batch at the end** — `packages/workforce/README.md` with PR-A, the `react` README lines with PR-B and PR-C, the [DOCS.md](DOCS.md) site operations with the PR whose behaviour they describe. Batching them onto PR-D would release `hireSeat`, the inventory reads and `SeatDetail` with changesets while their docs sit unmerged (AGENTS.md → document user-facing functionality in the same change set). **None for kitchen-sink** — private (BP-022) | — |
 
 **Two rules are inherited rather than built.** BR-20 (a stored seat that cannot be brought back at
@@ -75,7 +75,7 @@ has already found more than once, so `VG` does not move to a follow-up.
 |---|---|---|---|
 | `durable-hire-one-home` | `workforce` | `patch` | PR-A |
 | `inventory-client-read` | `workforce` | `patch` | PR-B |
-| `seat-skills-on-inventory-row` | `workforce` | `patch` | PR-B |
+| ~~`seat-skills-on-inventory-row`~~ | — | — | **Struck with [S3](#surfaces)** — it named a row this app never writes. Whatever [Open 1](DECISIONS.md#open) lands brings its own fragment, named for the carrier it actually ships |
 | `panel-read-topic-prefix` | `react` | `patch` | PR-B |
 | `seat-detail` | `react` | `patch` | PR-C |
 | — | kitchen-sink | **none** | private (BP-022) |
@@ -169,18 +169,20 @@ the extracted hire, in the workforce package:
     create   the roster row            ← the throw IS the duplicate refusal
     register the address
     on a registration failure: delete the row, report the registration failure
-    write    the seat's inventory row  ← S4, so a hired seat has a detail pane
+    ── no third write here. S4's inventory row is struck (BR-35), and anything
+       Open 1 adds needs the compensation boundary widened first (Guardrails)
 
 the rail's door:
     org ← the session's, from the principal or the default        (never the body)
     call the extracted hire with the app's kind map and registrar
 
 opening a seat:
-    kind      ← its roster row
-    skills    ← its seat inventory row                            (boot-resolved names)
-    channels  ← memberships, read with topicPrefix "<seatId>/"    ← the whole of S6
-    boards    ← for each channel, that channel's session state
-                then BoardColumns on "<channelId>.<board>"
+    kind, instructions ← its roster row                           ← the part that works
+    skills             ← ??  no browser-readable source           ← Open 1
+    channels           ← ??  no inventory exists in this app      ← Open 1
+    boards             ← ??  names are in an ACTION's output      ← Open 1
+                             once a name is obtainable:
+                             BoardColumns on "<channelId>.<board>"
 ```
 
 **POC:** [`poc/evidence/`](poc/evidence/README.md) — authoring-time evidence for this spec's
@@ -223,11 +225,17 @@ Re-check these against the repo before building; each of them moves.
   [EVOLUTION.md](EVOLUTION.md) records that its hire sequence gains a home rather than changing
   its contract; once that is true in code, its own rules should read that way rather than leaving
   a reader to join two documents.
-- **Decide where the board names are fetched, and write down which.** The sketch reads a channel's
-  session state per channel the seat belongs to, so a seat in M channels costs M reads on top of
-  the three that identify it. Deferring those until a channel is actually opened is a real option
-  and costs a click; fetching them with the seat shows the whole picture at once. **Not decided
-  here** — it is a fan-out question that wants a real seat's channel count in front of it.
+- **Under [Open 1](DECISIONS.md#open)'s candidate C, decide whether S2 still rides this issue.**
+  Opening three inventory collections to a browser is posture for a pane that, under C, will not
+  read them yet — and nothing in this app writes rows to them either, so the read would return
+  empty by construction. It is optional, not spine: it may ride the browse follow-up instead.
+  Raised by review as a soft fence; not decided here, because it moves with Open 1's answer.
+- **Whatever [Open 1](DECISIONS.md#open) makes board names readable, decide the fan-out and write
+  it down.** If a name is obtained per channel, a seat in M channels costs M reads on top of the
+  ones identifying it, and deferring those until a channel is actually opened is a real option
+  that costs a click. **Not decided here** — it wants a real seat's channel count in front of it.
+  *An earlier draft of this bullet said the sketch reads a channel's **session state** for this.
+  It does not: a channel's session state carries members, instructions and transcript.*
 - **Has [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506) landed?** If it has, BR-17
   stops being a named non-goal and the refresh-after-hire in S8 may become a subscription. If it
   has not, do not design one — the seam available today delivers only the writer's own changes.

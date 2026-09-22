@@ -59,7 +59,7 @@ paying for (tenet 5); two doors over one is ordinary.
 |---|---|
 | **Instead of** | The live skills catalog, presented as the seat's skills ([why it loses](#considered-and-dropped)) |
 | **Because** | The register a seat actually holds is `org/skills ∪ teams/<id>/skills ∪ worker-local`, computed by `readSeatSkills` and imposed as the `seatSkills` key of the `WorkerConfig` admission bag ([FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367)). That is a boot-time answer and there is no honest way to make it a live one, because the loader is Node-only and reads folders. Publishing the names beside the seat's identity — where the binder already writes a row for that seat — shows the register itself rather than a catalog standing in for it, which is the distinction the Architect's fence draws |
-| **Locks in** | The rail's skills view is as fresh as the last boot. A skill added to a folder while the app is running does not appear until it restarts, and that is a promise we are making rather than a bug somebody will file. It also means the seat inventory row carries something derived from a seat's configuration, so a future change to how a seat resolves skills has a second reader |
+| **Locks in** | The rail's skills view is as fresh as the last boot. A skill added to a folder while the app is running does not appear until it restarts, and that is a promise we are making rather than a bug somebody will file. It also means **whatever carrier [Open 1](#open) picks** holds something derived from a seat's configuration, so a future change to how a seat resolves skills gains a second reader |
 
 **This decision is contingent, and review is what made that visible.** D2 says *where* a seat's
 skills are published and *how fresh they are*. It assumed the seat inventory row was a live
@@ -92,26 +92,36 @@ if it could not be, the collection would come off the list.
 
 ## Decided, not asked
 
+<a name="d4"></a>
+- **The rail refreshes its roster by a specified, checked remount, not by a new public API on the
+  panel.** `RosterProps` carries no refresh, ref or version, so the alternative is not *use the
+  existing API* — it is **adding one**, on a package other consumers hold, for a single caller. A
+  remount is already the host's to do and costs no published surface. **The promotion rule is
+  written down rather than left to taste: a second consumer needing the same trigger makes it a
+  contract, and then the public API is right.** Engineering call, taken by review; recorded here
+  rather than as a card because the owner weighs outcomes, not this.
 - **Fire is not in the rail.** The spine asks to hire another instance and observe it; removing a
   seat is not in it. `workforce-admin` keeps `fire`, and the extracted helper carries both halves
   so a later issue adding it to the rail writes no new sequence. Smaller is the conservative
   direction here (tenet 3).
-- **A hire refreshes the roster by calling the panel's own `refresh`.** `PanelRows.refresh` is
-  already published for exactly this and its own note says it is safe to call from a host
-  affordance (`packages/react/src/components/panels/reads.ts`). Not a subscription: cross-session
-  liveness is [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506)'s, and designing against
-  a seam that delivers only the writer's own changes would be designing against a seam that does
-  not exist yet.
-- **Board names come from the channel's session state**, where `CHANNEL.md`'s `boards:` already
-  lands as a `boards: string[]` projection (`packages/workforce/src/channel/channel-flow.ts:108`).
-  No new storage, and the board's ledger id stays `<channelId>.<boardName>` minted by the
-  workforce package — the UI does not re-derive that join.
+- **The hire's refresh is not a subscription, whatever mechanism [Open 2](#open) picks.**
+  Cross-session liveness is [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506)'s, and
+  designing against a seam that delivers only the writer's own changes would be designing against
+  a seam that does not exist. *A draft of this bullet said the host calls the panel's own
+  `refresh`; `RosterProps` publishes none, so only the no-subscription half was ever decided.*
+- **A board's ledger id stays `<channelId>.<boardName>`, minted by the workforce package** — the
+  UI never re-derives that join. *That is all this bullet decides. A draft of it also said board
+  NAMES come from a channel's session state, citing `channel-flow.ts:108`; they do not — that line
+  is the channel read action's **output** schema, and session state carries members, instructions
+  and transcript. Where a name comes from is [Open 1](#open).*
 - **The seat detail is a `react` component, not kitchen-sink code.** Everything else the rail
   renders ships from the package ([FIX-1477 D1](../FIX-1477/DECISIONS.md#d1)); a seat detail built
   in the app is the fork that decision exists to prevent.
-- **A hired seat's row is written by the same binder that writes a declared seat's.** A runtime
-  hire that produced no inventory row would make the rail's seat detail work for file-declared
-  seats and silently not for hired ones — which is the acceptance spine's own step 4.
+- **If a browse carrier ever holds hired seats, one writer holds it.** Two writers over one row
+  shape is the drift a shared writer exists to prevent. *A draft of this bullet decided the
+  carrier was the seat inventory row and that a hire wrote one; that is what FIX-1475's BR-35
+  forbids ([the clash](EVOLUTION.md#br35-conflict)) and S4 is struck. What survives is the
+  single-writer rule, which applies to whatever [Open 1](#open) lands.*
 
 <a name="considered-and-dropped"></a>
 ## Considered and dropped
@@ -124,6 +134,7 @@ they lost and each card's *Instead of* names them, so neither restates the reaso
 | Put the hire affordance behind the operator credential and have the *browser* send it | Hands an operator token to every visitor. Ruled out before it was priced |
 | A kitchen-sink server route holding the token and proxying the hire | An app-local API the invent-kill list names, and it does not even work: the hire lands in the token's organization while the rail reads the default one, which is the empty-panel failure with an extra layer |
 | Widen `workforce-admin` to register unconditionally when no credential is set | Its resolver would be absent, so the stock body-reading resolver applies and `orgId` becomes caller-supplied — the *"caller-selected `orgId` without principal authorization"* kill, and a reversal of FIX-1475's deliberate fail-closed choice rather than an addition beside it |
+| A public `refresh` or version prop on `Roster` | Published API on a package other consumers hold, added for one caller, and not withdrawable. A remount costs nothing and is the host's to do ([D4](#d4)). Right the moment a **second** consumer needs the trigger |
 | Show skills by listing the org skills collection | Shows the org's catalog, not the seat's register. Two seats on different teams would read identically, which is the thing a seat view exists to distinguish |
 | Derive a seat's channels by reading every channel row and filtering `members` in React | A second runtime inventory, client-side, and it lists-then-discards where a prefix read exists |
 | Hold the spine open until [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) ships identity | FIX-1503's own *Out* section rules out hard-blocking kitchen-sink, and the issue's fences name hard-blocking on soft-related cleanups as an invent-kill. The limit is written down instead |
@@ -177,12 +188,19 @@ Verdicts here; what each asserts, how, and what it corrected is in
   also found missing rather than merely unspecified — a public panel refresh and a restartable
   test harness — and a **conflict with an approved spec** was raised rather than settled
   ([BR-35](EVOLUTION.md#br35-conflict)).
+- **Review round 5** — a coherence pass caught **residual drift from round 4's own rework**: three
+  *Decided, not asked* bullets, the plan's sketch and a changeset fragment still asserted the
+  mechanisms round 4 had withdrawn — board names from session state, a host-callable panel
+  `refresh`, and a hired seat's inventory row. Scrubbed. The lesson is the anti-addenda rule's:
+  re-drafting the documents a finding names is not enough when a withdrawn mechanism is *cited*
+  elsewhere, and an implementer reading only the plan would have rebuilt the draft.
 
 <a name="open"></a>
 ## Open
 
-Two forks, both surfaced by review rather than by drafting, and both change what this issue
-delivers. Neither is the implementer's to settle.
+**One fork.** It changes what this issue delivers, so it is not the implementer's to settle and a
+reviewer agreeing with a recommendation does not close it. (The refresh question that sat here is
+now [D4](#d4).)
 
 ### Open 1 · A seat's skills, channels and boards have no browser-readable source. What builds one?
 
@@ -200,7 +218,7 @@ asks for.
 | | What it is | What it costs |
 |---|---|---|
 | **A** | Stand up the live inventory in kitchen-sink — call `openInventory` at boot, declare its three collections on the rail's flow | The largest. Needs a seat-writer flow and a boot door. Also runs into the [BR-35 clash](EVOLUTION.md#br35-conflict) for hired seats, and still answers **no** for board names |
-| **B** | One purpose-built org-scoped read model the boot writes: per seat, its kind, skills, channels and boards | Smaller and answers all three at once. But it is new substrate, and it sits close to the *"client-side joins that become a second runtime inventory"* invent-kill — near enough that it needs the Architect's read, not mine |
+| **B** | One purpose-built org-scoped read model, **written server-side** by the boot and the hire: per seat, its kind, skills, channels and boards | Smaller, and answers all three at once. The invent-kill names ***client-side*** joins, so a server-written projection is not that kill by default — but it is near-miss substrate and **carries four fences into whatever issue files it**: a projection is **not** an inventory · exactly **one writer** · **fire updates or deletes the projection** · it must **not** become a second hire/fire store. The fire clause is load-bearing: without it a browser-readable projection recreates [BR-35](EVOLUTION.md#br35-conflict)'s failure exactly, as a fired seat still advertised live |
 | **C** | Ship the seat detail with what has a source — kind and instructions — and move skills, channels and boards to a follow-up | Cheapest and keeps the spine's hire-and-observe steps intact. It does **not** deliver the issue's desired outcome 2 |
 
 **My recommendation: C for this issue, with B filed as the follow-up that completes it.** The
@@ -216,22 +234,15 @@ second inventory. Then B is one collection for three answers and is clearly bett
 issue's text promises, and somebody has to agree that is still Goal 1. Under B, we ship substrate
 that a later inventory rollout may duplicate.
 
-### Open 2 · How does the rail's roster refresh after a hire, with no public trigger?
+### Input on these forks, from review — not an answer to them
 
-**In plain terms.** After hiring, the new seat must appear without a page reload. The panel that
-lists seats has no way for the app to tell it to re-read.
+The FSD Architect read both, on the record and **explicitly not as owner approval**
+([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2061#issuecomment-5782491000)):
+**C**, matching the recommendation above. Its read on **B** — that a server-written projection is
+not the invent-kill by default, and the four fences that keep it from becoming one — is folded
+into B's row in the table, so whoever picks B inherits them rather than finding them in a review
+thread. It also said: **do not pick A while BR-35 stands** without an owner re-gate.
 
-**The trade-off.** Adding a public refresh to the panel is a published API on a package other
-people hold; remounting is free but is the app steering a component by side effect.
-
-**The candidates:** (a) a public `refresh`/version contract on `Roster` — widens PR-B into a
-`react` API change that outside consumers then hold; (b) a supported remount strategy, specified
-and checked, with no new API.
-
-**My recommendation: (b), specified and checked.** It needs no public surface, and a remount is
-what a host already controls. **What would change my mind:** a second consumer needing the same
-trigger — then it is a contract, not a workaround, and (a) is right. **What being wrong costs:**
-(b) done carelessly looks like a flicker or loses scroll position; (a) is a public API we cannot
-withdraw.
-
-**Open: the two above.** No decision card is open.
+**Open: one — Open 1.** No decision card is open, and D1–D3 are unchanged in substance by the
+rework; D2's carrier and D3's timing move with Open 1's answer. A reviewer agreeing with a
+recommendation does not close a fork that changes what the issue delivers; that is the owner's.

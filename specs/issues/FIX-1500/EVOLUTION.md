@@ -53,6 +53,31 @@ claims from going unchecked**. Building a checker does not exempt the checker's 
 tenet 7. The header now states per-check which is falsifiable and which is not, rather than
 carrying one sentence over all three.
 
+### The variant: a correction written as a note does not retract the claim
+
+**The sharpest instance in this epic, and it shipped.** The rework withdrew three mechanisms —
+board names from a channel's session state, a host-callable panel `refresh`, and a hired seat's
+inventory row. It re-drafted the documents the findings *named*. It did not sweep the documents
+that merely *cited* them. So the merged spec simultaneously said, in `PLAN.md`:
+
+> An earlier draft of this spec cited the session state for this and was wrong.
+
+…and, three passages away, went on sourcing board names from `that channel's session state`, kept
+a changeset fragment named for a struck surface, and kept a sketch line writing the struck S4's
+inventory row. `DECISIONS.md → Decided, not asked` still asserted all three withdrawn things as
+settled. **An implementer reading the plan would have rebuilt the draft the spec had just
+withdrawn** — and would have been right to, because the plan is what the plan says.
+
+It is worse than the two rows above it. Those were claims nobody had checked. This was a claim
+the document had *already corrected in writing*, in the same file, and still asserted elsewhere.
+
+**The rule, stated so it transfers:** *when you withdraw a claim, sweep for every place that
+**asserts** it — not for the place that **explains** it.* A note recording a correction is
+evidence that the correction happened; it is not the correction. The anti-addenda rule already
+says a pivot gets the affected document re-drafted; this is its second half, one document over:
+**the pivot also gets every document that depended on the withdrawn claim re-swept**, and a
+grep for the withdrawn mechanism is the cheap way to find them.
+
 The corollary that cost a round on its own: **C2's predicate was aimed at a neighbour of its
 claim** — any `.create(` in a file that also mentioned `registerFromRoster`, which established
 neither that the create was the roster's nor that the two sat in one sequence, and passed only
