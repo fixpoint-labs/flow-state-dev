@@ -113,8 +113,11 @@ cannot be rendered without a new L1 type. Two of its six rows fail today and
 is live, not theoretical — and [ER-8](BUSINESS-RULES.md) says a failing row is never passed with a status value.
 
 **And on 2026-09-22 it half-fired, on a third row.** Checklist row 5 turned out to need not a new L1
-type but an **org-identity axis on the list reads that does not exist**
-([FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)). That is the same shape as the
+type but **an org-identity axis the surface can be addressed by, which does not exist** — an
+org-scoped read's identity is the session's own org, and **nothing can *name* a different one**, so
+no surface accepts *show me organization X*
+([FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) supplies the axis; the mechanism is
+worked through in [BUSINESS-RULES.md](BUSINESS-RULES.md#devtool-checklist)). That is the same shape as the
 condition above — a QA row that cannot be rendered on today's substrate — and the card holds:
 W5 **did not build it**, it filed [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) and
 raised the substrate up ([ER-25](BUSINESS-RULES.md), [ER-17](BUSINESS-RULES.md#er-17)). One row
@@ -308,8 +311,10 @@ replaced it is narrower and sharper.
 
    **Plain terms.** The Devtool proof is a six-row checklist. Row 5 is *"open Devtool and see
    everything in this organization — every seat, every channel, who is in which."* Building it needs
-   something W5 does not have and is not allowed to build: the flow and session listings carry no
-   organization identity, so the view has no way to ask *which org*. That work is
+   something W5 does not have and is not allowed to build: **the DevTool has no way to say *which*
+   organization it is asking about.** An organization is deliberately never something a caller names
+   on a request — the gap is naming one, not reaching one — so an unauthenticated shell like the
+   DevTool only ever sees the one default organization it runs as. Giving it a way to ask is
    [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486), which belongs to the substrate, not
    to a QA epic. [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) holds the row and waits
    on it. The other five rows are unaffected. So: **call the Devtool proof passed at five of six and
