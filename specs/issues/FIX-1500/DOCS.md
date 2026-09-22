@@ -37,10 +37,16 @@ To answer "which channels is this seat in", read the membership index by prefix 
 listing every channel and filtering:
 
 ```ts
+import { membershipPrefix } from "@flow-state-dev/workforce";
+
 const page = await resources.listCollectionItems(sessionId, "members", {
-  topicPrefix: `${seatId}/`,
+  topicPrefix: membershipPrefix(seatId),
 });
 ```
+
+Use `membershipPrefix` rather than building the string. A seat id has to be one whole path
+segment, and the helper rejects one containing a separator — an id that slipped a `/` through
+would read a prefix belonging to a different seat.
 
 The key shape is what makes that work: a membership row is keyed `<seatId>/<channelId>`, seat
 first, so one seat's channels are a prefix of the keyspace. Filtering a full listing in the browser
