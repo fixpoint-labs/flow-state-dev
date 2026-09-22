@@ -396,6 +396,32 @@ export function taskChangesOf(items: ReadonlyArray<Record<string, any>>): TaskCh
     .filter((change) => change !== undefined && typeof change.taskId === "string");
 }
 
+/**
+ * What an action returned, as its own request recorded it.
+ *
+ * The HTTP action route acknowledges with a request id and carries no output,
+ * so the value is read where the server records it: the request's root block
+ * trace — the same record the DevTool's Trace tab renders. A root that
+ * forwards a step's value records a `ref` to that step's item; this follows it.
+ *
+ * @returns The value, or `undefined` when the request recorded no root output.
+ */
+export function actionOutputOf(requestId: string, items: ReadonlyArray<Record<string, any>>): unknown {
+  const byId = new Map(items.map((item) => [String(item.id), item]));
+  const valueOf = (output: unknown, depth = 0): unknown => {
+    const recorded = output as { kind?: string; value?: unknown; sourceItemId?: string } | undefined;
+    if (recorded?.kind === "inline") return recorded.value;
+    if (recorded?.kind === "ref" && depth < 8) {
+      return valueOf(byId.get(String(recorded.sourceItemId))?.output, depth + 1);
+    }
+    return undefined;
+  };
+  const root = items.find(
+    (item) => item.type === "block_trace" && item.blockInstanceId === `${requestId}:root:0`,
+  );
+  return valueOf(root?.output);
+}
+
 /** The drain's own termination reason, off its board-meta item. */
 export function terminationReasonOf(items: ReadonlyArray<Record<string, any>>): string | undefined {
   const metas = items.filter((item) => item.type === "component" && item.component === "task-board-meta");

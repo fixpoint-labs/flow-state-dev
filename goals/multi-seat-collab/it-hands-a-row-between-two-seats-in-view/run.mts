@@ -39,7 +39,7 @@ import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { diffReport } from "../lab/diff-check.mts";
 import { LAB_USER_ID, readLabTree } from "../lab/host.mts";
-import { Scenario, serveLab, terminationReasonOf, type ActResult } from "../lab/run-scenario.mts";
+import { Scenario, actionOutputOf, serveLab, terminationReasonOf, type ActResult } from "../lab/run-scenario.mts";
 import { DRAIN_ENTRY, type WorkLine } from "../lab/kinds.mts";
 
 type Fixture = {
@@ -327,19 +327,31 @@ async function main() {
 
     // ---- V4 (BR-9). a second person's answer does not land ----------------
     const beforeOther = JSON.stringify((await lab.rows()).find((row) => row.id === firstId));
-    const otherPerson: ActResult = await lab.answer(
-      owner,
-      firstId,
-      fixture.answer,
-      CONTROL === "second-principal" ? LAB_USER_ID : fixture.otherPrincipal,
-      SECOND_PRINCIPAL_WINDOW_MS,
-    );
-    // The positive record first: the delivery reached the server as a request
-    // on the owning seat. Only then is its fate judged.
-    if (otherPerson.requestId === undefined) {
-      notes.push(`the second person's delivery was refused at the door (${otherPerson.httpStatus} ${otherPerson.refusal})`);
-    } else {
-      notes.push(`the second person's delivery was admitted as ${otherPerson.requestId} and ${otherPerson.status === "in_progress" ? `was still in_progress after ${SECOND_PRINCIPAL_WINDOW_MS} ms` : `ended ${otherPerson.status}`}`);
+    let otherPerson: ActResult | undefined;
+    try {
+      otherPerson = await lab.answer(
+        owner,
+        firstId,
+        fixture.answer,
+        CONTROL === "second-principal" ? LAB_USER_ID : fixture.otherPrincipal,
+        SECOND_PRINCIPAL_WINDOW_MS,
+      );
+    } catch (error) {
+      fail("V4", `the second person's delivery never reached the server: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    // The positive record first: the delivery reached the server, either as a
+    // request on the owning seat or as an explicit refusal at the door. Only
+    // then is its fate judged. An explicit 401/403 is the loud refusal FIX-1511
+    // would give — stronger than today's hang, so it counts. Anything else
+    // that is not a 202 with a request id proves nothing about the fence.
+    if (otherPerson !== undefined) {
+      if (otherPerson.httpStatus === 401 || otherPerson.httpStatus === 403) {
+        notes.push(`the second person's delivery was refused at the door (${otherPerson.httpStatus} ${otherPerson.refusal})`);
+      } else if (otherPerson.httpStatus !== 202 || otherPerson.requestId === undefined) {
+        fail("V4", `the second person's delivery came back ${otherPerson.httpStatus} ${otherPerson.refusal ?? "with no request id"} — neither an explicit refusal nor a request the fence was exercised on`);
+      } else {
+        notes.push(`the second person's delivery was admitted as ${otherPerson.requestId} and ${otherPerson.status === "in_progress" ? `was still in_progress after ${SECOND_PRINCIPAL_WINDOW_MS} ms` : `ended ${otherPerson.status}`}`);
+      }
     }
     const afterOther = JSON.stringify((await lab.rows()).find((row) => row.id === firstId));
     if (afterOther !== beforeOther) {
@@ -348,8 +360,7 @@ async function main() {
 
     // ---- V3 (BR-7). the person answers through the owning seat's action ----
     const answered = await lab.answer(owner, firstId, fixture.answer);
-    if (answered.status !== "completed") fail("V3", `the answer request ended ${answered.status ?? answered.refusal}`);
-    const afterAnswer = (await lab.rows()).find((row) => row.id === firstId);
+    if (answered.status !== "completed") fail("V3", `the answer request ended ${answered.status ?? answered.refusal}`);    const afterAnswer = (await lab.rows()).find((row) => row.id === firstId);
     const finishedFirst = lab.workLines().filter((line) => line.taskId === firstId && line.event === "finished");
     if (afterAnswer?.status !== "completed") fail("V3", `after the answer the first row is "${afterAnswer?.status}", not completed`);
     if (afterAnswer?.feedback !== fixture.answer) fail("V3", `after the answer the row carries ${JSON.stringify(afterAnswer?.feedback)}, not the answer`);
@@ -380,6 +391,16 @@ async function main() {
     // Completed is the positive record: an id the ledger did not hold would
     // have thrown, so this delivery found the row — and wrote nothing to it.
     if (second.status !== "completed") fail("V3", `the second delivery ended ${second.status ?? second.refusal}, so it never reached the row`);
+    // The answer door's own verdict, not just its silence: one park takes one
+    // answer, so the second must come back declined — the row is settled, so
+    // `terminal`. An `unchanged` or an accepted no-op would leave the row and
+    // the work file exactly as a decline does, and only this catches it.
+    const secondOutcome = actionOutputOf(String(second.requestId), second.items) as
+      | { outcome?: string; reason?: string }
+      | undefined;
+    if (secondOutcome?.outcome !== "declined" || secondOutcome.reason !== "terminal") {
+      fail("V3", `the second delivery was not declined as terminal: ${JSON.stringify(secondOutcome)}`);
+    }
     const afterSecond = JSON.stringify((await lab.rows()).find((row) => row.id === firstId));
     if (afterSecond !== beforeSecond) fail("V3", `a second delivery changed the answered row: ${afterSecond}`);
     if (lab.workLines().length !== linesBeforeSecond) fail("V3", `a second delivery ran the work again`);
@@ -424,7 +445,12 @@ async function main() {
     );
     const workLines = lab.workLines();
     for (const { row, text } of byRow) {
-      if (text.length === 0) continue;
+      // A listed row whose body shows nothing is a screen a person cannot read,
+      // and must fail here — skipping it would pass screen 3 on no data at all.
+      if (!text.includes(`"id": "${row.id}"`)) {
+        fail("VB", `screen 3: row ${row.id} is listed but its expanded body shows none of it`);
+        continue;
+      }
       const shown = (field: string) => new RegExp(`"${field}":\\s*"([^"]*)"`).exec(text)?.[1];
       if (shown("status") !== row.status) fail("VB", `screen 3: row ${row.id} reads "${shown("status")}", the ledger holds "${row.status}"`);
       if (shown("assignee") !== row.assignee) fail("VB", `screen 3: row ${row.id}'s assignee reads "${shown("assignee")}", the ledger holds "${row.assignee}"`);
@@ -436,7 +462,7 @@ async function main() {
 
     // ---- V1 (BR-5). a row for nobody, loudly --------------------------------
     await lab.file({ goal: fixture.orphan, maxAttempts: 1 });
-    const orphan = await lab.waitForRow((row) => row.goal === fixture.orphan);
+    const orphan: Record<string, any> | undefined = await lab.waitForRow((row) => row.goal === fixture.orphan);
     if (orphan === undefined) {
       fail("V1", `the row for nobody never reached the board`);
     } else {
@@ -492,6 +518,23 @@ async function main() {
     for (const settled of changes.filter((change) => change.kind === "errored")) {
       if (!seats.includes(settled.flowId) || settled.sessionId !== lab.seatSession(settled.flowId)) {
         fail("V4", `row ${settled.taskId} was taken and refused from ${settled.flowId} session ${settled.sessionId}`);
+      }
+    }
+    // And the row for nobody must HAVE such a record: an errored row with no
+    // seat-originated claim or refusal behind it could have been settled by
+    // anything, and the loop above passes on nothing at all.
+    if (orphan !== undefined) {
+      const takenBySeat = changes.filter(
+        (change) =>
+          change.taskId === orphan.id &&
+          (change.kind === "claimed" || change.kind === "errored") &&
+          seats.includes(change.flowId) &&
+          change.sessionId === lab.seatSession(change.flowId) &&
+          (change.action === "drain" || change.action === "answer") &&
+          change.userId === LAB_USER_ID,
+      );
+      if (takenBySeat.length === 0) {
+        fail("V4", `the row for nobody (${orphan.id}) has no claim or refusal on record from a seat's own drain`);
       }
     }
 
