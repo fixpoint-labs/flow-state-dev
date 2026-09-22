@@ -52,6 +52,15 @@ that is the only form that travels.
   because every panel check ran against a deployment that authenticates nobody (now V16). A
   warning is read only by someone already in the right file, which is not the person about to
   make the mistake.
+- **A check added to enforce a named rule must be named by that rule.** Not every check needs
+  this — most are anchored by the surface they run after, which is its own answer to "why does
+  this exist". The risk is narrower: a check written *because a rule demanded it* and not cited
+  from the rule has nothing explaining it, and reads as redundant to whoever tidies next. BR-29
+  named only the navigator's check while V16 pinned the panel half of the same transport rule,
+  so V16 was the one that would have been deleted six months from now. **An orphaned check is
+  the mirror of an unchecked rule** — one invites an implementer to assume coverage, the other
+  invites a reader to remove it — and the second fails later, which makes it the quieter of the
+  two.
 - **One assertion per failure mode you are excluding.** If two ways of being wrong turn the same
   assertion red, that is one check, not two. This is the sharper form of the rule above, and it
   was learnt the hard way: **V15 — the check written to close the previous unfalsifiable check —
