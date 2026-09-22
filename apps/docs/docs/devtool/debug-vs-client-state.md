@@ -107,7 +107,7 @@ The panel marks a resource read-only when `writable` is `false`, and on no other
 
 Omit `writable` and the resource can be written, so a resource that declares nothing carries no mark.
 
-Omit `llmWritable` and no model is offered a write tool for it. Most resources never set it, so that is the ordinary case, and it is not a read-only mark. The panel shows both settings under the resource header when you need to tell them apart.
+Omit `llmWritable` and no model is offered a write tool for it. Most resources never set it, so that is the ordinary case, and it is not a read-only mark. The panel shows both settings at the top of a resource's detail, so expand the row when you need to tell them apart.
 
 The mark follows those two settings and nothing else. Where the resource was defined does not change it.
 
