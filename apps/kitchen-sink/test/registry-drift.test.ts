@@ -37,11 +37,31 @@
  * The count assertion is the anti-game clause: deleting a source file, or
  * quietly un-installing a target, would otherwise shrink the comparison set
  * and pass by shipping less rather than by matching more.
+ *
+ * This walk is one-directional by itself: it can only see files the
+ * registry has a source for, so a file that exists **only** in the app —
+ * a fork with no registry source at all — never enters the comparison and
+ * the test reads green regardless. That is the same blind spot the
+ * `registry.json`-scoped version of this check had for
+ * `routed-specialists.tsx`, one direction over: closing the source→target
+ * walk and leaving target→source open just moves where the same mistake
+ * hides. The second `it` below asserts the missing direction: every file
+ * under `components/flow-state/` must have a same-path source in the
+ * registry, unless it's named in `APP_ONLY_FILES` with a reason.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+
+/**
+ * Files under `components/flow-state/` with no registry source, kept
+ * app-only on purpose. Each entry needs a reason — this is an explicit
+ * allowlist, not a pattern exclusion, so a future fork with no source
+ * still fails loudly instead of matching a wildcard meant for something
+ * else.
+ */
+const APP_ONLY_FILES: Record<string, string> = {};
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(testDir, "../../..");
@@ -98,5 +118,17 @@ describe("kitchen-sink registry drift (FIX-1477 V8)", () => {
     }
 
     expect(mismatches).toEqual([]);
+  });
+
+  it("has no installed file that lacks a registry source (the symmetric direction)", () => {
+    const targetFiles = walk(kitchenSinkTargetDir).sort();
+
+    const forks = targetFiles.filter(
+      (file) =>
+        !(file in APP_ONLY_FILES) &&
+        !existsSync(join(registrySourceDir, file))
+    );
+
+    expect(forks).toEqual([]);
   });
 });

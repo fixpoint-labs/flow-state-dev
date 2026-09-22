@@ -10,7 +10,6 @@ import {
   Loader2Icon,
   UserIcon,
 } from "lucide-react";
-import { useMemo } from "react";
 import Markdown from "react-markdown";
 import { useSessionItems } from "./session-items-context";
 
@@ -32,17 +31,7 @@ type RoutedSpecialistsData = {
  */
 export function RoutedSpecialists({ item }: { item: ContainerItem }) {
   const allItems = useSessionItems();
-  const { componentsByKey } = useContainerItems(item, allItems);
-
-  const data = useMemo(() => {
-    for (const [, value] of componentsByKey) {
-      const candidate = value as unknown as RoutedSpecialistsData;
-      if (candidate && typeof candidate.state === "object") {
-        return candidate;
-      }
-    }
-    return undefined;
-  }, [componentsByKey]);
+  const { state: data } = useContainerItems<RoutedSpecialistsData>(item, allItems);
 
   if (!data) return null;
 
