@@ -246,6 +246,18 @@ The organizations are passed in rather than discovered. Which ones a start reloa
 
 `problems` is a list of strings, one per row that did not become a seat, each naming the organization, the row key and the reason. Handle it rather than logging it: the number of rows in the roster and the number of seats answering are two different numbers, and a warning on stderr is not a report.
 
+One way to handle it is to put it on screen. `Roster` from `@flow-state-dev/react` lists the seats and takes `problems` alongside them, so both numbers are visible in the same place:
+
+```tsx
+import { Roster } from "@flow-state-dev/react";
+
+<Roster sessionId={sessionId} problems={problems} />
+```
+
+Keep the list from the boot somewhere your app can reach it. `reloadHiredSeats` runs on the server, and nothing carries its result to a browser on its own.
+
+The roster collection itself is readable by a browser, so the seats come straight from it. Being organization-scoped, that read resolves against the organization the reading session belongs to. A seat crosses as `seatId`, `flow` and `instructions`. The settings bag stays on the server.
+
 The call is bounded on both sides, and neither bound returns a partial roster:
 
 - **`maxOrgs`, default 100.** Hand it more organizations than that and it throws before it reads anything, naming both numbers. Raise it with the `maxOrgs` option.

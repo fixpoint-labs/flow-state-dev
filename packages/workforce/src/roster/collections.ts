@@ -110,5 +110,30 @@ export function defineHiredRosterCollection() {
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
     stateSchema: hiredSeatRowSchema,
+    // A browser may read these rows. Without it the collection-state route
+    // refuses every read with `403 State read not permitted`, and a roster
+    // panel has no way to name the org's seats — an action's return value has
+    // no path to the browser, so `readBoard`-style workarounds do not exist.
+    //
+    // What this opens is exactly the ORG's rows and no other org's, because
+    // the read resolves against the session's `orgId` and a session binds to
+    // its principal's org (`handleCreateSession` ignores `body.orgId`
+    // entirely). The axis is `scope`, not `flowIsolation`: an org-scoped
+    // resource is shared within the org by definition, so opening it to that
+    // org's own members reveals nothing they could not already be told. A
+    // USER-scoped collection would not get this — see
+    // `cross-org-collection-read.test.ts`, which fails if the boundary moves.
+    //
+    // `expose` rather than the identity default (BP-015), and `settings` is
+    // the key it leaves out. That bag is passthrough by contract — the flow
+    // kind's own `configSchema` owns it and is free to grow keys this package
+    // has never heard of, which is exactly the shape that should not be
+    // broadcast to every browser in the org. What a roster panel needs is who
+    // the seat is, not how it was configured. The other three are the seat's
+    // identity and are what "a user can see the workers in their org" means.
+    client: {
+      state: { read: true },
+      expose: ["seatId", "flow", "instructions"],
+    },
   });
 }
