@@ -78,6 +78,24 @@ export interface DebugResourceEntry {
   itemCountTruncated?: boolean;
   storagePrefix?: string;
   clientConfig: DebugResourceClientConfig;
+  /**
+   * `config.writable` as the author declared it, **omitted when they declared
+   * nothing**. This is the setting the store itself refuses a write on, so a
+   * reader can tell an immutable resource from a mutable one.
+   *
+   * Absent means writable — the framework's default. Never coerce it to
+   * `false` on the way out: a reader that mistakes an absent setting for a
+   * closed door reports a resource anybody can edit as read-only (BP-030).
+   */
+  writable?: boolean;
+  /**
+   * `config.llmWritable` as the author declared it, omitted when they declared
+   * nothing. A different question from {@link writable} — whether a model is
+   * offered a write tool, not whether the write is possible at all — and
+   * **opt-in**, so most mutable resources leave it unset. Reported beside
+   * `writable`, never in place of it.
+   */
+  llmWritable?: boolean;
 }
 
 export interface DebugResourcesResponse {
@@ -150,6 +168,24 @@ function describeClientConfig(
     stateRead: hasClient,
     contentRead,
     prefetchWindow: null
+  };
+}
+
+/**
+ * The two permission settings, as declared — and only as declared.
+ *
+ * Returns the keys the author actually wrote, so an undeclared setting is an
+ * absent key rather than a `false`. Both configs spell them the same way, so
+ * collections and single resources share this (BR-12, BR-14).
+ */
+function describePermissions(
+  config: ResourceConfig | ResourceCollectionConfig
+): { writable?: boolean; llmWritable?: boolean } {
+  return {
+    ...(typeof config.writable === "boolean" ? { writable: config.writable } : {}),
+    ...(typeof config.llmWritable === "boolean"
+      ? { llmWritable: config.llmWritable }
+      : {})
   };
 }
 
@@ -300,6 +336,7 @@ export async function buildDebugResourceTree(opts: {
     const definitionId = `dr_${counter}`;
     const persisted = persistedCache.get(group.scope) ?? null;
     const clientConfig = describeClientConfig(group.config);
+    const permissions = describePermissions(group.config);
     const primaryName = group.aliases[0]!;
 
     if (isCollectionConfig(group.config)) {
@@ -315,7 +352,8 @@ export async function buildDebugResourceTree(opts: {
           itemCount: 0,
           itemCountTruncated: false,
           storagePrefix: deriveStoragePrefix(pattern),
-          clientConfig
+          clientConfig,
+          ...permissions
         });
         continue;
       }
@@ -334,7 +372,8 @@ export async function buildDebugResourceTree(opts: {
         itemCount: count,
         itemCountTruncated: truncated,
         storagePrefix: deriveStoragePrefix(pattern),
-        clientConfig
+        clientConfig,
+        ...permissions
       });
       continue;
     }
@@ -361,7 +400,8 @@ export async function buildDebugResourceTree(opts: {
         : undefined,
       contentType: hasContent ? deriveContentType(group.config) : undefined,
       contentVisibleToClient: clientConfig.contentRead,
-      clientConfig
+      clientConfig,
+      ...permissions
     });
   }
 

@@ -367,6 +367,8 @@ Run it once per organization after the move. It is safe to run again — a tree 
 
 It throws for an organization or flow id containing `:` or a backslash. Those ids need the escaping the engine applies when it builds a storage address; clear those rows with the engine's own store helpers instead.
 
+After the move, the DevTool marks the document read-only in its Resources panel. The mark follows the two settings the folder gives a reference, `writable: false` and `llmWritable: false`. A document a seat takes read-only in its own file carries the same pair and gets the same mark. [Read-only resources](../devtool/debug-vs-client-state.md#read-only-resources) covers what each setting refuses.
+
 ## What stays in TypeScript
 
 `defineResource` is the other route into the same map, and the two sit side by side, as `ticket` and the file-declared documents do above.

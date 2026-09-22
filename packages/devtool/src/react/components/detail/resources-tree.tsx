@@ -4,9 +4,14 @@
  * One `<ResourceRow>` per `DebugResourceEntry`. Single resources expand
  * inline to a `<ResourceStateView>`. Collections expand to a paginated list
  * of items (`useDebugCollectionItems`) with per-item state views.
+ *
+ * A row whose resource cannot be written at all carries a read-only mark
+ * beside its scope badge, and both permission settings are in the row's
+ * detail (FIX-1481). See {@link ReadOnlyBadge} for what the mark means and
+ * {@link PermissionsLine} for the question it deliberately does not answer.
  */
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Download } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Lock } from "lucide-react";
 import type {
   DebugClientView,
   DebugResourceEntry,
@@ -92,6 +97,7 @@ function ResourceRow({
           </span>
         )}
         <ScopeBadge scope={entry.scope} />
+        {entry.writable === false && <ReadOnlyBadge />}
         {entry.isCollection ? (
           <CollectionCountBadge entry={entry} />
         ) : entry.hasContent ? (
@@ -126,6 +132,61 @@ function ScopeBadge({ scope }: { scope: "session" | "user" | "org" }) {
     <span className={`rounded-full px-1.5 text-[9px] font-mono uppercase ${color}`}>
       {scope}
     </span>
+  );
+}
+
+/**
+ * The seal: this resource cannot be written at all.
+ *
+ * Shown on `writable === false` and on nothing else, because that is the one
+ * condition the store itself refuses the write on — so the mark means
+ * immutable to everyone, from code and from a model alike.
+ *
+ * It is deliberately NOT derived from `llmWritable`, which asks a different
+ * question (is a model offered a write tool) and is opt-in, so a mark taken
+ * from it would brand most of the tree and stop distinguishing anything.
+ * Nor from where the resource was loaded: a `references/` document and a
+ * document held under a seat's read-only grant are sealed two different ways
+ * and arrive as the same setting, and a folder-derived mark would be silent
+ * about the second.
+ */
+function ReadOnlyBadge() {
+  return (
+    <span
+      className="flex items-center gap-0.5 rounded-full bg-slate-700/60 px-1.5 text-[9px] font-mono uppercase text-slate-200"
+      title="writable is false — the store refuses every write to this resource, from code and from a model alike"
+    >
+      <Lock className="h-2.5 w-2.5" aria-hidden />
+      read-only
+    </span>
+  );
+}
+
+/**
+ * Both permission settings, in the row's detail — each shown only where the
+ * server declared it.
+ *
+ * The mark above answers one question. This answers both, so a reader who
+ * needs the distinction between *cannot be written* and *a model is not
+ * offered a write tool* can get it without the mark pretending to cover the
+ * second. An undeclared setting is left out rather than printed as a default:
+ * absent means writable, and a server that predates these settings sends
+ * neither, in which case this renders nothing at all.
+ */
+function PermissionsLine({ entry }: { entry: DebugResourceEntry }) {
+  const parts: string[] = [];
+  if (entry.writable !== undefined) parts.push(`writable: ${entry.writable}`);
+  if (entry.llmWritable !== undefined) {
+    parts.push(`llmWritable: ${entry.llmWritable}`);
+  }
+  if (parts.length === 0) return null;
+  return (
+    <div
+      className="text-[10px] font-mono text-slate-500"
+      title="writable decides whether this can be written at all; llmWritable only whether a model is offered a write tool"
+    >
+      {parts.join(" · ")}
+    </div>
   );
 }
 
@@ -169,6 +230,7 @@ function SingleBody({
 }) {
   return (
     <div className="space-y-2">
+      <PermissionsLine entry={entry} />
       <ResourceStateView state={entry.state ?? null} clientView={entry.clientView} />
       {entry.hasContent && (
         <ContentFetcher
@@ -215,6 +277,7 @@ function CollectionBody({
 
   return (
     <div className="space-y-2">
+      <PermissionsLine entry={entry} />
       {showFilter && (
         <div className="flex items-center gap-2">
           <Input

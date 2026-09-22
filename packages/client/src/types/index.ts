@@ -584,6 +584,20 @@ export type DebugResourceEntry = {
   itemCountTruncated?: boolean;
   storagePrefix?: string;
   clientConfig: DebugResourceClientConfig;
+  /**
+   * Whether the resource may be written at all — the setting the store itself
+   * refuses a write on. **Absent when the server declared nothing, and absent
+   * means writable**, which is the framework's default. A server that predates
+   * this sends neither this nor `llmWritable`, so treat absence as "unknown,
+   * assume open" rather than as `false`.
+   */
+  writable?: boolean;
+  /**
+   * Whether a model is offered a write tool for the resource. A different
+   * question from `writable`, and **opt-in** — most mutable resources leave it
+   * unset — so it never stands in for it. Absent when undeclared.
+   */
+  llmWritable?: boolean;
 };
 
 export type DebugResourcesResponse = {

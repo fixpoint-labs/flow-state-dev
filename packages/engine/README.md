@@ -907,7 +907,7 @@ Clients consume the wire heartbeat through `useSession`'s watchdog: it surfaces 
 
 ## Debug endpoints
 
-The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/resources` and `/api/flows/sessions/:id/debug/resources/:ref`. Each response carries the full server-side state for the matching storage keys alongside the projected client view, so a debugger can show you exactly what `client.data` is dropping. There are no write paths here; the endpoint cannot mutate state.
+The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/resources` and `/api/flows/sessions/:id/debug/resources/:ref`. Each response carries the full server-side state for the matching storage keys alongside the projected client view, so a debugger can show you exactly what `client.data` is dropping. There are no write paths here; the endpoint cannot mutate state. A response lists one entry per resource. Each entry reports the resource's `writable` and `llmWritable` settings where they are declared. An undeclared setting is absent from the entry rather than reported as `false`.
 
 The endpoint is off by default. Opt in with `debugEndpointsEnabled: true` on `createFlowApiRouter`, or set `FSDEV_DEBUG_ENDPOINTS=1` in the environment. By default the route accepts only loopback origins; widen with `debugAllowedOrigins` for non-loopback DevTool hosts.
 
