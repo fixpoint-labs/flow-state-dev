@@ -3,9 +3,11 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
-(BR-n) and [DECISIONS.md](DECISIONS.md) (D-n). `tdd`. **Three PRs**, seamed at the package
+(BR-n) and [DECISIONS.md](DECISIONS.md) (D-n). `tdd`. **Five PRs**, seamed at the package
 boundary: PR-A is the public surface and is checkable with no app at all; PR-B and PR-C are the
-two consumers and are independent of each other. S9 may split off as a fourth, ahead of PR-C.
+two consumers and are independent of each other. Two more split off as the work met reality —
+S9 ahead of PR-C as the plan allowed, and the two panels into their own PR once their
+collections turned out to need a read declaration ([PR plan](#pr-plan)).
 
 ## Surfaces
 
@@ -33,23 +35,29 @@ up rather than settled here ([Follow-ups](#follow-ups)).
 
 ## PR plan
 
-| PR | Surfaces | depends_on | Why this seam |
-|---|---|---|---|
-| PR-A | S1 S2 S3 S4 S5 S6 · `packages/react/README.md` · its own changeset ([Changesets](#changesets)) | — | The public boundary first (BP-004). It is checkable with no app running, and both consumers need it before either can start |
-| PR-B | S7 | PR-A | The reusability proof ([ER-24](../../epics/FIX-1455/BUSINESS-RULES.md)). Deliberately **not** behind PR-C: it needs nothing from FIX-1475 or FIX-1476, so the epic's gate stops depending on two siblings landing |
-| PR-C | S8 S9 · kitchen-sink README · [DOCS.md](DOCS.md) | PR-A | The shell. Needs real collections to render, so it is the one that waits on siblings |
+**Status is part of the plan.** A row that reads as pending when it merged is the same staleness as a stale line number.
 
-**S9 may land first, on its own.** V8 is red on `main` today, so drift reconciliation is
-checkable with nothing else built — and a failure in it is then attributable to drift rather than
-to shell wiring. Ship it as a preparatory PR ahead of PR-C once it is ready; keeping it inside
-PR-C is the fallback, not the plan. **VG cannot move the same way** — it asserts the shell's
-behaviour, and a shell merged without its goal check is the defect class this epic keeps finding.
-**The docs can**: [DOCS.md](DOCS.md) publishes with PR-C or a follow-up in the same window,
-reconciled against the built components either way.
+| PR | Surfaces | depends_on | State | Why this seam |
+|---|---|---|---|---|
+| PR-A · [#2006](https://github.com/fixpoint-labs/flow-state-dev/pull/2006) | S1 S2 S3 S4 · `packages/react/README.md` · its changeset ([Changesets](#changesets)) | — | **merged** | The public boundary first (BP-004). Checkable with no app running, and every consumer needs it before it can start. **S5 and S6 were carved out of it** — they were planned here and could not ship here, because their collections refuse a browser read ([Blocked on](#blocked-on)) |
+| PR-B · [#2011](https://github.com/fixpoint-labs/flow-state-dev/pull/2011) | S7 | PR-A | **merged** | The reusability proof ([ER-24](../../epics/FIX-1455/BUSINESS-RULES.md)). Deliberately **not** behind PR-C: it needs nothing from FIX-1475 or FIX-1476, so the epic's gate stops depending on two siblings landing |
+| S9's own · [#2019](https://github.com/fixpoint-labs/flow-state-dev/pull/2019) | S9 | — | **merged** | Split off ahead of PR-C exactly as this plan allowed: drift reconciliation is checkable with nothing else built, so a failure in it is attributable to drift rather than to shell wiring |
+| PR-A2 · [#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036) | S5 S6 | PR-A | **open** | The two panels, plus the one-line read declaration each of their collections needs. Its own PR because that declaration is substrate work PR-A was not carrying, and because it waits on FIX-1475 and FIX-1476 while PR-A did not |
+| PR-C | S8 S9† · kitchen-sink README · [DOCS.md](DOCS.md) | PR-A, PR-A2 | **not opened** | The shell. Needs real collections to render, so it is the one that waits on siblings. †S9 already shipped as #2019 |
 
-**PR-C's outside waits.** `Roster` needs FIX-1475's roster collection; `BoardColumns` needs
-FIX-1476's channel kinds and boards. PR-A is checkable against fixtures before either lands.
-PR-B needs neither, which is the point of the split.
+**S9 landed first, on its own — the reasoning, kept because it is why.** V8 was red on `main`, so
+drift reconciliation was checkable with nothing else built, and a failure in it was attributable
+to drift rather than to shell wiring. It shipped as #2019 ahead of PR-C, which was the plan
+rather than the fallback. **VG cannot move the same way** — it asserts the shell's behaviour, and
+a shell merged without its goal check is the defect class this epic keeps finding. **The docs
+can**: [DOCS.md](DOCS.md) publishes with PR-C or a follow-up in the same window, reconciled
+against the built components either way.
+
+**The outside waits belong to PR-A2, not PR-C.** `Roster` needs FIX-1475's roster collection and
+`BoardColumns` needs FIX-1476's channel kinds and boards — and since both panels moved out of
+PR-A into #2036, that is the PR holding those waits. PR-A was checkable against fixtures without
+either, which is why it could merge first; PR-B needed neither, which is the point of that split.
+PR-C now waits on #2036 rather than on the siblings directly.
 
 <a name="changesets"></a>
 ### Changesets
