@@ -43,7 +43,7 @@ the check the plan runs. A human reviews this page for a missed case; the plan t
 |---|---|---|---|
 | BR-18 | The process that performed a hire ends and a new one starts | The seat is in the rail's list again, rebuilt from durable organization state | CI · persistence boundary, plus the goal check |
 | BR-19 | The post-restart read is served | It does not come from process memory — not a module-level cache, not a `globalThis` slot, not the registrar the previous process filled | CI · persistence boundary, with the empty-store negative control that proves the check reaches the durable read |
-| BR-20 | A stored row cannot be brought back at boot | The rail says so rather than showing a shorter list that looks complete. Reuses the problem reporting [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) built | CI |
+| BR-20 | A stored row cannot be brought back at boot | The rail says so rather than showing a shorter list that looks complete | **Inherited, not re-proved here.** [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) built the boot report, its organization-scoped transport and the `problems` prop that renders it, and its own checks cover them. A seat hired through this rail writes an ordinary roster row, so the same reload and the same report already cover it — there is no failure mode here that FIX-1477's checks do not already turn red. Stated rather than dropped, so the behaviour is a promise this rail keeps and not an accident of what it mounts |
 
 ## Channels and boards
 

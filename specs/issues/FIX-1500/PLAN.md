@@ -12,7 +12,7 @@ half is checkable with no app running and the app half is the only one that wait
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
 | S1 | `workforce` · the durable-hire sequence | **Move** it out of `apps/kitchen-sink/flows/workforce-admin/flow.ts` and into this package as one exported pair — hire and fire — taking the collection ref, the kind map and the registrar as parameters. The operator flow becomes its **first caller** and keeps its own resolver, its own credential and its fail-closed registration. The sequence itself does not change: refuse-then-mint-then-`create()`-then-register, compensating delete on a registration failure, `create()` **never** `upsert()`. Verified as a move rather than a merge — the sequence is at exactly one site today ([`poc/evidence/`](poc/evidence/README.md) → C2) | BR-11 – BR-15 |
-| S2 | `workforce` · the three inventory collections | Each declares `client: { state: { read: true }, expose: [...] }`. **Never bare** — a bare opt-in republishes the stored row unchanged. The allowlists are the fields the seat detail draws and no more | BR-25 BR-26 BR-28 |
+| S2 | `workforce` · the three inventory collections | Each declares `client: { state: { read: true }, expose: [...] }` ([D3](DECISIONS.md#d3)). **Never bare** — a bare opt-in republishes the stored row unchanged. The allowlists are the fields the seat detail draws and no more | BR-25 BR-26 BR-28 |
 | S3 | `workforce` · the seat inventory row and its writer | The row schema gains the seat's **resolved skill names** — `z.array(z.string()).default([])`, so a row written before the field still reads (BP-030). `InventorySeat` widens to carry them and `openInventory`'s seat write publishes them. Names only; contents are not published (D2) | BR-5 BR-7 BR-9 BR-10 |
 | S4 | `workforce` · a runtime hire's inventory row | A seat hired at runtime gets its inventory row written too, through S1. Without it the seat detail works for file-declared seats and silently not for hired ones — which is the spine's own step 4 | BR-16 |
 | S5 | `react` · `SeatDetail` | One seat's kind, skills, channels and declared boards. Host-passed `PanelRowSource`, the same seam `Roster` and `BoardColumns` take — **it must not build its own client** (BR-27). Each section has a distinct empty state; a section that failed to read says so rather than rendering as empty | BR-5 – BR-8 BR-27 |
@@ -20,6 +20,13 @@ half is checkable with no app running and the app half is the only one that wait
 | S7 | kitchen-sink · the hire door | One action on the flow the rail's session runs on, calling S1. Organization from `ctx.org`, never from the body. The flow installs the roster collection so the ref resolves against its owning flow | BR-1 – BR-3 BR-11 – BR-15 |
 | S8 | kitchen-sink · the rail | A seat row opens `SeatDetail`; a channel row opens its declared boards and mounts `BoardColumns` per board; the hire affordance calls S7 and then the roster panel's own `refresh`. **No create affordance for a channel or a board** | BR-16 BR-21 – BR-24 |
 | S9 | Docs · changesets | [DOCS.md](DOCS.md)'s operations; `packages/workforce/README.md` and `packages/react/README.md` for the public changes. **None for kitchen-sink** — private (BP-022) | — |
+
+**Two rules are inherited rather than built.** BR-20 (a stored seat that cannot be brought back at
+boot is named in the rail) is [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477)'s boot
+report and `problems` prop, which a seat hired through this rail reaches by writing an ordinary
+roster row. BR-17 (another browser seeing this one's hire) is
+[FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506)'s. Neither has a surface or a check
+here, and both are written down so their absence is visibly deliberate.
 
 **What is *not* here.** The rail itself — the `FlowNavigator` mount, the `Roster` and
 `BoardColumns` panels and the shell that holds them — is
