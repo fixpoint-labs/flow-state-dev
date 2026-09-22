@@ -1,31 +1,22 @@
 ---
 sidebar_position: 4
 sidebar_label: Projected collections
+description: A read-only view of data the app already owns. Each read asks the app again.
 ---
 
 # Projected resource collections
 
-A normal [resource collection](./collections.md) keeps its instances in framework storage. You write a row, the framework holds it, and reads come back from that copy. That works well when the framework owns the data. It works badly when your app already owns it.
+A projected collection is a read-only view of data the app already owns. The framework does not store a copy. Each `get`, `list`, or client read calls the `read` or `search` hook you supply, and the answer is whatever the app returns that moment.
 
-A **projected collection** points the framework at a store you already run — a SQL table, an HTTP API — and reads through to it. The framework never holds a copy. Each read re-asks your store for the truth. Your database stays the single source of truth, and the same data becomes something the agent can read and a screen can show, from one definition.
-
-The term for this is **read-through**: instead of caching a copy that drifts, the framework re-queries on every read. No mirror, no dual-write, no stale cache to invalidate.
-
-## When to reach for it
-
-Reach for a projected collection when:
-
-- Your app is the source of truth for the data (it lives in your DB or behind your API), and
-- You want the agent and the UI to see it without copying it into the framework first.
-
-If the framework is a fine home for the data — it has no life outside a flow, no relational shape, no other system writing it — a plain `defineResourceCollection` is simpler. Use a projected collection when copying the data in would mean fighting staleness.
+Reach for it when the app is the source of truth and you do not want a second copy in the framework. When the framework should own the rows, use a [resource collection](./collections.md).
 
 ## Defining one
 
-You supply two backing functions. `read` resolves one record by its key. `search` resolves a filtered page — the agent's search tool, the list route, and `ctx.resources.<name>.list()` all push their query down to it, so your store's engine does the filtering and ranking, never the framework in memory.
+`defineProjectedResourceCollection` takes a wildcard pattern, a scope, a `stateSchema`, and the two hooks. `read` resolves one record by key (`null` means the app has no such record). `search` returns a page of hits. The agent's search tool, the list route, and `ctx.resources.<name>.list()` all send their query to `search`.
 
 ```ts
-import { defineProjectedResourceCollection } from "@flow-state-dev/core";
+import { defineProjectedResourceCollection, handler } from "@flow-state-dev/core";
+import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
 import { z } from "zod";
 
 const positions = defineProjectedResourceCollection({
@@ -33,24 +24,31 @@ const positions = defineProjectedResourceCollection({
   scope: "user",
   stateSchema: z.object({ ticker: z.string(), shares: z.number() }),
 
-  // Resolve one record from your store. `null` = no such record.
   async read({ key, ctx }) {
     return db.positions.findOne({ userId: ctx.userId, ticker: key });
   },
 
-  // Push the query down to your store — never enumerate in memory.
   async search({ query, ctx }) {
-    const rows = await db.positions.find({ userId: ctx.userId, limit: query.limit ?? 20 });
-    return { hits: rows.map((r) => ({ key: r.ticker, state: r })) };
+    const rows = await db.positions.find({
+      userId: ctx.userId,
+      q: query.search,
+      after: query.cursor,
+      limit: query.limit ?? 20,
+    });
+    return {
+      hits: rows.map((r) => ({ key: r.ticker, state: r })),
+      nextCursor: rows.nextCursor, // omit on the last page
+    };
   },
 
-  // Optional: render each record into agent-facing Markdown.
   contentTemplate: parseResourceTemplate(
     `<system>{{ state.ticker }}: {{ state.shares }} shares</system>`
   ),
   client: { state: { read: true }, content: { read: true } },
 });
 ```
+
+`contentTemplate` renders each record into Markdown against `state`. A `client` config projects `clientData` the same way a `defineResourceCollection` collection does.
 
 Register it under any accessor name, like any collection:
 
@@ -60,113 +58,56 @@ const desk = handler({
   resources: { portfolio: positions },
   execute: async (_input, ctx) => {
     const aapl = await ctx.resources.portfolio.get("AAPL");
-    // aapl.state.shares — read straight from your store, validated through stateSchema
+    // aapl.state.shares — from the app, validated through stateSchema
   },
 });
 ```
 
-`ctx.resources.portfolio` is typed read-only: `get` and `getOptional`, no `create` / `upsert` / `delete`. Reads within one request are memoized and de-duplicated, so a fanned-out read of the same key issues one `read` call.
+`ctx.resources.portfolio` is a `ProjectedResourceCollectionRef`: `get`, `getOptional`, and `list`. There is no `create`, `upsert`, `delete`, or `count`. Two reads of the same key in one request share one `read` call. The next request calls the hook again.
 
-## What the agent and UI see
+## What comes back
 
-Each record's `state` comes from your `read` hook, validated through `stateSchema` — the same normalization a framework-stored record gets. From there everything is identical to a normal collection:
+`get(key)` returns a `ProjectedResourceRef` — `path`, `scope`, `uri`, a synchronous `state`, plus `readContent()` / `readContentRaw()`. `state` is the hook's record after `stateSchema` validation.
 
-- **Agent-facing content** — `contentTemplate` renders the record into Markdown against its `state`.
-- **Client projection** — a `client` config projects each record's `clientData` for the UI, and the client state/content routes resolve through your `read` hook.
+| Call | Result |
+| --- | --- |
+| `get` and the app has the record | the ref |
+| `get` and `read` returns `null` | throws (`not found`) |
+| `getOptional` and `read` returns `null` | `undefined` |
+| `read` returns a record that fails `stateSchema` | throws (`stateSchema`) |
+| `get` with a key that does not match the pattern | throws (`does not match`); `read` is not called |
+| `list` and a hit fails `stateSchema` | that hit is dropped and logged; the rest of the page is returned |
+| org-scoped collection, session has no org | the read is refused (`organization`); `read` is not called |
 
-The snapshot does **not** enumerate your store. A client-visible projected collection appears in the `/state` snapshot as an empty anchor (unknown cardinality, never a misleading count of zero); the UI discovers instances through the list/search route and then fetches each by key.
+The HTTP item-state route returns `200` with `null` when the app has no such record. A client `POST` / `PATCH` / `DELETE` against the collection returns `403` with an error matching `read-only projected collection`.
+
+Definition-time failures:
+
+- parameterized `[name]` patterns — wildcard only (`positions/*` or `positions/**`)
+- scope other than `session` / `user` / `org`
+- missing `read` or `search`
+- `client.content.create` / `update` / `delete` — build-time error
+- both `contentTemplate` and `contentTemplateRef`
 
 ## Searching and listing
 
-Every "find" path pushes its query down to your `search` hook — the framework never lists your store and scores in memory. Your hook returns a page of hits plus an opaque `nextCursor`; pass that cursor back to get the next page.
+`search` receives `{ search?, prefix?, filter?, limit?, cursor? }` and returns `{ hits, nextCursor? }`. Hits stay in the order you return them. Pass `nextCursor` back as `query.cursor` for the next page. A bare string to `list` is `{ search }`.
 
 ```ts
-async search({ query, ctx }) {
-  // query: { search?, prefix?, filter?, limit?, cursor? }
-  const rows = await db.positions.find({
-    userId: ctx.userId,
-    q: query.search,
-    after: query.cursor,
-    limit: query.limit ?? 20,
-  });
-  return {
-    hits: rows.map((r) => ({ key: r.ticker, state: r })),
-    nextCursor: rows.nextCursor, // omit on the last page
-  };
-}
+const page = await ctx.resources.portfolio.list({ search: "tech", limit: 20 });
+// page.items — read-only refs; state and rendered content already resolved
+// page.nextCursor — omit on the last page
 ```
 
-Three surfaces consume it:
+- **In a block** — `list` as above.
+- **The agent** — with `llmReadable: true`, `searchResources` calls `search` and can page with `nextCursor` when that collection is the only searchable source. `globResources` and `grepResourceContent` skip projected collections. An agent that already has a record's URI reads it with `readResourceContentTool`.
+- **The UI** — `GET /sessions/:id/resources/:ref?limit=&cursor=` returns one page and the app's `nextCursor`. `useResourceCollectionList` accumulates pages and exposes `loadMore` / `hasMore`.
 
-- **In a block** — `ctx.resources.portfolio.list(query?)` returns `{ items, nextCursor? }`, where each item is a read-only ref (its `state` and rendered content already resolved). A bare string is shorthand for `{ search }`.
-- **The agent** — when the collection is `llmReadable`, `searchResources` routes to your hook instead of scanning content in memory. It returns a `nextCursor` the model can page with. `globResources` and `grepResourceContent` deliberately **skip** projected collections: their contract is deterministic path/line matching, which a pushed-down lexical or semantic search can't honor. An agent that already has a record's URI reads it directly with `readResourceContent`.
-- **The UI** — `GET /sessions/:id/resources/:ref?limit=&cursor=` returns one page and the app's `nextCursor`. The React `useResourceCollectionList` hook accumulates pages and exposes `loadMore` / `hasMore` over that cursor.
-
-Hits arrive in the order your hook returns them (your store's ranking), and each is validated through `stateSchema` — a row that fails validation is dropped and logged, so one bad record never sinks the page.
-
-## Staying in sync
-
-A projected collection reads through to your store, so there's no cross-request cache to invalidate. Reads *are* memoized within a single request (as noted above), but a new request always reads through — so a change becomes visible the next time something reads the key. Freshness is about *when the next read happens*, not about busting a cache. The question is what should trigger that read.
-
-**Run work when your data changes.** Your app owns the write, so it's the natural place to react to one. Route the change through the [inbound-transport](../advanced/inbound-transports.md) contract: a small custom adapter turns your backend's change signal into a dispatch. `host` — the runtime surface that carries `dispatch` — is handed to the adapter inside `createBindings(host)`; it isn't a free-standing import, so the dispatch lives in the adapter, not in a bare backend function. Guard the route so only your own backend can reach it — that trust boundary is what lets the adapter assert *whose* data changed as the principal, so the action reads the collection under the right owner:
-
-```ts
-import type { InboundTransportAdapter } from "@flow-state-dev/engine";
-
-// A custom transport for your own backend's "a position changed" signal.
-function positionSyncAdapter(): InboundTransportAdapter {
-  return {
-    source: "position-sync",
-    createBindings(host) {
-      return {
-        routes: [
-          {
-            method: "POST",
-            // Custom routes are matched against the full request path, so mount
-            // under the same `/api/flows` prefix the router is served from.
-            path: "/api/flows/positions/changed",
-            handler: async (req) => {
-              // Only your own backend should reach this route. Guard it however
-              // you guard internal endpoints (shared secret, internal-network
-              // routing, mTLS…) — the role signature verification plays for the
-              // webhook transport. That boundary is what makes the asserted
-              // userId below trusted rather than caller-controllable.
-              if (!(await isTrustedInternalCaller(req))) {
-                return new Response(null, { status: 401 });
-              }
-              const { ticker, userId } = await req.json();
-              // Run a flow that re-reads and re-scores the changed position.
-              host.dispatch({
-                source: "position-sync",
-                flowKind: "desk",
-                action: "rescoreThesis", // reads ctx.resources.portfolio
-                input: { ticker },
-                // Your trusted backend asserts the changed owner as the
-                // principal; it wins over the host resolver, like the scheduled
-                // adapter's per-user principal. Safe only because the route is
-                // guarded above — never trust an unauthenticated body for this.
-                principal: { userId },
-                responseEmitter: null, // fire-and-forget: no response stream to consume
-              });
-              return new Response(null, { status: 202 });
-            }
-          }
-        ]
-      };
-    }
-  };
-}
-```
-
-`rescoreThesis` reads `ctx.resources.portfolio.get(ticker)` straight through to your store, so it sees the write. Dispatch is fire-and-forget (`responseEmitter: null`); the session doesn't have to be open — it stands one up. Mount the adapter alongside the default HTTP one (`createFlowApiRouter({ adapters: [positionSyncAdapter()] })`), and anything your backend observes — a database trigger, a queue consumer, a post-write hook — reaches the flow by POSTing to its guarded route.
-
-For a change signalled by an *externally-signed* third party — a Stripe- or GitHub-style POST rather than your own backend — route it through the [webhook transport](../server/webhooks.md) instead. Same dispatch underneath, with signature verification in front.
-
-**Refresh a live screen.** Pushing a projected update into a session someone is watching *right now*, so the open view re-renders on its own, is a separate and heavier mechanism — a deferred follow-up. Until it lands, a live view stays current by re-reading: the client re-runs its list/state query. A flow you dispatch on the change (above) runs as its own request; an already-open screen won't observe it without that refetch.
+`/state` does not enumerate the app. A client-visible projected collection appears as `{ prefetched: [] }` with no `count`. The UI discovers instances through list or search, then fetches each by key.
 
 ## The trusted context
 
-Your `read` / `search` hooks receive a `ctx` the framework derives from the request — never from caller input:
+`read` and `search` receive a `ProjectedResourceContext` the framework derives from the request. Scope the query with these fields, not with caller input.
 
 ```ts
 type ProjectedResourceContext = {
@@ -174,24 +115,33 @@ type ProjectedResourceContext = {
   scopeId: string;   // the resolved sessionId / userId / orgId
   userId: string;    // the server-derived owner
   orgId?: string;
-  tenantId?: string; // trusted tenant coordinate for multi-tenant queries
+  tenantId?: string; // trusted tenant coordinate
   flowKind: string;
   signal?: AbortSignal;
 };
 ```
 
-Scope your query with these fields, not with anything the caller passed. `userId` and `tenantId` are the framework's own trusted coordinates, so your store reads land in the same owner and tenant namespace the rest of the flow uses.
+## Writes stay on the app
 
-## Read-only by design
+The resource surface does not write. The ref has no mutators, the agent CRUD tools skip the collection, and the client write routes are closed.
 
-A projected collection is read-only across every surface. The ref has no mutators, the agent CRUD tools skip it, and the client `POST` / `PATCH` / `DELETE` routes are closed. Declaring `client.content.create` / `update` / `delete` is a build-time error.
+Change the data through the app's own handlers and store. The next `get` or `list` sees that write. A live screen stays current by re-running its list or state query. To run flow work after a write, dispatch an action that reads the collection. See [Inbound transports](../advanced/inbound-transports.md).
 
-The agent still changes your data — through handlers that call your store directly, the same as any other app write. What a projected collection adds is the *read* view. Your app's writes are observed; the resource surface does not offer a second way to write.
+## Limits
 
-## Limits and tradeoffs
+- The framework does not cache or materialize a copy across requests.
+- Wildcard patterns only. Encode a discriminator into a path segment; `[name]` patterns are rejected.
+- No `count()`. The snapshot is `{ prefetched: [] }` with no `count`.
+- Ranking, filtering, and paging are whatever `search` does. The framework does not re-rank.
+- `searchResources` returns `nextCursor` only when one projected collection is the only searchable source. Mixed or multi-collection search is a single page with no cursor.
+- `globResources` and `grepResourceContent` skip projected collections.
 
-- **A hook call per read.** Read-through trades a cached copy for freshness. Reads are memoized per request, but there is no cross-request cache in this slice.
-- **Patterns are wildcard-only.** `positions/*` or `positions/**`. Parameterized `[name]` patterns are rejected at build time — encode the discriminator into a wildcard segment.
-- **The snapshot doesn't enumerate.** There is no `count()`; an honest count would need to either enumerate your store (forbidden) or a hook nobody has asked for yet. Listing is cursor-paged, so the UI pages through instead of asking "how many."
-- **Search is your store's, not the framework's.** Ranking, filtering, and paging are whatever your `search` hook does. The framework passes the query down and the cursor back; it doesn't re-rank. Glob and grep skip projected collections for the same reason — their deterministic contract isn't something a pushed-down search can promise.
-- **Live-view push is a follow-up.** An idle session already reacts to your data changing — dispatch a flow through an inbound transport (see [Staying in sync](#staying-in-sync)). Pushing a projected delta into an *open* screen without a refetch is the deferred piece.
+## Migration
+
+Callers of `defineExternalResourceCollection` switch to `defineProjectedResourceCollection`. The `ExternalResource*` types become `ProjectedResource*`. `isExternalResourceCollection` becomes `isProjectedResourceCollection`. The brand is `projected: true`, not `external: true`.
+
+## See also
+
+- [Resource collections](./collections.md) — `defineResourceCollection`
+- [Searching resources](./searching.md) — `searchResources`, glob, and grep
+- [Client access](./client-access.md) — `client` config and React hooks
