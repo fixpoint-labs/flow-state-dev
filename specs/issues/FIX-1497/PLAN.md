@@ -83,6 +83,7 @@ Everything else — module layout, helper names, the worker body — is yours.
 | Never reach for an org-level board view to get both rows on one screen | Boards are session-scoped and widening that is FIX-1320's. New substrate under a QA label is [ER-25](../../epics/FIX-1457/BUSINESS-RULES.md) |
 | Never edit the DevTool to make a row pass | *No special wrapper* is the point of the proof. A row that needs rendering that does not exist is a dependency to name, not a diff to write |
 | Keep every changed path inside `goals/` and this spec folder | [ER-25](../../epics/FIX-1457/BUSINESS-RULES.md) and BR-19; also what makes V7 a real gate |
+| Spawn the dev server with the intent overrides stripped — `goals/lib/env`'s `intentFreeEnv`, exactly as every other goal does | `FSDEV_DEFAULT_MODEL` set while no flow declares an intent makes `createModelResolver` throw, and on the served path that throw becomes a request that never advances and never errors. Inherit them and the run measures the machine |
 
 ## Docs
 
@@ -103,16 +104,23 @@ worker.answer(taskId, text)   → unpark with the answer, then drain, in the ans
 **POC:** [`poc/served-hire-observable/`](poc/served-hire-observable/README.md), cited from the spec
 PR. It showed the premise holds — the shipped `fsdev dev` registers a file-declared hire as three
 ordinary seat copies plus the channel singleton with its four doors, so the DevTool has something
-to open and no wrapper is needed. **It graded registration only**, and says why: on the authoring
-box the dev server never advanced an action past `in_progress`, and the same stall reproduced on a
-shipped goal fixture and on a three-line control flow, so it is the environment and not the hire.
-Both of its controls were run red.
+to open and no wrapper is needed. Both of its controls were run red. **It grades registration
+only, deliberately**: driving the scenario is V1–VG's job, not a registration probe's.
+
+**One thing it had to settle on the way, and did.** Every action on the served path appeared to
+stall at `in_progress` — including on a shipped goal fixture and on a three-line control flow. It
+is environmental and the variable is named: `FSDEV_DEFAULT_MODEL` set while no flow declares an
+intent makes `createModelResolver` throw, and the served path swallows that into a request that
+never advances. Strip the overrides and the same server settles in 0 ms. The A/B is in the POC's
+README; the guardrail above is what keeps it out of your run.
 
 ## At implement time
 
-- **Check the box before blaming the scenario.** Run
-  `goals/flow-instances/devtool-shows-the-selected-copy` first. If that stalls, `fsdev dev` does
-  not execute actions here and nothing about this scenario is being measured.
+- **If an action never advances past `in_progress`, it is the environment, and it is named.**
+  `FSDEV_DEFAULT_MODEL` set while no flow declares an intent makes `createModelResolver` throw,
+  and the served path swallows it. The guardrail above is the fix; the POC's README has the A/B.
+  Confirm with `goals/flow-instances/devtool-shows-the-selected-copy` before suspecting anything
+  in this scenario.
 - **If the [Open fork](DECISIONS.md#open) came back *share*,** re-cut S1–S4 onto
   `goals/devforce-lab` and keep every check. Its one-worker rule has to be relaxed deliberately
   and re-gated first — do not work around it.
@@ -130,3 +138,7 @@ Both of its controls were run red.
 - The DevTool's board fold is not exported, so the cheap half of the observation needs a browser
   ([D1](DECISIONS.md#d1)'s *what would change my mind*). File it if the browser leg proves
   expensive to keep green.
+- **A model-resolver throw on the served path surfaces as a request that never advances and never
+  errors** — on a flow with no generator in it. Observed, not diagnosed; the POC's README carries
+  the A/B. Raised up rather than worked around
+  ([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)); the EM owns whether it is filed.

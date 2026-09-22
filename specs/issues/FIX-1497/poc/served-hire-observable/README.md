@@ -53,19 +53,44 @@ POC_CONTROL=no-tree   pnpm tsx specs/issues/FIX-1497/poc/served-hire-observable/
 POC_CONTROL=no-answer pnpm tsx specs/issues/FIX-1497/poc/served-hire-observable/check.mts
 ```
 
-## What this could not run, and why that is not a finding
+## The stall, and what it turned out to be
 
-**Nothing here exercises execution.** On the machine this was authored on, `fsdev dev` accepts an
-action — `202`, a request record, `request.created` and `request.in_progress` on the stream — and
-the run never advances. No items, no settlement, on a 30-second poll of the persisted record.
+While this was being written, **every** action POSTed to `fsdev dev` on the authoring box stalled:
+`202`, a request record, `request.created` and `request.in_progress`, and then nothing — no items,
+no settlement, nothing on the router's `onError`. It reproduced on the shipped
+`goals/flow-instances/devtool-shows-the-selected-copy` fixture and on a three-line control flow
+whose handler returns a constant, so it was never evidence about this hire. Two controls pointing
+away from your own change is the shape of a substrate defect, so it was isolated rather than
+disclosed and left.
 
-**That is the environment, and the control says so.** The same stall reproduces on the shipped
-`goals/flow-instances/devtool-shows-the-selected-copy` fixture, which has a green verdict-log row
-on a normal dev box, and on a three-line control flow whose handler returns a constant. A stall
-that reproduces on a flow with no board, no channel and no seat is not evidence about a hire.
+**It is environmental, and here is the variable.** This sandbox exports `FSDEV_DEFAULT_MODEL` and
+four `FSDEV_INTENT_*` overrides. With no flow declaring an intent, `createModelResolver` throws —
+*"FSDEV_DEFAULT_MODEL was set, but no intents are declared; the override has no effect"* — and the
+served path swallows it into a request that never advances.
 
-So this POC grades **registration only**, and the spec says so where it leans on it. The run half
-is [PLAN.md](../../PLAN.md)'s V1–VG, on a machine where `fsdev dev` executes.
+The A/B, one variable, on the same three-line flow:
+
+| Driver | Env | Result |
+|---|---|---|
+| `createFlowApiRouter` in-process, in-memory stores | stripped | **completed**, 1 item, 100 ms |
+| `createFlowApiRouter` in-process, SQLite stores (what `fsdev dev` builds) | stripped | **completed**, 1 item, 100 ms |
+| `fsdev dev` over a real socket | **inherited** | stalls at `in_progress`, 0 items, indefinitely |
+| `fsdev dev` over a real socket | stripped | **settles in 0 ms**, with a correct refusal on its own terms |
+
+`goals/lib/env` (`intentFreeEnv` / `stripIntentOverrides`) strips exactly this prefix set before
+every goal run, which is why the shipped fixture has a green verdict elsewhere and stalled here.
+`check.mts` now strips it the same way when it spawns the server, and the goal check must too — it
+is a guardrail in [PLAN.md](../../PLAN.md).
+
+**Two things follow.** [D1](../../DECISIONS.md#d1) stands: the served path executes. And the
+*silent* shape of the failure — a throw about model resolution, on a flow with no generator in it,
+surfacing as a request that never advances and never errors — is a sharp edge worth someone's
+attention. It is **not diagnosed beyond the A/B above** and is not this issue's to fix; it is
+raised up rather than worked around ([ER-17](../../../../epics/FIX-1457/BUSINESS-RULES.md#er-17)).
+
+**This POC still grades registration only, and now that is a choice rather than a limit.** Driving
+the scenario is the goal check's job ([PLAN.md](../../PLAN.md) V1–VG), and a registration probe
+that also ran a scenario would be two checks wearing one verdict.
 
 ## Two limits worth naming
 

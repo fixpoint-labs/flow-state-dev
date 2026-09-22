@@ -9,13 +9,11 @@
  * the DevTool's navigator like any other copy. This runs the real server and
  * reads the real catalog.
  *
- * **What it deliberately does not establish.** Nothing about execution. On the
- * machine this was authored on, `fsdev dev` accepts an action and the run never
- * advances past `request.in_progress` — and **that is true of the shipped
- * `goals/flow-instances/devtool-shows-the-selected-copy` fixture and of a
- * three-line control flow on the same box**, so it is this environment, not
- * this hire, and nothing here may be read as evidence about either. See
- * README.md → "What this could not run".
+ * **What it deliberately does not establish.** Nothing about the scenario's
+ * *run* — that is the goal check's job ([PLAN.md](../../PLAN.md) V1–VG), not a
+ * registration probe's. Execution on the served path **does** work; see
+ * README.md → "The stall, and what it turned out to be" for the environment
+ * variable that hides it and the A/B that settled it.
  *
  * Run:
  *   pnpm tsx specs/issues/FIX-1497/poc/served-hire-observable/check.mts
@@ -51,6 +49,26 @@ const API = `${ORIGIN}/api/flows`;
  * itself.
  */
 const CONTROL = process.env.POC_CONTROL ?? "";
+
+/**
+ * The server's environment, with the intent overrides stripped.
+ *
+ * `FSDEV_DEFAULT_MODEL` set while no flow declares an intent makes
+ * `createModelResolver` throw, and on the served path that throw leaves a
+ * request at `in_progress` with no items and nothing on the router's
+ * `onError` — for a flow with no generator in it at all. `goals/lib/env`
+ * (`intentFreeEnv` / `stripIntentOverrides`) strips exactly this prefix set
+ * before every goal run, for exactly this reason. A probe that inherited them
+ * would be measuring the environment.
+ */
+function intentFreeEnv(): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("FSDEV_INTENT_") || key === "FSDEV_DEFAULT_MODEL") continue;
+    out[key] = value;
+  }
+  return out;
+}
 
 const notes: string[] = [];
 const failures: string[] = [];
@@ -89,7 +107,7 @@ try {
     {
       cwd: workDir,
       env: {
-        ...process.env,
+        ...intentFreeEnv(),
         FSDEV_DEBUG_ENDPOINTS: "1",
         ...(CONTROL === "no-tree"
           ? { ER_COLLAB_POC_TREE: join(workDir, "no-such-workforce") }

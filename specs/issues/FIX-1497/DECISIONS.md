@@ -29,7 +29,7 @@ deliberately does not close.
 |---|---|
 | **Instead of** | Running headless and asserting the rows in the store, with a screenshot and a human's word for the *"observed in DevTool"* half · or replaying the session and folding its items into a board ourselves |
 | **Because** | *Observed in DevTool, with no special wrapper* is a claim about what a person sees, and a store read cannot make it. The repo already grades the shipped bundle in Chromium exactly this way (`goals/flow-instances/devtool-shows-the-selected-copy`), so this reuses a shipped technique instead of inventing an observation surface. Folding the items ourselves is worse than either: the fold is the DevTool's, it is not exported, and a copy of it would be graded against itself |
-| **Locks in** | The proof needs a browser and built DevTool assets, so it is out of CI like every goal and needs a machine where the dev server executes. And its strength is bounded by the rows it reads: those are [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)'s, content-complete and **unmerged** |
+| **Locks in** | The proof needs a browser and built DevTool assets, so it is out of CI like every goal. And its strength is bounded by the rows it reads: those are [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)'s, content-complete and **unmerged** |
 
 **What would change my mind:** a DevTool surface that exports its board fold as a supported API.
 Then the cheap check grades the real fold without a browser, and the browser leg narrows to the
@@ -122,3 +122,10 @@ demonstration to fit this one and costing it the thing it exists to prove.
   was run rather than argued: the shipped dev server registers a file-declared hire, three seats
   and the channel singleton, with the channel's own four doors
   ([the POC](poc/served-hire-observable/README.md)). Both of its controls were seen red.
+- **A stall the POC hit was isolated rather than disclosed**, because two controls pointing away
+  from the change under test is the shape of a substrate defect. It is environmental:
+  `FSDEV_DEFAULT_MODEL` set with no declared intent makes the model resolver throw, and the served
+  path swallows it into a request that never advances. Stripped, the same server settles in 0 ms,
+  so **[D1](#d1) stands**. The *silent* shape of that failure is raised up
+  ([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)), not worked around — it is a follow-up in
+  [PLAN.md](PLAN.md), and the EM owns whether it is filed.
