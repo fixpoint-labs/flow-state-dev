@@ -4,11 +4,14 @@
 
 At epic altitude the rules aren't behaviours of one feature; they're the constraints every child
 spec and implementation must satisfy, and the place a cross-spec review checks. Each says who owns
-it and where it's checked. **The done condition is now three named exit proofs** —
-[ER-Devtool](#er-devtool), [ER-DevForce](#er-devforce), [ER-Collab](#er-collab) — and **only
-ER-Devtool has a producer**, [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481), which covers
-half of it. The state of each is flagged in the rule itself rather than papered over
-([Open 1](DECISIONS.md#open)).
+it and where it's checked. **The done condition is three named exit proofs** —
+[ER-Devtool](#er-devtool), [ER-DevForce](#er-devforce), [ER-Collab](#er-collab) — and **as of
+2026-09-22 all three have a producer**: [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)
+and [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) between them,
+[FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496), and
+[FIX-1497](https://linear.app/fixpoint-labs/issue/FIX-1497). **None has been run**, and a filed
+ticket is still not a green row. The state of each is flagged in the rule itself rather than papered
+over.
 **The set is open** ([ER-23](#er-23)): a child filed later inherits every rule here without this
 document being re-gated.
 
@@ -16,10 +19,11 @@ document being re-gated.
 
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | **A non-human seat owns the task.** A row that needs a person is **parked by the seat that owns it**, and the person answers through a **flow action carrying the request's own principal** — never by draining the board, never by deriving a second person ([D2](DECISIONS.md#d2), [D7](DECISIONS.md#d7)) | **The ER-Collab producer** — re-owned 2026-09-20 when kitchen-sink left the set; it is the proof that runs seats filing, assigning and draining | That child's gate · cross-spec review · [ER-20](#er-20)'s wrap sweep |
-| ER-2 | A row that needs a person is **parked, with a reason**. **Waiting on you** is that reading — not a new `TaskStatus` value and not a new column — and **Idle** is seat/session runtime ([D3](DECISIONS.md#d3)) | **[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)**, the ER-Devtool producer — it renders both, and [row 4](#er-devtool) of the checklist is the row it was filed for | That child's gate · cross-spec review |
-| ER-3 | Every exit proof runs against a **live hired Workforce** — a real hire, real seats, real channels, durable across the run — never a fixture, a mock or a hand-built harness standing in for one. **Rewritten 2026-09-20**: it used to require the kitchen-sink reference app, which is no longer in the set | **The ER-DevForce producer** — its path is what stands a workforce up; the other two observe that one | Each proof's own gate · [ER-20](#er-20)'s wrap sweep |
-| ER-4 | Every proof **composes** the W3 floor and the W4 first cut; none adds a layer of its own ([D1](DECISIONS.md#d1)) | Each of the three, once filed | Each proof's own spec · [ER-20](#er-20)'s wrap sweep |
+| ER-1 | **A non-human seat owns the task.** A row that needs a person is **parked by the seat that owns it**, and the person answers through a **flow action carrying the request's own principal** — never by draining the board, never by deriving a second person ([D2](DECISIONS.md#d2), [D7](DECISIONS.md#d7)) | **[FIX-1497](https://linear.app/fixpoint-labs/issue/FIX-1497)**, the ER-Collab producer — re-owned 2026-09-20 when kitchen-sink left the set, **named 2026-09-22**; it is the proof that runs seats filing, assigning and draining | That child's gate · cross-spec review · [ER-20](#er-20)'s wrap sweep |
+| ER-2 | A row that needs a person is **parked, with a reason**. **Waiting on you** is that reading — not a new `TaskStatus` value and not a new column — and **Idle** is seat/session runtime ([D3](DECISIONS.md#d3)) | **[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)** — it renders both, and [row 4](#er-devtool) of the checklist is the row it was filed for. ER-Devtool has **two** producers since 2026-09-22; this rule is wholly 1481's, not [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502)'s | That child's gate · cross-spec review |
+| ER-3 | Every exit proof runs against a **live hired Workforce** — a real hire, real seats, real channels, durable across the run — never a fixture, a mock or a hand-built harness standing in for one. **Rewritten 2026-09-20**: it used to require the kitchen-sink reference app, which is no longer in the set | **[FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496)**, the ER-DevForce producer — **named 2026-09-22**; its path is what stands a workforce up, which is why [ER-26](#er-26) makes the other two proofs' *runs* wait on it | Each proof's own gate · [ER-20](#er-20)'s wrap sweep |
+| ER-4 | Every proof **composes** the W3 floor and the W4 first cut; none adds a layer of its own ([D1](DECISIONS.md#d1)) | Each of the three — **all filed as of 2026-09-22**, so this is no longer conditional | Each proof's own spec · [ER-20](#er-20)'s wrap sweep |
+| <a name="er-26"></a>ER-26 | **New 2026-09-22. No exit proof's *run* is graded before a live hired Workforce exists, and the path that stands one up is [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496).** [ER-3](#what-every-exit-proof-must-satisfy) and [ER-Devtool](#er-devtool) both forbid a fixture, a wrapper or code written only to make an inspection possible, so the checklist has nothing legitimate to read until one is standing — and **row 6 is the sharp case: no tree in the repository has a sealed document today**, so 1481's row-6 code can be entirely correct and the row still cannot go green. **This fences the run, not the code.** FIX-1481's and FIX-1502's implementation PRs are **not** blocked by it and must not be sequenced behind it | The ER-Devtool producers consume it; [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) discharges it | The checklist run itself · [ER-20](#er-20)'s wrap sweep |
 
 ## What no child may do
 
@@ -58,9 +62,9 @@ these three instead.
 
 | # | The epic is done when | Proved by |
 |---|---|---|
-| <a name="er-devtool"></a>**ER-Devtool** | **The documented Devtool checklist below is green on a live hired Workforce** ([ER-3](#what-every-exit-proof-must-satisfy)), **with no special wrapper** — no bespoke debug app, no fixture panel, no code written only to make the inspection possible | **[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481), Backlog, for rows 4–6**; rows 1–3 ride [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320), which this epic does not run — the [Sign-off 1](SPEC.md#sign-off) split, enacted. **Nothing has been observed on a running workforce**: rows drafted below against what the surfaces expose today, **rows 4 and 6 fail as written**, and rows 1–2 are derived from source. **A filed ticket is not a green row** |
-| <a name="er-devforce"></a>**ER-DevForce** | **One DevForce path completes and produces a real artifact** — code, a PR, or a work product that exists outside the run — **not a mock and not a transcript**, with seats and channels used honestly rather than stubbed past | **No producer.** The first build slice is Done ([FIX-1426](https://linear.app/fixpoint-labs/issue/FIX-1426), [FIX-1410](https://linear.app/fixpoint-labs/issue/FIX-1410)); an end-to-end path is unfiled. **Which artifact counts is the EM's cut**, leaning on the owner, and is explicitly not blocking ([ER-11](#what-no-child-may-do) fences the size) |
-| <a name="er-collab"></a>**ER-Collab** | **≥2 seats across ≥1 channel**: work **filed**, **assigned**, **drained**, and a **cross-seat handoff or reply observed in Devtool**. One graded scenario, run on the real path | **No producer.** Composes boards ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)), inventory ([FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)), manager-queue ([FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430)), dispatch honesty ([FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440)). *Observed in Devtool* makes it depend on ER-Devtool. **[FIX-1474](https://linear.app/fixpoint-labs/issue/FIX-1474) is not this producer** — its own body keeps this gate on today's separate paths and forbids widening it until that child lands |
+| <a name="er-devtool"></a>**ER-Devtool** | **The documented Devtool checklist below is green on a live hired Workforce** ([ER-3](#what-every-exit-proof-must-satisfy)), **with no special wrapper** — no bespoke debug app, no fixture panel, no code written only to make the inspection possible | **Two producers, not one, since 2026-09-22.** [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481) (*In Spec Review*, [#2025](https://github.com/fixpoint-labs/flow-state-dev/pull/2025)) owns **rows 4 and 6**; [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) (*Backlog*) owns **row 5**, the org-level inventory view, and is **blocked by [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)**; rows 1–3 ride [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320), which this epic does not run. **1481 still verifies the whole checklist**; 1502 builds the consumer 1481 deferred. **Nothing has been observed on a running workforce** — rows drafted below against what the surfaces expose today, **rows 4 and 6 fail as written**, rows 1–2 derived from source, and the run itself waits on [ER-26](#er-26). **A filed ticket is not a green row** |
+| <a name="er-devforce"></a>**ER-DevForce** | **One DevForce path completes and produces a real artifact** — code, a PR, or a work product that exists outside the run — **not a mock and not a transcript**, with seats and channels used honestly rather than stubbed past | **[FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496)**, *In Spec Review*, spec [#2023](https://github.com/fixpoint-labs/flow-state-dev/pull/2023) at head `25e7507`. A four-gap delta on the existing `goals/devforce-lab/`, not a new Lab tree. **Which artifact counts — the EM's cut, taken.** *Real* is three falsifiable properties, and the proof runs **one automated leg**: the temp-directory repository gains a **bare clone at a declared path the run pushes to**, so the artifact resolves at its address after the goal's process has exited, needing `git` and a temporary directory but **no `gh`, no token and no network** (its `PLAN.md` S3, `BR-1`, `BR-15`). The **credentialed pull-request leg is documented as the human release run** and is never inferred from whether `gh` happens to be installed (`BR-14`) — one leg in CI, and the verdict names which. **Channels are in, not optional:** 1496 kept channel driving rather than deferring it, because this rule's ratified wording says *with seats and channels used honestly rather than stubbed past*, which puts channels inside the criterion (its *Decided, not asked* → [the channel](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-1496/specs/issues/FIX-1496/DECISIONS.md#channel)). **The cut is proposed, not approved** — 1496's own direction gate is still open, and this row records what it proposes, not a settled epic decision |
+| <a name="er-collab"></a>**ER-Collab** | **≥2 seats across ≥1 channel**: work **filed**, **assigned**, **drained**, and a **cross-seat handoff or reply observed in Devtool**. One graded scenario, run on the real path | **[FIX-1497](https://linear.app/fixpoint-labs/issue/FIX-1497)**, *Backlog*, **no spec yet**. Composes boards ([FIX-1385](https://linear.app/fixpoint-labs/issue/FIX-1385)), inventory ([FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)), manager-queue ([FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430)), dispatch honesty ([FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440)). *Observed in Devtool* makes it depend on ER-Devtool, which is why it is **held behind [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)** — recorded in Linear as a soft dependency, not a hard block, and 1497's own body says to treat it that way unless its assignee finds a hard ordering. **[FIX-1474](https://linear.app/fixpoint-labs/issue/FIX-1474) is not this producer** — its own body keeps this gate on today's separate paths and forbids widening it until that child lands |
 | <a name="er-20"></a>ER-20 | Nothing the set shipped added an L1 type, a status enum value, a second work plane, multi-human machinery, or new substrate under a polish label ([ER-25](#what-no-child-may-do)) | **Two checks.** A cross-spec review over the set's specs before any ships, **and** a wrap-time sweep of the shipped child diffs — a spec-time check cannot see a child that ships what its spec never claimed |
 | ER-21 | The docs teach Workforce as something you **run, watch and prove** — and the person as **someone the work asks a question of**, not a second kind of worker | Whichever children ship the proofs, plus the wrap-time docs polish |
 
@@ -77,15 +81,46 @@ run**: no row below has been observed against a running hired Workforce, which i
 | 2 · **Channels** | Every open channel appears, addressed `<teamId>.<channelName>`, with its members, and its transcript is readable | Channel instances are registered flows, so they appear in the same list. **Membership lives in the channel inventory collection, which has no Devtool view** — see row 5 |
 | 3 · **Boards** | For a workforce that ran a board, the board renders with its counts ribbon and per-row goal, status and assignee — **and which boards are open right now is answerable** | `task-collections-view` renders all of that from `task-change` / `task-board-meta` stream items, but it is **session-scoped**: a board is visible only by opening the session whose stream carried it. There is no standing board browser |
 | 4 · **Parked rows** | A parked row is visible **with its reason** without expanding raw JSON, and Waiting-on-you reads as a view over parked + reason ([ER-2](#what-every-exit-proof-must-satisfy)) — **never as a new status value** ([ER-8](#what-no-child-may-do)) | **Fails as written.** `parked` is a status pill and a counts-ribbon entry; the row's columns are id, goal, status, assignee, child session, kind. **The reason is only inside the per-row `view` JSON expander** |
-| 5 · **Inventory** | The three org-scoped inventory collections — `inventory/seats/*`, `inventory/channels/*`, `inventory/members/*` — are readable for a live org, so *who exists* and *who is in which channel* are answerable without walking folders | The Resources panel is **session-scoped** (`GET /sessions/:id/debug/resources`) and **off unless `FSDEV_DEBUG_ENDPOINTS=1`**. Inventory is reachable only through a session whose flow declares those collections; **there is no org-level inventory view** |
+| 5 · **Inventory** · **[FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502)** | The three org-scoped inventory collections — `inventory/seats/*`, `inventory/channels/*`, `inventory/members/*` — are readable for a live org, so *who exists* and *who is in which channel* are answerable without walking folders | The Resources panel is **session-scoped** (`GET /sessions/:id/debug/resources`) and **off unless `FSDEV_DEBUG_ENDPOINTS=1`**. Inventory is reachable only through a session whose flow declares those collections; **there is no org-level inventory view**. **Not buildable in W5 today** — see the paragraph below |
 | 6 · **Resources + references** | A seat's documents are visible, and a **read-only `references/` document is distinguishable from a mutable `resources/` one** — the distinction FIX-1467 just settled is legible in the inspector | **Fails as written.** The resources tree carries a scope badge (`session` / `user` / `org`) and **nothing marking read-only**. References install as org-scoped resources, so they are visible but **indistinguishable from mutable org resources** |
 
 **Two rows fail today and one is half-built, and that is the finding** — ER-Devtool is not a polish
 pass over a working inspector. Rows 4 and 6 need rendering that does not exist; rows 3 and 5 are
 session-scoped where the proof needs an org-level reading. **Rows 1–3 read on the instance and
 session surfaces [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320) already owns** and ride
-it; **rows 4–6 are [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)'s**, filed 2026-09-20
-against exactly the three that do not. That is [Sign-off 1](SPEC.md#sign-off)'s recommendation
-enacted, and it is still the owner's to correct. **No row may be passed by adding a status enum value**
-([ER-8](#what-no-child-may-do)) or by building a wrapper app — the checklist says *no special
-wrapper* precisely because a bespoke panel would pass every row and prove nothing.
+it. **No row may be passed by adding a status enum value** ([ER-8](#what-no-child-may-do)) or by
+building a wrapper app — the checklist says *no special wrapper* precisely because a bespoke panel
+would pass every row and prove nothing.
+
+**The split of the other three, corrected 2026-09-22: rows 4 and 6 are
+[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)'s. Row 5 is
+[FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502)'s.** It was three-and-three from
+2026-09-20 until FIX-1481's spec deferred row 5 on the ground that *"the reader is already owned by
+[FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) PR-C"* — **and that was false**, so the
+deferral left row 5 owned by nobody. Verified on `origin/main`: FIX-1477's `Roster` reads
+**`workforce/roster/*`**, [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475)'s durable
+hired-roster collection (`packages/workforce/src/roster/collections.ts`, whose own header says it is
+*"not the seat inventory, and deliberately beside it"*), while this row names **`inventory/*`**
+(`packages/workforce/src/inventory/collections.ts`). Different collection, different question, and
+no reader in any plan. FIX-1502 was filed to own it; 1481 keeps verifying the row on the checklist.
+
+**Why FIX-1502 is blocked rather than merely unscheduled.** Three gaps, only the last of which is
+Devtool's. **Nothing opens an inventory** — `openInventory` has no call site under `apps/` in any
+`.ts`/`.tsx` file, so there are no rows for a reader to serve. **The read is session-addressed** —
+it resolves against the session's *owning* flow, and the only flow declaring the three collections
+is the workforce **channel** flow (`packages/workforce/src/channel/channel-flow.ts`), so today they
+are reachable solely through a channel's own session. **And an org-level view has no org to ask
+for**: with no principal resolver configured a session binds to `DEFAULT_ORG_ID`
+(`packages/engine/src/routes/session-routes.ts`, `orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID`),
+and the listing beside it withholds every row that is not on that org — so *which org* is a question
+the surface cannot currently be asked. That is exactly
+[FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)'s subject. **Building that read inside
+W5 is the [ER-25](#what-no-child-may-do) substrate growth the owner fenced**, arriving under a polish
+label; raised up per [ER-17](#er-17) rather than answered locally.
+
+> **A correction inside the correction.** FIX-1481's and FIX-1502's own texts justify this block as
+> a **BP-031 hole** — *"a session's org comes from the request body, so anyone could claim any org."*
+> **That is no longer true on `main`.** [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442)
+> (`b48158a0d`, 2026-09-21) made `handleCreateSession` stop consulting `body.orgId` *at all*; the
+> hole is closed. The block still stands, for the re-derived reason above — not a security hole, an
+> **absent addressing axis**. A child must not cite the closed hole as live.
