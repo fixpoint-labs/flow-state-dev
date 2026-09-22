@@ -3307,6 +3307,26 @@ is shape 4 ("fixture too clean to contain the failure") surviving the rule writt
 step. **One instance. Recorded as a claim to test, not minted** — a second sentence on a fix whose
 first measurement is two days old would be exactly the reflex cycle 14 identified.
 
+**The one place in this cycle where the operation was applied to a *guard*, and it paid.** Everything
+above scores the blast radius against tests. The docs-polish agent ran it against a **check** instead:
+it planted a broken anchor, watched the build warn and **exit 0**, and reverted. Two results from one
+perturbation — the guard cannot fail, *and* the guard reaches the edited pages. That second half is
+cycle 14's parity clause ("where none exists, show the check reaches the code it covers") satisfied
+cleanly, and it is the only instance of it in this sample.
+
+**Read it beside #2028 rather than added to it.** Both produced a red state on purpose; they came out
+opposite ways, and the difference is *what was perturbed*. The anchor experiment perturbed **the guard
+itself** and learned the guard was toothless. #2028's round 1 perturbed **the property the check
+claims** and learned nothing, because the fixture it perturbed was the wrong shape. So the sample
+carries one defect instance and one success instance of the same operation, and the discriminator is
+whether the perturbation reaches the thing that would actually differ in production.
+
+**It is not evidence for this entry's proposal, and filing it there would be this entry's own
+subject.** The proposal is about a corrected claim's stale echoes in a document; this is about whether
+a check fails when the thing it checks is broken. That is BP-003 and the blast radius, a different
+population. Counting it toward the proposal would be "aimed at a neighbour" in the entry that spends a
+section on neighbours. Recorded here, and as a guard below.
+
 **Claim 2 — the 30–40% band — is not comparable on this sample.** Three `vacuous-assertion` instances
 across twelve artifacts (#1387's uncompiled `.test-d.ts`; #1395's first export-graph pass, caught by
 its own control; #2028's org fixture) against a denominator dominated by deletions and prose. A
@@ -3336,7 +3356,7 @@ BP-003:
 | 6 — second-order defects of a fix round | **CONFIRMED and widened.** Nine instances, not three, across four artifact kinds. This is the entry's proposal — though the mechanism is not the one the observation guessed: they are not under-reviewed, they are under-*reconciled*, and they enter through the cheap exception. |
 | 7 — two reviewers said "already tight" | **CONFIRMED with one correction.** Cursor's Code Snob returned *"outcome 3: already tight. No POC"* on **both** rounds and Cursor's Simplify pass **APPROVED** on round 2, while Codex filed four P2s on that same head. But the four are not four capability regressions: **three** are (read-failure surfacing, truncation disclosure, run status — all capability the removed Children tab had, and all three made the new surface state something false), and the fourth is the fence race that round 1's own fix introduced. The org-filter bug was found by **Cursor's** follow-up, not Codex. Different lens, different blind spot — in both directions. |
 | 8 — spec-review rounds are ledger signal | **CONFIRMED, and it inverts.** #1888's four rounds were **not** review rework: round 1 was six findings folded in one pass, and rounds 2–4 were the **owner** superseding his own D1 sign-off 21 minutes after giving it, then specifying DevTool presentation, then asking for wireframes. Scoring that as spec-authoring cost would blame the author for direction that arrived late. #1376's nine waves *are* rework, and six of them are self-inflicted. **The two direction artifacts overran the same budget for opposite reasons, and a rounds column alone cannot tell them apart.** |
-| 5 — `onBrokenAnchors` | **PARTLY VERIFIED, and it is a guard.** `apps/docs/docusaurus.config.ts` sets `onBrokenLinks: "throw"` (line 16) and `onBrokenMarkdownLinks: "warn"` (line 20) and **does not set `onBrokenAnchors` at all** — so a renamed heading is not covered by the `throw` the config does set. Docusaurus's own default for that key was **not** verified here (`@docusaurus/core` is not installed in this worktree), so the claim is scoped to what the config does. Filed as a one-line config change, like cycle 1's C0/NUL gate — not a lesson. |
+| 5 — `onBrokenAnchors` | **CONFIRMED by experiment — run by the docs-polish agent, not re-run here.** The config half is read off the file: `apps/docs/docusaurus.config.ts` sets `onBrokenLinks: "throw"` (line 16) and `onBrokenMarkdownLinks: "warn"` (line 20) and **does not set `onBrokenAnchors` at all**. The behavioural half was *produced* rather than inferred: a bogus anchor inserted into an edited page made the build print `[WARNING] Docusaurus found broken anchors!` naming it and **exit 0**; reverting it went clean. That also shows the check reached the edited pages, which is the other half — a green result from a check that never opened your files proves nothing either. Docusaurus's own upstream default is still unverified and is now beside the point. `@docusaurus/core` is not installed in this worktree (there is no `node_modules` at all), so this entry records another agent's observation with its negative control, not a re-run. Filed as a one-line config change, like cycle 1's C0/NUL gate — not a lesson. |
 | 4 — blind review's bounded competence | **NOT DERIVABLE from these artifacts.** The `docs-editor` run's inputs and outputs are session-level; nothing on #2028 records what it was denied. Recorded as coordinator-reported. |
 | 1 — four CI completion signals pointing at stale state | **NOT DERIVABLE from these artifacts.** Webhook-delivery timing against a workflow run's `head_sha` leaves no trace in PR review data. Recorded as coordinator-reported; it is a harness shape, not a code-review rework class, and would need its own instrument. |
 
@@ -3375,7 +3395,12 @@ BP-003:
   thing that catches it. The
   validator asserts a `TEAM-123`-shaped id is *present*; checking it against the PR's own issue is a
   small, decidable change. A guard, not a lesson.
-- **`onBrokenAnchors` is unset in `apps/docs/docusaurus.config.ts`.** One line.
+- **This repo's docs build exits 0 on a broken anchor, so a green docs build does not prove renamed
+  headings safe.** Observed, not inferred: a planted anchor produced
+  `[WARNING] Docusaurus found broken anchors!` and a **zero exit**, and reverting it went clean.
+  `onBrokenAnchors` is unset in `apps/docs/docusaurus.config.ts`; setting it to `"throw"` is one line.
+  Stated as the build's behaviour rather than as Docusaurus's default, because the default is
+  version-dependent and unverified while the behaviour is what a future reader has to act on.
 - **#1391 merged with an open P1 review thread** (changeset length, filed 2026-08-23T01:37Z, never
   answered; the PR merged at 02:04Z). `issue-implement` 10.6 forbids exactly this. One instance, and
   the rule that owns it is already correct and already on that path — recorded so a second instance has
