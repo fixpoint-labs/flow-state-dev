@@ -1271,8 +1271,8 @@ If registration then fails, delete the row you just created before reporting the
 that did not take should not leave a seat waiting at the next start.
 
 The collection is readable by a browser, so a roster panel can name the seats without an action in
-between. Because it is org-scoped, that read resolves against the reading session's own organization
-and returns no other's. What crosses is `seatId`, `flow` and `instructions`. The settings bag stays
+between. Because it is org-scoped, that read resolves against the reading session's own
+organization. What crosses is `seatId`, `flow` and `instructions`. The settings bag stays
 on the server.
 
 A row holds the seat's id within its organization, the flow kind, the settings bag and the
