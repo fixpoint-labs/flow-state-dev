@@ -1,0 +1,76 @@
+<svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A box with a solid border holds what the human leg is allowed to be: one principal for the whole run, a non-human seat owning the row, the row parked with a reason, and the person answering through a flow action on the owning seat. Outside the box, past a dashed fence, sit four shapes the proof must not grow: a second principal, an originator distinct from a reviewer, a durable reviewedBy field, and a person claiming rows off the board. Three arrows approach the fence from outside and are stopped at it; one arrow, the person's answer, enters the box through the single gate on its edge. A note on the fence reads that a child needing anything outside raises it up rather than building it.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-in { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-out { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .hold { fill:none; stroke:var(--code); stroke-width:1.8; }
+    .fence { stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:6 4; fill:none; }
+    .stop { stroke:var(--gone); stroke-width:1.6; fill:none; }
+    .gate { stroke:var(--prose); stroke-width:2.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gate { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10.5px; }
+  </style>
+
+  <g id="inside">
+    <rect class="hold" x="16" y="34" width="470" height="236" rx="7"/>
+    <text class="t-lbl" x="32" y="26">ER-1 · WHAT THE HUMAN LEG IS</text>
+    <rect class="n-in" x="36" y="54" width="430" height="42" rx="5"/>
+    <text class="t-b" x="50" y="72">One principal, for the whole run</text>
+    <text class="t-s" x="50" y="88">a session belongs to one user; nothing derives a second</text>
+    <rect class="n-in" x="36" y="108" width="430" height="42" rx="5"/>
+    <text class="t-b" x="50" y="126">A non-human seat owns the row</text>
+    <text class="t-s" x="50" y="142">it parks the row it is working, with a reason</text>
+    <rect class="n-in" x="36" y="162" width="430" height="42" rx="5"/>
+    <text class="t-b" x="50" y="180">The person answers through a flow action</text>
+    <text class="t-s" x="50" y="196">on the owning seat, carrying the request's own principal</text>
+    <rect class="n-in" x="36" y="216" width="430" height="42" rx="5"/>
+    <text class="t-b" x="50" y="234">The reason is what the screen shows</text>
+    <text class="t-s" x="50" y="250">parked plus reason, read as waiting on you — not a status</text>
+  </g>
+
+  <g id="fenceline">
+    <path class="fence" d="M520 24 L520 276"/>
+    <text class="t-lbl" x="536" y="26">ER-22 · WHAT A CHILD RAISES UP INSTEAD OF BUILDING</text>
+  </g>
+
+  <g id="outside">
+    <rect class="n-out" x="644" y="44" width="280" height="36" rx="5"/>
+    <text class="t-gone" x="658" y="67">a second principal in the org</text>
+    <rect class="n-out" x="644" y="96" width="280" height="36" rx="5"/>
+    <text class="t-gone" x="658" y="119">originator ≠ reviewer</text>
+    <rect class="n-out" x="644" y="148" width="280" height="36" rx="5"/>
+    <text class="t-gone" x="658" y="171">a durable reviewedBy on the row</text>
+    <rect class="n-out" x="644" y="200" width="280" height="36" rx="5"/>
+    <text class="t-gone" x="658" y="223">a person claiming rows off the board</text>
+
+    <path class="stop" d="M644 62 L536 62"/>
+    <path class="stop" d="M644 114 L536 114"/>
+    <path class="stop" d="M644 166 L536 166"/>
+    <path class="stop" d="M644 218 L536 218"/>
+    <path class="stop" d="M528 54 L512 70"/>
+    <path class="stop" d="M512 54 L528 70"/>
+    <path class="stop" d="M528 106 L512 122"/>
+    <path class="stop" d="M512 106 L528 122"/>
+    <path class="stop" d="M528 158 L512 174"/>
+    <path class="stop" d="M512 158 L528 174"/>
+    <path class="stop" d="M528 210 L512 226"/>
+    <path class="stop" d="M512 210 L528 226"/>
+  </g>
+
+  <g id="thegate">
+    <path class="gate" d="M560 262 L486 262"/>
+    <text class="t-gate" x="566" y="266">the one crossing: the answer, as an action</text>
+    <path class="gate" d="M494 256 L486 262 L494 268"/>
+  </g>
+</svg>
