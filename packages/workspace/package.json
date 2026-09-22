@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/workspace",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "File projection between resource collections and a place an agent works in — mounts, hydrate, flush, and the baseline that makes a contested write loud instead of silent.",
   "keywords": [
     "ai",

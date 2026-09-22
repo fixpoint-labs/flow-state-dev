@@ -1,5 +1,40 @@
 # @flow-state-dev/orchestration
 
+## 0.3.0
+
+### Minor Changes
+
+- 0f812c9: Skills, seats and channels now answer the agent discovery door and a seat narrows what it sees with its worker file's `discover:` key (FIX-817) — **breaking:** `createWorkforceCapability` no longer accepts `agents` (pass `roster` and `inventory`) or `catalog` (pass it to `defineAgentWorkerFlow({ catalog })` instead), each now a type error naming its replacement.
+- e4c443e: A task board now reports when it saves a task's result and then cannot announce
+  it, instead of finishing the run as though nothing went wrong. The failure lands
+  on a persisted `task-board-recorder-failure` item and fails the run once every
+  other task has drained; on a handed-off task it fails that child run. `onError`
+  does not suppress it. Where the board cannot tell whether the write landed —
+  permanently so on a task store you supplied, and on rows that predate write
+  provenance — it says `undetermined` rather than assuming the write was lost, and
+  hands the row back rather than leaving it claimed. `createRecordSuccess` and
+  `createRecordError` composed outside a board raise the failure where it happens,
+  since nothing downstream would read the report (FIX-963).
+- bff5e06: FIX-1393: a generator's declared `tools:` is now a runtime fence over capability-contributed tools, not just a documented one.
+
+  A capability's tools used to be unioned onto whatever the block declared, so a block with `tools: []` could still be handed tools it never named. Declaring the slot now drops a capability's catalog-granted tools — `tools: []` reaches the model with none. Omitting `tools:` entirely is unchanged: it declares no fence, so capability tools still flow.
+
+  Capabilities declare tools through two slots. `tools` is a grant from the app's catalog and is fenced. The new `controlTools` is a framework control the consuming block's own configuration asked for, and the fence never touches it — a control is built inside its capability and never exported, so no `tools:` list could name it back in. One capability may use both: the skills library registers the app catalog through `tools` and its own skill loader through `controlTools`, and `taskTools` contributes the delegation board entirely as controls.
+
+  **Migration.** If you relied on a capability's tools arriving past a narrower `tools:` declaration, name them in `tools:` or drop the declaration. Pattern factories (`planAndExecute`, `supervisor`, `routedSpecialists`) forward both slots, so a call site passing `tools` and `uses` together now gets the fence inside the pattern. Capability authors whose tools are framework controls rather than catalog grants should move them to `controlTools`.
+
+### Patch Changes
+
+- 8faf08e: A `CHANNEL.md` can declare `boards:`, durable task ledgers the channel holds, with `fileTask` and `readBoard` actions on the channel and a `channelBoard()` helper for the worker that drains them (FIX-1385).
+- 218de72: An active skill's `allowed-tools` now renders into the generator's context as the skill's intent rather than as a grant of tool access (FIX-1451).
+- Updated dependencies [b597600]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [b48158a]
+- Updated dependencies [f25f03c]
+- Updated dependencies [e4c443e]
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/core@0.2.0
+
 ## 0.2.1
 
 ### Patch Changes

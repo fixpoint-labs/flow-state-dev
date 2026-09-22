@@ -1,5 +1,32 @@
 # @flow-state-dev/devtool
 
+## 0.2.0
+
+### Minor Changes
+
+- 6b8bfe4: Sessions a dispatcher ran work in are listable on their flow: `GET /sessions` takes `include=dispatch-runs` (off by default), `listSessions` takes `include`, `FlowNavigator` takes `includeDispatchRuns` and draws a run one level under the session that started it, the DevTool shows runs in the rail and inside a session's block tree on demand in place of its Children tab, and `requestHost.livenessOf` now also answers for a dispatch run under the caller's own principal, tenant, organization and flow instance rather than only for one beneath the asking session (FIX-1440).
+
+  The dispatch-run liveness arm compares the caller's organization against the active-request entry as well as the session record. Both comparisons are required: they read separately stamped rows, and a caller whose organization was not forwarded to the read matched only entries carrying no organization at all.
+
+### Patch Changes
+
+- 795b550: The debug resource snapshot now reports each resource's `writable` and `llmWritable` settings where they are declared, and the DevTool marks a resource read-only when `writable` is `false` (FIX-1481).
+- 9062055: The DevTool's flow navigator is now the `FlowNavigator` component from `@flow-state-dev/react`, which the package takes as a new dependency: flows are grouped by kind with their copies underneath, and a session list is read only when you open a single flow instance (FIX-1477).
+- 802c053: The DevTool's Tasks tab now shows the note a task carries about itself in a `Reason` column, so a row parked for review says why without opening its JSON expander (FIX-1481).
+- Updated dependencies [b597600]
+- Updated dependencies [795b550]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [4833ff8]
+- Updated dependencies [9062055]
+- Updated dependencies [b48158a]
+- Updated dependencies [f25f03c]
+- Updated dependencies [0056b97]
+- Updated dependencies [e4c443e]
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/core@0.2.0
+  - @flow-state-dev/client@0.2.0
+  - @flow-state-dev/react@0.2.0
+
 ## 0.1.2
 
 ### Patch Changes
