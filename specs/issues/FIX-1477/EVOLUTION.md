@@ -42,6 +42,16 @@ that is the only form that travels.
   requirements, which is the part worth knowing: it is not one oversight but the default
   behaviour of writing a rule and a check at different moments. A re-read cannot catch it —
   unlike a stale claim, the prose is *correct*; there is simply nothing standing behind it.
+- **One assertion per failure mode you are excluding.** If two ways of being wrong turn the same
+  assertion red, that is one check, not two. This is the sharper form of the rule above, and it
+  was learnt the hard way: **V15 — the check written to close the previous unfalsifiable check —
+  shipped unable to fail on the specific failure it was created for.** Its scenario named a
+  registration-refused seat, and its assertion said the panel *"names its problem"*, singular,
+  which a different failure in the same setup already satisfied. Listing a condition in the setup
+  is not asserting on it. The other unchecked requirements had their checks written later; this
+  one was written in the same breath as the requirement and still could not fail, because the
+  assertion was aimed at the **scenario** rather than at each thing the scenario was assembled to
+  exclude.
 - **Name the thing, don't count it.** *"The last two rows"*, *"the third bullet"* — a positional
   reference is true until something is inserted above it, and then it is silently wrong with no
   edit having touched it. The note under [Changesets](PLAN.md#changesets) went stale exactly that

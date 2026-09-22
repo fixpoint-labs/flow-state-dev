@@ -116,7 +116,7 @@ Every row names what would make it fail. A check with no producible red state pr
 | V12 | S5 S6 | Reading either collection **without** its `client` declaration is refused `403 State read not permitted` | Remove the declaration: the panels go blank rather than silently reading. Pins the gate so a later refactor cannot delete the opt-in and leave the panels looking merely broken |
 | V13 | S8 | **With a principal resolver configured**, a seat is hired into org `acme`, a shell session is opened carrying that viewer's credential, and the roster panel lists that seat. Asserts on the **row**, not on a 200 | Drop the resolver, or the credential transport, and the shell binds to `__fsd_default_org__`: the read still returns **200 with an empty list**, and the panel renders its empty state. That is the whole point — this is the one failure every other check passes through. V11 and V12 run in the tokenless default organization, where hire and read land in the same place by accident, so neither can see it. Run **both** halves: the same assertion in an unconfigured clone must still pass, or the check has made a credential mandatory where the reference app needs none ([Blocked on](#blocked-on)) |
 | V14 | S8 | A boot in which one stored seat **cannot** be brought back renders a roster panel showing both numbers — what answers, and what was skipped — with the skipped seat's reason among them (BR-20) | Route the report nowhere and the panel renders a clean roster of the seats that loaded: **no error, no empty state, nothing to see**. That silent-partial read is the failure BR-20 exists for, so the check has to assert the *problem* is on screen, not that the panel rendered. Written against what a viewer sees rather than against the transport, so it stays honest if the resource's shape changes under it ([Blocked on](#br20-transport)). Red today: nothing carries the report past `console.log` |
-| V15 | S8 | **Two organizations, two boots.** Boot one: `acme` has a seat that fails to load and `beta` has none. `acme`'s panel names its problem; **`beta`'s panel shows none**. Boot two, with `acme`'s row repaired: `acme`'s panel shows **no** problems. Include a seat that loads but is **refused at registration**, which is recorded by the app rather than by the reload | Two failures this is the only check that catches, and V14 stays green through both. Write the flat list into every org's resource and `beta` reports `acme`'s problem — red on the first boot's second assertion. Return entries only for organizations that had problems and boot two leaves boot one's report standing in a resource nobody rewrote — red on the second boot. The registration-refused seat is the third: attribute it nowhere and `acme` shows a complete roster that is not ([BR-20's transport](#br20-transport)). One organization or one boot cannot fail any of them |
+| V15 | S8 | **Two organizations, two boots, three assertions — one per way of being wrong.** Set up `acme` with **two** failures of different origin: a row that fails to load (recorded by the reload) and a seat that loads and is then **refused at registration** (recorded by the app). `beta` has neither. Boot one asserts, separately: **(a)** `acme`'s panel names the load failure; **(b)** `acme`'s panel names the registration refusal; **(c)** `beta`'s panel names **no** problems. Boot two, with **both** of `acme`'s causes removed — the row repaired *and* the address that refused it freed — asserts **(d)** `acme`'s panel names no problems | Each assertion excludes exactly one failure, and no other assertion can cover for it. Attribute registration refusals nowhere and **(b)** goes red while (a), (c) and (d) stay green — that is the regression this row exists for, and it is why (a) and (b) cannot be one assertion about "its problem". Write the flat list into every org and **(c)** goes red. Return entries only for orgs that had problems and **(d)** goes red, because boot one's report is still standing in a resource nobody rewrote. Boot two must clear **both** causes or (d) is unreachable rather than failing — repairing only the row leaves a refusal that no repair to a row can fix ([BR-20's transport](#br20-transport)) |
 | VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): the rail lists the kinds; a singleton channel kind opens straight into its conversations; a seat kind opens into seats and then into one seat's conversations; and the **network log shows no session-list request on the kind expand** | Pre-fetch everything: the DOM assertions still pass and the network assertion fails. The network half is what makes this a goal check rather than a screenshot |
 
 **No model runs in any of this**, so no `goals/` check applies: every claim is about what a
@@ -210,13 +210,25 @@ Re-check these against the repo before building; each of them moves.
   with **one named exception** below. They are contested between FIX-1475 (in implementation) and
   FIX-1476. If any *other* surface appears to need them, that is a finding to raise rather than an
   edit to make.
-  - **The exception: publishing the boot report, and nothing else.** `S8` writes the skipped-seat
-    report to its org-scoped resource at the point in `fsdev.config.ts` where `hiredRosterReload`
-    is already filled ([BR-20's transport](#br20-transport)). That write is permitted. Registering
-    a flow, changing what is hired, touching `hire.ts`, or editing either file for any other
-    reason is **not** — the guardrail exists so the shell work does not rewrite flow wiring, and
-    publishing a value the boot already computed is not that. If the write turns out to need more
-    than this, stop and raise it rather than widening the exception.
+  - **The exception: publishing the boot report, and restructuring the loop that feeds it.**
+    Two permitted edits in `fsdev.config.ts`, both in service of
+    [BR-20's transport](#br20-transport):
+    1. Writing the skipped-seat report to its org-scoped resource, where `hiredRosterReload` is
+       already filled.
+    2. Restructuring the existing `registerFromRoster` loop (`:281`–`:295`) so it iterates per
+       organization and files each refusal into that organization's slice.
+    **This was widened once, deliberately.** It began as *"publishing the boot report, and
+    nothing else"*, which the report's own attribution requirement then failed to fit: the
+    refusals are produced by that loop, so partitioning them means touching it. Recorded as a
+    widening rather than restated as though it always said this.
+    **The registration behaviour itself does not change** — same registrar, same call, same
+    seats, same one-refusal-is-not-a-failed-boot tolerance. Only the iteration order, and where
+    the refusal string is filed. Still forbidden: changing **what** is registered or hired,
+    registering a flow, touching `hire.ts`, and every other edit to either file.
+    **Stop clause, narrower than the last one so it can actually fire:** if attribution turns out
+    to need the **registrar** to behave differently — a different call, a different refusal
+    contract, a different tolerance — stop and raise it. Needing to reorder a loop is not that;
+    needing the thing inside the loop to act differently is.
 - **Has FIX-1478's collapse trigger fired?** If the patterns shed folded into this issue, the
   control strip and the four modes become S8's, and `apps/kitchen-sink/e2e/mode-switching.spec.ts`
   goes with them. If it did not, leave both alone and read its keep-notes.
@@ -410,11 +422,12 @@ allowlist to copy already exists next to that action rather than needing to be i
 carries a seat id, its flow kind, its settings bag and its instructions, and wants the same
 deliberate read before it is published verbatim.
 
-**The contested-files guardrail holds, with the one carve-out the BR-20 decision requires.**
-`apps/kitchen-sink/fsdev.config.ts` and `workforce/hire.ts` stay off-limits except for writing the
-boot report where `hiredRosterReload` is filled (see *At implement time*). Everything else in
-either file, and every other route to them, is still a finding to raise rather than an edit to
-make.
+**The contested-files guardrail holds, with the carve-out the BR-20 decision requires.**
+`apps/kitchen-sink/fsdev.config.ts` and `workforce/hire.ts` stay off-limits except for two edits:
+writing the boot report where `hiredRosterReload` is filled, and reshaping the registration loop
+that produces half of what it reports (see *At implement time* for the exact bounds and the stop
+clause). Everything else in either file, and every other route to them, is still a finding to
+raise rather than an edit to make.
 
 ## Notes from review
 
