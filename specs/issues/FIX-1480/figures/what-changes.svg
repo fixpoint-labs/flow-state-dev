@@ -1,0 +1,101 @@
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels. Today a manager seat can talk but has no hire tool, host-side hire writes the durable roster, and discover only shows seats that exist in both the file tree and the inventory, so a runtime hire is invisible to teammates. After, the manager kind installs a hire capability, the seat names hire in its tools list, the same roster door is used, and  if ratified  the new seat is also written to inventory so discover can see it.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --fence:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --fence:#DE8A84; } }
+    .n-box  { fill:var(--surface);   stroke:var(--rule); stroke-width:1.2; }
+    .n-old  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-new  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-dead { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-warn { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .arrow  { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .arrow-dead { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .divider { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+    .fence { fill:none; stroke:var(--fence); stroke-width:2; }
+  </style>
+
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/>
+    </marker>
+    <marker id="hd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/>
+    </marker>
+  </defs>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="20">TODAY</text>
+
+    <rect class="n-old" x="16" y="32" width="200" height="52" rx="5"/>
+    <text class="t-b" x="30" y="54">a manager seat</text>
+    <text class="t-s" x="30" y="70">can talk · cannot hire</text>
+
+    <rect class="n-dead" x="248" y="32" width="176" height="52" rx="5"/>
+    <text class="t-b" x="262" y="54">no seat-facing tool</text>
+    <text class="t-gone" x="262" y="70">empty tools: stays empty</text>
+
+    <rect class="n-box" x="456" y="32" width="200" height="52" rx="5"/>
+    <text class="t-b" x="470" y="54">host admin hire</text>
+    <text class="t-s" x="470" y="70">writes the durable roster</text>
+
+    <rect class="n-warn" x="688" y="32" width="236" height="52" rx="5"/>
+    <text class="t-b" x="702" y="54">discover</text>
+    <text class="t-s" x="702" y="70">files ) inventory only</text>
+  </g>
+
+  <line class="divider" x1="16" y1="112" x2="924" y2="112"/>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="138">AFTER · RECOMMENDED</text>
+
+    <rect class="n-old" x="16" y="150" width="200" height="64" rx="5"/>
+    <text class="t-b" x="30" y="174">the same manager kind</text>
+    <text class="t-s" x="30" y="190">installs hire via uses</text>
+
+    <path class="arrow" d="M216 182 H248" marker-end="url(#h)"/>
+
+    <rect class="n-new" x="248" y="150" width="176" height="64" rx="5"/>
+    <text class="t-b" x="262" y="174">hire capability</text>
+    <text class="t-s" x="262" y="190">catalog tools, not L1</text>
+
+    <path class="arrow" d="M424 182 H456" marker-end="url(#h)"/>
+
+    <rect class="n-new" x="456" y="150" width="200" height="64" rx="5"/>
+    <text class="t-b" x="470" y="174">seat names hire</text>
+    <text class="t-s" x="470" y="190">tools: [hire] · the fence</text>
+
+    <path class="arrow" d="M656 182 H688" marker-end="url(#h)"/>
+
+    <rect class="n-new" x="688" y="150" width="236" height="64" rx="5"/>
+    <text class="t-b" x="702" y="174">same roster door</text>
+    <text class="t-s" x="702" y="190">mint · persist · register</text>
+  </g>
+
+  <g id="fence">
+    <text class="t-lbl" x="16" y="250">THE FENCE</text>
+    <rect class="n-box" x="16" y="262" width="280" height="72" rx="5"/>
+    <text class="t-b" x="30" y="286">empty tools: stays empty</text>
+    <text class="t-s" x="30" y="302">hire is a catalog tool</text>
+    <text class="t-s" x="30" y="316">not a control that bypasses</text>
+
+    <rect class="n-box" x="316" y="262" width="292" height="72" rx="5"/>
+    <text class="t-b" x="330" y="286">kinds already registered</text>
+    <text class="t-s" x="330" y="302">WorkerConfig data only</text>
+    <text class="t-s" x="330" y="316">no new kind from the tool</text>
+
+    <rect class="n-warn" x="628" y="262" width="296" height="72" rx="5"/>
+    <text class="t-b" x="642" y="286">open: can teammates find it?</text>
+    <text class="t-s" x="642" y="302">today, discover misses it</text>
+    <text class="t-s" x="642" y="316">recommend write inventory too</text>
+  </g>
+</svg>
