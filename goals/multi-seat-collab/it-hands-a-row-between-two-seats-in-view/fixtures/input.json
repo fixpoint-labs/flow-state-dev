@@ -1,0 +1,15 @@
+{
+  "piece": {
+    "goal": "rename the invoice export's columns so they match the ledger",
+    "desk": "build",
+    "asks": "which date format should the renamed columns use?",
+    "then": {
+      "goal": "review the renamed invoice export against the ledger",
+      "desk": "review"
+    }
+  },
+  "answer": "ISO 8601, date only",
+  "secondAnswer": "actually, use the locale's short date",
+  "otherPrincipal": "u_someone_else",
+  "orphan": "tidy up whatever nobody has claimed"
+}
