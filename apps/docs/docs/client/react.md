@@ -160,7 +160,7 @@ function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: str
 }
 ```
 
-Pass the **same flow kind as the conversation the job belongs to**. Background work runs on its parent flow's worker core, so the job is stamped with that flow's kind rather than a kind of its own — you already have the value, and it needs no lookup. Passing a different name reads as a different flow, and an active job's stream comes back 404 with the view stuck on its first snapshot.
+Pass the flow **the run itself belongs to**, which is not always the conversation's. A run dispatched on the same flow stays there, so the conversation's kind is the value. A run dispatched into another flow belongs to the instance it was sent to, and the row's `flowId` is that address. `run.flowId ?? flowKind` covers both, since `flowId` is absent only on a row that records no owner. Passing a different name reads as a different flow, and an active run's stream comes back 404 with the view stuck on its first snapshot.
 
 Steps show up as the job finishes them. You won't see text being typed out as it is generated — background work surfaces completed steps only.
 
