@@ -17,7 +17,7 @@ collections turned out to need a read declaration ([PR plan](#pr-plan)).
 | S2 | `react` · the flow inventory | One read of the flow list per host, grouped by `kind`. The grouping level is the new work: today's list is flat over instances | BR-5 BR-6 BR-10 |
 | S3 | `react` · leaf sessions | The session list for **one leaf**, gated on that leaf being open. The developer tool's read fence **moves** into `react` and is exported — not copied, and not reduced to an `openLeafId !== leafId` guard, which catches half of what it does ([Guardrails](#guardrails)). `checkInterrupted` does not come with it | BR-7 – BR-12 |
 | S4 | `react` · `FlowNavigator` | Sections (label + kind filter), kind rows, derived depth, expand state, one selection, row content through slots. Theming and dependencies are BR-16 and BR-17's | BR-1 – BR-11 BR-16 BR-17 BR-24 BR-27 |
-| S5 | `react` · `Roster` | Reads the durable roster collection [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) ships, including its skipped-seat problems list. Organization scoping is the collection's, not the component's. **It needs a governing session whose flow declares that collection — the shell declares none — and the collection has to permit a browser read, which it does not yet** ([Blocked on](#blocked-on), [D4](DECISIONS.md#d4)). **BR-20's skipped-seat list is a separate gap with no path at all** — the component takes the prop, nothing fills it ([BR-20's transport](#br20-transport)) | BR-19 BR-20 |
+| S5 | `react` · `Roster` | Reads the durable roster collection [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) ships. **Two sources, not one**: the seats come from that collection, and the skipped-seat list does *not* — a skipped seat never became a row, so it is published separately by the boot ([BR-20's transport](#br20-transport)) and arrives as the `problems` prop. Organization scoping is each source's, not the component's. **It needs a governing session whose flow declares that collection — the shell declares none — and the collection has to permit a browser read, which it does not yet** ([Blocked on](#blocked-on), [D4](DECISIONS.md#d4)) | BR-19 BR-20 |
 | S6 | `react` · `BoardColumns` | Reads one board's ledger, grouped by the **existing** task statuses. The empty column states the likely cause rather than spinning. **Same read permission as `S5`, and for the board it is not a line at the call site** ([Blocked on](#blocked-on)) | BR-21 BR-22 |
 | S7 | `devtool` · consume, and **remove** | Take a dependency on `@flow-state-dev/react`. Render S4 with the tool's own skin and its affordances as slots. **Delete** `src/react/components/navigator/`, `src/react/hooks/use-sessions.ts` and `src/react/hooks/use-read-fence.ts`, repointing its three remaining fence users (`DevToolPanel.tsx`, `use-child-sessions.ts`, `use-workspace-fence.ts`) and their test at the `react` export — an import path, no behaviour change. **The tool's bearer transport has to survive the move** | BR-15 BR-17 BR-29 |
 | S8 | kitchen-sink · the shell | `app/page.tsx`: the rail becomes one `FlowNavigator` with a Channels and a Seats section; the right panel becomes standing `BoardColumns` + `Roster` and **loses its build-mode conditional**; the narrow-width order is wired. **Remove** `components/session-sidebar.tsx`. Two wirings the panels cannot do for themselves: the shell's flow **resolves a viewer principal**, or the panels read the default organization and render correct and empty; and the boot's skipped-seat report is **written to an org-scoped resource** and read back, because a module export cannot reach the browser ([Blocked on](#blocked-on), [BR-20's transport](#br20-transport)) | BR-13 BR-18 BR-20 BR-25 – BR-28 |
@@ -202,9 +202,17 @@ Re-check these against the repo before building; each of them moves.
   by the workforce package — do not re-derive that join in the UI. Put its kind names into S8's
   Channels section; until then the section names `channel`. **It hands over convention and data
   and no rail UI at all** — if a `ChannelList` appears anywhere, the seam has been breached.
-- **Do not plan or make edits in `apps/kitchen-sink/fsdev.config.ts` or `workforce/hire.ts`.**
-  They are contested between FIX-1475 (in implementation) and FIX-1476. No surface in this plan
-  needs them; if one appears to, that is a finding to raise rather than an edit to make.
+- **Do not plan or make edits in `apps/kitchen-sink/fsdev.config.ts` or `workforce/hire.ts`**,
+  with **one named exception** below. They are contested between FIX-1475 (in implementation) and
+  FIX-1476. If any *other* surface appears to need them, that is a finding to raise rather than an
+  edit to make.
+  - **The exception: publishing the boot report, and nothing else.** `S8` writes the skipped-seat
+    report to its org-scoped resource at the point in `fsdev.config.ts` where `hiredRosterReload`
+    is already filled ([BR-20's transport](#br20-transport)). That write is permitted. Registering
+    a flow, changing what is hired, touching `hire.ts`, or editing either file for any other
+    reason is **not** — the guardrail exists so the shell work does not rewrite flow wiring, and
+    publishing a value the boot already computed is not that. If the write turns out to need more
+    than this, stop and raise it rather than widening the exception.
 - **Has FIX-1478's collapse trigger fired?** If the patterns shed folded into this issue, the
   control strip and the four modes become S8's, and `apps/kitchen-sink/e2e/mode-switching.spec.ts`
   goes with them. If it did not, leave both alone and read its keep-notes.
@@ -322,6 +330,25 @@ reintroduces exactly the silent-partial read the rule was written against.
 `hiredRosterReload` is filled today, and pass the panel's `problems` from that read rather than
 from a module import. [V14](#checks) is what goes red without it.
 
+**The write needs no flow and no session.** An org-scoped, flow-shared resource is addressed as
+`("org", orgId, key)` — the same shape `reloadHiredSeats` already reads with
+(`stores.resourceState.getByPrefix("org", orgId, HIRED_ROSTER_PREFIX)`,
+`packages/workforce/src/roster/reload.ts:252`), and `resourceState.set` takes exactly that
+(`packages/engine/src/stores/types.ts:1108`). `runtime.stores` is in scope at that point in the
+boot. So the edit is a write beside a write, which is what keeps the carve-out narrow: the
+resource's **declaration** goes on the shell's flow in `flows/chat-agent/`, not in the contested
+file at all.
+
+**One thing to get right, and it is a leak rather than a detail.** `reloadHiredSeats` is called
+**once for every organization at once** and returns **one flat `problems` list**, whose entries
+name their organization inside the message text (`organization "acme", row "…"`,
+`reload.ts:193`). Writing that flat list into each org's resource would put one organization's
+names in front of another — the precise thing `D4` is scoped on. **Call the reload per
+organization** and write each result to that organization's key; the boot already loops `orgIds`,
+and per-call reads are what the function does internally anyway. Do **not** reach for the
+alternative of teaching `reloadHiredSeats` to group its output by org: that is a framework change
+in `packages/workforce`, and this report is the app's to publish.
+
 **Declare the board's read with a projection, never bare.** With no `expose`, `exclude` or
 `data`, the read returns the stored row unchanged
 (`packages/core/src/helpers/client-projection.ts:150–158`) — for a board that is the whole task
@@ -332,9 +359,11 @@ allowlist to copy already exists next to that action rather than needing to be i
 carries a seat id, its flow kind, its settings bag and its instructions, and wants the same
 deliberate read before it is published verbatim.
 
-**The contested-files guardrail still holds.** `apps/kitchen-sink/fsdev.config.ts` and
-`workforce/hire.ts` remain off-limits (see *At implement time*). If wiring the shell's
-declaration appears to need one of them, that is a finding to raise rather than an edit to make.
+**The contested-files guardrail holds, with the one carve-out the BR-20 decision requires.**
+`apps/kitchen-sink/fsdev.config.ts` and `workforce/hire.ts` stay off-limits except for writing the
+boot report where `hiredRosterReload` is filled (see *At implement time*). Everything else in
+either file, and every other route to them, is still a finding to raise rather than an edit to
+make.
 
 ## Notes from review
 
@@ -363,9 +392,12 @@ Inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
   `S5` or `S6` can do better: a resource change is announced only on the stream of the execution
   that made it, and there is no cross-session fan-out of organization-scoped changes anywhere in
   the engine — the entire route surface carries two streaming routes, one per request, and one
-  per user that returns 501 ([EVOLUTION.md](EVOLUTION.md) has the derivation). **Building it means
-  adding a framework capability no issue currently owns**, so it is raised to be gated rather
-  than absorbed here ([BP-002](../../../docs/contributing/best-practices/process.md)). Until it
+  per user that returns 501 ([EVOLUTION.md](EVOLUTION.md) has the derivation). **Building it means adding a framework
+  capability**, and that capability now has an issue —
+  [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506), *"An org-scoped resource change
+  can't reach a session other than the one that wrote it"*, which is this gap exactly. Raised to
+  be gated there rather than absorbed here
+  ([BP-002](../../../docs/contributing/best-practices/process.md)). Until it
   exists, the panels read on mount and a host forces a fresh read by remounting them, which
   [DOCS.md](DOCS.md) states plainly. **Do not reach for a timer instead** — the failure taxonomy
   in [BUSINESS-RULES.md](BUSINESS-RULES.md) already rules that out, and a poll would hide the gap
