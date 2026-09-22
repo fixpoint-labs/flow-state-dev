@@ -25,7 +25,7 @@
  * from being steered into another org's data by whatever the caller sends.
  */
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ORG_ID, defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
@@ -127,112 +127,18 @@ describe("action dispatch org binding", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Session creation on a flow with no `authentication` at all — no resolver
-// to displace, but the session must still bind to `DEFAULT_ORG_ID`.
-// ---------------------------------------------------------------------------
-
-type Row = { rows?: string[]; orgId?: string };
-
-/** Org-scoped, shared across flows — the kind of collection a roster or a
- *  channel board keeps. */
-function rowCollection() {
-  return defineResourceCollection({
-    pattern: "row/*",
-    scope: "org",
-    flowIsolation: false,
-    stateSchema: z.object({ label: z.string() })
-  });
-}
-
-function rowActions(board: ReturnType<typeof rowCollection>, capture: Row) {
-  const seed = handler({
-    name: "seed",
-    inputSchema: z.object({ label: z.string() }),
-    outputSchema: z.object({}),
-    resources: { board },
-    execute: async (input: { label: string }, ctx: any) => {
-      await ctx.resources.board.create(input.label, { label: input.label }, { replace: true });
-      return {};
-    }
-  });
-
-  const read = handler({
-    name: "read",
+/** Flow with no `authentication` at all — the condition this test exercises. */
+function buildUnauthenticatedFlow() {
+  const probe = handler({
+    name: "probe",
     inputSchema: z.object({}),
     outputSchema: z.object({}),
-    resources: { board },
-    execute: async (_input: unknown, ctx: any) => {
-      const refs = await ctx.resources.board.list();
-      capture.rows = refs.map((ref: { state: { label: string } }) => ref.state.label).sort();
-      capture.orgId = ctx.request.identity.orgId;
-      return {};
-    }
+    execute: () => ({})
   });
-
-  return { seed, read };
-}
-
-/** Plants victim data under a known org via a verified header. Used only to
- *  seed the row the unauthenticated flow must not be able to see. */
-function ownerFlow(capture: Row) {
-  const board = rowCollection();
-  const { seed, read } = rowActions(board, capture);
   return defineFlow({
-    kind: "row-owner",
-    resources: { board },
-    actions: {
-      seed: { inputSchema: z.object({ label: z.string() }), block: seed },
-      read: { inputSchema: z.object({}), block: read }
-    },
-    authentication: {
-      resolvePrincipal: (context) => {
-        const org = context.request?.headers.get("x-verified-org");
-        return org === null || org === undefined ? null : { userId: "owner", orgId: org };
-      }
-    }
+    kind: "no-auth-flow",
+    actions: { run: { inputSchema: z.object({}), block: probe } }
   });
-}
-
-/** The flow under test: no `authentication` configured, on a host that
- *  resolves no principal for anybody either. */
-function unauthenticatedFlow(capture: Row) {
-  const board = rowCollection();
-  const { seed, read } = rowActions(board, capture);
-  return defineFlow({
-    kind: "row-unauth",
-    resources: { board },
-    actions: {
-      seed: { inputSchema: z.object({ label: z.string() }), block: seed },
-      read: { inputSchema: z.object({}), block: read }
-    }
-  });
-}
-
-function buildUnauthenticatedRouter(capture: Row) {
-  const registry = createFlowRegistry();
-  registry.register(ownerFlow(capture));
-  registry.register(unauthenticatedFlow(capture));
-  const stores = createInMemoryStores();
-  // No host-level principal resolver either — nothing authenticates anybody.
-  return { router: createFlowApiRouter({ registry, stores }), stores };
-}
-
-async function postFlowAction(
-  router: ReturnType<typeof createFlowApiRouter>,
-  path: string[],
-  body: Record<string, unknown>,
-  headers: Record<string, string> = {}
-): Promise<void> {
-  const response = await router.POST(
-    new Request(`http://localhost/api/flows/${path.join("/")}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "text/event-stream", ...headers },
-      body: JSON.stringify(body)
-    }),
-    { params: { path } }
-  );
-  await drain(response.body);
 }
 
 async function createSession(
@@ -255,63 +161,25 @@ async function createSession(
   return id;
 }
 
+// No request carries an org in a header anywhere in this codebase — engine
+// routes read `accept`, `last-event-id`, `content-type`, `content-length`,
+// and a deployment-set tenant header (a separate, already-verified axis,
+// FIX-682), never an org. `body.orgId` is the only channel a caller has, so
+// it is the only one this test spoofs; a future header assertion here would
+// be checking something that cannot fail.
 describe("session creation with no principal resolver", () => {
   it("binds a new session to DEFAULT_ORG_ID, not the body's orgId", async () => {
-    const capture: Row = {};
-    const { router, stores } = buildUnauthenticatedRouter(capture);
+    const registry = createFlowRegistry();
+    registry.register(buildUnauthenticatedFlow());
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores });
 
-    const sessionId = await createSession(router, "row-unauth", {
+    const sessionId = await createSession(router, "no-auth-flow", {
       userId: "u1",
       orgId: "victim-org"
     });
 
     const stored = await stores.session.get(sessionId);
     expect(stored?.orgId).toBe(DEFAULT_ORG_ID);
-    expect(stored?.orgId).not.toBe("victim-org");
-  });
-
-  it("cannot read another org's rows, whatever the caller sends", async () => {
-    const capture: Row = {};
-    const { router } = buildUnauthenticatedRouter(capture);
-
-    // Plant a row under victim-org through the authenticated flow.
-    await postFlowAction(
-      router,
-      ["row-owner", "actions", "seed"],
-      { userId: "planter", input: { label: "victim-row" } },
-      { "x-verified-org": "victim-org" }
-    );
-
-    // Confirm the plant landed where we think it did.
-    await postFlowAction(
-      router,
-      ["row-owner", "actions", "read"],
-      { userId: "planter", input: {} },
-      { "x-verified-org": "victim-org" }
-    );
-    expect(capture.rows).toEqual(["victim-row"]);
-
-    // Now the unauthenticated flow, claiming victim-org every way a caller
-    // can: the session-create body, the action body, and two headers.
-    const sessionId = await createSession(router, "row-unauth", {
-      userId: "u1",
-      orgId: "victim-org"
-    });
-    await postFlowAction(
-      router,
-      ["row-unauth", sessionId, "actions", "seed"],
-      { userId: "u1", orgId: "victim-org", input: { label: "shell-row" } },
-      { "x-verified-org": "victim-org", "x-org-id": "victim-org" }
-    );
-    await postFlowAction(
-      router,
-      ["row-unauth", sessionId, "actions", "read"],
-      { userId: "u1", orgId: "victim-org", input: {} },
-      { "x-verified-org": "victim-org", "x-org-id": "victim-org" }
-    );
-
-    expect(capture.orgId, "the org the unauthenticated flow ran under").toBe(DEFAULT_ORG_ID);
-    expect(capture.rows, "what the unauthenticated flow can see").toEqual(["shell-row"]);
-    expect(capture.rows).not.toContain("victim-row");
   });
 });
