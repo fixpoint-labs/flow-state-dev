@@ -108,8 +108,7 @@ if (args.includes("--help")) {
 /**
  * Per-goal wall-clock cap. Without one, a wedged goal stalls the whole
  * sequential sweep: `spawnSync` waits forever, so no later goal runs and no
- * summary prints. Historical note: a former trading-desk portfolio goal once
- * wedged a sweep for 30 minutes when `fsdev run analysis` hung in a container.
+ * summary prints.
  *
  * 20 minutes is generous for the slowest legitimate goals while still bounding
  * a hang.

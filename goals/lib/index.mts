@@ -19,4 +19,3 @@ export * from "./capture.mts";
 export * from "./driver.mts";
 export * from "./durable.mts";
 export * from "./model.mts";
-export * from "./specs.mts";

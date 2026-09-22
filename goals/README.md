@@ -96,7 +96,6 @@ Every goal repeats the same scaffolding around the part that is actually its own
 | `driver`     | `runHarness` — run a sibling `harness.mts` inside an app |
 | `durable`    | `durableStores`, `registryFor`, `approvePending`, `approvalContext`, `silentLogger` |
 | `model`      | `DEFAULT_MODEL`, `gatewayModel`, `goalModel`, `goalAttempts` |
-| `specs`      | `runSpecs` — delegate to an app's mock-free vitest specs |
 
 The library covers scaffolding only. **The grading logic is the goal** and belongs in `run.mts`. So does retry *policy* — the corpus has three, and they mean different things (retry-until-first-pass over model flakiness vs. require-k-of-k where the stability number is itself the published result).
 
