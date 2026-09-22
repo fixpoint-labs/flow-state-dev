@@ -235,11 +235,11 @@ Leave the parameter off and the response holds the sessions a person started.
 GET /api/flows/sessions/sess_abc/children
 ```
 
-This is the provenance index for one conversation: which runs were started from
-it, and what state each one's work reached. Reach for it when you have a
+The `/children` route is the provenance index for one conversation: which runs
+were started from it, and what state each one's work reached. A row is a
+`ChildSessionSummary`, one per dispatch run. Reach for it when you have a
 conversation in hand and want its work; reach for the listing above when you want
-a flow's runs without naming a conversation first. The route is `/children`, and
-a row is a `ChildSessionSummary` — one row is one dispatch run.
+a flow's runs without naming a conversation first.
 
 ```json
 {

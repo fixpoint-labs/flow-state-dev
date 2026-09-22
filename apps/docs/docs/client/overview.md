@@ -190,7 +190,7 @@ if (run) {
 }
 ```
 
-**What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a run whose worker died, until the server records otherwise. [What `status` tells you](/docs/server/background-work#what-status-tells-you) covers each terminal value and what a task board does to it.
+**What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a run whose worker died, until the server records otherwise. The [server reference](/docs/server/background-work#what-status-tells-you) covers each terminal value and what a task board does to it.
 
 A run that has never executed anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
 

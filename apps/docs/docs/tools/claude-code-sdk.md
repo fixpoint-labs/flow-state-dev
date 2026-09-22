@@ -122,7 +122,7 @@ const agent = claudeCodeAgent({ detached: true });
 ```
 
 Each job is then one run. Nothing is written to session state, and no prior SDK
-conversation is resumed — a second job landing in the same run's session begins a
+conversation is resumed — a second job landing in the same session begins a
 new agent run. What the run did is still recorded: that session's own item stream
 holds its messages, reasoning, and tool calls in order, which is what you read the
 run back from.

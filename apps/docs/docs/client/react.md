@@ -104,7 +104,7 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 
 Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on in a session of its own, called a *dispatch run*. `session.childSessions` is how you show those runs, one `ChildSessionSummary` per run.
 
-An entry carries enough to render a row:
+Each entry carries enough to render a row:
 
 ```tsx
 const session = useSession(sessionId, { flowKind: "assistant" });

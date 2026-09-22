@@ -98,7 +98,7 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
-- `"handed-off"` — every task still outstanding is running in a child session. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a [seat that hands off](#seats-that-hand-off) reports it, and `counts.in_progress` is how many are still running.
+- `"handed-off"` — every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a [seat that hands off](#seats-that-hand-off) reports it, and `counts.in_progress` is how many are still running.
 - `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"handed-off"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
 
 Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a hand-off: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
@@ -130,7 +130,7 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
 }
 ```
 
-The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. The other three are not count comparisons: `"retry-budget-exhausted"` appears only when a retry was actually refused, `"handed-off"` only when every outstanding task is one a child session is holding, and `"parked-for-review"` only when the board stopped because it was told not to wait on a review.
+The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. The other three are not count comparisons: `"retry-budget-exhausted"` appears only when a retry was actually refused, `"handed-off"` only when every outstanding task is one a dispatch run is holding, and `"parked-for-review"` only when the board stopped because it was told not to wait on a review.
 
 ### `"complete"`
 
@@ -347,7 +347,7 @@ export default defineFlow({
   actions: { drain: { block: board.drain } },
   task: {
     actions: {
-      implement: { block: implementBlock },   // what runs in the child session
+      implement: { block: implementBlock },   // what runs in the dispatch run
     },
   },
 })();
@@ -355,17 +355,17 @@ export default defineFlow({
 
 `implementBlock` receives the same `TaskWorkerInput` an inline worker would (`taskId`, `goal`, `input`, `metadata`, and so on). A task entry accepts the same fields as an action, `inputSchema`, `concurrency`, `onCompleted`, `onErrored`, and the rest, minus the client-facing `description` and `mcp`. No client can call it; the seat is the only way in.
 
-### Which child session a task runs in
+### Which session a task runs in
 
 `session` on the dispatcher decides, per row:
 
-| `session` | Child session | Reach for it when |
+| `session` | Session | Reach for it when |
 |---|---|---|
 | `"per-task"` | one per task | tasks are independent |
 | `"per-worker"` | one per seat, shared by every task the seat runs | the worker should remember what it already did |
 | `{ key: (task: TaskWorkerInput) => string }` | one per distinct key | one issue across several seats, or a key you compute from the task |
 
-The two presets fold `boardId` into the key, so two boards' `per-task` children stay apart even when their task ids coincide. A custom `key` is used as returned: two seats, or two boards, that return the same string share one child session. A `key` function that returns an empty string fails that task.
+The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two seats, or two boards, that return the same string share one session. A `key` function that returns an empty string fails that task.
 
 ```ts
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
@@ -377,7 +377,7 @@ implement: dispatcher({
 }),
 ```
 
-A child session that runs several tasks runs them under its entry's `concurrency` policy. The entry a `per-worker` or `key` seat hands off to defaults to `"queue"`, so those tasks run one at a time; a `per-task` seat's entry keeps the flow's default. An explicit `concurrency` on the entry wins:
+A run that handles several tasks runs them under its entry's `concurrency` policy. The entry a `per-worker` or `key` seat hands off to defaults to `"queue"`, so those tasks run one at a time; a `per-task` seat's entry keeps the flow's default. An explicit `concurrency` on the entry wins:
 
 ```ts
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
@@ -387,9 +387,9 @@ task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } 
 
 `taskBoard()` throws, naming the board and the seat, unless all of these hold for a board with any seat that hands off:
 
-- **`boardId` is set.** It is part of every child session's identity, so renaming it orphans work already in flight.
-- **The collection is a `defineTaskCollection()`.** The request, sequencer, and factory backings are refused: the child settles its row after the request that claimed it is gone.
-- **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the child resolves an empty ledger and never finds its row. `user` and `org` scope need nothing extra.
+- **`boardId` is set.** It is part of every dispatch run's session identity, so renaming it orphans work already in flight.
+- **The collection is a `defineTaskCollection()`.** The request, sequencer, and factory backings are refused: the run settles its row after the request that claimed it is gone.
+- **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. `user` and `org` scope need nothing extra.
 - **The seat is a named registry entry.** A uniform `workers` block and `defaultWorker` have no assignee to route by, so neither can be a dispatcher.
 
 `defineFlow()` throws for a dispatcher seat whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to, for a task dispatcher reachable from an action without sitting on a board, for two boards handing off to the same entry, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task.
@@ -400,15 +400,15 @@ A board with any seat that hands off fixes each task's assignee at admission: `s
 
 `board.handedOff` lists the dispatcher seats in declaration order, each with its `name`, `label` (`assignee:<name>`), and `dispatch` address. It is empty on a board with no dispatcher seat.
 
-The drain's final `task-board-meta` item reports `terminationReason: "handed-off"` when every outstanding task is running in a child session, with `counts.in_progress` saying how many. The drain returned; the work did not finish. See [Termination](#termination-onidle-modes).
+The drain's final `task-board-meta` item reports `terminationReason: "handed-off"` when every outstanding task is running in a dispatch run, with `counts.in_progress` saying how many. The drain returned; the work did not finish. See [Termination](#termination-onidle-modes).
 
-The hand-off block itself returns `{ handedOff: true, taskId, sessionId, requestId, adopted }`, where `sessionId` is the child session and `requestId` the run in it. The task's worker input has to survive a JSON round-trip; a payload carrying a `Date`, a `Map`, a class instance, or `undefined` in object position fails the task in the drain, naming the offending path. A refused dispatch fails the task through the board's ordinary error path, with the same `DispatchRefusedError` a `dispatcher()` block throws, so a `.rescue()` can read its `refused` code either way.
+The hand-off block itself returns `{ handedOff: true, taskId, sessionId, requestId, adopted }`, where `sessionId` is the run's session and `requestId` the request within it. The task's worker input has to survive a JSON round-trip; a payload carrying a `Date`, a `Map`, a class instance, or `undefined` in object position fails the task in the drain, naming the offending path. A refused dispatch fails the task through the board's ordinary error path, with the same `DispatchRefusedError` a `dispatcher()` block throws, so a `.rescue()` can read its `refused` code either way.
 
-When the dispatch arrives, the child re-reads the row and runs the worker only if the claim is still current: same attempt, same row, still `in_progress`, still routed to this seat. Otherwise it throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing; the row stays `in_progress` until its lease runs out and the next drain reclaims it.
+When the dispatch arrives, the run re-reads the row and runs the worker only if the claim is still current: same attempt, same row, still `in_progress`, still routed to this seat. Otherwise it throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing; the row stays `in_progress` until its lease runs out and the next drain reclaims it.
 
-Nothing renews the row's lease while the dispatch waits in the host's queue, so a child that starts more than a lease later finds a row the queue already counts as free. It takes that row back rather than refusing it: the claim is renewed on the same attempt, and the run proceeds if that write lands. It refuses only when the renewal is declined, which is the case another drain has already reclaimed the row and is running it elsewhere. The board claims with the collection's default two-minute lease and exposes no setting for it, so a deep queue in front of the child costs waiting and nothing else.
+Nothing renews the row's lease while the dispatch waits in the host's queue, so a run that starts more than a lease later finds a row the queue already counts as free. It takes that row back rather than refusing it: the claim is renewed on the same attempt, and the run proceeds if that write lands. It refuses only when the renewal is declined, which is the case another drain has already reclaimed the row and is running it elsewhere. The board claims with the collection's default two-minute lease and exposes no setting for it, so a deep queue in front of the run costs waiting and nothing else.
 
-The board's `onError` reaches the child. `"skip"` settles the row with the error and lets the child's run complete; `"fail"` also fails that run. See [What `status` tells you](../server/background-work#what-status-tells-you) for how that reads from the listing.
+The board's `onError` reaches the run. `"skip"` settles the row with the error and lets that run complete; `"fail"` also fails it. See [What `status` tells you](../server/background-work#what-status-tells-you) for how that reads from the listing.
 
 ## Concurrency and error handling
 
@@ -418,7 +418,7 @@ The board's `onError` reaches the child. `"skip"` settles the row with the error
 - `maxTotalRetries` (default `50`) — how many failure retries the board may authorize in total, across every task. See [Bounding the retries](#bounding-the-retries).
 - `maxIterations` — safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
 
-`onError` reaches a [seat that hands off](#seats-that-hand-off) too, where there is no board run left to fail. `"fail"` fails the child session that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
+`onError` reaches a [seat that hands off](#seats-that-hand-off) too, where there is no board run left to fail. `"fail"` fails the dispatch run that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
 
 A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.
 
@@ -460,7 +460,7 @@ Then the run fails, after every other task has finished. `onError: "skip"` does 
 
 A row the board is unsure about is handed back rather than left claimed, so it settles or returns to the queue on the same pass instead of waiting out its lease.
 
-On a [seat that hands off](#seats-that-hand-off) there is no batch to drain and no run to defer to, so the failure fails that child session directly — again regardless of `onError`.
+On a [seat that hands off](#seats-that-hand-off) there is no batch to drain and no board run to defer to, so the failure fails the dispatch run itself — again regardless of `onError`.
 
 Nothing retries a failed announcement. The item and the run's failure are the whole of what the board does about it.
 
