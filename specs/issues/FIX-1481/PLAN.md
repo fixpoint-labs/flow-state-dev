@@ -83,7 +83,7 @@ Everything else is yours, including the column's header, which the spec delibera
 | Every producer of the seal goes through the same field (tenet 5, D1) | A folder-derived mark is right about one producer and silent about the other, and the silent one is the more dangerous |
 | The view renders what the row carries; it neither invents a reason nor suppresses one (tenet 1) | BR-3 and BR-4 are both cases where the true value is surprising. Smoothing either hides a real defect and makes the board lie |
 | Do not widen the debug gate, its origin allow-list or its fail-closed default | BR-19. Making a field visible to whoever can already reach the surface is not a reason to change who can reach it |
-| Do not add a `client` config to the inventory or reference collections to "just make row 5 work" | [D2](DECISIONS.md#d2) has the reasoning. One line, and an org-level view nothing can point at an org until [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) lands |
+| Do not add a `client` config to the inventory or reference collections to "just make row 5 work" | [D2](DECISIONS.md#d2) has the reasoning. One line, and an org-level view with no way to name which org, until [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) lands |
 
 ## Docs
 
