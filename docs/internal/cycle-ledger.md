@@ -3087,7 +3087,7 @@ and by the same measurement.
 **The epic whose whole product is a promise to consumers, and the surface that carries that promise
 is where the defects went.** Twenty of the 61 non-`nit` findings across the nine implementation
 artifacts are filed directly on a `.changeset/*.md` fragment, and four more sit on source paths while
-being about what that fragment claims — **a third of the epic's review load on one file type**, the
+being about what that fragment claims — **a third of the implementation PRs' review load on one file type**, the
 single largest concentration by surface in any cycle this file records. It is also the cycle with the **longest-running direction
 artifact** in the file: the epic-spec on #1376 took nine automated waves and 46 review threads, and
 **six of its findings are defects the previous round's own fix created**, each one self-attributed by
@@ -3113,12 +3113,16 @@ twelve reached their own endpoint.
 
 **Method — the thirteenth artifact, added after this entry was first written.** The wrap's
 **docs-polish PR [#2058](https://github.com/fixpoint-labs/flow-state-dev/pull/2058)** finished after
-the twelve above were collected. It is **open and draft**, so its endpoint falls back to collection
-time and it is a **partial** — the only one in this entry, and never to be compared against a
-completed total. It is recorded as a row with its four factual corrections named, and is **excluded
-from every class count and every percentage in this entry**, which were computed over the twelve.
-Cycle 14's precedent for a late or uncollected artifact: record the endpoint, state the exclusion,
-do not silently move a denominator.
+the twelve above were collected. It was first recorded here as an open, draft **partial**, excluded
+from every count. **That premise is now false:** it merged 2026-09-22T21:40Z as `8d1a25370` (final
+head `4a0afc5`), so it has reached its own endpoint. **There are no partials in this entry.** It has
+also been thread re-read in full since (7 threads, 7 commits), so the reason to hold it out is gone
+and it **joins the counts**. What moved, so the change is auditable rather than silent: the count of
+fix-induced findings (nine → thirteen), the proposal's coverage (four of nine outside → eight of
+thirteen), the load line, and claim 2's denominator. **The 20-of-61 changeset figure does not move** —
+it is scoped to the nine implementation PRs, and #2058 is not one of them. Its rounds stay **out** of
+the spent-wave total for a different reason: four were self-driven revision rounds before it left
+draft, a different unit, and it drew one automated wave after.
 
 | PR | Kind | Rounds | Endpoint | Feedback classes (deduped) | Felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
@@ -3134,10 +3138,10 @@ do not silently move a denominator.
 | [#1406](https://github.com/fixpoint-labs/flow-state-dev/pull/1406) impl FIX-1220 | impl | ~2 | merge | docs-miss ×1 · over-engineered ×2 · nit ×3 (6) | no | — |
 | [#1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888) spec FIX-1440 | spec | **4** | direction approval | missed-edge-case ×3 · docs-miss ×2 · stale-restatement ×1 · nit ×2 (6 threads + 16 conversation comments) | **yes** — **an approved direction was superseded by the owner 21 minutes later**, then amended again on presentation | not a review-rework row; see below |
 | [#2028](https://github.com/fixpoint-labs/flow-state-dev/pull/2028) impl FIX-1440 | impl | **2** | merge | **missed-edge-case ×7** · docs-miss ×2 · over-engineered ×2 · nit ×7 (18) | no | **round 1's own fix opened round 2's race; round 1's own org fix was inert in production** |
-| [#2058](https://github.com/fixpoint-labs/flow-state-dev/pull/2058) docs-polish (wrap) | docs | **4 (in flight)** — *self-driven revision rounds, not automated waves; not comparable to the column above* | collection time — **partial** | **excluded from every count in this entry.** Four factual corrections, named in the PR body: the flow a run opens under · run-is-a-session · not one run per row · a seat can name another flow | no | **the cross-flow fact was wrong in three files across two rounds** |
+| [#2058](https://github.com/fixpoint-labs/flow-state-dev/pull/2058) docs-polish (wrap) | docs | **1** — *plus 4 self-driven revision rounds before it left draft; those are not comparable to this column* | merge | **stale-restatement ×4** (three factual, one vocabulary — **every fixed review finding was a surface still saying what the PR had corrected elsewhere**) · nit ×3 (7 threads). The owner merged the vocabulary call as drawn | no | **it fact-checked its new claims and never swept for the old ones** |
 
 **Load: ~28 spent waves across the ten implementation artifacts (4+3+2+1+6+3+2+3+2 on the nine
-cleanup PRs, 2 on #2028), plus ~9 on the epic PR and 4 on the spec PR.** Both direction artifacts blew the two-round budget, and **for opposite reasons** — which is
+cleanup PRs, 2 on #2028), plus ~9 on the epic PR, 4 on the spec PR and 1 on the docs-polish PR.** Both direction artifacts blew the two-round budget, and **for opposite reasons** — which is
 the distinction the rest of this entry turns on.
 
 **Claims (looped / settled / verdicts): 0 / 0 / —, on every direction artifact.** No POC settlement
@@ -3182,8 +3186,8 @@ validator cannot fail on a well-formed wrong id, which is a **guard**, filed bel
 
 ### The class that earns the proposal — the second-order defect of a fold
 
-Across the epic, **at least nine findings are defects that an earlier correction in the same artifact
-created or left behind**, and in every case the author says so in the thread that closes it. They are
+Across the epic, **at least thirteen findings are defects that an earlier correction in the same
+artifact created or left behind**, and in every case the author says so in the thread that closes it. They are
 not evenly spread:
 
 | Artifact | Fix-induced findings | The author's own words |
@@ -3192,6 +3196,11 @@ not evenly spread:
 | #1394 docs | 1 | *"this one is on me — my own fix last round introduced it… I verified two of the three and generalised to the third"* |
 | #2028 impl | 1 | *"you are right that this PR introduced it. Making the owner lookup asynchronous opened a race that did not exist while the address was simply assumed; the earlier cross-flow fix traded one defect for a narrower one"* |
 | #1888 spec | 1 | *"Both cancellations were decided by asking 'does this describe the surface we are deleting?' rather than 'is this defect real in the code we will ship'"* |
+| #2058 docs-polish | **4** | *"the cross-flow case biting a third time, in the definition itself"* · *"the claim task-board.md already corrected"* · *"its example took only an id and the conversation's flowKind, so copying it dropped the owner address"* · *"still promised shared rows serialise with no such limit"* |
+
+#2058 has two more of the same shape that are **not counted**: `8f07918` and `devtool/overview.md` are a
+*vocabulary* correction left half-carried, and the population here — like the proposal's — is factual.
+Counting them would make the class larger and the population less coherent.
 
 **The tell is that the author named the class himself, mid-epic, and self-remedied — and it kept
 happening.** On #1376 thread 39: *"I swept rather than fixing the one line, because every round lately
@@ -3272,8 +3281,24 @@ fits.
 generalised to the third"* is a **scope overclaim** — BP-003's third bullet already owns it, and it is
 on an implementation PR where 10.6 applies. #2028's fence race is a code fix creating a race, not a
 restatement. #1888's inherited dispositions were folds, on a path that reaches the re-draft rule, and
-the draft shipped them anyway. #1376's T42 likewise. **Four of the nine are outside this fix**, and
+the draft shipped them anyway. #1376's T42 likewise. **Eight of the thirteen are outside this fix**, and
 pretending otherwise would be this entry's own defect — which it already was once, above.
+
+**The docs-polish PR is the case worth dwelling on, because it is the proposal's shape through a
+different door.** Three of its four are exactly the echo the clause targets: a correction landed in
+`task-board.md` or `client/react.md`, and five surfaces went on saying the old thing — the guide, the
+React example, the architecture doc and two READMEs, with `advanced/concurrency-policies.md:132` alone
+already right. But a docs PR is not governed by spec-review triage, so none of them passed the cheap
+exception. They are **out of the trigger and not counted toward the clause's five.** What they add is
+evidence for the *mechanism*: #2058 ran a code fact-check that confirmed its new claims true, and still
+left their predecessors standing on five surfaces. **Verifying the new claim and reconciling the old
+one are separate obligations** — #2058 did the first unprompted, and nothing asked it for the second.
+One detail points the same way: Cursor's Best-Approach pass saw the guide's stale sentence and filed it
+as a vocabulary nit, and the author, who had made the correction, knew it was factual. A reviewer sees
+words; the corrector knows what moved. That is why the clause puts the obligation on the corrector.
+
+**So the proposal closes a door, not the class** — five of thirteen. It is still the smallest fix for
+the largest single door. The docs-polish door is claim 4.
 
 ### Scoring cycle 14's fix — first measurement, and it is mixed
 
@@ -3338,9 +3363,9 @@ population. Counting it toward the proposal would be "aimed at a neighbour" in t
 section on neighbours. Recorded here, and as a guard below.
 
 **The thirteenth artifact says the same thing about instruments, and it is the sharper statement of it.**
-#2058's four factual corrections were found by a **code** check, not by the editorial passes that
-preceded them; the blind reads found the prose defects and, on the one factual question they reached,
-resolved it the wrong way round. The docs agent's own generalisation is worth keeping verbatim: *"a
+Three of #2058's four factual corrections were found by a **code** check; the fourth was surfaced by
+the editorial passes as a contradiction between two pages, which they then resolved the wrong way round
+until a code read inverted it. On the prose, the blind reads were right throughout. The docs agent's own generalisation is worth keeping verbatim: *"a
 corpus pass which reconciles vocabulary will surface factual defects as a side effect, because making
 two pages agree forces someone to decide which one is right — and a `docs-editor` is structurally the
 wrong instrument for the half it uncovers."* Same discriminator as the two instances above: the
@@ -3367,7 +3392,7 @@ dismiss: **one fact — cross-flow ownership — wrong in three files, by three 
 rounds.**
 
 **Claim 2 — the 30–40% band — is not comparable on this sample.** Three `vacuous-assertion` instances
-across twelve artifacts (#1387's uncompiled `.test-d.ts`; #1395's first export-graph pass, caught by
+across thirteen artifacts (#1387's uncompiled `.test-d.ts`; #1395's first export-graph pass, caught by
 its own control; #2028's org fixture) against a denominator dominated by deletions and prose. A
 removal epic asserts very little. Not a dip; a different population.
 
@@ -3393,7 +3418,7 @@ BP-003:
 | 2 — a coordinator instruction nearly shipped a dead feature | **CONFIRMED, and sharper than reported.** The behaviour the instruction forbade changing *was* the defect: the org filter was refusing every genuine run. A literal-compliant worker documents the layering and ships nothing. The worker deviated, flagged it, and fixed both layers. |
 | 3 — fixture asymmetry | **CONFIRMED**, mechanism and count. Eight tests; the suite is ten now. BP-003's three bullets do **not** name it — the nearest is "aimed at a neighbour," and this is not a neighbour, it is the right target in the wrong shape. Recorded, not minted. |
 | 6 — second-order defects of a fix round | **CONFIRMED and widened.** Nine instances, not three, across four artifact kinds. This is the entry's proposal — though the mechanism is not the one the observation guessed: they are not under-reviewed, they are under-*reconciled*, and they enter through the cheap exception. |
-| 7 — two reviewers said "already tight" | **CONFIRMED with one correction.** Cursor's Code Snob returned *"outcome 3: already tight. No POC"* on **both** rounds and Cursor's Simplify pass **APPROVED** on round 2, while Codex filed four P2s on that same head. But the four are not four capability regressions: **three** are (read-failure surfacing, truncation disclosure, run status — all capability the removed Children tab had, and all three made the new surface state something false), and the fourth is the fence race that round 1's own fix introduced. The org-filter bug was found by **Cursor's** follow-up, not Codex. Different lens, different blind spot — in both directions. |
+| 7 — two reviewers said "already tight" | **CONFIRMED with one correction.** Cursor's Code Snob returned *"outcome 3: already tight. No POC"* on **both** rounds and Cursor's Simplify pass **APPROVED** on round 2, while Codex filed four P2s on that same head. But the four are not four capability regressions: **three** are (read-failure surfacing, truncation disclosure, run status — all capability the removed Children tab had, and all three made the new surface state something false), and the fourth is the fence race that round 1's own fix introduced. The org-filter bug was found by **Cursor's** follow-up, not Codex. Different lens, different blind spot — in both directions. **Recurred in shape on #2058:** Code Snob *"too small to rewrite"*, Best-Approach approved, Codex filed both P2s — and Best-Approach saw the third echo but filed it as a vocabulary nit. Two PRs now; still one composition, and still a row. |
 | 8 — spec-review rounds are ledger signal | **CONFIRMED, and it inverts.** #1888's four rounds were **not** review rework: round 1 was six findings folded in one pass, and rounds 2–4 were the **owner** superseding his own D1 sign-off 21 minutes after giving it, then specifying DevTool presentation, then asking for wireframes. Scoring that as spec-authoring cost would blame the author for direction that arrived late. #1376's nine waves *are* rework, and six of them are self-inflicted. **The two direction artifacts overran the same budget for opposite reasons, and a rounds column alone cannot tell them apart.** |
 | 5 — `onBrokenAnchors` | **CONFIRMED by experiment — run by the docs-polish agent, not re-run here.** The config half is read off the file: `apps/docs/docusaurus.config.ts` sets `onBrokenLinks: "throw"` (line 16) and `onBrokenMarkdownLinks: "warn"` (line 20) and **does not set `onBrokenAnchors` at all**. The behavioural half was *produced* rather than inferred: a bogus anchor inserted into an edited page made the build print `[WARNING] Docusaurus found broken anchors!` naming it and **exit 0**; reverting it went clean. That also shows the check reached the edited pages, which is the other half — a green result from a check that never opened your files proves nothing either. Docusaurus's own upstream default is still unverified and is now beside the point. `@docusaurus/core` is not installed in this worktree (there is no `node_modules` at all), so this entry records another agent's observation with its negative control, not a re-run. Filed as a one-line config change, like cycle 1's C0/NUL gate — not a lesson. |
 | 4 — blind review's bounded competence | **DERIVABLE after all — from the thirteenth artifact, not the twelve.** This row first read *not derivable*, correctly scoped to the twelve I had sampled and wrong about the useful claim. #2058's own PR body records the measurement: two cold `docs-editor` reads *"caught the term being introduced and abandoned, and surfaced the run-versus-session contradiction"* — then **"That contradiction was settled against the code, which inverted four of the second read's findings — they were not applied."** Both halves of your observation, on the record: the blind read found a real class no code-holder would have seen, and got the factual resolution wrong. **Isolation buys prose judgement, not factual arbitration** — which is close to your wording, now with a countable four behind it. |
@@ -3414,9 +3439,10 @@ BP-003:
   record rather than deleted, because a loop-measuring instrument that quietly corrects its own
   diagnosis is the least trustworthy thing in this file.
 - **Widening the proposal to "every fold re-derives its blast radius," code included.** Dropped as
-  bloat. `issue-implement` 10.6 already carries the heavy version for code PRs, four of the nine
-  instances are not restatements, and a rule aimed at all folds everywhere is how an obligation becomes
-  a ritual.
+  bloat. `issue-implement` 10.6 already carries the heavy version for code PRs, five of the thirteen
+  instances are not restatements at all, and the three restatement-shaped ones outside the trigger all
+  come from one docs PR — the strongest case for widening this cycle produced, and still one artifact.
+  A rule aimed at all folds everywhere is how an obligation becomes a ritual.
 - **A rule about reviewers filing the same finding three times** (#1391's issue ref, #1376's T7/T11
   convergence). Dropped — independent convergence is *corroboration*, and the author read it that way
   in both places (*"you and the parallel reviewer converged on this independently, which is fair
@@ -3438,6 +3464,9 @@ BP-003:
   headings safe.** Observed, not inferred: a planted anchor produced
   `[WARNING] Docusaurus found broken anchors!` and a **zero exit**, and reverting it went clean.
   `onBrokenAnchors` is unset in `apps/docs/docusaurus.config.ts`; setting it to `"throw"` is one line.
+  `polish-docs`' own Verify step warns that a zero exit does not prove **markdown links** safe and says
+  nothing about anchors — a partial restatement of the same gap, which #2058's agent closed by planting
+  an anchor rather than by following the skill.
   Stated as the build's behaviour rather than as Docusaurus's default, because the default is
   version-dependent and unverified while the behaviour is what a future reader has to act on.
 - **#1391 merged with an open P1 review thread** (changeset length, filed 2026-08-23T01:37Z, never
@@ -3447,10 +3476,12 @@ BP-003:
 
 ### Claims to test next cycle
 
-1. **Does scoping the cheap exception close the class?** Baseline: **five fix-induced findings on one
-   epic-spec**, every one entering through an inline factual correction that owed no reconciliation.
-   Score the next two direction artifacts' fix-induced counts, and check the report actually appears —
-   an obligation with no visible output is the one that quietly stops happening.
+1. **Does scoping the cheap exception close the class on direction artifacts?** Baseline: **five
+   fix-induced findings on one epic-spec**, every one entering through an inline factual correction
+   that owed no reconciliation. Score the next two direction artifacts' fix-induced counts, and check
+   the report actually appears — an obligation with no visible output is the one that quietly stops
+   happening. This is not a claim about the class as a whole: #2058 shows the same shape arriving
+   through a door the clause does not touch.
 2. **Does the blast radius catch a fixture that never reaches production's shape?** One instance says
    no: on #2028 the report was written, the red state observed, and the D4 arm was still inert. A
    second code-heavy sample decides whether that is a limit of the rule or an accident of one PR.
@@ -3463,6 +3494,12 @@ BP-003:
    already walked past; `polish-docs` asks only for `docs-editor`. **The measurement this needs is a
    pass that did not run it** — until one exists, a fact-check step would be minted on a sample where
    it was never absent, which is the shape cycle 14 declined.
+   **The sweep half now has its first sample.** #2058 ran no restatement sweep — `polish-docs` has
+   none to run, and a case-insensitive grep finds no pointer from it to `issue-implement` 10.6 — and
+   review caught four echoes of its own corrections, three factual. One artifact, so no proposal. If the
+   next docs-polish pass reproduces it, the fix is already shaped and needs no new words: point
+   `polish-docs`' Verify step at 10.6's word and surface sweeps, which are canonical for this and which
+   a polish-docs pass currently never reaches.
 5. **Does a vocabulary reconciliation keep surfacing factual defects?** #2058's claim is that it does
    so *structurally* — agreeing two pages forces someone to pick which is right. One artifact, four
    corrections. If a second corpus pass reproduces the ratio, the finding is about corpus passes, not
