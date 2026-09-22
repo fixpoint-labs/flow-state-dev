@@ -12,7 +12,7 @@ Feature · `goals/devforce-lab` only · **small** · 1 PR · epic [FIX-1457](../
 | **asks what the workforce actually produced** | A commit in a temporary directory on whatever machine ran it, swept away with the rest of `/tmp` | A pull request with a title, a body and a diff, at an address that still resolves after the run is over |
 | **asks whether the work is any good, not merely that it exists** | Nothing grades the product. The check grades the *prompt*, deliberately, so a model that improvised a plausible file still passes | The brief names an acceptance condition **before** the run, and the check executes it against what the run produced. Improvising does not pass |
 | **asks whether the seats really used their channels** | The feature channel is a Markdown file the loader walks and nothing ever opens | A post on the feature channel is what starts the work. The channel is driven, not decorated |
-| **has to re-run this proof a year from now** | Impossible: it has never been run once | One command. The credentialed pull-request leg is a flag; the default leg needs no network, no token and no `gh` |
+| **has to re-run this proof a year from now** | Impossible: it has never been run once | One command, and it is what CI runs: no network, no token, no `gh`. The pull-request release run is the same path pointed at a real remote |
 
 **Why now.** W5's done condition is three exit proofs and none has been run
 ([FIX-1457](../../epics/FIX-1457/SPEC.md)). ER-DevForce is the one that decides whether
@@ -26,7 +26,8 @@ and letting what it makes survive.
 
 The five stages are the same in both lanes, and the middle three are untouched. Only the two
 ends move, plus two properties of the run. **Nothing new is built** — the four gaps are the whole
-issue ([D1](DECISIONS.md#d1), [D2](DECISIONS.md#d2), [D3](DECISIONS.md#d3)).
+issue ([D1](DECISIONS.md#d1), [D2](DECISIONS.md#d2), and the channel leg the epic already
+[settled](DECISIONS.md#decided-not-asked)).
 
 **The brief the coder seat works from, as its author writes it** — this is the surface that turns
 "a file exists" into "work a person would accept":
@@ -37,13 +38,15 @@ issue ([D1](DECISIONS.md#d1), [D2](DECISIONS.md#d2), [D3](DECISIONS.md#d3)).
   Add a greeting module to the repository you are working in.
 
 - Write the file `GREETING.md`, and make its first line exactly:
-+ Export a `greet(name)` function that returns a greeting, and cover it with a
-+ test the repository's own test runner picks up.
++ Export a function `greet(name)` from `src/greeting.js`. For any non-empty
++ name it returns `Hello, <name>!`; for an empty name it returns `Hello!`.
 +
 + ## Done when
 +
-+ The repository's test run reports at least one passing test and no failing
-+ ones. Before your change it reports none, so an untested module is not done.
++ The acceptance check accompanying this brief imports `greet` from that path
++ and asserts both behaviours, and passes. It is run from outside your
++ checkout and you cannot edit it. Adding a test of your own does not
++ substitute for it.
 +
 + Put this marker in the body of the pull request you open:
 
@@ -51,24 +54,17 @@ issue ([D1](DECISIONS.md#d1), [D2](DECISIONS.md#d2), [D3](DECISIONS.md#d3)).
 ```
 
 The marker stays because the existing check grades the *prompt* for it, which is how we know the
-seat read its own files. What is new is everything above it: a condition a machine can run.
+seat read its own files. What is new is everything above it: **a named contract and an
+independent check the run cannot reach.** A brief that only said *"a passing test exists"* would
+be satisfied by any unrelated passing test — which would leave the `ignores-the-brief` control
+unable to fail, and that control is the whole reason [D1](DECISIONS.md#d1) is more than taste
+([BR-3](BUSINESS-RULES.md), [BR-4](BUSINESS-RULES.md)).
 
-## How the proof reaches an artifact
-
-```mermaid
-flowchart LR
-  P["an operator posts on the feature channel"] --> E["the EM seat · files one row"]
-  E --> B["the feature board · one row, one assignee"]
-  B -->|"cross-flow hand-off"| C["the coder seat · its own checkout"]
-  C --> H["a real coding agent · prompt built from the seat's own files"]
-  H --> A["a pull request · pushed, opened, addressable"]
-  A --> V["the acceptance condition the brief stated, executed"]
-  R["the reviewer seat · declared, never reached"] -.->|"still never dispatched"| B
-```
-
-Everything from the EM seat to the coding agent exists and passes today under a scripted stub.
-The two ends are what this issue adds, and the dashed edge is the negative claim the existing
-gate already holds.
+**The figure above is the one canonical picture of this path**, and the other documents point at
+it rather than redrawing it. Everything from the EM seat to the coding agent exists and passes
+today under a scripted stub; the two ends are what this issue adds. The reviewer seat stays
+declared and never dispatched, which is a negative claim the existing gate already holds
+([BR-8](BUSINESS-RULES.md)).
 
 ## What stays as it is
 
@@ -94,10 +90,16 @@ gate already holds.
 2. **[D2](DECISIONS.md#d2) · The proof grades what the run produced, against a condition the
    brief stated first and a machine executes.** *If wrong:* every future DevForce brief owes an
    executable acceptance condition, and a brief that cannot state one cannot be proved this way.
-3. **[D3](DECISIONS.md#d3) · The row is filed in answer to a post on the feature channel, not by
-   calling the EM seat's action directly.** *If wrong:* one extra leg in a proof whose whole
-   virtue is thinness, for a claim ER-Collab may cover anyway.
 
 **Open: none.** Number 1 is the one to weigh — it is the question the Architect deliberately left
-open, answered here as a proposal with a falsifier rather than left open again. The reasoning and
-what lost: [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+open, answered here as a proposal with a falsifier rather than left open again.
+
+**Not asked, because the epic already answered it.** Driving the feature channel is inside
+[ER-DevForce](../../epics/FIX-1457/BUSINESS-RULES.md#er-devforce)'s ratified wording — *"with
+seats and channels used honestly rather than stubbed past"* — so it is a constraint this spec
+obeys, not a call it makes ([Decided, not asked](DECISIONS.md#decided-not-asked)). Same section
+records the other trim: **one automated gate**, with the credentialed pull-request leg documented
+as the human release run rather than a second path CI carries.
+
+The reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
+[BUSINESS-RULES.md](BUSINESS-RULES.md).

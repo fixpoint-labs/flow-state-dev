@@ -1,30 +1,11 @@
 #!/usr/bin/env node
 /**
- * Re-derive FIX-1496's factual base from the repository, rather than trusting
- * the spec's prose.
+ * Re-derive FIX-1496's factual base from the repository.
  *
- * The spec's whole argument is a gap table: ER-DevForce is mostly built, and
- * exactly four things are missing. A hand-counted table like that does not
- * converge by being argued about in review — each round corrects one row and
- * leaves the ones nobody looked at. So it gets a checker, and the checker gets
- * the two properties a hand-written one always lacks.
+ * Throwaway evidence, deleted at S8 (`PLAN.md` → the sunset rule). What it
+ * checks, why, and every planted control: see `README.md` beside this file.
  *
- * **A totality assertion.** Every `.mts` file under `goals/devforce-lab/` is
- * classified as lab code, a goal runner, or a fixture. A checker that only
- * inspects the files it already knew about cannot report the one nobody listed.
- *
- * **A negative control.** `--plant <kind>` injects the exact defect a claim
- * exists to catch, so the green can be watched going red before it is believed.
- *
- * Throwaway evidence, not production code. Nothing imports it, it is not a
- * workspace package, and it is not in any build, test or lint discovery path.
- *
- * Run:     node specs/issues/FIX-1496/poc/gap-check/check.mjs
- * Control: node specs/issues/FIX-1496/poc/gap-check/check.mjs --plant unclassified-file
- *          node specs/issues/FIX-1496/poc/gap-check/check.mjs --plant channel-is-opened
- *          node specs/issues/FIX-1496/poc/gap-check/check.mjs --plant durable-stores
- *          node specs/issues/FIX-1496/poc/gap-check/check.mjs --plant model-check-passed
- *          node specs/issues/FIX-1496/poc/gap-check/check.mjs --plant list
+ * Run:  node specs/issues/FIX-1496/poc/gap-check/check.mjs [--plant <kind>|list]
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -34,11 +15,30 @@ const REPO = fileURLToPath(new URL("../../../../../", import.meta.url));
 const LAB = join(REPO, "goals/devforce-lab");
 const SIBLINGS = ["goals/pentest-lab", "goals/manager-queue-lab"];
 
+/**
+ * The browsable child-session surface FIX-1440 removes.
+ *
+ * Case-insensitive and anchored on the canonical client method
+ * (`listChildSessions`, `packages/client/src/session-client/sessions.ts`) and
+ * its types. The first version of this pattern spelled `childSessions` with a
+ * lower-case c and therefore could not match `listChildSessions` — the exact
+ * call it existed to catch. Found by reproduction, not by reading, which is why
+ * `browse-surface` below is now a planted control.
+ */
+const BROWSE_SURFACE = /\/children\b|childsession|listchildren/i;
+
+/** Dispatch parentage read as provenance — the form FIX-1440 explicitly keeps. */
+const PROVENANCE = /parentage:\s*\{\s*parentOf/;
+
 const PLANTS = [
   "unclassified-file",
   "channel-is-opened",
   "durable-stores",
   "model-check-passed",
+  "browse-surface",
+  "provenance-gone",
+  "sibling-lost-channel",
+  "artifact-pushed",
 ];
 
 const plant = (() => {
@@ -71,41 +71,43 @@ const failures = [];
 const evidence = [];
 const claim = (ok, red, green) => (ok ? evidence.push(green) : failures.push(red));
 
-// The tree, with the plant applied to the in-memory copy only. Nothing on disk
-// is touched, so a control run cannot leave the repository perturbed.
+// Plants are applied to the in-memory copy only; nothing on disk is touched, so
+// a control run cannot leave the repository perturbed.
 let tree = filesUnder(LAB);
+const patch = (match, fn) => {
+  tree = tree.map(([p, t]) => (p.includes(match) ? [p, fn(t)] : [p, t]));
+};
+
 if (plant === "unclassified-file") {
   tree = [...tree, ["goals/devforce-lab/lab/workforce/flows/helpers.ts", "// planted\n"]];
 }
 if (plant === "channel-is-opened") {
-  tree = tree.map(([p, t]) =>
-    p.endsWith("lab/host.mts") ? [p, `${t}\n// planted: await openChannels(channels, {});\n`] : [p, t],
-  );
+  patch("lab/host.mts", (t) => `${t}\n// planted: await openChannels(channels, {});\n`);
 }
 if (plant === "durable-stores") {
-  tree = tree.map(([p, t]) =>
-    p.includes("it-commits-from-the-seats-own-file")
-      ? [p, t.replace(/inMemoryStores\(\)/g, "sqliteStores()")]
-      : [p, t],
-  );
+  patch("it-commits-from-the-seats-own-file", (t) => t.replace(/inMemoryStores\(\)/g, "sqliteStores()"));
 }
 if (plant === "model-check-passed") {
-  tree = tree.map(([p, t]) =>
-    p.endsWith("it-commits-from-the-seats-own-file/goal.md")
-      ? [p, t.replace("| NOT RUN |", "| PASS |")]
-      : [p, t],
-  );
+  patch("it-commits-from-the-seats-own-file/goal.md", (t) => t.replace("| NOT RUN |", "| PASS |"));
+}
+if (plant === "browse-surface") {
+  // The canonical call, spelled exactly as the client exports it. This is the
+  // case the first pattern missed while reporting green.
+  patch("lab/host.mts", (t) => `${t}\nconst rows = await client.sessions.listChildSessions(id);\n`);
+}
+if (plant === "provenance-gone") {
+  patch("lab/host.mts", (t) => t.replace(/parentage:\s*\{\s*parentOf/, "filter: { startedBy"));
+}
+if (plant === "artifact-pushed") {
+  patch("lab/scratch-repo.mts", (t) => `${t}\n// planted\nexport const publish = (d) => git("push", "origin", d);\n`);
 }
 
-const text = (suffix) => tree.filter(([p]) => p.endsWith(suffix));
-const body = (suffix) => text(suffix).map(([, t]) => t).join("\n");
+let siblingDirs = SIBLINGS;
+if (plant === "sibling-lost-channel") siblingDirs = [...SIBLINGS, "goals/task-board"];
 
-// ---------------------------------------------------------------------------
-// Claim 0 — totality. Every .mts under the lab is one of three known kinds.
-//
-// This runs first and its failure is fatal: every claim below reads a subset of
-// these files, and a file none of them classified is a file none of them saw.
-// ---------------------------------------------------------------------------
+const body = (suffix) => tree.filter(([p]) => p.endsWith(suffix)).map(([, t]) => t).join("\n");
+
+// --- Claim 0 — totality. Fatal: every claim below reads a subset of these. ---
 {
   const mts = tree.filter(([p]) => p.endsWith(".mts") || p.endsWith(".ts"));
   const unclassified = mts.filter(([p]) => {
@@ -126,10 +128,7 @@ const body = (suffix) => text(suffix).map(([, t]) => t).join("\n");
   }
 }
 
-// ---------------------------------------------------------------------------
-// Claim 1 — two goal checks, exactly one of them model-backed, and the
-// model-backed one has never recorded a passing run.
-// ---------------------------------------------------------------------------
+// --- Claim 1 — two goal checks, one model-backed, never a passing run. ---
 {
   const goals = tree.filter(([p]) => p.endsWith("/goal.md")).map(([p]) => p);
   claim(
@@ -146,10 +145,8 @@ const body = (suffix) => text(suffix).map(([, t]) => t).join("\n");
   );
 
   const honesty = tree.find(([p]) => p.endsWith("it-commits-from-the-seats-own-file/goal.md"));
-  const verdicts = (honesty?.[1] ?? "")
-    .split("\n")
-    .filter((line) => /^\|\s*\d{4}-\d{2}-\d{2}/.test(line));
-  const passes = verdicts.filter((line) => /\|\s*PASS/.test(line));
+  const verdicts = (honesty?.[1] ?? "").split("\n").filter((l) => /^\|\s*\d{4}-\d{2}-\d{2}/.test(l));
+  const passes = verdicts.filter((l) => /\|\s*PASS/.test(l));
   claim(
     verdicts.length > 0 && passes.length === 0,
     `the model-backed check records ${passes.length} passing verdict(s); the spec's whole ` +
@@ -158,10 +155,7 @@ const body = (suffix) => text(suffix).map(([, t]) => t).join("\n");
   );
 }
 
-// ---------------------------------------------------------------------------
-// Claim 2 — the artifact does not outlive the run: the repository it is
-// committed into is created under the OS temp directory.
-// ---------------------------------------------------------------------------
+// --- Claim 2 — the artifact does not outlive the run. ---
 {
   const scratch = body("lab/scratch-repo.mts");
   claim(
@@ -173,32 +167,23 @@ const body = (suffix) => text(suffix).map(([, t]) => t).join("\n");
   );
   claim(
     !/git\(\s*"push"/.test(scratch) && !/\bgh\b/.test(scratch),
-    `the scratch repository now pushes or shells to gh, so the artifact may already leave the run`,
+    `the artifact's repository helper now pushes or calls gh, so the artifact may already ` +
+      `leave the run`,
     `nothing in the artifact's repository helper pushes or calls gh`,
   );
 }
 
-// ---------------------------------------------------------------------------
-// Claim 3 — the model-backed check runs on stores that do not survive it.
-// ---------------------------------------------------------------------------
+// --- Claim 3 — the model-backed check runs on stores that do not survive it. ---
 {
-  const honesty = body("it-commits-from-the-seats-own-file/run.mts");
   claim(
-    /inMemoryStores\(\)/.test(honesty),
+    /inMemoryStores\(\)/.test(body("it-commits-from-the-seats-own-file/run.mts")),
     `the model-backed check no longer runs on inMemoryStores(), so ER-3's "durable across the ` +
       `run" may already be met`,
     `the model-backed check runs on inMemoryStores(), which ER-3 calls not durable`,
   );
 }
 
-// ---------------------------------------------------------------------------
-// Claim 4 — the declared channel is walked but never opened, while the two
-// sibling labs that prove the path both open theirs.
-//
-// The positive half is what makes this a gap rather than a missing primitive:
-// a claim that only said "devforce does not open a channel" is equally true of
-// a framework with no channels in it.
-// ---------------------------------------------------------------------------
+// --- Claim 4 — the channel is walked but never opened, while siblings open theirs. ---
 {
   const opensHere = tree.filter(([, t]) => /\bopenChannels\s*\(/.test(t)).map(([p]) => p);
   claim(
@@ -215,37 +200,36 @@ const body = (suffix) => text(suffix).map(([, t]) => t).join("\n");
     `the devforce lab declares ${declared.length} channel file(s) that nothing opens`,
   );
 
-  const siblingsThatOpen = SIBLINGS.filter((dir) =>
+  // The positive half. Without it, "devforce does not open a channel" is
+  // equally true of a framework that has no channels at all.
+  const open = siblingDirs.filter((dir) =>
     filesUnder(join(REPO, dir)).some(([, t]) => /\bopenChannels\s*\(/.test(t)),
   );
   claim(
-    siblingsThatOpen.length === SIBLINGS.length,
-    `only ${siblingsThatOpen.length} of ${SIBLINGS.length} sibling labs open a channel, so ` +
-      `"the path is already proven next door" is weaker than the spec claims`,
-    `both sibling labs (${SIBLINGS.join(", ")}) open a channel on the same primitive`,
+    open.length === siblingDirs.length,
+    `only ${open.length} of ${siblingDirs.length} sibling labs open a channel, so "the path is ` +
+      `already proven next door" is weaker than the spec claims: ` +
+      `${siblingDirs.filter((d) => !open.includes(d)).join(", ")} does not`,
+    `all ${siblingDirs.length} sibling labs open a channel on the same primitive`,
   );
 }
 
-// ---------------------------------------------------------------------------
-// Claim 5 — nothing in the lab reads the browsable child-session surface
-// FIX-1440 removes, so an unlanded FIX-1440 does not fence this work.
-//
-// `parentage` is provenance, which FIX-1440's own owner amendment keeps.
-// ---------------------------------------------------------------------------
+// --- Claim 5 — FIX-1440 does not fence this work. ---
 {
-  const browse = tree.filter(([, t]) => /\/children\b|childSessions|listChildren/.test(t));
+  const browse = tree.filter(([, t]) => BROWSE_SURFACE.test(t));
   claim(
     browse.length === 0,
-    `the lab reads the child-session browse surface FIX-1440 removes (${browse
-      .map(([p]) => p)
-      .join(", ")}), so this work IS fenced by FIX-1440`,
-    `nothing in the lab reads the browsable child-session surface FIX-1440 removes`,
+    `the lab reads the child-session browse surface FIX-1440 removes ` +
+      `(${browse.map(([p]) => p).join(", ")}), so this work IS fenced by FIX-1440`,
+    `nothing in the lab reads the browsable child-session surface FIX-1440 removes ` +
+      `(pattern covers the canonical listChildSessions)`,
   );
 
-  const provenance = tree.filter(([, t]) => /parentage:\s*\{\s*parentOf/.test(t));
+  const provenance = tree.filter(([, t]) => PROVENANCE.test(t));
   claim(
     provenance.length >= 1,
-    `the lab no longer reads dispatch parentage at all, so the FIX-1440 finding needs re-deriving`,
+    `the lab no longer reads dispatch parentage as provenance, so the FIX-1440 finding needs ` +
+      `re-deriving rather than carrying forward`,
     `the lab reads dispatch parentage as provenance only (${provenance.length} site), which ` +
       `FIX-1440's owner amendment explicitly keeps`,
   );

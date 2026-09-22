@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 340" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two lanes over the same five-stage DevForce path: a feature channel, an EM seat that files a row, a board row, a coder seat running a real coding agent, and the artifact it leaves. Today, three stages are built and green — the EM seat files through its own action, the row crosses to the coder seat, and a real Claude Code agent runs — while the declared channel sits unused and the artifact is a commit in an operating-system temp directory that is swept away; a banner across the lane reads never run, no recorded verdict, and the run is marked as using in-memory stores. After, the same five stages with four marked changes: a post on the feature channel now drives the filing, the run is on durable on-disk stores, the artifact is a pull request at an address a person can open, and the artifact is graded against an acceptance condition the brief stated before the run. A note beneath reads: nothing new is built, the middle three stages are unchanged.">
+<svg viewBox="0 0 940 352" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two lanes over the same five-stage DevForce path: a feature channel, an EM seat that files a row, a board row, a coder seat running a real coding agent, and the artifact it leaves. Today, three stages are built and green — the EM seat files through its own action, the row crosses to the coder seat, and a real Claude Code agent runs — while the declared channel sits unused and the artifact is a commit in an operating-system temp directory that is swept away; a banner across the lane reads never run, no recorded verdict, and the run is marked as using in-memory stores. After, the same five stages with four marked changes: a post on the feature channel now drives the filing, the run is on durable on-disk stores, the artifact is work left at an address that outlives the run, and it is graded against an acceptance condition the brief stated before the run rather than assumed. Two notes beneath read: nothing new is built and the middle three stages are unchanged; and CI runs one leg, in which the run pushes to a bare clone with no network or credential, the pull-request release run being that same path pointed at a real remote.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -88,14 +88,15 @@
     <text class="t-new" x="578" y="288">on-disk stores</text>
 
     <rect class="n-new" x="744" y="232" width="172" height="66" rx="5"/>
-    <text class="t-b" x="758" y="256">a pull request</text>
-    <text class="t-new" x="758" y="274">GAP 3 · an address a</text>
-    <text class="t-new" x="758" y="288">person opens · GAP 4 graded</text>
+    <text class="t-b" x="758" y="256">work at an address</text>
+    <text class="t-new" x="758" y="274">GAP 3 · outlives the run</text>
+    <text class="t-new" x="758" y="288">GAP 4 · graded, not assumed</text>
 
     <path class="arrow-n" d="M180 265 h24"/>
     <path class="arrow" d="M356 265 h28 M540 265 h24"/>
     <path class="arrow-n" d="M720 265 h24"/>
   </g>
 
-  <text class="t-s" x="24" y="324">Nothing new is built. The middle three stages are unchanged; the four marked gaps are what this issue closes.</text>
+  <text class="t-s" x="24" y="320">Nothing new is built. The middle three stages are unchanged; the four marked gaps are what this issue closes.</text>
+  <text class="t-s" x="24" y="334">CI runs one leg — the run pushes to a bare clone, no network or credential. The pull-request release run is that same path pointed at a real remote.</text>
 </svg>

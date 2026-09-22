@@ -35,16 +35,19 @@ Add two rows to the existing table and one line of framing above it. Draft:
 
 | File | Why it is the lab's |
 |---|---|
-| the channel door in `host.mts` | The org is not threaded through `openChannels` yet ([FIX-1412](https://linear.app/fixpoint-labs/issue/FIX-1412)), so the session client is wrapped to inject one. The same wrap the two sibling labs carry, for the same reason |
-| the two artifact legs in `scratch-repo.mts` | Whether the artifact leaves the machine is an operator's choice, not the lab's. The default leg stays a temporary repository so the check is re-runnable with no credential; the credentialed leg gives the artifact an address a person can open |
+| the channel door in `host.mts` | Which channel this lab opens, and when, is the app's. `openChannels` takes no `orgId` and needs no wrapper — the server-created session carries the organization from the verified principal ([FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442)) |
+| the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare clone the run pushes to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process |
 
 ### UPDATE · `goals/devforce-lab/lab/README.md` · *What it works around*
 
 Append one paragraph. Draft:
 
-> **The pull-request leg needs a credential, and the check says which leg it ran.** A proof that
-> quietly ran the weaker leg and reported the stronger one would be worse than no proof, so the
-> leg is named in the verdict rather than inferred from whether `gh` happened to be installed.
+> **One automated leg, and the verdict says which leg ran.** CI runs the local leg: the run
+> pushes to a bare clone, and the artifact resolves there after the process exits, with no
+> network and no credential. The pull-request release run is the same path with a real remote,
+> and it is a human release step rather than a second leg the lab carries. A proof that quietly
+> ran the weaker leg and reported the stronger one would be worse than no proof, so the leg is
+> named in the verdict rather than inferred from whether `gh` happened to be installed.
 
 ### CREATE · `goals/devforce-lab/it-ships-an-artifact-a-person-can-open/goal.md`
 
@@ -57,9 +60,9 @@ this spec and are drafted here.
 
 > Somebody posts one line into a channel a Markdown file declared. A coordinator seat reads the
 > post and files one row. A working seat the row names wakes in a checkout of its own, runs a
-> real coding agent from a prompt built out of its own files, and opens a pull request — at an
-> address that still resolves when the run is over, carrying work that satisfies a condition the
-> brief stated before the run started.
+> real coding agent from a prompt built out of its own files, and leaves its work at an address
+> that still resolves when the run is over — work that satisfies an acceptance check the brief
+> named before the run started, written by the requester and applied from outside the checkout.
 
 **What this establishes, and what it does not** (draft):
 
