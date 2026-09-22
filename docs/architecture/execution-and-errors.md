@@ -283,7 +283,7 @@ The full request execution sequence:
 - `onErrored` fires only on terminal failure
 - `onFinished` fires always
 - `onStepErrored` fires for non-terminal step/side-chain failures (visibility hook)
-- A setup failure after the request has been accepted (`onRegistered`) settles a **fresh** request as `failed` with an `error` item. The HTTP 202 path awaits acceptance, not `finished`; leaving the row `in_progress` (or never writing one) is a silent hang. Replay continuations still stay `suspended` / `interrupted` so they remain re-attemptable.
+- A setup failure after the request has been accepted (`onRegistered`) settles a **fresh** request as `failed` with an `error` item. The HTTP 202 path awaits acceptance, not `finished`; leaving the row `in_progress` (or never writing one) is a silent hang. Replay continuations still stay `suspended` / `interrupted` so they remain re-attemptable. Request observers (`onErrored` / `onFinished`) do not run on this path — there is no execution context yet.
 
 ## Error-to-Item Mapping
 
