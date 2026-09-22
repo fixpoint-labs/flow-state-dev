@@ -213,12 +213,16 @@ hole is open either way; the difference is whether we ship the app that walks pe
   cardinality branch, it has no transport seam at all, and the roster has no read path from this
   app ([PLAN.md → Blocked on](PLAN.md#blocked-on)).
 - **Amendment 1, after merge** — the premise under the roster half was refuted by running it. A
-  session with no resolved identity binds to the default organization, not to the one the caller
-  asked for, so the question was never about a credential. The real wall is a per-collection read
-  permission that neither collection declares, and it stops the roster and the board alike, with
-  or without one. The fork was re-framed around that, the product owner answered it, and it is
-  now [D4](#d4). The seat-list fork above is untouched and still open. Evidence for every claim:
-  [EVOLUTION.md](EVOLUTION.md).
+  session with no resolved identity binds to the default organization, **not** to the one the
+  caller asked for: the organization is never the caller's to choose. **What survived is the
+  credential requirement itself** — a shell that resolves no principal reads the default
+  organization, so wherever real organizations exist the panel renders correct and empty. That is
+  live on `S8` ([PLAN.md → Blocked on](PLAN.md#blocked-on)); only an unconfigured clone reads
+  these panels with no credential at all. What the refutation moved is the *wall*: a
+  per-collection read permission neither collection declares, which stops the roster and the
+  board alike with or without a credential. The fork was re-framed around that, the product owner
+  answered it, and it is now [D4](#d4). The seat-list fork above is untouched and still open.
+  Evidence for every claim: [EVOLUTION.md](EVOLUTION.md).
 - **Amendment 1, second half** — the same pass withdrew a promise the docs draft made to readers:
   that the roster and board panels update live, and that two people watching one board see the
   same rows. The engine cannot do it, and never could — no decision here changed, so this is a

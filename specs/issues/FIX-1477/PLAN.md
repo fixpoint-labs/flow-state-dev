@@ -35,23 +35,24 @@ up rather than settled here ([Follow-ups](#follow-ups)).
 
 ## PR plan
 
-**Status is part of the plan.** A row that reads as pending when it merged is the same staleness as a stale line number.
+**Five PRs, seamed at the package boundary.** This table is the intent and why it was cut this
+way. Whether any of them has merged is Linear's and the PR's to say, not this document's
+([AGENTS.md](../../../AGENTS.md)).
 
-| PR | Surfaces | depends_on | State | Why this seam |
-|---|---|---|---|---|
-| PR-A · [#2006](https://github.com/fixpoint-labs/flow-state-dev/pull/2006) | S1 S2 S3 S4 · `packages/react/README.md` · its changeset ([Changesets](#changesets)) | — | **merged** | The public boundary first (BP-004). Checkable with no app running, and every consumer needs it before it can start. **S5 and S6 were carved out of it** — they were planned here and could not ship here, because their collections refuse a browser read ([Blocked on](#blocked-on)) |
-| PR-B · [#2011](https://github.com/fixpoint-labs/flow-state-dev/pull/2011) | S7 | PR-A | **merged** | The reusability proof ([ER-24](../../epics/FIX-1455/BUSINESS-RULES.md)). Deliberately **not** behind PR-C: it needs nothing from FIX-1475 or FIX-1476, so the epic's gate stops depending on two siblings landing |
-| S9's own · [#2019](https://github.com/fixpoint-labs/flow-state-dev/pull/2019) | S9 | — | **merged** | Split off ahead of PR-C exactly as this plan allowed: drift reconciliation is checkable with nothing else built, so a failure in it is attributable to drift rather than to shell wiring |
-| PR-A2 · [#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036) | S5 S6 | PR-A | **open** | The two panels, plus the one-line read declaration each of their collections needs. Its own PR because that declaration is substrate work PR-A was not carrying, and because it waits on FIX-1475 and FIX-1476 while PR-A did not |
-| PR-C | S8 S9† · kitchen-sink README · [DOCS.md](DOCS.md) | PR-A, PR-A2 | **not opened** | The shell. Needs real collections to render, so it is the one that waits on siblings. †S9 already shipped as #2019 |
+| PR | Surfaces | depends_on | Why this seam |
+|---|---|---|---|
+| PR-A · [#2006](https://github.com/fixpoint-labs/flow-state-dev/pull/2006) | S1 S2 S3 S4 · `packages/react/README.md` · its changeset ([Changesets](#changesets)) | — | The public boundary first (BP-004). Checkable with no app running, and every consumer needs it before it can start. **S5 and S6 were planned here and carved out**: their collections refuse a browser read, which is substrate work this PR was not carrying ([Blocked on](#blocked-on)) |
+| PR-B · [#2011](https://github.com/fixpoint-labs/flow-state-dev/pull/2011) | S7 | PR-A | The reusability proof ([ER-24](../../epics/FIX-1455/BUSINESS-RULES.md)). Deliberately **not** behind PR-C: it needs nothing from FIX-1475 or FIX-1476, so the epic's gate stops depending on two siblings landing |
+| S9's own · [#2019](https://github.com/fixpoint-labs/flow-state-dev/pull/2019) | S9 | — | Split off ahead of PR-C exactly as this plan allowed: drift reconciliation is checkable with nothing else built, so a failure in it is attributable to drift rather than to shell wiring |
+| PR-A2 · [#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036) | S5 S6 | PR-A | The two panels and the read declaration each of their collections needs. Its own PR because that declaration is substrate PR-A was not gated for, and because these two wait on FIX-1475 and FIX-1476 while PR-A did not |
+| PR-C | S8 · kitchen-sink README · [DOCS.md](DOCS.md) | PR-A, PR-A2 | The shell. Needs real collections to render, so it is the one that waits on siblings. S9 is not here — it took its own PR above |
 
-**S9 landed first, on its own — the reasoning, kept because it is why.** V8 was red on `main`, so
-drift reconciliation was checkable with nothing else built, and a failure in it was attributable
-to drift rather than to shell wiring. It shipped as #2019 ahead of PR-C, which was the plan
-rather than the fallback. **VG cannot move the same way** — it asserts the shell's behaviour, and
-a shell merged without its goal check is the defect class this epic keeps finding. **The docs
-can**: [DOCS.md](DOCS.md) publishes with PR-C or a follow-up in the same window, reconciled
-against the built components either way.
+**Why S9 could go early and VG cannot.** Drift reconciliation is checkable with nothing else
+built, so a failure in it is attributable to drift rather than to shell wiring — which is what
+made splitting it off the plan rather than the fallback. **VG cannot move the same way**: it
+asserts the shell's behaviour, and a shell merged without its goal check is the defect class this
+epic keeps finding. **The docs can**: [DOCS.md](DOCS.md) publishes with PR-C or a follow-up in
+the same window, reconciled against the built components either way.
 
 **The outside waits belong to PR-A2, not PR-C.** `Roster` needs FIX-1475's roster collection and
 `BoardColumns` needs FIX-1476's channel kinds and boards — and since both panels moved out of
@@ -69,11 +70,12 @@ PR-C now waits on #2036 rather than on the siblings directly.
 | `flow-navigator-public-boundary` | `react`, `client` | `patch` | PR-A |
 | `navigator-second-host` | `react` | `patch` | PR-B |
 | `devtool-shipped-navigator` | `devtool` | `patch` | PR-B |
-| `roster-and-board-panels` | `react` | `patch` | [#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036), **open** |
-| `panel-collections-client-read` | `workforce` | `patch` | [#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036), **open** |
+| `roster-and-board-panels` | `react` | `patch` | PR-A2 ([#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)) |
+| `panel-collections-client-read` | `workforce` | `patch` | PR-A2 ([#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)) |
 | — | `orchestration` | **none** | — |
 
-The first three are on `main`. The last two are not — read them on #2036's branch, not here.
+The last two are authored on PR-A2's branch — read them there rather than here, whatever its
+current state.
 
 **Why `patch` and not `minor`, including for `workforce`.** The pre-1.0 rule is *"can this break
 somebody"*, not *"is this a new capability"*
@@ -85,13 +87,11 @@ board become browser-readable is a real posture change and it belongs in the **b
 `panel-collections-client-read`, which already names the org scoping and what each row withholds
 — not in the bump.
 
-**No `orchestration` changeset — the shape is settled, though not yet merged.** The board's read
-is built as an assign at `channel-board.ts:218` **on
-[#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)'s branch**, carrying both
-`state.read` and the `expose` allowlist, so `defineTaskCollection` never gains a forwarded option
-and `orchestration` stays untouched. Read it there: on `main` that line is `resolveChannelBoard`
-and `CHANNEL_BOARD_CLIENT_FIELDS` does not exist yet, which is consistent with
-[Blocked on](#blocked-on) — neither collection declares a client read on `main`.
+**No `orchestration` changeset.** The board's read is an assign at `channel-board.ts:218`,
+authored on **PR-A2**'s branch and carrying both `state.read` and the `expose` allowlist, so
+`defineTaskCollection` never gains a forwarded option and `orchestration` stays untouched. Read
+it on that branch: elsewhere that line is `resolveChannelBoard` and `CHANNEL_BOARD_CLIENT_FIELDS`
+does not exist, which is what [Blocked on](#blocked-on) describes.
 
 ## Checks
 
@@ -111,6 +111,7 @@ Every row names what would make it fail. A check with no producible red state pr
 | V10 | S4 S8 | Rendered at three widths: boards yield first, the rail second, the stream never (BR-25 – BR-28) | Reorder the breakpoints: the stream collapses below `sm` and the check catches it. Assert at all three widths, not two |
 | V11 | S5 S6 | Each panel's collection is read over the **list** route with at least one row seeded, and the body carries **exactly** the projected fields that panel renders — no `claimedBy`, no lease, no retry ledger, no write log on a board row | Drop the `expose` (or the projection function) and the check goes red on the extra keys, not on a missing one. Asserting the *absence* of the withheld fields is the anti-game clause: a check that only looked for the fields it wanted would pass on the whole envelope. Seed a row first — a 200 with an empty list passes any field assertion vacuously, which is exactly how [`poc/read-gate/`](poc/read-gate/README.md) first fooled itself |
 | V12 | S5 S6 | Reading either collection **without** its `client` declaration is refused `403 State read not permitted` | Remove the declaration: the panels go blank rather than silently reading. Pins the gate so a later refactor cannot delete the opt-in and leave the panels looking merely broken |
+| V13 | S8 | **With a principal resolver configured**, a seat is hired into org `acme`, a shell session is opened carrying that viewer's credential, and the roster panel lists that seat. Asserts on the **row**, not on a 200 | Drop the resolver, or the credential transport, and the shell binds to `__fsd_default_org__`: the read still returns **200 with an empty list**, and the panel renders its empty state. That is the whole point — this is the one failure every other check passes through. V11 and V12 run in the tokenless default organization, where hire and read land in the same place by accident, so neither can see it. Run **both** halves: the same assertion in an unconfigured clone must still pass, or the check has made a credential mandatory where the reference app needs none ([Blocked on](#blocked-on)) |
 | VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): the rail lists the kinds; a singleton channel kind opens straight into its conversations; a seat kind opens into seats and then into one seat's conversations; and the **network log shows no session-list request on the kind expand** | Pre-fetch everything: the DOM assertions still pass and the network assertion fails. The network half is what makes this a goal check rather than a screenshot |
 
 **No model runs in any of this**, so no `goals/` check applies: every claim is about what a
@@ -251,10 +252,14 @@ against the session's **owning flow** (`resolveOwnerFlow`, then `findResourceCon
 `workforce/roster/*` is FIX-1475's `workforce-admin`. The roster is `flowIsolation: false`, so a
 second flow in the same organization reads the same rows rather than a private set — that is
 stated as the contract on the factory itself, and the boot reload already depends on it.
-**The key it is declared under must contain no slash.** The read is addressed as
-`/sessions/:id/resources/:ref/state`, so a ref spelt `workforce/roster` splits across path
-segments and 404s; `roster` resolves. The collection's `workforce/roster/*` **pattern** is its
-storage keys and is a different thing. Costs one confusing debugging cycle if you meet it cold.
+**The key it is declared under must contain no slash.** The list route is
+`GET /sessions/:id/resources/:ref` — **no trailing segment**; anything after `:ref` parses as an
+item topic instead (`packages/engine/src/routes/router.ts:220`–`:233`). So a ref spelt
+`workforce/roster` does not 404 on a malformed URL, which is what makes it nasty: it parses
+cleanly as `ref: "workforce"`, `topic: "roster"` and reads a *different* collection's item. You
+get "unknown resource", which reads like the rows are missing rather than like the address is
+wrong. `roster` resolves. The collection's `workforce/roster/*` **pattern** is its storage keys
+and is a different thing.
 
 **`S8` must bind the shell's session to the viewer's organization, or the panels are correct and
 empty.** The rows are organization-scoped, so a session reads the organization it is bound to —

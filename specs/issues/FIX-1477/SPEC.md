@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Feature · `client` + `react` + `devtool` + kitchen-sink · large · 3 PRs · epic
+Feature · `client` + `react` + `devtool` + kitchen-sink · large · 5 PRs · epic
 [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) ·
 [epic spec](../../epics/FIX-1455/SPEC.md)
 

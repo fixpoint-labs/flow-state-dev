@@ -51,6 +51,16 @@ so an empty `200` can no longer pass. Recorded rather than quietly repaired, bec
 same failure as the three rows above wearing a different coat — and it says the habit this page
 is about is easier to slip than the page makes it sound.
 
+**A third time, in the prose rather than the code.** Review then found that the requirement this
+amendment had just added — that `S8` bind the shell's session to the viewer's organization —
+had **no check that could fail without it**. V11 and V12 both run in the tokenless default
+organization, where the hire and the read land in the same place by accident; an implementation
+could drop the resolver entirely, pass every listed check, and ship precisely the correct-and-empty
+panel two sections of this spec warn about. Now V13, with its red state stated. Worth its own
+line because the pattern is not "a claim went stale" but **"a requirement was written without
+the check that makes it real"** — which is this epic's signature defect, recurring inside the
+amendment written to correct unfalsifiable checks.
+
 Before implementing, compare these against the repository rather than against this page. The
 devtool files in particular are live code and may have moved; [PLAN.md](PLAN.md) →
 *At implement time* names what to re-check.
