@@ -41,9 +41,14 @@ export function diffReport(baseRef = "origin/main"): DiffReport {
   const committed = git("diff", "--name-only", `${base}...HEAD`).split("\n");
   // Uncommitted and untracked paths too: a gate that only reads commits passes
   // on a working tree that is about to be committed outside the fence.
-  const pending = git("status", "--porcelain", "--untracked-files=all")
+  // Read untrimmed: a porcelain line's first column is often a space, and
+  // trimming the whole output would eat it and shift the first path.
+  const pending = execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  })
     .split("\n")
-    .map((line) => line.slice(3).split(" -> ").at(-1) ?? "");
+    .map((line) => /^.. (.*)$/.exec(line)?.[1]?.split(" -> ").at(-1) ?? "");
   const changed = [...new Set([...committed, ...pending].map((path) => path.trim()))]
     .filter((path) => path.length > 0)
     .sort();
