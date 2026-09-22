@@ -51,9 +51,9 @@ the file lived in `packages/workforce`, though the identical file ran from `pack
 That is a property of how *this* probe constructs the runtime, **not** of the package.
 `packages/workforce/test/cross-org-collection-read.test.ts` builds through `createFlowState` and
 seeds through the action path from that package perfectly well — it is the working
-counter-example, and the better model to copy if you need one there. It lives on
-[#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)'s branch, not on `main`, so
-look for it there.
+counter-example, and the better model to copy if you need one there. It was added by
+[PR-A2](https://github.com/fixpoint-labs/flow-state-dev/pull/2036), so look for it through that
+PR if your checkout predates it.
 
 ## What was observed
 

@@ -75,10 +75,11 @@ PR-C now waits on #2036 rather than on the siblings directly.
 | the per-org reload result | `workforce` | `patch` | PR-C — additive return on `reloadHiredSeats`, needed by `S8`'s boot report ([BR-20's transport](#br20-transport)). **`packages/workforce/README.md` goes with it** — its API table documents the return as `{ seats, problems }` (BP-009) |
 | — | `orchestration` | **none** | — |
 
-`roster-and-board-panels` and `panel-collections-client-read` are authored on PR-A2's branch —
-read them there rather than here, whatever its current state. (Named rather than counted: "the
-last two" stops being true the moment a row is inserted above them, which is how this sentence
-went stale once already.)
+`roster-and-board-panels` and `panel-collections-client-read` are **PR-A2's**. That is
+provenance, not a location: find them through the PR rather than through a branch name, which
+stops being where they live the moment it merges. (Named rather than counted: "the last two"
+stops being true the moment a row is inserted above them, which is how this sentence went stale
+once already.)
 
 **Why `patch` and not `minor`, including for `workforce`.** The pre-1.0 rule is *"can this break
 somebody"*, not *"is this a new capability"*
@@ -91,10 +92,10 @@ board become browser-readable is a real posture change and it belongs in the **b
 — not in the bump.
 
 **No `orchestration` changeset.** The board's read is an assign at `channel-board.ts:218`,
-authored on **PR-A2**'s branch and carrying both `state.read` and the `expose` allowlist, so
-`defineTaskCollection` never gains a forwarded option and `orchestration` stays untouched. Read
-it on that branch: elsewhere that line is `resolveChannelBoard` and `CHANNEL_BOARD_CLIENT_FIELDS`
-does not exist, which is what [Blocked on](#blocked-on) describes.
+**introduced by PR-A2**, carrying both `state.read` and the `expose` allowlist — so
+`defineTaskCollection` never gains a forwarded option and `orchestration` stays untouched. Where
+that change is not present, the line is `resolveChannelBoard` and `CHANNEL_BOARD_CLIENT_FIELDS`
+does not exist, which is the state [Blocked on](#blocked-on) describes.
 
 ## Checks
 
@@ -117,6 +118,7 @@ Every row names what would make it fail. A check with no producible red state pr
 | ~~V13~~ | — | **Moved to [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503).** It required a session carrying a viewer's credential, and no such credential exists here — so as an `S8` check it was **uncompletable**: nothing in this issue's scope could turn it green. It goes with the identity work that can | Kept as a row rather than deleted, so a reader who remembers it finds where it went instead of assuming it was dropped. What `S8` owes instead is the documented limit ([Blocked on](#blocked-on)); the panels' behaviour in an unconfigured clone is covered by V11 and V15 |
 | V14 | S8 | A boot in which one stored seat **cannot** be brought back renders a roster panel showing both numbers — what answers, and what was skipped — with the skipped seat's reason among them (BR-20) | Route the report nowhere and the panel renders a clean roster of the seats that loaded: **no error, no empty state, nothing to see**. That silent-partial read is the failure BR-20 exists for, so the check has to assert the *problem* is on screen, not that the panel rendered. Written against what a viewer sees rather than against the transport, so it stays honest if the resource's shape changes under it ([Blocked on](#br20-transport)). Red today: nothing carries the report past `console.log` |
 | V15 | S8 | **Two organizations, two boots, three assertions — one per way of being wrong.** Set up `acme` with **two** failures of different origin: a row that fails to load (recorded by the reload) and a seat that loads and is then **refused at registration** (recorded by the app). `beta` has neither. Boot one asserts, separately: **(a)** `acme`'s panel names the load failure; **(b)** `acme`'s panel names the registration refusal; **(c)** `beta`'s panel names **no** problems. Boot two, with **both** of `acme`'s causes removed — the row repaired *and* the address that refused it freed — asserts **(d)** `acme`'s panel names no problems | Each assertion excludes exactly one failure, and no other assertion can cover for it. Attribute registration refusals nowhere and **(b)** goes red while (a), (c) and (d) stay green — that is the regression this row exists for, and it is why (a) and (b) cannot be one assertion about "its problem". Write the flat list into every org and **(c)** goes red. Return entries only for orgs that had problems and **(d)** goes red, because boot one's report is still standing in a resource nobody rewrote. Boot two must clear **both** causes or (d) is unreachable rather than failing — repairing only the row leaves a refusal that no repair to a row can fix ([BR-20's transport](#br20-transport)) |
+| V16 | S5 S6 | Both panels are rendered against a deployment whose resource routes require `Authorization`, with the host passing **its own** resource client — the `PanelRowSource` seam — and the rows arrive | Build the panels on `useResourceCollection` instead and it goes red with 401s: that hook constructs `createResourceClient({ baseUrl })` with **no** fetcher (`packages/react/src/hooks/useResourceCollection.ts:165`–`:168`), and no fetcher is plumbed through the react context at all. That is the whole failure — every other panel check passes, because they run against a deployment that authenticates nobody. V7 does not cover it: it pins the **navigator's** session-list request through the developer tool's bearer transport, not a panel's collection read (BR-29) |
 | VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): the rail lists the kinds; a singleton channel kind opens straight into its conversations; a seat kind opens into seats and then into one seat's conversations; and the **network log shows no session-list request on the kind expand** | Pre-fetch everything: the DOM assertions still pass and the network assertion fails. The network half is what makes this a goal check rather than a screenshot |
 
 **No model runs in any of this**, so no `goals/` check applies: every claim is about what a
@@ -275,7 +277,7 @@ difference is worth knowing before you start.
 | | Where the declaration actually goes | What that costs |
 |---|---|---|
 | **Roster** (`S5`) | On the collection factory in `packages/workforce`, because the client config belongs to the declaration and there is exactly one of those | Every flow installing the roster becomes able to serve it to a browser, not just this shell — including FIX-1475's admin flow. The alternative, a second `defineResourceCollection` in the app with the same pattern, is a second copy of the contract the boot reload joins against, which is the drift this issue exists to close |
-| **Board** (`S6`) | **Not** at FIX-1476's call site. `channelBoardLedger` builds its ledger through `defineTaskCollection`, which accepts no `client` option at all (`packages/orchestration/src/tasks/collection/define-task-collection.ts:54–83`) | Two shapes were open — a forwarded option on `defineTaskCollection`, or an assign at `channelBoardLedger`. **Settled: the assign**, built on [#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)'s branch at `channel-board.ts:218`, carrying `state.read` and the `expose` allowlist together. Not on `main` yet — the wall described above is still what `main` does. `orchestration` is untouched and takes no changeset ([Changesets](#changesets)) |
+| **Board** (`S6`) | **Not** at FIX-1476's call site. `channelBoardLedger` builds its ledger through `defineTaskCollection`, which accepts no `client` option at all (`packages/orchestration/src/tasks/collection/define-task-collection.ts:54–83`) | Two shapes were open — a forwarded option on `defineTaskCollection`, or an assign at `channelBoardLedger`. **Settled: the assign**, introduced by [PR-A2](https://github.com/fixpoint-labs/flow-state-dev/pull/2036) at `channel-board.ts:218`, carrying `state.read` and the `expose` allowlist together. Until that lands, the wall described above is what a reader will find. `orchestration` is untouched and takes no changeset ([Changesets](#changesets)) |
 
 **The shell's flow must also declare each collection**, because the read resolves the ref
 against the session's **owning flow** (`resolveOwnerFlow`, then `findResourceConfig`, in

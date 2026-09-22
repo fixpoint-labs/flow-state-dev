@@ -44,6 +44,14 @@ that is the only form that travels.
   requirements, which is the part worth knowing: it is not one oversight but the default
   behaviour of writing a rule and a check at different moments. A re-read cannot catch it —
   unlike a stale claim, the prose is *correct*; there is simply nothing standing behind it.
+- **A comment warning against a mistake does not prevent it; only a red check does.** The panels'
+  row source is `Pick<ResourceClient, "listCollectionItems">`, and the type's own doc says a
+  panel building its own client "would read through no credential and fail against any deployment
+  that authenticates". The design was right and the hazard was named at the definition site — and
+  nothing in the checks could fail if an implementer reached for the convenient hook instead,
+  because every panel check ran against a deployment that authenticates nobody (now V16). A
+  warning is read only by someone already in the right file, which is not the person about to
+  make the mistake.
 - **One assertion per failure mode you are excluding.** If two ways of being wrong turn the same
   assertion red, that is one check, not two. This is the sharper form of the rule above, and it
   was learnt the hard way: **V15 — the check written to close the previous unfalsifiable check —
