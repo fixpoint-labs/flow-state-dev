@@ -112,7 +112,7 @@ const session = useSession(sessionId, { flowKind: "assistant" });
 return (
   <aside>
     {session.childSessions.map((run) => (
-      <button key={run.id} onClick={() => setOpenJobId(run.id)}>
+      <button key={run.id} onClick={() => setOpenRun(run)}>
         {run.topic ?? run.id} — {run.status ?? "not started"}
       </button>
     ))}
@@ -149,13 +149,16 @@ New status values can appear over time. Render one you don't recognise instead o
 
 #### Opening one
 
-A run is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
+A run is a session, so the hook you already have reads it. Keep the whole row when one is chosen, not just its id, and mount the detail view with it:
 
 ```tsx
-function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {
+function BackgroundJobDetail({ run, flowKind }: { run: ChildSessionSummary; flowKind: string }) {
   // `autoResume` matters here: without it you load one snapshot and it never
   // fills in while the job keeps going.
-  const job = useSession(jobId, { flowKind, autoResume: true });
+  const job = useSession(run.id, {
+    flowKind: run.flowId ?? flowKind, // the run's flow, not the conversation's
+    autoResume: true,
+  });
   return <ItemsRenderer items={job.items} />;
 }
 ```

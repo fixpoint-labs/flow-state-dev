@@ -155,6 +155,8 @@ Copies that differ by more than their name declare `configSchema` on the definit
 
 Any entry can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it on the entry — an action, an `internal` entry, a task-board entry, or a webhook / schedule binding — or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `entry.concurrency ?? flow.request.concurrency ?? "allow"`, the same ladder for every dispatch type.
 
+The policy is enforced by the in-process dispatcher. A deployment that hands dispatches to an external queue skips it, so requests on the same key can overlap there.
+
 `ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently).
 
 ```ts
