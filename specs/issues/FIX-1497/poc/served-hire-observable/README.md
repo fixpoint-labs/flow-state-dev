@@ -2,7 +2,9 @@
 
 A throwaway experiment retained as design evidence for [FIX-1497](../../SPEC.md). Not production
 code, not a workspace package, and in no default build, test, lint or knip discovery. Nothing
-imports it. The `package.json` beside it exists only so its modules load as ESM.
+imports it, and it carries **no package manifest and no workspace membership** — `spec-poc`'s
+isolation contract forbids both. Its one `fsdev.config.mts` is ESM by extension, which is what
+makes the tree read's top-level await legal without one.
 
 ## The premise it settles
 
@@ -20,9 +22,10 @@ entirely, and the spec's plan would be wrong from its first surface.
 
 ## What it runs
 
-`check.mts` spawns the real `fsdev dev` against `flows/`, from a scratch working directory, and
+`check.mts` spawns the real `fsdev dev --config fsdev.config.mts`, from a scratch working directory, and
 reads the real catalog at `GET /api/flows`. The tree under `workforce/` is three `WORKER.md` files
-and one `CHANNEL.md` declaring `boards: [work]`; `hire.ts` reads it, builds two kinds, and hires.
+and one `CHANNEL.md` declaring `boards: [work]`; `fsdev.config.mts` reads it, builds two kinds,
+hires, and default-exports the `FlowState` the server is pointed at with `--config`.
 Nothing writes a ledger id — the framework mints it from where the channel folder sits.
 
 | Leg | The claim | Observed |

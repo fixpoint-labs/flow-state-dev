@@ -14,7 +14,7 @@ where a leg has a named control it is named here and the plan owes its red state
 | BR-2 | The planner seat files | Exactly one row lands, carrying the goal verbatim and an assignee that is a desk key the tree declared. Not one row per channel member | Goal · graded against the input, per row and per piece |
 | BR-3 | A seat drains | It claims only rows for the desk **its own `WORKER.md`** answers for, and leaves the other desk's row for the other seat | Goal · control `swapped-desks`, which swaps the app's seat→desk map and leaves the tree alone |
 | BR-4 | A claimed row runs | It runs in its own child session on the seat the desk resolves to. **Proved by a side effect outside the board** — the board would report a completion whatever actually happened | Goal · a file the worker body writes, never the board's own report |
-| BR-5 | A row is filed for a desk no seat answers for | It is refused by name where it would have run, and settles loudly rather than sitting `pending` in silence | Goal |
+| BR-5 | A row is filed **for nobody** — no assignee at all | It is admitted at a drain, missed by the keyed router, and settles **loudly**, carrying its own id, rather than sitting `pending` in silence. The admission is deliberate: the seat's claim is eligible for its own desk **or for a row with no assignee**, because a row has to be *taken* somewhere before it can be refused by name | Goal · `manager-queue-lab` proves the same path today |
 
 ## A person is asked, and answers
 
@@ -52,12 +52,17 @@ flowchart LR
 
 ## It is observed in the DevTool
 
+**Three screens, and each answers a different question.** A board's changes are emitted into the
+session that made them, so no one tab holds the whole story — the rules below name which screen
+answers what, and the route between them.
+
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-15 | A person opens the served hire and the seat's Tasks tab | Each seat is its own navigator row addressable by its exact seat id, and the board's rows are there with id, goal, status and assignee | Goal, in a browser, over the shipped `fsdev dev` |
-| BR-16 | A row is parked with a reason | **The reason is legible on the row, with no expander opened.** After the answer, the row carries the answer in the same place, because the unpark wrote it | Goal, in a browser. **Depends on [#2032](https://github.com/fixpoint-labs/flow-state-dev/pull/2032), content-complete and unmerged** |
-| BR-17 | Both rows are on screen | Two different assignees on one board, and a row links its child session wherever one matched. That is the handoff, seen | Goal, in a browser |
-| BR-18 | The inspection is looked at for wrappers | Nothing was written to make it possible: the scenario's whole surface is a Markdown tree plus flow modules handing the hire to the ordinary dev server, and the DevTool is the shipped bundle | Diff gate, plus the POC's catalog read |
+| BR-15 | **Screen 1.** A person opens the served hire and the seat's Tasks tab | Each seat is its own navigator row addressable by its exact seat id, and the row the seat claimed is there with its id, goal, status and assignee — **carrying a link to the child session it ran in** | Goal, in a browser, over the shipped `fsdev dev` |
+| BR-16 | **Screen 2.** They follow that link, and the row was parked with a reason | **The reason is legible on the row, with no expander opened.** After the answer, the row carries the answer in the same place, because the unpark wrote it. This is the clause's whole scope: the *reason*, on the row that carries it | Goal, in a browser. **Depends on [#2032](https://github.com/fixpoint-labs/flow-state-dev/pull/2032), content-complete and unmerged** |
+| BR-17 | **Screen 3.** They open the Resources panel on any session whose flow declares the ledger | The board's collection is there, org-scoped, holding **both rows at their current state** — two different assignees, one board. That is the handoff, seen. Expanding the collection is expected here and is **not** what BR-16 forbids: this is a question about the ledger, not about one row | Goal, in a browser |
+| BR-17a | A reader asks why it is three screens and not one | Because a task board emits its changes into the session that made them: the claim lands in the seat's drain session and the park inside the child session that ran the row. **A single-tab view would be a new cross-session aggregate built inside a QA epic**, which [ER-25](../../epics/FIX-1457/BUSINESS-RULES.md) forbids. The navigation is the DevTool's own | Stated; the split is a substrate property, verified on a live run |
+| BR-18 | The inspection is looked at for wrappers | Nothing was written to make it possible: the scenario's whole surface is a Markdown tree plus one `fsdev.config.mts` handing the hire to the ordinary dev server, and the DevTool is the shipped bundle on its documented navigation | Diff gate, plus the POC's catalog read |
 
 ## What this proof may not become
 
@@ -66,6 +71,21 @@ flowchart LR
 | BR-19 | The change is reviewed against the epic's fences | No L1 type, no second work plane, no multi-human machinery, no new substrate, nothing under `packages/` | Diff gate: every changed path inside `goals/` or `specs/issues/FIX-1497/` |
 | BR-20 | The proof ships | `TaskStatus` has gained no value — not for *handed-off*, not for *notified*, not for *waiting on you* | Asserted inside the goal on the exported status union, so a later widening fails here |
 | BR-21 | The graded run is scheduled | It waits on a live hired Workforce (ER-26, arriving with the epic amendment on [#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033) — **not yet on `main`**) — **but not this spec and not its implementation PR**, both of which proceed now | Stated here so the fence is not read wider than it is; the plan sequences the run last |
+
+## Known properties — true, not covered, and not to be re-proposed
+
+**A row filed for an *unknown desk key* sits `pending`, and nothing refuses it.** No seat is
+eligible for it and the design declares no floor worker, so there is no drain that could take it
+and no router that could name it. This is the honest boundary of BR-5, which covers the row filed
+for **nobody** — a different case, and the one the substrate can actually be loud about. The
+scenario files no unknown-desk row, and a check that wanted to cover this would need a
+`defaultWorker`, which makes every misrouted row quiet instead of one.
+
+**Validating the desk before filing is not a substitute, and is deliberately not adopted.** It
+moves the refusal to the filer: the row never exists, so nothing is proved about whether the board
+is loud about one it cannot route. Worth having on its own terms; it answers a different question
+than BR-5 asks, and swapping one for the other would leave the loudness claim untested while
+looking like it was covered.
 
 ## Failure taxonomy
 

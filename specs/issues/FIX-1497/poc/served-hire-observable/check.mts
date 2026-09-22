@@ -38,7 +38,7 @@ import { fileURLToPath } from "node:url";
 import { intentFreeEnv } from "../../../../../goals/lib/env.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const FLOW_DIR = join(HERE, "flows");
+const CONFIG = join(HERE, "fsdev.config.mts");
 const REPO_ROOT = resolve(HERE, "..", "..", "..", "..", "..");
 /**
  * A port this run is unlikely to share, and **never** a fixed one.
@@ -120,9 +120,11 @@ try {
     [
       join(REPO_ROOT, "packages", "cli", "bin", "fsdev.ts"),
       "dev",
-      "--flow-dir",
-      FLOW_DIR,
-      "--no-config",
+      // The POC's own config, not directory discovery. `--config` is what lets
+      // this experiment stay package-free: the hire needs a top-level await to
+      // read the tree, and only an ESM module may have one.
+      "--config",
+      CONFIG,
       "--no-open",
       "--port",
       String(PORT),

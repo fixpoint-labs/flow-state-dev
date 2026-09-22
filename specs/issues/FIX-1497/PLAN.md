@@ -16,10 +16,10 @@ there, and re-point this link at `BUSINESS-RULES.md#er-26` once that merges.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `goals/multi-seat-collab/lab/workforce/` · the tree | One team, one `CHANNEL.md` declaring `boards: [work]` and three members, three `WORKER.md` files naming two kinds and two desk keys. **No ledger id anywhere.** Take the POC's `workforce/` tree and its four `flows/*/flow.ts` shims — they load, hire and serve. **Take nothing else from it, and `hire.ts` least of all** — see the fence below | BR-1 |
+| S1 | `goals/multi-seat-collab/lab/workforce/` · the tree | One team, one `CHANNEL.md` declaring `boards: [work]` and three members, three `WORKER.md` files naming two kinds and two desk keys. **No ledger id anywhere.** Take the POC's `workforce/` tree and its `fsdev.config.mts` serve shape — they load, hire and serve, package-free. **Take nothing else from it** — see the fence below | BR-1 |
 | S2 | `goals/multi-seat-collab/lab/host.mts` · the hire | Read the tree, build the kinds, hire, hand back handles. The **seat → desk map is the app's**, supplied by the caller, never read off the tree — that is what lets `swapped-desks` go red | BR-3 BR-13 |
-| S3 | `goals/multi-seat-collab/lab/` · the two kinds | `planner`: one dispatcher into the channel's own `fileTask`; no board, no drain. `worker`: the channel's board with a desk-narrowed claim, a same-flow dispatcher per desk into its task entry, `onReview: "exit"`, a `drain` action and an `answer` action on the board's unpark-and-drain step | BR-2 BR-4 BR-5 BR-6 BR-7 BR-12 |
-| S4 | `goals/multi-seat-collab/lab/flows/` · what `fsdev dev` discovers | One module per registered instance, each default-exporting one hired seat or the channel kind from the shared host. This is the whole of *serving* the hire — there is no app and no wrapper (D1, BR-18) | BR-15 BR-18 |
+| S3 | `goals/multi-seat-collab/lab/` · the two kinds | `planner`: one dispatcher into the channel's own `fileTask`; no board, no drain. `worker`: the channel's board with a desk-narrowed claim, a same-flow dispatcher per desk into its task entry, `onReview: "exit"`, a `drain` action and an `answer` action on the board's unpark-and-drain step. **The claim's eligibility is `assignee === <this seat's desk> || assignee === undefined`** — the second arm is what lets a row filed for nobody be *taken* somewhere before the router refuses it by name (BR-5); drop it and that row sits `pending` in silence | BR-2 BR-4 BR-5 BR-6 BR-7 BR-7a BR-12 |
+| S4 | `goals/multi-seat-collab/lab/fsdev.config.mts` · what `fsdev dev` serves | One config default-exporting the `FlowState` that holds the hired seats and the channel kind, reached with `--config`. This is the whole of *serving* the hire — no app, no wrapper, **and no package manifest**: `spec-poc`'s isolation contract forbids one, and an `.mts` config is ESM so the tree read's top-level await is legal without it (D1, BR-18) | BR-15 BR-18 |
 | S5 | `goals/multi-seat-collab/lab/run-scenario.mts` · the driver | Spawn the shipped `fsdev dev` against S4, open the channel through `openChannels` over the HTTP session door, then file → drain → answer → drain, and report raw observations. One place, so the headless legs and the browser leg drive the same run | BR-2 BR-6 BR-7 BR-10 |
 | S6 | `goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/` · **the goal** | `run.mts`, `goal.md` (outcome · input · signal · anti-game · controls · verdict log), and the browser leg in Chromium against the shipped bundle, following `goals/flow-instances/devtool-shows-the-selected-copy` | all |
 | S7 | `goals/multi-seat-collab/lab/README.md` and the verdict log | What the lab owns and what it works around; then run the proof and append **one** dated row per run. Appending only | — |
@@ -35,8 +35,8 @@ this plan and fails `swapped-desks`**, which is the worst shape a defect can hav
 
 | From the POC | From the sibling labs | **Never** |
 |---|---|---|
-| `workforce/` — the tree, unchanged | The worker kind and its desk-narrowed claim: `manager-queue-lab/lab/workforce/flows/workers/builder.mts` | `hire.ts`'s `SEAT_DESKS` — it derives the map from each worker's own `answersFor`, putting the tree on both sides of routing |
-| The four `flows/*/flow.ts` shims — one instance per module, which is what `fsdev dev` discovers | The planner's filing dispatcher: `channel-boards`' `em` kind | `hire.ts`'s `deskDispatcher`, for the same reason — and the monolith shape generally, which PLAN splits into S2/S3/S4 |
+| `workforce/` — the tree, unchanged | The worker kind and its desk-narrowed claim: `manager-queue-lab/lab/workforce/flows/workers/builder.mts` | The POC's `SEAT_DESKS` — it derives the map from each worker's own `answersFor`, putting the tree on both sides of routing |
+| The **serve shape**: one `fsdev.config.mts` default-exporting a `FlowState`, reached with `fsdev dev --config`. That is what keeps the experiment package-free, and the goal lab inherits the same constraint | The planner's filing dispatcher: `channel-boards`' `em` kind | The POC's `deskDispatcher`, for the same reason — and the single-file shape generally, which this plan splits into S2/S3/S4 |
 | The `fsdev dev` spawn and the stripped environment in `check.mts` | The host/kinds split, and the **caller-supplied** assignee map: `manager-queue-lab/lab/host.mts` | Any map read off the tree. S2's map is the app's, or `swapped-desks` grades nothing |
 
 ## Sequence
@@ -45,7 +45,7 @@ this plan and fails `swapped-desks`**, which is the worst shape a defect can hav
 flowchart TD
   S1["S1 · the tree"] --> S2["S2 · the hire, and the app's map"]
   S2 --> S3["S3 · the two kinds"]
-  S3 --> S4["S4 · the modules fsdev dev discovers"]
+  S3 --> S4["S4 · the config fsdev dev serves"]
   S4 --> S5["S5 · the driver"]
   S5 --> S6["S6 · the goal and its controls"]
   S6 --> S7["S7 · README and the verdict log"]
@@ -59,13 +59,13 @@ worth splitting.
 | ID | Runs after | Passes when |
 |---|---|---|
 | V0 | S1 | BR-1. Every file under the scenario is read and searched for the minted ledger id; a hit fails. **This is the leg that makes the rest mean something** |
-| V1 | S5 | BR-2, BR-5. One row per piece **in both directions** — one row carries one piece, one piece is carried by one row — and a row filed for an undeclared desk settles loudly where it would have run |
+| V1 | S5 | BR-2, BR-5. One row per piece **in both directions** — one row carries one piece, one piece is carried by one row — and a row filed for **nobody** is admitted at a drain and settles loudly, carrying its own id |
 | V2 | S5 | BR-3, BR-4. Each row ran on the seat whose **own file** answers for its desk, proved by a file on disk. Control `swapped-desks` must fail here and nowhere else |
 | V3 | S5 | BR-6, BR-7, BR-7a, BR-10. The drain returns with the row still parked and durable; the answer lands through the seat's action and the same seat **finishes** the row rather than re-parking it; a second delivery declines. Control `ignore-the-answer` must fail here only |
 | V4 | S5 | BR-8, BR-9. Every claim in the run belongs to a seat; control `second-principal` must not land. **Assert on the claim records, not on the absence of a feature** |
 | V5 | S5 | BR-12, BR-13, BR-14. Two rows, two assignees, two seat instances, the second naming the first. Control `one-seat` points both desks at a single seat and **must fail V5 *and* V2, in that order and for those two reasons** — see below |
 | V6 | S6 | BR-20. The exported `TaskStatus` union equals a written-out list, so a later widening fails here rather than passing quietly |
-| VB | S6 | BR-15, BR-16, BR-17. In Chromium against the shipped bundle: each seat is its own navigator row by its exact seat id; the Tasks tab shows the board; the reason is on the row with nothing expanded, then the answer in its place; two assignees on one board. Control `silent-park` must fail **here only** |
+| VB | S6 | BR-15, BR-16, BR-17. In Chromium against the shipped bundle, **three screens on the DevTool's own navigation**: (1) the seat's Tasks tab shows the claimed row and its ChildSession link; (2) following that link, the child session's Tasks tab shows the reason **with nothing expanded**, then the answer in its place; (3) the Resources panel's ledger collection holds both rows with two assignees. Control `silent-park` must fail at **(2)** only |
 | VG | S7 | **The goal.** One command: two seats work one channel's board, a person answers a parked row through a flow action, work changes hands, and a reader can say what happened from the screen. `goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/run.mts` |
 | V7 | S7 | BR-19. Diff gate, derived from `git diff` against the merge base: every changed path inside `goals/` or `specs/issues/FIX-1497/`. Nothing under `packages/` |
 
@@ -141,7 +141,7 @@ ordinary seat copies plus the channel singleton with its four doors, so the DevT
 to open and no wrapper is needed. Both of its controls were run red. **It grades registration
 only, deliberately**: driving the scenario is V1–VG's job, not a registration probe's. **Read
 [what comes from it and what must not](#what-comes-from-the-poc-and-what-must-not) before lifting
-a line out of it** — its `hire.ts` carries a routing shape this plan forbids, labelled as such in
+a line out of it** — its `fsdev.config.mts` carries a routing shape this plan forbids, labelled as such in
 the file's own header.
 
 **One thing it had to settle on the way, and did.** Every action on the served path appeared to

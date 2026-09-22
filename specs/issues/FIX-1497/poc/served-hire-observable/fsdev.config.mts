@@ -1,5 +1,5 @@
 /**
- * The hire, assembled once and imported by the four flow modules beside it.
+ * The POC's whole run shape: the hire, and the `FlowState` `fsdev dev` serves.
  *
  * ## DO NOT COPY `deskDispatcher` OR `SEAT_DESKS` INTO THE GOAL LAB
  *
@@ -59,6 +59,7 @@ import {
   readChannelsDirectory,
   readWorkforce,
 } from "../../../../../packages/workforce/src/loader/index";
+import { createFlowState, inMemoryStores } from "../../../../../packages/engine/src/index";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
@@ -233,18 +234,32 @@ const plannerKind = defineFlow({
   },
 } as never);
 
-export const seats = hireWorkforce(roster.workers, {
+const seats = hireWorkforce(roster.workers, {
   kinds: { worker: workerKind as never, planner: plannerKind as never },
   channelBoards: channelBoardIds(channels),
 });
 
-export const channelKinds = channelInstances(channels);
+const channelKinds = channelInstances(channels);
 
-/** One instance by id, for the flow module that default-exports it. */
-export function seat(id: string) {
-  const found = seats.find((instance) => instance.id === id);
-  if (found === undefined) {
-    throw new Error(`no seat "${id}" was hired (have: ${seats.map((s) => s.id).join(", ")})`);
-  }
-  return found;
-}
+/**
+ * The app's `FlowState`, which is the whole of what an `fsdev.config.*` owes.
+ *
+ * **This file is the POC's package-free run shape**, and it replaced four
+ * `flows/<name>/flow.ts` shims plus a `package.json`. The manifest existed only so
+ * those `.ts` shims loaded as ESM — the repository root declares no `"type"`,
+ * so a `.ts` file is transformed as CJS and the top-level `await` above is a
+ * hard error there. A `.mts` config is ESM by extension, so the await is legal
+ * and no manifest is needed. `spec-poc`'s isolation contract forbids one:
+ * *"do not add workspace membership, package manifests, or root execution
+ * scripts for a POC."*
+ *
+ * Reached with `fsdev dev --config <this file>`, which is also the path that
+ * opts into the debug surface and verbose tracing on its own.
+ */
+export default createFlowState({
+  flows: {
+    ...Object.fromEntries(channelKinds.map((instance) => [instance.kind, instance])),
+    ...Object.fromEntries(seats.map((instance) => [instance.id, instance])),
+  },
+  stores: { default: { primary: inMemoryStores() } },
+} as never);

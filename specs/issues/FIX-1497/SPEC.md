@@ -14,7 +14,7 @@ Feature · `goals/` only · **small–medium** · 1 PR · epic
 |---|---|---|
 | **is deciding whether Workforce is ready to ship** | "Seats collaborate" rests on two checks that each prove a half — a row reaching the seat a file named, and a queue routing to desks. Nothing has run them as one scenario, and nothing has watched work change hands | One command runs the whole thing on a real hire, and a dated verdict row says which seats ran what, in which sessions, and what was observed |
 | **asks what happens when the work needs a person** | The substrate can park a row for review and take an answer back. That leg has never run on a hired workforce, and nobody has seen an answer arrive | The run stops on a real question, a person answers through the owning seat's own door, and the answer is on the row where the next reader finds it |
-| **wants to watch it hand over** | Nothing to watch. The labs run headless, so a handoff exists only as rows in a store nobody opens | The seats are served by the ordinary dev server. The board is a screen, and the row says why it waited and what it was told |
+| **wants to watch it hand over** | Nothing to watch. The labs run headless, so a handoff exists only as rows in a store nobody opens | The seats are served by the ordinary dev server. **Three screens, one click apart**: the row and where it went, why it waited and what it was told, and both rows with their two owners |
 | **has to re-run this proof next release** | Impossible. It has never been run once | One command and a browser. Each claim carries the control that makes it go red, and each control has been seen red |
 | **is worried this grows a second, human work plane** | The fence is written down and nothing has pushed on it | Two red states push on it: an answer sent as a second person does not land, and nothing drains the board on a person's behalf |
 
@@ -25,12 +25,20 @@ every piece already exists: this composes them and writes down what a run has to
 
 ## What changes
 
-![Four lanes against time. The planner seat files a row for the build desk; the builder seat claims it and parks it with a reason; the person answers through a flow action on the owning seat, with no claim and no drain on the person's lane; the builder finishes the row and, in finishing, files a second row for the review desk, which the reviewer seat claims and completes. Below a dashed fence, a fifth lane shows the three things the DevTool carries: the row with the question in its Reason column, the same row with the answer in its place, and two rows on one board carrying two different assignees.](figures/the-run.svg)
+![Four lanes against time. The planner seat files a row for the build desk; the builder seat claims it and parks it with a reason; the person answers through a flow action on the owning seat, with no claim and no drain on the person's lane; the builder finishes the row and, in finishing, files a second row for the review desk, which the reviewer seat claims and completes. Below a dashed fence, three DevTool screens and the route between them: the seat session's Tasks tab with the row and a link to its child session, the child session's Tasks tab carrying the parked reason and then the answer, and the Resources panel's ledger collection holding both rows with their two assignees.](figures/the-run.svg)
 
 Read left to right. The crossing from the builder's lane to the reviewer's is the handoff, and it
 is one board's rows changing hands — not a field on a row and not a status
 ([D2](DECISIONS.md#d2)). The person's lane has no claim on it and no drain: that is
 [ER-1](../../epics/FIX-1457/BUSINESS-RULES.md) drawn.
+
+**Below the fence is where you read it, and it is three screens rather than one.** That is a
+property of the substrate, not a compromise: a task board's changes are emitted into the session
+that made them, so a row claimed by a seat and parked inside its child session has its story
+written in two places. The two questions a reader actually asks are different anyway — *why did
+this row wait* is per-row and lives on the child session's Tasks tab, with no expander; *where are
+both rows now* is a question about the ledger and lives in the Resources panel, which holds it
+whole. The route between them is the ChildSession link the DevTool already ships.
 
 **The whole scenario, as the person who writes it types it** — one channel file and three worker
 files, and nothing else declares the team:

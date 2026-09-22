@@ -1,6 +1,0 @@
-{
-  "name": "er-collab-poc-served-hire-observable",
-  "private": true,
-  "type": "module",
-  "description": "Retained spec experiment for FIX-1497. Not a workspace member (pnpm-workspace.yaml globs do not reach specs/); this file exists only so the POC's modules are loaded as ESM. Nothing imports it."
-}

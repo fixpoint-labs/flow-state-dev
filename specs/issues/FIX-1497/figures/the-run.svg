@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="One board row's life across four lanes against time. Lane one, the planner seat, files a row for the build desk. Lane two, the builder seat, claims it and parks it with a reason naming a question. Lane three, the person, answers through a flow action on the owning seat, carrying the request's own principal — the lane has no claim and no drain on it. Lane two resumes, completes the row, and in completing files a second row for the review desk. Lane four, the reviewer seat, claims that second row and completes it: that crossing from lane two to lane four is the handoff. Below a dashed fence, a fifth lane shows what the DevTool carries at three moments: the board row with a Reason column holding the question, the same row with the answer in its place, and two rows on one board carrying two different assignees.">
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="One board row's life across four lanes against time. Lane one, the planner seat, files a row for the build desk. Lane two, the builder seat, claims it and parks it with a reason naming a question. Lane three, the person, answers through a flow action on the owning seat, carrying the request's own principal — the lane has no claim and no drain on it. Lane two resumes, completes the row, and in completing files a second row for the review desk. Lane four, the reviewer seat, claims that second row and completes it: that crossing from lane two to lane four is the handoff. Below a dashed fence, three DevTool screens and the route between them. Screen one is the seat session's Tasks tab, showing the row in progress on the build desk and a link to the child session it ran in. Clicking that link reaches screen two, the child session's Tasks tab, which carries the parked row with the question in its Reason column and then the person's answer in the same place. Screen three is the Resources panel's org-scoped ledger collection, which holds both rows at once with their two different assignees. The first and third screens are reached from the run directly; the second is reached by clicking through from the first.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -77,27 +77,31 @@
 
   <g id="fence">
     <line class="fence" x1="16" y1="230" x2="924" y2="230"/>
-    <text class="t-lbl" x="16" y="248">WHAT THE DEVTOOL CARRIES</text>
+    <text class="t-lbl" x="16" y="248">THREE SCREENS, AND HOW YOU GET FROM ONE TO THE NEXT</text>
   </g>
 
   <g id="devtool">
-    <rect class="n-tool" x="140" y="262" width="230" height="64" rx="5"/>
-    <text class="t-b" x="152" y="284">Tasks · row A</text>
-    <text class="t-s" x="152" y="302">assignee: build · parked</text>
-    <text class="t-s" x="152" y="317">Reason: the question</text>
+    <rect class="n-tool" x="16" y="262" width="270" height="78" rx="5"/>
+    <text class="t-lbl" x="28" y="280">1 · SEAT SESSION · TASKS</text>
+    <text class="t-b" x="28" y="299">the row, and where it went</text>
+    <text class="t-s" x="28" y="316">assignee: build · in progress</text>
+    <text class="t-s" x="28" y="331">ChildSession link →</text>
 
-    <rect class="n-tool" x="400" y="262" width="230" height="64" rx="5"/>
-    <text class="t-b" x="412" y="284">Tasks · row A</text>
-    <text class="t-s" x="412" y="302">assignee: build · completed</text>
-    <text class="t-s" x="412" y="317">Reason: the answer</text>
+    <rect class="n-tool" x="334" y="262" width="270" height="78" rx="5"/>
+    <text class="t-lbl" x="346" y="280">2 · CHILD SESSION · TASKS</text>
+    <text class="t-b" x="346" y="299">why it waited, and the answer</text>
+    <text class="t-s" x="346" y="316">parked · Reason: the question</text>
+    <text class="t-s" x="346" y="331">then · Reason: the answer</text>
 
-    <rect class="n-tool" x="660" y="262" width="264" height="64" rx="5"/>
-    <text class="t-b" x="672" y="284">Tasks · rows A and B</text>
-    <text class="t-s" x="672" y="302">one board, assignees build + review</text>
-    <text class="t-s" x="672" y="317">each row links its child session</text>
+    <rect class="n-tool" x="652" y="262" width="272" height="78" rx="5"/>
+    <text class="t-lbl" x="664" y="280">3 · RESOURCES · THE LEDGER</text>
+    <text class="t-b" x="664" y="299">both rows, where they are now</text>
+    <text class="t-s" x="664" y="316">org collection · 2 items</text>
+    <text class="t-s" x="664" y="331">assignees build + review</text>
 
-    <path class="flow" d="M507 106 L507 250 L255 250 L255 262"/>
-    <path class="flow" d="M742 106 L742 250 L515 250 L515 262"/>
-    <path class="flow" d="M860 202 L860 250 L792 250 L792 262"/>
+    <path class="flow" d="M507 106 L507 250 L151 250 L151 262"/>
+    <path class="flow" d="M860 202 L860 250 L788 250 L788 262"/>
+    <path class="hand" d="M286 301 L334 301"/>
+    <text class="t-hand" x="292" y="294">click</text>
   </g>
 </svg>
