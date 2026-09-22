@@ -15,8 +15,8 @@ two consumers and are independent of each other. S9 may split off as a fourth, a
 | S2 | `react` · the flow inventory | One read of the flow list per host, grouped by `kind`. The grouping level is the new work: today's list is flat over instances | BR-5 BR-6 BR-10 |
 | S3 | `react` · leaf sessions | The session list for **one leaf**, gated on that leaf being open. The developer tool's read fence **moves** into `react` and is exported — not copied, and not reduced to an `openLeafId !== leafId` guard, which catches half of what it does ([Guardrails](#guardrails)). `checkInterrupted` does not come with it | BR-7 – BR-12 |
 | S4 | `react` · `FlowNavigator` | Sections (label + kind filter), kind rows, derived depth, expand state, one selection, row content through slots. Theming and dependencies are BR-16 and BR-17's | BR-1 – BR-11 BR-16 BR-17 BR-24 BR-27 |
-| S5 | `react` · `Roster` | Reads the durable roster collection [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) ships, including its skipped-seat problems list. Organization scoping is the collection's, not the component's. **It needs a governing session whose flow declares that collection, and the shell has none** ([Blocked on](#blocked-on)) | BR-19 BR-20 |
-| S6 | `react` · `BoardColumns` | Reads one board's ledger, grouped by the **existing** task statuses. The empty column states the likely cause rather than spinning | BR-21 BR-22 |
+| S5 | `react` · `Roster` | Reads the durable roster collection [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) ships, including its skipped-seat problems list. Organization scoping is the collection's, not the component's. **It needs a governing session whose flow declares that collection — the shell declares none — and the collection has to permit a browser read, which it does not yet** ([Blocked on](#blocked-on), [D4](DECISIONS.md#d4)) | BR-19 BR-20 |
+| S6 | `react` · `BoardColumns` | Reads one board's ledger, grouped by the **existing** task statuses. The empty column states the likely cause rather than spinning. **Same read permission as `S5`, and for the board it is not a line at the call site** ([Blocked on](#blocked-on)) | BR-21 BR-22 |
 | S7 | `devtool` · consume, and **remove** | Take a dependency on `@flow-state-dev/react`. Render S4 with the tool's own skin and its affordances as slots. **Delete** `src/react/components/navigator/`, `src/react/hooks/use-sessions.ts` and `src/react/hooks/use-read-fence.ts`, repointing its three remaining fence users (`DevToolPanel.tsx`, `use-child-sessions.ts`, `use-workspace-fence.ts`) and their test at the `react` export — an import path, no behaviour change. **The tool's bearer transport has to survive the move** | BR-15 BR-17 BR-29 |
 | S8 | kitchen-sink · the shell | `app/page.tsx`: the rail becomes one `FlowNavigator` with a Channels and a Seats section; the right panel becomes standing `BoardColumns` + `Roster` and **loses its build-mode conditional**; the narrow-width order is wired. **Remove** `components/session-sidebar.tsx` | BR-13 BR-18 BR-25 – BR-28 |
 | S9 | kitchen-sink · the drifted copies | Reconcile the **five** registry-installed files that no longer match their source: `conversation.tsx`, `message.tsx`, `chat-assistant.tsx`, `task-plan.tsx`, `task-plan-state.ts`. Each is either pushed back into the registry or reverted to it — never left forked | BR-14 |
@@ -95,6 +95,7 @@ Everything else — hook names, slot names, file layout, the CSS custom property
 | The fence **moves**; it is not re-derived, and not reduced to comparing the open leaf id | It answers two hazards and a leaf id answers one: a response outliving its leaf, and two reads of *one* leaf racing, which only a sequence number can separate. Both are written down where it lives, `packages/devtool/src/react/hooks/use-read-fence.ts` |
 | `checkInterrupted` does **not** come across with it | The tool sweeps stale active requests before every list (`use-sessions.ts:55–61`) — a second round trip on **every leaf expand**, and a rail pays only for the list it draws. Accepted cost: a request abandoned by a dead process keeps reading `in_progress` in the rail until something else sweeps it |
 | Never attribute an ownerless session to an instance (BP-030) | Guessing an owner puts one copy's history under another. What that costs, and where such a row is reachable at all, is BR-12 |
+| Never open a collection's browser read **bare** — declare what it publishes (BP-015) | With no projection the read returns the stored row unchanged, so a board would publish the whole task envelope including the execution coordinates its own board action withholds from a model. [Blocked on](#blocked-on) names the allowlist that already exists to copy |
 
 ## Docs
 
@@ -130,10 +131,10 @@ under their kind, is cheaper to build with V2 red in front of it than to sketch.
 
 Re-check these against the repo before building; each of them moves.
 
-- **Has FIX-1475 landed, and can anything but its admin flow read the roster?** `S5` reads
-  `workforce/roster/*`. Its PR-A ships the collection, **not a read path for this app** — see
-  [Blocked on](#blocked-on). Read its `problems` dialect rather than inventing a third word for a
-  skipped seat.
+- **Has FIX-1475 landed, and does the roster collection permit a browser read yet?** `S5` reads
+  `workforce/roster/*`. Its PR-A ships the collection, **not a read path for this app** — that
+  declaration is this issue's, and [Blocked on](#blocked-on) says where it goes and what it costs.
+  Read its `problems` dialect rather than inventing a third word for a skipped seat.
 
 - **S1 replaces three copies of the branch, not one.** The developer tool's
   (`packages/devtool/src/react/hooks/use-sessions.ts:63`), the navigator leaves, **and
@@ -157,48 +158,69 @@ Re-check these against the repo before building; each of them moves.
 - **Has FIX-1478's collapse trigger fired?** If the patterns shed folded into this issue, the
   control strip and the four modes become S8's, and `apps/kitchen-sink/e2e/mode-switching.spec.ts`
   goes with them. If it did not, leave both alone and read its keep-notes.
-- **Has the Open fork been answered?** If the answer is *hold*, S8's Seats section is not mounted
-  and the rail is Channels only; nothing else in the plan changes. If it is *ship*, S8 mounts
-  both sections and [DOCS.md](DOCS.md) gains the limits paragraph the epic drafted.
+- **Has the Open fork — the seat list — been answered?** If the answer is *hold*, S8's Seats
+  section is not mounted and the rail is Channels only; nothing else in the plan changes. If it is
+  *ship*, S8 mounts both sections and [DOCS.md](DOCS.md) gains the limits paragraph the epic
+  drafted. **It is the only fork left.** The roster and board question that used to sit beside it
+  is answered ([D4](DECISIONS.md#d4)) and reaches neither the Seats section nor this bullet.
 - **`@flow-state-dev/ui`** is a copy-in registry, not a published package, and it is `private`.
   If that changed, D1's *what would change my mind* has fired and the split wants re-reading.
 
 ## Blocked on
 
-**`Roster` has no read path from this app, and opening one is a decision above this plan.** Verified on
-`origin/main`: a collection read is session-addressed and authorized on that session
-(`list_collection_state` is `{ kind: "session" }`, `routes/route-auth.ts`), then resolved against
-that session's **owning flow** — `handleListCollectionState` loads the session, calls
-`resolveOwnerFlow`, and looks the ref up there (`routes/resource-routes.ts`). The only flow
-declaring `workforce/roster/*` is FIX-1475's `workforce-admin`, behind its own credential. The
-shell's flow declares nothing.
+**Nothing external any more. `S5` and `S6` are parked on one declaration each, and the decision
+that releases them has been made** ([D4](DECISIONS.md#d4)). What follows is what building it
+costs, not what it waits for.
 
-**The cheap path is not available.** Declaring the collection on the shell's flow and reading it
-looks free, and it is not: a session's org is principal-derived only when there *is* a principal.
+**One wall, and it is the same one for both panels.** Both collection-state read routes refuse a
+browser unless the collection says it may be read — `config.client?.state?.read !== true` →
+`403 State read not permitted` (`packages/engine/src/routes/resource-routes.ts:440` and `:560`).
+Neither collection says so: `defineHiredRosterCollection()`
+(`packages/workforce/src/roster/collections.ts:107`) and `channelBoardLedger()`
+(`packages/workforce/src/channel/channel-board.ts:160`) pass no `client` config at all. So `S5`
+and `S6` are blocked identically, **with or without a principal and with or without a
+credential** — verified by execution rather than read: both return 403, and the same roster
+shape carrying the declaration returns 200 ([`poc/read-gate/`](poc/read-gate/README.md)).
 
-```
-orgId: ctx.principal === undefined ? getString(body.orgId) : ctx.principal.orgId,
-```
+**Reading a board through the channel's board action is not a way around it.** That action
+answers a model, not a screen: the action response a browser receives carries no handler output
+at all (`ExecuteActionResponse`, `packages/client/src/types/index.ts:89`), and every region in
+this app renders an **item** — no item type carries a handler's return value
+([items.md](../../../docs/architecture/items.md)).
 
-(`packages/engine/src/routes/session-routes.ts:192`, whose own comment says a caller-supplied org
-"would become an org binding the runtime later trusts".) With no resolver configured, anyone can
-create a session claiming any org and read that org's roster — the same BP-031 hole FIX-1475
-closed on the write side with its fail-closed admin flow, reopened on the read side. The shell's
-flow has no resolver today, and that is asserted rather than incidental:
-`apps/kitchen-sink/test/management-routes-reachable.test.ts:54` pins
-`chat?.authentication?.resolvePrincipal` as `undefined`.
+**The two declarations land inside this issue** ([DECISIONS.md → Decided, not
+asked](DECISIONS.md#decided-not-asked)). Only one of them is a line at a call site, and the
+difference is worth knowing before you start.
 
-So the real question is narrower than which issue owns the declaration: **does the shell's flow
-carry its own `resolvePrincipal`, or does the roster panel simply not render without a
-credential?** **Not mine to pick.** It is the same call as the
-[Open fork](DECISIONS.md#open) one surface over, and it is answered there rather than in a second
-gate.
+| | Where the declaration actually goes | What that costs |
+|---|---|---|
+| **Roster** (`S5`) | On the collection factory in `packages/workforce`, because the client config belongs to the declaration and there is exactly one of those | Every flow installing the roster becomes able to serve it to a browser, not just this shell — including FIX-1475's admin flow. The alternative, a second `defineResourceCollection` in the app with the same pattern, is a second copy of the contract the boot reload joins against, which is the drift this issue exists to close |
+| **Board** (`S6`) | **Not** at FIX-1476's call site. `channelBoardLedger` builds its ledger through `defineTaskCollection`, which accepts no `client` option at all (`packages/orchestration/src/tasks/collection/define-task-collection.ts:54–83`) | Either a new forwarded option on `defineTaskCollection` — a change one package below the board, in `@flow-state-dev/orchestration` — or an assign at `channelBoardLedger`. Pick deliberately and say which in the PR; the forwarded option is the honest shape and the larger blast radius |
 
-**This issue owns whichever answer comes back.** FIX-1475's PR-A and PR-B are green and its goal
-passes on the real path; reopening it to add a read surface would widen a settled issue into
-substrate work it was never gated for. Until the fork is answered, `S5`, `BR-19` and `BR-20` are
-unbuildable and `S8` renders the panel with the roster's empty state. **`BoardColumns` meets the
-same question** the moment a board is read from the shell rather than from a seat's session.
+**The shell's flow must also declare each collection**, because the read resolves the ref
+against the session's **owning flow** (`resolveOwnerFlow`, then `findResourceConfig`, in
+`packages/engine/src/routes/resource-routes.ts`). Today the only flow declaring
+`workforce/roster/*` is FIX-1475's `workforce-admin`. The roster is `flowIsolation: false`, so a
+second flow in the same organization reads the same rows rather than a private set — that is
+stated as the contract on the factory itself, and the boot reload already depends on it.
+**The key it is declared under must contain no slash.** The read is addressed as
+`/sessions/:id/resources/:ref/state`, so a ref spelt `workforce/roster` splits across path
+segments and 404s; `roster` resolves. The collection's `workforce/roster/*` **pattern** is its
+storage keys and is a different thing. Costs one confusing debugging cycle if you meet it cold.
+
+**Declare the board's read with a projection, never bare.** With no `expose`, `exclude` or
+`data`, the read returns the stored row unchanged
+(`packages/core/src/helpers/client-projection.ts:150–158`) — for a board that is the whole task
+envelope, including the execution coordinates the channel's own board action deliberately
+withholds from a model: who claimed a row, its lease, its retry ledger, its write log. The
+allowlist to copy already exists next to that action rather than needing to be invented
+(`channelBoardRowSchema`, `packages/workforce/src/channel/channel-flow.ts`). The roster's row
+carries a seat id, its flow kind, its settings bag and its instructions, and wants the same
+deliberate read before it is published verbatim.
+
+**The contested-files guardrail still holds.** `apps/kitchen-sink/fsdev.config.ts` and
+`workforce/hire.ts` remain off-limits (see *At implement time*). If wiring the shell's
+declaration appears to need one of them, that is a finding to raise rather than an edit to make.
 
 ## Notes from review
 

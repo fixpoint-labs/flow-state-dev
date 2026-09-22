@@ -49,7 +49,7 @@ divergences; this one does not get to.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-18 | The right panel is rendered | Boards and the roster are there, whatever mode the app is in. The panel is not conditional ([D7](../../epics/FIX-1455/DECISIONS.md#d7)) | CI |
-| BR-19 | A roster is rendered | It shows the organization's seats, read from the standing roster collection. The collection is organization-scoped at the store, so nothing in the component filters. **Which session governs that read is unsettled** ([PLAN.md → Blocked on](PLAN.md#blocked-on)) | CI, against a fixture collection |
+| BR-19 | A roster is rendered | It shows the organization's seats, read from the standing roster collection. The collection is organization-scoped at the store, so nothing in the component filters. The governing session is one whose flow declares the collection, and the collection has to permit a browser read before any session can serve one ([PLAN.md → Blocked on](PLAN.md#blocked-on), [D4](DECISIONS.md#d4)) | CI, against a fixture collection |
 | BR-20 | The roster reports seats that were skipped at boot | The count and the list are shown, not only logged. "The roster" and "what answers" are two numbers ([FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475)'s BR-24) | CI |
 | BR-21 | A board column is rendered | It shows the rows that board holds, grouped by the existing task statuses. No new status vocabulary is minted | CI |
 | BR-22 | A board has no rows | The column says so plainly, and says the likely reason — nothing drains that board. Board wiring is explicit per seat and this must not read as a loading state ([ER-12](../../epics/FIX-1455/BUSINESS-RULES.md)) | CI |
