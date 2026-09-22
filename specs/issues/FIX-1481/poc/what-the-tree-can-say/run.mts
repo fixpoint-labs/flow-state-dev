@@ -7,9 +7,15 @@
  *
  * Every claim this spec rests on is a claim about what devtool *can* render,
  * and each one is checked here against the real module or the real handler
- * rather than against a reading of it. Three checks, each with a **negative
- * control** that is run and must go red before the real assertion is trusted
- * (tenet 7 — a green check nobody has seen fail is not evidence).
+ * rather than against a reading of it. Three checks, each with a **control that
+ * is run**: checks 1 and 2 plant something their assertion must reject, and
+ * check 3 — whose assertion is that a door returns nothing — instead proves the
+ * door answers at all when given something it should show. A green check nobody
+ * has seen fail is not evidence (tenet 7).
+ *
+ * **What is deliberately NOT here: any assertion about the view.** Those would
+ * describe today and go red the moment the feature they justify is built. They
+ * are `file:line` cites in the README instead. See Check 1's header.
  *
  * The imports reach into `src/` rather than package entry points on purpose:
  * `referencesFromDocs` and `resolveSeatResources` are internal to
@@ -43,76 +49,61 @@ const expect = (name: string, cond: boolean, detail: string) =>
   cond ? ok(name) : bad(name, detail);
 
 // ---------------------------------------------------------------------------
-// Check 1 — row 1. The parked reason is already in devtool's model, and is on
-// no column of the row.
+// Check 1 — row 4. What a reason on the row will MEAN.
+//
+// Deliberately NOT a check on the view. An earlier version asserted the row's
+// seven column headers and the absence of `feedback` in the rendering module,
+// and both were wrong to retain: PR-A's whole job is to add a column and render
+// that field, so the assertions were built to go red the moment the work
+// succeeded. Those two facts are now `file:line` cites in the README, where a
+// statement about today belongs.
+//
+// What survives is the half PR-A does not touch. `feedback` is written by task
+// verbs, not by the view, so these hold before and after the render lands — and
+// a fourth writer appearing later really would change what the column means.
+// That is the lifecycle test FIX-817's V7 sets: a totality check earns
+// retention when its expectation can be updated and still assert something.
 // ---------------------------------------------------------------------------
 
-/** Every `<th>` label in a source, in document order. */
-function columnHeaders(source: string): string[] {
-  return [...source.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map((m) => m[1].trim());
+/** Every task-collection verb body, sliced out by its `async <name>(` header. */
+function verbBodies(source: string): { name: string; body: string }[] {
+  return [...source.matchAll(/\n    async (\w+)\(/g)].map((m, i, all) => ({
+    name: m[1],
+    body: source.slice(m.index!, all[i + 1]?.index ?? source.length)
+  }));
+}
+
+/** Which verbs write `feedback`, sorted. */
+function feedbackWriters(source: string): string[] {
+  return verbBodies(source)
+    .filter((v) => /feedback:|\{ feedback \}/.test(v.body))
+    .map((v) => v.name)
+    .sort();
 }
 
 function check1(): void {
-  console.log("\nCheck 1 · the parked reason: in the model, not on the row");
+  console.log("\nCheck 1 · row 4 · what a reason on the row will mean");
 
-  const viewPath = "packages/devtool/src/react/components/workspace/task-collections-view.tsx";
-  const statePath = "packages/devtool/src/react/lib/task-collection-state.ts";
-  const view = readFileSync(resolve(REPO, viewPath), "utf8");
-  const state = readFileSync(resolve(REPO, statePath), "utf8");
-
-  // TOTALITY, not a spot check: the assertion is over the WHOLE header set, so
-  // a column added since this was written fails the check instead of hiding in
-  // it. A spot check for "no Reason column" would pass on a row that had
-  // silently gained three other columns.
-  const expected = ["Id", "Goal", "Status", "Assignee", "ChildSession", "Latest kind", "Details"];
-  const found = columnHeaders(view);
-  expect(
-    "the task row's columns are exactly the seven known ones",
-    JSON.stringify(found) === JSON.stringify(expected),
-    `expected ${JSON.stringify(expected)}, found ${JSON.stringify(found)}`
-  );
-
-  expect(
-    "the rendering module never mentions `feedback`",
-    !/feedback/i.test(view),
-    "a `feedback` reference appeared in task-collections-view.tsx"
-  );
-
-  // The other half, and the one that sizes the work: the field is ALREADY in
-  // devtool's wire-shape mirror of `Task`. Nothing has to reach the browser
-  // that is not there; row 1 is a render, not a wire change.
-  expect(
-    "devtool's `Task` mirror already declares `feedback`",
-    /^\s*feedback\?: string;/m.test(state),
-    "no `feedback?: string` in task-collection-state.ts — row 1 would need a wire change"
-  );
-
-  // `feedback` is NOT parked-only, and the column's meaning depends on that.
-  // TOTALITY over the writers: every site in the task collection that writes
-  // the field, with the status it lands on. Three today — a park, a retry, and
-  // an unpark that clears it. A fourth appearing silently would change what a
-  // "Reason" column means, so the count is asserted rather than sampled.
   const tasks = readFileSync(
     resolve(REPO, "packages/orchestration/src/tasks/collection/resource-backed.ts"),
     "utf8"
   );
-  // Slice the collection into its verb bodies and ask which ones write the
-  // field. Three today: `fail` (the retry patch), `awaitReview` (the park) and
-  // `unpark` (which clears it unless given a new one).
-  const verbs = [...tasks.matchAll(/\n    async (\w+)\(/g)].map((m, i, all) => ({
-    name: m[1],
-    body: tasks.slice(m.index!, all[i + 1]?.index ?? tasks.length)
-  }));
-  const writers = verbs
-    .filter((v) => /feedback:|\{ feedback \}/.test(v.body))
-    .map((v) => v.name)
-    .sort();
+
+  // TOTALITY over the writers, not a spot check: every verb that writes the
+  // field, named. Three today — `fail` (the retry patch, which leaves it on a
+  // row back at `pending`), `awaitReview` (the park) and `unpark` (which clears
+  // it unless given a new one). A spot check for "awaitReview writes it" would
+  // pass while a fourth writer quietly broadened what the column reports.
+  const writers = feedbackWriters(tasks);
   expect(
     "exactly three task verbs write `feedback`, and they are the known three",
     JSON.stringify(writers) === JSON.stringify(["awaitReview", "fail", "unpark"]),
     `writers are ${JSON.stringify(writers)} — the column's meaning per status needs re-deriving`
   );
 
+  // BR-3's subject, asserted as TODAY's behaviour on purpose: the filed
+  // follow-up that fixes it should make this assertion go red, which is how a
+  // check earns the right to describe a defect.
   expect(
     "a park with no feedback does not clear a previous one",
     /async awaitReview\(id, feedback, options\) \{[\s\S]{0,400}?feedback !== undefined \? \{ feedback \} : \{\}/.test(
@@ -121,23 +112,23 @@ function check1(): void {
     "awaitReview no longer leaves a stale feedback in place — re-check BR-3"
   );
 
-  // NEGATIVE CONTROL, run. Plant an eighth column and watch the totality
-  // assertion reject it. Without this, a header regex that silently matched
-  // nothing would "pass" both assertions above.
-  const planted = view.replace(
-    '<th className="py-1.5 font-medium">Goal</th>',
-    '<th className="py-1.5 font-medium">Goal</th><th>Reason</th>'
+  // NEGATIVE CONTROL, run. Plant a fourth writer and watch the totality
+  // assertion reject it. Without this, a verb regex that silently matched
+  // nothing would "pass" by returning an empty list.
+  const planted = tasks.replace(
+    "    async awaitReview(",
+    "    async settle(id, feedback, options) {\n      return { feedback: feedback };\n    },\n\n    async awaitReview("
   );
-  const plantedFound = columnHeaders(planted);
+  const plantedWriters = feedbackWriters(planted);
   expect(
-    "negative control · a planted eighth column is rejected",
-    JSON.stringify(plantedFound) !== JSON.stringify(expected) && plantedFound.length === 8,
-    `the planted column was absorbed: ${JSON.stringify(plantedFound)}`
+    "negative control · a planted fourth writer is rejected",
+    plantedWriters.length === 4 && plantedWriters.includes("settle"),
+    `the planted writer was absorbed: ${JSON.stringify(plantedWriters)}`
   );
 }
 
 // ---------------------------------------------------------------------------
-// Check 2 — row 2. A sealed document and a mutable one come back from the real
+// Check 2 — row 6. A sealed document and a mutable one come back from the real
 // debug snapshot field for field identical.
 // ---------------------------------------------------------------------------
 
@@ -224,7 +215,7 @@ function withoutIdentity(entry: Record<string, unknown>): Record<string, unknown
 }
 
 async function check2(): Promise<void> {
-  console.log("\nCheck 2 · read-only is unrenderable: sealed and mutable are the same row");
+  console.log("\nCheck 2 · row 6 · read-only is unrenderable: sealed and mutable are one row");
 
   const { body } = await snapshotEntries(buildFlow());
   const byName = new Map(body.resources.map((e) => [e.primaryName as string, e]));
@@ -286,12 +277,12 @@ async function check2(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Check 3 — row 3. The non-debug door cannot see these resources at all, and
+// Check 3 — row 5. The non-debug door cannot see these resources at all, and
 // the reference app writes no inventory for it to see.
 // ---------------------------------------------------------------------------
 
 async function check3(): Promise<void> {
-  console.log("\nCheck 3 · the non-debug door, and what it would have to show");
+  console.log("\nCheck 3 · row 5 · the non-debug door, and what it would have to show");
 
   const flow = buildFlow();
   const { ctx, sessionId } = await snapshotEntries(flow);

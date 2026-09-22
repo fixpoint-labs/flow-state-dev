@@ -25,13 +25,18 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · A document is marked read-only from its `writable` and `llmWritable` flags, which the debug snapshot now carries; the tree resolves them with the expression the resource manifest already uses
+## D1 · A document is marked read-only from its `writable` and `llmWritable` flags, which the debug snapshot now carries; both the tree and the agent's manifest resolve them through one exported `mayWrite` helper
 
 | | |
 |---|---|
-| **Instead of** | Marking anything loaded out of a `references/` folder, or shipping one resolved `readOnly` boolean from the server |
+| **Instead of** | Marking anything loaded out of a `references/` folder; shipping one resolved `readOnly` boolean from the server; or leaving the predicate where it is and asserting the two readers agree |
 | **Because** | The seal has **two** producers. A `references/` document is sealed by convention; a seat granted `ro` on an ordinary mutable document is sealed the same way, by the same two fields. A folder-derived badge is right about the first and silent about the second, which is the more dangerous half — the reader is looking at something that *is* mutable for somebody else. And the two flags are not one fact: `writable` decides whether code may write, `llmWritable` decides whether the model is offered the write tool. Open to code and closed to the model is a state the framework supports, and one boolean would report it as one of the two things it isn't |
 | **Locks in** | Two permission fields on a wire shape every DevTool build then reads, and "read-only" in the tree tied to what the agent's own manifest means by it. A third gate later means finding every reader of the pair. The cheap failure runs the other way: an absent flag means *writable*, and a reader that treats absent as closed marks a document anybody can edit |
+
+A parity assertion between two copies was considered and dropped: it detects drift one commit
+after it happens, where one helper prevents it. `@flow-state-dev/devtool` already depends on
+`@flow-state-dev/core`, so the helper costs no new dependency and crosses no package boundary —
+if that ever stops being true, the parity assertion is the fallback, not a coin flip.
 
 **What would change my mind:** evidence that a seat-level `ro` grant is not something anybody
 actually writes. Then the seal has one producer, the folder tells you everything, and a badge on

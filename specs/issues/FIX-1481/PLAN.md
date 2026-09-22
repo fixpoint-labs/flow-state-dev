@@ -10,10 +10,10 @@ other: the seam is that PR-A touches no wire shape and PR-B touches no task boar
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `devtool` · the task row in the board view | Render the reason the row already carries. The field is on DevTool's own `Task` mirror already, so nothing new crosses the wire. Show it for whatever status carries it, not only `parked` | BR-1 – BR-9 |
-| S2 | `client` + `engine` · the debug resource entry and the snapshot that builds it | Carry the two permission flags. **Omit them when the config omits them** — a `false` written where the author wrote nothing is the one way to get BR-13 backwards | BR-13 BR-16 |
-| S3 | `devtool` · the resources tree | One mark beside the existing scope badge, from the resolved pair. The raw pair stays in the row's detail for the half-open case | BR-10 – BR-15 BR-17 |
-| S4 | `core` · the may-write expression | The tree must not re-derive it. Either lift the manifest's predicate (`manifest/resources-source.ts` → `contractOf`) somewhere both reach, or leave it and assert the two agree. Either is fine; two copies is not (D1) | BR-18 |
+| S1 | `devtool` · the task row in the board view | Render the reason the row already carries. The field is on DevTool's own `Task` mirror already, so nothing new crosses the wire. Show it for whatever status carries it, not only `parked` | BR-1 – BR-8 |
+| S2 | `client` + `engine` · the debug resource entry and the snapshot that builds it | Carry the two permission flags. **Omit them when the config omits them** — a `false` written where the author wrote nothing is the one way to get BR-12 backwards | BR-12 BR-15 |
+| S3 | `devtool` · the resources tree | One mark beside the existing scope badge, from the resolved pair. The raw pair stays in the row's detail for the half-open case | BR-9 – BR-14 BR-16 |
+| S4 | `core` · one exported `mayWrite` helper | Lift the predicate currently inline in `manifest/resources-source.ts` → `contractOf` into one exported helper, and have both `contractOf` and the tree call it. **Not a fork:** `@flow-state-dev/devtool` already depends on `@flow-state-dev/core`, so this needs no new dependency and crosses no package boundary. Build it first — it is what makes D1 one definition rather than two | BR-17 |
 | S5 | Docs | [DOCS.md](DOCS.md)'s operations, plus one `patch` changeset for `client` and `engine`. `devtool` ships pre-built assets; check whether it needs one | — |
 
 **Nothing is removed.** The expander, the scope badge, the debug gate and its 403 path all stay
@@ -45,12 +45,12 @@ flowchart TD
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S1 | BR-1 – BR-9. BR-3 is asserted as **today's** behaviour, so the follow-up that fixes the stale reason flips this check rather than passing silently |
-| V2 | S2 | The entry carries both flags when the config declares them and **carries neither key** when it does not (BR-13). Built from a real flow through the real snapshot, not a fixture |
-| V3 | S3 | BR-10 – BR-15, BR-17. Both producers of the seal — a `references/` document and a seat's `ro` grant — get the mark, asserted separately (BR-11, BR-12) |
-| V4 | S4 | BR-18: one expression. If the predicate stays where it is, assert the tree's answer equals the manifest's across all four flag combinations |
-| V5 | S3 | The second path (BP-035): a snapshot with both keys deleted renders no mark and throws nothing (BR-16) |
-| V6 | S1 + S3 | BR-19, BR-20: the status union is unchanged and the existing debug-gate suite passes unmodified. The epic's two named kills, asserted rather than promised |
+| V1 | S1 | BR-1 – BR-8. BR-3 is asserted as **today's** behaviour, so the follow-up that fixes the stale reason flips this check rather than passing silently |
+| V2 | S2 | The entry carries both flags when the config declares them and **carries neither key** when it does not (BR-12). Built from a real flow through the real snapshot, not a fixture |
+| V3 | S3 | BR-9 – BR-14, BR-16. Both producers of the seal — a `references/` document and a seat's `ro` grant — get the mark, asserted separately (BR-10, BR-11) |
+| V4 | S4 | BR-17: `mayWrite` is the only definition, exercised across all four flag combinations, and `contractOf` is one of its callers rather than a second copy |
+| V5 | S3 | The second path (BP-035): a snapshot with both keys deleted renders no mark and throws nothing (BR-15) |
+| V6 | S1 + S3 | BR-18, BR-19: the status union is unchanged and the existing debug-gate suite passes unmodified. The epic's two named kills, asserted rather than promised |
 | VG | S1 + S5 | Goal, on the real path: `fsdev dev` against a flow with a parked task carrying a reason and a tree holding one sealed and one writable document. A person reading the screen can say why the row is parked and which document is writable, with no expander opened. `goals/devtool-workforce-visibility/the-checklist-rows/goal.md` |
 
 **VG's subject may not exist yet.** Nothing in the repository declares a sealed document, and this
@@ -70,12 +70,12 @@ Everything else is yours, including the column's header, which the spec delibera
 
 | Rule | Because |
 |---|---|
-| An absent flag means writable; never coerce it to `false` in either direction (BP-030) | It is the framework's default, and backwards puts a read-only mark on something anybody can edit. A wrong mark is worse than no mark — the whole of BR-13 |
-| One definition of *may write*, reached by both the tree and the agent's manifest (tenet 5) | Two copies drift, and the day they disagree the DevTool tells a developer something different from what the agent was told about the same document |
-| Every producer of the seal goes through the same pair, the `ro` grant as much as the convention (tenet 5) | A folder-derived mark is right about one producer and silent about the other, and the silent one is the more dangerous |
+| An absent flag means writable; never coerce it to `false` in either direction (BP-030) | BR-12. A wrong mark is worse than no mark, and backwards puts a read-only badge on something anybody can edit |
+| `mayWrite` has one definition and both readers call it (tenet 5, D1) | The day two copies disagree, the DevTool tells a developer something different from what the agent was told about the same document |
+| Every producer of the seal goes through the same pair (tenet 5, D1) | A folder-derived mark is right about one producer and silent about the other, and the silent one is the more dangerous |
 | The view renders what the row carries; it neither invents a reason nor suppresses one (tenet 1) | BR-3 and BR-4 are both cases where the true value is surprising. Smoothing either hides a real defect and makes the board lie |
-| Do not widen the debug gate, its origin allow-list or its fail-closed default | Making a field visible to whoever can already reach the surface is not a reason to change who can reach it |
-| Do not add a `client` config to the inventory or reference collections to "just make row 5 work" | It opens an org-scoped read addressed by a caller-supplied org where no resolver is configured (BP-031) — one line, and a closed hole reopened. See [D2](DECISIONS.md#d2) |
+| Do not widen the debug gate, its origin allow-list or its fail-closed default | BR-19. Making a field visible to whoever can already reach the surface is not a reason to change who can reach it |
+| Do not add a `client` config to the inventory or reference collections to "just make row 5 work" | BP-031, and [D2](DECISIONS.md#d2) has the reasoning. One line, and a closed hole reopened |
 
 ## Docs
 
@@ -87,14 +87,21 @@ operations own the changed prose; this plan only sequences publication. No new p
 `poc/what-the-tree-can-say/` on this branch, cited from the spec PR. Run it with
 `pnpm exec tsx specs/issues/FIX-1481/poc/what-the-tree-can-say/run.mts`.
 
-It re-derived the spec's factual base through the real modules and handlers rather than by reading
-them, with a run negative control on each check. **Three results, and one changed the design.** Row
-4's premise held exactly — the field is already in the browser, so it is a render. Row 6's premise
-did *not* hold as stated: the seal has two producers, not one, and a badge on the `references/`
-folder would have been wrong for every document a seat holds under a read-only grant. That is
-where [D1](DECISIONS.md#d1) came from. Row 5's premise was understated — the non-debug door cannot
-see these resources at all, and no application opens an inventory, so there are no rows behind the
-flag either.
+It re-derived the spec's factual base through the real modules and handlers, with a control run on
+each check. **Three results, and one changed the design.** Row 4's premise held. Row 6's premise
+did *not* hold as stated — the seal has two producers, not one, which is where
+[D1](DECISIONS.md#d1) came from. Row 5's premise was understated. The README has each with its
+evidence; the spec does not restate them.
+
+**It asserts nothing about the view, on purpose.** An earlier draft checked the row's seven column
+headers and the absence of `feedback` in the rendering module — assertions built to go red the
+moment `V1` passes. Retained checks have a lifecycle rule and [FIX-817's
+`V7`](../FIX-817/PLAN.md) is the precedent: a totality check earns retention when its expectation
+can be *updated* and still assert something. "Seven columns" updates to "eight columns", which is
+what `V1` already checks, so keeping it duplicates CI inside a spec artifact. The two survivors —
+the `feedback` writer set and the stale-park behaviour — do not move when a view changes, so they
+stay and remain the executable guard under BR-3, BR-4 and BR-18. The dropped facts are `file:line`
+cites in the README.
 
 ## At implement time
 

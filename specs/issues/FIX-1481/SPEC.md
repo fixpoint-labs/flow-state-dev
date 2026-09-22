@@ -41,8 +41,8 @@ has two producers.
 
 Two fields, not one verdict. They answer different questions — whether code may write, and whether
 the model is offered a write tool — and collapsing them loses a state that really occurs. The tree
-renders one mark from them, with the same expression the resource manifest already uses to tell an
-agent whether it may write.
+renders one mark from them through a single exported `mayWrite` helper, which is also what the
+agent's own resource manifest calls to decide the same thing. One definition, two readers.
 
 ## What stays as it is
 
@@ -74,9 +74,10 @@ widening this one.
 ## Sign off
 
 1. **[D1](DECISIONS.md#d1) · A document is marked read-only from its two permission flags, which
-   the snapshot now carries — not from the folder it came from.** If wrong: we have put two
-   permission fields on a wire shape that every DevTool version then has to keep reading, and a
-   reader that mistakes an absent flag for a closed door will call a writable document sealed.
+   the snapshot now carries, resolved by one shared `mayWrite` helper — not from the folder it
+   came from.** If wrong: we have put two permission fields on a wire shape that every DevTool
+   version then has to keep reading, and a reader that mistakes an absent flag for a closed door
+   will call a writable document sealed.
 2. **[D2](DECISIONS.md#d2) · The org-level inventory row is named here and built elsewhere.** If
    wrong: the checklist carries an amber row for however long the org-level reader takes, and the
    release proof is incomplete in a way a reader may read as "it does not work".
