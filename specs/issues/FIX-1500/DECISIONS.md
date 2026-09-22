@@ -32,7 +32,7 @@ Solid edges are what you are signing. Dashed edges lost, and the label says why.
 
 | | |
 |---|---|
-| **Instead of** | Calling `workforce-admin` from the browser, which would mean the browser holding an operator bearer token · a kitchen-sink server route that holds the token and proxies the hire · shipping the rail browse-only and leaving hire where it is |
+| **Instead of** | The operator's credentialed flow reached from the browser · a server route proxying it · browse-only, no hire ([what each cost](#considered-and-dropped)) |
 | **Because** | The acceptance spine requires one run in which a person hires and then *sees the result in the same surface*. That is only true when the hire and the read resolve their organization the same way. An action on the rail's own flow does exactly that: the session's organization is `ctx.principal?.orgId ?? DEFAULT_ORG_ID` and `body.orgId` is never consulted (`packages/engine/src/routes/session-routes.ts:277`, `:285`), so the two cannot disagree by construction rather than by care. The rejected shapes each break one half — a token in the browser hands an operator credential to every visitor, a server proxy is an app-local API the invent-kill list names *and* still hires into the token's organization while the rail reads the default one, and browse-only fails steps 3 to 5 of the spine outright |
 | **Locks in** | In a deployment that authenticates nobody, the app can hire. That is the same posture every other action in such a deployment already has — `chat-agent` declares no `authentication` block, so nothing there authenticates anybody today — but hire is the first one that writes durable organization state, and that is a step rather than a restatement. Reversing this later does not just move code: it removes the only way the Goal 1 run is demonstrable, until identity ships |
 
@@ -57,7 +57,7 @@ paying for (tenet 5); two doors over one is ordinary.
 
 | | |
 |---|---|
-| **Instead of** | Reading the live skills catalog and presenting it as the seat's skills |
+| **Instead of** | The live skills catalog, presented as the seat's skills ([why it loses](#considered-and-dropped)) |
 | **Because** | The register a seat actually holds is `org/skills ∪ teams/<id>/skills ∪ worker-local`, computed by `readSeatSkills` and imposed as the `seatSkills` key of the `WorkerConfig` admission bag ([FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367)). That is a boot-time answer and there is no honest way to make it a live one, because the loader is Node-only and reads folders. Publishing the names beside the seat's identity — where the binder already writes a row for that seat — shows the register itself rather than a catalog standing in for it, which is the distinction the Architect's fence draws |
 | **Locks in** | The rail's skills view is as fresh as the last boot. A skill added to a folder while the app is running does not appear until it restarts, and that is a promise we are making rather than a bug somebody will file. It also means the seat inventory row carries something derived from a seat's configuration, so a future change to how a seat resolves skills has a second reader |
 
@@ -74,7 +74,7 @@ should point at it rather than copy from it.
 
 | | |
 |---|---|
-| **Instead of** | Reading `inventory/channels/*` whole and filtering each row's `members` array in the browser · standing up a read API for the rail to call |
+| **Instead of** | A browser-side filter over every channel's `members` · a read API of the rail's own ([what each cost](#considered-and-dropped)) |
 | **Because** | The product owner's rule, already given and already applied once: *a user can see all workers within their org, unless they are user-scoped as a resource* ([FIX-1477 D4](../FIX-1477/DECISIONS.md#d4)). All three inventory collections declare `scope: "org"`, so they qualify on exactly the axis that rule names. The browser filter is the invent-kill list's *"client-side joins that become a second runtime inventory"* spelled out — and it is also strictly worse, because the membership index is keyed `<seatId>/<channelId>` precisely so a seat's channels are a `topicPrefix` read at the source rather than a scan (BP-033). A new read API is the *"kitchen-sink-only APIs"* kill |
 | **Locks in** | Three more collections that any session in an organization whose flow installs them can list. The permission belongs to the collection, not to the panel, so flows this issue never touches gain the read too. Each therefore ships with an `expose` allowlist rather than bare — a bare opt-in republishes the stored row unchanged, and taking a published field back later breaks whatever started reading it |
 
@@ -105,7 +105,11 @@ if it could not be, the collection would come off the list.
   hire that produced no inventory row would make the rail's seat detail work for file-declared
   seats and silently not for hired ones — which is the acceptance spine's own step 4.
 
+<a name="considered-and-dropped"></a>
 ## Considered and dropped
+
+**The one catalog.** Every rejected shape is priced here and nowhere else; the tree shows *that*
+they lost and each card's *Instead of* names them, so neither restates the reasoning.
 
 | Alternative | Why not |
 |---|---|
@@ -143,5 +147,10 @@ Verdicts here; what each asserts, how, and what it corrected is in
   helpers this work must compose rather than re-derive. The four-PR plan was challenged and
   **kept**: attributability beats throughput on an epic whose defect history is unattributable
   failures.
+- **Review round 2** — no decision moved; approved again. Editorial only: the struck V15 row left
+  the live checks table for [EVOLUTION.md](EVOLUTION.md#v15), the rejected shapes were consolidated
+  so *Considered and dropped* is their one catalog, and VG was made to say which of the two seats
+  it opens is file-declared — a reviewer read that coverage as inferred, and an implementer writing
+  the fixture hired-seat-first would have lost the declared path silently.
 
 **Open: none.**

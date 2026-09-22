@@ -101,8 +101,8 @@ Every row names what would make it fail. A check with no producible red state pr
 | V12 | S8 | The rail publishes no affordance that creates a channel or a board | Written as an **allow-list over the surface's actions**, not a denylist of two names, so a third spelling fails too (BR-24) |
 | V13 | S4 S8 | A seat hired through the rail has a seat detail that opens, with its kind and an (empty) register — the same pane a file-declared seat opens | Skip the inventory row on a runtime hire: the roster lists the seat and its detail is blank. That split — listed but not openable — is the failure S4 exists for (BR-16) |
 | V14 | S1 S4 | **Persistence boundary, two assertions.** (a) After a hire, the row is present in the durable store read **out of band**, not through the runtime that wrote it. (b) A runtime built on a **fresh** store handle over the same durable location lists the seat | (a) goes red if the hire only registered in-process. (b) goes red if the reload is skipped. **And the negative control for (b):** point boot two at an **empty** durable location — it must go red. Without that control, a `globalThis` cache or a module-level array makes (b) pass while proving nothing, which is precisely the "does not come from process memory" claim BR-19 makes (BR-18, BR-19) |
-| ~~V15~~ | — | **Dropped in review.** It made [`poc/evidence/`](poc/evidence/README.md) a permanent gate. **The reason is BP-037, not redundancy:** a spec directory is retained *design history*, and live CI machinery parked in one becomes something every future `packages/workforce` contributor has to maintain from a folder they have no reason to open. It also contradicted the checker's own stated status. Its runtime content is already V4 and V5. What it uniquely carried — *totality* over collections nobody has classified — is real and is **not** replaceable by a package test over the three collections named here, which is the very thing C1 exists to defeat; it needs source-level enumeration because these collections are built inside factory functions and are not module-level values. That belongs in `packages/workforce`, and is raised in [Follow-ups](#follow-ups) rather than solved here. Kept as a struck row so a reader who remembers it finds where it went | — |
-| VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): open the rail → open a seat → its kind, skills, channels and boards render → hire another instance of that kind → the new seat appears **with no page reload** → restart the server → reopen → the seat is there → open a channel's board through the rail and its rows render. **And the network log shows the board rows arriving from the collection route**, with no request to a developer-tool or app-private endpoint anywhere in the run | Serve the board from app-owned state: every DOM assertion still passes and the network assertion fails. That half is what makes this a goal check rather than a screenshot. Reload the page after the hire and the no-reload assertion goes red. Skip the restart and the last two go red |
+| ~~V15~~ | — | **Dropped in review** (BP-037): a spec directory is retained design history, not a home for CI machinery. The forward-looking totality assertion it carried went to [Follow-ups](#follow-ups) as `packages/workforce`'s. Full reasoning: [EVOLUTION.md](EVOLUTION.md#v15). Evidence: [`poc/evidence/`](poc/evidence/README.md) | — |
+| VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): open the rail → open a **file-declared** seat → its kind, skills, channels and boards render → hire another instance of that kind → **the hired** seat appears **with no page reload** → open it and its pane renders too → restart the server → reopen → the seat is there → open a channel's board through the rail and its rows render. **And the network log shows the board rows arriving from the collection route**, with no request to a developer-tool or app-private endpoint anywhere in the run | Serve the board from app-owned state: every DOM assertion still passes and the network assertion fails. That half is what makes this a goal check rather than a screenshot. Reload the page after the hire and the no-reload assertion goes red. Skip the restart and the last two go red. **Both seats are named on purpose**: a fixture that opens a hired seat first still passes every assertion while never exercising the declared path, and a reviewer read the two-path coverage off this row as inferred rather than stated |
 
 **No model runs in any of this**, so no `goals/` check applies: every claim is about what a
 browser and a boot do with data the server already has. `VG` is the real-path check, in a suite
@@ -199,6 +199,15 @@ Re-check these against the repo before building; each of them moves.
   with no trailing segment, so `workforce/roster` parses as `ref: "workforce"`, `topic: "roster"`
   and reads a different collection's item. That failure reads like missing rows rather than like
   a wrong address. FIX-1477 hit it; do not hit it twice.
+- **[FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) and the developer tool inherit
+  PR-B's read declarations; they do not grow their own.** The `expose` allowlists on the three
+  inventory collections are the single source. A second `expose` shape written in
+  developer-tool-only code is two contracts over one collection, and they drift the moment either
+  is edited.
+- **When this lands, reconcile FIX-1475's retained rules so one story stands.**
+  [EVOLUTION.md](EVOLUTION.md) records that its hire sequence gains a home rather than changing
+  its contract; once that is true in code, its own rules should read that way rather than leaving
+  a reader to join two documents.
 - **Decide where the board names are fetched, and write down which.** The sketch reads a channel's
   session state per channel the seat belongs to, so a seat in M channels costs M reads on top of
   the three that identify it. Deferring those until a channel is actually opened is a real option
@@ -279,6 +288,28 @@ justification for discarding one.
   questions the spec template requires separately — what you are signing, what this one choice
   rejected, and what was weighed and lost. **Blocked on** was left long on purpose; it carries the
   FIX-1503 argument, which is the part of this spec most likely to be re-litigated.
+
+- "**Declared vs hired seats:** S4 fixes runtime hire inventory rows; file-declared seats still
+  depend on inventory population elsewhere (`openInventory` / demo wiring). VG fixtures should
+  assert **both** paths, not only post-hire rows." — cursor, round 2
+  ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2061#pullrequestreview-5282457130))
+  — **Declined: it is inverted.** A file-declared seat already gets its inventory row from
+  `openInventory`'s boot seat write, which is S3's surface. The path with no row is the **hired**
+  one, which is exactly what S4 says it closes. V13 already asserts both panes. What the note did
+  reveal is that VG left its two-path coverage *inferred*, so VG now names which seat is declared
+  and which is hired — a clause, not a restructure.
+- "**~230 lines of custom parsing is a lot for throwaway evidence. C2+C3 might suffice; reserve
+  C1-style totality for the `packages/workforce` follow-up.**" — cursor, round 2 (*ibid.*)
+  — **Declined.** The same review says C1's totality assertion "is doing real work (it caught
+  `inventory/members/**` and `definePersona`)". Maintenance surface is the price of a check that
+  must stay green forever, and dropping V15 already stopped paying it; a throwaway authoring
+  script carries no such burden, so the cost being cited is not being incurred. C1, C2 and C3 stay.
+- "**BR 'Proved by' could be check IDs only; keep red-state prose in PLAN only.**" — cursor,
+  round 2 (*ibid.*)
+- "**D1 / default-org story** … One canonical narrative (D1 + BR table); elsewhere one sentence +
+  link. Blocked on could be ~10 lines pointing at D1 unless you expect re-litigation." — cursor,
+  round 2 (*ibid.*) — **Blocked on stays long, deliberately.** Re-litigation is exactly what is
+  expected of the FIX-1503 argument; that is the condition the note itself names.
 
 ## Follow-ups
 

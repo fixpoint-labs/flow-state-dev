@@ -11,6 +11,31 @@ is superseded: all three shipped contracts this design composes.
 | **FIX-1477 `PLAN.md` → Blocked on** — the shell's session cannot be bound to a viewer's organization, so in a deployment configuring operator tokens the panels render **correct and empty**; the binding belongs to FIX-1503. Source [`../FIX-1477/PLAN.md#blocked-on`](../FIX-1477/PLAN.md#blocked-on) | **Amended in its consequence, not in its cause** | The cause is unchanged and re-verified against the current tree: there is still no viewer credential, and a session still binds to `ctx.principal?.orgId ?? DEFAULT_ORG_ID` (`packages/engine/src/routes/session-routes.ts:285`, a line that has moved since FIX-1477 cited it). What changes is what that costs: because this issue's hire resolves the organization by the same path as its reads, the two can no longer disagree, so the failure mode stops being *empty with no reason* and becomes *a different organization, named* | [D1](DECISIONS.md#d1), [PLAN.md → Blocked on](PLAN.md#blocked-on), BR-4 | The limit narrows; nothing that relied on the old behaviour breaks. FIX-1503 still removes it entirely |
 | **FIX-1475** — a runtime hire is stored in the hired-roster collection and read back at the next boot; the door in front of it is the **app's** to write and guard, and `workforce-admin` is a worked example rather than something the framework ships (`apps/docs/docs/workforce/durable-hire.md`) | **Retained; its sequence gains one home** | The contract is untouched — same collection, same `create()`-as-duplicate-refusal, same compensating delete, same registration order. What this issue changes is that the *sequence* stops living inside one app flow's handler, so a second door composes it instead of copying it. That it is at exactly one site today, and therefore that this is a move rather than a reconciliation of drifted copies, was verified by execution ([`poc/evidence/`](poc/evidence/README.md) → C2) | [D1](DECISIONS.md#d1)'s *What this is not*, PLAN S1 | The operator flow keeps its behaviour, its credential and its fail-closed registration; its existing suite is the fence that proves so (PLAN V1) |
 
+<a name="v15"></a>
+## What this spec dropped in review
+
+**V15 — the authoring-time evidence checker as a standing CI check.** The first draft's plan
+required [`poc/evidence/check.mjs`](poc/evidence/README.md) to stay green after S2 and S3, which
+made a spec directory the home of live CI machinery. It was dropped on **BP-037**: a spec
+directory is retained *design history*, and a check parked in one becomes something every future
+`packages/workforce` contributor maintains from a folder they have no reason to open. It also
+contradicted the checker's own stated status.
+
+Two things about the drop are worth keeping, because both were argued and one was argued wrongly:
+
+- **The runtime content was never lost.** V4 (the `expose` allowlist, asserted on the absence of
+  withheld fields) and V5 (the 403 with the declaration removed) cover what V15 asserted about
+  behaviour.
+- **The replacement proposed in review does not work, and the follow-up says why.** A `workforce`
+  test asserting that the three inventory collections declare `client.state.read` + `expose` would
+  cover only the three collections it already names — which is precisely the failure C1 exists to
+  catch. These collections are built inside factory functions and are not module-level values, so
+  a standing totality assertion has to enumerate from **source**. That is why the follow-up is
+  specified that way rather than as "add a test".
+
+C1, C2 and C3 remain in the checker as authoring evidence. They carry no maintenance burden
+precisely because nothing requires them to stay green.
+
 **Not superseded, and not a lineage claim:**
 [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476)'s channel-kind and `CHANNEL.md`
 contract, [FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)'s inventory and
