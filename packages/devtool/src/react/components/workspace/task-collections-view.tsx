@@ -15,6 +15,11 @@
  * rather than by the request you are looking at, so its row carries a link into that
  * ChildSession (FIX-1071). The link is derived, absent for most tasks, and never
  * something the row is gated on — see `lib/child-session-links`.
+ *
+ * A task also carries a short note about itself on `feedback`, and the Reason
+ * column renders it so a parked row says why without the expander (FIX-1481).
+ * See {@link taskReason} for why the column is keyed on the note rather than
+ * on the status.
  */
 import { useMemo } from "react";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
@@ -24,6 +29,7 @@ import {
   type BoardMeta,
   type CollectionView,
   type ResolvedTask,
+  type Task,
   type TaskStreamItem,
 } from "../../lib/task-collection-state";
 import {
@@ -100,6 +106,11 @@ function CollectionCard({
 }) {
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
+  // Per board, so a board where nothing ever parked or failed reads exactly as
+  // it did before — no empty column apologising for itself.
+  const showReason = collection.tasks.some(
+    (entry) => taskReason(entry.task) !== undefined
+  );
 
   return (
     <div className="rounded-md border border-slate-800 bg-slate-900/40">
@@ -134,6 +145,7 @@ function CollectionCard({
               <th className="px-3 py-1.5 font-medium">Id</th>
               <th className="py-1.5 font-medium">Goal</th>
               <th className="py-1.5 font-medium">Status</th>
+              {showReason && <th className="py-1.5 font-medium">Reason</th>}
               <th className="py-1.5 font-medium">Assignee</th>
               <th className="py-1.5 font-medium">ChildSession</th>
               <th className="py-1.5 font-medium">Latest kind</th>
@@ -145,6 +157,7 @@ function CollectionCard({
               <TaskRow
                 key={entry.task.id}
                 entry={entry}
+                showReason={showReason}
                 childSession={byTask.get(taskLinkKey(collection.id, entry.task.id))}
                 truncation={truncation}
                 onOpenChildSession={onOpenChildSession}
@@ -159,16 +172,20 @@ function CollectionCard({
 
 function TaskRow({
   entry,
+  showReason,
   childSession,
   truncation,
   onOpenChildSession,
 }: {
   entry: ResolvedTask;
+  /** Decided by the board, so every row in one table has the same columns. */
+  showReason: boolean;
   childSession?: ChildSessionSummary;
   truncation: Truncation;
   onOpenChildSession: (childSession: ChildSessionSummary) => void;
 }) {
   const { task } = entry;
+  const reason = taskReason(task);
   return (
     <tr className="border-b border-slate-800/50 align-top hover:bg-slate-900/40">
       <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">
@@ -180,6 +197,17 @@ function TaskRow({
       <td className="py-1.5 pr-2">
         <StatusPill status={task.status} />
       </td>
+      {showReason && (
+        // Clamped like the Goal cell beside it: a reason can be an unbroken
+        // stack trace, and the table has to stay a table. The whole string is
+        // on the title, and the expander below is still the complete record.
+        <td
+          className="max-w-[18rem] truncate py-1.5 pr-2 text-slate-300"
+          title={reason}
+        >
+          {reason ?? <span className="text-slate-600">—</span>}
+        </td>
+      )}
       <td className="py-1.5 pr-2 text-slate-400">{task.assignee ?? "—"}</td>
       <td className="py-1.5 pr-2">
         <ChildSessionLink
@@ -302,6 +330,25 @@ function ChildSessionLink({
       {unverified && <span aria-hidden>?</span>}
     </button>
   );
+}
+
+/**
+ * The note a task currently carries about itself, or nothing.
+ *
+ * Read off `feedback`, which is **not a parked-only field**. Three verbs write
+ * it — parking for review, a failed attempt heading for a retry, and resuming
+ * — and the retry one leaves it on a row that has gone back to `pending`. So
+ * the column is keyed on the note being there, never on the status: hiding it
+ * on a `pending` row would suppress a true explanation to keep a column's name
+ * tidy, and it is the reason there is no *Waiting on you* column or status
+ * here either (that stays a reading over parked plus a reason).
+ *
+ * Blank is nothing. A note of spaces is not something a person can read, and
+ * treating it as present would put an empty column on the board.
+ */
+function taskReason(task: Task): string | undefined {
+  const reason = task.feedback?.trim();
+  return reason ? reason : undefined;
 }
 
 function StatusPill({ status }: { status: string }) {
