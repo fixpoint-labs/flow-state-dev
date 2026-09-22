@@ -5,12 +5,10 @@
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 (BR-n) and [DECISIONS.md](DECISIONS.md) (D-n). `tdd`. One PR.
 
-**The run is fenced; the build is not.** ER-26 holds the *graded run* until
+**The run is fenced; the build is not.** [ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26) holds the *graded run* until
 [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) stands up a live hired Workforce. It
 does not hold this spec and it does not hold this PR — build S1 to S7 now, and run VG last
-(BR-21). **ER-26 is not on `main`**: it arrives with the epic amendment on
-[#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033), which is still a draft. Read it
-there, and re-point this link at `BUSINESS-RULES.md#er-26` once that merges.
+(BR-21).
 
 ## Surfaces
 
@@ -200,6 +198,11 @@ density note.** The repetition is the point. A rule that is not yet on `main` ha
 *wherever* it is cited, because a reader arrives at one citation site and not at all of them, and a
 single canonical paragraph elsewhere is exactly the thing they will not have read. The stall
 paragraph and the figure are fair game.
+
+**That premise lapsed on 2026-09-22**, when [#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033) merged and ER-26 reached `main`.
+Every citation now points at the epic's rule and carries no staleness note. The disposition is
+left standing as the record of what was decided and why — not as a live argument, because the
+condition it rested on is gone.
 
 ## Follow-ups
 

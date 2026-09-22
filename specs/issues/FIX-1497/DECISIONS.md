@@ -57,8 +57,7 @@ The same four shapes are in [BUSINESS-RULES.md](BUSINESS-RULES.md) as rules with
   action carrying the request's own principal. This spec obeys it and exercises it.
 - **Ordering against FIX-1481 is soft.** Authoring and building this issue need neither code PR
   merged; only the *graded run* needs them, and the run is already fenced until a live hire exists
-  (ER-26, which is **not yet on `main`** — it arrives with the epic amendment on
-  [#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033), still a draft). Recorded so
+  ([ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26)). Recorded so
   nobody reads the spec as blocked.
 - **The acceptance names the board by its local name**, and asserts the minted ledger id appears
   in no file under the scenario. The Architect left this open leaning yes; board v1's whole point
