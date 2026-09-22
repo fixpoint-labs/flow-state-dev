@@ -114,7 +114,7 @@ Every row names what would make it fail. A check with no producible red state pr
 | V10 | S4 S8 | Rendered at three widths: boards yield first, the rail second, the stream never (BR-25 – BR-28) | Reorder the breakpoints: the stream collapses below `sm` and the check catches it. Assert at all three widths, not two |
 | V11 | S5 S6 | Each panel's collection is read over the **list** route with rows seeded **past one page** (the route's default limit is 50, `resource-routes.ts:388`), and the body carries **exactly** the projected fields that panel renders — no `claimedBy`, no lease, no retry ledger, no write log on a board row | Drop the `expose` (or the projection function) and the check goes red on the extra keys, not on a missing one. Asserting the *absence* of the withheld fields is the anti-game clause: a check that only looked for the fields it wanted would pass on the whole envelope. Seed a row first — a 200 with an empty list passes any field assertion vacuously, which is exactly how [`poc/read-gate/`](poc/read-gate/README.md) first fooled itself. **Seeding one row is the other half of that trap**: the route returns a `nextCursor` when rows remain (`:524`), and a panel that reads page one and stops satisfies every field assertion while silently truncating. So seed 51+ and assert the panel reaches the last row — by traversing the cursor, or through a pagination affordance a reader can see. Red state: cap the panel at one page and the last seeded seat is missing, while a one-row fixture stays green |
 | V12 | S5 S6 | Reading either collection **without** its `client` declaration is refused `403 State read not permitted` | Remove the declaration: the panels go blank rather than silently reading. Pins the gate so a later refactor cannot delete the opt-in and leave the panels looking merely broken |
-| V13 | S8 | **With a principal resolver configured**, a seat is hired into org `acme`, a shell session is opened carrying that viewer's credential, and the roster panel lists that seat. Asserts on the **row**, not on a 200 | Drop the resolver, or the credential transport, and the shell binds to `__fsd_default_org__`: the read still returns **200 with an empty list**, and the panel renders its empty state. That is the whole point — this is the one failure every other check passes through. V11 and V12 run in the tokenless default organization, where hire and read land in the same place by accident, so neither can see it. Run **both** halves: the same assertion in an unconfigured clone must still pass, or the check has made a credential mandatory where the reference app needs none ([Blocked on](#blocked-on)) |
+| V13 | S8 | **With a principal resolver configured**, a seat is hired into org `acme`, a shell session is opened carrying that viewer's credential, and the roster panel lists that seat. Asserts on the **row**, not on a 200 | Drop the resolver, or the credential transport, and the shell binds to `__fsd_default_org__`: the read still returns **200 with an empty list**, and the panel renders its empty state. That is the whole point — this is the one failure every other check passes through. V11 and V12 run in the tokenless default organization, where hire and read land in the same place by accident, so neither can see it. Run **both** halves: the same assertion in an unconfigured clone must still pass, or the check has made a credential mandatory where the reference app needs none ([Blocked on](#blocked-on)). **What this does not prove**, stated so it is not read as coverage it lacks: it exercises **one synthetic viewer**, so it pins the org-binding *mechanism*, not a production credential. There is no viewer credential in this repository to test with ([Blocked on](#blocked-on)) — a multi-viewer isolation check belongs with [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) |
 | V14 | S8 | A boot in which one stored seat **cannot** be brought back renders a roster panel showing both numbers — what answers, and what was skipped — with the skipped seat's reason among them (BR-20) | Route the report nowhere and the panel renders a clean roster of the seats that loaded: **no error, no empty state, nothing to see**. That silent-partial read is the failure BR-20 exists for, so the check has to assert the *problem* is on screen, not that the panel rendered. Written against what a viewer sees rather than against the transport, so it stays honest if the resource's shape changes under it ([Blocked on](#br20-transport)). Red today: nothing carries the report past `console.log` |
 | V15 | S8 | **Two organizations, two boots, three assertions — one per way of being wrong.** Set up `acme` with **two** failures of different origin: a row that fails to load (recorded by the reload) and a seat that loads and is then **refused at registration** (recorded by the app). `beta` has neither. Boot one asserts, separately: **(a)** `acme`'s panel names the load failure; **(b)** `acme`'s panel names the registration refusal; **(c)** `beta`'s panel names **no** problems. Boot two, with **both** of `acme`'s causes removed — the row repaired *and* the address that refused it freed — asserts **(d)** `acme`'s panel names no problems | Each assertion excludes exactly one failure, and no other assertion can cover for it. Attribute registration refusals nowhere and **(b)** goes red while (a), (c) and (d) stay green — that is the regression this row exists for, and it is why (a) and (b) cannot be one assertion about "its problem". Write the flat list into every org and **(c)** goes red. Return entries only for orgs that had problems and **(d)** goes red, because boot one's report is still standing in a resource nobody rewrote. Boot two must clear **both** causes or (d) is unreachable rather than failing — repairing only the row leaves a refusal that no repair to a row can fix ([BR-20's transport](#br20-transport)) |
 | VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): the rail lists the kinds; a singleton channel kind opens straight into its conversations; a seat kind opens into seats and then into one seat's conversations; and the **network log shows no session-list request on the kind expand** | Pre-fetch everything: the DOM assertions still pass and the network assertion fails. The network half is what makes this a goal check rather than a screenshot |
@@ -222,9 +222,15 @@ Re-check these against the repo before building; each of them moves.
     refusals are produced by that loop, so partitioning them means touching it. Recorded as a
     widening rather than restated as though it always said this.
     **The registration behaviour itself does not change** — same registrar, same call, same
-    seats, same one-refusal-is-not-a-failed-boot tolerance. Only the iteration order, and where
-    the refusal string is filed. Still forbidden: changing **what** is registered or hired,
-    registering a flow, touching `hire.ts`, and every other edit to either file.
+    seats, same one-refusal-is-not-a-failed-boot tolerance. Only the iteration order, and the
+    **addition** of a per-organization filing. Still forbidden: changing **what** is registered
+    or hired, registering a flow, touching `hire.ts`, and every other edit to either file.
+    **A refusal is appended to both reports, not moved into one.** It goes into that
+    organization's slice *and* stays in the aggregate `problems`, which still backs the boot's
+    console diagnostics (`fsdev.config.ts:303` and `:306`). File it only into the slice and the panel
+    becomes correct while the operator's log silently loses a whole class of boot failure — the
+    same silent-partial shape this rule exists for, pointed at the operator instead of the user.
+    The duplication is deliberate; do not tidy it away.
     **Stop clause, narrower than the last one so it can actually fire:** if attribution turns out
     to need the **registrar** to behave differently — a different call, a different refusal
     contract, a different tolerance — stop and raise it. Needing to reorder a loop is not that;
@@ -297,11 +303,30 @@ therefore behave differently, and only one of them is fine by accident:
 | A clean clone with no admin tokens configured | `adminPrincipalResolver()` returns `undefined` (`apps/kitchen-sink/lib/workforce-admin-auth.ts:126`), so nothing authenticates anybody, hires and reads both land on the default organization, and the panels show the seats that were hired. The reference app demonstrates something real |
 | A deployment that configures admin tokens | Hiring runs under the token's organization. A shell session with no credential binds to the **default** organization and lists none of those rows — a panel that is empty and gives no reason |
 
-So `S8` owns wiring the shell's flow to resolve a principal, not merely declaring the
-collections. **This is a requirement, not a reopened question** — [D4](DECISIONS.md#d4) settles
-*who may read these rows*, and this settles *which organization's rows arrive*. The POC proves a
-session cannot read the **wrong** organization; nothing in it proves the shell reads the
-**right** one ([`poc/read-gate/`](poc/read-gate/README.md) → Limits).
+[D4](DECISIONS.md#d4) settles *who may read these rows*; this settles *which organization's rows
+arrive*. The POC proves a session cannot read the **wrong** organization; nothing in it proves
+the shell reads the **right** one ([`poc/read-gate/`](poc/read-gate/README.md) → Limits).
+
+**And for a token-configured deployment this is blocked, not merely unbuilt — it is
+[FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503)'s.** There is no credential in this
+repository that represents a *viewer*. Every admin token resolves to one fixed machine user
+(`ADMIN_USER_ID = "workforce-admin"`, `apps/kitchen-sink/lib/workforce-admin-auth.ts:40`), and
+the browser's identity is a caller-side constant a resolver cannot trust
+(`const userId = e2eUserId ?? "devuser"`, `apps/kitchen-sink/app/page.tsx:95`). Binding a shell
+session to *the person looking at it* therefore needs an identity system, which is out of this
+issue's scope and lives at FIX-1503.
+
+**So write the limit rather than working around it.** What ships:
+
+| Deployment | The panels |
+|---|---|
+| A clean clone, no admin tokens | **Work correctly.** Hires and reads both land on the default organization, so the viewer sees the seats that were hired |
+| Admin tokens configured | **Render correct and empty.** The hires are under a real organization; the shell has no viewer credential to bind to one, so it reads the default organization and finds nothing |
+
+That second row is a **known limit, documented here and in [DOCS.md](DOCS.md)** — not a defect
+for someone to rediscover from an empty panel. `S8` builds the binding as far as the substrate
+allows and stops there; whether this issue ships with the limit or waits for FIX-1503 is a
+product call, and the spec holds either way without another amendment.
 
 <a name="br20-transport"></a>
 **BR-20's skipped-seat list has no path to the browser, and the cheap one is closed.** `Roster`

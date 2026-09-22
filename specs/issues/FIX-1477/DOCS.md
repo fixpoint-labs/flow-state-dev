@@ -128,6 +128,14 @@ components from the client packages.`
 > is not behind your authentication. So the navigator browses **channel kinds** rather than hired
 > seats, and your team is in the roster, which is organization-scoped. When the flow listing
 > carries an organization, a seats section becomes available and this page will say so.
+>
+> **Which organization you see depends on how your deployment signs people in.** These panels
+> show the rows belonging to the organization your session is bound to, and a session is bound
+> from the identity your server resolves for the person making the request. With no sign-in
+> configured there is one organization and you see it. If you have configured credentials that
+> hire into a real organization but have not yet given the app a way to identify *the person
+> viewing it*, the panels bind to the default organization and come up empty — correct, and
+> empty. Wiring that identity is the missing piece, not the panels.
 
 ## UPDATE · `packages/react/README.md` · a new section after "Render helpers"
 
