@@ -35,7 +35,7 @@
  * resource carries its own `flowIsolation` override and drops out on that.
  */
 import type { DeclaredResourceEntry, FlowCardinality, FlowInstance } from "@flow-state-dev/core/types";
-import { isExternalResourceCollection } from "@flow-state-dev/core/types";
+import { isProjectedResourceCollection } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -481,12 +481,12 @@ function collectScopeDeclaration(
   const storageKeys = resourceStorageKeys(flow.resources);
   for (const [accessor, entry] of Object.entries(flow.resources ?? {})) {
     if (entry === undefined || entry.scope !== scope) continue;
-    // External collections are read-through views over the app's own store —
+    // Projected collections are read-through views over the app's own store —
     // they never occupy a framework-owned `ResourceStateStore` cell, so two
     // flows exposing the same pattern over separate backings share nothing.
     // Their config admits neither `ref` nor `flowIsolation`, so treating them
     // as shared storage would reject a valid app with no way to opt out.
-    if (isExternalResourceCollection(entry)) continue;
+    if (isProjectedResourceCollection(entry)) continue;
     const schema = entry.stateSchema;
     if (schema === undefined) continue;
 

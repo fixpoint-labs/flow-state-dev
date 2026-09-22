@@ -8,10 +8,10 @@
  * is never bulk-loaded just to discover it was never allowed.
  *
  * That helper reaches static resources and store-backed collections only —
- * `collectCollections` classifies external refs out by their `external` brand.
- * An externally backed collection that IS readable is in scope for the agent,
+ * `collectCollections` classifies projected refs out by their `projected` brand.
+ * A projected collection that IS readable is in scope for the agent,
  * so it is reached separately; a manifest that lies by omission is worse than
- * no manifest. External collections are read-through and paged by design, so
+ * no manifest. Projected collections are read-through and paged by design, so
  * they project as ONE entry for the collection rather than a row per instance:
  * enumerating them to build a catalog is the thing their laziness exists to
  * avoid, and the agent reaches their rows through search.
@@ -20,7 +20,7 @@
 import type { ManifestEntry } from "@flow-state-dev/contracts";
 import type { BlockContext } from "../types/block";
 import type { ResourceRef } from "../types/resource";
-import { collectReadableExternalCollections, collectReadableResources } from "../tools/resource-tools";
+import { collectReadableProjectedCollections, collectReadableResources } from "../tools/resource-tools";
 import type { BlockManifestSource } from "./registry";
 
 /**
@@ -53,7 +53,7 @@ function contractOf(ref: ResourceRef<any>): string {
 
 /**
  * The resources domain, projected on demand from `collectReadableResources`
- * plus the readable external collections that helper does not reach.
+ * plus the readable projected collections that helper does not reach.
  */
 export function resourcesManifestSource(): BlockManifestSource {
   return {
@@ -71,7 +71,7 @@ export function resourcesManifestSource(): BlockManifestSource {
         });
       }
 
-      for (const ns of collectReadableExternalCollections(ctx)) {
+      for (const ns of collectReadableProjectedCollections(ctx)) {
         entries.push({
           id: `${ns.scope}/${ns.name}`,
           kind: "collection",

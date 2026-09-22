@@ -4,7 +4,7 @@
  * isolation behavior.
  */
 import {
-  defineExternalResourceCollection,
+  defineProjectedResourceCollection,
   defineFlow,
   defineResource,
   defineResourceCollection,
@@ -47,7 +47,7 @@ function buildResources(
   rawResources?: Record<string, unknown>
 ): Record<string, unknown> | undefined {
   // Pre-built entries, for the cases the spec shorthand can't express:
-  // two accessors sharing ONE definition object, external collections, and
+  // two accessors sharing ONE definition object, projected collections, and
   // definitions carrying incidental extra properties.
   const declared: Record<string, unknown> = { ...rawResources };
   for (const [name, schema] of Object.entries(userResources ?? {})) {
@@ -553,13 +553,13 @@ describe("cross-flow resource schema validation", () => {
    * version of this check never threw at all.
    */
   describe("does not reject valid apps", () => {
-    it("ignores external collections sharing a pattern", () => {
-      // External collections are read-through views over the app's own store,
+    it("ignores projected collections sharing a pattern", () => {
+      // Projected collections are read-through views over the app's own store,
       // so two flows exposing `positions/*` over separate backings share no
       // framework cell. Their config admits neither `ref` nor `flowIsolation`,
       // so a rejection here would be unstartable with no way out.
       const external = (schema: z.ZodTypeAny) =>
-        defineExternalResourceCollection({
+        defineProjectedResourceCollection({
           pattern: "positions/*",
           scope: "user",
           stateSchema: schema,

@@ -54,6 +54,8 @@ For collections, two additional permissions control mutations:
 | `update` | Client can modify item content via `PATCH` |
 | `delete` | Client can remove items via `DELETE` |
 
+On a [projected collection](./projected-collections.md), `content.create`, `content.update`, and `content.delete` are a build-time error. Those collections are read-only on the client too.
+
 #### Grant `update` alongside `create`
 
 Creating an item is two writes, state then content, and the second one can fail

@@ -1,10 +1,10 @@
 import { describe, expect, it, expectTypeOf } from "vitest";
 import { z } from "zod";
 import {
-  defineExternalResourceCollection,
-  isExternalResourceCollection,
-  type ExternalResourceCollectionRef,
-} from "../src/types/external-resource-collection";
+  defineProjectedResourceCollection,
+  isProjectedResourceCollection,
+  type ProjectedResourceCollectionRef,
+} from "../src/types/projected-resource-collection";
 import {
   defineResourceCollection,
   isDefinedResourceCollection,
@@ -18,7 +18,7 @@ const positionSchema = z.object({
 });
 
 function definePositions(overrides: Record<string, unknown> = {}) {
-  return defineExternalResourceCollection({
+  return defineProjectedResourceCollection({
     pattern: "positions/*",
     scope: "user",
     stateSchema: positionSchema,
@@ -28,15 +28,15 @@ function definePositions(overrides: Record<string, unknown> = {}) {
   });
 }
 
-describe("defineExternalResourceCollection", () => {
+describe("defineProjectedResourceCollection", () => {
   it("emits a collection branded external + ResourceCollection", () => {
     const coll = definePositions();
     // Retains the collection brand so flow-merge / addressing treat it as a
     // collection unchanged...
     expect(isDefinedResourceCollection(coll)).toBe(true);
-    // ...and carries the external brand for read-through classification.
-    expect(isExternalResourceCollection(coll)).toBe(true);
-    expect((coll as { external?: unknown }).external).toBe(true);
+    // ...and carries the projected brand for read-through classification.
+    expect(isProjectedResourceCollection(coll)).toBe(true);
+    expect((coll as { projected?: unknown }).projected).toBe(true);
     expect(coll.pattern).toBe("positions/*");
     expect(coll.scope).toBe("user");
   });
@@ -47,7 +47,7 @@ describe("defineExternalResourceCollection", () => {
       scope: "user",
       stateSchema: z.object({ body: z.string().default("") }),
     });
-    expect(isExternalResourceCollection(normal)).toBe(false);
+    expect(isProjectedResourceCollection(normal)).toBe(false);
   });
 
   it("keeps the read / search backing hooks on the definition", () => {
@@ -121,9 +121,9 @@ describe("defineExternalResourceCollection", () => {
       type Refs = import("../src/types/block").InferResourcesFromDefinitions<{
         portfolio: typeof coll;
       }>;
-      // The external collection resolves to the read-only ref...
+      // The projected collection resolves to the read-only ref...
       expectTypeOf<Refs["portfolio"]>().toEqualTypeOf<
-        ExternalResourceCollectionRef<{ ticker: string; shares: number }>
+        ProjectedResourceCollectionRef<{ ticker: string; shares: number }>
       >();
       // ...which exposes get/getOptional but no create/upsert/delete.
       expectTypeOf<Refs["portfolio"]>().toHaveProperty("get");
@@ -134,7 +134,7 @@ describe("defineExternalResourceCollection", () => {
     });
 
     it("carries the projected client-data type through ClientDataOf — type-level", () => {
-      const coll = defineExternalResourceCollection({
+      const coll = defineProjectedResourceCollection({
         pattern: "positions/*",
         scope: "user",
         stateSchema: positionSchema,

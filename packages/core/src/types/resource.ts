@@ -465,7 +465,7 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
 export type AnyResourceRef =
   | ResourceRef<any>
   | ResourceCollectionRef<any>
-  | import("./external-resource-collection").ExternalResourceCollectionRef<any>;
+  | import("./projected-resource-collection").ProjectedResourceCollectionRef<any>;
 
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>

@@ -59,23 +59,23 @@ export type {
 } from "./blocks/tool-cache";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
 export {
-  defineExternalResourceCollection,
-  isExternalResourceCollection,
-  readExternalRecord,
-  searchExternalRecords,
-} from "./types/external-resource-collection";
+  defineProjectedResourceCollection,
+  isProjectedResourceCollection,
+  readProjectedRecord,
+  searchProjectedRecords,
+} from "./types/projected-resource-collection";
 export type {
-  DefinedExternalResourceCollection,
-  ExternalRecordHit,
-  ExternalReactiveBindings,
-  ExternalResourceCollectionConfig,
-  ExternalResourceCollectionRef,
-  ExternalResourceContext,
-  ExternalResourceRef,
+  DefinedProjectedResourceCollection,
+  ProjectedRecordHit,
+  ProjectedReactiveBindings,
+  ProjectedResourceCollectionConfig,
+  ProjectedResourceCollectionRef,
+  ProjectedResourceContext,
+  ProjectedResourceRef,
   ResourceQuery,
   ResourceSearchResult,
-  ValidatedExternalHit,
-} from "./types/external-resource-collection";
+  ValidatedProjectedHit,
+} from "./types/projected-resource-collection";
 export {
   normalizeReactiveBinding,
   resourceChangeSchema,

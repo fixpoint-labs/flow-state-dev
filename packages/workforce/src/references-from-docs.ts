@@ -38,7 +38,7 @@
  *    `ResourceRef` declares `writeContent` as a required member, so a reference
  *    installed through this door cannot have the method removed from it without
  *    a core change — a read-only single-resource ref alongside today's
- *    `ExternalResourceRef` (which already omits it) plus the registry branch
+ *    `ProjectedResourceRef` (which already omits it) plus the registry branch
  *    that builds one. That is additive, out of this module's reach, and NOT
  *    what ships here.
  *

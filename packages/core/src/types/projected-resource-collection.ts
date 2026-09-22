@@ -1,5 +1,5 @@
 /**
- * External resource collections (FIX-858).
+ * Projected resource collections (FIX-858).
  *
  * A read-only collection whose instances are resolved from an app-owned store
  * (a SQL table, an HTTP API) instead of the framework's `ResourceStateStore`.
@@ -9,10 +9,10 @@
  * (the fields that would be invalid simply don't exist), not policed with
  * build-time guards.
  *
- * `defineExternalResourceCollection` returns a {@link DefinedResourceCollection}
- * branded `external: true`, so the existing flow-merge / addressing / tool /
+ * `defineProjectedResourceCollection` returns a {@link DefinedResourceCollection}
+ * branded `projected: true`, so the existing flow-merge / addressing / tool /
  * projection machinery treats it as a collection, while the resource-inference
- * conditionals resolve it to the read-only {@link ExternalResourceCollectionRef}
+ * conditionals resolve it to the read-only {@link ProjectedResourceCollectionRef}
  * (no mutators) rather than the mutable `ResourceCollectionRef`.
  *
  * Scope this slice (PR1): the definer, its types, and read projection through
@@ -38,7 +38,7 @@ import { validateReactTo, type ReactiveBinding } from "./resource-change";
 // ---------------------------------------------------------------------------
 
 /**
- * Minimal portable query pushed down to an external collection's `search`. The
+ * Minimal portable query pushed down to a projected collection's `search`. The
  * app engine runs it (never enumerate-in-memory). Deliberately closed this
  * slice; a richer filter AST and semantic search extend this type via
  * FIX-833 / FIX-142.
@@ -57,7 +57,7 @@ export type ResourceQuery = {
 };
 
 /**
- * One hit returned by an external collection's `search`. `key` is the within-scope
+ * One hit returned by a projected collection's `search`. `key` is the within-scope
  * row key/path — the framework normalizes it through the collection pattern
  * (`resolveCollectionKey`) to the canonical storage path before building URIs or
  * emitting change events.
@@ -67,9 +67,9 @@ export type ResourceQuery = {
  * overrides are deferred until a consumer needs them (BP-038) — they land with
  * semantic-search ranking (FIX-142 / FIX-833), where an app score is no longer
  * redundant with hook order. Re-add the two optional fields here + prefer them in
- * `searchExternalRecords` when that consumer arrives.
+ * `searchProjectedRecords` when that consumer arrives.
  */
-export type ExternalRecordHit<TState extends JsonObject = JsonObject> = {
+export type ProjectedRecordHit<TState extends JsonObject = JsonObject> = {
   /** Within-scope key/path; normalized through the pattern → instance path/uri. */
   key: string;
   /** The record state (validated through `stateSchema` before any consumer sees it). */
@@ -78,7 +78,7 @@ export type ExternalRecordHit<TState extends JsonObject = JsonObject> = {
 
 /** A page of hits plus the app's opaque cursor for the next page. */
 export type ResourceSearchResult<TState extends JsonObject = JsonObject> = {
-  hits: ExternalRecordHit<TState>[];
+  hits: ProjectedRecordHit<TState>[];
   /** Omit when the result set is exhausted. */
   nextCursor?: string;
 };
@@ -89,7 +89,7 @@ export type ResourceSearchResult<TState extends JsonObject = JsonObject> = {
  * source (the loaded session / scope identity), so the hook can safely scope its
  * own query to the same owner/tenant namespace the framework uses.
  */
-export type ExternalResourceContext = {
+export type ProjectedResourceContext = {
   /** session | user | org — never the transient "request" scope. */
   scope: ResourceScope;
   /** The resolved sessionId / userId / orgId for `scope`. */
@@ -110,13 +110,13 @@ export type ExternalResourceContext = {
 // ---------------------------------------------------------------------------
 
 /**
- * Per-reactive-kind bindings for an external collection. Only the three state
- * kinds are available: a read-only external collection has no content-write
+ * Per-reactive-kind bindings for a projected collection. Only the three state
+ * kinds are available: a read-only projected collection has no content-write
  * seam, so `contentUpdated` is omitted — it could be declared but would never
  * fire. Change-awareness itself (path B) lands in a later PR; the config field
  * is authored now so the backing contract is stable.
  */
-export interface ExternalReactiveBindings<TState extends JsonObject = JsonObject> {
+export interface ProjectedReactiveBindings<TState extends JsonObject = JsonObject> {
   /** Runs when the app reports a record was created. */
   created?: ReactiveBinding<TState>;
   /** Runs when the app reports a record's state was updated. */
@@ -130,16 +130,16 @@ export interface ExternalReactiveBindings<TState extends JsonObject = JsonObject
 // ---------------------------------------------------------------------------
 
 /**
- * Config for {@link defineExternalResourceCollection}. `read` / `search` are
+ * Config for {@link defineProjectedResourceCollection}. `read` / `search` are
  * first-class required members — the config *is* the backing. There is no
  * `writable` / `llmWritable` / `edges` / `prefetchMode` / `maxInstances` /
  * `eviction`: read-only, lazy, and unbounded are structural, not flags.
  */
-export type ExternalResourceCollectionConfig<TStateSchema extends ZodTypeAny = ZodTypeAny> = {
+export type ProjectedResourceCollectionConfig<TStateSchema extends ZodTypeAny = ZodTypeAny> = {
   /**
    * WILDCARD-ONLY pattern: `"positions/*"` or `"positions/**"`. Parameterized
    * `[name]` patterns are rejected at build time — they need an object key,
-   * incompatible with the string hit key an external `read` / `search` returns.
+   * incompatible with the string hit key a projected `read` / `search` returns.
    */
   pattern: string;
   /** session | user | org — routes scopeId into the read/search context. */
@@ -148,15 +148,15 @@ export type ExternalResourceCollectionConfig<TStateSchema extends ZodTypeAny = Z
   stateSchema: TStateSchema;
 
   /** Resolve one record by its within-scope key. `null` = no such record. REQUIRED. */
-  read(args: { key: string; ctx: ExternalResourceContext }): Promise<z.infer<TStateSchema> | null>;
+  read(args: { key: string; ctx: ProjectedResourceContext }): Promise<z.infer<TStateSchema> | null>;
   /**
    * Resolve a filtered/searched page, pushing the query DOWN to the app engine
    * (never enumerate-in-memory). REQUIRED. `list`, `searchResources`, and the
    * read tool's discovery route here; `globResources` / `grepResourceContent`
-   * do NOT (they skip external collections — a lexical search can't honor their
+   * do NOT (they skip projected collections — a lexical search can't honor their
    * deterministic contract).
    */
-  search(args: { query: ResourceQuery; ctx: ExternalResourceContext }): Promise<ResourceSearchResult<z.infer<TStateSchema>>>;
+  search(args: { query: ResourceQuery; ctx: ProjectedResourceContext }): Promise<ResourceSearchResult<z.infer<TStateSchema>>>;
 
   /** A role-tagged Markdown template rendered against each record's state. */
   contentTemplate?: ResourceTemplate | string | AnchoredPath;
@@ -167,11 +167,11 @@ export type ExternalResourceCollectionConfig<TStateSchema extends ZodTypeAny = Z
   /**
    * The COLLECTION client config (per-item state + content). Its
    * `content.create` / `update` / `delete` flags are rejected at build time —
-   * an external collection is read-only.
+   * a projected collection is read-only.
    */
   client?: CollectionClientConfig<z.infer<TStateSchema>>;
   /** created / stateUpdated / deleted only — no content-write seam exists. */
-  reactTo?: ExternalReactiveBindings<z.infer<TStateSchema>>;
+  reactTo?: ProjectedReactiveBindings<z.infer<TStateSchema>>;
   metadata?: Record<string, unknown>;
 };
 
@@ -180,14 +180,14 @@ export type ExternalResourceCollectionConfig<TStateSchema extends ZodTypeAny = Z
 // ---------------------------------------------------------------------------
 
 /**
- * A read-only resource instance ref resolved from an external collection. The
+ * A read-only resource instance ref resolved from a projected collection. The
  * read subset of `ResourceRef` only — `state` (synchronous, resolved against the
  * filled read-through cache), `readContent()` / `readContentRaw()`, and identity
- * fields. No `patchState` / `setState` / `updateState` / `writeContent`: an
- * external record is a read-through view, never written through the resource
+ * fields. No `patchState` / `setState` / `updateState` / `writeContent`: a
+ * projected record is a read-through view, never written through the resource
  * surface.
  */
-export interface ExternalResourceRef<TState extends JsonObject = JsonObject> {
+export interface ProjectedResourceRef<TState extends JsonObject = JsonObject> {
   /** Canonical within-scope storage path (pattern-normalized), e.g. `"positions/AAPL"`. */
   readonly path: string;
   readonly scope: ResourceScope;
@@ -202,28 +202,28 @@ export interface ExternalResourceRef<TState extends JsonObject = JsonObject> {
 }
 
 /**
- * Runtime ref for an external collection — the read subset of the collection API.
- * `defineExternalResourceCollection` resolves to this (not the mutable
+ * Runtime ref for a projected collection — the read subset of the collection API.
+ * `defineProjectedResourceCollection` resolves to this (not the mutable
  * `ResourceCollectionRef`) through the resource-inference conditionals.
  *
  * Exposes `get` / `getOptional`, the paged `list`, and the identity/config
  * fields. There is deliberately no `count()` — an exact count would need
  * forbidden enumeration of the app store (§3.3).
  */
-export interface ExternalResourceCollectionRef<TState extends JsonObject = JsonObject> {
+export interface ProjectedResourceCollectionRef<TState extends JsonObject = JsonObject> {
   /** The collection's declared pattern. */
   readonly pattern: string;
   /** Scope this collection is registered in. */
   readonly scope: ResourceScope;
   /** The brand the tool/inference layers classify on. */
-  readonly external: true;
-  /** The resolved external config (minus the backing hooks). */
+  readonly projected: true;
+  /** The resolved projected config (minus the backing hooks). */
   readonly config: Readonly<{ llmReadable?: boolean; pattern: string; scope: ResourceScope }>;
 
   /** Resolve one instance by its within-scope key. Rejects if the app has no such record. */
-  get(key: string): Promise<ExternalResourceRef<TState>>;
+  get(key: string): Promise<ProjectedResourceRef<TState>>;
   /** Resolve one instance, or `undefined` when the app has no such record. */
-  getOptional(key: string): Promise<ExternalResourceRef<TState> | undefined>;
+  getOptional(key: string): Promise<ProjectedResourceRef<TState> | undefined>;
   /**
    * List a page of instances by pushing the query DOWN to the app's `search`
    * hook (never enumerate-in-memory — BP-033). A bare string is shorthand for
@@ -231,7 +231,7 @@ export interface ExternalResourceCollectionRef<TState extends JsonObject = JsonO
    * app's opaque `nextCursor` (absent when the result set is exhausted); pass it
    * back as `query.cursor` for the next page.
    */
-  list(query?: string | ResourceQuery): Promise<{ items: ExternalResourceRef<TState>[]; nextCursor?: string }>;
+  list(query?: string | ResourceQuery): Promise<{ items: ProjectedResourceRef<TState>[]; nextCursor?: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,32 +239,32 @@ export interface ExternalResourceCollectionRef<TState extends JsonObject = JsonO
 // ---------------------------------------------------------------------------
 
 /**
- * The runtime + type brand a `defineExternalResourceCollection` result carries
+ * The runtime + type brand a `defineProjectedResourceCollection` result carries
  * ON TOP of the `DefinedResourceCollection` shape. `__brand: "ResourceCollection"`
  * is retained so flow-merge, addressing, and collision detection treat it as a
- * collection unchanged; `external: true` plus the `read` / `search` hooks let the
+ * collection unchanged; `projected: true` plus the `read` / `search` hooks let the
  * inference conditionals and the engine classify it as read-through.
  */
-export type ExternalCollectionBrand<TStateSchema extends ZodTypeAny = ZodTypeAny> = {
-  readonly external: true;
-  read: ExternalResourceCollectionConfig<TStateSchema>["read"];
-  search: ExternalResourceCollectionConfig<TStateSchema>["search"];
+export type ProjectedCollectionBrand<TStateSchema extends ZodTypeAny = ZodTypeAny> = {
+  readonly projected: true;
+  read: ProjectedResourceCollectionConfig<TStateSchema>["read"];
+  search: ProjectedResourceCollectionConfig<TStateSchema>["search"];
 };
 
 /**
- * The definition returned by {@link defineExternalResourceCollection} — a
- * `DefinedResourceCollection` intersected with the external brand, so the
- * inference conditionals (which test `& { external: true }` first) resolve it to
+ * The definition returned by {@link defineProjectedResourceCollection} — a
+ * `DefinedResourceCollection` intersected with the projected brand, so the
+ * inference conditionals (which test `& { projected: true }` first) resolve it to
  * the read-only ref.
  */
-export type DefinedExternalResourceCollection<
+export type DefinedProjectedResourceCollection<
   TState extends JsonObject = JsonObject,
   TStateSchema extends ZodTypeAny = ZodTypeAny,
   TClient = JsonValue,
-> = DefinedResourceCollection<TState, TClient> & ExternalCollectionBrand<TStateSchema>;
+> = DefinedResourceCollection<TState, TClient> & ProjectedCollectionBrand<TStateSchema>;
 
 // ---------------------------------------------------------------------------
-// defineExternalResourceCollection()
+// defineProjectedResourceCollection()
 // ---------------------------------------------------------------------------
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
@@ -273,12 +273,12 @@ type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
  * Define a read-only collection whose instances are resolved from an app-owned
  * store. Shares the collection runtime core; read-only and lazy by type.
  */
-export function defineExternalResourceCollection<
+export function defineProjectedResourceCollection<
   const TStateSchema extends ZodTypeAny,
-  const TConfig extends ExternalResourceCollectionConfig<TStateSchema> & { stateSchema: TStateSchema },
+  const TConfig extends ProjectedResourceCollectionConfig<TStateSchema> & { stateSchema: TStateSchema },
 >(
   config: TConfig
-): DefinedExternalResourceCollection<
+): DefinedProjectedResourceCollection<
   AsStateObject<TStateSchema["_output"]>,
   TStateSchema,
   ProjectedClient<AsStateObject<TStateSchema["_output"]>, TConfig["client"]>
@@ -286,11 +286,11 @@ export function defineExternalResourceCollection<
   validatePattern(config.pattern);
 
   // Wildcard-only: a parameterized `[name]` pattern needs an object key, which
-  // the string hit key an external read/search returns can't carry through
+  // the string hit key a projected read/search returns can't carry through
   // `resolveCollectionKey`. Reject at build time (§4.5).
   if (isParameterizedPattern(config.pattern)) {
     throw new Error(
-      `defineExternalResourceCollection() requires a wildcard pattern ("positions/*" or "positions/**"); ` +
+      `defineProjectedResourceCollection() requires a wildcard pattern ("positions/*" or "positions/**"); ` +
         `parameterized [name] patterns are not supported (got "${config.pattern}"). ` +
         `Encode the discriminator into a wildcard segment instead.`
     );
@@ -298,19 +298,19 @@ export function defineExternalResourceCollection<
 
   if (config.scope !== "session" && config.scope !== "user" && config.scope !== "org") {
     throw new Error(
-      `defineExternalResourceCollection() requires an explicit scope of "session", "user", or "org" (got ${JSON.stringify(config.scope)})`
+      `defineProjectedResourceCollection() requires an explicit scope of "session", "user", or "org" (got ${JSON.stringify(config.scope)})`
     );
   }
 
   if (typeof config.read !== "function" || typeof config.search !== "function") {
     throw new Error(
-      "defineExternalResourceCollection() requires both `read` and `search` backing functions"
+      "defineProjectedResourceCollection() requires both `read` and `search` backing functions"
     );
   }
 
   if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
     throw new Error(
-      "defineExternalResourceCollection() accepts at most one template source: contentTemplate or contentTemplateRef, not both"
+      "defineProjectedResourceCollection() accepts at most one template source: contentTemplate or contentTemplateRef, not both"
     );
   }
 
@@ -325,31 +325,31 @@ export function defineExternalResourceCollection<
       content?.delete === true && "delete",
     ].filter(Boolean);
     throw new Error(
-      `defineExternalResourceCollection() rejects client.content.${set.join("/")} — ` +
-        `external collections are read-only; writes go through handlers, not the resource surface.`
+      `defineProjectedResourceCollection() rejects client.content.${set.join("/")} — ` +
+        `projected collections are read-only; writes go through handlers, not the resource surface.`
     );
   }
 
   validateClientProjection({
-    definer: "defineExternalResourceCollection()",
+    definer: "defineProjectedResourceCollection()",
     ref: config.pattern,
     kind: "collection",
     stateSchema: config.stateSchema,
     client: config.client as Parameters<typeof validateClientProjection>[0]["client"],
   });
 
-  // Only the three state kinds are valid — a read-only external collection has
+  // Only the three state kinds are valid — a read-only projected collection has
   // no content-write seam, so `contentUpdated` could be declared but never fire.
   validateReactTo(
-    "defineExternalResourceCollection()",
+    "defineProjectedResourceCollection()",
     config.reactTo as Parameters<typeof validateReactTo>[1],
     ["created", "stateUpdated", "deleted"]
   );
 
   return Object.assign({}, config, {
     __brand: "ResourceCollection" as const,
-    external: true as const,
-  }) as unknown as DefinedExternalResourceCollection<
+    projected: true as const,
+  }) as unknown as DefinedProjectedResourceCollection<
     AsStateObject<TStateSchema["_output"]>,
     TStateSchema,
     ProjectedClient<AsStateObject<TStateSchema["_output"]>, TConfig["client"]>
@@ -361,7 +361,7 @@ export function defineExternalResourceCollection<
 // ---------------------------------------------------------------------------
 
 /**
- * Invoke an external collection's `read` backing and validate the result through
+ * Invoke a projected collection's `read` backing and validate the result through
  * its `stateSchema`. Returns the parsed record, or `undefined` when the app has
  * no such record (`read` resolved `null`). A record that fails `stateSchema`
  * throws — never feed unvalidated app data into projection/render (§4.5).
@@ -378,10 +378,10 @@ export function defineExternalResourceCollection<
  * the item-state/content routes) funnel through — so the guard can't drift out
  * of any single caller.
  */
-export async function readExternalRecord<TState extends JsonObject>(
-  config: Pick<ExternalResourceCollectionConfig, "read" | "stateSchema" | "pattern">,
+export async function readProjectedRecord<TState extends JsonObject>(
+  config: Pick<ProjectedResourceCollectionConfig, "read" | "stateSchema" | "pattern">,
   key: string,
-  ctx: ExternalResourceContext
+  ctx: ProjectedResourceContext
 ): Promise<TState | undefined> {
   if (ctx.scope === "org" && (ctx.orgId === undefined || ctx.scopeId === "")) {
     return undefined;
@@ -391,7 +391,7 @@ export async function readExternalRecord<TState extends JsonObject>(
   const parsed = config.stateSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(
-      `External collection "${config.pattern}" read for "${key}" returned a record that failed stateSchema: ${parsed.error.message}`
+      `Projected collection "${config.pattern}" read for "${key}" returned a record that failed stateSchema: ${parsed.error.message}`
     );
   }
   return parsed.data as TState;
@@ -402,16 +402,16 @@ export async function readExternalRecord<TState extends JsonObject>(
  * canonical instance path (`positions/AAPL`) used to build refs/URIs; `key` is
  * the bare key the app returned. Hits are in the hook's return order — the rank.
  */
-export type ValidatedExternalHit<TState extends JsonObject = JsonObject> = {
+export type ValidatedProjectedHit<TState extends JsonObject = JsonObject> = {
   storageKey: string;
   key: string;
   state: TState;
 };
 
 /**
- * Invoke an external collection's `search` backing, validate every hit's state
+ * Invoke a projected collection's `search` backing, validate every hit's state
  * through `stateSchema`, and normalize each hit key to its canonical storage
- * path. The search-side twin of {@link readExternalRecord} — the single source
+ * path. The search-side twin of {@link readProjectedRecord} — the single source
  * of truth for the search+validate contract, shared by the engine's resource
  * registry (`list`/`search` ref methods), the `searchResources` tool pushdown,
  * and the cursor list route.
@@ -422,22 +422,22 @@ export type ValidatedExternalHit<TState extends JsonObject = JsonObject> = {
  * same org-binding guard as the read path — an org read with no org coordinate
  * returns an empty page rather than querying an unscoped bucket.
  */
-export async function searchExternalRecords<TState extends JsonObject>(
-  config: Pick<ExternalResourceCollectionConfig, "search" | "stateSchema" | "pattern">,
+export async function searchProjectedRecords<TState extends JsonObject>(
+  config: Pick<ProjectedResourceCollectionConfig, "search" | "stateSchema" | "pattern">,
   query: ResourceQuery,
-  ctx: ExternalResourceContext
-): Promise<{ hits: ValidatedExternalHit<TState>[]; nextCursor?: string }> {
+  ctx: ProjectedResourceContext
+): Promise<{ hits: ValidatedProjectedHit<TState>[]; nextCursor?: string }> {
   if (ctx.scope === "org" && (ctx.orgId === undefined || ctx.scopeId === "")) {
     return { hits: [] };
   }
   const result = await config.search({ query, ctx });
-  const hits: ValidatedExternalHit<TState>[] = [];
+  const hits: ValidatedProjectedHit<TState>[] = [];
   for (const hit of result.hits) {
     const parsed = config.stateSchema.safeParse(hit.state);
     if (!parsed.success) {
       // eslint-disable-next-line no-console
       console.warn(
-        `[flow-state] External collection "${config.pattern}" search hit "${hit.key}" failed stateSchema and was dropped: ${parsed.error.message}`
+        `[flow-state] Projected collection "${config.pattern}" search hit "${hit.key}" failed stateSchema and was dropped: ${parsed.error.message}`
       );
       continue;
     }
@@ -455,18 +455,18 @@ export async function searchExternalRecords<TState extends JsonObject>(
 // ---------------------------------------------------------------------------
 
 /**
- * True when a value is an external resource collection definition (carries the
- * `external: true` brand alongside `__brand: "ResourceCollection"`). Used by the
+ * True when a value is a projected resource collection definition (carries the
+ * `projected: true` brand alongside `__brand: "ResourceCollection"`). Used by the
  * engine to route reads through the backing hooks and by the tool layer to keep
- * external collections out of the CRUD / deterministic-match paths.
+ * projected collections out of the CRUD / deterministic-match paths.
  */
-export function isExternalResourceCollection(
+export function isProjectedResourceCollection(
   value: unknown
-): value is DefinedExternalResourceCollection {
+): value is DefinedProjectedResourceCollection {
   return (
     typeof value === "object" &&
     value !== null &&
     (value as { __brand?: unknown }).__brand === "ResourceCollection" &&
-    (value as { external?: unknown }).external === true
+    (value as { projected?: unknown }).projected === true
   );
 }

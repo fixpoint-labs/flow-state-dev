@@ -27,7 +27,9 @@ const librarian = generator({
 });
 ```
 
-All three span both static resources and collection instances — a collection instance is itself a resource, so you don't choose between them. A collection's instances are searchable once the collection opts in with `llmReadable` (see [Collections — LLM access](/docs/resources/collections#llm-access)).
+All three span both static resources and `defineResourceCollection` instances — a collection instance is itself a resource, so you don't choose between them. A collection's instances are searchable once the collection opts in with `llmReadable` (see [Collections — LLM access](/docs/resources/collections#llm-access)).
+
+On a [projected collection](/docs/resources/projected-collections), `searchResources` sends the query to the collection's `search` hook. `globResources` and `grepResourceContent` skip them.
 
 Each result is the resource's scope-qualified uri (for example `session/concepts/react`) — the same handle [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns) accepts, so a search result feeds straight into a read. Glob patterns and the grep/search `prefix` match the within-scope path (you write `concepts/**`, not `session/concepts/**`); only the results carry the scope.
 

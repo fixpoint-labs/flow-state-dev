@@ -1,12 +1,12 @@
 /**
- * Route-level tests for FIX-858 external collections: the client read paths
+ * Route-level tests for FIX-858 projected collections: the client read paths
  * (snapshot anchor, item-state, content) resolve through the app-supplied
  * `read` hook, and every write route is closed.
  */
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { defineExternalResourceCollection, defineFlow, handler } from "@flow-state-dev/core";
+import { defineProjectedResourceCollection, defineFlow, handler } from "@flow-state-dev/core";
 import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
 import { createInMemoryStores, createFlowRegistry } from "../src";
 import type { StoreRegistry, SessionRecord } from "../src/stores/types";
@@ -19,7 +19,7 @@ import {
 } from "../src/routes/resource-routes";
 import { handleGetSessionState } from "../src/routes/state-routes";
 import { buildResourceSnapshot, createScopeResources } from "../src/routes/route-utils";
-import type { ExternalResourceContext } from "@flow-state-dev/core/types";
+import type { ProjectedResourceContext } from "@flow-state-dev/core/types";
 
 const positionSchema = z.object({ ticker: z.string(), shares: z.number() });
 
@@ -30,7 +30,7 @@ const APP_STORE: Record<string, { ticker: string; shares: number }> = {
 };
 
 function buildPositions(read = async ({ key }: { key: string }) => APP_STORE[key] ?? null) {
-  return defineExternalResourceCollection({
+  return defineProjectedResourceCollection({
     pattern: "positions/*",
     scope: "user",
     stateSchema: positionSchema,
@@ -77,7 +77,7 @@ function makeReq(url: string, method = "GET"): Request {
   return new Request(url, { method });
 }
 
-describe("external collection — item-state route", () => {
+describe("projected collection — item-state route", () => {
   it("projects hook state (not store defaults)", async () => {
     const ctx = await setupCtx();
     const res = await handleGetCollectionItemState(
@@ -118,7 +118,7 @@ describe("external collection — item-state route", () => {
   });
 });
 
-describe("external collection — content route", () => {
+describe("projected collection — content route", () => {
   it("renders content from the template against the read-through state", async () => {
     const ctx = await setupCtx();
     const res = await handleGetCollectionItemContent(
@@ -132,7 +132,7 @@ describe("external collection — content route", () => {
   });
 });
 
-describe("external collection — snapshot anchor", () => {
+describe("projected collection — snapshot anchor", () => {
   it("emits a serializable empty anchor (prefetched: [], no false count) classifiable as a collection", async () => {
     const snapshot = await buildResourceSnapshot({
       configs: { portfolio: buildPositions() as unknown as Record<string, unknown> },
@@ -155,20 +155,20 @@ describe("external collection — snapshot anchor", () => {
     );
     expect(res.status).toBe(200);
     const body = await res.json();
-    // The external collection surfaces (empty anchor) under its scope, without
+    // The projected collection surfaces (empty anchor) under its scope, without
     // enumerating rows — and stays classifiable as a collection over the wire.
     expect(body.resources?.user?.portfolio).toEqual({ prefetched: [] });
   });
 });
 
-describe("external collection — list route (search pushdown)", () => {
+describe("projected collection — list route (search pushdown)", () => {
   function searchablePositions(
-    search: (args: { query: unknown; ctx: ExternalResourceContext }) => Promise<{
+    search: (args: { query: unknown; ctx: ProjectedResourceContext }) => Promise<{
       hits: Array<{ key: string; state: { ticker: string; shares: number } }>;
       nextCursor?: string;
     }>
   ) {
-    return defineExternalResourceCollection({
+    return defineProjectedResourceCollection({
       pattern: "positions/*",
       scope: "user",
       stateSchema: positionSchema,
@@ -225,8 +225,8 @@ describe("external collection — list route (search pushdown)", () => {
   });
 });
 
-describe("external collection — scope clientData handle (createScopeResources)", () => {
-  const ctx: ExternalResourceContext = {
+describe("projected collection — scope clientData handle (createScopeResources)", () => {
+  const ctx: ProjectedResourceContext = {
     scope: "user",
     scopeId: "user_1",
     userId: "user_1",
@@ -238,7 +238,7 @@ describe("external collection — scope clientData handle (createScopeResources)
       scope: "user",
       configs: { portfolio: buildPositions() as unknown as Record<string, unknown> },
       persisted: {},
-      externalContext: ctx,
+      projectedContext: ctx,
     });
     const portfolio = handles.portfolio as unknown as {
       get(k: string): Promise<{ readContent(): Promise<string | null> }>;
@@ -254,7 +254,7 @@ describe("external collection — scope clientData handle (createScopeResources)
 
   it("rejects out-of-pattern keys before the read hook (matches item route + registry)", async () => {
     const read = vi.fn(async () => ({ ticker: "AAPL", shares: 1 }));
-    const coll = defineExternalResourceCollection({
+    const coll = defineProjectedResourceCollection({
       pattern: "positions/*",
       scope: "user",
       stateSchema: positionSchema,
@@ -265,7 +265,7 @@ describe("external collection — scope clientData handle (createScopeResources)
       scope: "user",
       configs: { portfolio: coll as unknown as Record<string, unknown> },
       persisted: {},
-      externalContext: ctx,
+      projectedContext: ctx,
     });
     const portfolio = handles.portfolio as unknown as { getOptional(k: string): Promise<unknown> };
     // `positions/*` is single-level: `AAPL/history` is out of pattern.
@@ -278,7 +278,7 @@ describe("external collection — scope clientData handle (createScopeResources)
       scope: "user",
       configs: { portfolio: buildPositions() as unknown as Record<string, unknown> },
       persisted: {},
-      externalContext: ctx,
+      projectedContext: ctx,
     });
     const portfolio = handles.portfolio as unknown as {
       list(): Promise<unknown>;
@@ -289,11 +289,11 @@ describe("external collection — scope clientData handle (createScopeResources)
   });
 });
 
-describe("external collection — org read for an unattributed session", () => {
+describe("projected collection — org read for an unattributed session", () => {
   it("refuses the read rather than querying an unscoped org bucket", async () => {
     const read = vi.fn(async ({ key }: { key: string }) => APP_STORE[key] ?? null);
-    // An org-scoped external collection...
-    const orgColl = defineExternalResourceCollection({
+    // An org-scoped projected collection...
+    const orgColl = defineProjectedResourceCollection({
       pattern: "positions/*",
       scope: "org",
       stateSchema: positionSchema,
@@ -342,7 +342,7 @@ describe("external collection — org read for an unattributed session", () => {
   });
 });
 
-describe("external collection — write routes closed", () => {
+describe("projected collection — write routes closed", () => {
   it("rejects a client create with a read-only error", async () => {
     const ctx = await setupCtx();
     const res = await handleCreateCollectionItem(
@@ -351,6 +351,6 @@ describe("external collection — write routes closed", () => {
       { registry: ctx.registry, stores: ctx.stores }
     );
     expect(res.status).toBe(403);
-    expect((await res.json()).error).toMatch(/read-only external collection/i);
+    expect((await res.json()).error).toMatch(/read-only projected collection/i);
   });
 });

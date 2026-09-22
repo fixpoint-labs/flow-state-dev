@@ -30,8 +30,8 @@
 import { z } from "zod";
 import picomatch from "picomatch";
 import { handler } from "../blocks/handler";
-import { collectReadableExternalCollections, collectReadableResources } from "./resource-tools";
-import type { ExternalResourceCollectionRef } from "../types/external-resource-collection";
+import { collectReadableProjectedCollections, collectReadableResources } from "./resource-tools";
+import type { ProjectedResourceCollectionRef } from "../types/projected-resource-collection";
 
 /** Maximum snippet length returned per match, so results stay token-cheap. */
 const MAX_SNIPPET_LENGTH = 200;
@@ -197,7 +197,7 @@ export function resourceSearchTools() {
         .string()
         .nullable()
         .default(null)
-        .describe("Opaque pagination cursor from a prior page's nextCursor (external collections only). Null starts from the first page."),
+        .describe("Opaque pagination cursor from a prior page's nextCursor (projected collections only). Null starts from the first page."),
     }),
     outputSchema: z.object({
       results: z.array(
@@ -207,7 +207,7 @@ export function resourceSearchTools() {
           snippet: z.string(),
         }),
       ),
-      nextCursor: z.string().optional().describe("Present when more external-collection results remain; pass it back as `cursor`."),
+      nextCursor: z.string().optional().describe("Present when more projected-collection results remain; pass it back as `cursor`."),
     }),
     execute: async (input, ctx) => {
       const terms = input.query
@@ -218,26 +218,26 @@ export function resourceSearchTools() {
 
       // Store-backed readable resources (statics + store-backed collection
       // instances), scored in memory. Computed up front so the pagination model
-      // can tell a pure-external search (cursor-pageable) from a mixed one.
+      // can tell a pure-projected search (cursor-pageable) from a mixed one.
       const storeReadable = await collectReadableResources(ctx);
-      const externalCollections = collectReadableExternalCollections(ctx);
+      const projectedCollections = collectReadableProjectedCollections(ctx);
 
-      // Cursor pagination is only coherent for a SINGLE external collection with
+      // Cursor pagination is only coherent for a SINGLE projected collection with
       // no store-backed set to interleave: an opaque cursor can't fan out to
       // several stores, and merging a paginated source with a bounded in-memory
       // one under one cursor either duplicates or strands the bounded rows across
-      // pages. So: pure single-external → cursor-paged; everything else (multi-
-      // external, mixed, pure store-backed) → one non-cursor page (§4.5 scope).
-      const cursorable = externalCollections.length === 1 && storeReadable.length === 0;
+      // pages. So: pure single-projected → cursor-paged; everything else (multi-
+      // projected, mixed, pure store-backed) → one non-cursor page (§4.5 scope).
+      const cursorable = projectedCollections.length === 1 && storeReadable.length === 0;
 
-      // External hits: push the query DOWN to each readable collection's `search`
+      // Projected hits: push the query DOWN to each readable collection's `search`
       // (the app engine ranks — no in-memory scan). Rank = hook order (score
       // descending); snippet derived from rendered content.
-      const externalResults: Array<{ uri: string; score: number; snippet: string }> = [];
+      const projectedResults: Array<{ uri: string; score: number; snippet: string }> = [];
       let nextCursor: string | undefined;
-      for (const ns of externalCollections) {
-        const extRef = ns.ref as unknown as ExternalResourceCollectionRef;
-        const page = await extRef.list({
+      for (const ns of projectedCollections) {
+        const projectedRef = ns.ref as unknown as ProjectedResourceCollectionRef;
+        const page = await projectedRef.list({
           search: input.query,
           ...(input.prefix !== null ? { prefix: input.prefix } : {}),
           limit: input.limit,
@@ -246,7 +246,7 @@ export function resourceSearchTools() {
         for (let i = 0; i < page.items.length; i += 1) {
           const ref = page.items[i]!;
           const content = await ref.readContent();
-          externalResults.push({
+          projectedResults.push({
             uri: ref.uri,
             score: page.items.length - i,
             snippet: content ? firstMatchingLine(content, terms) : "",
@@ -255,9 +255,9 @@ export function resourceSearchTools() {
         if (cursorable && page.nextCursor !== undefined) nextCursor = page.nextCursor;
       }
 
-      // Pure single external collection: cursor-paged, capped to `limit`.
+      // Pure single projected collection: cursor-paged, capped to `limit`.
       if (cursorable) {
-        const results = externalResults.slice(0, input.limit);
+        const results = projectedResults.slice(0, input.limit);
         return nextCursor === undefined ? { results } : { results, nextCursor };
       }
 
@@ -279,16 +279,16 @@ export function resourceSearchTools() {
       }
       scored.sort((a, b) => b.score - a.score || a.uri.localeCompare(b.uri));
 
-      // Budget split: external gets at least half (or more when store-backed is
+      // Budget split: projected gets at least half (or more when store-backed is
       // small); store-backed fills the rest. Guarantees both are represented and
       // the total is at most `limit` — no cursor across a mixed/multi source.
-      const extBudget =
+      const projectedBudget =
         scored.length === 0
           ? input.limit
-          : Math.min(externalResults.length, Math.max(Math.ceil(input.limit / 2), input.limit - scored.length));
-      const extSlice = externalResults.slice(0, extBudget);
-      const storeSlice = scored.slice(0, input.limit - extSlice.length);
-      return { results: [...extSlice, ...storeSlice] };
+          : Math.min(projectedResults.length, Math.max(Math.ceil(input.limit / 2), input.limit - scored.length));
+      const projectedSlice = projectedResults.slice(0, projectedBudget);
+      const storeSlice = scored.slice(0, input.limit - projectedSlice.length);
+      return { results: [...projectedSlice, ...storeSlice] };
     },
   });
 

@@ -239,24 +239,24 @@ export {
 } from "./resource-collection";
 
 export type {
-  DefinedExternalResourceCollection,
-  ExternalRecordHit,
-  ExternalReactiveBindings,
-  ExternalResourceCollectionConfig,
-  ExternalResourceCollectionRef,
-  ExternalResourceContext,
-  ExternalResourceRef,
+  DefinedProjectedResourceCollection,
+  ProjectedRecordHit,
+  ProjectedReactiveBindings,
+  ProjectedResourceCollectionConfig,
+  ProjectedResourceCollectionRef,
+  ProjectedResourceContext,
+  ProjectedResourceRef,
   ResourceQuery,
   ResourceSearchResult,
-  ValidatedExternalHit,
-} from "./external-resource-collection";
+  ValidatedProjectedHit,
+} from "./projected-resource-collection";
 
 export {
-  defineExternalResourceCollection,
-  isExternalResourceCollection,
-  readExternalRecord,
-  searchExternalRecords,
-} from "./external-resource-collection";
+  defineProjectedResourceCollection,
+  isProjectedResourceCollection,
+  readProjectedRecord,
+  searchProjectedRecords,
+} from "./projected-resource-collection";
 
 export type {
   JournalEntry,

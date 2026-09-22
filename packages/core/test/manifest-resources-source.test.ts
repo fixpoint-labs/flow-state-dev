@@ -5,7 +5,7 @@
  *
  *   - a collection nobody marked readable is not merely filtered out of the
  *     answer, it is never enumerated to find that out (BR-8); and
- *   - a readable collection that happens to be externally backed is NOT
+ *   - a readable collection that happens to be projected is NOT
  *     dropped (BR-8a) — `collectReadableResources` cannot reach those, and a
  *     manifest that lies by omission is worse than no manifest.
  */
@@ -66,17 +66,17 @@ describe("resourcesManifestSource", () => {
     expect(entries.map((e) => e.id)).toEqual(["org/charter"]);
   });
 
-  // BR-8a. External collections are classified out of `collectCollections` by
-  // their `external` brand, so a source built on the readable helper alone
+  // BR-8a. Projected collections are classified out of `collectCollections` by
+  // their `projected` brand, so a source built on the readable helper alone
   // would report an in-scope resource as absent.
-  it("includes a readable external collection, as one entry rather than its rows", async () => {
+  it("includes a readable projected collection, as one entry rather than its rows", async () => {
     const listed = vi.fn(async () => ({ items: [], nextCursor: undefined }));
     const entries = await source.entries(
       ctxOf([
         {
           pattern: "docs/**",
           scope: "org",
-          external: true,
+          projected: true,
           config: { llmReadable: true },
           list: listed,
         },
@@ -96,10 +96,10 @@ describe("resourcesManifestSource", () => {
     expect(listed).not.toHaveBeenCalled();
   });
 
-  it("omits a non-readable external collection", async () => {
+  it("omits a non-readable projected collection", async () => {
     const entries = await source.entries(
       ctxOf([
-        { pattern: "vault/**", scope: "org", external: true, config: { llmReadable: false }, list: async () => ({ items: [] }) },
+        { pattern: "vault/**", scope: "org", projected: true, config: { llmReadable: false }, list: async () => ({ items: [] }) },
       ]),
     );
 

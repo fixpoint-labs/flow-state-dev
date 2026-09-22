@@ -5,6 +5,8 @@
 "@flow-state-dev/react": minor
 ---
 
+> Historical fragment. The L1 family shipped here as `External*` was renamed to `Projected*` in FIX-1518.
+
 External resource collections gain search and list — the app's own store engine runs every "find", the framework never enumerates in memory.
 
 - `ctx.resources.<name>.list(query?)` returns a cursor-paged `{ items, nextCursor? }` by pushing the query down to your `search` hook (a bare string is `{ search }` shorthand). Each item is a read-only ref with resolved state and rendered content.
