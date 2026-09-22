@@ -61,9 +61,11 @@ PR-B needs neither, which is the point of the split.
 | `flow-navigator-public-boundary` | `react`, `client` | `patch` | PR-A |
 | `navigator-second-host` | `react` | `patch` | PR-B |
 | `devtool-shipped-navigator` | `devtool` | `patch` | PR-B |
-| `roster-and-board-panels` | `react` | `patch` | the panels' PR |
-| `panel-collections-client-read` | `workforce` | `patch` | the panels' PR |
+| `roster-and-board-panels` | `react` | `patch` | [#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036), **open** |
+| `panel-collections-client-read` | `workforce` | `patch` | [#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036), **open** |
 | — | `orchestration` | **none** | — |
+
+The first three are on `main`. The last two are not — read them on #2036's branch, not here.
 
 **Why `patch` and not `minor`, including for `workforce`.** The pre-1.0 rule is *"can this break
 somebody"*, not *"is this a new capability"*
@@ -75,10 +77,13 @@ board become browser-readable is a real posture change and it belongs in the **b
 `panel-collections-client-read`, which already names the org scoping and what each row withholds
 — not in the bump.
 
-**No `orchestration` changeset, settled rather than conditional.** The board's read landed as an
-assign at `packages/workforce/src/channel/channel-board.ts:218`, carrying both `state.read` and
-the `expose` allowlist, so `defineTaskCollection` never gained a forwarded option and that
-package is untouched.
+**No `orchestration` changeset — the shape is settled, though not yet merged.** The board's read
+is built as an assign at `channel-board.ts:218` **on
+[#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)'s branch**, carrying both
+`state.read` and the `expose` allowlist, so `defineTaskCollection` never gains a forwarded option
+and `orchestration` stays untouched. Read it there: on `main` that line is `resolveChannelBoard`
+and `CHANNEL_BOARD_CLIENT_FIELDS` does not exist yet, which is consistent with
+[Blocked on](#blocked-on) — neither collection declares a client read on `main`.
 
 ## Checks
 
@@ -230,7 +235,7 @@ difference is worth knowing before you start.
 | | Where the declaration actually goes | What that costs |
 |---|---|---|
 | **Roster** (`S5`) | On the collection factory in `packages/workforce`, because the client config belongs to the declaration and there is exactly one of those | Every flow installing the roster becomes able to serve it to a browser, not just this shell — including FIX-1475's admin flow. The alternative, a second `defineResourceCollection` in the app with the same pattern, is a second copy of the contract the boot reload joins against, which is the drift this issue exists to close |
-| **Board** (`S6`) | **Not** at FIX-1476's call site. `channelBoardLedger` builds its ledger through `defineTaskCollection`, which accepts no `client` option at all (`packages/orchestration/src/tasks/collection/define-task-collection.ts:54–83`) | Two shapes were open — a forwarded option on `defineTaskCollection`, or an assign at `channelBoardLedger`. **Settled: the assign**, at `packages/workforce/src/channel/channel-board.ts:218`, carrying `state.read` and the `expose` allowlist together. `orchestration` is untouched and takes no changeset ([Changesets](#changesets)) |
+| **Board** (`S6`) | **Not** at FIX-1476's call site. `channelBoardLedger` builds its ledger through `defineTaskCollection`, which accepts no `client` option at all (`packages/orchestration/src/tasks/collection/define-task-collection.ts:54–83`) | Two shapes were open — a forwarded option on `defineTaskCollection`, or an assign at `channelBoardLedger`. **Settled: the assign**, built on [#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)'s branch at `channel-board.ts:218`, carrying `state.read` and the `expose` allowlist together. Not on `main` yet — the wall described above is still what `main` does. `orchestration` is untouched and takes no changeset ([Changesets](#changesets)) |
 
 **The shell's flow must also declare each collection**, because the read resolves the ref
 against the session's **owning flow** (`resolveOwnerFlow`, then `findResourceConfig`, in

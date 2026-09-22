@@ -12,8 +12,9 @@
  * where this file's imports resolve without ceremony. Built the way this probe
  * builds its runtime, a seeded block did not execute when the file lived in
  * `packages/workforce` — a property of this construction, not of that package.
- * See `packages/workforce/test/cross-org-collection-read.test.ts`, which seeds
- * from there through `createFlowState` and works.
+ * See `packages/workforce/test/cross-org-collection-read.test.ts` (on PR #2036's
+ * branch, not on `main`), which seeds from there through `createFlowState` and
+ * works.
  *
  * These call the **list** route — `GET /sessions/:id/resources/:ref`, with no
  * trailing segment. That matters: `router.ts` maps a trailing segment to
