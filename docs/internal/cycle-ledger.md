@@ -3079,3 +3079,320 @@ and by the same measurement.
 4. **Is the zero on non-grading artifacts real?** #1922 and #1928 drew seven `missed-edge-case`
    findings and no vacuous ones. If that holds on a second sample, the class is scoped to
    claim-grading checks and any future instrument should be scoped there too rather than to all tests.
+
+---
+
+## Cycle 15 — remove-superseded-leftovers epic wrap (FIX-1208) (2026-09-22)
+
+**The epic whose whole product is a promise to consumers, and the surface that carries that promise
+is where the defects went.** Twenty of the 61 non-`nit` findings across the nine implementation
+artifacts are filed directly on a `.changeset/*.md` fragment, and four more sit on source paths while
+being about what that fragment claims — **a third of the epic's review load on one file type**, the
+single largest concentration by surface in any cycle this file records. It is also the cycle with the **longest-running direction
+artifact** in the file: the epic-spec on #1376 took nine automated waves and 46 review threads, and
+**six of its findings are defects the previous round's own fix created**, each one self-attributed by
+the author in the thread that closed it.
+
+**Method — scope, declared first.** Twelve artifacts: the epic PR #1376, the nine implementation PRs
+its running index names, and both FIX-1440 artifacts (spec #1888, implementation #2028). All twelve
+were **thread re-read** in full (every review thread, bot and human, with the author's replies);
+#1888's conversation comments were read as well, because that is where its direction amendments live
+and no inline thread records them. Two satellites that rode alongside the epic but are not members —
+#1388 (FIX-1155) and #1393 (FIX-1214) — are **out of the sample** and are not zeros. Rows below are
+the whole denominator.
+
+**Method — rounds.** `Rounds` = **spent waves**, per cycle 12's definition: a commit drawing at least
+one automated pass, followed by a push. Read from `/pulls/N/reviews` for **#1376, #1390 and #2028**.
+For the other nine the count is **derived** from review-thread timestamps against the author's fold
+commits — a weaker derivation, marked `~`, and not to be compared against an exactly-read count.
+
+**Method — endpoints.** Per the endpoint table: implementation PRs end at merge; the epic PR ends at
+**epic-PR close** (#1376 closed unmerged 2026-08-23T02:08Z); the spec PR ends at **revision-bound
+direction approval** (#1888, "Approved", 2026-09-18T17:17Z, closed unmerged the same minute). Every
+artifact reached its own endpoint. **There are no partials in this entry.**
+
+| PR | Kind | Rounds | Endpoint | Feedback classes (deduped) | Felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|
+| [#1376](https://github.com/fixpoint-labs/flow-state-dev/pull/1376) epic-spec FIX-1208 | epic | **~9** | epic-PR close | **missed-edge-case ×15** · design-off / spec-ambiguity ×8 · stale-restatement ×6 · docs-miss ×4 · nit ×6 (46 threads) | **yes** — **six findings are holes the previous round's own fix opened**, author-attributed | the fold re-derives the surfaces that restate what it changed, before the push |
+| [#1390](https://github.com/fixpoint-labs/flow-state-dev/pull/1390) impl FIX-1209 | impl | **4** | merge | **docs-miss ×6 (all *overclaim*)** · missed-edge-case ×2 · nit ×3 (13) | no | **the release note was derived from the `@deprecated` comments, one of which was wrong at the source** |
+| [#1387](https://github.com/fixpoint-labs/flow-state-dev/pull/1387) impl FIX-1210 | impl | ~3 | merge | missed-edge-case ×3 (1 *vacuous-assertion*) · stale-restatement ×1 · docs-miss ×2 · nit ×5 (11) | no | **the new `@ts-expect-error` assertion was in no compiled project — it could not fail** |
+| [#1392](https://github.com/fixpoint-labs/flow-state-dev/pull/1392) impl FIX-1211 | impl | ~2 | merge | **over-engineered ×3** (two BP-030 dual-reads dropped inside a PR whose stated contract is "behaviour-preserving") · docs-miss ×2 · nit ×7 (14) | no | a cut whose evidence is real still needs its own review question |
+| [#1389](https://github.com/fixpoint-labs/flow-state-dev/pull/1389) impl FIX-1212 | impl | ~1 | merge | docs-miss ×1 · nit ×2 (3) | no | — **the quietest artifact in the epic** |
+| [#1394](https://github.com/fixpoint-labs/flow-state-dev/pull/1394) impl FIX-1213 (docs) | impl | ~6 | merge | **missed-edge-case ×12 (all *overclaim*)** · stale-restatement ×3 · over-engineered ×2 · nit ×6 (25) | no | **a docs rewrite asserted framework behaviour it had not run** |
+| [#1391](https://github.com/fixpoint-labs/flow-state-dev/pull/1391) impl FIX-1215 | impl | ~3 | merge | docs-miss ×5 (four are **one** wrong issue ref, filed by three reviewers) · missed-edge-case ×3 · over-engineered ×3 · nit ×3 (16) | no | **one P1 thread was still open at merge** |
+| [#1395](https://github.com/fixpoint-labs/flow-state-dev/pull/1395) impl FIX-1216 | impl | ~2 | merge | **docs-miss ×5** (seven packages bumped that publish nothing; `core` *under*-bumped) · nit ×3 (10) | no | **the bump was classified from the PR's own description, not from the emitted `.d.ts`** |
+| [#1396](https://github.com/fixpoint-labs/flow-state-dev/pull/1396) impl FIX-1217 | impl | ~3 | merge | docs-miss ×3 · over-engineered ×2 · nit ×3 (8) | no | the note said "error responses"; the helper it changed serves every JSON response |
+| [#1406](https://github.com/fixpoint-labs/flow-state-dev/pull/1406) impl FIX-1220 | impl | ~2 | merge | docs-miss ×1 · over-engineered ×2 · nit ×3 (6) | no | — |
+| [#1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888) spec FIX-1440 | spec | **4** | direction approval | missed-edge-case ×3 · docs-miss ×2 · stale-restatement ×1 · nit ×2 (6 threads + 16 conversation comments) | **yes** — **an approved direction was superseded by the owner 21 minutes later**, then amended again on presentation | not a review-rework row; see below |
+| [#2028](https://github.com/fixpoint-labs/flow-state-dev/pull/2028) impl FIX-1440 | impl | **2** | merge | **missed-edge-case ×7** · docs-miss ×2 · over-engineered ×2 · nit ×7 (18) | no | **round 1's own fix opened round 2's race; round 1's own org fix was inert in production** |
+
+**Load: ~28 spent waves across the ten implementation artifacts (4+3+2+1+6+3+2+3+2 on the nine
+cleanup PRs, 2 on #2028), plus ~9 on the epic PR and 4 on the spec PR.** Both direction artifacts blew the two-round budget, and **for opposite reasons** — which is
+the distinction the rest of this entry turns on.
+
+**Claims (looped / settled / verdicts): 0 / 0 / —, on every direction artifact.** No POC settlement
+fired anywhere in this epic, and none should have. Two claims that had the shape of a loop were closed
+in a single exchange by an author who **built the artifact and read it** rather than arguing: on #1390
+the `FSDEV_DEBUG_ITEMS` provenance ("landed 13 days ago in #1110") was REFUTED against
+`git log -S` — it landed four months earlier in `01a2897`, and #1110 never touched `packages/core`;
+on #1395 two reviewers argued from the `@internal` + underscore convention that the removal was a
+`patch`, and the author settled it by building `core` and grepping the output
+(`dist/types/block.d.ts:557: _outputTracker?: {`). That is `issue-spec` 6.5.3's first cheap out —
+*the answer is in the repo* — working exactly as written, twice, before a loop could form.
+
+### The largest class — and why it gets no proposal
+
+**20 of the 61 non-`nit` findings on the nine implementation artifacts are filed on a
+`.changeset/*.md` fragment — 33%** — and four more (all on #1390) sit on a source path while arguing
+about the fragment's framing. Counting only the ones filed on the fragment itself, so the number is a
+floor rather than a reading. Two shapes, one root:
+
+| Shape | Instances | The root |
+|---|---|---|
+| **Claimed an equivalence the code does not support** | #1390 ×6 (`AgentType`→`ItemVisibility`, `reviewOutputSchema`→`reviewerVerdictSchema`, `PRE_RANK_CAP`→`PRE_RANK_EPISODIC_CAP`, the `BasePlan*` set, `CollectionItem` as a rename when it is a package move, a `scores` field that has never existed) · #1396 ×1 | the fragment was written from the **old `@deprecated` comments and the PR's own narrative** |
+| **Classified the release from the change's self-description** | #1395 ×2 (six packages bumped that publish nothing; `core` under-bumped because `@internal` was read as a filter when `stripInternal` is set in no tsconfig) · #1396 ×1 · #1406 ×1 | the fragment asked *what did I do?* instead of *what does the consumer get?* |
+| Internal inventory copied into the published changelog | #1395 ×1 · #1396 ×1 (P1) · #1391 ×1 (P1, **still open at merge**) | the body was written for the reviewer |
+| One wrong issue ref, filed by three reviewers | #1391 ×4 threads | `validate-changeset-refs.mjs` asserts a `TEAM-123`-shaped id is *present*, never that it is the right one |
+
+Every fold was the same operation, and it worked every time: the author **resolved the artifact the
+consumer actually receives**. Export-map resolution through ts-morph with a known-public control per
+package. Building the package and grepping `dist/`. Compiling a probe per removed option. On #1395
+the control earned its keep out loud — *"My first pass had `thought-fabric` and `orchestration`
+reporting everything as unreachable because I'd listed their entry files wrong; the controls caught
+that, which is why they're there."*
+
+**No proposal, and the reason is cycle 14's.** BP-022 and `release-notes-workflow.md` already say
+this, unambiguously, and reviewers **quoted them correctly at the defect** — Codex cited
+`AGENTS.md:L32-L37` and `L39` on four separate fragments, and the author's own replies quote
+`release-notes-workflow.md` back verbatim. A seventh sentence on a rule that was being recited at the
+defect is the intervention cycle 14 measured and rejected. Two further reasons to hold: this is a
+**removal epic**, where the release note *is* the deliverable, so the concentration is partly a
+property of the sample; and the one mechanical gap here is not a rule at all — the changeset-ref
+validator cannot fail on a well-formed wrong id, which is a **guard**, filed below, not a lesson.
+
+### The class that earns the proposal — the second-order defect of a fold
+
+Across the epic, **at least nine findings are defects that an earlier correction in the same artifact
+created or left behind**, and in every case the author says so in the thread that closes it. They are
+not evenly spread:
+
+| Artifact | Fix-induced findings | The author's own words |
+|---|---|---|
+| **#1376 epic-spec** | **6** | *"this is a hole my own fix opened"* · *"I put it there by fixing §5's label and leaving the summary that quotes it"* · *"You identified the root the last three rounds were patching around"* · *"The previous round's fix — mine — reached for a criterion above all six cut kinds and landed on one that is false for four of the cuts"* · *"The fault was scoping the exception…"* · *"a direct consequence of your own previous finding"* |
+| #1394 docs | 1 | *"this one is on me — my own fix last round introduced it… I verified two of the three and generalised to the third"* |
+| #2028 impl | 1 | *"you are right that this PR introduced it. Making the owner lookup asynchronous opened a race that did not exist while the address was simply assumed; the earlier cross-flow fix traded one defect for a narrower one"* |
+| #1888 spec | 1 | *"Both cancellations were decided by asking 'does this describe the surface we are deleting?' rather than 'is this defect real in the code we will ship'"* |
+
+**The tell is that the author named the class himself, mid-epic, and self-remedied — and it kept
+happening.** On #1376 thread 39: *"I swept rather than fixing the one line, because every round lately
+has been a fix creating the next finding."* Five more fix-induced findings landed after that sentence
+was written. A class that survives the person in it noticing it is a class that needs a structural
+obligation, not more attention.
+
+#### It does not arrive because the rule is missing. It arrives through the exemption beside it.
+
+The obvious diagnosis is that the epic-spec cannot reach the rule that owns this. **That diagnosis is
+wrong, and this entry's first draft made it** — on a case-sensitive grep that missed `Redraft`. The
+re-draft obligation *is* reachable from the epic-spec path:
+
+- `orchestration.md:445`, the canonical spec-review triage table, **Fold in — spec-level**:
+  *"Re-draft the affected repository document and figures, reply on the thread."* This governs epic
+  specs as well as issue specs.
+- `epic-spec-template.md:627`: *"Direction changes or a POC refutes a premise | Redraft and obtain
+  fresh human approval."*
+
+Both are about a **fold**. Read the sentence that sits immediately under the triage table
+(`orchestration.md`), and the identical one in `issue-spec` 6.5.1:
+
+> **Genuine factual corrections and broken references are the one cheap exception: fix them inline
+> without ceremony (they don't move the design, so they don't cost a round).**
+
+**Five of #1376's six fix-induced findings entered through that door.** None of them moved the design,
+and that is exactly why each was fixed inline: a label corrected in §5 (T39), the seed flags
+reclassified against what they actually do (T38), the lying-knob exception scoped (T43), the twin
+clause added to the no-loss route (T44), and the three rounds of criterion-patching T40 names as "the
+root." Each was a correct factual fix. Each invalidated a surface that **restated** it — a summary
+quoting the label, the gate's category list, the cut-kind list, the route predicate, the success
+criteria — and none of those surfaces was re-derived, because the exemption that spared the correction
+a round also spared it the re-draft the same table demands of a fold. (The sixth, T42, *was* a fold and
+is outside this reading; recorded as such.)
+
+The exemption is right about the thing it was written for. A factual correction genuinely does not cost
+a **round**, and making it cost one would be the spec-review bloat BP-040 exists to prevent. What it
+should not also buy is exemption from asking what else said the old thing.
+
+### The recommended upstream fix — one clause on the cheap exception
+
+**Scope the cheap exception to the round count, not to the reconciliation.** One clause, in
+`orchestration.md`'s spec-review section where the exception is canonical, mirrored in `issue-spec`
+6.5.1 where it is restated:
+
+> …fix them inline without ceremony — they don't move the design, so they don't cost a round. **They
+> do owe the reconciliation: before the push, re-derive every surface that restates what you
+> corrected — the criteria, the index, the sign-off, the category and route lists, the summary that
+> quotes it — and say which moved.** A correction that is right where it is owned and stale everywhere
+> it is echoed is the defect, not the fix.
+
+**Not a new BP. Not a sharpening of BP-003.** `issue-spec` 6.5.2 already names these surfaces for the
+issue spec and `issue-implement` 10.6 carries the heavy version for code PRs; this is the missing
+*trigger*, on the one path that currently has none.
+
+**Reachability walk — trigger → obligation → report**, cycle 13's method, on the bounded instance set.
+
+- **Trigger:** an inline factual correction on a spec or epic-spec. Observable, no judgement, and
+  deliberately **not** gated on "did the direction move" — that gate is what these five walked under.
+- **Obligation:** re-derive every surface that restates what the correction changed.
+- **Report:** name the correction, name the surfaces re-derived, say which moved.
+
+Walked against #1376's six: **five fall out cleanly** — each has a named restating surface whose
+re-derivation turns the next round's finding visible one round earlier (T38 the category list, T39 the
+summary, T40/T43 the criteria and cut-kind list, T44 the route predicate). **One does not:** T42 was a
+fold rather than an inline correction, so the trigger never fires on it — and T44 gets only partial
+credit besides, because "do these two routes *partition*" is a property of the pair rather than of
+either restatement. Partial credit, recorded as partial.
+
+**It clears the Step-3 gate.** *Generalizable* — every spec and epic-spec that corrects a fact under
+review, which is every one of them. *Grounded* — five named instances on one artifact, author-attributed,
+every one linkable. *Not already covered* — the re-draft rule covers folds and says so; these are not
+folds, and the sentence under it says they need no ceremony. *Altitude* — one clause on an existing
+exception in the document that already owns spec review, which is the lightest rung on the ladder that
+fits.
+
+**What it does not cover, stated rather than stretched.** #1394's *"verified two of the three and
+generalised to the third"* is a **scope overclaim** — BP-003's third bullet already owns it, and it is
+on an implementation PR where 10.6 applies. #2028's fence race is a code fix creating a race, not a
+restatement. #1888's inherited dispositions were folds, on a path that reaches the re-draft rule, and
+the draft shipped them anyway. #1376's T42 likewise. **Four of the nine are outside this fix**, and
+pretending otherwise would be this entry's own defect — which it already was once, above.
+
+### Scoring cycle 14's fix — first measurement, and it is mixed
+
+Cycle 14's fix (*"a check with no before-state owes a blast radius"*) **landed on `main`** in
+`fa21574d` and `4e03bde0`, both 2026-09-20, and is live in `issue-implement` at lines 22, 24, 336 and
+367.
+
+**Carried / not carried, asked of the branch heads.** The nine cleanup PRs (2026-08-22) and the spec
+#1888 (2026-09-18) **predate the fix and are out of the sample entirely** — not zeros, not a pass.
+**#2028 is the only artifact in this epic authored against it**, and both of its reviewed heads carry it:
+
+```
+$ git merge-base --is-ancestor 4e03bde0 4de4e367   # round-1 head → CARRIES
+$ git merge-base --is-ancestor 4e03bde0 5f63dd5f   # round-2 head → CARRIES
+```
+
+**The practice is visibly present.** Five verbatim blast-radius reports on #2028, in the shape the rule
+asks for: *"Removing the record-level check turns that one test red and nothing else"* · *"Red
+observed first: with an intervening selection the test failed `expected 'sess_absent' to be
+'sess_talk'`"* · *"Two tests, so the warning cannot be satisfied by always rendering it"* · *"Tests
+assert the **warning**, not merely that rows draw, since a version that rendered rows and swallowed the
+warning passes a row-only assertion"* · *"Red first — `shows the run's own status…` and `says a run has
+not started…` both failed before the change."*
+
+**And the class it was written for shipped anyway, in its fourth shape.** Round 1 folded Codex's
+missing-`orgId` finding, observed red (`{ req_other_org: true }`), and reported it. The feature was
+still **inert in production**: `principal.orgId` was never forwarded at the call site, and
+`matchesOrgFilter` treats the key as *present* whenever the literal carries it — so
+`{ orgId: undefined }` did not disable the filter, it compared every entry against `undefined` and
+passed only for an entry carrying **no org at all**. Registration requires one. So the D4 liveness arm
+**refused every genuine dispatch run**, and eight tests were green over it. The author's own
+diagnosis: *"the `register` fixture omitted `orgId` while the `seedSession` fixture already defaulted
+it — the tests were exercising a shape production never produces."* Caught in round 2 by a reviewer's
+follow-up, not by the blast-radius report. The fixture asymmetry is now written into the test itself
+(`packages/engine/test/context/liveness-dispatch-run-arm.test.ts:133-141`).
+
+**The reading, and it is a real limit rather than a failure.** Breaking *the property the check claims*
+went red — correctly — **on a fixture that was itself the wrong shape**. The blast radius proves the
+check moves with its claim; it does not prove the fixture reaches the shape production produces. That
+is shape 4 ("fixture too clean to contain the failure") surviving the rule written to catch it, by one
+step. **One instance. Recorded as a claim to test, not minted** — a second sentence on a fix whose
+first measurement is two days old would be exactly the reflex cycle 14 identified.
+
+**Claim 2 — the 30–40% band — is not comparable on this sample.** Three `vacuous-assertion` instances
+across twelve artifacts (#1387's uncompiled `.test-d.ts`; #1395's first export-graph pass, caught by
+its own control; #2028's org fixture) against a denominator dominated by deletions and prose. A
+removal epic asserts very little. Not a dip; a different population.
+
+**Claim 4 — the zero on non-grading artifacts — weakly supported.** #1389, #1396 and #1406 are ordinary
+code changes and carry zero vacuous findings between them.
+
+**Claim 3 — retained guards — not measured here.** Out of this sample's reach; carry forward.
+
+**Cycle 13's claim 6 — "is a loop fix's reachability the thing that fails?" — gets a population and the
+answer is no.** This entry's first draft diagnosed the class as unreachable grounding, on a
+case-sensitive grep. The rule was reachable; the defect arrived through an exemption written beside it.
+That is worth more than a confirmation: reachability is the *attractive* diagnosis, it was wrong here,
+and the only thing that caught it was re-running the command case-insensitively. Carry claim 6 forward
+with that caveat attached.
+
+### The coordinator's observations, checked against the artifacts
+
+The wrap brief supplied eight field observations. Treating them as claims rather than findings, per
+BP-003:
+
+| # | Verdict |
+|---|---|
+| 2 — a coordinator instruction nearly shipped a dead feature | **CONFIRMED, and sharper than reported.** The behaviour the instruction forbade changing *was* the defect: the org filter was refusing every genuine run. A literal-compliant worker documents the layering and ships nothing. The worker deviated, flagged it, and fixed both layers. |
+| 3 — fixture asymmetry | **CONFIRMED**, mechanism and count. Eight tests; the suite is ten now. BP-003's three bullets do **not** name it — the nearest is "aimed at a neighbour," and this is not a neighbour, it is the right target in the wrong shape. Recorded, not minted. |
+| 6 — second-order defects of a fix round | **CONFIRMED and widened.** Nine instances, not three, across four artifact kinds. This is the entry's proposal — though the mechanism is not the one the observation guessed: they are not under-reviewed, they are under-*reconciled*, and they enter through the cheap exception. |
+| 7 — two reviewers said "already tight" | **CONFIRMED with one correction.** Cursor's Code Snob returned *"outcome 3: already tight. No POC"* on **both** rounds and Cursor's Simplify pass **APPROVED** on round 2, while Codex filed four P2s on that same head. But the four are not four capability regressions: **three** are (read-failure surfacing, truncation disclosure, run status — all capability the removed Children tab had, and all three made the new surface state something false), and the fourth is the fence race that round 1's own fix introduced. The org-filter bug was found by **Cursor's** follow-up, not Codex. Different lens, different blind spot — in both directions. |
+| 8 — spec-review rounds are ledger signal | **CONFIRMED, and it inverts.** #1888's four rounds were **not** review rework: round 1 was six findings folded in one pass, and rounds 2–4 were the **owner** superseding his own D1 sign-off 21 minutes after giving it, then specifying DevTool presentation, then asking for wireframes. Scoring that as spec-authoring cost would blame the author for direction that arrived late. #1376's nine waves *are* rework, and six of them are self-inflicted. **The two direction artifacts overran the same budget for opposite reasons, and a rounds column alone cannot tell them apart.** |
+| 5 — `onBrokenAnchors` | **PARTLY VERIFIED, and it is a guard.** `apps/docs/docusaurus.config.ts` sets `onBrokenLinks: "throw"` (line 16) and `onBrokenMarkdownLinks: "warn"` (line 20) and **does not set `onBrokenAnchors` at all** — so a renamed heading is not covered by the `throw` the config does set. Docusaurus's own default for that key was **not** verified here (`@docusaurus/core` is not installed in this worktree), so the claim is scoped to what the config does. Filed as a one-line config change, like cycle 1's C0/NUL gate — not a lesson. |
+| 4 — blind review's bounded competence | **NOT DERIVABLE from these artifacts.** The `docs-editor` run's inputs and outputs are session-level; nothing on #2028 records what it was denied. Recorded as coordinator-reported. |
+| 1 — four CI completion signals pointing at stale state | **NOT DERIVABLE from these artifacts.** Webhook-delivery timing against a workflow run's `head_sha` leaves no trace in PR review data. Recorded as coordinator-reported; it is a harness shape, not a code-review rework class, and would need its own instrument. |
+
+### Candidates considered and dropped
+
+- **A BP, or a BP-022 sentence, for the release-note derivation class.** Dropped — 23 findings and
+  still the wrong move. The rules are correct, were quoted by number and by line at four separate
+  defects, and cycle 14 measured what that is worth.
+- **Sharpening BP-003 to name fixture asymmetry.** Dropped at one instance. It is a genuinely
+  uncovered sub-shape and it is a **claim to test**, not a rule. If a second cycle produces it, the
+  home is `issue-implement`'s blast-radius paragraph — "and the fixture reaches the shape production
+  produces" — not a fourth BP-003 bullet.
+- **"Give the epic-spec a pointer to `issue-spec` 6.5.2."** Dropped, and it was this entry's own first
+  proposal. The grep it rested on was case-sensitive; `orchestration.md:445` and
+  `epic-spec-template.md:627` both carry a re-draft instruction that reaches the epic-spec. Kept in the
+  record rather than deleted, because a loop-measuring instrument that quietly corrects its own
+  diagnosis is the least trustworthy thing in this file.
+- **Widening the proposal to "every fold re-derives its blast radius," code included.** Dropped as
+  bloat. `issue-implement` 10.6 already carries the heavy version for code PRs, four of the nine
+  instances are not restatements, and a rule aimed at all folds everywhere is how an obligation becomes
+  a ritual.
+- **A rule about reviewers filing the same finding three times** (#1391's issue ref, #1376's T7/T11
+  convergence). Dropped — independent convergence is *corroboration*, and the author read it that way
+  in both places (*"you and the parallel reviewer converged on this independently, which is fair
+  evidence it was the real problem"*). Deduping it away would cost more than the repeated reply does.
+- **A rule about merge-order-dependent doc claims** (#1394's three findings shared with #1387, and
+  #1376's retracted hard constraint). Dropped as a property of ten PRs open at once against one tree —
+  which the epic PR itself already names as its open question (*"whether ten PRs open at once was the
+  right call"*). A coordination question for `epic-lifecycle`, not a lesson.
+
+### Filed, not proposed
+
+- **`scripts/validate-changeset-refs.mjs` cannot fail on a well-formed wrong id.** #1391 shipped
+  `(FIX-1209)` on a FIX-1215 changeset through a green guard, and three reviewers caught it by eye. The
+  validator asserts a `TEAM-123`-shaped id is *present*; checking it against the PR's own issue is a
+  small, decidable change. A guard, not a lesson.
+- **`onBrokenAnchors` is unset in `apps/docs/docusaurus.config.ts`.** One line.
+- **#1391 merged with an open P1 review thread** (changeset length, filed 2026-08-23T01:37Z, never
+  answered; the PR merged at 02:04Z). `issue-implement` 10.6 forbids exactly this. One instance, and
+  the rule that owns it is already correct and already on that path — recorded so a second instance has
+  something to be a second of.
+
+### Claims to test next cycle
+
+1. **Does scoping the cheap exception close the class?** Baseline: **five fix-induced findings on one
+   epic-spec**, every one entering through an inline factual correction that owed no reconciliation.
+   Score the next two direction artifacts' fix-induced counts, and check the report actually appears —
+   an obligation with no visible output is the one that quietly stops happening.
+2. **Does the blast radius catch a fixture that never reaches production's shape?** One instance says
+   no: on #2028 the report was written, the red state observed, and the D4 arm was still inert. A
+   second code-heavy sample decides whether that is a limit of the rule or an accident of one PR.
+3. **Are direction-artifact rounds separable by cause?** #1888 (4 rounds, owner-initiated) and #1376
+   (9 waves, self-inflicted) are opposite phenomena in the same column. Record the split on the next
+   two direction artifacts and decide whether the ledger needs the distinction as a column rather than
+   as prose.
+4. **Does the release-note class fall on a non-removal epic?** 20 of 61 (33%) is the highest surface
+   concentration in this file, on an epic whose deliverable *is* the release note. If it stays above
+   20% on an epic that ships features, the "property of the sample" reading is wrong and the class
+   needs an instrument rather than another sentence.
