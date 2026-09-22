@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
 What was considered, what was chosen, why, and what each locks in. Two decisions are the sign-off
-surface, and one question is routed up rather than answered here.
+surface. A third was routed up rather than answered here, and the owner closed it on 2026-09-22.
 
 ## The tree
 
@@ -15,12 +15,12 @@ flowchart TD
   I --> D2["D2 · a handoff is a second row<br/>filed by the seat that finished the first"]
   D2 -.->|"rejected"| X3["a handed-off status · ER-8"]
   D2 -.->|"rejected"| X4["reassign the row<br/>a hand-off board refuses it by design"]
-  I --> Q["Open · whose live hire<br/>the graded run uses"]
-  Q -.->|"not decided here"| X5["decided against an unapproved spec · ER-17"]
+  I --> D3["D3 · this proof stands up its own hire<br/>owner's call, 2026-09-22"]
+  D3 -.->|"rejected"| X5["share the DevForce proof's workforce"]
 ```
 
-Solid edges are what you're signing. The dashed edge off *Open* is the one thing this spec
-deliberately does not close.
+Solid edges are the decisions. D1 and D2 are what you're signing; **D3 is already closed** — it
+reached outside this issue, went up, and came back answered.
 
 <a name="d1"></a>
 ## D1 · The proof drives the shipped `fsdev dev` and reads the handoff in a real browser
@@ -49,6 +49,30 @@ one thing only a browser can answer — that a person can read it.
 Inside the box is [ER-1](../../epics/FIX-1457/BUSINESS-RULES.md); outside is
 [ER-22](../../epics/FIX-1457/BUSINESS-RULES.md). One thing crosses, and it crosses as an action.
 The same four shapes are in [BUSINESS-RULES.md](BUSINESS-RULES.md) as rules with red states.
+
+<a name="open"></a>
+<a name="d3"></a>
+## D3 · This proof stands up its own hire — **the owner's call, closed 2026-09-22**
+
+Reached outside this issue, so it went up rather than being decided here
+([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)). Answered on the spec PR:
+
+> *"Keep them separate. We can combine them later but having separate labs prevents coordination
+> issues for now"*
+> — [#2045](https://github.com/fixpoint-labs/flow-state-dev/pull/2045#issuecomment-5780729223),
+> 2026-09-22
+
+| | |
+|---|---|
+| **Instead of** | Running the graded scenario inside [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496)'s DevForce workforce — one tree, one team, one place to point people at |
+| **Because** | Two reasons, and they are different in kind. **The owner's is sequencing:** separate labs keep the two proofs from colliding while both are in flight, and *"we can combine them later"* — so the separation is a choice about ordering, not a boundary anyone has to argue their way back through. **The spec's is technical:** FIX-1496's [BR-8](../FIX-1496/BUSINESS-RULES.md) forbids board or harness *work* dispatch reaching its reviewer seat, with the control `reviewer-files` graded on the board dispatch record to go red if one does. A tree carrying two collaborating seats would have to relax that rule deliberately and be re-gated — which costs the first proof the thing it exists to prove |
+| **Locks in** | S1–S7 build their own `workforce/` tree under `goals/multi-seat-collab/`, and the day hiring changes shape there are two small Markdown trees to update rather than one. **What it does not lock in:** [ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26) still fences the *graded run* on a live hired Workforce existing at all ([BR-21](BUSINESS-RULES.md)). That fence was never a claim about whose tree the run uses, and this decision neither narrows nor widens it |
+
+**Combining stays cheap, and stays available.** Both trees are a few hundred lines in the same
+folder. Merging them later is an afternoon; the expensive direction was the other one — bending
+the DevForce proof to fit this one and costing it its sharpness. If the release wants one
+demonstration to point at, that is a new call, and FIX-1496's [BR-8](../FIX-1496/BUSINESS-RULES.md) gets relaxed
+deliberately and re-gated rather than worked around.
 
 ## Decided, not asked
 
@@ -79,41 +103,6 @@ The same four shapes are in [BUSINESS-RULES.md](BUSINESS-RULES.md) as rules with
 | An org-level board view so both rows sit on one screen | Boards are session-scoped today, and widening that is [FIX-1320](https://linear.app/fixpoint-labs/issue/FIX-1320)'s. Reaching for it here would be new substrate under a QA label ([ER-25](../../epics/FIX-1457/BUSINESS-RULES.md)) |
 | Require [FIX-1474](https://linear.app/fixpoint-labs/issue/FIX-1474)'s composed notify-plus-file path | Its own body keeps this gate on today's separate paths, and says it is not an ER-Collab gate |
 
-<a name="open"></a>
-## Open
-
-One, and it belongs a level up.
-
-### The graded run: share the DevForce proof's workforce, or give this one its own?
-
-**Plain terms.** The release needs two demonstrations. One shows a hired team building something
-real. This one shows two workers sharing a queue, handing work between them, and a person
-answering a question one of them raises — where you can watch it happen. Both need a real hired
-team standing up. We can run this second demonstration inside the first one's setup, or give it
-its own small one.
-
-**The trade-off.** Sharing means one team to maintain and one place to point people at. But the
-first demonstration is deliberately built so that **only one worker ever receives a job** — that
-is how it proves work went to the worker it was addressed to, and it has a check that goes red if
-a second one is given work. Making the same setup also carry two collaborating workers changes
-what that demonstration proves, and the change would have to be made on purpose and re-approved.
-Separate setups mean two small teams described in Markdown, in the same folder, and two places to
-update the day hiring changes shape.
-
-**My recommendation: give this one its own.** The first demonstration is at your gate right now
-and not yet approved, so binding this one to choices that may still move means re-cutting this one
-when they do. The two are also asking different questions, and the cheapest way to keep each
-answer clean is to let each fail on its own terms. If we later want one demo to point at, merging
-two small file trees is an afternoon; unpicking a shared one that lost its sharpness is not.
-
-**What would change my mind:** if you want exactly one thing people are shown for this release —
-one team, one run, one demonstration to point at. Then we share, and I would want the first
-demonstration's one-worker rule relaxed deliberately and re-gated, not worked around.
-
-**Cost of being wrong: low, and it surfaces immediately.** Both live in the same folder and are a
-few hundred lines each. The expensive mistake is the other direction — bending the first
-demonstration to fit this one and costing it the thing it exists to prove.
-
 ## How it got here
 
 - **Draft** — the scenario shaped as one board, two desk keys and three seats, with the human leg
@@ -128,3 +117,6 @@ demonstration to fit this one and costing it the thing it exists to prove.
   so **[D1](#d1) stands**. The *silent* shape of that failure is raised up
   ([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)), not worked around — it is a follow-up in
   [PLAN.md](PLAN.md), and the EM owns whether it is filed.
+- **The one open question was answered by the owner on 2026-09-22** — *keep them separate* — and is
+  recorded as [D3](#d3) with both reasons: the owner's sequencing reason and the spec's technical
+  one. Nothing else in the direction moved; D1, D2 and the three-screen observation stand.

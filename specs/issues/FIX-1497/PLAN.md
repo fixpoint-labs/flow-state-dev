@@ -156,11 +156,12 @@ README; the guardrail above is what keeps it out of your run.
   and the served path swallows it. The guardrail above is the fix; the POC's README has the A/B.
   Confirm with `goals/flow-instances/devtool-shows-the-selected-copy` before suspecting anything
   in this scenario.
-- **If the [Open fork](DECISIONS.md#open) came back *share*,** re-cut S1–S4 onto
-  `goals/devforce-lab` and keep every check. Its one-worker rule has to be relaxed deliberately
-  and re-gated first — do not work around it.
-- **[FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) may have reshaped that lab.**
-  Nothing here depends on which artifact it picks, only on a live hire existing.
+- **The hire question is closed — build under `goals/multi-seat-collab/` and nothing else.** The
+  owner answered it on 2026-09-22 ([D3](DECISIONS.md#d3)): this proof stands up its own hire.
+  There is no contingency to weigh and nothing to re-cut. If a later call makes one shared lab
+  wanted, that is a new decision on FIX-1496's terms, not yours to take here.
+- **[FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) may have reshaped its own lab.**
+  Nothing here depends on which artifact it picks, only on a live hire existing (BR-21).
 - **[#2032](https://github.com/fixpoint-labs/flow-state-dev/pull/2032) may still be unmerged.**
   Then BR-16's browser leg cannot pass on `main`. Run it against that branch's head and record
   which head it ran on, or hold the row and say so in the verdict log. Never make it pass by

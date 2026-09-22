@@ -96,10 +96,12 @@ executed, not assumed ([the POC](poc/served-hire-observable/README.md)).
 2. **[D2](DECISIONS.md#d2) · A handoff is a second row, filed by the seat that finished the
    first.** *If wrong:* we have fixed what "handed over" means for every later proof, and a
    future notify-based compose has to be shown equivalent to this rather than simply replacing it.
+3. **[D3](DECISIONS.md#d3) · This proof stands up its own hire rather than sharing the DevForce
+   proof's.** It reached outside this issue, so it went up rather than being decided here
+   ([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)) — and **the owner closed it on
+   2026-09-22**: *"keep them separate… we can combine them later"*
+   ([#2045](https://github.com/fixpoint-labs/flow-state-dev/pull/2045#issuecomment-5780729223)).
+   Recorded, not asked.
 
-**Open: one, and it is not mine to close.** Whose live hire the graded run uses — the DevForce
-proof path's, or one this proof stands up — reaches outside this issue, so it is
-[routed up](DECISIONS.md#open) rather than decided here
-([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)). It is the one to weigh. Number 1 is the
-decision to read closely. The reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
-[BUSINESS-RULES.md](BUSINESS-RULES.md).
+**Nothing in this set is open.** Number 1 is the decision to read closely. The reasoning and what lost:
+[DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
