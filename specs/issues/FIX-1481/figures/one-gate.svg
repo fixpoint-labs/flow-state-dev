@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 250" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Four documents arrive at a single exported mayWrite helper: a references document and a seat's read-only grant, both carrying writable false and llmWritable false, and two that carry no flags at all. On the far side a dashed horizontal line separates marked from unmarked. The two sealed documents come out above it, marked read-only; the two with no flags come out below it, unmarked.">
+     aria-label="Four documents arrive at the resources tree's sealed gate, which reads the writable field alone: a references document and a seat's read-only grant, both carrying writable false and llmWritable false, and two that carry no flags at all. On the far side a dashed horizontal line separates marked from unmarked. The two sealed documents come out above it, marked read-only; the two with no flags come out below it, unmarked.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -26,15 +26,15 @@
     <text class="t-lbl" x="16" y="24">WHAT ARRIVES</text>
     <rect class="n-box" x="16" y="34" width="238" height="38" rx="5"/>
     <text class="t-b" x="28" y="51">a references document</text>
-    <text class="t-s" x="28" y="65">writable false &#183; llmWritable false</text>
+    <text class="t-s" x="28" y="65">writable false &#183; by the convention</text>
 
     <rect class="n-box" x="16" y="80" width="238" height="38" rx="5"/>
     <text class="t-b" x="28" y="97">a seat's read-only grant</text>
-    <text class="t-s" x="28" y="111">writable false &#183; llmWritable false</text>
+    <text class="t-s" x="28" y="111">writable false &#183; by the grant</text>
 
     <rect class="n-out" x="16" y="132" width="238" height="38" rx="5"/>
     <text class="t-b" x="28" y="149">a document with no flags</text>
-    <text class="t-q" x="28" y="163">absent means writable &#183; BR-12</text>
+    <text class="t-q" x="28" y="163">writable unset &#183; BR-12</text>
 
     <rect class="n-out" x="16" y="178" width="238" height="38" rx="5"/>
     <text class="t-b" x="28" y="195">a server that predates this</text>
@@ -44,8 +44,8 @@
   <g id="the-one-gate">
     <rect class="n-gate" x="330" y="104" width="240" height="42" rx="5"/>
     <text class="t-lbl" x="342" y="99">THE ONE GATE</text>
-    <text class="t-b" x="342" y="123">mayWrite() &#183; one helper</text>
-    <text class="t-s" x="342" y="138">llmWritable &amp;&amp; writable !== false</text>
+    <text class="t-b" x="342" y="123">the tree's sealed gate</text>
+    <text class="t-s" x="342" y="138">writable === false &#183; and nothing else</text>
   </g>
 
   <g id="in">

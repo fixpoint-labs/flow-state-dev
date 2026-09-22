@@ -40,13 +40,16 @@ restate the other bullets.
 
 **What the reader must learn:**
 
-- Two settings decide whether a resource can change: `writable` (may code write it) and
-  `llmWritable` (is a model offered the write tool). **Both default to allowing the write**, so a
-  resource declaring neither is writable — this is the sentence readers will get backwards.
-- The panel marks a resource read-only when both are shut, using the same condition the resource
-  manifest uses to tell an agent whether it may write, so panel and agent cannot disagree.
-- Closed to the model but open to code is a real configuration and is **not** marked; both
-  settings are on the row detail for a reader who needs that distinction (BR-14).
+- Two settings, and they answer different questions. `writable` decides whether the resource can
+  be written **at all** — the store refuses the write when it is `false`. `llmWritable` decides
+  only whether a model is offered a write tool for it.
+- **The read-only mark is the first one.** A resource is marked when `writable` is `false`, and
+  that mark means immutable to everyone.
+- `writable` defaults to allowing the write, so a resource declaring nothing is writable and
+  carries no mark — this is the sentence readers will get backwards.
+- `llmWritable` is **opt-in**, so most resources never set it. Not being offered to a model is
+  ordinary and is **not** a read-only mark (BR-13). Both settings are on the row detail for a
+  reader who needs that distinction.
 - Where a resource came from does not produce the mark. A `references/` document and a document
   held under a worker's read-only grant arrive as the same two settings and get the same mark.
 - No marks anywhere means the server predates this and sends neither setting — not that

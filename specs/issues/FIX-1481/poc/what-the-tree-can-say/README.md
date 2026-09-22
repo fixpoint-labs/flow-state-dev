@@ -15,15 +15,16 @@ modules and the real HTTP handlers, so the spec's factual base is executed rathe
 |---|---|---|---|
 | 1 | 4 | What a reason on the row will *mean*: exactly three task verbs write the field, and a park with no reason does not clear an earlier one | Slice the real task collection into its verb bodies and assert the **whole** writer set, not one sampled verb |
 | 2 | 6 | A sealed document and a mutable one are the same row in the debug tree | Build a flow holding both, call the real `debug/resources` handler, compare the entries field for field |
+| 2b | 6 | The mark has to be the **seal** (`writable === false`), not the agent manifest's write gate | Mint both halves of the `references/` vs `resources/` split with their real conventions and run both candidate predicates over them |
 | 3 | 5 | The non-debug door cannot show them, and there are no inventory rows to show | Call the real `manifest` handler on the same flow; count `openInventory` call sites under `apps/` |
 
 Each check carries a control that is **run**, not described:
 
 - Check 1 plants a fourth writer and asserts the totality check rejects it.
 - Check 2 plants a `writable` field on one entry and asserts both assertions go red.
-- Check 3 adds a resource that *does* declare a client surface and asserts it comes back — its own
-  assertion is that a door returns nothing, so the control proves the door answers at all rather
-  than that the call is broken.
+- Checks 2b and 3 assert that something says *no* — a predicate declines, a door returns nothing —
+  so their controls prove each can say *yes* when handed something it should accept, rather than
+  passing because the call is broken.
 
 ### What this deliberately does not check
 
@@ -52,7 +53,7 @@ every control behaves.
 
 ## What it showed
 
-All eleven assertions pass on `0c076f9cb`. Three results are worth carrying into the spec:
+All fourteen assertions pass on `0c076f9cb`. Three results are worth carrying into the spec:
 
 **Row 4's starting state, as `file:line` cites rather than assertions.** All three read on
 `0c076f9cb`, and all three are things PR-A is expected to change or depend on:
@@ -88,6 +89,23 @@ ways — one by the `references/` convention, one by a seat's `ro` grant — whi
 `{ writable: false, llmWritable: false }`. A badge derived from "is it a reference" would be
 right about half the sealed documents in the tree.
 
+**Which predicate the mark may be, settled by running both.** A review round proposed marking on
+`!mayWrite`, reusing the agent manifest's predicate
+(`core/src/manifest/resources-source.ts:50`) so the tree and the manifest could not disagree. The
+reasoning was sound and the result would have broken the row:
+
+| what it is | `writable` | `llmWritable` | `!mayWrite` | `writable === false` |
+|---|---|---|---|---|
+| a `references/` document — **sealed** | `false` | `false` | READ-ONLY | READ-ONLY |
+| a `resources/` document — **mutable** | *unset* | *unset* | **READ-ONLY** | — |
+| `defineResource`, no flags | *unset* | *unset* | **READ-ONLY** | — |
+| `defineResource`, `llmWritable: true` | *unset* | `true` | — | — |
+
+Row two is the failure: `llmWritable` is opt-in, so `!mayWrite` marks the mutable `resources/`
+document — the exact one row 6 exists to distinguish from the reference above it. The two
+predicates answer different questions, *may the agent write* against *can this be written at
+all*, and check 2b keeps that result runnable rather than remembered.
+
 **Row 5's subject does not exist in the reference app.** The non-debug manifest returns zero
 entries for all three resources, because it skips anything without a `client` config and neither
 references nor the inventory collections declare one. And no app calls `openInventory`, so there
@@ -95,8 +113,8 @@ are no inventory rows for any door to serve.
 
 ## Limits
 
-- **It imports `packages/*/src` directly**, including `referencesFromDocs`, which is internal to
-  `@flow-state-dev/workforce`. That is a POC reaching past a package boundary; it proves what the
+- **It imports `packages/*/src` directly**, including `referencesFromDocs` and
+  `resourcesFromDocs`, which are internal to `@flow-state-dev/workforce`. That is a POC reaching past a package boundary; it proves what the
   engine does with a sealed config, not that the boundary is public.
 - **The `ro`-grant seal is reproduced, not called.** `resolveSeatResources` needs a whole seat
   context, so the check applies the same two-field seal that `seat-resources.ts:529` applies. If

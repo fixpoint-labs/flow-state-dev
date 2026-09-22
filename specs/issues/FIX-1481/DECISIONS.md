@@ -14,29 +14,24 @@ throughout.
 flowchart TD
   I["FIX-1481 · checklist rows 4, 6 and 5"] --> R4["row 4 · the reason on the row"]
   R4 -.->|"nothing rejected"| X0["the field is already in the browser<br/>a render, decided not asked"]
-  I --> D1["D1 · row 6 · mark read-only from the two permission flags<br/>the snapshot carries both"]
+  I --> D1["D1 · row 6 · the mark is the seal<br/>writable === false, the engine's own gate"]
   D1 -.->|"rejected"| X1["badge the references folder<br/>wrong for every seat granted read-only"]
-  D1 -.->|"rejected"| X2["one resolved boolean on the wire<br/>erases sealed-to-the-model-only"]
+  D1 -.->|"rejected"| X2["badge what the agent may not write<br/>marks the mutable document too"]
   I --> D2["D2 · row 5 · named here, built elsewhere"]
-  D2 -.->|"rejected"| X3["a second org-level reader in devtool<br/>two readers for one fact"]
+  D2 -.->|"rejected"| X3["build the org-level reader in devtool<br/>ER-25 substrate growth labelled polish"]
   D2 -.->|"rejected"| X4["declare a client surface on the inventory<br/>opens an org read with no credential"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · A document is marked read-only from its `writable` and `llmWritable` flags, which the debug snapshot now carries; both the tree and the agent's manifest resolve them through one exported `mayWrite` helper
+## D1 · The read-only mark is the **seal** — `writable === false`, the one condition the engine itself refuses a write on. `llmWritable` travels beside it and is shown, but is not the mark
 
 | | |
 |---|---|
-| **Instead of** | Marking anything loaded out of a `references/` folder; shipping one resolved `readOnly` boolean from the server; or leaving the predicate where it is and asserting the two readers agree |
-| **Because** | The seal has **two** producers. A `references/` document is sealed by convention; a seat granted `ro` on an ordinary mutable document is sealed the same way, by the same two fields. A folder-derived badge is right about the first and silent about the second, which is the more dangerous half — the reader is looking at something that *is* mutable for somebody else. And the two flags are not one fact: `writable` decides whether code may write, `llmWritable` decides whether the model is offered the write tool. Open to code and closed to the model is a state the framework supports, and one boolean would report it as one of the two things it isn't |
-| **Locks in** | Two permission fields on a wire shape every DevTool build then reads, and "read-only" in the tree tied to what the agent's own manifest means by it. A third gate later means finding every reader of the pair. The cheap failure runs the other way: an absent flag means *writable*, and a reader that treats absent as closed marks a document anybody can edit |
-
-A parity assertion between two copies was considered and dropped: it detects drift one commit
-after it happens, where one helper prevents it. `@flow-state-dev/devtool` already depends on
-`@flow-state-dev/core`, so the helper costs no new dependency and crosses no package boundary —
-if that ever stops being true, the parity assertion is the fallback, not a coin flip.
+| **Instead of** | Marking anything loaded out of a `references/` folder; one resolved `readOnly` boolean from the server; or marking whatever the agent's resource manifest declines to offer a write tool for |
+| **Because** | The seal has **two** producers and one meaning. A `references/` document is sealed by convention, a seat granted `ro` on an ordinary document is sealed by the grant, and both land on `writable: false` — which is exactly what `packages/engine/src/context/resource-registry.ts:936` and `:1977` throw `resource_read_only` on. A folder-derived badge is right about the first producer and silent about the second, and the silent one is the more dangerous: the reader is looking at something that *is* mutable for somebody else. `llmWritable` is a different question — whether the model is offered a write tool — and it is **opt-in**, so most ordinary mutable resources leave it unset. Badging on it would mark the mutable half of the very distinction this row exists to show |
+| **Locks in** | Two permission fields on a wire shape every DevTool build then reads, and the mark tied to the runtime's write gate rather than to any one reader's policy. The tree's predicate is its own — `writable === false`, nothing shared with and nothing asserted equal to the agent-facing manifest. The cheap failure runs the other way: an absent `writable` means *writable*, and a reader that treats absent as closed marks a document anybody can edit |
 
 **What would change my mind:** evidence that a seat-level `ro` grant is not something anybody
 actually writes. Then the seal has one producer, the folder tells you everything, and a badge on
@@ -48,13 +43,20 @@ actually writes. Then the seal has one producer, the folder tells you everything
 | | |
 |---|---|
 | **Instead of** | Building an org-level inventory reader in the DevTool, or opening the non-debug door by declaring a client surface on the inventory collections |
-| **Because** | Three things are missing and only one is DevTool's. **Nothing opens an inventory** — no application calls `openInventory`, so there are no rows for any door to serve. **The non-debug door cannot see them** — the manifest route skips every resource without a `client` config and the inventory collections declare none; adding one opens an org-scoped read on a session whose org is caller-supplied where no principal resolver is configured, the hole [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) closed on the write side. **The reader is already owned** by [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) PR-C, whose own plan records it unbuildable until that credential question is answered. A second reader here would duplicate a surface blocked for a reason, not by accident |
-| **Locks in** | The checklist carries one unproven row until the credential question is answered and the reader ships. Whoever wants it green owns un-blocking it, and this issue will not have made that cheaper. Rows 4 and 6 are built so neither waits on any of it |
+| **Because** | Three things are missing and only one is DevTool's. **Nothing opens an inventory** — no application calls `openInventory`, so there are no rows for any door to serve. **The non-debug door cannot see them** — the manifest route skips every resource without a `client` config and the inventory collections declare none; adding one opens an org-scoped read on a session whose org is caller-supplied where no principal resolver is configured (`packages/engine/src/routes/session-routes.ts`), the BP-031 hole [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) closed on the write side. **And no reader exists to inherit it** — building one here is the substrate growth [ER-25](../../epics/FIX-1457/BUSINESS-RULES.md) names, a read surface plus an authorization model arriving under the label *polish*, so it is raised up rather than answered locally ([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)) |
+| **Locks in** | The checklist carries one unproven row until org identity reaches the listing surfaces and a reader ships. Whoever wants it green owns un-blocking it, and this issue will not have made that cheaper. Rows 4 and 6 are built so neither waits on any of it |
 
-Building it here would also be the substrate growth [ER-25](../../epics/FIX-1457/BUSINESS-RULES.md)
-names: a read surface and an authorization model, arriving under the label *polish*. The blocker
-is raised up rather than answered locally
-([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)).
+**The successor is [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502), blocked on
+[FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)** — not
+[FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477). An earlier draft of this card said
+FIX-1477 PR-C owned the reader, and that was wrong: **the two read different collections.**
+FIX-1477's `Roster` reads the durable hired roster, `workforce/roster/*`
+(`packages/workforce/src/roster/collections.ts`, shipped by FIX-1475, on `main`). Row 5 names the
+live inventory, `inventory/seats/*` · `inventory/channels/*` · `inventory/members/*`
+(`packages/workforce/src/inventory/collections.ts`). Different collections, different questions —
+*which seats were hired and persisted* against *which seats and channels are open right now*. The
+paths are cited so the next reader cannot re-merge them.
+
 
 ## Decided, not asked
 
@@ -77,7 +79,8 @@ is raised up rather than answered locally
 | One resolved `readOnly` boolean on the wire | Cheapest wire shape, and it erases open-to-code / closed-to-the-model with no way back to it |
 | The reason in the expander, pre-expanded for parked rows | Keeps the row narrow, and keeps the fact one interaction away, which is the bar the collaboration proof sets |
 | Declare `client: { state: { read: true } }` on the inventory collections | Opens the non-debug door in one line, and with it an org-scoped read addressed by a caller-supplied org where no resolver is configured. A one-line change that reopens a closed hole is not cheap |
-| Build the inventory reader here and let FIX-1477 PR-C adopt it | Two readers for one fact, and this would be the weaker one. The split exists to avoid exactly this |
+| Build the inventory reader here and let [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) adopt it | Two readers for one fact, and this would be the weaker one — built before org identity reaches the listing surfaces, so scoped to whatever session happened to be open |
+| Make the mark `!mayWrite`, reusing the agent manifest's predicate so the two cannot disagree | Sound reasoning, wrong result, and the run is why it is recorded rather than re-proposed. `llmWritable` is opt-in, so `!mayWrite` marks every ordinary mutable document — including the `resources/` document row 6 exists to distinguish from a reference. The two predicates answer different questions: *may the agent write* against *can this be written at all* |
 | Fix `awaitReview` so a park with no reason clears the previous one | A real defect, and a behaviour change to a shipped orchestration API unrelated to the DevTool. Filed as a follow-up ([PLAN.md → Follow-ups](PLAN.md#follow-ups)) |
 
 <a name="the-subject"></a>

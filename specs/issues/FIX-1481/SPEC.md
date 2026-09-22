@@ -12,7 +12,7 @@ ER-Devtool checklist [rows 4, 6 and 5](../../epics/FIX-1457/BUSINESS-RULES.md#er
 | Someone who… | Today | After |
 |---|---|---|
 | **runs the release checklist and finds a row parked** | Sees a `parked` pill and no reason. The raw JSON expander on that one row is the only way to read why | Reads the reason on the row. The handoff is observable without touching raw state |
-| **asks which documents a hired agent can write** | Cannot. A sealed document and a writable one are the same row, field for field | Sees which are read-only, marked from the same two permissions that decide whether the agent is offered a write tool at all |
+| **asks which of a team's documents are sealed** | Cannot. A sealed document and a mutable one are the same row, field for field | Sees which are read-only, marked from the one setting the store refuses a write on |
 | **wants to trust an agent not to edit the handbook** | Reads the team's files on disk and reasons about it | Reads it off the screen in front of them |
 | **wants the org's inventory without a debug flag** | Behind `FSDEV_DEBUG_ENDPOINTS=1`, and the reference app writes no inventory rows, so there is nothing behind the flag either | Unchanged, and **named**: three things are missing, not one, and who owns each is written down ([D2](DECISIONS.md#d2)) |
 
@@ -39,10 +39,12 @@ has two producers.
     "clientConfig": { "hasClient": false, "data": false, … } }
 ```
 
-Two fields, not one verdict. They answer different questions — whether code may write, and whether
-the model is offered a write tool — and collapsing them loses a state that really occurs. The tree
-renders one mark from them through a single exported `mayWrite` helper, which is also what the
-agent's own resource manifest calls to decide the same thing. One definition, two readers.
+Two fields, not one verdict. They answer different questions — whether the document can be written
+at all, and whether the model is offered a write tool — and collapsing them loses a state that
+really occurs. **The mark is the first of the two**, `writable === false`: the condition the store
+itself refuses a write on. The second is shown beside it and never stands in for it, because it is
+opt-in, so a mark derived from it would brand most of the tree read-only and distinguish nothing
+([D1](DECISIONS.md#d1)).
 
 ## What stays as it is
 
@@ -73,11 +75,11 @@ widening this one.
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · A document is marked read-only from its two permission flags, which
-   the snapshot now carries, resolved by one shared `mayWrite` helper — not from the folder it
-   came from.** If wrong: we have put two permission fields on a wire shape that every DevTool
-   version then has to keep reading, and a reader that mistakes an absent flag for a closed door
-   will call a writable document sealed.
+1. **[D1](DECISIONS.md#d1) · The read-only mark is the seal — `writable === false`, the one
+   condition the store itself refuses a write on — not the folder a document came from, and not
+   whatever the agent is declined a write tool for.** If wrong: we have put two permission fields
+   on a wire shape that every DevTool version then has to keep reading, and a reader that mistakes
+   an absent setting for a closed door will call a writable document sealed.
 2. **[D2](DECISIONS.md#d2) · The org-level inventory row is named here and built elsewhere.** If
    wrong: the checklist carries an amber row for however long the org-level reader takes, and the
    release proof is incomplete in a way a reader may read as "it does not work".

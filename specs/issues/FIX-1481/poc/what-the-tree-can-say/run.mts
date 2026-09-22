@@ -7,11 +7,12 @@
  *
  * Every claim this spec rests on is a claim about what devtool *can* render,
  * and each one is checked here against the real module or the real handler
- * rather than against a reading of it. Three checks, each with a **control that
+ * rather than against a reading of it. Four checks, each with a **control that
  * is run**: checks 1 and 2 plant something their assertion must reject, and
- * check 3 — whose assertion is that a door returns nothing — instead proves the
- * door answers at all when given something it should show. A green check nobody
- * has seen fail is not evidence (tenet 7).
+ * checks 2b and 3 — whose assertions are that a predicate says no and that a
+ * door returns nothing — instead prove each can say the other thing when given
+ * something it should accept. A green check nobody has seen fail is not
+ * evidence (tenet 7).
  *
  * **What is deliberately NOT here: any assertion about the view.** Those would
  * describe today and go red the moment the feature they justify is built. They
@@ -36,6 +37,7 @@ import {
 } from "../../../../../packages/engine/src/routes/debug-routes";
 import { handleGetResourceManifest } from "../../../../../packages/engine/src/routes/resource-routes";
 import { referencesFromDocs } from "../../../../../packages/workforce/src/references-from-docs";
+import { resourcesFromDocs } from "../../../../../packages/workforce/src/resources-from-docs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../..");
 
@@ -277,6 +279,57 @@ async function check2(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Check 2b — row 6. WHICH predicate the mark is allowed to be.
+//
+// D1 marks on `writable === false` and explicitly not on the agent manifest's
+// `mayWrite`. That rejection is not a preference, and this is the run that
+// settles it: `llmWritable` is opt-in, so `!mayWrite` is true for almost
+// everything — including the mutable `resources/` document row 6 exists to
+// distinguish from a sealed reference.
+// ---------------------------------------------------------------------------
+
+/** `contractOf`'s predicate, copied from `core/src/manifest/resources-source.ts:50`. */
+const mayWrite = (cfg: any) => cfg?.llmWritable === true && cfg?.writable !== false;
+
+/** D1's predicate: the condition the engine refuses a write on. */
+const sealed = (cfg: any) => cfg?.writable === false;
+
+function check2b(): void {
+  console.log("\nCheck 2b · row 6 · the mark is the seal, not the agent's write gate");
+
+  const reference = (referencesFromDocs([REF_DOC as never]) as Record<string, any>).handbook;
+  const mutableDoc = (
+    resourcesFromDocs([
+      { ref: "scratchpad", filePath: REF_DOC.filePath, declared: {}, body: "x" } as never
+    ]) as Record<string, any>
+  ).scratchpad;
+
+  // The two halves of the FIX-1467 split, minted by their real conventions.
+  expect(
+    "the seal separates them: the reference is marked, the mutable document is not",
+    sealed(reference) && !sealed(mutableDoc),
+    `reference sealed=${sealed(reference)}, mutable sealed=${sealed(mutableDoc)}`
+  );
+
+  // THE REJECTION, run rather than argued. If this ever stops holding, the
+  // reasoning in D1's "considered and dropped" row has changed and the
+  // alternative deserves re-reading.
+  expect(
+    "`!mayWrite` would mark BOTH — which is why D1 does not use it",
+    !mayWrite(reference) && !mayWrite(mutableDoc),
+    "the mutable document now satisfies mayWrite; re-read D1's rejected alternative"
+  );
+
+  // POSITIVE CONTROL: `sealed` must be capable of saying "no" for a reason
+  // other than the field being missing, and "yes" for one that opts in.
+  expect(
+    "positive control · sealed() tracks the field rather than always answering no",
+    sealed({ writable: false, llmWritable: true }) && !sealed({ writable: true }),
+    "sealed() is not reading `writable`"
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Check 3 — row 5. The non-debug door cannot see these resources at all, and
 // the reference app writes no inventory for it to see.
 // ---------------------------------------------------------------------------
@@ -344,6 +397,7 @@ async function main(): Promise<void> {
   console.log("FIX-1481 · what the tree can say today");
   check1();
   await check2();
+  check2b();
   await check3();
   console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} check(s) failed.\n`);
   process.exit(failures === 0 ? 0 : 1);
