@@ -3369,8 +3369,10 @@ BP-003:
 
 ### Filed, not proposed
 
-- **`scripts/validate-changeset-refs.mjs` cannot fail on a well-formed wrong id.** #1391 shipped
-  `(FIX-1209)` on a FIX-1215 changeset through a green guard, and three reviewers caught it by eye. The
+- **`scripts/validate-changeset-refs.mjs` cannot fail on a well-formed wrong id.** #1391 carried
+  `(FIX-1209)` on a FIX-1215 changeset **past a green guard** — three reviewers caught it by eye and it
+  was corrected in `4da4feb` before merge, so nothing shipped wrong; the guard simply cannot be the
+  thing that catches it. The
   validator asserts a `TEAM-123`-shaped id is *present*; checking it against the PR's own issue is a
   small, decidable change. A guard, not a lesson.
 - **`onBrokenAnchors` is unset in `apps/docs/docusaurus.config.ts`.** One line.
