@@ -1,0 +1,60 @@
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box: a host-proof mint that issues a short-lived signed JWT, verified-by-default enforcement on /api/flows, list_flows and capabilities closed, and a named local-dev escape. Composed in by the app: login, cookie sessions, OAuth, and machine API keys. Replaced in one line: the silent body-userId default. Not built, below a fence: an FSD identity provider, password store, user directory, kinds-per-principal, a second auth plane, or trusting body.userId when real auth is on.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="24" width="560" height="200" rx="5"/>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; VERIFIED IDENTITY</text>
+    <rect class="held" x="32" y="56" width="256" height="70" rx="4"/>
+    <text class="t-b" x="44" y="80">host-proof mint</text>
+    <text class="t-s" x="44" y="98">short JWT &#183; sole open route</text>
+    <rect class="held" x="300" y="56" width="256" height="70" rx="4"/>
+    <text class="t-b" x="312" y="80">verified /api/flows</text>
+    <text class="t-s" x="312" y="98">Bearer on every other route</text>
+    <rect class="held" x="32" y="136" width="256" height="70" rx="4"/>
+    <text class="t-b" x="44" y="160">exemptions closed</text>
+    <text class="t-s" x="44" y="178">list_flows &#183; capabilities</text>
+    <rect class="held" x="300" y="136" width="256" height="70" rx="4"/>
+    <text class="t-b" x="312" y="160">named local-dev escape</text>
+    <text class="t-s" x="312" y="178">node still refuses network bind</text>
+  </g>
+
+  <g id="composed">
+    <rect class="comp" x="592" y="24" width="332" height="96" rx="5"/>
+    <text class="t-lbl" x="608" y="44">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="608" y="68">login stays with the host</text>
+    <text class="t-s" x="608" y="86">cookie &#183; OAuth &#183; SSO &#183; API key</text>
+    <text class="t-s" x="608" y="102">host calls mint, client sends Bearer</text>
+    <rect class="repl" x="592" y="132" width="332" height="92" rx="5"/>
+    <text class="t-lbl" x="608" y="152">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="608" y="176">silent body-userId default</text>
+    <text class="t-s" x="608" y="194">still exists as an explicit opt-in</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="244" width="908" height="96" rx="5"/>
+    <text class="t-non" x="32" y="264">NOT BUILT &#8212; FSD DOES NOT PROVIDE LOGIN</text>
+    <text class="t-s" x="32" y="286">no IdP &#183; no OAuth UI &#183; no password store &#183; no user directory</text>
+    <text class="t-s" x="32" y="304">no kinds-per-principal &#183; no second auth plane for Devtool or Labs</text>
+    <text class="t-s" x="32" y="322">no trusting body.userId or body.orgId when real auth is on</text>
+  </g>
+</svg>
