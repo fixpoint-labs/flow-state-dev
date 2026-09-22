@@ -219,3 +219,8 @@ hole is open either way; the difference is whether we ship the app that walks pe
   or without one. The fork was re-framed around that, the product owner answered it, and it is
   now [D4](#d4). The seat-list fork above is untouched and still open. Evidence for every claim:
   [EVOLUTION.md](EVOLUTION.md).
+- **Amendment 1, second half** — the same pass withdrew a promise the docs draft made to readers:
+  that the roster and board panels update live, and that two people watching one board see the
+  same rows. The engine cannot do it, and never could — no decision here changed, so this is a
+  build constraint raised to be **re-gated**, not a reversal. Deferred to its own unit of work
+  ([PLAN.md → Follow-ups](PLAN.md#follow-ups)); the derivation is in [EVOLUTION.md](EVOLUTION.md).

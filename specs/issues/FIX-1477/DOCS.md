@@ -99,9 +99,11 @@ components from the client packages.`
 > reload, because the items are durable — the stream is where they are read from, not how long
 > they live.
 >
-> **From a standing collection.** The navigator, the roster and the board columns subscribe to a
-> collection outside any session and re-render when it changes. Two people looking at the same
-> board see the same rows.
+> **From a standing collection.** The navigator, the roster and the board columns read a
+> collection that lives outside any one session — the same rows for everyone in the
+> organization, not one session's copy. They read it when they mount, and they do not watch it
+> afterwards: a change somebody else makes appears the next time the panel mounts. If you need a
+> fresh read on demand, change the component's React `key` — that remounts it and refetches.
 >
 > Reaching for the wrong one shows up immediately: a region built on the item stream shows one
 > session's view of something the whole organization shares.
@@ -127,7 +129,7 @@ components from the client packages.`
 > ### Workforce components
 >
 > `FlowNavigator`, `Roster` and `BoardColumns` browse your flow kinds and their sessions, and
-> render a roster and a channel's boards from live collections. They bring no CSS framework and
+> render a roster and a channel's boards from standing collections. They bring no CSS framework and
 > no icon set — style them with CSS custom properties and fill them through slots. Navigator
 > depth is read from each flow's declared `cardinality`; there is no depth prop. The flow listing
 > carries no organization, so the navigator is not organization-scoped. See

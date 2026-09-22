@@ -244,3 +244,15 @@ Inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
   [ER-19](../../epics/FIX-1455/BUSINESS-RULES.md) rather than answered here.
 - **`routed-specialists.tsx` and `evented-actors.tsx`** share a registry filename without being
   registry items — they appear in no manifest entry. Flagged for FIX-1478, not touched here.
+- **Live panels need their own tracked unit of work, and it is substrate rather than a panel
+  fix.** Two people watching one board do not see each other's rows change. That is not something
+  `S5` or `S6` can do better: a resource change is announced only on the stream of the execution
+  that made it, and there is no cross-session fan-out of organization-scoped changes anywhere in
+  the engine — the entire route surface carries two streaming routes, one per request, and one
+  per user that returns 501 ([EVOLUTION.md](EVOLUTION.md) has the derivation). **Building it means
+  adding a framework capability no issue currently owns**, so it is raised to be gated rather
+  than absorbed here ([BP-002](../../../docs/contributing/best-practices/process.md)). Until it
+  exists, the panels read on mount and a host forces a fresh read by remounting them, which
+  [DOCS.md](DOCS.md) states plainly. **Do not reach for a timer instead** — the failure taxonomy
+  in [BUSINESS-RULES.md](BUSINESS-RULES.md) already rules that out, and a poll would hide the gap
+  rather than close it.
