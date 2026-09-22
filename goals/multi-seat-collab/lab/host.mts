@@ -41,9 +41,6 @@ import {
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
-/** The lab's own root, so a check can read every file the lab ships. */
-export const LAB_DIR = fileURLToPath(new URL(".", import.meta.url));
-
 /** Who the lab runs as — one person, one principal (ER-1, D7). */
 export const LAB_USER_ID = "u_multi_seat_collab";
 
@@ -87,12 +84,19 @@ export async function readLabTree(root: string = LAB_TREE): Promise<LabTree> {
   const boardName = (channel.declared.boards as string[] | undefined)?.[0];
   if (boardName === undefined) throw new Error(`channel "${channel.id}" declares no board`);
 
-  const planner = roster.workers.find((worker) => worker.declared.flow === PLANNER_KIND);
-  if (planner === undefined) throw new Error(`the tree at ${root} hires no "${PLANNER_KIND}" seat`);
+  // Exactly the declared topology — one planner, two workers, nothing else. A
+  // stray third worker would still hire and drain, and the proof would be
+  // about a different team than the one it names (BR-1).
+  const planners = roster.workers.filter((worker) => worker.declared.flow === PLANNER_KIND);
   const workers = roster.workers.filter((worker) => worker.declared.flow === WORKER_KIND);
-  if (workers.length < 2) {
-    throw new Error(`the tree at ${root} hires ${workers.length} "${WORKER_KIND}" seat(s); a handoff needs two`);
+  if (planners.length !== 1 || workers.length !== 2 || roster.workers.length !== 3) {
+    throw new Error(
+      `the tree at ${root} hires ${planners.length} "${PLANNER_KIND}" and ${workers.length} "${WORKER_KIND}" ` +
+        `seat(s) among ${roster.workers.length}; this lab is exactly one planner and two workers ` +
+        `(${roster.workers.map((worker) => worker.id).join(", ")})`,
+    );
   }
+  const planner = planners[0]!;
   const declaredDesks: Record<string, string> = {};
   for (const worker of workers) {
     const desk = worker.declared.answersFor;
