@@ -157,7 +157,7 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 It also forwards `publicReentrySources` — the sources your own inbound transports stamp that `retry` / `continue` / `resume` may re-enter. See [Inbound transports](https://flow-state.dev/docs/advanced/inbound-transports).
 
-`maxChildSessionListLimit` sets the largest `limit` the child-session listing route accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raise it deliberately — each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn.
+`maxChildSessionListLimit` sets the largest `limit` the `/children` listing route accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raise it deliberately — each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn.
 
 ### DevTool connection (dev-only)
 
@@ -380,26 +380,37 @@ const stores = createFilesystemStores({
 });
 ```
 
-## Child sessions of a session
+## Dispatched runs
 
-`GET /api/flows/sessions/:sessionId/children` lists the sessions started under
-one session. Each row carries the child's id, its parent, `topic` and
-`coordinate` labels, timestamps, and a `status` of `active` (not finished) or a
-terminal outcome (`completed`, `failed`, `aborted`, `incomplete`). A child with
-no runs has no `status`. Those seven fields are the whole row — the route sends
-a named field set, not a session record.
+Work a dispatcher starts runs in a session of its own on the same flow.
 
-`topic` and `coordinate` are stamped when the child session is created, from the
-values the child's id was derived from: `topic` is the session key, `coordinate`
-is the entry the dispatch was addressed to (`internal:<action>` or
-`task:<action>`). Both are display only — nothing routes, authorizes or adopts
-on them — and both are optional, so guard with `== null`.
+`GET /api/flows/sessions?include=dispatch-runs` lists a flow's sessions with
+those included. Rows are whole session records, and one a dispatcher started
+carries `parentSessionId` — the session it was started from — beside its `topic`
+and `coordinate` labels. Without the parameter the listing returns the sessions
+a person started; any other value answers `400`. The owner, tenant and
+organization filters apply as they always do.
+
+`GET /api/flows/sessions/:sessionId/children` is the provenance index for one
+session: which runs were started from it. The route is `/children` and one row is
+one dispatch run. Each row carries the run's id, the session it came from,
+`topic` and `coordinate` labels, timestamps, and a `status`
+of `active` (not finished) or a terminal outcome (`completed`, `failed`,
+`aborted`, `incomplete`). A run with no requests has no `status`. Those seven
+fields are the whole row — the route sends a named field set, not a session
+record.
+
+`topic` and `coordinate` are stamped when the run's session is created, from the
+values its id was derived from: `topic` is the session key, `coordinate` is the
+entry the dispatch was addressed to (`internal:<action>` or `task:<action>`).
+Both are display only — nothing routes, authorizes or adopts on them — and both
+are optional, so guard with `== null`.
 
 The route is session-addressed: the parent is loaded and ownership-checked
 before the handler runs, and the answer is scoped to the stored parent's owner,
 tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
 0–10000; anything outside returns `400`. Use each row's `id` with the existing
-`/sessions/:id/requests` endpoint to read that child's history.
+`/sessions/:id/requests` endpoint to read that run's history.
 
 Those runs carry a `metadata.dispatch` bag on the request record: `type` and
 `action` for the entry, `from` naming the block and session that dispatched,

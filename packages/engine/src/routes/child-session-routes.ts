@@ -1,20 +1,27 @@
 /**
- * `GET /sessions/:sessionId/children` — the first hop from a conversation
- * to the background work hanging off it (FIX-1010).
+ * `GET /sessions/:sessionId/children` — the provenance index for one session:
+ * which dispatch runs were started from it (FIX-1010, FIX-1440).
  *
- * Two hops by design: this read returns one summary row per child session, and
- * the shipped `GET /sessions/:childId/requests` then returns that job's own
- * history. The route is classified **session-addressed on the path id** in
- * `route-auth.ts`, which is the whole of why it is a sub-resource rather than a
- * filter on the flat session listing: the framework resolves the parent record
- * and checks its owner before this handler runs.
+ * It is one of two doors to the same work, and the pair is the point. A
+ * dispatch run is an ordinary session of its flow and is listed as one —
+ * `GET /sessions?include=dispatch-runs` finds it without naming the session it
+ * came from. This route answers the other question: given a conversation, what
+ * did it start? So it is a *provenance* read rather than the way in, and
+ * nothing here should grow into a tree to walk.
  *
- * What it returns is **every** child session, not only handed-off ones. The
- * store predicate selects on parentage, and nothing on a session record marks
- * it as task-board work. Today the dispatch seam is the only writer of
- * `parentSessionId`, but that is a fact about the current tree, not a filter
- * this route applies — a second writer would be returned here, which is
- * correct and must not read as a bug.
+ * Two hops by design: this read returns one summary row per run, and the
+ * shipped `GET /sessions/:runId/requests` then returns that job's own history.
+ * The route is classified **session-addressed on the path id** in
+ * `route-auth.ts`, which is why it is a sub-resource rather than a filter on the
+ * flat session listing: the framework resolves the named record and checks its
+ * owner before this handler runs.
+ *
+ * What it returns is **every** session recorded against the one in the path,
+ * not only handed-off ones. The store predicate selects on parentage, and
+ * nothing on a session record marks it as task-board work. Today the dispatch
+ * seam is the only writer of `parentSessionId`, but that is a fact about the
+ * current writers, not a filter this route applies — a second writer would be
+ * returned here, which is correct and must not read as a bug.
  */
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
@@ -266,7 +273,7 @@ function parentIdentity(
  * is an alarm the user has no way to clear, and the failed attempt is still
  * one hop away in the job's own history.
  */
-async function resolveChildSessionStatus(
+async function resolveDispatchRunStatus(
   store: RequestStore,
   childSessionId: string,
   identity: ParentIdentity
@@ -407,7 +414,7 @@ export async function handleListSessionChildren(
       // Request records key on the bare session id, not the namespaced
       // storage key.
       const id = toBareSessionId(child.id, ctx.tenantId);
-      const status = await resolveChildSessionStatus(
+      const status = await resolveDispatchRunStatus(
         ctx.stores.request,
         id,
         identity

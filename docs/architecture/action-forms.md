@@ -173,7 +173,7 @@ may take `flowKind` the same way — see [Dispatched Work](./dispatched-work.md)
 *Dispatching into another flow*.
 
 **Three session targets, two delivery guards.** `{ key }` derives a child of the
-running session (`deriveDispatchChildSessionId`, with the key framed under its
+running session (`deriveDispatchRunSessionId`, with the key framed under its
 own `dispatch` namespace) and adopts it on the same key; the adoption check
 includes the parent's lineage. `{ id }` delivers into an existing session of the
 same flow kind and principal — an unknown id, another principal's, or another

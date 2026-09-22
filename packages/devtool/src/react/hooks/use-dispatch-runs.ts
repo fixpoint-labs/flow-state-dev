@@ -1,5 +1,5 @@
 /**
- * Lists the ChildSessions hanging off one session (FIX-1071).
+ * Lists the dispatch runs hanging off one session (FIX-1071).
  *
  * Wraps `sessionClient.listChildSessions`, the same client-method idiom the other
  * listing hooks use — transport lives in the client, never here.
@@ -20,7 +20,7 @@
  * One page — the newest background work, since the listing is ordered
  * `created_at DESC` — plus a sentinel read when that page comes back full, so
  * the panel can say whether there is more without walking the whole history.
- * See `fetchChildSessionPage` for why the budget is one read per turn.
+ * See `fetchDispatchRunPage` for why the budget is one read per turn.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { SessionClient, ChildSessionSummary } from "@flow-state-dev/client";
@@ -35,17 +35,10 @@ import { useWorkspaceFence } from "./use-workspace-fence";
  * consumer needs. `complete` (this is the whole list), `more` (rows follow it),
  * `unknown` (completeness was not established).
  *
- * `unknown` deliberately covers every way that can happen — the sentinel read
- * failing, the listing read failing, and no read having landed yet. It used to
- * cover only the first, with a failed read leaving this untouched at
- * `"complete"` and raising `error` instead. That made trustworthiness two
- * independent channels, and only a consumer holding BOTH could combine them
- * correctly: the ChildSessions tab did, the Tasks tab held one and reported a
- * list it never received as verified whole. Three rounds of review each fixed
- * the consumer in front of us while the split kept producing another.
- *
- * So `error` says a read failed and is for telling the operator so; it is not
- * an input to any completeness decision. This is.
+ * `unknown` covers every way that can happen — the sentinel read failing, the
+ * listing read failing, and no read having landed yet — so trustworthiness is
+ * ONE channel. `error` says a read failed and is for telling the operator so;
+ * it is not an input to any completeness decision. This is.
  */
 export type Truncation = "complete" | "more" | "unknown";
 
@@ -53,22 +46,19 @@ export type Truncation = "complete" | "more" | "unknown";
 const EMPTY_ROWS: ChildSessionSummary[] = [];
 
 /**
- * Read the ChildSession axis for one session.
+ * Read the dispatch run axis for one session.
  *
  * ## One page, not the whole history
  *
  * `docs/architecture/server-and-client.md` fixes the budget for this axis:
- * "The cost is one ChildSession read per turn, independent of task-board
+ * "The cost is one dispatch run read per turn, independent of task-board
  * activity." That is a contract, not a tuning preference — it is what makes an
  * axis read on every interaction affordable — and `useSession` in
  * `@flow-state-dev/react` honours it with a single `listChildSessions` call.
  *
  * The listing is ordered `created_at DESC`, so that one page IS the newest
- * background work. An earlier version of this hook walked every page to the
- * end, on a premise that turned out to be false: it claimed a single read
- * showed the OLDEST page and hid the newest. The opposite is true, and paging
- * bought completeness at a cost that grew with board activity — precisely what
- * the budget above forbids.
+ * background work. Paging to the end would buy completeness at a cost that
+ * grows with board activity, which is what the budget above forbids.
  *
  * ## What it costs to still tell the truth about `truncated`
  *
@@ -90,7 +80,7 @@ const EMPTY_ROWS: ChildSessionSummary[] = [];
  * the read was abandoned rather than completed — it has no honest `truncated`
  * to report, so it returns no page at all rather than a misleading one.
  */
-async function fetchChildSessionPage(
+async function fetchDispatchRunPage(
   sessionClient: SessionClient,
   sessionId: string,
   stillWanted: () => boolean
@@ -123,8 +113,8 @@ async function fetchChildSessionPage(
   }
 }
 
-export type UseChildSessionsResult = {
-  childSessions: ChildSessionSummary[];
+export type UseDispatchRunsResult = {
+  dispatchRuns: ChildSessionSummary[];
   isLoading: boolean;
   error: string | null;
   /**
@@ -135,9 +125,9 @@ export type UseChildSessionsResult = {
   refresh: () => Promise<void>;
 };
 
-export function useChildSessions(sessionId: string | null): UseChildSessionsResult {
+export function useDispatchRuns(sessionId: string | null): UseDispatchRunsResult {
   const { sessionClient } = useDevTool();
-  const [childSessions, setChildSessions] = useState<ChildSessionSummary[]>([]);
+  const [dispatchRuns, setDispatchRuns] = useState<ChildSessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [truncation, setTruncation] = useState<Truncation>("unknown");
@@ -172,7 +162,7 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
   // holds it, and correctness no longer waits on it.
   const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
   const fence = useWorkspaceFence([sessionId], () => {
-    setChildSessions([]);
+    setDispatchRuns([]);
     setError(null);
     setTruncation("unknown");
     setIsLoading(false);
@@ -194,7 +184,7 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
 
     if (!sessionId) {
       if (!stillCurrent()) return;
-      setChildSessions([]);
+      setDispatchRuns([]);
       setError(null);
       setTruncation("complete");
       setHeldIdentity(fence.identity);
@@ -205,13 +195,13 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
     setError(null);
     setHeldIdentity(fence.identity);
     try {
-      const page = await fetchChildSessionPage(sessionClient, sessionId, stillCurrent);
+      const page = await fetchDispatchRunPage(sessionClient, sessionId, stillCurrent);
       // `undefined` is a walk that stopped because it was retired, not a page.
       // It holds a partial list and no meaningful `truncated`, so there is
       // nothing here to write — and the fence below would refuse it anyway.
       if (page === undefined) return;
       if (!stillCurrent()) return;
-      setChildSessions(page.rows);
+      setDispatchRuns(page.rows);
       setTruncation(page.truncation);
       // Cleared on the way OUT as well as on the way in. The clear at the start
       // of this read cannot retire an error a slower, older read raises after it.
@@ -221,7 +211,7 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
       // The rows already on screen are kept: a failed re-read means the list may
       // be stale, and blanking it would claim the session has no background work
       // — which is a different, and wrong, statement.
-      setError(describeReadError(err, "Failed to fetch childSessions"));
+      setError(describeReadError(err, "Failed to fetch dispatchRuns"));
       // The read did not land, so nothing about this list is established. Left
       // alone, `truncation` kept whatever it said before — `"complete"` on a
       // first load — and a consumer holding only that was told a list it never
@@ -246,7 +236,7 @@ export function useChildSessions(sessionId: string | null): UseChildSessionsResu
   // data yet for this one", which is what it is — and `isLoading` says so, so
   // nothing renders an empty list as "there is no background work".
   return {
-    childSessions: holdsCurrent ? childSessions : EMPTY_ROWS,
+    dispatchRuns: holdsCurrent ? dispatchRuns : EMPTY_ROWS,
     isLoading: holdsCurrent ? isLoading : sessionId !== null,
     error: holdsCurrent ? error : null,
     truncation: holdsCurrent ? truncation : "unknown",

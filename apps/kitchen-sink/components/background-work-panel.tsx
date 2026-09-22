@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * Background work — the conversation's child sessions, shown as their own thing.
+ * Background work — the runs this conversation dispatched, shown as their own
+ * thing.
  *
- * A child session is work the conversation started that outlives the turn
- * which started it. Its output never lands in the transcript, so this
- * panel sits outside the conversation rather than inside it, and clicking a row
- * opens that child session's own history in a dialog.
+ * A dispatched run is work the conversation started that outlives the turn
+ * which started it, running in a session of its own. Its output never lands in
+ * the transcript, so this panel sits outside the conversation rather than inside
+ * it, and clicking a row opens that run's own history in a dialog.
  *
  * Three details the hook's contract forces, and they are the reason this is a
  * component rather than a `.map()` at the call site:
@@ -18,7 +19,8 @@
  *   when a turn stops streaming. It is not in this component on purpose; see
  *   its own doc for why a duplicated responsive tree makes that matter.
  * - **`childSessionsStale` means "this is the last list we could get".** The rows
- *   stay on screen and get marked, rather than disappearing.
+ *   stay on screen and get marked, rather than disappearing. (The hook's field
+ *   names follow the provenance route it reads.)
  * - **`status` is absent until something has run**, and `"active"` means only
  *   *not finished*. Neither is rendered as "running".
  */
@@ -37,7 +39,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { ChevronRight, Hourglass, RotateCw } from "lucide-react";
 
-/** Label for a child-session row. `topic` is display-only and may be absent (BP-030). */
+/** Label for a dispatched run's row. `topic` is display-only and may be absent (BP-030). */
 function rowLabel(childSession: ChildSessionSummary): string {
   return childSession.topic ?? "Background work";
 }
@@ -66,7 +68,7 @@ interface BackgroundWorkPanelProps {
   session: ReturnType<typeof useSession>;
   /**
    * The conversation's flow kind — passed straight through to the detail view.
-   * Background work runs on its parent flow's worker core, so a child session is
+   * Background work runs on its flow's worker core, so a dispatched run is
    * stamped with the parent's kind rather than one of its own.
    */
   flowKind: string;
@@ -90,14 +92,14 @@ interface BackgroundWorkPanelProps {
  * action. Guarded on the actual true → false transition, so a re-render never
  * triggers a second read.
  *
- * **Demo debt — do not copy this into an application.** The child-session axis has
+ * **Demo debt — do not copy this into an application.** The dispatched-run axis has
  * a pinned read budget: ONE `listChildSessions` read per turn, taken by
  * `useSession` at action start. That budget is a contract
  * (`docs/architecture/server-and-client.md`), and it is why the DevTool's own
  * panel reads one page plus a sentinel instead of walking the index.
  *
  * What this actually costs, stated plainly because it was understated twice:
- * `session.refresh()` is a **full session snapshot plus** the child-session read,
+ * `session.refresh()` is a **full session snapshot plus** the dispatched-run read,
  * and with `items: true` the snapshot paginates the entire item history. It is
  * not one extra list read. The gate below at least confines that to
  * conversations which use background work at all.
@@ -120,7 +122,7 @@ export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPane
   // conversation — the overwhelming majority of which never file a job — paid
   // a full history refetch to update a panel with nothing in it.
   //
-  // `useSession` exposes no child-session-only refresh (`refreshChildSessions` is
+  // `useSession` exposes no dispatched-run-only refresh (`refreshChildSessions` is
   // internal), which is exactly the gap FIX-1109 closes. Until it lands this
   // gate is the whole of the mitigation available to an app.
   //
@@ -217,7 +219,7 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
             {openRow === null ? "Background work" : rowLabel(openRow)}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Background work in its own child session — nothing here is part of the conversation.
+            Background work in a session of its own — nothing here is part of the conversation.
           </DialogDescription>
           {openRow !== null && (
             <BackgroundWorkDetail childSessionId={openRow.id} flowKind={flowKind} />
@@ -229,21 +231,21 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
 }
 
 /**
- * One child session's history.
+ * One dispatched run's history.
  *
- * A child session is a session like any other, so the same hook reads it —
+ * A dispatched run is a session like any other, so the same hook reads it —
  * with the **parent conversation's** flow kind, because that is what the
  * child is stamped with.
  * `autoResume` matters: without it this loads one snapshot and never fills in
  * while the work keeps going.
  *
- * Completed steps appear as the work finishes them. A generator in a child session does
+ * Completed steps appear as the work finishes them. A generator in a dispatched run does
  * not stream in-flight text, so nothing here types itself out.
  *
  * Rendered with `ItemsRenderer` rather than the conversation's
  * `RequestGroupRenderer`: that one hides task-attributed items, on the
  * assumption they will reappear under a task plan in the same view. In a
- * child session the task-attributed items ARE the content and there is no task
+ * dispatched run the task-attributed items ARE the content and there is no task
  * plan beside them, so hiding them would leave the panel empty.
  */
 function BackgroundWorkDetail({

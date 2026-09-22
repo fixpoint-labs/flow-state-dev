@@ -12,7 +12,7 @@
  * user just LEFT, and live mode then silently declines to follow anything
  * running in the session they just opened — with the toggle still showing live.
  *
- * Descending into a ChildSession from a conversation the user started work in is
+ * Opening a dispatch run from a conversation the user started work in is
  * the reliable way to hit it, which is why it is pinned here.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -80,16 +80,16 @@ vi.mock("../src/react/hooks/use-session-requests", () => ({
   useSessionRequests: () => requestsState,
 }));
 
-/** The ChildSession axis's own re-read, so the panel's use of it is observable. */
-const refreshChildSessions = vi.fn();
+/** The dispatch-run axis's own re-read, so the panel's use of it is observable. */
+const refreshDispatchRuns = vi.fn();
 
-vi.mock("../src/react/hooks/use-child-sessions", () => ({
-  useChildSessions: () => ({
-    childSessions: [],
+vi.mock("../src/react/hooks/use-dispatch-runs", () => ({
+  useDispatchRuns: () => ({
+    dispatchRuns: [],
     isLoading: false,
     error: null,
     truncation: "complete" as const,
-    refresh: refreshChildSessions,
+    refresh: refreshDispatchRuns,
   }),
 }));
 
@@ -202,10 +202,10 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     devToolState.activeSessionId = "sess_1";
     devToolState.workspaceToken = 0;
     sendAction.mockReset().mockResolvedValue(null);
-    refreshChildSessions.mockReset();
+    refreshDispatchRuns.mockReset();
   });
 
-  it("re-reads the ChildSession axis when an action starts work", async () => {
+  it("re-reads the dispatch-run axis when an action starts work", async () => {
     // The tab exists to show background work appearing. Without this the count
     // and the per-task links stay as they were until the user clicks Refresh or
     // leaves and refocuses the window — on the one surface whose whole job is
@@ -222,13 +222,13 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     );
 
     await act(async () => render(<DevToolPanel userId="u1" />));
-    refreshChildSessions.mockClear(); // ignore the mount read
+    refreshDispatchRuns.mockClear(); // ignore the mount read
 
     await act(async () => {
       fireEvent.click(screen.getByText("send-stub"));
     });
 
-    expect(refreshChildSessions).toHaveBeenCalledTimes(1);
+    expect(refreshDispatchRuns).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveDispatch(null);
@@ -236,7 +236,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     });
   });
 
-  it("re-reads the ChildSession axis when a suspension resolves", async () => {
+  it("re-reads the dispatch-run axis when a suspension resolves", async () => {
     // `resumeSuspension` in the contract's list. A resume restarts the run, and
     // a restarted run can file background work — so the axis has to advance
     // here for the same reason it does on a dispatch.
@@ -244,13 +244,13 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     await act(async () => {
       fireEvent.mouseDown(screen.getByRole("tab", { name: "Suspensions" }));
     });
-    refreshChildSessions.mockClear();
+    refreshDispatchRuns.mockClear();
 
     await act(async () => {
       fireEvent.click(screen.getByText("resume-stub"));
     });
 
-    expect(refreshChildSessions).toHaveBeenCalledTimes(1);
+    expect(refreshDispatchRuns).toHaveBeenCalledTimes(1);
   });
 
   it("ignores a resume notification for a session the operator has left", async () => {
@@ -276,7 +276,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
       rerender(<DevToolPanel userId="u1" />);
     });
     expect(latestDispatchedId()).toBeNull();
-    refreshChildSessions.mockClear();
+    refreshDispatchRuns.mockClear();
 
     await act(async () => {
       staleOnResumed("req_from_old_session");
@@ -285,27 +285,27 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     // Nothing from the session just left may be installed in front of the live
     // stream, and no read is owed for it either.
     expect(latestDispatchedId()).toBeNull();
-    expect(refreshChildSessions).not.toHaveBeenCalled();
+    expect(refreshDispatchRuns).not.toHaveBeenCalled();
   });
 
-  it("re-reads the ChildSession axis when an interrupted request is continued", async () => {
+  it("re-reads the dispatch-run axis when an interrupted request is continued", async () => {
     // `continueRequest` in the contract's list. A continuation resumes a run
     // mid-flight, which can reach a board that dispatches detached work.
     await act(async () => render(<DevToolPanel userId="u1" />));
-    refreshChildSessions.mockClear();
+    refreshDispatchRuns.mockClear();
 
     await act(async () => {
       fireEvent.click(screen.getByText("continue-stub"));
     });
 
-    expect(refreshChildSessions).toHaveBeenCalledTimes(1);
+    expect(refreshDispatchRuns).toHaveBeenCalledTimes(1);
   });
 
   it("discards a dispatch that resolves after the user moved to another session", async () => {
     // `handleSendAction` awaits the dispatch, so it can resume on the other side
     // of a session change — the same shape as the spinner the identity effect
     // now retires, and newly reachable because this PR is what lets you click
-    // from a session into a ChildSession mid-flight.
+    // from a session into a dispatch run mid-flight.
     //
     // Reinstalling the id here points the live stream at a request belonging to
     // the session the user just left, and renders its items under the new one.
@@ -324,7 +324,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     // Nothing installed yet — the dispatch has not come back.
     expect(latestDispatchedId()).toBeNull();
 
-    // The user descends into a ChildSession while it is still in flight.
+    // The user opens a dispatch run while it is still in flight.
     moveWorkspaceTo("sess_child");
     await act(async () => {
       rerender(<DevToolPanel userId="u1" />);
@@ -399,7 +399,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     });
     expect(latestDispatchedId()).toBe("req_dispatched");
 
-    // Descend into a ChildSession (or pick another session from the navigator).
+    // Open a dispatch run (or pick another session from the navigator).
     // The provider moves the session and the visit token together, so that is
     // what the mock does too.
     moveWorkspaceTo("sess_child");

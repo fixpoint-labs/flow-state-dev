@@ -18,7 +18,7 @@
  */
 import type { ActiveRequestEntry, ActiveRequestRegistry } from "../stores/types";
 import type { FlowInstance, LivenessAnswers } from "@flow-state-dev/core/types";
-import { tenantMatches } from "../stores/scope-keys";
+import { matchesOrgFilter, tenantMatches } from "../stores/scope-keys";
 import { ownsRecord } from "./record-owner";
 
 export type LivenessReadInputs = {
@@ -36,10 +36,34 @@ export type LivenessReadInputs = {
    * same principal and session.
    */
   flow: FlowInstance;
-  /** The running request's server-derived principal. Never caller-supplied. */
-  principal: { userId: string; tenantId: string | undefined };
+  /**
+   * The running request's server-derived principal. Never caller-supplied.
+   *
+   * `orgId` is read **only** by the dispatch-run arm below, which is the one
+   * path that does not inherit the organization boundary by descent. Optional
+   * so a host that supplies no arm is unaffected; a host that supplies one
+   * without it gets refusals rather than a cross-organization answer.
+   */
+  principal: { userId: string; tenantId: string | undefined; orgId?: string };
   /** Whether a session lies in the caller's descendant chain. */
   isDescendantSession: (sessionId: string | undefined) => Promise<boolean>;
+  /**
+   * Whether a session is a dispatch run of this caller's own flow and principal
+   * (FIX-1440) — the second arm, beside the descendant walk.
+   *
+   * Work a dispatcher started is a session of the flow in its own right, and
+   * asking whether it is still running should not depend on where it hangs. So
+   * a session that records a dispatching session, under this principal, tenant
+   * and flow instance, answers here even when the walk does not reach it.
+   *
+   * It does **not** replace the walk. The walk re-checks principal, tenant and
+   * flow at every hop and is what keeps this read from widening past a
+   * subtree; dropping it would turn "work I started" into "anything of mine on
+   * this flow", which is a security change rather than a navigation fix.
+   *
+   * Optional: a host that supplies neither arm gets the walk alone.
+   */
+  isDispatchRunOfCaller?: (sessionId: string | undefined) => Promise<boolean>;
   /** Injectable clock, for tests. */
   now?: () => number;
 };
@@ -128,9 +152,22 @@ export async function readLiveness(
         answers[requestId] = false;
         return;
       }
+      // Two arms, and the order is the cheap one first: a session in the
+      // caller's own chain never reaches the second read.
+      //
+      // The organization is conjoined on the SECOND arm only, and on both the
+      // entry here and the session record there. The walk gets the boundary for
+      // free — a run in another organization is not in the caller's chain — but
+      // one person can act for two organizations under one tenant, and the
+      // runtime treats those as two identities. Checking it on the walk's path
+      // too would narrow a shipped answer for a legacy entry that carries no
+      // organization at all, which is not this change's to do.
       if (!(await inputs.isDescendantSession(entry.sessionId))) {
-        answers[requestId] = false;
-        return;
+        const sameOrg = matchesOrgFilter({ orgId: inputs.principal.orgId }, entry.orgId);
+        if (!sameOrg || !(await inputs.isDispatchRunOfCaller?.(entry.sessionId))) {
+          answers[requestId] = false;
+          return;
+        }
       }
 
       answers[requestId] = isFresh(entry, nowMs, inputs.staleThresholdMs);

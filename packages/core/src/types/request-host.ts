@@ -96,9 +96,16 @@ export interface RequestHost {
    * Ask whether requests you dispatched are still running.
    *
    * Takes a batch and answers per id. Identity filters *before* the answer is
-   * built: an id outside the caller's descendant chain, or under a different
-   * principal, comes back indistinguishable from an unknown id. There is no
-   * enumeration and no existence oracle.
+   * built, and an id that does not pass comes back indistinguishable from an
+   * unknown id. There is no enumeration and no existence oracle.
+   *
+   * **What passes.** A request under this caller's own principal, tenant and
+   * flow instance, whose session is either (a) in the caller's descendant chain
+   * — including the caller's own session — or (b) a session a dispatcher
+   * started, in the caller's organization. (b) is what lets you ask about work
+   * you dispatched from another of your own conversations on this flow; it does
+   * not reach a conversation nobody dispatched, another organization, another
+   * tenant, another principal or another flow instance.
    *
    * **Absent when the liveness gate refused at construction** — because the
    * request registry is not shared across processes, because heartbeats cannot

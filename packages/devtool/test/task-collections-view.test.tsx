@@ -1,8 +1,8 @@
 /**
- * The Tasks tab's ChildSession column (FIX-1071).
+ * The Tasks tab's dispatch run column (FIX-1071).
  *
- * The column answers "is a ChildSession running this task", and its absence is
- * only a FACT when the whole ChildSession listing was read. The panel reads one
+ * The column answers "is a dispatch run running this task", and its absence is
+ * only a FACT when the whole dispatch run listing was read. The panel reads one
  * page, so past that page — or when the check for more failed — an unmatched
  * task is unverified rather than unmatched. A bare dash makes the stronger
  * claim, which is the same completeness assertion the truncation union exists
@@ -13,7 +13,7 @@ import { render, screen } from "@testing-library/react";
 import React from "react";
 import { TaskCollectionsView } from "../src/react/components/workspace/task-collections-view";
 import type { TaskStreamItem } from "../src/react/lib/task-collection-state";
-import type { Truncation } from "../src/react/hooks/use-child-sessions";
+import type { Truncation } from "../src/react/hooks/use-dispatch-runs";
 
 /** One `task-change` item, so the fold produces a board with one task on it. */
 const taskItem = {
@@ -41,19 +41,19 @@ const taskItem = {
 
 function renderTasks(
   truncation: Truncation,
-  childSessions: Parameters<typeof TaskCollectionsView>[0]["childSessions"] = []
+  dispatchRuns: Parameters<typeof TaskCollectionsView>[0]["dispatchRuns"] = []
 ) {
   render(
     <TaskCollectionsView
       items={[taskItem]}
-      childSessions={childSessions}
+      dispatchRuns={dispatchRuns}
       truncation={truncation}
-      onOpenChildSession={vi.fn()}
+      onOpenDispatchRun={vi.fn()}
     />
   );
 }
 
-/** A ChildSession whose per-task key names `task-a`, dispatched for the `implement` entry. */
+/** A dispatch run whose per-task key names `task-a`, dispatched for the `implement` entry. */
 const matching = {
   id: "dsx_1",
   parentSessionId: "sess_parent",
@@ -71,7 +71,7 @@ describe("TaskCollectionsView — an unmatched task", () => {
     expect(screen.queryByText("—?")).not.toBeInTheDocument();
   });
 
-  it("marks it unverified when ChildSessions were left unread", () => {
+  it("marks it unverified when dispatch runs were left unread", () => {
     // `more`: the match may be on a page this panel does not read, so the
     // absence is not evidence — and refreshing will not change it.
     renderTasks("more");
@@ -103,7 +103,7 @@ describe("TaskCollectionsView — a matched task", () => {
 
   it("marks the link unverified when part of the listing was not read", () => {
     // The match is page-local: the pairing is unambiguous among the rows
-    // LOADED. An older unlisted ChildSession whose key names the same task id
+    // LOADED. An older unlisted dispatch run whose key names the same task id
     // would fit too, and would belong to another board.
     //
     // Marked, not withheld — the link is a best-effort navigation affordance,

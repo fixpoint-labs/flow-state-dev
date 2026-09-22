@@ -82,8 +82,8 @@ the same string share one child. A shared child serialises its rows:
 `defineFlow` defaults the entry a `per-worker` or `key` seat hands off to
 `queue` concurrency, and an explicit policy on the entry wins.
 
-The child id is derived, never chosen (`deriveDispatchChildSessionId`,
-`engine/src/context/detached-child.ts`): tenant, principal, parent session,
+The child id is derived, never chosen (`deriveDispatchRunSessionId`,
+`engine/src/context/dispatch-run.ts`): tenant, principal, parent session,
 lineage, the `dispatch` namespace and the key, each length-framed, hashed to
 `dsx_<sha256[0:32]>`. The parent session is in the key material because every
 other verb authorises by descent, so a child is reachable only *through* the
@@ -151,7 +151,8 @@ derive.
 
 Two consequences worth naming. **A cross-flow child is not a descendant for
 the verbs that authorise by descent** — `isDescendantSession` re-checks the flow
-kind at every hop, so `livenessOf` will not answer for one. And **addressing is
+kind at every hop, and the dispatch-run arm beside it conjoins the flow instance
+too, so `livenessOf` will not answer for one from the sending flow. And **addressing is
 by flow kind**: both flows must be registered in the same process, and the
 resolved instance's `flow.id` is stamped onto `metadata.dispatch.flowId` as
 provenance rather than being addressable.
@@ -359,11 +360,32 @@ The envelope contract this rests on, including why carrying the selected model
 
 ## Liveness
 
-A parent that wants to know whether the work it dispatched is still running
+A caller that wants to know whether the work it dispatched is still running
 asks `ctx.requestHost.livenessOf(requestIds)`. It takes a batch and answers per
-id; identity filters before the answer is built, so an id outside the caller's
-descendant chain, or under a different principal, comes back indistinguishable
-from an unknown id. There is no enumeration and no existence oracle.
+id; identity filters before the answer is built, so an id that does not pass
+comes back indistinguishable from an unknown id. There is no enumeration and no
+existence oracle.
+
+**What passes, exactly.** The request must be under the caller's own principal,
+tenant and flow instance, and its session must satisfy one of two arms:
+
+- **the descendant chain** — the caller's own session, or one whose
+  `parentSessionId` chain reaches it. `isDescendantSession` re-checks principal,
+  tenant and flow ownership at every hop.
+- **a dispatch run in the caller's organization** — a session carrying a
+  `parentSessionId`, under the same principal, tenant, organization and flow
+  instance, whichever session dispatched it.
+
+The second arm is what lets a caller ask about work it dispatched from another
+of its own conversations on the flow, rather than only about work hanging
+beneath the asking session. It does not reach a session nobody dispatched, so a
+conversation the same principal opened on this flow stays unreadable, and it
+conjoins the organization explicitly: one person can act for two organizations
+under one tenant, and the runtime treats those as two identities.
+
+The two arms are both present on purpose. The walk is the one that keeps every
+other case inside a subtree, and replacing it with the second arm would widen
+the answer from "work I started" to "anything of mine on this flow".
 
 **`false` means "no live registration was found", never "definitely dead".** A
 request that completed, one never registered, and one whose registration was
@@ -573,7 +595,7 @@ and the row stays as it is.
 | Locality test | `engine/src/transports/host/in-process-dispatcher.ts` → `isInProcessDispatcher` |
 | Dispatch operation install, drain, disposal gate | `engine/src/flowstate/createFlowState.ts` (`dispatchDrainTimeoutMs`) |
 | The dispatch seam: entry, session, envelope, start | `engine/src/context/create-request-host.ts`, `engine/src/context/dispatch-operation.ts` |
-| Child session derivation and adoption | `engine/src/context/detached-child.ts` |
+| Child session derivation and adoption | `engine/src/context/dispatch-run.ts` |
 | Session policy and the child key | `core/src/types/dispatch.ts` → `taskSessionKeyFor` |
 | The hand-off at a dispatcher seat | `orchestration/src/task-board/blocks/hand-off.ts` |
 | The claim gate | `orchestration/src/task-board/task-entry.ts` → `createTaskGate` |

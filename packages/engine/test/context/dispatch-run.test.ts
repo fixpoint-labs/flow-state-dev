@@ -27,10 +27,10 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  deriveDispatchChildSessionId,
+  deriveDispatchRunSessionId,
   evaluateAdoption,
   type DerivationIdentity
-} from "../../src/context/detached-child";
+} from "../../src/context/dispatch-run";
 
 const base: DerivationIdentity = {
   userId: "u_alice",
@@ -41,8 +41,8 @@ const base: DerivationIdentity = {
 
 describe("child session derivation", () => {
   it("is deterministic for the same identity and key — that is what makes adoption possible", () => {
-    const a = deriveDispatchChildSessionId(base, "review");
-    const b = deriveDispatchChildSessionId(base, "review");
+    const a = deriveDispatchRunSessionId(base, "review");
+    const b = deriveDispatchRunSessionId(base, "review");
     expect(a).toBe(b);
   });
 
@@ -50,25 +50,25 @@ describe("child session derivation", () => {
     // Otherwise a parent dispatching "job" to two flows derives one child id
     // for both, and the second meets a record whose flowKind does not match and
     // is refused `key-occupied` — a collision between unrelated addresses.
-    const billing = deriveDispatchChildSessionId(base, "job", "billing");
-    const shipping = deriveDispatchChildSessionId(base, "job", "shipping");
+    const billing = deriveDispatchRunSessionId(base, "job", "billing");
+    const shipping = deriveDispatchRunSessionId(base, "job", "shipping");
     expect(billing).not.toBe(shipping);
   });
 
   it("leaves a same-flow child on the id it derived before cross-flow shipped", () => {
     // Pinned, not recomputed: an in-flight retry across the upgrade must
     // re-enter the child it started rather than mint a second one beside it.
-    expect(deriveDispatchChildSessionId(base, "review")).toBe(
+    expect(deriveDispatchRunSessionId(base, "review")).toBe(
       "dsx_1b1b460597b7af771a2e4d6e9b9d1f5d"
     );
-    expect(deriveDispatchChildSessionId(base, "review")).not.toBe(
-      deriveDispatchChildSessionId(base, "review", "billing")
+    expect(deriveDispatchRunSessionId(base, "review")).not.toBe(
+      deriveDispatchRunSessionId(base, "review", "billing")
     );
   });
 
   it("gives two principals different children for an identical key", () => {
-    const alice = deriveDispatchChildSessionId(base, "review");
-    const bob = deriveDispatchChildSessionId({ ...base, userId: "u_bob" }, "review");
+    const alice = deriveDispatchRunSessionId(base, "review");
+    const bob = deriveDispatchRunSessionId({ ...base, userId: "u_bob" }, "review");
     expect(alice).not.toBe(bob);
   });
 
@@ -76,8 +76,8 @@ describe("child session derivation", () => {
     // Without the parent session in the key material these are equal, session
     // B adopts session A's child, and B's work settles onto A's board while
     // B's own interrupt and liveness calls refuse.
-    const fromA = deriveDispatchChildSessionId(base, "review");
-    const fromB = deriveDispatchChildSessionId({ ...base, parentSessionId: "s_parent_b" }, "review");
+    const fromA = deriveDispatchRunSessionId(base, "review");
+    const fromB = deriveDispatchRunSessionId({ ...base, parentSessionId: "s_parent_b" }, "review");
     expect(fromA).not.toBe(fromB);
   });
 
@@ -86,36 +86,36 @@ describe("child session derivation", () => {
     // key material the new conversation would derive — and adopt — the old
     // lineage's child, inheriting an address belonging to a conversation that
     // no longer exists.
-    const first = deriveDispatchChildSessionId(base, "review");
-    const second = deriveDispatchChildSessionId({ ...base, lineageId: "lin_b" }, "review");
+    const first = deriveDispatchRunSessionId(base, "review");
+    const second = deriveDispatchRunSessionId({ ...base, lineageId: "lin_b" }, "review");
     expect(first).not.toBe(second);
   });
 
   it("separates tenants", () => {
-    const acme = deriveDispatchChildSessionId(base, "review");
-    const other = deriveDispatchChildSessionId({ ...base, tenantId: "t_other" }, "review");
+    const acme = deriveDispatchRunSessionId(base, "review");
+    const other = deriveDispatchRunSessionId({ ...base, tenantId: "t_other" }, "review");
     expect(acme).not.toBe(other);
   });
 
   it("distinguishes keys", () => {
-    const k1 = deriveDispatchChildSessionId(base, "review");
-    const k2 = deriveDispatchChildSessionId(base, "triage");
-    const k3 = deriveDispatchChildSessionId(base, "review/second");
+    const k1 = deriveDispatchRunSessionId(base, "review");
+    const k2 = deriveDispatchRunSessionId(base, "triage");
+    const k3 = deriveDispatchRunSessionId(base, "review/second");
     expect(new Set([k1, k2, k3]).size).toBe(3);
   });
 
   it("is recognisable as a derived child in a store dump", () => {
-    expect(deriveDispatchChildSessionId(base, "review")).toMatch(/^dsx_[0-9a-f]{32}$/);
+    expect(deriveDispatchRunSessionId(base, "review")).toMatch(/^dsx_[0-9a-f]{32}$/);
   });
 
   it("does not confuse field boundaries — concatenation-style collisions are not reachable", () => {
     // A naive `${a}${b}` derivation collides here. Encoding lengths (or a
     // delimiter that cannot appear in the values) is what prevents it.
-    const x = deriveDispatchChildSessionId(
+    const x = deriveDispatchRunSessionId(
       { userId: "u_a", tenantId: undefined, parentSessionId: "bc", lineageId: "l" },
       "t"
     );
-    const y = deriveDispatchChildSessionId(
+    const y = deriveDispatchRunSessionId(
       { userId: "u_ab", tenantId: undefined, parentSessionId: "c", lineageId: "l" },
       "t"
     );
@@ -124,7 +124,7 @@ describe("child session derivation", () => {
 });
 
 describe("adoption identity validation", () => {
-  const childId = deriveDispatchChildSessionId(base, "review");
+  const childId = deriveDispatchRunSessionId(base, "review");
 
   /** What the seam expects a genuine child of this request to look like. */
   const expected = {

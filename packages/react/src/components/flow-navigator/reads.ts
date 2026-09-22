@@ -122,7 +122,13 @@ export type LeafSessions = {
 export function useLeafSessions(
   source: FlowNavigatorSessionSource,
   leaf: FlowNavigatorLeaf,
-  userId: string | undefined
+  userId: string | undefined,
+  /**
+   * Ask the listing for the sessions a dispatcher ran work in as well
+   * (FIX-1440). Part of the read's identity: turning it on is a different
+   * question, so the answer to the previous one is retired rather than merged.
+   */
+  includeDispatchRuns: boolean
 ): LeafSessions {
   const [sessions, setSessions] = useState<readonly SessionSummary[]>(EMPTY_SESSIONS);
   const [isLoading, setIsLoading] = useState(true);
@@ -131,12 +137,15 @@ export function useLeafSessions(
 
   const { address, cardinality } = leaf;
 
-  const fence = useReadFence([source, address, cardinality, userId], () => {
-    setSessions(EMPTY_SESSIONS);
-    setError(null);
-    setIsLoading(true);
-    setHeldIdentity(null);
-  });
+  const fence = useReadFence(
+    [source, address, cardinality, userId, includeDispatchRuns],
+    () => {
+      setSessions(EMPTY_SESSIONS);
+      setError(null);
+      setIsLoading(true);
+      setHeldIdentity(null);
+    }
+  );
   const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
 
   const read = useCallback(async () => {
@@ -150,7 +159,10 @@ export function useLeafSessions(
         // The branch itself is `client`'s, written once there. This passes the
         // one entry it already knows about, which is all the helper reads.
         ...sessionQueryFor(address, [{ id: address, cardinality }]),
-        ...(userId === undefined ? {} : { userId })
+        ...(userId === undefined ? {} : { userId }),
+        // Omitted unless asked for, so the request this hook has always sent
+        // is the request it still sends by default.
+        ...(includeDispatchRuns ? { include: "dispatch-runs" as const } : {})
       });
       if (!stillCurrent()) return;
       setSessions(next);
@@ -160,7 +172,7 @@ export function useLeafSessions(
     } finally {
       if (stillCurrent()) setIsLoading(false);
     }
-  }, [fence, source, address, cardinality, userId]);
+  }, [fence, source, address, cardinality, userId, includeDispatchRuns]);
 
   useEffect(() => {
     void read();
