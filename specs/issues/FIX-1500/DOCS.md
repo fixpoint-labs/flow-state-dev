@@ -56,20 +56,16 @@ A session reads its own organization's rows and no other's. Which organization t
 the session's authenticated principal, or from the default organization when a flow authenticates
 nobody. It is never taken from the request body.
 
-### What a seat row carries
+### ~~What a seat row carries~~ — withdrawn, do not publish
 
-A seat's row now includes the names of the skills resolved for it at start — the union of the
-organization's, its team's, and any sitting beside the worker itself:
+**Struck with [S3](PLAN.md#surfaces).** This section described a `skills` field on a seat's
+inventory row as shipped. No such field ships: this issue writes no seat inventory row, and the
+app never populates one. Publishing it would promise an API that does not exist.
 
-```ts
-{ id: "support.ada", kind: "agent", skills: ["triage", "escalate"] }
-```
-
-Names only. What a skill does is not published here.
-
-This is a start-time answer, because resolving it means reading folders. A skill added to a
-folder while the app is running appears after the next restart. A row written before this field
-existed reads with an empty list.
+What [D2](DECISIONS.md#d2) still decides — resolved skill names only, and a start-time answer, so
+a skill added to a folder while the app runs appears after the next restart — is real prose that
+**belongs to whatever carrier [Open 1](DECISIONS.md#open) picks**, written against that carrier's
+own shape and shipped by the change that builds it. Not here, and not as a seat row.
 
 ---
 
@@ -118,12 +114,16 @@ the fix is giving the screen an identity rather than giving it the operator's to
 
 ## UPDATE · `packages/react/README.md` · component table and its section
 
-`SeatDetail` — one seat's kind, the skills resolved for it, the channels it is in, and the boards
-those channels declare. Takes its rows from a source the host passes, the same way `Roster` and
-`BoardColumns` do, so every request carries whatever credential the host's transport adds.
+`SeatDetail` — one seat's kind and instructions, read from the hired-roster collection. Takes its
+rows from a source the host passes, the same way `Roster` and `BoardColumns` do, so every request
+carries whatever credential the host's transport adds.
 
 Each section shows four states and keeps them apart: rows, nothing to show, still reading, and
 could not be read. A section that failed to read says so rather than looking empty.
+
+**Gated on [Open 1](DECISIONS.md#open):** the skills, channels and boards sections. None of the
+three has a browser-readable source in this app, so none of them is described here as shipping.
+Whatever Open 1 lands brings its own lines for them.
 
 The shared collection read the panels use now forwards `topicPrefix`, so a panel can ask for one
 prefix of a collection instead of a page of all of it.
@@ -135,7 +135,6 @@ prefix of a collection instead of a page of all of it.
 - `hireSeat` / `fireSeat` — the durable hire and fire sequence, as described under *Hiring while
   the app runs*. Call it from whatever door your app puts in front of it.
 - The three inventory collections permit a browser read and publish field allow-lists.
-- A seat's inventory row carries the names of the skills resolved for it at start.
 
 ---
 
