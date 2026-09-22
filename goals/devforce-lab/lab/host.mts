@@ -8,7 +8,7 @@
  * handles. Every convention file it reads is found by walking from one root; no
  * file is named in this code.
  *
- * Four pieces here are the lab's rather than the framework's, each because the
+ * Five pieces here are the lab's rather than the framework's, each because the
  * framework has no opinion at that spot:
  *
  * 1. **The board and its address map** (`board.mts`). The loader walks four
@@ -25,6 +25,10 @@
  *    opened at all. The framework keeps the member walk and runs a notify block
  *    once per declared member; which member resolves to which seat is the app's,
  *    because the dispatch seam refuses a target read out of stored data.
+ * 5. **The host `resolvePrincipal`.** FSD does not provide login. After
+ *    FIX-1442 an unconfigured host runs under the development organization,
+ *    which is not a refusal. The lab wires a fail-closed bearer check so an
+ *    unauthenticated HTTP read is turned away for real (FIX-1515 / BR-17).
  *
  * **Not `workforce.gen.ts`.** `fsdev gen` renders that file for an app
  * directory, and `goals/` is not one. The kinds are hand-assembled here, which
@@ -33,7 +37,12 @@
  * reason.
  */
 
-import { createFlowState, runAction } from "@flow-state-dev/engine";
+import {
+  createBearerSecretPrincipalResolver,
+  createFlowState,
+  PrincipalResolutionError,
+  runAction,
+} from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   CHANNEL_KIND,
@@ -69,6 +78,42 @@ export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 /** Who the lab runs as, and the org every document read is bound to. */
 export const LAB_USER_ID = "u_devforce_lab";
 export const LAB_ORG_ID = "org_devforce_lab";
+
+/**
+ * Host-owned verified identity for this lab's HTTP door (FIX-1515).
+ *
+ * After FIX-1442 an app that configures no resolver runs under the built-in
+ * development organization. That default is not a refusal, so an org-less
+ * probe at the transport door was being answered. Wiring a real
+ * `resolvePrincipal` is what makes an unauthenticated read have nothing to
+ * fall back to — the same posture a deployment that has verified identity
+ * uses. The mint FIX-1503 will ship is not here yet; this is the thin
+ * host-owned stub that issue allows: one secret, one principal, fail-closed
+ * when nothing verified is presented.
+ *
+ * In-process `runAction` is not HTTP and keeps the explicit lab org
+ * (FIX-1503: trusted process callers). Only the door this check probes goes
+ * through the resolver.
+ */
+const LAB_PRINCIPAL_SECRET = "devforce-lab-verified-principal";
+
+const verifyLabBearer = createBearerSecretPrincipalResolver({
+  secret: LAB_PRINCIPAL_SECRET,
+  principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+});
+
+function resolveLabPrincipal(
+  context: Parameters<typeof verifyLabBearer>[0],
+): NonNullable<Awaited<ReturnType<typeof verifyLabBearer>>> {
+  const principal = verifyLabBearer(context);
+  if (principal === null) {
+    throw new PrincipalResolutionError(
+      "Request requires a verified organization: no verified principal was presented.",
+      { status: 401 },
+    );
+  }
+  return principal;
+}
 
 /**
  * Read a workforce tree into records, refusing a tree that did not load
@@ -302,6 +347,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
     },
     stores: { default: { primary: options.stores } },
+    // A configured resolver, so the development-organization fallback does
+    // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
+    resolvePrincipal: resolveLabPrincipal,
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
   } as never);
 
@@ -507,10 +555,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       if (seatId in seats === false) throw new Error(`no seat "${seatId}" was hired`);
 
       // BR-17 is about the DOOR, and the door is the transport host: a bare
-      // `runAction` never reaches `validateDispatch`, so an org-less one runs
+      // `runAction` never reaches `resolvePrincipal`, so an org-less one runs
       // happily — and, because a file-declared document's body is static
       // content rather than stored state, it even reads the document. The
       // refusal this rule names therefore has to be asked for where it lives.
+      // The host is wired with `resolveLabPrincipal`, so this request has
+      // nothing to fall back to: no bearer, no verified org, 401.
       if (inspectOptions?.omitOrg === true) {
         // A session id nothing has used, and that is load-bearing:
         // `validateDispatch` satisfies the org requirement from an EXISTING
