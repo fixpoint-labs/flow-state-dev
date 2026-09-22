@@ -1,5 +1,19 @@
 # @flow-state-dev/vercel
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [795b550]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [3e43c96]
+- Updated dependencies [b48158a]
+- Updated dependencies [e4c443e]
+- Updated dependencies [e4b6576]
+  - @flow-state-dev/engine@0.2.0
+  - @flow-state-dev/scheduled@0.2.0
+  - @flow-state-dev/store-postgres@0.2.0
+
 ## 0.1.2
 
 ### Patch Changes
