@@ -48,7 +48,6 @@ const CLASSIFICATION = {
   "examples/guides/research-team/fsdev.config.ts": "http-cutover",
   "examples/guides/custom-pattern/fsdev.config.ts": "http-cutover",
   "examples/guides/board-lifecycle/fsdev.config.ts": "http-cutover",
-  "labs/trading-desk/fsdev.config.ts": "http-cutover",
   "labs/knowledge-hub/fsdev.config.ts": "http-cutover",
   "labs/conductor/fsdev.config.ts": "http-cutover",
   "labs/fsd-coding-skill/fsdev.config.ts": "http-cutover",
