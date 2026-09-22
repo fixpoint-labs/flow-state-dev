@@ -55,8 +55,9 @@ owners rather than one. Each is a sentence a reader can act on:
 - **inventory is readable at org level** without `FSDEV_DEBUG_ENDPOINTS=1`, which is what
   [`inventory.md`](../../../apps/docs/docs/workforce/inventory.md) describes as data and does not
   describe as something you can look at — **[FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502)**,
-  row 5, and **blocked outside W5** by [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486).
-  **This one may not ship in W5 at all** ([Open 1](DECISIONS.md#open)); if the owner exits on five
+  row 5, which [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) blocks in Linear —
+  **under one reading of the row, not both** ([Open 1](DECISIONS.md#open)).
+  **This one may not ship in W5 at all**; if the owner exits on five
   rows of six, `inventory.md` keeps describing data and gains no reading, and that is the shipped
   outcome rather than an omission to fix later.
 

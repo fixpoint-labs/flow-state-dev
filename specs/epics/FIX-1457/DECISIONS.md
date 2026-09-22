@@ -112,12 +112,15 @@ cannot be rendered without a new L1 type. Two of its six rows fail today and
 [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481) is the child that will hit them, so this
 is live, not theoretical — and [ER-8](BUSINESS-RULES.md) says a failing row is never passed with a status value.
 
-**And on 2026-09-22 it half-fired, on a third row.** Checklist row 5 turned out to need not a new L1
-type but **a way to *select* an org, which does not exist** — an org-scoped read always answers
-with the org its session already carries, and **nothing can choose another**
-([FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) supplies the axis; the mechanism is
-worked through in [BUSINESS-RULES.md](BUSINESS-RULES.md#devtool-checklist)). That is the same shape as the
-condition above — a QA row that cannot be rendered on today's substrate — and the card holds:
+**And on 2026-09-22 it half-fired, on a third row — then a settlement took half of that back.**
+Checklist row 5 looked to need not a new L1 type but **a way to *select* an org, which does not
+exist** — an org-scoped read always answers with the org its session already carries, and **nothing
+can choose another** ([FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) supplies the axis;
+the mechanism is worked through in [BUSINESS-RULES.md](BUSINESS-RULES.md#devtool-checklist)). The
+[settlement](#settled-org-read) then showed the read itself already served on the production route,
+so row 5 needs that axis only under one reading of the row ([Open 1](#open)). Under that reading it
+is the same shape as the condition above — a QA row today's substrate cannot render — and the card
+holds either way:
 W5 **did not build it**, it filed [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) and
 raised the substrate up ([ER-25](BUSINESS-RULES.md), [ER-17](BUSINESS-RULES.md#er-17)). One row
 finding a gap is D1 working. Three would be the objective being wrong.
@@ -169,8 +172,9 @@ finding a gap is D1 working. Three would be the objective being wrong.
 **No cell on the diagonal is empty any more, and not one of them is green.** Each exit proof is its
 own rule in its own column, and all three now read **HELD** — the done condition is owned in three
 parts of three, and proved in none. **Held is not passed**, and it is worth reading each one's
-cost: ER-Devtool is split across FIX-1481 and FIX-1502 with rows 1–3 riding FIX-1320 and row 5
-blocked by FIX-1486, so half of it sits on epics W5 does not run; ER-DevForce and ER-Collab are a
+cost: ER-Devtool is split across FIX-1481 and FIX-1502 with rows 1–3 riding FIX-1320, and row 5
+blocked by FIX-1486 **under one reading of the row** ([Open 1](#open)), so **at least half** of it
+sits on epics W5 does not run; ER-DevForce and ER-Collab are a
 spec in review and a Backlog ticket with no spec.
 
 **Three owners moved when kitchen-sink left, and all three now have names** ([D9](#d9)). ER-1 →

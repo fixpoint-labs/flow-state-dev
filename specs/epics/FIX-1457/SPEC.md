@@ -62,8 +62,9 @@ review, two are Backlog without a spec, and **no checklist row, artifact or scen
 observed on a running workforce**. FIX-1467 is Done and it settled a convention; it did not advance
 the done condition, and saying so is the point of its row. FIX-1468, FIX-1469 and FIX-1474 are not
 legs either. So the staffing gap that was [Open 1](DECISIONS.md#open) is closed, and what replaces
-it is narrower and real: **row 5 of the Devtool checklist is blocked outside W5**, which puts
-*whether W5 exits on five rows of six* in front of the owner ([Open 1](DECISIONS.md#open)).
+it is narrower: **row 5 of the Devtool checklist is blocked outside W5 under one reading of the row
+and not under the other** — a 2026-09-22 POC settlement measured the substrate premise false — which
+puts *whether W5 exits on five rows of six* in front of the owner ([Open 1](DECISIONS.md#open)).
 **Kitchen-sink is not in this table by design** — FIX-1455 is a sibling epic, soft-related, running
 its own lifecycle ([D9](DECISIONS.md#d9), [ER-15](BUSINESS-RULES.md)).
 
@@ -101,7 +102,9 @@ plain, because a ticket is neither. Two edges are new and both are real ordering
 polish: FIX-1496 hands the checklist the **live hired Workforce its run is graded on**
 ([ER-26](BUSINESS-RULES.md#er-26)) — which fences the run, not FIX-1481's code — and FIX-1502 hands
 it row 5. The one dashed edge in from below is **FIX-1486 blocking FIX-1502**, an epic W5 does not
-run, beside the dashed FIX-1320 edge for rows 1–3. FIX-1474 hangs off collab as polish, not as a
+run, beside the dashed FIX-1320 edge for rows 1–3. That edge is drawn against **one reading of row
+5** and is absent under the other ([Open 1](DECISIONS.md#open)); the FIX-1320 edge holds either way.
+FIX-1474 hangs off collab as polish, not as a
 gate. Kitchen-sink is dashed and outside the chain: it hands the set nothing and the set owes it
 nothing.
 
@@ -166,12 +169,13 @@ answer was enacted by a filing rather than stated, and because it commits a cycl
      been built against it.
    - **Corrected 2026-09-22 — it is two-and-one-and-three, not three-and-three.** FIX-1481's spec
      defers the org-level inventory row, so its share is **rows 4 and 6**; row 5 went to
-     [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) and is **blocked outside W5** by
-     [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486). The *if wrong* above named two
-     costs and this is the second one, arriving on a row nobody expected: **half of the checklist
-     now waits on two epics W5 does not run**, FIX-1320 and FIX-1486. The recommendation itself
-     still holds; what moved is how much of the proof sits outside W5's hands, and that is what
-     [Open 1](DECISIONS.md#open) now asks about.
+     [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502), which
+     [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) blocks in Linear. The *if wrong*
+     above named two costs and this is the second one, arriving on a row nobody expected: **rows 1–3
+     wait on FIX-1320 outright, and row 5 waits on FIX-1486 under one reading of the row and not
+     under the other** — which reading is [Open 1](DECISIONS.md#open), reopened by the 2026-09-22
+     settlement. The recommendation itself still holds; what moved is how much of the proof sits
+     outside W5's hands, and how much of *that* is still a question.
 
 **Not asked, reported as news.** [D8](DECISIONS.md#d8) — **proof-via-DevForce is in**, and the
 invent-kill that said *don't treat W5 as build DevForce* is **dead**; unbounded Lab delivery stays
