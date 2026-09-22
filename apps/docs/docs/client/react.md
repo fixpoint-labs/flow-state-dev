@@ -102,27 +102,27 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 
 ### Background work
 
-Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on in a session of its own. `session.childSessions` is how you show it.
+Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on in a session of its own, called a *dispatch run*. `session.childSessions` is how you show those runs, one `ChildSessionSummary` per run.
 
-Each entry is one child session, with enough on it to render a row:
+An entry carries enough to render a row:
 
 ```tsx
 const session = useSession(sessionId, { flowKind: "assistant" });
 
 return (
   <aside>
-    {session.childSessions.map((child) => (
-      <button key={child.id} onClick={() => setOpenJobId(child.id)}>
-        {child.topic ?? child.id} — {child.status ?? "not started"}
+    {session.childSessions.map((run) => (
+      <button key={run.id} onClick={() => setOpenJobId(run.id)}>
+        {run.topic ?? run.id} — {run.status ?? "not started"}
       </button>
     ))}
   </aside>
 );
 ```
 
-`topic` is the key the flow derived the child from, so it reads well only when the flow keyed on something legible. Falling back to the session id keeps the row honest when it didn't.
+`topic` is the key the flow derived the run's session from, so it reads well only when the flow keyed on something legible. Falling back to the session id keeps the row honest when it didn't.
 
-This list sits beside the conversation rather than inside it. Nothing a child session produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
+This list sits beside the conversation rather than inside it. Nothing a run produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
 
 #### When the list changes
 
@@ -143,13 +143,13 @@ const session = useSession(sessionId, {
 
 `status` is missing until the work has actually run something. Otherwise it is either how the work ended, or `"active"`.
 
-`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question — so don't label it "running" or "working" in your UI. It also reports the last state that was recorded, not a check that the job is alive: work whose worker stopped unexpectedly keeps reading as unfinished until the system picks it back up.
+`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question — so don't label it "running" or "working" in your UI. It also reports the last state that was recorded, not a check that the job is alive: work whose worker stopped unexpectedly keeps reading as unfinished until the system picks it back up. [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value in full.
 
 New status values can appear over time. Render one you don't recognise instead of switching exhaustively over the set.
 
 #### Opening one
 
-A child is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
+A run is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
 
 ```tsx
 function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {

@@ -235,13 +235,11 @@ Leave the parameter off and the response holds the sessions a person started.
 GET /api/flows/sessions/sess_abc/children
 ```
 
-The route is `/children` and a row is a `ChildSessionSummary`; one row is one
-dispatch run.
-
-The provenance index for one conversation: which runs were started from it, and
-what state each one's work reached. Reach for it when you have a conversation in
-hand and want its work; reach for the listing above when you want a flow's runs
-without naming a conversation first.
+This is the provenance index for one conversation: which runs were started from
+it, and what state each one's work reached. Reach for it when you have a
+conversation in hand and want its work; reach for the listing above when you want
+a flow's runs without naming a conversation first. The route is `/children`, and
+a row is a `ChildSessionSummary` — one row is one dispatch run.
 
 ```json
 {
@@ -479,6 +477,7 @@ more.
   a coding agent in a dispatch run, and what it records there
 - [Codex SDK agent](../tools/codex.md#continuing-a-thread) — the other coding agent, and how a run
   in a dispatch run stays resumable when it is cancelled
+- [DevTool](../devtool/overview.md#dispatched-runs) — reading a run's stream and trace while you develop
 - [Engine setup](./setup.md) — the full HTTP route table
 - [Authentication](./authentication.md) — how addressed routes scope by owner
 - [Persistence](../persistence/overview.md) — where sessions and requests are stored

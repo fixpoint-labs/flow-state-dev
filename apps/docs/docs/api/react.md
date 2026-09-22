@@ -69,7 +69,7 @@ session.isLoading;       // boolean
 session.isStreaming;     // boolean
 session.error;           // Error | null
 
-// Sessions started under this one (one entry per child):
+// Dispatch runs started from this session (one entry per run):
 session.childSessions;      // readonly ChildSessionSummary[]
 session.childSessionsStale; // boolean — the list may be short; rows are kept
 
@@ -91,9 +91,9 @@ await session.resumeSuspension({     // approve/reject a suspension, stream the 
 session.refresh();
 ```
 
-`childSessions` lists the sessions started under this one, separate from `items` — nothing they produce is folded into the conversation. The list is current as of the reader's last interaction: it is re-read on mount, at the start of each action, and on `refresh()`, and nothing updates it while they wait. A row's `status` is absent until its work has run something; `"active"` means only *not finished*, and reports the last recorded state rather than checking a worker is alive. `refresh()` covers this list along with the rest of the view.
+`childSessions` lists the dispatch runs started from this session — work that outlives the turn and runs in a session of its own. Each entry is a `ChildSessionSummary`. The list sits apart from `items`; nothing a run produces is folded into the conversation. It is current as of the reader's last interaction: re-read on mount, at the start of each action, and on `refresh()`, with nothing updating it while they wait. A row's `status` is absent until its work has run something, and `"active"` means only *not finished* — see [What `status` tells you](/docs/server/background-work#what-status-tells-you).
 
-The list holds 100 rows by default; pass `childSessions: { limit }` in the hook's options for a different page size. `childSessionsStale` turns `true` on a failed re-read, cleared by the next successful one, and on a `limit` above the server's cap, cleared only by asking for a page that fits. The rows already read stay either way — the hook never empties the list.
+The list holds 100 rows by default; pass `childSessions: { limit }` in the hook's options for a different page size. `childSessionsStale` turns `true` on a failed re-read, cleared by the next successful one, and on a `limit` above the server's cap, cleared only by asking for a page that fits. The rows already read stay either way — the hook never empties the list. [Background work](/docs/client/react#background-work) walks through rendering the panel.
 
 `resumeLatestRequest` is a no-op unless `latestRequest.status` is `interrupted` or `failed`. The server creates a new request that re-runs the original action with the same input, and the hook auto-attaches to its stream. The re-run goes through the flow instance recorded as the request's owner (`latestRequest.flowId`), not the provider's `flowKind`, so a session started through one copy of a flow stays with it; `continueRequest` re-enters the same way.
 

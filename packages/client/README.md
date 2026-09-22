@@ -151,9 +151,7 @@ const runs = rows.filter((row) => row.parentSessionId != null);
 Leave the option off and you get the sessions a person started. Rows belonging to
 another principal, organization or tenant are absent either way.
 
-`listChildSessions` asks one session which runs were started from it. The call is
-`listChildSessions` and a row is a `ChildSessionSummary`; one row is one dispatch
-run.
+`listChildSessions` asks one session which dispatch runs were started from it.
 
 ```ts
 // Paging only: `limit` is 1–100 (25 by default), `offset` is 0–10000.

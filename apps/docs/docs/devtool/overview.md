@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
 title: "DevTool"
+sidebar_label: Overview
 ---
 
 # DevTool

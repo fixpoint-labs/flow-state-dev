@@ -311,7 +311,7 @@ A registry seat can also run its tasks somewhere other than the request that cla
 
 ## Seats that hand off
 
-A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead hand each claimed row to a worker running in a **child session** of the one draining, and move on. The drain finishes with the row still `in_progress`, and the child settles it when the worker is done.
+A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead hand each claimed row to a worker running in a **dispatch run**, a session of its own under the one draining, and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
 
 A seat hands off when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the seat names it by `action`. The stamped address is `type: "task"` — do not set `type` on the seat. A board can mix seats that hand off with seats that run inline:
 

@@ -145,7 +145,7 @@ The typed client includes a session client when created with a flow. Use it for 
 
 ### Dispatched runs
 
-Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in a session of its own, so it never shows up in the requests of the session the user is in. `listSessions` with `include: "dispatch-runs"` finds those sessions on the flow; `listChildSessions` asks one session which runs were started from it. The call is `listChildSessions` and a row is a `ChildSessionSummary`; one row is one dispatch run.
+Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in a session of its own — a *dispatch run* — so it never shows up in the requests of the session the user is in. `listSessions` with `include: "dispatch-runs"` finds those runs across the flow; `listChildSessions` asks one session which runs were started from it, returning one `ChildSessionSummary` per run.
 
 [Work that outlives the turn](/guides/background-work) covers where these sessions come from and how they differ from the other things the docs call background work; [Dispatched work](/docs/server/background-work) is the HTTP surface underneath the two calls below.
 
@@ -190,7 +190,7 @@ if (run) {
 }
 ```
 
-**What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a run whose worker died, until the server records otherwise. The terminal values are `completed`, `failed`, `aborted`, and `incomplete`.
+**What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a run whose worker died, until the server records otherwise. [What `status` tells you](/docs/server/background-work#what-status-tells-you) covers each terminal value and what a task board does to it.
 
 A run that has never executed anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
 
