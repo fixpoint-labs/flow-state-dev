@@ -8,7 +8,7 @@
       "title": "Conversation",
       "type": "registry:component",
       "description": "Container for message threads with auto-scroll and session binding.",
-      "dependencies": ["use-stick-to-bottom", "lucide-react"],
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
       "registryDependencies": ["button"],
       "files": [{
         "type": "registry:component",
