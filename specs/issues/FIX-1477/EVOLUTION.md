@@ -61,6 +61,13 @@ that is the only form that travels.
   the mirror of an unchecked rule** — one invites an implementer to assume coverage, the other
   invites a reader to remove it — and the second fails later, which makes it the quieter of the
   two.
+- **A fix is a change, and gets the same scrutiny as the thing it fixes.** Three times on this
+  PR the act of correcting a defect produced a fresh instance of it: the check written to close
+  an unfalsifiable check shipped unfalsifiable; the rule written about overstated scope
+  overstated its own; a citation added to fix orphaned checks overstated what its check proves.
+  Each passed review as *a fix* rather than as *a claim* — and a fix arrives with a reason
+  already attached, which is what makes it skim as justified. Generalising from one instance is
+  when its boundaries are least visible, and a fix is a generalisation written at speed.
 - **One assertion per failure mode you are excluding.** If two ways of being wrong turn the same
   assertion red, that is one check, not two. This is the sharper form of the rule above, and it
   was learnt the hard way: **V15 — the check written to close the previous unfalsifiable check —
