@@ -32,6 +32,19 @@ name the red state, then produce it. The first two corrections have one each, re
 observed output. The third has no red state to produce, which is itself the finding: there is no
 seam to point a check at, and that is why it is deferred as substrate rather than fixed here.
 
+**The habit that catches this is "name the tree you are citing"** — `main`, or a branch, or a
+commit — because a bare `file:line` is only true of one tree and says nothing about which. Seven
+of these turned up while this amendment was being written, from three different people, and the
+last one is the instructive one: a reviewer cited a line number from a working checkout that was
+74 lines behind `main`, while *correcting someone else's citation*. **The habit only works if it
+is applied to your own reads**, and the moment it feels unnecessary is the moment it is being
+skipped.
+
+Every live citation on this page was re-derived against `origin/main`. **One deliberately does
+not resolve**: `session-routes.ts:192` in the row below is quoted as the *stale* reference the
+merged spec carried, and on `main` that line is now a comment about state defaults. It is
+evidence of the error, not a pointer to the code.
+
 **And the same defect got into the correction — twice.** Review caught both.
 
 `read-gate-probe`'s second case was named for two claims — the refusal *and* the ledger declaring
@@ -59,7 +72,7 @@ had gone stale — each was a rule the spec stated and nothing could fail:
 | The requirement | What passed anyway | Now |
 |---|---|---|
 | `S8` binds the shell's session to the viewer's organization | Every check ran in the tokenless default organization, where the hire and the read coincide by accident. Drop the resolver entirely and all of them stay green, shipping the correct-and-empty panel two sections of this spec warn about | **V13** |
-| [BR-20](BUSINESS-RULES.md) — the skipped-seat count and list are *shown, not only logged* | `Roster` takes a `problems` prop and renders it, and **nothing fills it**. The boot's report is a module export read only by `console.log`. A roster of the seats that loaded looks complete, which is the exact failure BR-20 exists for | **V14**, plus the gap named and priced at [BR-20's transport](PLAN.md#br20-transport) |
+| [BR-20](BUSINESS-RULES.md) — the skipped-seat count and list are *shown, not only logged* | `Roster` takes a `problems` prop and renders it, and **nothing fills it**. The boot's report is a module export read only by `console.log`. A roster of the seats that loaded looks complete, which is the exact failure BR-20 exists for | **V14**, plus the transport itself, decided and written into `S8` at [BR-20's transport](PLAN.md#br20-transport) |
 | [BR-19](BUSINESS-RULES.md) / [BR-21](BUSINESS-RULES.md) — *the organization's seats*, *the rows that board holds*, both unqualified | The list route pages at 50 and returns a cursor. A panel that reads page one and stops satisfies every field assertion and truncates silently at 51 | **V11**, now seeded past one page |
 
 **This is the more valuable of the two patterns on this page.** A stale claim is caught by

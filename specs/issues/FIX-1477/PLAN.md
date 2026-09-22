@@ -20,7 +20,7 @@ collections turned out to need a read declaration ([PR plan](#pr-plan)).
 | S5 | `react` · `Roster` | Reads the durable roster collection [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) ships, including its skipped-seat problems list. Organization scoping is the collection's, not the component's. **It needs a governing session whose flow declares that collection — the shell declares none — and the collection has to permit a browser read, which it does not yet** ([Blocked on](#blocked-on), [D4](DECISIONS.md#d4)). **BR-20's skipped-seat list is a separate gap with no path at all** — the component takes the prop, nothing fills it ([BR-20's transport](#br20-transport)) | BR-19 BR-20 |
 | S6 | `react` · `BoardColumns` | Reads one board's ledger, grouped by the **existing** task statuses. The empty column states the likely cause rather than spinning. **Same read permission as `S5`, and for the board it is not a line at the call site** ([Blocked on](#blocked-on)) | BR-21 BR-22 |
 | S7 | `devtool` · consume, and **remove** | Take a dependency on `@flow-state-dev/react`. Render S4 with the tool's own skin and its affordances as slots. **Delete** `src/react/components/navigator/`, `src/react/hooks/use-sessions.ts` and `src/react/hooks/use-read-fence.ts`, repointing its three remaining fence users (`DevToolPanel.tsx`, `use-child-sessions.ts`, `use-workspace-fence.ts`) and their test at the `react` export — an import path, no behaviour change. **The tool's bearer transport has to survive the move** | BR-15 BR-17 BR-29 |
-| S8 | kitchen-sink · the shell | `app/page.tsx`: the rail becomes one `FlowNavigator` with a Channels and a Seats section; the right panel becomes standing `BoardColumns` + `Roster` and **loses its build-mode conditional**; the narrow-width order is wired. **Remove** `components/session-sidebar.tsx` | BR-13 BR-18 BR-25 – BR-28 |
+| S8 | kitchen-sink · the shell | `app/page.tsx`: the rail becomes one `FlowNavigator` with a Channels and a Seats section; the right panel becomes standing `BoardColumns` + `Roster` and **loses its build-mode conditional**; the narrow-width order is wired. **Remove** `components/session-sidebar.tsx`. Two wirings the panels cannot do for themselves: the shell's flow **resolves a viewer principal**, or the panels read the default organization and render correct and empty; and the boot's skipped-seat report is **written to an org-scoped resource** and read back, because a module export cannot reach the browser ([Blocked on](#blocked-on), [BR-20's transport](#br20-transport)) | BR-13 BR-18 BR-20 BR-25 – BR-28 |
 | S9 | kitchen-sink · the drifted copies | Reconcile the **five** registry-installed files that no longer match their source: `conversation.tsx`, `message.tsx`, `chat-assistant.tsx`, `task-plan.tsx`, `task-plan-state.ts`. Each is either pushed back into the registry or reverted to it — never left forked | BR-14 |
 | S10 | Docs · changeset | [DOCS.md](DOCS.md)'s operations; `packages/react/README.md`; `apps/kitchen-sink/README.md`. Changesets are **per-PR, not one batch** — see [Changesets](#changesets). **None for kitchen-sink** — private (BP-022) |  |
 
@@ -112,7 +112,7 @@ Every row names what would make it fail. A check with no producible red state pr
 | V11 | S5 S6 | Each panel's collection is read over the **list** route with rows seeded **past one page** (the route's default limit is 50, `resource-routes.ts:388`), and the body carries **exactly** the projected fields that panel renders — no `claimedBy`, no lease, no retry ledger, no write log on a board row | Drop the `expose` (or the projection function) and the check goes red on the extra keys, not on a missing one. Asserting the *absence* of the withheld fields is the anti-game clause: a check that only looked for the fields it wanted would pass on the whole envelope. Seed a row first — a 200 with an empty list passes any field assertion vacuously, which is exactly how [`poc/read-gate/`](poc/read-gate/README.md) first fooled itself. **Seeding one row is the other half of that trap**: the route returns a `nextCursor` when rows remain (`:524`), and a panel that reads page one and stops satisfies every field assertion while silently truncating. So seed 51+ and assert the panel reaches the last row — by traversing the cursor, or through a pagination affordance a reader can see. Red state: cap the panel at one page and the last seeded seat is missing, while a one-row fixture stays green |
 | V12 | S5 S6 | Reading either collection **without** its `client` declaration is refused `403 State read not permitted` | Remove the declaration: the panels go blank rather than silently reading. Pins the gate so a later refactor cannot delete the opt-in and leave the panels looking merely broken |
 | V13 | S8 | **With a principal resolver configured**, a seat is hired into org `acme`, a shell session is opened carrying that viewer's credential, and the roster panel lists that seat. Asserts on the **row**, not on a 200 | Drop the resolver, or the credential transport, and the shell binds to `__fsd_default_org__`: the read still returns **200 with an empty list**, and the panel renders its empty state. That is the whole point — this is the one failure every other check passes through. V11 and V12 run in the tokenless default organization, where hire and read land in the same place by accident, so neither can see it. Run **both** halves: the same assertion in an unconfigured clone must still pass, or the check has made a credential mandatory where the reference app needs none ([Blocked on](#blocked-on)) |
-| V14 | S8 | A boot in which one stored seat **cannot** be brought back renders a roster panel showing both numbers — what answers, and what was skipped — with the skipped seat's reason among them (BR-20) | Route the report nowhere and the panel renders a clean roster of the seats that loaded: **no error, no empty state, nothing to see**. That silent-partial read is the failure BR-20 exists for, so the check has to assert the *problem* is on screen, not that the panel rendered. Written against what a viewer sees rather than against a transport, so it survives whichever shape [Blocked on](#br20-transport) settles on. Red today: nothing carries the report past `console.log` |
+| V14 | S8 | A boot in which one stored seat **cannot** be brought back renders a roster panel showing both numbers — what answers, and what was skipped — with the skipped seat's reason among them (BR-20) | Route the report nowhere and the panel renders a clean roster of the seats that loaded: **no error, no empty state, nothing to see**. That silent-partial read is the failure BR-20 exists for, so the check has to assert the *problem* is on screen, not that the panel rendered. Written against what a viewer sees rather than against the transport, so it stays honest if the resource's shape changes under it ([Blocked on](#br20-transport)). Red today: nothing carries the report past `console.log` |
 | VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): the rail lists the kinds; a singleton channel kind opens straight into its conversations; a seat kind opens into seats and then into one seat's conversations; and the **network log shows no session-list request on the kind expand** | Pre-fetch everything: the DOM assertions still pass and the network assertion fails. The network half is what makes this a goal check rather than a screenshot |
 
 **No model runs in any of this**, so no `goals/` check applies: every claim is about what a
@@ -291,25 +291,36 @@ is what it reads"* — so this issue is the intended reader, and no one wired th
 
 **A server component importing it does not work here**, and the reason is in the file rather
 than in the file layout. `fsdev.config.ts` is deliberately **not** cached on `globalThis`
-(`:375`–`:389`): it expects to be re-evaluated, builds a fresh `FlowState` each time, and
+(`:376`–`:390`): it expects to be re-evaluated, builds a fresh `FlowState` each time, and
 **disposes the previous generation** through a `globalThis` slot. So a second importer in a
 different bundle does not read the route handler's arrays — it triggers a second boot reload and
 disposes the `FlowState` the route handler is serving from. The hazard is not "the value is
 unreachable", it is "reading it this way stops the server working". Depending on two bundles
 sharing one module instance means depending on exactly what that comment says is not guaranteed.
 
-**So BR-20 needs a real path, and that is a scope call this plan does not get to make.** Two
-shapes, priced:
+**Decided: build the resource.** The boot writes its report to a small org-scoped resource,
+declared `client.state.read` like the roster itself, and the panel reads it through the path
+`S5` already uses. Four reasons, because a later reader will want them rather than the verdict:
 
-| Shape | What it costs |
-|---|---|
-| **The boot writes its report to a small org-scoped resource**, declared `client.state.read` like the roster itself, and the panel reads it through the path `S5` already uses | No new mechanism — the same read `D4` authorises — but it is a **new resource** in the app, written at boot, that no issue currently owns. Roughly a declaration plus a write, and it makes the report survive to any reader rather than one process's memory |
-| **Drop `problems` from this issue** and let the panel render the roster alone | Free, and it breaks [BR-20](BUSINESS-RULES.md) as written — *"The count and the list are shown, not only logged"* — which was the rule's whole point: a roster that reports only what answers looks complete |
+1. **A roster showing nine seats when ten were stored looks complete and is wrong.** That is the
+   failure BR-20 exists for, and it is the *same* failure as the pagination gap
+   ([V11](#checks)) — two "looks complete, isn't" defects in one issue, both invisible to a user
+   with nothing to compare against.
+2. **This is approved scope, not new scope.** BR-20 was in the spec the user signed off. Dropping
+   `problems` would *remove* an approved rule, which is the larger move and the user's call.
+   Honouring it is the conservative direction.
+3. **Two ends already exist; only the wire is missing.** The consumer is `Roster.problems`, the
+   producer is `hiredRosterReload`, and FIX-1475's own doc says it was exported *for this issue*.
+   The handoff was intended and simply never written — dropping it strands work already paid for.
+4. **It reuses `S5`'s read path.** An org-scoped resource, read the way the roster is read. No new
+   route, no new transport concept, nothing extra for a reader to learn.
 
-**Recommendation: the resource.** BR-20 exists because a silent partial roster is the failure
-being designed against, and the second shape reintroduces it. But it grows this issue by a
-surface, so it is named here rather than decided here. The check that makes either real is
-[V14](#checks), written in observable terms so it survives whichever shape is chosen.
+The rejected shape was dropping `problems` and rendering the roster alone. It is free, and it
+reintroduces exactly the silent-partial read the rule was written against.
+
+**The step is `S8`'s**: declare the resource, write the boot's report into it where
+`hiredRosterReload` is filled today, and pass the panel's `problems` from that read rather than
+from a module import. [V14](#checks) is what goes red without it.
 
 **Declare the board's read with a projection, never bare.** With no `expose`, `exclude` or
 `data`, the read returns the stored row unchanged
