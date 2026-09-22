@@ -13,7 +13,7 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 | S1a | `goals/devforce-lab/lab` · the acceptance check | **New, and it is the requester's, not the run's.** A small check that imports the named export from the named path and asserts both behaviours. It lives with the lab, **outside the run's checkout**, and is executed against the produced tree after the run — so the agent cannot edit it, delete it, or substitute a test of its own for it | BR-3 BR-3a BR-4 |
 | S2 | `goals/devforce-lab/lab` · the host | Open the declared feature channel (`channelInstances` + `openChannels`, as `manager-queue-lab` does) and expose posting on it. The EM seat files its row in answer to the post rather than through a direct action call. **No org wrapper** — see *At implement time* | BR-6 BR-7 BR-8 BR-9 BR-10 |
 | S3 | `goals/devforce-lab/lab` · the artifact's repository | **One automated path.** The temp-directory repository stays, and gains a **bare clone at a declared path** that the run pushes to — so the artifact resolves after the process exits without needing a network or a credential. The helper names the leg it built so the verdict can report it (D1, BR-14) | BR-1 BR-14 BR-15 |
-| S4 | `goals/devforce-lab/lab` · the phase | Done-condition stays the existing commit probe — *a commit the base ref lacks*, now read from the pushed bare clone. **No `gh` probe and no second phase path in the lab.** The credentialed pull-request release run is documented in `goal.md`, using conductor's existing `prExists` slot, and is not wired as a CI leg | BR-1 BR-4 BR-5 |
+| S4 | `goals/devforce-lab/lab` · the phase | **Amended at implement time — see below.** Done-condition is *a commit the base ref lacks* **and** the brief's acceptance condition, opt-in per check. **No `gh` probe and no second phase path in the lab.** The credentialed pull-request release run is documented in `goal.md`, using conductor's existing `prExists` slot, and is not wired as a CI leg | BR-1 BR-4 BR-5 |
 | S5 | `goals/devforce-lab/lab` · the acceptance gate | Execute S1a's check against the produced tree, and against the base ref. Both halves, or the leg proves nothing (D2). The two executions share one checkout setup | BR-3 BR-3a BR-4 |
 | S6 | `goals/devforce-lab/it-ships-an-artifact-a-person-can-open/` · **new sibling goal** | The runner, its `goal.md` (outcome · input · signal · anti-game · controls · verdict log), and the controls below. Reuses `openLab` with the S2–S5 options; **does not edit either existing check** | all |
 | S7 | `goals/devforce-lab/lab/README.md` | Extend *What this directory owns* and *What it works around* for the channel door and the artifact's bare clone. Record that the artifact now outlives the run | — |
@@ -31,7 +31,7 @@ flowchart TD
   S1["S1 · brief names a contract"] --> S1A["S1a · the requester's acceptance check"]
   S1A --> S5["S5 · the acceptance gate, both halves"]
   S2["S2 · open and drive the channel"] --> S6["S6 · the new sibling goal"]
-  S3["S3 · the artifact outlives the run"] --> S4["S4 · done-condition, unchanged"]
+  S3["S3 · the artifact outlives the run"] --> S4["S4 · done-condition + acceptance"]
   S4 --> S6
   S5 --> S6
   S6 --> S8["S8 · run it, record the verdict, delete gap-check"]
@@ -122,7 +122,8 @@ open the lab, as today, plus:
     channels      ← open the declared feature channel              (the epic's wording)
     repository    ← temp repo, as today, plus a bare clone at a
                     declared path that the run pushes to           (D1, one leg)
-    doneCondition ← unchanged: a commit the base ref lacks         (S4)
+    doneCondition ← a commit the base ref lacks, AND the brief's
+                    acceptance condition                          (S4, BR-4)
 
 the proof:
     post on the feature channel                                    (BR-6)
@@ -144,6 +145,30 @@ work. Nothing in the design changed because of it.
 **Deleted at S8**, as the sunset rule above requires, so the command that ran it is no longer
 quoted here. Its totality discipline moved into the new goal's leg 0 and its FIX-1440 provenance
 read into that goal's anti-game section, which is what the sunset rule said to carry forward.
+
+## S4, amended at implement time — the done-condition carries acceptance
+
+**S4 as written said the done-condition stays the commit probe. It does not, and that sentence
+would have been false in the document whose job is telling the next implementer what shipped.**
+
+The conflict is between S4 and [BR-4](BUSINESS-RULES.md), which says *a run that produces an
+artifact that does not satisfy the acceptance check does not settle `completed` — the artifact
+existing is never sufficient.* With the commit probe alone, a run that ignored the brief entirely
+settled its row `completed`, and the goal rejecting the artifact afterwards did not undo that: **the
+row is what survives the run, and it said the work was done.**
+
+**BR-4 is the authority.** A business rule states a case the design must satisfy; a plan step states
+how to build it, and S4's emphasis is on *no `gh` probe and no second phase path* — neither of which
+adding the acceptance condition introduces.
+
+So `defineImplementPhase({ requireAcceptance })` runs the brief's condition against the tree the
+attempt produced, and a rejection re-pends the row with its reason like any other unfinished
+attempt. **Opt-in, not unconditional**, because the two older checks drive a scripted stub that
+writes a file the current brief does not name: demanding acceptance everywhere would fail rows they
+expect to complete and rewrite claims S6 and [BR-17](BUSINESS-RULES.md) put out of scope.
+
+Proved by the `rejected-work` control — a scripted run that commits work the brief did not ask for,
+whose row settles `errored` rather than `completed`.
 
 ## At implement time
 
