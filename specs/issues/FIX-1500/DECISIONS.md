@@ -19,7 +19,7 @@ flowchart TD
   D1 -.->|"rejected"| X1b["a server route that holds the token and proxies<br/>a kitchen-sink-only API, and the org still disagrees"]
   D1 -.->|"rejected"| X1c["ship browse-only, no hire<br/>fails the acceptance spine it exists to close"]
   I --> D2["D2 · a seat's skills are boot-resolved names<br/>published on its inventory row"]
-  D2 -.->|"rejected"| X2["read the skills catalog per seat<br/>a session per seat, and a catalog is not the register"]
+  D2 -.->|"rejected"| X2["present the skills catalog as the seat's skills<br/>a catalog is not a seat's resolved register"]
   I --> D3["D3 · the live inventory is readable in-org data"]
   D3 -.->|"rejected"| X3a["join channel member lists in the browser<br/>a second runtime inventory, client-side"]
   D3 -.->|"rejected"| X3b["a new read API for the rail<br/>a kitchen-sink-only surface"]
@@ -57,7 +57,7 @@ paying for (tenet 5); two doors over one is ordinary.
 
 | | |
 |---|---|
-| **Instead of** | Reading the live skills catalog per seat — which needs a session on each seat's own flow to resolve the collection, and answers with a *catalog* rather than with the seat's resolved register |
+| **Instead of** | Reading the live skills catalog and presenting it as the seat's skills |
 | **Because** | The register a seat actually holds is `org/skills ∪ teams/<id>/skills ∪ worker-local`, computed by `readSeatSkills` and imposed as the `seatSkills` key of the `WorkerConfig` admission bag ([FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367)). That is a boot-time answer and there is no honest way to make it a live one, because the loader is Node-only and reads folders. Publishing the names beside the seat's identity — where the binder already writes a row for that seat — shows the register itself rather than a catalog standing in for it, which is the distinction the Architect's fence draws |
 | **Locks in** | The rail's skills view is as fresh as the last boot. A skill added to a folder while the app is running does not appear until it restarts, and that is a promise we are making rather than a bug somebody will file. It also means the seat inventory row carries something derived from a seat's configuration, so a future change to how a seat resolves skills has a second reader |
 
