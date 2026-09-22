@@ -189,6 +189,42 @@ describe("BoardColumns", () => {
     expect(document.querySelector('[data-state="empty"]')).toBeNull();
   });
 
+  it("renders one row per card whether the body is ours or the host's", async () => {
+    // The column owns the `<li>`; a body is a body. Before that was true the
+    // two paths disagreed — the default body carried the row's identity and a
+    // custom one did not, so a host's card silently lost `data-task-id` and
+    // had no way to put it back. Asserting the ROW rather than the body is
+    // what makes that visible: a content-only test passes either way.
+    const rows = [card("t1", "pending", { title: "first" })];
+
+    const { unmount } = render(
+      createElement(BoardColumns, {
+        sessionId: "s1",
+        boardRef: "b",
+        resourceClient: fakeSource(rows)
+      })
+    );
+    await waitFor(() => expect(document.querySelectorAll("[data-task-id]").length).toBe(1));
+    const withDefaultBody = document.querySelectorAll("li[data-task-id]").length;
+    unmount();
+
+    render(
+      createElement(BoardColumns, {
+        sessionId: "s1",
+        boardRef: "b",
+        resourceClient: fakeSource(rows),
+        slots: { card: (row) => createElement("span", null, `custom ${row.card.id}`) }
+      })
+    );
+    await waitFor(() => expect(screen.getByText("custom t1")).toBeTruthy());
+
+    // Same structure, same identity, both ways round.
+    expect(document.querySelectorAll("li[data-task-id]").length).toBe(withDefaultBody);
+    expect(document.querySelector("li[data-task-id]")?.getAttribute("data-task-id")).toBe("t1");
+    // And the component never nests one row inside another.
+    expect(document.querySelectorAll("li li").length).toBe(0);
+  });
+
   it("publishes no organization filter (BR-24)", () => {
     expect(boardColumnsPropNames).not.toContain("orgId");
     expect(boardColumnsPropNames.filter((name) => /org|tenant|filter/i.test(name))).toEqual([]);

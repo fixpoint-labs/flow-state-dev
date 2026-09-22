@@ -90,7 +90,14 @@ export type BoardColumn = {
 
 /** The parts of a board that belong to the host rather than to the component. */
 export type BoardColumnsSlots = {
-  /** The whole of a card's body, when a host wants its own. */
+  /**
+   * A card's body, when a host wants its own.
+   *
+   * **The body, not the row.** The column renders the `<li>` and puts the
+   * task's id on it; return what goes inside one. Returning an `<li>` of your
+   * own nests a list item inside a list item, which is invalid markup that
+   * keyboard and assistive-technology traversal cannot represent.
+   */
   readonly card?: (row: BoardCardRow) => ReactNode;
   /** Beside a column's heading. */
   readonly columnHeader?: (column: BoardColumn) => ReactNode;
@@ -166,11 +173,18 @@ export function groupIntoColumns(rows: readonly BoardCardRow[]): BoardColumn[] {
   return columns;
 }
 
-function defaultCard(row: BoardCardRow): ReactNode {
+/**
+ * A card's default body — the contents of its row, never the row itself.
+ *
+ * The `<li>` belongs to the column, for both this and a host's `slots.card`,
+ * so the two paths cannot disagree about who owns it. See
+ * {@link BoardColumnsSlots.card}.
+ */
+function defaultCardBody(row: BoardCardRow): ReactNode {
   const { card } = row;
   return createElement(
-    "li",
-    { key: row.topic, style: rowStyle, "data-task-id": card.id },
+    "div",
+    { style: rowStyle },
     createElement("span", { style: labelStyle }, card.title ?? card.goal ?? card.id),
     card.assignee == null
       ? null
@@ -264,10 +278,16 @@ export function BoardColumns(props: BoardColumnsProps): ReactNode {
           : createElement(
               "ul",
               { style: bareList },
+              // One `<li>` per row, written once, whether the body is ours or
+              // the host's — so a custom card cannot end up nested inside a
+              // row it also rendered, and `data-task-id` is on the row either
+              // way rather than only when the default body drew it.
               ...column.rows.map((row) =>
-                slots.card === undefined
-                  ? defaultCard(row)
-                  : createElement("li", { key: row.topic }, slots.card(row))
+                createElement(
+                  "li",
+                  { key: row.topic, "data-task-id": row.card.id },
+                  slots.card === undefined ? defaultCardBody(row) : slots.card(row)
+                )
               )
             )
       )

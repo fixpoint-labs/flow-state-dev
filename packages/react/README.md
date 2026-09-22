@@ -460,6 +460,8 @@ A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 
 Style them by setting the `--fsd-panel-*` CSS custom properties on any ancestor. Fill in your own affordances through `slots`: `rowTrailing` and `empty` on `Roster`; `card`, `columnHeader` and `empty` on `BoardColumns`.
 
+`BoardColumns` renders the `<li>` around every card and puts the task's id on it, so a `card` slot returns the body that goes inside one rather than a list item of its own.
+
 ### Presentational components moved to `@flow-state-dev/ui`
 
 `ModelBadge`, `AuditAnnotation`, and `AuditAnnotationProgress` are no longer exported from this package. `ModelBadge` and `AuditAnnotation` live in the [`@flow-state-dev/ui`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/ui) registry (see [Flow-Aware Components](https://flow-state.dev/docs/ui/flow-aware-components)), where you own the source after installing it. Install `ModelBadge` with `fsdev ui add model-badge` and import it from `@/components/flow-state/model-badge`. Audit annotations render through the ui `audit-annotation` component, fed by the `responseAuditor` pattern's emitted component item, so no per-item wiring is needed. `AuditAnnotationProgress` had no consumers and was removed outright; there is no replacement.
