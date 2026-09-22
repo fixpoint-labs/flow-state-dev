@@ -82,6 +82,11 @@ async function register(
     flowId: "board",
     actionName: "work",
     userId: CALLER.userId,
+    // Production-shaped by default, like `seedSession` above. Registration
+    // stamps an org it *requires* (`requireAttributedOrg`), so an entry with no
+    // org is a legacy row, not the normal case. Defaulting this to undefined is
+    // what previously let the org comparison below pass for the wrong reason.
+    orgId: DEFAULT_ORG_ID,
     source: "internal",
     startedAt: now,
     lastHeartbeatAt: now,
@@ -120,6 +125,27 @@ describe("liveness answers for a dispatch run on the same flow", () => {
     expect(answers).toEqual({ req_run: true });
   });
 
+  it("answers when the request ENTRY carries the caller's own org, as registration always stamps it", async () => {
+    const stores = sharedStores();
+    const flow = dispatchableFlow("board");
+    // The case every deployment actually hits, and the one an entry-less
+    // fixture cannot reach: `register` requires an org, so a real entry always
+    // carries one. The arm compares `principal.orgId` against THIS row, and a
+    // caller that forwards no org compares it against `undefined` — which
+    // matches only an org-less row and refuses every genuine run. Explicit
+    // here rather than left to the helper's default so deleting the default
+    // cannot quietly re-hide it.
+    await seedSession(stores, { id: "dsx_prod", parentSessionId: "sess_other" });
+    await register(stores, {
+      requestId: "req_prod",
+      sessionId: "dsx_prod",
+      orgId: DEFAULT_ORG_ID
+    });
+
+    const answers = await hostFor(stores, flow).livenessOf?.(["req_prod"]);
+    expect(answers).toEqual({ req_prod: true });
+  });
+
   it("does not answer for an ordinary session of the caller's on the same flow", async () => {
     const stores = sharedStores();
     const flow = dispatchableFlow("board");
@@ -155,6 +181,30 @@ describe("liveness answers for a dispatch run on the same flow", () => {
 
     const answers = await hostFor(stores, flow).livenessOf?.(["req_other_org"]);
     expect(answers).toEqual({ req_other_org: false });
+  });
+
+  it("refuses when the entry's org matches but the SESSION RECORD's does not", async () => {
+    const stores = sharedStores();
+    const flow = dispatchableFlow("board");
+    // What makes the two org checks independent rather than one duplicated.
+    // The entry and the session record carry separately stamped orgs, so this
+    // pair disagrees: the entry passes `principal.orgId`, and only the record
+    // check inside `isDispatchRunOfCaller` can refuse it. Delete that check as
+    // "redundant now that principal carries orgId" and this goes green while a
+    // run in another org becomes readable.
+    await seedSession(stores, {
+      id: "dsx_split",
+      orgId: "org_other",
+      parentSessionId: "sess_over_there"
+    });
+    await register(stores, {
+      requestId: "req_split",
+      sessionId: "dsx_split",
+      orgId: DEFAULT_ORG_ID
+    });
+
+    const answers = await hostFor(stores, flow).livenessOf?.(["req_split"]);
+    expect(answers).toEqual({ req_split: false });
   });
 
   it("does not answer for another principal's dispatch run", async () => {

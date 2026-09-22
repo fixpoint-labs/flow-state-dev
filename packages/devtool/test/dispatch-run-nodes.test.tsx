@@ -143,3 +143,77 @@ describe("a dispatched run inside its parent's block tree", () => {
     expect(onOpen).toHaveBeenCalledWith(runs[0]);
   });
 });
+
+/**
+ * What the surface says when it does NOT have the whole picture (FIX-1440).
+ *
+ * The Children tab this replaced could say "the read failed" and "there are
+ * older runs than these". Without those, a failed read and a session that
+ * dispatched nothing render identically, and a truncated list reads as
+ * complete — the surface states something false, which is the failure this
+ * epic exists to remove.
+ *
+ * Each case asserts the WARNING, not merely that rows draw: a version that
+ * rendered the rows and swallowed the warning passes a row-only assertion,
+ * which is exactly the regression being fenced.
+ */
+describe("the node section tells the reader what it does not know", () => {
+  it("reports a failed read instead of rendering as a session that dispatched nothing", async () => {
+    await act(async () => {
+      mount(<DispatchRunNodes runs={[]} error="the runs could not be read" onOpen={vi.fn()} />);
+    });
+
+    expect(screen.getByRole("alert").textContent).toContain("the runs could not be read");
+  });
+
+  it("says it is still reading rather than showing an empty section", async () => {
+    await act(async () => {
+      mount(<DispatchRunNodes runs={[]} isLoading onOpen={vi.fn()} />);
+    });
+
+    expect(screen.getByTestId("dispatch-runs-loading")).toBeTruthy();
+  });
+
+  it("warns that older runs are omitted when the page is not the whole set", async () => {
+    await act(async () => {
+      mount(<DispatchRunNodes runs={runs} truncation="more" onOpen={vi.fn()} />);
+    });
+
+    expect(screen.getByTestId("dispatch-runs-truncated")).toBeTruthy();
+  });
+
+  it("does not warn about omissions when the listing is known complete", async () => {
+    await act(async () => {
+      mount(<DispatchRunNodes runs={runs} truncation="complete" onOpen={vi.fn()} />);
+    });
+
+    expect(screen.queryByTestId("dispatch-runs-truncated")).toBeNull();
+  });
+
+  it("keeps rows visible but flags them when a refresh fails under them", async () => {
+    await act(async () => {
+      mount(<DispatchRunNodes runs={runs} error="refresh failed" onOpen={vi.fn()} />);
+    });
+
+    // Both halves: the rows the reader already had, and the fact that what
+    // they are looking at may no longer be current.
+    expect(screen.getByRole("alert").textContent).toContain("refresh failed");
+    expect(screen.getByText(/separate session/)).toBeTruthy();
+  });
+
+  it("shows the run's own status, the only way a run with no requests reads as started at all", async () => {
+    await act(async () => {
+      mount(<DispatchRunNodes runs={[{ ...runs[0], status: "active" }]} onOpen={vi.fn()} />);
+    });
+
+    expect(screen.getByTestId("dispatch-run-status-dsx_1").textContent).toContain("active");
+  });
+
+  it("says a run has not started when it carries no status at all", async () => {
+    await act(async () => {
+      mount(<DispatchRunNodes runs={runs} onOpen={vi.fn()} />);
+    });
+
+    expect(screen.getByTestId("dispatch-run-status-dsx_1").textContent).toContain("not started");
+  });
+});

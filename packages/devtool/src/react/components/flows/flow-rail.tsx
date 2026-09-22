@@ -199,6 +199,15 @@ function DispatchRunProvenance({
 }) {
   const { selectWorkspace, sessionClient } = useDevTool();
   const origin = dispatchRunOrigin(topic);
+  // Resolving the owner is a read, and a read takes time the operator does not
+  // have to spend waiting: they can pick another session before it lands.
+  // Honouring the answer then moves them off what they chose — the record is
+  // right, it is simply no longer what was asked for.
+  //
+  // `isCurrent` rather than `begin`, per the fence's own contract: this read
+  // writes no fenced state, it only decides a navigation, and taking a
+  // sequence number would supersede whatever data read is genuinely in flight.
+  const fence = useWorkspaceFence([]);
 
   const openParent = useCallback(async () => {
     if (parentInView) {
@@ -207,6 +216,7 @@ function DispatchRunProvenance({
     }
     try {
       const parent = await sessionClient.getSession(parentSessionId);
+      if (!fence.isCurrent()) return;
       // A record written before owners were stamped carries none; the leaf we
       // are listing under is the only honest guess left, and it is the one the
       // rest of this rail already addresses by.
@@ -218,7 +228,7 @@ function DispatchRunProvenance({
       // eslint-disable-next-line no-console
       console.error("[devtool] could not resolve the parent session's flow", err);
     }
-  }, [parentInView, leafAddress, parentSessionId, selectWorkspace, sessionClient]);
+  }, [fence, parentInView, leafAddress, parentSessionId, selectWorkspace, sessionClient]);
 
   return (
     <>

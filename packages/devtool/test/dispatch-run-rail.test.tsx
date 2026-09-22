@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, waitFor } from "@testing-library/react";
 import { DevToolProvider } from "../src/react/context/devtool-context";
 import { FlowRail } from "../src/react/components/flows/flow-rail";
+import { useDevTool } from "../src/react/context/devtool-context";
 
 const FLOWS = [
   { id: "reports", kind: "reports", cardinality: "singleton", requireUser: false, actions: [] },
@@ -50,8 +51,15 @@ const SESSIONS = [
 
 let urls: string[] = [];
 
+/**
+ * Holds the addressed single-session read open so a test can act while it is in
+ * flight. Null means "answer immediately", which is every other test here.
+ */
+let addressedGate: Promise<void> | null = null;
+
 function stubTransport() {
   urls = [];
+  addressedGate = null;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: unknown) => {
@@ -67,6 +75,7 @@ function stubTransport() {
       // An addressed read of one session — what the parent link falls back to
       // when the parent is not among the listed rows.
       const addressed = /\/api\/flows\/sessions\/([^/?]+)$/.exec(url);
+      if (addressed !== null && addressedGate !== null) await addressedGate;
       const body = addressed !== null
         ? { session: row({ id: addressed[1], flowId: "sender-flow" }) }
         : url.includes("/api/flows/sessions")
@@ -89,9 +98,23 @@ const row = (id: string) =>
 /** The row's own left padding — where the navigator puts the indent. */
 const indent = (id: string) => row(id).style.paddingLeft;
 
+/**
+ * Which session the workspace is actually on, read from the same context the
+ * rail writes to. Asserting the DOM of a row would only show what the rail
+ * drew; this shows where the operator ended up.
+ */
+function SelectionProbe() {
+  const { activeSessionId } = useDevTool();
+  return <span data-testid="selected-session">{activeSessionId ?? ""}</span>;
+}
+
+const probe = () =>
+  document.querySelector<HTMLElement>('[data-testid="selected-session"]')!;
+
 async function openTheFlow() {
   render(
     <DevToolProvider initialConfig={{ userId: "devuser" }} userIdControl="host">
+      <SelectionProbe />
       <FlowRail />
     </DevToolProvider>
   );
@@ -184,6 +207,41 @@ describe("opening the session that started a run", () => {
       expect(
         urls.some((url) => url.includes("/api/flows/sessions/sess_absent"))
       ).toBe(true)
+    );
+  });
+
+  it("does not yank the operator back when they move on while the owner read is in flight", async () => {
+    // The race the owner resolution introduced by becoming asynchronous. The
+    // click is a request to go somewhere; by the time the record arrives the
+    // operator may already be somewhere else, and honouring the stale answer
+    // moves them off the session they chose. Nothing about the fetched record
+    // is wrong — it is simply no longer what was asked for.
+    let release!: () => void;
+    addressedGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await openTheFlow();
+
+    await act(async () => {
+      document
+        .querySelector<HTMLButtonElement>('[data-open-parent-session="sess_absent"]')!
+        .click();
+    });
+
+    // The operator picks a different session while the read is still open.
+    await act(async () => {
+      row("sess_talk").click();
+    });
+
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+
+    // Still where they went, not dragged to the run's parent.
+    await waitFor(() =>
+      expect(probe().textContent).toBe("sess_talk")
     );
   });
 });

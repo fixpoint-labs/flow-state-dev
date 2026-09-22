@@ -163,6 +163,8 @@ function PanelContent({ className }: { className?: string }) {
   const {
     dispatchRuns,
     truncation: dispatchRunsTruncation,
+    isLoading: dispatchRunsLoading,
+    error: dispatchRunsError,
     refresh: refreshDispatchRuns,
   } = useDispatchRuns(effectiveSessionId);
   const { sendAction, isSending, lastResponse } = useActionDispatch();
@@ -851,7 +853,13 @@ function PanelContent({ className }: { className?: string }) {
                 it. Collapsed, and nothing about a run is read until a reader
                 opens one — see `dispatch-run-nodes`.
               */}
-              <DispatchRunNodes runs={dispatchRuns} onOpen={handleOpenDispatchRun} />
+              <DispatchRunNodes
+                runs={dispatchRuns}
+                truncation={dispatchRunsTruncation}
+                isLoading={dispatchRunsLoading}
+                error={dispatchRunsError}
+                onOpen={handleOpenDispatchRun}
+              />
             </TabsContent>
 
             <TabsContent value="tasks" className="flex-1 min-h-0 m-0 overflow-auto">

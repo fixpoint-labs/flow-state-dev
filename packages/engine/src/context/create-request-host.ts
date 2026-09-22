@@ -595,7 +595,25 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         registry: stores.activeRequests,
         staleThresholdMs,
         flow,
-        principal: { userId: identity.userId, tenantId: identity.tenantId },
+        // The organization is enforced in TWO places on the dispatch-run arm,
+        // and neither is redundant — removing either reopens a cross-org read.
+        //
+        // Here, `principal.orgId` is compared against the ACTIVE-REQUEST ENTRY.
+        // Inside `isDispatchRunOfCaller` it is compared against the SESSION
+        // RECORD. Those are different rows with independently stamped orgs, so
+        // one passing says nothing about the other.
+        //
+        // Passing it is also load-bearing rather than cosmetic: `matchesOrgFilter`
+        // treats the key as PRESENT whenever the object literal carries it, so
+        // omitting `orgId` here did not disable the filter — it compared every
+        // entry against `undefined` and refused each one that carried an org.
+        // Since registration requires an org, that refused every real dispatch
+        // run and left the arm inert outside tests.
+        principal: {
+          userId: identity.userId,
+          tenantId: identity.tenantId,
+          orgId: identity.orgId
+        },
         isDescendantSession: (sessionId) =>
           isDescendantSession(stores, sessionId, identity, flow),
         isDispatchRunOfCaller: (sessionId) =>

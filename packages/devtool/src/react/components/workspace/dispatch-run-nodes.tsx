@@ -35,6 +35,7 @@ import type { DevtoolItem } from "../../lib/item-types";
 import { useDevTool } from "../../context/devtool-context";
 import { describeReadError } from "../../lib/instance-ownership";
 import { decodeDispatchRunEntry, dispatchRunOrigin } from "../../lib/dispatch-run-links";
+import type { Truncation } from "../../hooks/use-dispatch-runs";
 import { shortSessionId } from "../../lib/utils";
 import { TraceView } from "./trace-view";
 import type { RequestGroup } from "./stream-view";
@@ -45,16 +46,57 @@ type Props = {
   runs: readonly ChildSessionSummary[];
   /** Open one as its own session — the deliberate move, never the expand. */
   onOpen: (run: ChildSessionSummary) => void;
+  /**
+   * Why the list may not be what the reader assumes, carried from the hook
+   * that reads it.
+   *
+   * These are not decoration. Dropped, a failed read renders exactly like a
+   * session that dispatched nothing, and a truncated page renders exactly like
+   * a complete one — the surface asserts something false in both cases, which
+   * is the failure this work exists to remove. Absent `error` and `isLoading`
+   * mean a settled, successful read; `truncation` defaults to `"unknown"`
+   * because a caller that says nothing has not promised completeness.
+   */
+  error?: string | null;
+  isLoading?: boolean;
+  truncation?: Truncation;
 };
 
-export function DispatchRunNodes({ runs, onOpen }: Props) {
-  if (runs.length === 0) return null;
+export function DispatchRunNodes({
+  runs,
+  onOpen,
+  error = null,
+  isLoading = false,
+  truncation = "unknown",
+}: Props) {
+  // Silence is only honest once there is nothing to say: no rows, no failure,
+  // and nothing still in flight. Any of the three and the section must render
+  // to say so.
+  if (runs.length === 0 && error === null && !isLoading) return null;
 
   return (
     <section data-dispatch-run-nodes className="border-t border-slate-800 p-2">
       <h3 className="px-1 pb-1 text-[10px] uppercase tracking-wide text-slate-500">
         Dispatched runs
       </h3>
+
+      {error !== null && (
+        // Rendered ABOVE the rows and never instead of them: a refresh that
+        // fails leaves the previous page on screen, and those rows are still
+        // the best information the reader has — they just are not known to be
+        // current, which is what this says.
+        <p role="alert" className="px-1 pb-1 text-[10px] text-red-400">
+          {error}
+          {runs.length > 0 && " — showing the last rows read, which may be out of date."}
+        </p>
+      )}
+
+      {isLoading && runs.length === 0 && (
+        <p data-testid="dispatch-runs-loading" className="px-1 pb-1 text-[10px] text-slate-500">
+          Reading this session&apos;s dispatched runs…
+        </p>
+      )}
+
       <ul className="flex flex-col gap-1">
         {runs.map((run) => (
           <li key={run.id}>
@@ -62,6 +104,15 @@ export function DispatchRunNodes({ runs, onOpen }: Props) {
           </li>
         ))}
       </ul>
+
+      {truncation === "more" && (
+        <p
+          data-testid="dispatch-runs-truncated"
+          className="px-1 pt-1 text-[10px] text-amber-400"
+        >
+          Older runs are not shown. This is the newest page, not the whole history.
+        </p>
+      )}
     </section>
   );
 }
@@ -118,6 +169,18 @@ function DispatchRunNode({
           </span>
           <span className="shrink-0 text-[9px] text-slate-500">
             separate session · {shortSessionId(run.id)}
+          </span>
+          {/*
+            The run's own status, not any one request's. A run that has made no
+            requests yet carries none, and "not started" is the only way that
+            state can be read at all — an absent badge would be indistinguishable
+            from a run whose work finished.
+          */}
+          <span
+            data-testid={`dispatch-run-status-${run.id}`}
+            className="shrink-0 rounded bg-slate-800 px-1 text-[9px] text-slate-400"
+          >
+            {run.status ?? "not started"}
           </span>
           {activity.isLoading && (
             <Loader2 className="h-3 w-3 shrink-0 animate-spin text-slate-500" aria-hidden />

@@ -117,11 +117,13 @@ Click a row and the workspace opens that session. It is a session like any other
 
 The Trace tab also lists the runs a session started, under the blocks that ran in it. Each is a collapsed node naming a separate session; expand one and that run's own block tree loads in place, without moving the workspace off the session you are on. Nothing about a run loads until you open it.
 
+The section says so when it does not have the whole picture. A read that fails says so rather than rendering as a session that dispatched nothing, and if a refresh fails under rows you already have, those rows stay on screen marked as possibly out of date. When the list holds only the newest page, it says that older runs are not shown instead of looking complete.
+
 Work dispatched into another flow instance produces a session that instance owns, so opening a row can move you to a different copy as well as a different session. The rail still lists every copy, and each remembers the session you last had open under it, so going back is picking it again.
 
 A few things worth knowing about a row:
 
-- **Status is coarse on purpose.** `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A row with no status has not run anything yet.
+- **Status is coarse on purpose.** Each node in the Trace tab carries the run's status. `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A run that has made no requests reads as `not started`.
 - **Labels can be missing.** The topic and the entry label are stamped when the session is created, and either can be absent. The row still renders — the session id is the address.
 - **The task link is a match, not a foreign key.** Where a run lines up with a task on a board in this session, the Tasks tab shows a link on that task's row. Where a task cannot be matched to exactly one run, no link is shown rather than a guessed one.
 
