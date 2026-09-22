@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was considered, what was chosen, and what each choice locks in. Three decisions are the
+What was considered, what was chosen, and what each choice locks in. Four decisions are the
 sign-off surface, and one fork is still yours. The epic already settled that there is **one**
 navigator and that its depth comes from the flow's cardinality
 ([D8](../../epics/FIX-1455/DECISIONS.md#d8)); none of that is reopened here.
@@ -19,6 +19,9 @@ flowchart TD
   D2 -.->|"rejected"| X2b["a throwaway example app<br/>a check that cannot fail"]
   I --> D3["D3 · one mount, channels and seats as sections"]
   D3 -.->|"rejected"| X3["two mounts in one rail<br/>two scrollbars in 256 pixels"]
+  I --> D4["D4 · a roster and a board are ordinary<br/>in-organization data, read directly"]
+  D4 -.->|"rejected"| X4a["reachable only through a credentialed<br/>administrative surface"]
+  D4 -.->|"rejected"| X4b["read the board through the channel's agent action<br/>it answers a model, not a screen"]
 ```
 
 Solid edges are what you are signing. Dashed edges lost, and the label says why.
@@ -64,8 +67,37 @@ migration become a follow-up instead of a gate.
 | **Because** | Two mounts is two scroll containers inside a 256px rail, and a scroll-within-a-scroll is the exact failure the epic's own narrow-width mind-changer turns on. One mount also gives one keyboard order, one selection, and one read of the flow list rather than two that have to be talked out of racing. The sections are a label and a kind filter; nothing else distinguishes them |
 | **Locks in** | Section grouping is the component's job, so a third concern later is another section rather than a third mount. It also means the rail cannot give channels and seats independent scroll positions — if that turns out to matter at a hundred seats, it is a change to the component, not a change to the app |
 
+<a name="d4"></a>
+## D4 · A hired roster and a channel board are ordinary in-organization data, so the panels read them directly
+
+| | |
+|---|---|
+| **Instead of** | Treating both as administrative data, reachable only through a credentialed admin surface · leaving both panels on their empty state until a later issue opens a read path · reading a board through the channel's own board-reading action, which hands rows to a model rather than to a screen and whose reply carries no rows to a browser at all (`ExecuteActionResponse`, `packages/client/src/types/index.ts:89`) |
+| **Because** | The product owner's rule, given directly: *a user can see all workers within their org, unless they are user-scoped as a resource.* The axis is the resource's **scope** — an org-scoped collection is readable by any member of that org; a user-scoped one is not. That is a different axis from flow isolation ([BP-027](../../../docs/contributing/best-practices/resources.md)), which decides whether two flows in one org share rows, not who may read them. Both surfaces qualify, and both were re-checked against `main`: the hired roster declares `scope: "org"` (`packages/workforce/src/roster/collections.ts:110`) and a channel board's ledger declares `scope: "org"` (`packages/workforce/src/channel/channel-board.ts:160`). What makes the rule safe rather than merely permissive is that a session's organization is bound by the server from the resolved identity and **cannot be steered by the caller** — proved by execution, not read off the code ([EVOLUTION.md](EVOLUTION.md)) |
+| **Locks in** | Each collection that serves a panel carries `client: { state: { read: true } }` — the framework's per-collection statement that a browser may list the rows. Five production collections already declare it, so this is a well-worn opt-in and not new substrate. Two consequences travel with it. **A user-scoped collection must not take it** under this rule; that half is a rule, not an omission. And the permission belongs to the **collection**, not to the panel — once declared, any session in that org whose flow installs the collection can read it, including flows this issue never touches |
+
+**A bare opt-in publishes the whole stored row.** With no `expose`, `exclude` or `data`
+projection the read returns the stored state unchanged
+(`resolveClientProjection`, `packages/core/src/helpers/client-projection.ts:150–158`). For a
+board that is the full task envelope, including the execution coordinates the channel's own
+board-reading action deliberately withholds from a model — who claimed a row, its lease, its
+retry ledger, its write log. The board's read therefore needs a projection, and there is
+already an authored allowlist to copy rather than invent
+([PLAN.md → Blocked on](PLAN.md#blocked-on), carried as a guardrail). This does not reopen D4;
+it is what declaring it carefully looks like.
+
+**What would change my mind:** a roster or board row carrying something a member of the org
+should not see — a rate, a credential, a performance note. The rule would not change; the
+projection would. That is an `expose` list, not a closed door.
+
 ## Decided, not asked
 
+- **The two read declarations land inside this issue, not back in FIX-1475 or FIX-1476.**
+  They exist solely to serve this issue's two panels, and two one-line declarations do not
+  earn their own tracked unit of intent ([BP-002](../../../docs/contributing/best-practices/process.md)).
+  Recorded as an engineering call rather than asked. The seam is named in
+  [PLAN.md → Blocked on](PLAN.md#blocked-on), because for the board it is **not** a line at
+  the call site.
 - **The component is called `FlowNavigator`.** The epic left the name to this issue. It browses
   flows — kinds, instances, sessions — and its second host browses flows that are not a
   workforce at all, so a Workforce-flavoured name would be wrong there on day one.
@@ -153,12 +185,13 @@ deployments, so the list is not in fact public. Then the exposure is between org
 deployment rather than to the world, and it becomes a documented limit like any other. It would
 also change if FIX-1486 lands inside this epic's window — then there is nothing to hold.
 
-**The roster panel is the same call, one surface over.** Answering this also answers whether the
-right panel's roster renders at all: reading an org-scoped collection from the shell requires the
-shell's flow to resolve a principal, because without one a session's org is whatever the caller
-sent ([PLAN.md → Blocked on](PLAN.md#blocked-on)). *Ship* means the reference app carries a
-credential path; *hold* means the panel shows its empty state until it does. One decision, two
-regions — not a second sign-off.
+**The roster panel is a different call, and it is already answered — see [D4](#d4).** An earlier
+draft of this fork said the roster rode on this answer, because it claimed that without a
+resolved identity a session's organization is whatever the caller sent. That is false on current
+`main`, and the correction is recorded with its evidence in [EVOLUTION.md](EVOLUTION.md). The two
+are on different axes: a roster read answers *a member of one organization, about that
+organization*, and the flow list answers *anyone, with no credential and no organization at all*.
+Nothing about D4 reaches this fork, and nothing here is waiting on it.
 
 **Cost of being wrong: asymmetric, which is why I lean hard.** If I am wrong to hold it, the rail
 looks thinner than the figure for a few weeks and switching it on is one small change. If I am
@@ -179,3 +212,22 @@ hole is open either way; the difference is whether we ship the app that walks pe
   amendment. Three engineering gaps folded the same round — `react` carries a third copy of the
   cardinality branch, it has no transport seam at all, and the roster has no read path from this
   app ([PLAN.md → Blocked on](PLAN.md#blocked-on)).
+- **Amendment 1, after merge** — the premise under the roster half was refuted by running it. A
+  session with no resolved identity binds to the default organization, **not** to the one the
+  caller asked for: the organization is never the caller's to choose. **What survived is the
+  credential requirement itself** — a shell that resolves no principal reads the default
+  organization, so wherever real organizations exist the panel renders correct and empty. **That
+  requirement is real and `S8` cannot satisfy it here** — there is no credential in this
+  repository representing a viewer, so it is blocked on
+  [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) and `S8` ships the limit instead
+  ([PLAN.md → Blocked on](PLAN.md#blocked-on)). Only an unconfigured clone reads these panels
+  correctly with no credential at all. What the refutation moved is the *wall*: a
+  per-collection read permission neither collection declares, which stops the roster and the
+  board alike with or without a credential. The fork was re-framed around that, the product owner
+  answered it, and it is now [D4](#d4). The seat-list fork above is untouched and still open.
+  Evidence for every claim: [EVOLUTION.md](EVOLUTION.md).
+- **Amendment 1, second half** — the same pass withdrew a promise the docs draft made to readers:
+  that the roster and board panels update live, and that two people watching one board see the
+  same rows. The engine cannot do it, and never could — no decision here changed, so this is a
+  build constraint raised to be **re-gated**, not a reversal. Deferred to its own unit of work
+  ([PLAN.md → Follow-ups](PLAN.md#follow-ups)); the derivation is in [EVOLUTION.md](EVOLUTION.md).
