@@ -118,21 +118,15 @@ if it could not be, the collection would come off the list.
 
 ## Settled
 
-- **The durable-hire sequence exists at exactly one site today** — **CONFIRMED** by execution, not
-  by reading: one file pairs a roster `create()` with `registerFromRoster()`
-  (`apps/kitchen-sink/flows/workforce-admin/flow.ts`). D1's extraction is therefore a move, not a
-  reconciliation of two drifted copies. ([`poc/evidence/`](poc/evidence/README.md) → C2)
-- **No collection under `packages/workforce/src` serves the live inventory to a browser** —
-  **CONFIRMED**, and asserted as a totality rather than as a spot check: all six collection
-  definitions in the package are classified, two are readable today (both FIX-1477's), one is a
-  caller-parameterised factory that fixes no address, and the three inventory collections are the
-  delta this issue owes. A planted seventh collection is rejected by the same assertion, which is
-  the negative control. ([`poc/evidence/`](poc/evidence/README.md) → C1)
-- **A default deployment has no hire path at all** — **CONFIRMED**: the operator flow is
-  registered only when a credential is configured (`apps/kitchen-sink/fsdev.config.ts:104`,
-  `apps/kitchen-sink/lib/workforce-admin-auth.ts:103`). This is why D1's rejected *"ship
-  browse-only"* option does not quietly still work in a clean clone.
-  ([`poc/evidence/`](poc/evidence/README.md) → C3)
+Three claims this design rests on, settled by execution at authoring time rather than argued.
+Verdicts here; what each asserts, how, and what it corrected is in
+[`poc/evidence/README.md`](poc/evidence/README.md).
+
+| Claim | Verdict | Why it mattered |
+|---|---|---|
+| The durable-hire sequence exists at exactly one site (C2) | **CONFIRMED** | [D1](#d1)'s extraction is a *move*, not a reconciliation of two already-drifted copies |
+| No collection in `packages/workforce/src` serves the live inventory to a browser (C1) | **CONFIRMED**, as a totality over all six definitions, with a planted seventh as the negative control | [D3](#d3) is opening something genuinely closed, and the delta it owes is exactly three |
+| A default deployment registers no hire door at all (C3) | **CONFIRMED** | [D1](#d1)'s rejected *"ship browse-only"* option does not quietly still work in a clean clone |
 
 ## How it got here
 
@@ -141,5 +135,10 @@ if it could not be, the collection would come off the list.
   as the thing to make unreachable rather than as a limit to restate, which is what put the hire
   door on the rail's own flow; the seat detail assembled from four existing sources with no new
   storage beyond one field and three read declarations.
+- **Review round 1** — no decision moved; the direction was approved as drafted. One check was
+  **removed**: the plan had made the authoring-time evidence checker a permanent gate while the
+  checker itself said it was throwaway, and a spec cannot hold both. Its runtime content was
+  already covered twice over, and the totality concern it uniquely carried went to follow-ups as a
+  question for the package's own suite.
 
 **Open: none.**

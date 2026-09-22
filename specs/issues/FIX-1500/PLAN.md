@@ -101,7 +101,7 @@ Every row names what would make it fail. A check with no producible red state pr
 | V12 | S8 | The rail publishes no affordance that creates a channel or a board | Written as an **allow-list over the surface's actions**, not a denylist of two names, so a third spelling fails too (BR-24) |
 | V13 | S4 S8 | A seat hired through the rail has a seat detail that opens, with its kind and an (empty) register — the same pane a file-declared seat opens | Skip the inventory row on a runtime hire: the roster lists the seat and its detail is blank. That split — listed but not openable — is the failure S4 exists for (BR-16) |
 | V14 | S1 S4 | **Persistence boundary, two assertions.** (a) After a hire, the row is present in the durable store read **out of band**, not through the runtime that wrote it. (b) A runtime built on a **fresh** store handle over the same durable location lists the seat | (a) goes red if the hire only registered in-process. (b) goes red if the reload is skipped. **And the negative control for (b):** point boot two at an **empty** durable location — it must go red. Without that control, a `globalThis` cache or a module-level array makes (b) pass while proving nothing, which is precisely the "does not come from process memory" claim BR-19 makes (BR-18, BR-19) |
-| V15 | S2 S3 | [`poc/evidence/`](poc/evidence/README.md) runs green: every collection in the package is classified and the delta this issue owes is empty | Today it reports a delta of three. After S2 the delta is empty. `--plant` must still fail — a totality assertion that stops rejecting a planted collection has stopped asserting totality |
+| ~~V15~~ | — | **Dropped in review.** It made [`poc/evidence/`](poc/evidence/README.md) a permanent gate, which **contradicts what that POC says it is** — throwaway, not wired into any suite. A spec cannot call a script disposable and then require it to stay green forever (tenet 1). Its runtime content is already V4 and V5; what it uniquely added was *totality* over collections nobody has classified yet, and that is a repository-wide concern rather than this issue's, so it goes to [Follow-ups](#follow-ups) instead of into spec-local machinery. Kept as a struck row so a reader who remembers it finds where it went | — |
 | VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): open the rail → open a seat → its kind, skills, channels and boards render → hire another instance of that kind → the new seat appears **with no page reload** → restart the server → reopen → the seat is there → open a channel's board through the rail and its rows render. **And the network log shows the board rows arriving from the collection route**, with no request to a developer-tool or app-private endpoint anywhere in the run | Serve the board from app-owned state: every DOM assertion still passes and the network assertion fails. That half is what makes this a goal check rather than a screenshot. Reload the page after the hire and the no-reload assertion goes red. Skip the restart and the last two go red |
 
 **No model runs in any of this**, so no `goals/` check applies: every claim is about what a
@@ -162,13 +162,10 @@ opening a seat:
                 then BoardColumns on "<channelId>.<board>"
 ```
 
-**POC:** [`poc/evidence/`](poc/evidence/README.md) — not a design experiment, a checker for this
-spec's counted claims. It settled three: the hire sequence is at one site, no inventory collection
-serves a browser today (asserted as a totality, with a planted collection as the negative
-control), and a default deployment registers no hire door at all. All three held as drafted; the
-run also **corrected two errors in the spec's own table** before review saw them — the membership
-pattern is `inventory/members/**`, not `/*`, and `definePersona` is a caller-parameterised factory
-that had gone unclassified.
+**POC:** [`poc/evidence/`](poc/evidence/README.md) — authoring-time evidence for this spec's
+counted claims, not a design experiment and not a gate. What it settled and what it corrected is
+in its README; the verdicts are in [DECISIONS.md → Settled](DECISIONS.md#settled). Run it to
+re-derive a claim, not to pass a build.
 
 ## At implement time
 
@@ -243,6 +240,24 @@ panels read on mount and after an action this rail performed. A second browser s
 one's hire is BR-17, named so its absence is visibly deliberate. Do not design a subscription
 against a seam that today delivers only the writer's own changes.
 
+## Notes from review
+
+Verbatim, from the spec PR. Inputs, not instructions — adopt, adapt or discard; you owe no
+justification for discarding one.
+
+- "**Four PRs / five changeset fragments.** The A∥B substrate split is intellectually clean but
+  costly for additive `patch` work. **Consider three PRs:** merge current PR-A + PR-B (workforce +
+  react substrate), keep `SeatDetail`, keep kitchen-sink + `VG`. **Or** one changeset per PR
+  instead of three workforce fragments on PR-B." — cursor
+  ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2061#pullrequestreview-cursor))
+- "**Doc triplication.** Rejected alternatives appear in the DECISIONS mermaid, each D-card, and
+  'Considered and dropped'… **Blocked on** (~45 lines) restates D1/DOCS org limits." — cursor
+  (*ibid.*). The C1–C3 repetition it names was folded. The rejected-alternative repetition was
+  **not**: the tree, the cards' *Instead of* row and the dropped table are three different
+  questions the spec template requires separately — what you are signing, what this one choice
+  rejected, and what was weighed and lost. **Blocked on** was left long on purpose; it carries the
+  FIX-1503 argument, which is the part of this spec most likely to be re-litigated.
+
 ## Follow-ups
 
 - `fire` from the rail. The extracted helper carries it, so adding the affordance later writes no
@@ -252,3 +267,8 @@ against a seam that today delivers only the writer's own changes.
   `BoardColumns`' and `Roster`'s too, and belongs to whoever answers it for all three.
 - A seat's skill *contents* — what a skill does, not just its name — have no browser-readable home.
   Flagged, not filed: it is a skills-product question, and this issue is explicitly not that.
+- **Nothing asserts that every collection in `packages/workforce` has *decided* about browser
+  readability.** This spec's authoring-time checker does it once, for this change; a collection
+  added later can go browser-unreadable, or bare-readable, with nobody choosing. That belongs in
+  the package's own suite as a standing test, not in spec-local machinery — which is why V15 was
+  dropped rather than kept. Raised by review ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2061#pullrequestreview-cursor)).

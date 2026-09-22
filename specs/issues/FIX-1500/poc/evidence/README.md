@@ -1,7 +1,10 @@
 # FIX-1500 · the spec's factual base, re-derived
 
-Retained evidence for [the spec set](../../SPEC.md). Throwaway, not production code, not wired
-into any suite, and nothing imports it. It reads files and spawns nothing.
+Retained evidence for [the spec set](../../SPEC.md). **Authoring-time, and that is its whole
+status**: throwaway, not production code, not wired into any suite, not a gate, and nothing
+imports it. It reads files and spawns nothing. A review round pointed out that the plan had also
+made it a permanent check, which contradicted this paragraph — the check was dropped, not this
+paragraph.
 
 This spec rests on three counted or enumerated claims, and a hand-derived count is the class of
 evidence that does not converge by being argued about — each review round corrects one number and
