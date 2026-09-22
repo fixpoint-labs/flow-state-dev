@@ -3342,8 +3342,8 @@ BP-003:
 
 ### Candidates considered and dropped
 
-- **A BP, or a BP-022 sentence, for the release-note derivation class.** Dropped — 23 findings and
-  still the wrong move. The rules are correct, were quoted by number and by line at four separate
+- **A BP, or a BP-022 sentence, for the release-note derivation class.** Dropped — 20 findings on the
+  fragment itself and still the wrong move. The rules are correct, were quoted by number and by line at four separate
   defects, and cycle 14 measured what that is worth.
 - **Sharpening BP-003 to name fixture asymmetry.** Dropped at one instance. It is a genuinely
   uncovered sub-shape and it is a **claim to test**, not a rule. If a second cycle produces it, the
