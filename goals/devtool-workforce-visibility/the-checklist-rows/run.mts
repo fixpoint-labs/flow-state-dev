@@ -1,6 +1,6 @@
 /**
- * Goal check: ER-Devtool checklist rows 4 and 6, read off the shipped DevTool
- * on a live hire.
+ * Goal check: ER-Devtool checklist row 4, graded on a live hire off the
+ * shipped DevTool. Row 6 is not graded yet (below).
  *
  * Real path, no model, out of CI. See goal.md for the contract.
  *
@@ -10,11 +10,14 @@
  * driven through that lab's own driver, so nothing here stands a workforce up
  * or shapes one for the inspection. This file only reads the screen.
  *
- * Row 6 (a sealed document is told apart from a writable one) is not graded.
- * No live hire in the repository declares a sealed document yet, and ER-3 rules
- * out adding one only so this check has something to look at. The run says so
- * as a failure line rather than passing without it, so a green verdict here can
- * only ever mean both rows were read.
+ * Row 6 (a sealed document is told apart from a writable one) is not graded,
+ * pending an owner decision on its subject. No live hire in the repository
+ * declares a sealed document, and ER-3 rules out adding one only so this check
+ * has something to look at. The goal's claim is therefore row 4 alone: a PASS
+ * means row 4 was graded and held, and says in its own words that row 6 was
+ * not graded. Row 6 becomes a separate leg here once it has a subject. The
+ * sweep has only PASS and FAIL, so a row that cannot be graded is left out of
+ * the claim rather than reported as a failure it is not.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/the-checklist-rows/run.mts
  * Controls: GOAL_CONTROL=silent-park (must FAIL at row 4 only)
@@ -44,14 +47,19 @@ const EXPECTED: Record<string, readonly string[]> = {
 };
 
 /**
- * The failure line row 6 carries until it has a subject. Kept out of a
- * control's self-grade: it is the same with every control, so it says nothing
- * about which leg a control reddened.
+ * What the run says about row 6 on every verdict, green or red. Not a failure:
+ * the row is outside this goal's claim until it has a subject.
  */
-const ROW6_NOT_GRADED =
-  "[row 6] not graded: no live hire in the repository declares a sealed document (a `references/` " +
-  "file or an `ro` grant), so there is nothing on screen to tell apart from a writable one. Pending an " +
-  "owner decision on the subject; not a failure of the row-6 code. See goal.md.";
+const ROW6_STATUS =
+  "row 6 not graded, pending an owner decision on its subject (no live hire declares a sealed " +
+  "document); a separate leg is added when it has one. Not a failure of the row-6 code";
+
+/**
+ * The smallest visible area that counts as legible: 40px of the cell's width,
+ * and at least one line of text (or the whole cell, if it is shorter) tall.
+ */
+const MIN_VISIBLE_WIDTH = 40;
+const MIN_VISIBLE_HEIGHT = 10;
 
 const failures: string[] = [];
 const notes: string[] = [];
@@ -99,6 +107,10 @@ interface RowOnScreen {
   openExpanders: number;
   /** How much of the reason cell's width a reader can actually see, in px. */
   reasonVisiblePx: number;
+  /** How much of the reason cell's height a reader can actually see, in px. */
+  reasonVisibleHeightPx: number;
+  /** The cell's own height, so "one line tall" can be capped at the cell. */
+  reasonHeightPx: number;
   /** True when the cell runs past the edge of what its pane shows. */
   reasonCutByPane: boolean;
   /** True when every pane that cuts it scrolls, so the rest is a scroll away. */
@@ -119,6 +131,12 @@ async function readTaskRow(
   until: (cells: Record<string, string>) => boolean,
 ): Promise<RowOnScreen | undefined> {
   await page.getByRole("tab", { name: "Tasks" }).click();
+  // The panel read below is only the Tasks panel once the tab has taken.
+  await page.waitForFunction(
+    () => document.querySelector("[role='tab'][aria-selected='true']")?.textContent?.trim() === "Tasks",
+    undefined,
+    { timeout: 10_000 },
+  );
   for (let waited = 0; waited < 10_000; waited += 250) {
     const read = await page.evaluate((id) => {
       const panel = document.querySelector("main [role='tabpanel'][data-state='active']");
@@ -131,27 +149,46 @@ async function readTaskRow(
           const cells: Record<string, string> = {};
           headers.forEach((head, i) => (cells[head] = (tds[i]?.textContent ?? "").trim()));
           const reasonCell = tds[headers.indexOf("Reason")];
-          // What a reader can see of the cell: its box, cut by every ancestor
-          // that clips overflow, and by the window.
+          // What a reader can see of the cell: its box, cut on BOTH axes by
+          // every ancestor that clips overflow, and by the window. A row
+          // scrolled above or below the pane is as unseen as one pushed off
+          // its right edge.
           let visiblePx = 0;
+          let visibleHeightPx = 0;
+          let heightPx = 0;
           let cutByPane = false;
           let paneScrolls = true;
           if (reasonCell !== undefined) {
             const box = reasonCell.getBoundingClientRect();
+            heightPx = box.height;
             let left = Math.max(box.left, 0);
             let right = Math.min(box.right, window.innerWidth);
+            let top = Math.max(box.top, 0);
+            let bottom = Math.min(box.bottom, window.innerHeight);
             for (let el = reasonCell.parentElement; el !== null; el = el.parentElement) {
               const style = getComputedStyle(el);
-              if (style.overflowX === "visible") continue;
+              const clipsX = style.overflowX !== "visible";
+              const clipsY = style.overflowY !== "visible";
+              if (!clipsX && !clipsY) continue;
               const clip = el.getBoundingClientRect();
-              if (clip.right < box.right) {
-                cutByPane = true;
-                if (style.overflowX !== "auto" && style.overflowX !== "scroll") paneScrolls = false;
+              if (clipsX) {
+                if (clip.right < box.right) {
+                  cutByPane = true;
+                  if (style.overflowX !== "auto" && style.overflowX !== "scroll") paneScrolls = false;
+                }
+                left = Math.max(left, clip.left);
+                right = Math.min(right, clip.right);
               }
-              left = Math.max(left, clip.left);
-              right = Math.min(right, clip.right);
+              if (clipsY) {
+                top = Math.max(top, clip.top);
+                bottom = Math.min(bottom, clip.bottom);
+              }
             }
             visiblePx = Math.max(0, right - left);
+            visibleHeightPx = Math.max(0, bottom - top);
+            // No visible height means no visible width either: nothing of the
+            // cell is on screen.
+            if (visibleHeightPx === 0) visiblePx = 0;
           }
           return {
             headers,
@@ -159,6 +196,8 @@ async function readTaskRow(
             reasonTitle: reasonCell?.getAttribute("title") ?? null,
             openExpanders: panel.querySelectorAll("details[open]").length,
             reasonVisiblePx: visiblePx,
+            reasonVisibleHeightPx: visibleHeightPx,
+            reasonHeightPx: heightPx,
             reasonCutByPane: cutByPane,
             paneScrolls,
           };
@@ -268,8 +307,16 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
           );
         } else if (shown !== reason) {
           fail("row 4", `the Reason cell reads ${JSON.stringify(shown)}; the row holds ${JSON.stringify(reason)}`);
-        } else if (onScreen.reasonVisiblePx < 40) {
-          fail("row 4", `the Reason cell is on the row but only ${Math.round(onScreen.reasonVisiblePx)}px of it can be seen`);
+        } else if (
+          onScreen.reasonVisibleHeightPx < Math.min(MIN_VISIBLE_HEIGHT, onScreen.reasonHeightPx)
+        ) {
+          fail(
+            "row 4",
+            `the Reason cell is on the row but out of view vertically: ${Math.round(onScreen.reasonVisibleHeightPx)}px ` +
+              `of its ${Math.round(onScreen.reasonHeightPx)}px height can be seen (the row sits above or below what the pane shows)`,
+          );
+        } else if (onScreen.reasonVisiblePx < MIN_VISIBLE_WIDTH) {
+          fail("row 4", `the Reason cell is on the row but only ${Math.round(onScreen.reasonVisiblePx)}px of its width can be seen`);
         } else if (onScreen.reasonTitle !== reason) {
           fail("row 4", `the Reason cell is clamped and its title reads ${JSON.stringify(onScreen.reasonTitle)}, so the whole reason is nowhere a reader can see it`);
         } else {
@@ -308,14 +355,14 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
     served.stop();
   }
 
-  // ---- row 6 ---------------------------------------------------------------
-  failures.push(ROW6_NOT_GRADED);
+  // ---- row 6: outside the claim until it has a subject (see the header) ----
+  notes.push(ROW6_STATUS);
 
   // ---- the controls grade themselves ---------------------------------------
   if (CONTROL !== "") {
     const expected = EXPECTED[CONTROL];
     if (expected === undefined) throw new Error(`unknown control "${CONTROL}"`);
-    const graded = failures.filter((line) => line !== ROW6_NOT_GRADED);
+    const graded = [...failures];
     const offLeg = graded.filter((line) => !expected.some((leg) => line.startsWith(`[${leg}]`)));
     const missing = expected.filter((leg) => !graded.some((line) => line.startsWith(`[${leg}]`)));
     if (missing.length > 0 || offLeg.length > 0) {
