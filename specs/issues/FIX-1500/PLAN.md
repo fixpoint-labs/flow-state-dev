@@ -17,7 +17,7 @@ half is checkable with no app running and the app half is the only one that wait
 | S4 | `workforce` · a runtime hire's inventory row | A seat hired at runtime gets its inventory row written too, through S1. Without it the seat detail works for file-declared seats and silently not for hired ones — which is the spine's own step 4 | BR-16 |
 | S5 | `react` · `SeatDetail` | One seat's kind, skills, channels and declared boards. Host-passed `PanelRowSource`, the same seam `Roster` and `BoardColumns` take — **it must not build its own client** (BR-27). Each section has a distinct empty state; a section that failed to read says so rather than rendering as empty | BR-5 – BR-8 BR-27 |
 | S6 | `react` · the panels' shared read | `usePanelRows` forwards `topicPrefix`, which the client's `listCollectionItems` already accepts (`packages/client/src/resource-client/resources.ts:105`–`:109`) and the hook does not pass today. This is what makes a seat's channels a read at the source rather than a scan | BR-6 |
-| S7 | kitchen-sink · the hire door | One action on the flow the rail's session runs on, calling S1. Organization from `ctx.org`, never from the body. The flow installs the roster collection so the ref resolves against its owning flow | BR-1 – BR-3 BR-11 – BR-15 |
+| S7 | kitchen-sink · the hire door | One action on the flow the rail's session runs on, calling S1. **The organization is the one the session is already bound to** — the principal-or-default-org binding the engine applies when the session is created, which is the same resolution the panels' reads go through. Never from the body, and **not** `workforce-admin`'s credential-derived org either: that is also "not the body" and is the wrong source, because it is the operator's organization rather than this session's ([D1](DECISIONS.md#d1), BR-2). The flow installs the roster collection so the ref resolves against its owning flow | BR-1 – BR-3 BR-11 – BR-15 |
 | S8 | kitchen-sink · the rail | A seat row opens `SeatDetail`; a channel row opens its declared boards and mounts `BoardColumns` per board; the hire affordance calls S7 and then the roster panel's own `refresh`. **No create affordance for a channel or a board** | BR-16 BR-21 – BR-24 |
 | S9 | Docs · changesets | [DOCS.md](DOCS.md)'s operations; `packages/workforce/README.md` and `packages/react/README.md` for the public changes. **None for kitchen-sink** — private (BP-022) | — |
 
@@ -119,6 +119,7 @@ reimplement it.
 | The prefix of a seat's memberships | `membershipPrefix(seatId)` — it validates the id is one whole path segment and refuses a separator, because one that slipped through *"would file the row under another seat"* (`packages/workforce/src/inventory/collections.ts:217`, `:226`) | A hand-built `` `${seatId}/` `` |
 | Turning a hire request into a stored row, and a stored row into a seat manifest | `toHiredSeatRow` and `hiredSeatManifest` (`packages/workforce/src/roster/`, re-exported from the package root) — the operator flow already builds S1's sequence out of exactly these | A second shape for a row on its way in |
 | Building a seat's address from an org and a seat id | `seatAddress(orgId, seatId)` — it refuses a dotted or empty org, without which `acme` + `support.ada` and `acme.support` + `ada` spell one address and the second hire silently rebinds the first | String concatenation |
+| The organization a hire lands in (S7) | **The session's own binding** — the principal-or-default resolution the engine already applies, the same one the panels' reads resolve through, so hire and read cannot diverge | `orgOf(credential)` as `workforce-admin` derives it — that is the **operator's** organization, and using it here rebuilds the exact split D1 exists to close, while looking correct because it is not the body |
 | Where S1's extracted sequence lives | `packages/workforce/src/roster/`, beside `reload.ts` — the boot-side reader of the same rows. One directory owns writing a roster row and reading it back | A new top-level module |
 | Writing a seat's inventory row (S3, S4) | **One writer, shared** with `openInventory`'s seat write. A runtime hire and a boot must not be able to produce differently-shaped rows for the same seat | A second write path for hired seats |
 
@@ -184,10 +185,17 @@ re-derive a claim, not to pass a build.
 
 Re-check these against the repo before building; each of them moves.
 
-- **Is FIX-1477's rail on `main`?** This issue extends the shell that mounts `FlowNavigator`,
-  `Roster` and `BoardColumns` and does **not** re-own it ([Blocked on](#blocked-on)). PR-A, PR-B
-  and PR-C need none of it and can proceed regardless; **PR-D is the one that cannot land
-  without it.** If it is not there, that is a sequencing fact to raise, not a surface to rebuild.
+- **Check whether anything mounts the rail yet, and do not assume it does.** As this spec was
+  written, `packages/react` **exports** `FlowNavigator`, `Roster` and `BoardColumns`
+  (`packages/react/src/index.ts`) and **`apps/kitchen-sink` imports none of the three** — a search
+  of the app for all three names returns nothing, while it imports from `@flow-state-dev/react` in
+  a dozen other places. So the components ship and **nothing mounts them**: the shell this issue
+  extends is not merely unmerged, it does not exist anywhere. That surface is
+  [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477)'s S8 and this issue does **not**
+  re-own it ([Blocked on](#blocked-on)). PR-A, PR-B and PR-C need none of it and proceed
+  regardless; **PR-D is the one that cannot land without it.** If it is still unbuilt when PR-D is
+  ready, **raise it — do not widen PR-D to build it**, and do not quietly mount the components
+  yourself to unblock a check.
 - **Has the operator flow's hire sequence changed?** S1 moves what is there, so read it fresh
   rather than from this plan's summary of it. If it has gained a step, the step moves too.
 - **What are the inventory row schemas now?** S3 adds a field to one of them. They are a public
@@ -226,13 +234,16 @@ Re-check these against the repo before building; each of them moves.
 **One dependency inside the epic, and two deferrals outside it. None of them is a reason to hold
 the design.**
 
-**The rail is [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477)'s S8.** That surface —
-the kitchen-sink shell whose left rail is one `FlowNavigator` with Channels and Seats sections and
-whose right panel is `BoardColumns` plus `Roster` — is assigned to FIX-1477's PR-C by
-[its plan](../FIX-1477/PLAN.md#pr-plan). This issue mounts what a row opens *into* and adds the
-hire door; it does not build the rail, and a second navigator is an invent-kill. **PR-D is the
-only part of this plan that needs it**; PR-A, PR-C and PR-B stand alone. If the rail is not
-available when PR-D is ready, that is a sequencing conversation, not a licence to rebuild it here.
+**The rail is [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477)'s S8, and it is the one
+dependency here that is not merely late.** That surface — the kitchen-sink shell whose left rail is
+one `FlowNavigator` with Channels and Seats sections and whose right panel is `BoardColumns` plus
+`Roster` — is assigned to FIX-1477's PR-C by [its plan](../FIX-1477/PLAN.md#pr-plan). The three
+components are **published exports of `packages/react`**; what does not exist is anything that
+mounts them. This issue builds what a row opens *into* and the hire door beside it; it does not
+build the rail, and a second navigator is an invent-kill. **PR-D is the only part of this plan
+that needs it**; PR-A, PR-B and PR-C stand alone. If the rail is still unbuilt when PR-D is ready,
+that is a sequencing conversation to have — not a licence to widen PR-D, and not a reason to mount
+the components in passing to get a check green.
 
 **There is no credential in this repository that represents a viewer, and there will not be one
 in this issue.** Every operator token resolves to a single fixed machine user

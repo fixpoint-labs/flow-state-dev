@@ -36,6 +36,29 @@ Two things about the drop are worth keeping, because both were argued and one wa
 C1, C2 and C3 remain in the checker as authoring evidence. They carry no maintenance burden
 precisely because nothing requires them to stay green.
 
+<a name="unchecked-falsifiability"></a>
+## A defect class this epic has now produced twice
+
+**A falsifiability claim that was itself never checked.** Both instances were found in review, not
+by the mechanism each was supposed to be.
+
+| Instance | The claim | What was true |
+|---|---|---|
+| FIX-1477's corpus checker | A planted file would be rejected | A subtree rule absorbed it, so the assertion silently passed the exact case it existed to catch — *inside* the assertion |
+| This spec's `poc/evidence/check.mjs` | "Each assertion has a negative control that must be seen to fail (`--plant`)" | Only **C1** had one. `--plant` plants a collection and its failure message names C1 alone; C2 and C3 had no red path at all |
+
+The second is the sharper one, and it is why this is recorded as a named class rather than as a
+line in a review log: it appeared **in the artifact whose entire purpose was to stop hand-derived
+claims from going unchecked**. Building a checker does not exempt the checker's own claims from
+tenet 7. The header now states per-check which is falsifiable and which is not, rather than
+carrying one sentence over all three.
+
+The corollary that cost a round on its own: **C2's predicate was aimed at a neighbour of its
+claim** — any `.create(` in a file that also mentioned `registerFromRoster`, which established
+neither that the create was the roster's nor that the two sat in one sequence, and passed only
+because exactly one file happened to match. Tightened, and the written claim narrowed to what a
+proximity check can support.
+
 **Not superseded, and not a lineage claim:**
 [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476)'s channel-kind and `CHANNEL.md`
 contract, [FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)'s inventory and

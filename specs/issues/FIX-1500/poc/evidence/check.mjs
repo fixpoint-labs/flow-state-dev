@@ -3,8 +3,20 @@
  *
  * Three claims in this spec are counted or enumerated, and a hand-derived
  * count is the class of evidence that does not converge by being argued
- * about. Each one gets an assertion here, and each assertion has a negative
- * control that must be seen to fail (`--plant`).
+ * about. Each one gets an assertion here.
+ *
+ * WHICH OF THEM IS FALSIFIABLE, EXACTLY — because an earlier version of this
+ * header claimed a negative control for all three and had one, and saying so
+ * in the artifact built to stop unchecked claims is the failure it exists to
+ * prevent:
+ *
+ *   C1  HAS a negative control. `--plant` writes an unclassified collection
+ *       into the package and C1 must reject it. Run it; a totality assertion
+ *       never seen to go red is not evidence.
+ *   C2  HAS NO negative control. It is a one-shot count against the current
+ *       tree. See its own note for what its predicate can and cannot support.
+ *   C3  HAS NO negative control. It is a one-shot read of one config
+ *       expression against the current tree.
  *
  *   C1  TOTALITY. Every resource collection `packages/workforce/src` defines
  *       is classified: browser-readable (it declares `client.state.read`) or
@@ -12,10 +24,11 @@
  *       that only verifies the collections it already knows about cannot
  *       report the one nobody listed.
  *
- *   C2  The durable-hire sequence — `roster.create(...)` followed by
+ *   C2  The durable-hire sequence — a hired-roster `create(...)` followed by
  *       `registerFromRoster(...)` — lives at exactly one site in the tree.
  *       This is the invariant FIX-1500 gives a convergence point; if it is
- *       already in two places, the spec's premise is wrong.
+ *       already in two places, the spec's premise is wrong. Source-level and
+ *       proximity-based, NOT semantic: see the predicate's own note.
  *
  *   C3  The kitchen-sink hire door is registered only when an admin
  *       credential is configured, so a default deployment has no hire path.
@@ -24,7 +37,7 @@
  * suite and nothing in production imports it.
  *
  *   node specs/issues/FIX-1500/poc/evidence/check.mjs           # assert
- *   node specs/issues/FIX-1500/poc/evidence/check.mjs --plant   # negative control
+ *   node specs/issues/FIX-1500/poc/evidence/check.mjs --plant   # C1's negative control
  */
 
 import { readFileSync, readdirSync, statSync, writeFileSync, rmSync } from "node:fs";
@@ -190,18 +203,54 @@ notes.push(
 );
 
 // ------------------------------------------------- C2 one durable-hire sequence
+//
+// WHAT THIS PREDICATE CAN AND CANNOT SUPPORT. It is a SOURCE-LEVEL,
+// PROXIMITY-BASED co-occurrence check, not a semantic one. It requires, in one
+// file: a reference to the hired-roster collection, a `.create(` on a
+// roster-shaped receiver, and a `registerFromRoster(` within
+// SEQUENCE_WINDOW lines of it.
+//
+// Its first version was `/\.create\(/ && /registerFromRoster\(/` over the whole
+// file — ANY `.create(` anywhere co-occurring with the registrar's name. That
+// is a NEIGHBOUR of the claim, not the claim: it established neither that the
+// create was the roster's nor that the two sat in one sequence. It passed only
+// because exactly one file matched. Review caught it.
+//
+// Even tightened, it cannot prove the two calls are on the same control-flow
+// path, and it reads only the three trees below. So the claim it supports is
+// "one file in these trees pairs a roster create with a registration nearby",
+// which is what D1's extraction premise needs, and NOT "the durable-hire
+// sequence is semantically unique in the repository". C2 has no negative
+// control — see the file header.
+const SEQUENCE_WINDOW = 40;
 const appFiles = [
   ...walk(join(ROOT, "apps/kitchen-sink/flows")),
   ...walk(join(ROOT, "apps/kitchen-sink/workforce")),
   ...walk(join(ROOT, "packages/workforce/src")),
 ];
-const hireSites = appFiles.filter((f) => {
+const hireSites = [];
+for (const f of appFiles) {
   const src = readFileSync(f, "utf8");
-  return /\.create\(/.test(src) && /registerFromRoster\s*\(/.test(src);
-});
+  // Anchor 1: this file deals in the hired roster at all.
+  if (!/defineHiredRosterCollection|HIRED_ROSTER|hiredSeatRow/.test(src)) continue;
+  const lines = src.split("\n");
+  // Anchor 2: a create() on a roster-shaped receiver, not any create() at all.
+  const createLines = [];
+  const regLines = [];
+  lines.forEach((line, i) => {
+    if (/\b(roster|rosterOf\([^)]*\)|rows)\s*(\.|\))?[^;]*\.create\(/.test(line)) createLines.push(i);
+    if (/registerFromRoster\s*\(/.test(line)) regLines.push(i);
+  });
+  // Anchor 3: the two sit in one sequence, not merely in one file.
+  const pair = createLines
+    .flatMap((c) => regLines.map((r) => ({ c, r })))
+    .find(({ c, r }) => r > c && r - c <= SEQUENCE_WINDOW);
+  if (pair) hireSites.push({ file: relative(ROOT, f), create: pair.c + 1, register: pair.r + 1 });
+}
 notes.push(
-  `C2  ${hireSites.length} site(s) pair a roster create() with registerFromRoster(): ` +
-    hireSites.map((f) => relative(ROOT, f)).join(", ")
+  `C2  ${hireSites.length} site(s) pair a hired-roster create() with registerFromRoster() ` +
+    `within ${SEQUENCE_WINDOW} lines: ` +
+    (hireSites.map((h) => `${h.file}:${h.create}→:${h.register}`).join(", ") || "(none)")
 );
 if (hireSites.length !== 1) {
   failures.push(
@@ -228,6 +277,7 @@ if (failures.length > 0) {
 }
 if (PLANT) {
   console.log("FAIL EXPECTED: the planted collection was accepted — C1 does not assert totality");
+  // `--plant` exercises C1 ONLY. C2 and C3 have no red path in this script.
   process.exit(1);
 }
 console.log("OK");

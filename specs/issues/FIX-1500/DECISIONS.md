@@ -152,5 +152,14 @@ Verdicts here; what each asserts, how, and what it corrected is in
   so *Considered and dropped* is their one catalog, and VG was made to say which of the two seats
   it opens is file-declared — a reviewer read that coverage as inferred, and an implementer writing
   the fixture hired-seat-first would have lost the declared path silently.
+- **Review round 3** — no decision moved; approved again, with three real corrections rather than
+  polish. The evidence checker's header **claimed a negative control for all three checks and had
+  one**, which is a falsifiability claim that was itself never checked, inside the artifact built
+  to stop exactly that ([EVOLUTION.md](EVOLUTION.md#unchecked-falsifiability)). C2's predicate was
+  **aimed at a neighbour of its claim** — any `.create(` co-occurring with the registrar's name —
+  and is now anchored on the roster and on proximity, with the written claim narrowed to match.
+  And S7's *"organization from `ctx.org`"* was **ambiguous in the dangerous direction**: the
+  operator flow's credential-derived org is also "not the body" and is the wrong source, so S7 now
+  names the session's own binding and the reuse index carries it as a guardrail.
 
 **Open: none.**

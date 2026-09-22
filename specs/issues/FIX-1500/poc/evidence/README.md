@@ -25,21 +25,37 @@ withheld with a reason — and a collection in neither column fails the run. It 
 directions, so a table row naming something the tree does not define fails too. A checker that
 only verifies the collections it already knows about cannot report the one nobody listed.
 
-**C2 · one durable-hire site.** Exactly one file pairs a roster `create()` with
-`registerFromRoster()`. This is [D1](../../DECISIONS.md#d1)'s premise: extracting the sequence is
-a *move*, not a reconciliation of two copies that have already drifted.
+**C2 · one durable-hire site.** Exactly one file pairs a hired-roster `create()` with a
+`registerFromRoster()` within 40 lines of it. This is [D1](../../DECISIONS.md#d1)'s premise:
+extracting the sequence is a *move*, not a reconciliation of two copies that have already drifted.
+
+**What C2's predicate supports, and what it does not.** It is source-level and proximity-based,
+not semantic. It requires a file to reference the hired roster, a `create()` on a roster-shaped
+receiver, and a registration nearby — so it can say *"one file in these three trees pairs a roster
+create with a registration in one sequence"*, and it cannot say *"the durable-hire sequence is
+semantically unique in the repository"*. Its first version was looser still — any `.create(`
+anywhere in a file that also mentioned `registerFromRoster` — which is a **neighbour of the
+claim** rather than the claim, and passed only because one file happened to match. Review caught
+that; it is tightened and the claim is stated at the width the predicate actually supports.
 
 **C3 · fail-closed hire door.** The operator flow is registered only when a credential is
 configured, so a default deployment has no hire path at all. This is why the rejected
 "ship browse-only" option in D1 does not quietly still work in a clean clone.
 
-## The negative control, and why it exists
+## Which checks are falsifiable — exactly one of the three
 
-`--plant` writes an unclassified collection into the package, runs C1, and removes it. **C1 must
-reject it.** A totality assertion that has never been seen to go red is not evidence — the
-sibling spec's corpus checker silently passed a planted file on its first version, because a
-subtree rule absorbed it, which is the exact failure the assertion existed to prevent happening
-*inside* the assertion. So the control is run, not just written.
+**C1 has a negative control.** `--plant` writes an unclassified collection into the package, runs
+C1, and removes it. **C1 must reject it.** A totality assertion never seen to go red is not
+evidence — the sibling spec's corpus checker silently passed a planted file on its first version,
+because a subtree rule absorbed it, which is the exact failure the assertion existed to prevent
+happening *inside* the assertion. So the control is run, not just written.
+
+**C2 and C3 have none.** They are one-shot counts against the current tree with no red path in
+this script. That is a real limit on what they are worth, and it is stated rather than softened:
+an earlier version of this README and of the script's header claimed a negative control for *all
+three*. It was true of one. A falsifiability claim that was itself never checked, inside the
+artifact whose whole purpose is to stop unchecked claims — caught in review, and recorded in
+[EVOLUTION.md](../../EVOLUTION.md#unchecked-falsifiability) rather than quietly corrected.
 
 ## What it found
 
