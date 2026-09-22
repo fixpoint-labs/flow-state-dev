@@ -22,7 +22,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { Page } from "playwright";
+import type { Browser, Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -50,7 +50,8 @@ const EXPECTED: Record<string, readonly string[]> = {
  */
 const ROW6_NOT_GRADED =
   "[row 6] not graded: no live hire in the repository declares a sealed document (a `references/` " +
-  "file or an `ro` grant), so there is nothing on screen to tell apart from a writable one. See goal.md.";
+  "file or an `ro` grant), so there is nothing on screen to tell apart from a writable one. Pending an " +
+  "owner decision on the subject; not a failure of the row-6 code. See goal.md.";
 
 const failures: string[] = [];
 const notes: string[] = [];
@@ -202,9 +203,10 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
   const [owner] = owners[0]!;
 
   const served = await serveLab({ control: CONTROL, workDir: join(SHOTS, "server") });
-  const browser = await launchChromium();
+  let browser: Browser | undefined;
   let row4Evidence = "";
   try {
+    browser = await launchChromium();
     const lab = new Scenario(served, tree);
     await lab.open();
 
@@ -302,7 +304,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       await page.close();
     }
   } finally {
-    await browser.close().catch(() => {});
+    await browser?.close().catch(() => {});
     served.stop();
   }
 
@@ -327,10 +329,11 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
 
   if (row4Evidence !== "") notes.unshift(`row 4 PASS: ${row4Evidence}`);
   notes.push(`screenshots: ${SHOTS}`);
-  return {
-    failures: [...failures, ...notes.map((note) => `(note) ${note}`)],
-    evidence: row4Evidence,
-  };
+  // Notes ride along with a red verdict so a failure is read with them; on a
+  // green one they are the evidence. Never failures on their own.
+  return failures.length > 0
+    ? { failures: [...failures, ...notes.map((note) => `(note) ${note}`)], evidence: "" }
+    : { failures, evidence: notes.join("; ") };
 }
 
 mkdirSync(SHOTS, { recursive: true });
