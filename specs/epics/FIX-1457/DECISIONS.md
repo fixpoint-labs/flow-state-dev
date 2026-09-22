@@ -209,6 +209,16 @@ multi-user or sign-off pain is real**.
   owner so a coordinator could tell whether to file or wrap. Applying that per leg is what exposed
   first two and then **all three** unowned legs. **All three are now owned** — FIX-1481 with
   FIX-1502, FIX-1496, FIX-1497 — which is the rule doing its job, not the epic being finished.
+- <a name="settled-org-read"></a>**POC settlement, 2026-09-22 — CONFIRMED: an org-scoped collection
+  with a `client` read is served on the production route, cross-org isolated.** Two sessions on two
+  orgs against one flow through the real `createFlowApiRouter`, `FSDEV_DEBUG_ENDPOINTS` unset, each
+  returning only its own org's row; **negative control** with `client.state.read` removed returns
+  `403 State read not permitted`. So the route is real, it is not debug-gated, and the gate fires.
+  **Recorded so no child re-argues it.** Two limits travel with it: the run was **one session
+  reading its own org**, so it says nothing about an across-sessions or org-wide view, which is the
+  hinge of [Open 1](#open); and the three inventory factories are option-free today, so enabling
+  the read is a change inside `packages/workforce`, not app configuration. **Cost this set zero
+  review rounds** — a settlement is not a review round.
 - **A producer per leg is not enough; the leg's *rows* need one too.** The same discipline applied
   one level down is what caught checklist row 5 being deferred to an issue that never owned it
   ([EVOLUTION.md](EVOLUTION.md), the 2026-09-22 row). A child that defers part of a rule **names the
@@ -304,46 +314,80 @@ skipped.**
 
 **One, and it is a scope call the owner owns.** The structural gap that stood here — *two exit
 proofs have no producer* — **closed on 2026-09-22** when FIX-1496 and FIX-1497 were filed. What
-replaced it is narrower and sharper.
+replaced it is narrower, and a POC settlement has since moved it again: the question is no longer
+whether row 5 is *affordable*, it is what row 5 *asks for*.
 
 1. ### Does W5 exit with five of the six Devtool checklist rows green, or does it wait?
 
    **Plain terms.** The Devtool proof is a six-row checklist. Row 5 is *"open Devtool and see
-   everything in this organization — every seat, every channel, who is in which."* Building it needs
-   something W5 does not have and is not allowed to build: **the DevTool has no way to say *which*
-   organization it is asking about.** An organization is deliberately never something a caller names
-   on a request — the gap is *choosing* one, not reaching one — so where no resolver is configured
-   the DevTool only ever sees the one default organization it runs as. Giving it a way to choose is
-   [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486), which belongs to the substrate, not
-   to a QA epic. [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) holds the row and waits
-   on it. The other five rows are unaffected. So: **call the Devtool proof passed at five of six and
-   track row 5 to FIX-1502, or hold W5's exit until FIX-1486 is pulled into this cycle.**
+   everything in this organization — every seat, every channel, who is in which."* Until
+   2026-09-22 this document said row 5 was blocked on substrate W5 may not build
+   ([FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486), org **selection**). **A POC
+   settlement disproved that.** What is left is a judgment about the row's own words, and it is
+   yours: **does row 5 mean an org-level surface that stands apart from any one session, or is it
+   satisfied by opening one session that already sees the whole organization?**
 
-   **The trade-off.** Waiting buys one genuine capability — *what is open across the whole
-   organization, in one place* — and costs W5 its shape: pulling FIX-1486 forward is a substrate
-   build landing under a polish label, which is exactly the growth [ER-25](BUSINESS-RULES.md) was
-   written to stop, and it puts the launch evidence behind an epic nobody has scheduled. Exiting at
-   five buys a launch claim on time and costs one answer at launch.
+   **What the settlement showed.** A throwaway flow with one org-scoped collection
+   (`client: { state: { read: true } }`) and a `resolvePrincipal`, driven through the real
+   `createFlowApiRouter` with real requests — two sessions on two organizations, one flow — then
+   read on the **production** `list_collection_state` route, `FSDEV_DEBUG_ENDPOINTS` asserted unset:
 
-   **My recommendation: exit on five of six, with row 5 tracked to FIX-1502.** Rows 1 and 2 — the
-   roster, and channels with their members — answer much of *who exists* and *who is where* once
-   they are green; row 5's distinct value is answering it **across the org in one place** rather
-   than per session, which is a real convenience and not a missing capability. And the alternative
-   is the failure mode this epic has already been recalibrated twice to avoid.
+   ```
+   GET sess-org-a -> 200 {"items":[{"topic":"w1","clientData":{"label":"A's widget"}}]}
+   GET sess-org-b -> 200 {"items":[{"topic":"w1","clientData":{"label":"B's widget"}}]}
+   ```
 
-   **What would change my mind.** Two things. If [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)
-   turns out to be small and is scheduled in this cycle for its own reasons, waiting costs nothing
-   and the recommendation is moot. Or if a launch conversation actually needs *"show me the whole
-   org"* as a demo beat — that is a product judgment I do not hold, and it would make row 5 the
-   point rather than the remainder.
+   Each session saw **only its own organization's row** — cross-org isolation, not merely a 200.
+   **Negative control:** the same shape with `client.state.read` removed returns
+   `403 {"error":"State read not permitted for \"widgets\""}`. The gate fires, so the green is not
+   a check that could only pass.
 
-   **What being wrong costs.** At launch the DevTool cannot answer *"what is open across the whole
-   organization"* in one place; you answer it per session, one at a time. Recoverable — FIX-1502
-   ships it whenever FIX-1486 lands — but recovered **after** the launch conversation, not before
-   it. The reverse error is worse and harder to undo: a QA epic that grew substrate.
+   **What it did not settle, and this is the hinge.** The run was **one session reading its own
+   org's rows**. It says nothing about an across-sessions or org-wide aggregated view — and this
+   set already records under [Decided in review](#decided-in-review-recorded-so-no-child-reopens-them)
+   that **rows 3 and 5 need inventory readable across sessions**, while the *distinct value* argued
+   below is *across the org in one place rather than per session*. There is a real reading in which
+   the POC satisfies that: a **channel** session already declares the inventory collections, so
+   reading through one shows the whole organization's seats and channels from a single place —
+   exactly what row 5's *Today* column says the session-scoped Resources panel cannot do. And a real
+   reading in which it does not: one session's view is still one session's view, and the row may
+   mean a surface that does not hang off a session at all. **That is a judgment about the row, not
+   a fact about the code, so it is not mine to make.**
 
-   **Not asked:** whether FIX-1502 is correctly filed, or whether FIX-1486 is the right blocker.
-   Both are settled on the evidence in [BUSINESS-RULES.md](BUSINESS-RULES.md#devtool-checklist).
+   **The trade-off, now measured rather than assumed.** Building row 5 inside W5 costs: calling
+   `openInventory` so rows exist (**app wiring**, documented, no framework change); **three lines**
+   adding a `client` read to the three collection factories — small, but inside a shared L2 package
+   whose own docstrings call that surface *"the contract other layers join against, not app
+   settings"*, so [ER-17](BUSINESS-RULES.md#er-17) territory; and a reader. **It does not cost
+   waiting on FIX-1486**, whose subject is **selection among organizations** — which a one-user,
+   one-org deployment ([D7](#d7), and it is on the box figure) does not need. Against that, exiting
+   at five buys a launch claim on time and ships a proof with a known hole in it.
+
+   **My recommendation, revised on the evidence.** **Exit on five-of-six *only if* you read row 5 as
+   requiring an org-level surface beyond a single session. Otherwise row 5 is buildable in W5, and
+   should be built.** I previously recommended exiting at five outright, on the belief that the
+   alternative was substrate growth this epic must refuse. The settlement removed that belief: this
+   is no longer *blocked on substrate we may not build*, it is *a judgment call about what the row
+   asks for*, and the honest thing is to hand you the judgment rather than keep a recommendation
+   that rested on a premise that turned out to be false.
+
+   **What would change my mind — concrete now, in your answer rather than in the world.** If you
+   read row 5 as satisfied by a channel session's view of the whole organization, it is ordinary
+   work and W5 should do it; that is the reading I lean to, because it is what the row's *Today*
+   column was complaining about. If you read it as requiring a genuine org-level surface independent
+   of any session, my original recommendation stands intact and untouched — exit at five, track row
+   5 to FIX-1502.
+
+   **What being wrong costs, both ways.** Exit at five when row 5 was in fact cheap: W5 ships an
+   incomplete proof for no reason, and the DevTool cannot answer *"what is open across the whole
+   organization"* at launch when it could have. Build it when the row meant something larger: you
+   get a surface that does not satisfy the row anyway, **plus** a change to a shared package's
+   deliberately-closed contract, bought for nothing. The second is the worse error, which is why the
+   recommendation is conditional rather than a flat *build it*.
+
+   **Not asked:** whether FIX-1502 is correctly filed (it is, and it holds the row either way), or
+   whether FIX-1486 is the right home for org **selection** (it is). What changed is only whether
+   row 5 *needs* selection.
 
 **Not open, deliberately.** Of the recalibration's *Still open* items, **which DevForce artifact
 counts is now cut** by [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) — one automated
