@@ -183,8 +183,8 @@ export type ProjectedResourceCollectionConfig<TStateSchema extends ZodTypeAny = 
  * A read-only resource instance ref resolved from a projected collection. The
  * read subset of `ResourceRef` only — `state` (synchronous, resolved against the
  * filled read-through cache), `readContent()` / `readContentRaw()`, and identity
- * fields. No `patchState` / `setState` / `updateState` / `writeContent`: an
- * external record is a read-through view, never written through the resource
+ * fields. No `patchState` / `setState` / `updateState` / `writeContent`: a
+ * projected record is a read-through view, never written through the resource
  * surface.
  */
 export interface ProjectedResourceRef<TState extends JsonObject = JsonObject> {

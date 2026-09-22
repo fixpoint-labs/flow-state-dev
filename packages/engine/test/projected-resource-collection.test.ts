@@ -157,7 +157,7 @@ describe("projected resource collection — read redirect", () => {
     expect(ref.create).toBeUndefined();
     expect(ref.upsert).toBeUndefined();
     expect(ref.delete).toBeUndefined();
-    expect(ref.external).toBe(true);
+    expect(ref.projected).toBe(true);
   });
 });
 
