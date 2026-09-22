@@ -1,0 +1,87 @@
+<svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A matrix. Rows are callers reaching for alice's user plane: bob in the same org, an org session, an org-hired bridge seat, the bridge in an app without verified identity, and alice herself signed into another org. Columns are list her roster, act in her session, file work on her board, drain her board, and see her seat's address in the catalog. Bob: list holds (C1), act fails closed but acks 202 (C2), catalog leaks (C8). Org session: list holds (C6), file is mis-filed into the caller's own cell unguarded (C3) and refused with the guard (C4), drain holds (C5), catalog leaks. Bridge: act fails closed but quiet (D2, D3), file is mis-filed (D1), catalog leaks. Bridge without verified identity: act crosses by impersonation (D4). Alice in globex: list leaks her acme rows (C7), catalog leaks. Other cells were not run.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .holds { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .quiet { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .misf  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .leak  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; }
+    .none  { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-n   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; font-style:italic; }
+  </style>
+  <rect class="bg" width="940" height="418"/>
+
+  <g id="columns">
+    <text class="t-lbl" x="16" y="30">CALLER → ALICE'S PLANE</text>
+    <text class="t-lbl" x="196" y="30">LIST ROSTER</text>
+    <text class="t-lbl" x="344" y="30">ACT IN HER SESSION</text>
+    <text class="t-lbl" x="492" y="30">FILE ON HER BOARD</text>
+    <text class="t-lbl" x="640" y="30">DRAIN HER BOARD</text>
+    <text class="t-lbl" x="788" y="30">SEE IN CATALOG</text>
+  </g>
+
+  <g id="row-bob" transform="translate(0 44)">
+    <text class="t-b" x="16" y="24">bob</text><text class="t-s" x="16" y="40">same org, other user</text>
+    <rect class="holds" x="188" y="4" width="140" height="48" rx="4"/><text class="t-c" x="198" y="24">own cell only</text><text class="t-s" x="198" y="40">C1</text>
+    <rect class="quiet" x="336" y="4" width="140" height="48" rx="4"/><text class="t-c" x="346" y="24">202, then dropped</text><text class="t-s" x="346" y="40">C2</text>
+    <rect class="none" x="484" y="4" width="140" height="48" rx="4"/><text class="t-n" x="494" y="32">not run</text>
+    <rect class="none" x="632" y="4" width="140" height="48" rx="4"/><text class="t-n" x="642" y="32">not run</text>
+    <rect class="leak" x="780" y="4" width="144" height="48" rx="4"/><text class="t-c" x="790" y="24">listed</text><text class="t-s" x="790" y="40">C8</text>
+  </g>
+
+  <g id="row-org" transform="translate(0 104)">
+    <text class="t-b" x="16" y="24">org session</text><text class="t-s" x="16" y="40">svc, acme</text>
+    <rect class="holds" x="188" y="4" width="140" height="48" rx="4"/><text class="t-c" x="198" y="24">no user seats</text><text class="t-s" x="198" y="40">C6</text>
+    <rect class="none" x="336" y="4" width="140" height="48" rx="4"/><text class="t-n" x="346" y="32">not run</text>
+    <rect class="misf" x="484" y="4" width="140" height="22" rx="4"/><text class="t-c" x="494" y="19">lands in own cell · C3</text>
+    <rect class="holds" x="484" y="30" width="140" height="22" rx="4"/><text class="t-c" x="494" y="45">guarded: refused · C4</text>
+    <rect class="holds" x="632" y="4" width="140" height="48" rx="4"/><text class="t-c" x="642" y="24">cannot reach</text><text class="t-s" x="642" y="40">C5</text>
+    <rect class="leak" x="780" y="4" width="144" height="48" rx="4"/><text class="t-c" x="790" y="24">listed</text><text class="t-s" x="790" y="40">C8</text>
+  </g>
+
+  <g id="row-bridge" transform="translate(0 164)">
+    <text class="t-b" x="16" y="24">bridge seat</text><text class="t-s" x="16" y="40">org-hired, runs as svc</text>
+    <rect class="none" x="188" y="4" width="140" height="48" rx="4"/><text class="t-n" x="198" y="32">not run</text>
+    <rect class="quiet" x="336" y="4" width="140" height="48" rx="4"/><text class="t-c" x="346" y="24">202, then dropped</text><text class="t-s" x="346" y="40">D2 · D3</text>
+    <rect class="misf" x="484" y="4" width="140" height="48" rx="4"/><text class="t-c" x="494" y="24">lands in own cell</text><text class="t-s" x="494" y="40">D1</text>
+    <rect class="none" x="632" y="4" width="140" height="48" rx="4"/><text class="t-n" x="642" y="32">not run</text>
+    <rect class="leak" x="780" y="4" width="144" height="48" rx="4"/><text class="t-c" x="790" y="24">listed</text><text class="t-s" x="790" y="40">C8</text>
+  </g>
+
+  <g id="row-unverified" transform="translate(0 224)">
+    <text class="t-b" x="16" y="24">bridge, unverified</text><text class="t-s" x="16" y="40">no principal resolver</text>
+    <rect class="none" x="188" y="4" width="140" height="48" rx="4"/><text class="t-n" x="198" y="32">not run</text>
+    <rect class="leak" x="336" y="4" width="288" height="48" rx="4"/><text class="t-c" x="346" y="24">crosses: the body's userId is the principal</text><text class="t-s" x="346" y="40">D4 · it acts as alice</text>
+    <rect class="none" x="632" y="4" width="140" height="48" rx="4"/><text class="t-n" x="642" y="32">not run</text>
+    <rect class="none" x="780" y="4" width="144" height="48" rx="4"/><text class="t-n" x="790" y="32">not run</text>
+  </g>
+
+  <g id="row-alice-elsewhere" transform="translate(0 284)">
+    <text class="t-b" x="16" y="24">alice in globex</text><text class="t-s" x="16" y="40">same person, other org</text>
+    <rect class="leak" x="188" y="4" width="140" height="48" rx="4"/><text class="t-c" x="198" y="24">sees acme rows</text><text class="t-s" x="198" y="40">C7</text>
+    <rect class="none" x="336" y="4" width="140" height="48" rx="4"/><text class="t-n" x="346" y="32">not run</text>
+    <rect class="none" x="484" y="4" width="140" height="48" rx="4"/><text class="t-n" x="494" y="32">not run</text>
+    <rect class="none" x="632" y="4" width="140" height="48" rx="4"/><text class="t-n" x="642" y="32">not run</text>
+    <rect class="leak" x="780" y="4" width="144" height="48" rx="4"/><text class="t-c" x="790" y="24">listed</text><text class="t-s" x="790" y="40">C8 · mallory@globex</text>
+  </g>
+
+  <g id="legend" transform="translate(16 364)">
+    <rect class="holds" x="0" y="0" width="14" height="14" rx="3"/><text class="t-c" x="20" y="11">fails closed</text>
+    <rect class="quiet" x="120" y="0" width="14" height="14" rx="3"/><text class="t-c" x="140" y="11">fails closed, but acks success</text>
+    <rect class="misf" x="330" y="0" width="14" height="14" rx="3"/><text class="t-c" x="350" y="11">succeeds in the wrong cell</text>
+    <rect class="leak" x="520" y="0" width="14" height="14" rx="3"/><text class="t-c" x="540" y="11">leaks or crosses</text>
+    <rect class="none" x="660" y="0" width="14" height="14" rx="3"/><text class="t-c" x="680" y="11">not run</text>
+    <text class="t-s" x="0" y="38">ids are tests in poc/owner-planes/planes.poc.test.ts — every cell is the real router's answer under a verified principal</text>
+  </g>
+</svg>

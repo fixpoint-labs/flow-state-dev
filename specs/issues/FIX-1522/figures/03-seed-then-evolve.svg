@@ -1,0 +1,75 @@
+<svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two lanes against the same four steps: boot one seeds the pack, the user fires editor, the user hires critic, boot two seeds again. Lane one, create-if-absent, keys already-seeded on the roster, so at boot two editor is created again and the roster ends scout, editor, critic, with editor marked resurrected (B1). Lane two, ledgered, records the pack in a per-plane seed ledger at boot one and skips it at boot two, so the roster ends scout, critic (B2).">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); stroke:none; }
+    .seat  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .seed  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .back  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.6; }
+    .ledg  { fill:none; stroke:var(--prose); stroke-width:1.2; stroke-dasharray:4 3; }
+    .step  { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-p   { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" width="940" height="300"/>
+
+  <g id="steps">
+    <text class="t-lbl" x="196" y="28">BOOT 1 · SEED</text>
+    <text class="t-lbl" x="376" y="28">FIRE editor</text>
+    <text class="t-lbl" x="556" y="28">HIRE critic</text>
+    <text class="t-lbl" x="736" y="28">BOOT 2 · SEED AGAIN</text>
+    <path class="step" d="M366 40 V272 M546 40 V272 M726 40 V272"/>
+  </g>
+
+  <g id="lane-create-if-absent">
+    <rect class="lane" x="16" y="44" width="908" height="104" rx="6"/>
+    <text class="t-b" x="30" y="72">create-if-absent</text>
+    <text class="t-s" x="30" y="90">"seeded?" = "is the row</text>
+    <text class="t-s" x="30" y="104">there?"</text>
+    <text class="t-x" x="30" y="132">B1 · fired seat returns</text>
+    <rect class="seed" x="196" y="60" width="130" height="24" rx="4"/><text class="t-c" x="206" y="76">research.scout</text>
+    <rect class="seed" x="196" y="92" width="130" height="24" rx="4"/><text class="t-c" x="206" y="108">research.editor</text>
+    <rect class="seed" x="376" y="60" width="130" height="24" rx="4"/><text class="t-c" x="386" y="76">research.scout</text>
+    <rect class="seed" x="556" y="60" width="130" height="24" rx="4"/><text class="t-c" x="566" y="76">research.scout</text>
+    <rect class="own"  x="556" y="92" width="130" height="24" rx="4"/><text class="t-c" x="566" y="108">research.critic</text>
+    <rect class="seed" x="736" y="56" width="130" height="24" rx="4"/><text class="t-c" x="746" y="72">research.scout</text>
+    <rect class="own"  x="736" y="84" width="130" height="24" rx="4"/><text class="t-c" x="746" y="100">research.critic</text>
+    <rect class="back" x="736" y="112" width="130" height="24" rx="4"/><text class="t-c" x="746" y="128">research.editor</text>
+    <text class="t-x" x="872" y="128">back</text>
+  </g>
+
+  <g id="lane-ledgered">
+    <rect class="lane" x="16" y="160" width="908" height="104" rx="6"/>
+    <text class="t-b" x="30" y="188">ledgered</text>
+    <text class="t-s" x="30" y="206">"seeded?" = a per-plane</text>
+    <text class="t-s" x="30" y="220">record of the pack</text>
+    <text class="t-s" x="30" y="248">B2 · evolved roster holds</text>
+    <rect class="seed" x="196" y="176" width="130" height="24" rx="4"/><text class="t-c" x="206" y="192">research.scout</text>
+    <rect class="seed" x="196" y="208" width="130" height="24" rx="4"/><text class="t-c" x="206" y="224">research.editor</text>
+    <rect class="ledg" x="196" y="238" width="130" height="18" rx="3"/><text class="t-p" x="204" y="251">ledger: starter v1</text>
+    <rect class="seed" x="376" y="176" width="130" height="24" rx="4"/><text class="t-c" x="386" y="192">research.scout</text>
+    <rect class="seed" x="556" y="176" width="130" height="24" rx="4"/><text class="t-c" x="566" y="192">research.scout</text>
+    <rect class="own"  x="556" y="208" width="130" height="24" rx="4"/><text class="t-c" x="566" y="224">research.critic</text>
+    <rect class="seed" x="736" y="176" width="130" height="24" rx="4"/><text class="t-c" x="746" y="192">research.scout</text>
+    <rect class="own"  x="736" y="208" width="130" height="24" rx="4"/><text class="t-c" x="746" y="224">research.critic</text>
+    <text class="t-p" x="736" y="251">ledger says seeded: skip</text>
+  </g>
+
+  <g id="legend" transform="translate(196 280)">
+    <rect class="seed" x="0" y="-9" width="12" height="12" rx="2"/><text class="t-s" x="18" y="1">from the pack</text>
+    <rect class="own" x="120" y="-9" width="12" height="12" rx="2"/><text class="t-s" x="138" y="1">hired by the user</text>
+    <rect class="back" x="270" y="-9" width="12" height="12" rx="2"/><text class="t-s" x="288" y="1">resurrected</text>
+  </g>
+</svg>

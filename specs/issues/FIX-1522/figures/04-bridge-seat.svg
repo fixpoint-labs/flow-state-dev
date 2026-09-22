@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 380" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A fence between the org plane on the left and alice's user plane on the right. The fence is the session's owner: a session is bound to one verified user. An org-hired bridge seat, running as the org's service principal svc, tries four paths. D1: it files work for alice from its own session, and the write lands back in svc's own user cell, never crossing. D2: it posts into alice's session, and stops at the fence; the POST is acked 202 and the run is refused with UserBindingMismatchError. D3: the same, claiming userId alice in the body; stops at the same point. D4: in an app with no verified identity, the body's userId is the principal, so the bridge becomes alice and crosses the fence into her board. Under the fence: the only door is minting alice's principal.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg     { fill:var(--surface); }
+    .n-org  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-usr  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-mis  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .fence  { stroke:var(--ink); stroke-width:3; }
+    .a-stop { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .a-mis  { fill:none; stroke:var(--prose); stroke-width:1.4; }
+    .a-x    { fill:none; stroke:var(--gone); stroke-width:1.8; stroke-dasharray:5 3; }
+    .bar    { stroke:var(--ink-2); stroke-width:2.4; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-c    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x    { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/></marker>
+    <marker id="hm" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--prose)"/></marker>
+    <marker id="hx" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="380"/>
+
+  <g id="org-side">
+    <text class="t-lbl" x="16" y="26">ORG PLANE · acme</text>
+    <rect class="n-org" x="16" y="40" width="190" height="64" rx="6"/>
+    <text class="t-b" x="30" y="64">bridge seat</text>
+    <text class="t-s" x="30" y="82">acme.bridge.alice</text>
+    <text class="t-s" x="30" y="96">runs as svc</text>
+    <rect class="n-mis" x="16" y="264" width="190" height="52" rx="6"/>
+    <text class="t-b" x="30" y="286">svc's own user cell</text>
+    <text class="t-s" x="30" y="304">inbox.work · "for-alice"</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="600" y1="20" x2="600" y2="330"/>
+    <text class="t-lbl" x="608" y="340">FENCE · SESSION OWNER</text>
+  </g>
+
+  <g id="user-side">
+    <text class="t-lbl" x="640" y="26">ALICE'S PLANE · user:alice</text>
+    <rect class="n-usr" x="640" y="40" width="284" height="64" rx="6"/>
+    <text class="t-b" x="654" y="64">alice's session</text>
+    <text class="t-s" x="654" y="82">owned by alice — one user for life</text>
+    <rect class="n-usr" x="640" y="190" width="284" height="64" rx="6"/>
+    <text class="t-b" x="654" y="214">alice's board · inbox.work</text>
+    <text class="t-s" x="654" y="232">what her seats drain</text>
+  </g>
+
+  <g id="d1">
+    <path class="a-mis" d="M206 90 C 300 110, 300 240, 212 276" marker-end="url(#hm)"/>
+    <text class="t-c" x="296" y="170">D1 · file for alice from its own session</text>
+    <text class="t-s" x="296" y="186">completes — in the caller's cell. she never sees it</text>
+  </g>
+
+  <g id="d2">
+    <path class="a-stop" d="M206 58 H 590"/><line class="bar" x1="590" y1="50" x2="590" y2="66"/>
+    <text class="t-c" x="226" y="50">D2 · act in alice's session</text>
+  </g>
+  <g id="d3">
+    <path class="a-stop" d="M206 76 H 590"/><line class="bar" x1="590" y1="70" x2="590" y2="84"/>
+    <text class="t-c" x="226" y="94">D3 · …claiming userId: alice</text>
+    <text class="t-s" x="226" y="124">202, then UserBindingMismatchError — nothing written</text>
+  </g>
+
+  <g id="d4">
+    <path class="a-x" d="M110 104 V 222 H 632" marker-end="url(#hx)"/>
+    <text class="t-x" x="300" y="214">D4 · unverified app: body userId = principal</text>
+    <text class="t-s" x="300" y="240">it IS alice: not a bridge, impersonation</text>
+  </g>
+
+  <g id="verdict">
+    <text class="t-b" x="16" y="352">The only door through is minting alice's principal.</text>
+    <text class="t-s" x="16" y="370">That is what verified identity (FIX-1503) closes. Falsified: a bridge seat cannot reach a user plane without breaking the principal model.</text>
+  </g>
+</svg>

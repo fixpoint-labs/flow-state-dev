@@ -1,0 +1,62 @@
+<svg viewBox="0 0 940 280" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The owner key along the path the ticket names, left to right: hire, roster row, boot reload, seat address, seat inventory, channel open (labelled channel), board, drain, catalog. Hire, roster row, boot reload, seat address, board and drain are carried by the owner in the POC. Channel open needs nothing: a session is already owned by one user. Seat inventory and the shipped channel board are org-scoped with no owner coordinate, so a user plane's rows land org-wide (C9, C10). The catalog is an engine surface that lists everything (C8).">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .poc   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .as-is { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .org   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; }
+    .eng   { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .link  { stroke:var(--ink-3); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" width="940" height="280"/>
+
+  <text class="t-lbl" x="16" y="26">WHERE THE OWNER KEY HAS TO TRAVEL — AND WHERE IT ALREADY DOES</text>
+  <path class="link" d="M112 86 H 128 M214 86 H 230 M316 86 H 332 M418 86 H 434 M520 86 H 536 M622 86 H 638 M724 86 H 740 M826 86 H 842"/>
+
+  <g id="stages">
+    <rect class="poc" x="16" y="48" width="96" height="76" rx="5"/><text class="t-b" x="26" y="70">hire</text>
+    <text class="t-s" x="26" y="88">ownPlane(ctx)</text><text class="t-s" x="26" y="102">from session</text>
+
+    <rect class="poc" x="128" y="48" width="86" height="76" rx="5"/><text class="t-b" x="138" y="70">roster row</text>
+    <text class="t-s" x="138" y="88">scope = type</text><text class="t-s" x="138" y="102">A1</text>
+
+    <rect class="poc" x="230" y="48" width="86" height="76" rx="5"/><text class="t-b" x="240" y="70">reload</text>
+    <text class="t-s" x="240" y="88">cell as param</text><text class="t-s" x="240" y="102">A2</text>
+
+    <rect class="poc" x="332" y="48" width="86" height="76" rx="5"/><text class="t-b" x="342" y="70">address</text>
+    <text class="t-s" x="342" y="88">org.~u.seat</text><text class="t-s" x="342" y="102">A3</text>
+
+    <rect class="org" x="434" y="48" width="86" height="76" rx="5"/><text class="t-b" x="444" y="70">inventory</text>
+    <text class="t-s" x="444" y="88">org-only</text><text class="t-s" x="444" y="102">C10</text>
+
+    <rect class="as-is" x="536" y="48" width="86" height="76" rx="5"/><text class="t-b" x="546" y="70">channel</text>
+    <text class="t-s" x="546" y="88">open = owned</text><text class="t-s" x="546" y="102">by one user</text>
+
+    <rect class="org" x="638" y="48" width="86" height="76" rx="5"/><text class="t-b" x="648" y="70">board</text>
+    <text class="t-s" x="648" y="88">shipped: org</text><text class="t-s" x="648" y="102">C9 · POC: C5</text>
+
+    <rect class="poc" x="740" y="48" width="86" height="76" rx="5"/><text class="t-b" x="750" y="70">drain</text>
+    <text class="t-s" x="750" y="88">own cell only</text><text class="t-s" x="750" y="102">C5</text>
+
+    <rect class="eng" x="842" y="48" width="82" height="76" rx="5"/><text class="t-b" x="852" y="70">catalog</text>
+    <text class="t-s" x="852" y="88">lists all</text><text class="t-s" x="852" y="102">C8</text>
+  </g>
+
+  <g id="legend" transform="translate(16 156)">
+    <rect class="poc" x="0" y="0" width="14" height="14" rx="3"/><text class="t-c" x="22" y="11">carried by the owner in the POC — a parameter, not a new store</text>
+    <rect class="as-is" x="0" y="24" width="14" height="14" rx="3"/><text class="t-c" x="22" y="35">already owner-shaped — nothing to add</text>
+    <rect class="org" x="0" y="48" width="14" height="14" rx="3"/><text class="t-c" x="22" y="59">shipped Workforce declaration hard-codes org scope — a user plane's rows land org-wide</text>
+    <rect class="eng" x="0" y="72" width="14" height="14" rx="3"/><text class="t-c" x="22" y="83">engine surface outside Workforce — owner cannot fix it from here</text>
+  </g>
+</svg>

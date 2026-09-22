@@ -1,0 +1,74 @@
+<svg viewBox="0 0 940 380" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="One principal org, acme, drawn as an outer fence labelled security axis. Inside it three storage cells side by side: the org plane cell (scope org, cell acme, roster key workforce/roster/eng.lead, seat address acme.eng.lead), alice's user plane cell (scope user, cell alice, key workforce/roster/acme/research.scout, address acme.~alice.research.scout) and bob's user plane cell (scope user, cell bob, key workforce/roster/acme/ops.pager, address acme.~bob.ops.pager). A band under all three says they share one row schema, one prefix and one reload path; the owner only picks the cell.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .fence { fill:none; stroke:var(--ink-2); stroke-width:1.6; stroke-dasharray:6 4; }
+    .n-org { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-usr { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-band{ fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-p   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-k   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" width="940" height="380"/>
+
+  <g id="security-fence">
+    <rect class="fence" x="16" y="16" width="908" height="348" rx="8"/>
+    <text class="t-lbl" x="32" y="38">PRINCIPAL ORG · acme — THE SECURITY AXIS</text>
+    <text class="t-p" x="32" y="56">Read from the verified principal and bound to every session. Never from input. Never replaced by the owner.</text>
+  </g>
+
+  <g id="org-plane">
+    <rect class="n-org" x="36" y="76" width="280" height="206" rx="6"/>
+    <text class="t-lbl" x="52" y="98">OWNER org:acme</text>
+    <text class="t-b" x="52" y="120">The org's team</text>
+    <text class="t-s" x="52" y="146">cell</text><text class="t-s" x="108" y="146">scope "org" · acme</text>
+    <text class="t-s" x="52" y="164">roster</text><text class="t-s" x="108" y="164">workforce/roster/</text>
+    <text class="t-k" x="108" y="180">eng.lead</text>
+    <text class="t-s" x="52" y="200">seeded</text><text class="t-s" x="108" y="200">workforce-seeded</text>
+    <text class="t-s" x="52" y="218">board</text><text class="t-s" x="108" y="218">eng.work</text>
+    <text class="t-s" x="52" y="244">address</text>
+    <text class="t-k" x="52" y="262">acme.eng.lead</text>
+  </g>
+
+  <g id="alice-plane">
+    <rect class="n-usr" x="330" y="76" width="280" height="206" rx="6"/>
+    <text class="t-lbl" x="346" y="98">OWNER user:alice</text>
+    <text class="t-b" x="346" y="120">Alice's private team</text>
+    <text class="t-s" x="346" y="146">cell</text><text class="t-s" x="402" y="146">scope "user" · alice</text>
+    <text class="t-s" x="346" y="164">roster</text><text class="t-s" x="402" y="164">workforce/roster/</text>
+    <text class="t-k" x="402" y="180">acme/research.scout</text>
+    <text class="t-s" x="346" y="200">seeded</text><text class="t-s" x="402" y="200">workforce-seeded</text>
+    <text class="t-s" x="346" y="218">board</text><text class="t-s" x="402" y="218">inbox.work</text>
+    <text class="t-s" x="346" y="244">address</text>
+    <text class="t-k" x="346" y="262">acme.~alice.research.scout</text>
+  </g>
+
+  <g id="bob-plane">
+    <rect class="n-usr" x="624" y="76" width="280" height="206" rx="6"/>
+    <text class="t-lbl" x="640" y="98">OWNER user:bob</text>
+    <text class="t-b" x="640" y="120">Bob's private team</text>
+    <text class="t-s" x="640" y="146">cell</text><text class="t-s" x="696" y="146">scope "user" · bob</text>
+    <text class="t-s" x="640" y="164">roster</text><text class="t-s" x="696" y="164">workforce/roster/</text>
+    <text class="t-k" x="696" y="180">acme/ops.pager</text>
+    <text class="t-s" x="640" y="200">seeded</text><text class="t-s" x="696" y="200">workforce-seeded</text>
+    <text class="t-s" x="640" y="218">board</text><text class="t-s" x="696" y="218">inbox.work</text>
+    <text class="t-s" x="640" y="244">address</text>
+    <text class="t-k" x="640" y="262">acme.~bob.ops.pager</text>
+  </g>
+
+  <g id="one-store">
+    <rect class="n-band" x="36" y="296" width="868" height="52" rx="6"/>
+    <text class="t-lbl" x="52" y="316">ONE HIRE STORE</text>
+    <text class="t-p" x="52" y="336">Same row schema, same workforce/roster/ prefix, same reload path. The owner only picks the cell. The org cell is byte-identical to today's.</text>
+  </g>
+</svg>
