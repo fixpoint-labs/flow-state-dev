@@ -91,7 +91,7 @@ The debug response lists every alias for each storage key. The panel shows them 
 
 ## Read-only resources
 
-`writable` decides whether a resource can be written at all. With `writable: false` the write is refused, state and content alike. A `defineResource` resource refuses with a `FlowError` whose code is `resource_read_only`. A collection instance refuses with a plain `Error` and no code, so match on the message there; [Writable](../resources/collections.md#writable) has the exact strings.
+`writable` decides whether a resource's state and content can be written. With `writable: false` both of those writes are refused. A `defineResource` resource refuses with a `FlowError` whose code is `resource_read_only`. A collection instance refuses with a plain `Error` and no code, so match on the message there; [Writable](../resources/collections.md#writable) has the exact strings.
 
 ```ts
 defineResource({

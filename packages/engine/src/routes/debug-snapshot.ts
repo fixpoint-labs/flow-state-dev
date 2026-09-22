@@ -93,10 +93,10 @@ export interface DebugResourceEntry {
    * closed door reports a resource anybody can edit as read-only (BP-030).
    *
    * **`false` is narrower than "immutable".** It refuses state and content
-   * writes *through this definition*. A collection still permits `create` and
-   * `delete`, which consult nothing; and the flag lives on the config, not the
-   * storage cell, so another flow holding its own unsealed definition of a
-   * shared org or user resource can still write the same key.
+   * writes *through this definition*. A collection still permits `create`,
+   * `getOrCreate` and `delete`, which consult nothing; and the flag lives on
+   * the config, not the storage cell, so another flow holding its own unsealed
+   * definition of a shared org or user resource can still write the same key.
    */
   writable?: boolean;
   /**
