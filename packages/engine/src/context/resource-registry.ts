@@ -1388,6 +1388,13 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           const exists = storageKey in resources;
           const replace = createOptions?.replace === true;
 
+          // writable: false refuses writes to an existing instance — the
+          // same overwrite setState / writeContent already refuse. A new
+          // key stays open (create and getOrCreate can still populate).
+          if (nsConfig.writable === false && replace && exists) {
+            throw new Error(`Resource "${storageKey}" is read-only`);
+          }
+
           // No pre-read already-exists throw. `exists` is this context's cached
           // view, which a concurrent creator can invalidate between the check
           // and the write; the authoritative answer is the store's, and a
@@ -1651,6 +1658,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
         async delete(key: string | Record<string, string>): Promise<void> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          if (nsConfig.writable === false) {
+            throw new Error(`Resource "${storageKey}" is read-only`);
+          }
           const resources = options.readResources();
 
           // Capture the about-to-be-deleted state before the per-key delete so

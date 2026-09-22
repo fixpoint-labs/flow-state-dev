@@ -1149,10 +1149,10 @@ describe("createScopeResourceRegistry — collections", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("create and delete still work on a writable: false collection (FIX-1261)", async () => {
-    // writable gates instance writes, not collection-handle membership.
-    // A guard accidentally placed on create/delete would stay green on the
-    // refuse-patch / accept-patch pair alone.
+  it("create on a new key still works on a writable: false collection (FIX-1261 / FIX-1510)", async () => {
+    // writable refuses writes to an *existing* instance. Creating a genuinely
+    // new key is a lifecycle add, not that overwrite — it stays open so a
+    // read-only collection can still be populated.
     const nsConfig = makeCollectionConfig("items/*", {
       writable: false,
       stateSchema: z.object({ v: z.number().default(0) }).passthrough()
@@ -1160,8 +1160,76 @@ describe("createScopeResourceRegistry — collections", () => {
     const registry = makeRegistry({ configs: { items: nsConfig } });
     const created = await (registry as any).items.create("doc1", { v: 1 });
     expect(created.state).toEqual({ v: 1 });
-    await (registry as any).items.delete("doc1");
-    expect(await (registry as any).items.getOptional("doc1")).toBeUndefined();
+    expect(await (registry as any).items.getOptional("doc1")).toBeDefined();
+
+    // replace on a key that does not exist is still an add, not an overwrite.
+    const replacedNew = await (registry as any).items.create(
+      "doc2",
+      { v: 2 },
+      { replace: true }
+    );
+    expect(replacedNew.state).toEqual({ v: 2 });
+
+    const existing = await (registry as any).items.getOrCreate("doc1", { v: 99 });
+    expect(existing.state).toEqual({ v: 1 });
+    const minted = await (registry as any).items.getOrCreate("doc3", { v: 3 });
+    expect(minted.state).toEqual({ v: 3 });
+  });
+
+  it("refuses create({ replace: true }) on an existing instance when the collection is writable: false (FIX-1510)", async () => {
+    // The sharp bypass: setState is refused, then create(..., { replace: true })
+    // performs the same overwrite two names away. A guard that a neighbouring
+    // method bypasses is not a guard.
+    const onUpdated = vi.fn();
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      writable: false,
+      stateSchema: z.object({ v: z.number() }).passthrough(),
+      onInstanceUpdated: onUpdated
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": { v: 1 } },
+      onResourceChanged: onChange
+    });
+    const ref = await (registry as any).items.get("doc1");
+    onChange.mockClear();
+    await expect(ref.setState({ v: 99 })).rejects.toThrow(/read-only/);
+    expect(ref.state).toEqual({ v: 1 });
+
+    await expect(
+      (registry as any).items.create("doc1", { v: 42 }, { replace: true })
+    ).rejects.toThrow(/read-only/);
+    expect((await (registry as any).items.get("doc1")).state).toEqual({ v: 1 });
+    expect(onUpdated).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("refuses delete when the collection is writable: false (FIX-1510)", async () => {
+    // delete is the same write-shaped mutation setState refuses: it destroys
+    // an existing instance. The handle must refuse it the same way.
+    const onDeleted = vi.fn();
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      writable: false,
+      stateSchema: z.object({ v: z.number() }).passthrough(),
+      onInstanceDeleted: onDeleted
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": { v: 1 } },
+      onResourceChanged: onChange
+    });
+    onChange.mockClear();
+    await expect((registry as any).items.delete("doc1")).rejects.toThrow(/read-only/);
+    expect(await (registry as any).items.getOptional("doc1")).toBeDefined();
+    expect((await (registry as any).items.get("doc1")).state).toEqual({ v: 1 });
+    expect(onDeleted).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+
+    // The operation is refused, not just a live-row check — a missing key
+    // is the same write-shaped call, not an idempotent no-op.
+    await expect((registry as any).items.delete("missing")).rejects.toThrow(/read-only/);
   });
 
   it("accepts an instance write on a collection that does not set writable: false (FIX-1261)", async () => {
