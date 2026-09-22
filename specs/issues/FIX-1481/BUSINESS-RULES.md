@@ -64,9 +64,10 @@ flowchart LR
 > storage cell: a seat's read-only copy is a shallow copy of the declared entry
 > (`packages/workforce/src/seat-resources.ts` → `readOnly`), so the same `org` or `user` cell
 > remains writable through a flow that declares it writable. And on a **collection** the flag
-> gates `persistNamespaceInstanceState` and the instance `writeContent` only — `create`
-> (including `{ replace: true }`), `getOrCreate` and `delete` never consult it
-> (`packages/engine/src/context/resource-registry.ts`), which is
+> gates two functions — `persistNamespaceInstanceState` and the instance `writeContent` — and
+> therefore every operation that routes through them, `upsert` on an existing key included. What it
+> does **not** gate is the lifecycle: `create` (including `{ replace: true }`), `getOrCreate` and
+> `delete` never consult it (`packages/engine/src/context/resource-registry.ts`), which is
 > [FIX-1510](https://linear.app/fixpoint-labs/issue/FIX-1510).
 >
 > **The predicate and every other rule are unchanged.** BR-10 … BR-16 stand as written, the
