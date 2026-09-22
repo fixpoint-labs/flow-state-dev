@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 470" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path: lanes against time, with a now line at September 20, 2026. A ship-fence band under the axis says the fence STANDS, not lifted: the W4 first-cut issues are Done but FIX-1407 is In Review, so no W5 ship ticket may open, while polish may start now. Two input lanes from other epics: the W3 floor FIX-1351 carries a bar reaching the now line, landed, with seats, channels and skills on disk and DevForce's first build slice; and the W4 first cut FIX-1407 carries a bar reaching the now line, first cut landed, epic still In Review. Then the rows of the set. FIX-1467, references versus resources, carries a completed bar that ends before the now line, marked Done and merged September 20, and labelled ER-18 met, not a proving leg. FIX-1468, ReadOnlyResourceRef, is a dashed not-started lane beginning after the now line, marked Backlog, not a proving leg. FIX-1469, the goals labs migration, is a dashed not-started lane beginning after the now line, marked Backlog, not a proving leg, with its kitchen-sink half stale. FIX-1474, the composed at-seat notify and board file, is a dashed not-started lane marked Backlog, polish, not a proving leg and explicitly not an ER-Collab gate. Then the exit-proof lanes. FIX-1481, the Devtool checklist, is a dashed not-started lane in full-strength type, marked Backlog, owning rows four to six, with rows one to three riding FIX-1320, and rows four and six failing today. The DevForce proof path and the multi-seat collab scenario carry no bar at all, only labels, each marked NO CHILD, not filed. Last, a short terminated lane for FIX-1458, humans in seats, whose stub stops at September 20 with an X, canceled, pull request 1955 closed unmerged, kept and not deleted. The route to the done condition is drawn in the gutter as three hollow dots joined by a broken line across the three proof lanes only. The first dot, on the Devtool lane, is drawn in the accent colour because that proof now has an owner; the other two are drawn in the unowned colour, so the route is still broken. A note says the set is open and that two exit proofs are still lanes waiting to be filed, which is normal course under rule ER-23. Under a divider, related lanes that are not in the set: kitchen-sink FIX-1455, a sibling epic that left the set on September 20; FIX-1320 flow instances, Spec Approved, which already owns the Devtool instance and session surfaces that checklist rows one to three read on and ride, an epic W5 does not run; FIX-1442 org never optional, wrap-gating because no proof is observable without org identity; and FIX-1341 Collab park, later and never the whole of W5.">
+<svg viewBox="0 0 940 492" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path: lanes against time, with a now line at September 22, 2026. A ship-fence band under the axis says the fence STANDS: the W4 first-cut issues are done but FIX-1407 is In Review, so no W5 ship ticket may open; polish may start now. Two input lanes carry the W3 floor and the W4 first cut, both reaching the now line. Then the rows of the set: FIX-1467 carries a completed bar that ends before the now line, marked done and merged, and labelled not a proving leg; FIX-1468, FIX-1469 and FIX-1474 are short dashed backlog lanes with no bars, all three labelled not a proving leg, and FIX-1474 additionally marked NOT an ER-Collab gate; then the four exit-proof lanes, every one of which now holds a ticket and none of which carries a bar. FIX-1481 is In Spec Review and owns checklist rows 4 and 6 while verifying all six; FIX-1502 is Backlog, owns checklist row 5, and is marked BLOCKED BY FIX-1486; FIX-1496 is In Spec Review, filed September 22, and is the lane that stands the live hire up; FIX-1497 is Backlog with no spec, filed September 22, and held behind FIX-1481. A terminated stub marks FIX-1458 as canceled on September 20. The route to the done condition is drawn in the gutter as a broken line through the proof lanes, and every one of its dots is now in the accent colour because every proof has an owner, so the route is whole and entirely unrun. A note says every exit proof now has a lane with a ticket in it and not one carries a bar: filing is normal course under ER-23, and running is the proof. Under a divider, related lanes not in the set: kitchen-sink FIX-1455, a sibling epic that left the set; FIX-1320 flow instances, Spec Approved, which checklist rows 1 to 3 ride and W5 does not run; FIX-1486, Backlog, which blocks row 5 and which W5 must not build under ER-25; and FIX-1442 org never optional, wrap-gating.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -31,12 +31,12 @@
     .t-fen { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
 
-  <text class="t-lbl" x="16" y="18">THE PATH &#8212; ONE LANE PER ROW OF THE SET, AGAINST TIME</text>
+  <text class="t-lbl" x="16" y="18">THE PATH &#8212; ONE LANE PER ROW OF THE SET, AGAINST TIME &#183; SEP 22</text>
 
   <g id="axis">
     <path class="axis" d="M210 42 L924 42"/>
     <text class="t-s" x="210" y="34">Sep 16</text>
-    <text class="t-now" x="310" y="34">now &#183; Sep 20</text>
+    <text class="t-now" x="310" y="34">now &#183; Sep 22</text>
     <text class="t-s" x="640" y="34">ahead &#183; no dates set</text>
   </g>
 
@@ -46,13 +46,14 @@
     <text class="t-fen" x="222" y="62">STANDS &#8212; W4&#8217;s first-cut issues are Done but FIX-1407 is In Review. No W5 ship ticket. Polish may start now.</text>
   </g>
 
-  <path class="now" d="M340 74 L340 314"/>
+  <path class="now" d="M340 74 L340 336"/>
 
   <g id="route">
-    <path class="critb" d="M198 238 L198 282"/>
+    <path class="critb" d="M198 238 L198 304"/>
     <circle class="crith" cx="198" cy="238" r="3.2"/>
-    <circle class="critn" cx="198" cy="260" r="3.2"/>
-    <circle class="critn" cx="198" cy="282" r="3.2"/>
+    <circle class="crith" cx="198" cy="260" r="3.2"/>
+    <circle class="crith" cx="198" cy="282" r="3.2"/>
+    <circle class="crith" cx="198" cy="304" r="3.2"/>
   </g>
 
   <g id="lanes-inputs">
@@ -83,46 +84,50 @@
 
     <text class="t-ln" x="16" y="238">FIX-1481 Devtool checklist</text>
     <path class="lane" d="M352 235 L600 235"/>
-    <text class="t-s" x="620" y="238">Backlog &#183; rows 4&#8211;6 &#183; 1&#8211;3 ride FIX-1320 &#183; 4 and 6 fail</text>
+    <text class="t-s" x="620" y="238">In Spec Review &#183; rows 4 and 6 &#183; verifies all six</text>
 
-    <text class="t-lng" x="16" y="260">FIX-XXX DevForce proof</text>
-    <text class="t-g" x="620" y="260">ER-DevForce &#183; NO CHILD &#183; first slice done in W3</text>
+    <text class="t-ln" x="16" y="260">FIX-1502 org-level inventory</text>
+    <path class="lane" d="M352 257 L600 257"/>
+    <text class="t-g" x="620" y="260">Backlog &#183; checklist row 5 &#183; BLOCKED BY FIX-1486</text>
 
-    <text class="t-lng" x="16" y="282">FIX-XXX multi-seat collab</text>
-    <text class="t-g" x="620" y="282">ER-Collab &#183; NO CHILD &#183; not filed</text>
+    <text class="t-ln" x="16" y="282">FIX-1496 DevForce proof</text>
+    <path class="lane" d="M352 279 L600 279"/>
+    <text class="t-s" x="620" y="282">In Spec Review &#183; filed Sep 22 &#183; stands the hire up</text>
 
-    <text class="t-lng" x="16" y="304">FIX-1458 humans-in-seats</text>
-    <rect class="killbar" x="300" y="298" width="34" height="10" rx="2"/>
-    <path class="kill" d="M328 294 L340 306"/>
-    <path class="kill" d="M340 294 L328 306"/>
-    <text class="t-g" x="620" y="304">CANCELED Sep 20 &#183; #1955 closed unmerged</text>
+    <text class="t-ln" x="16" y="304">FIX-1497 multi-seat collab</text>
+    <path class="lane" d="M352 301 L600 301"/>
+    <text class="t-s" x="620" y="304">Backlog, no spec &#183; filed Sep 22 &#183; held behind 1481</text>
+
+    <text class="t-lng" x="16" y="326">FIX-1458 humans-in-seats</text>
+    <rect class="killbar" x="300" y="320" width="34" height="10" rx="2"/>
+    <path class="kill" d="M328 316 L340 328"/>
+    <path class="kill" d="M340 316 L328 328"/>
+    <text class="t-g" x="620" y="326">CANCELED Sep 20 &#183; #1955 closed unmerged</text>
   </g>
 
-  <text class="t-s" x="210" y="328">the set is open &#8212; two exit proofs are still lanes waiting to be filed, which is normal course (ER-23)</text>
+  <text class="t-s" x="210" y="350">every exit proof now has a lane with a ticket in it, and none carries a bar &#8212; filing is normal (ER-23), running is the proof</text>
 
   <g id="related">
-    <path class="div" d="M16 338 L924 338"/>
-    <text class="t-lbl" x="16" y="354">RELATED — NOT IN THE SET</text>
-    <text class="t-ln" x="16" y="374">FIX-1455 kitchen-sink</text>
-    <text class="t-s" x="620" y="374">sibling epic &#183; LEFT THE SET Sep 20 &#183; own lifecycle</text>
-    <text class="t-ln" x="16" y="392">FIX-1320 flow instances</text>
-    <text class="t-g" x="620" y="392">Spec Approved &#183; rows 1&#8211;3 ride it &#183; W5 does not run it</text>
-    <text class="t-ln" x="16" y="410">FIX-1442 org never optional</text>
-    <text class="t-s" x="620" y="410">wrap-gating &#183; no proof is observable without org id</text>
-    <text class="t-ln" x="16" y="428">FIX-1341 Collab park</text>
-    <text class="t-s" x="620" y="428">later &#183; never the whole of W5 (ER-9)</text>
+    <path class="div" d="M16 360 L924 360"/>
+    <text class="t-lbl" x="16" y="376">RELATED &#8212; NOT IN THE SET</text>
+    <text class="t-ln" x="16" y="396">FIX-1455 kitchen-sink</text>
+    <text class="t-s" x="620" y="396">sibling epic &#183; LEFT THE SET Sep 20 &#183; own lifecycle</text>
+    <text class="t-ln" x="16" y="414">FIX-1320 flow instances</text>
+    <text class="t-g" x="620" y="414">Spec Approved &#183; rows 1&#8211;3 ride it &#183; W5 does not run it</text>
+    <text class="t-ln" x="16" y="432">FIX-1486 org id on listing</text>
+    <text class="t-g" x="620" y="432">Backlog &#183; BLOCKS row 5 &#183; W5 must not build it (ER-25)</text>
+    <text class="t-ln" x="16" y="450">FIX-1442 org never optional</text>
+    <text class="t-s" x="620" y="450">wrap-gating &#183; no proof is observable without org id</text>
   </g>
 
   <g id="legend">
-    <rect class="inp" x="90" y="446" width="16" height="12" rx="2"/>
-    <text class="t-s" x="114" y="455">input from another epic</text>
-    <rect class="done" x="266" y="446" width="16" height="12" rx="2"/>
-    <text class="t-s" x="290" y="455">done</text>
-    <path class="lane" d="M340 452 L376 452"/>
-    <text class="t-s" x="384" y="455">filed, not started</text>
-    <circle class="crith" cx="500" cy="452" r="3.2"/>
-    <text class="t-s" x="514" y="455">a proof with an owner</text>
-    <circle class="critn" cx="650" cy="452" r="3.2"/>
-    <text class="t-g" x="664" y="455">a proof with none &#8212; route still broken</text>
+    <rect class="inp" x="90" y="468" width="16" height="12" rx="2"/>
+    <text class="t-s" x="114" y="477">input from another epic</text>
+    <rect class="done" x="266" y="468" width="16" height="12" rx="2"/>
+    <text class="t-s" x="290" y="477">done</text>
+    <path class="lane" d="M340 474 L376 474"/>
+    <text class="t-s" x="384" y="477">filed, not started</text>
+    <circle class="crith" cx="500" cy="474" r="3.2"/>
+    <text class="t-s" x="514" y="477">a proof with an owner &#8212; the route is whole, and unrun</text>
   </g>
 </svg>
