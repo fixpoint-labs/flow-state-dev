@@ -139,14 +139,13 @@ const withRuns = await sessions.listSessions({
 
 A row a dispatcher started carries `parentSessionId`, the conversation it was
 started from, along with its `topic` and `coordinate` labels. Rows belonging to
-another principal, organization or tenant are absent either way — the option
-widens parentage and nothing else.
+another principal, organization or tenant are absent either way.
 
 The typed client includes a session client when created with a flow. Use it for creating sessions, listing requests, and fetching state.
 
 ### Dispatched runs
 
-Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in a session of its own, so it never shows up in the requests of the session the user is in. `listSessions` with `include: "dispatch-runs"` finds those sessions on the flow; `listChildSessions` asks one session which runs were started from it.
+Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in a session of its own, so it never shows up in the requests of the session the user is in. `listSessions` with `include: "dispatch-runs"` finds those sessions on the flow; `listChildSessions` asks one session which runs were started from it. The call is `listChildSessions` and a row is a `ChildSessionSummary`; one row is one dispatch run.
 
 [Work that outlives the turn](/guides/background-work) covers where these sessions come from and how they differ from the other things the docs call background work; [Dispatched work](/docs/server/background-work) is the HTTP surface underneath the two calls below.
 

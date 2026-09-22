@@ -133,8 +133,7 @@ You get back exactly one key: `{ flowId: address }` for a copy of a collection f
 ### Dispatched runs
 
 Work that outlives the turn that started it runs in a session of its own, so it
-never appears in the requests of the session that started it. There are two ways
-to reach one.
+never appears in the requests of the session that started it.
 
 `listSessions` with `include: "dispatch-runs"` returns those sessions beside the
 flow's conversations:
@@ -149,11 +148,12 @@ const rows = await sessions.listSessions({
 const runs = rows.filter((row) => row.parentSessionId != null);
 ```
 
-Leave the option off and you get the sessions a person started. It widens
-parentage only: rows belonging to another principal, organization or tenant are
-absent either way.
+Leave the option off and you get the sessions a person started. Rows belonging to
+another principal, organization or tenant are absent either way.
 
-`listChildSessions` asks one session which runs were started from it.
+`listChildSessions` asks one session which runs were started from it. The call is
+`listChildSessions` and a row is a `ChildSessionSummary`; one row is one dispatch
+run.
 
 ```ts
 // Paging only: `limit` is 1–100 (25 by default), `offset` is 0–10000.
@@ -169,12 +169,12 @@ Each row is a `ChildSessionSummary`: `id`, `parentSessionId`, `createdAt`,
 `updatedAt`, and the optional `flowId`, `topic`, `coordinate`, and `status`. That is
 the whole row — the server sends this named field set rather than a session record.
 `flowId` is the instance that owns the run, the address to read it through when it
-was dispatched into another instance; absent on a row written before owners were
-recorded. `topic`
-is the key the run's session was derived from and `coordinate` the entry it was
-dispatched to; both are display labels, nothing identifies or authorizes from them, and a row
-can arrive without either. How legible `topic` is depends on what the flow keyed on,
-so fall back to `id` rather than to a made-up name. Guard all three with `== null`.
+was dispatched into another instance. Absent on a row that records no owner.
+`topic` is the key the run's session was derived from and `coordinate` the entry
+it was dispatched to; both are display labels, nothing identifies or authorizes
+from them, and a row can arrive without either. How legible `topic` is depends on
+what the flow keyed on, so fall back to `id` rather than to a made-up name. Guard
+all three with `== null`.
 
 `status` is the last state the server recorded for the work, not a check on what is
 happening right now. `"active"` asserts only that the work hasn't finished: queued,

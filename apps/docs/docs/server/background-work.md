@@ -9,8 +9,8 @@ Some work outlives the turn that asked for it: a long research pass, a document
 being drafted, an implementation running for an hour. That work runs in its own
 *session*, the record the framework keeps for one conversation, holding its
 state, its resources, and the history of every request that ran in it. A session
-a dispatcher started is a session of its flow like any other, and it records the
-conversation it was started from.
+a dispatcher started is called a *dispatch run*. It is a session of its flow like
+any other, and it records the conversation it was started from.
 
 This page covers how a flow starts that work, and the HTTP surface for reading
 it afterwards. List a flow's sessions with its dispatch runs included to find
@@ -18,7 +18,7 @@ one, or ask a conversation which runs it started.
 
 Starting one is server-side only. There is no endpoint for it. A job begins
 inside a running request, either from a `dispatcher()` block or from a task
-board handing a claimed row to a dispatch run. See [Work that outlives the
+board handing a claimed row off, which starts one. See [Work that outlives the
 turn](/guides/background-work#dispatch-work-in-its-own-session) for how the two
 relate to the other kinds of background work.
 
@@ -152,11 +152,11 @@ const notifyBilling = dispatcher({
 });
 ```
 
-The job starts and returns immediately, and its session hangs
-off the conversation that started it — but it belongs to the instance it was sent
-to. It runs that instance's entry, starts with that instance's session-state
-defaults, and its `flowId` in the listing is that instance's. Whatever the job
-needs travels in the payload; the two flows share no state. Two copies of one
+The job starts and returns immediately. Its session records the conversation that
+started it, but it belongs to the instance it was sent to. It runs that
+instance's entry, starts with that instance's session-state defaults, and its
+`flowId` in the listing is that instance's. Whatever the job needs travels in the
+payload; the two flows share no state. Two copies of one
 definition count as two instances here: a run sent to `review-east` is
 `review-east`'s, and the same conversation dispatching to `review-west` gets a
 second run rather than adopting the first.
@@ -213,10 +213,19 @@ const sessions = await sessionClient.listSessions({
 });
 ```
 
-The parameter widens parentage and nothing else. A run belonging to another
-principal, another organization or another tenant is absent from the response
-either way, and a value the route does not recognise is a `400` naming what it
-accepts.
+The listing is scoped to the caller before the parameter is read. An
+authenticated caller sees their own sessions, in their own organization and
+tenant; the `userId` query filter can narrow that and never widen it, and there
+is no `orgId` query parameter at all, because an organization is never a
+caller's to name. The parameter adds the dispatcher-started rows inside that
+scope and changes nothing about it, so a run belonging to another principal,
+another organization or another tenant is absent from the response either way. A
+value the route does not recognise is a `400` naming what it accepts.
+
+With no `resolvePrincipal` configured there is no principal to scope to, and the
+query filters are the only ones there are — the same caveat that governs every
+management endpoint. See [Without a
+resolver](./authentication.md#without-a-resolver).
 
 Leave the parameter off and the response holds the sessions a person started.
 
@@ -225,6 +234,9 @@ Leave the parameter off and the response holds the sessions a person started.
 ```
 GET /api/flows/sessions/sess_abc/children
 ```
+
+The route is `/children` and a row is a `ChildSessionSummary`; one row is one
+dispatch run.
 
 The provenance index for one conversation: which runs were started from it, and
 what state each one's work reached. Reach for it when you have a conversation in
@@ -421,7 +433,7 @@ A run can dispatch work of its own. Those runs are sessions of the flow like any
 other: they appear in the flow's listing with `include=dispatch-runs`, and
 calling `/children` on the run that started them returns them.
 
-## Paging
+## Paging a conversation's runs
 
 Pass `limit` (1–100, default 25) and `offset` (0–10000). Values outside those
 ranges get a `400` naming the accepted range rather than a silently clamped
@@ -433,7 +445,7 @@ paging will not shuffle the pages under you. A run *created* while you are
 paging can be missed, or can shift a later page by one — if you need exactness
 there, fetch a single page large enough to hold the whole set.
 
-## What this endpoint won't do
+## What the runs endpoint won't do
 
 **It won't apply access rules of its own.** The same rules that govern reading
 the conversation named in the path govern reading its runs. That is how

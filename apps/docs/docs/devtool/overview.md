@@ -111,13 +111,13 @@ When a block fails, the detail panel surfaces enough context to diagnose without
 
 Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs work in a session of its own that keeps going after the request which started it has returned, and none of that work shows up in the starting conversation's stream or trace.
 
-The rail lists those sessions with the rest of the flow's, indented one level under the session that started each one. Each carries a label saying the dispatcher started it and a link that opens the session it came from. A run started by another run indents once, beside its own parent — the rail shows where work came from without becoming a tree to walk.
+The rail lists those sessions with the rest of the flow's, indented one level under the session that started each one. Each carries a label saying the dispatcher started it and a link that opens the session it came from. A run started by another run indents once, beside its own parent.
 
 Click a row and the workspace opens that session. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it.
 
-The Trace tab also lists the runs a session started, under the blocks that ran in it. Each is a collapsed node naming a separate session; expand one and that run's own block tree loads in place, without moving the workspace off the session you are on. Nothing about a run loads until you open it, so a board that drained fifty rows leaves fifty rows to read rather than fifty sessions' items in one tree.
+The Trace tab also lists the runs a session started, under the blocks that ran in it. Each is a collapsed node naming a separate session; expand one and that run's own block tree loads in place, without moving the workspace off the session you are on. Nothing about a run loads until you open it.
 
-Work dispatched into another flow instance produces a session that instance owns, so opening a row can move you to a different copy as well as a different session.
+Work dispatched into another flow instance produces a session that instance owns, so opening a row can move you to a different copy as well as a different session. The rail still lists every copy, and each remembers the session you last had open under it, so going back is picking it again.
 
 A few things worth knowing about a row:
 

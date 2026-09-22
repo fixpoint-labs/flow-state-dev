@@ -182,7 +182,7 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 ### `SessionView.childSessions`
 
-`ReadonlyArray<ChildSessionSummary>` of the sessions started under this one — one entry per child, carrying `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate?, status? }`, which is the whole row. `flowId` is the instance that owns the child — the address to read it through when it was dispatched into another instance; absent on a child written before owners were recorded. Empty for a session that started none. Separate from `items`: a child session is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
+`ReadonlyArray<ChildSessionSummary>` of the sessions started under this one — one entry per child, carrying `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate?, status? }`, which is the whole row. The field is `childSessions` and a row is a `ChildSessionSummary`; one row is one dispatch run. `flowId` is the instance that owns the child — the address to read it through when it was dispatched into another instance. Absent on a row that records no owner. Empty for a session that started none. Separate from `items`: a child session is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
 
 Carries one page of the most recent entries, newest first. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than one page keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
 
@@ -406,7 +406,7 @@ How deep the tree goes comes from each flow's declared `cardinality`. A flow dec
 
 Sessions load when you open a single flow instance, which is a singleton's row or one copy under a collection. Expanding a collection row to see its copies costs no request.
 
-Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers ran work in, each drawn one level under the session that started it. One level is all there is: a run started by another run sits beside its own parent, and a run whose parent is not in the listing sits at the left margin. Nothing extra is fetched to draw it. The `rowTrailing` slot receives `dispatchRun` on those rows, carrying the id of the session that started it, so you can label the row or link to it. Left out, the rail lists the sessions a person started.
+Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers ran work in, each drawn one level under the session that started it. One level is all there is: a run started by another run sits beside its own parent, and a run whose parent is not in the listing sits at the left margin. The `rowTrailing` slot receives `dispatchRun` on those rows, carrying the id of the session that started it, so you can label the row or link to it. Left out, the rail lists the sessions a person started.
 
 The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
 

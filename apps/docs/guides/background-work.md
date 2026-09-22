@@ -84,7 +84,8 @@ const all = await sessions.listSessions({
   include: "dispatch-runs",
 });
 
-// Or: the runs started from one conversation.
+// Or: the runs started from one conversation. The call is `listChildSessions`
+// and a row is a `ChildSessionSummary`; one row is one dispatch run.
 const started = await sessions.listChildSessions("sess_abc");
 const first = started[0];
 const runs = first === undefined ? [] : await sessions.listSessionRequests(first.id);

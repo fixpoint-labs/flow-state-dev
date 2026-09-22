@@ -88,13 +88,12 @@ const withRuns = await sessions.listSessions({
 
 Without `include`, the response holds the sessions a person started. With it, a
 row a dispatcher started carries `parentSessionId` — the session it was started
-from — plus the `topic` and `coordinate` labels below. The option widens
-parentage only: rows belonging to another principal, organization or tenant stay
-absent. Any other value answers `400`.
+from — plus the `topic` and `coordinate` labels below. Rows belonging to another
+principal, organization or tenant stay absent. Any other value answers `400`.
 
 ### `sessions.listChildSessions(parentSessionId, options?)`
 
-List the dispatch runs started from one session. Work that outlives a turn runs in a session of its own, so it doesn't appear in the starting session's own requests.
+List the dispatch runs started from one session. Work that outlives a turn runs in a session of its own, so it doesn't appear in the starting session's own requests. The call is `listChildSessions` and a row is a `ChildSessionSummary`; one row is one dispatch run.
 
 ```ts
 const runs = await sessions.listChildSessions("sess_1", {

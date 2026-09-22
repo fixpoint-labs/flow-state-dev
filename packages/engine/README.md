@@ -382,19 +382,19 @@ const stores = createFilesystemStores({
 
 ## Dispatched runs
 
-Work a dispatcher starts runs in a session of its own on the same flow. Two
-routes read it.
+Work a dispatcher starts runs in a session of its own on the same flow.
 
 `GET /api/flows/sessions?include=dispatch-runs` lists a flow's sessions with
 those included. Rows are whole session records, and one a dispatcher started
 carries `parentSessionId` — the session it was started from — beside its `topic`
 and `coordinate` labels. Without the parameter the listing returns the sessions
-a person started; any other value answers `400`. The parameter widens parentage
-only, so the owner, tenant and organization filters apply as they always do.
+a person started; any other value answers `400`. The owner, tenant and
+organization filters apply as they always do.
 
 `GET /api/flows/sessions/:sessionId/children` is the provenance index for one
-session: which runs were started from it. Each row carries the run's id, the
-session it came from, `topic` and `coordinate` labels, timestamps, and a `status`
+session: which runs were started from it. The route is `/children` and one row is
+one dispatch run. Each row carries the run's id, the session it came from,
+`topic` and `coordinate` labels, timestamps, and a `status`
 of `active` (not finished) or a terminal outcome (`completed`, `failed`,
 `aborted`, `incomplete`). A run with no requests has no `status`. Those seven
 fields are the whole row — the route sends a named field set, not a session
