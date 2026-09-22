@@ -20,7 +20,7 @@ two consumers and are independent of each other. S9 may split off as a fourth, a
 | S7 | `devtool` · consume, and **remove** | Take a dependency on `@flow-state-dev/react`. Render S4 with the tool's own skin and its affordances as slots. **Delete** `src/react/components/navigator/`, `src/react/hooks/use-sessions.ts` and `src/react/hooks/use-read-fence.ts`, repointing its three remaining fence users (`DevToolPanel.tsx`, `use-child-sessions.ts`, `use-workspace-fence.ts`) and their test at the `react` export — an import path, no behaviour change. **The tool's bearer transport has to survive the move** | BR-15 BR-17 BR-29 |
 | S8 | kitchen-sink · the shell | `app/page.tsx`: the rail becomes one `FlowNavigator` with a Channels and a Seats section; the right panel becomes standing `BoardColumns` + `Roster` and **loses its build-mode conditional**; the narrow-width order is wired. **Remove** `components/session-sidebar.tsx` | BR-13 BR-18 BR-25 – BR-28 |
 | S9 | kitchen-sink · the drifted copies | Reconcile the **five** registry-installed files that no longer match their source: `conversation.tsx`, `message.tsx`, `chat-assistant.tsx`, `task-plan.tsx`, `task-plan-state.ts`. Each is either pushed back into the registry or reverted to it — never left forked | BR-14 |
-| S10 | Docs · changeset | [DOCS.md](DOCS.md)'s operations; `packages/react/README.md`; `apps/kitchen-sink/README.md`. One `minor` changeset for `client` and `react` (new exports), one `patch` for `devtool` (a new dependency, no API change), and one `minor` for **`workforce`** — opening the roster's browser read changes observable behaviour for every consumer that installs that collection, not just this app. Add **`orchestration`** too if the board's read lands as a forwarded `defineTaskCollection` option rather than an assign ([Blocked on](#blocked-on)). **None for kitchen-sink** — private (BP-022) |  |
+| S10 | Docs · changeset | [DOCS.md](DOCS.md)'s operations; `packages/react/README.md`; `apps/kitchen-sink/README.md`. Changesets are **per-PR, not one batch** — see [Changesets](#changesets). **None for kitchen-sink** — private (BP-022) |  |
 
 **S2, S3 and S4 are one internal module, not three exports.** Only `FlowNavigator` and the read
 fence leave the package ([Pinned names](#pinned-names)). Three public hooks would let three
@@ -35,7 +35,7 @@ up rather than settled here ([Follow-ups](#follow-ups)).
 
 | PR | Surfaces | depends_on | Why this seam |
 |---|---|---|---|
-| PR-A | S1 S2 S3 S4 S5 S6 · `packages/react/README.md` · the changesets | — | The public boundary first (BP-004). It is checkable with no app running, and both consumers need it before either can start |
+| PR-A | S1 S2 S3 S4 S5 S6 · `packages/react/README.md` · its own changeset ([Changesets](#changesets)) | — | The public boundary first (BP-004). It is checkable with no app running, and both consumers need it before either can start |
 | PR-B | S7 | PR-A | The reusability proof ([ER-24](../../epics/FIX-1455/BUSINESS-RULES.md)). Deliberately **not** behind PR-C: it needs nothing from FIX-1475 or FIX-1476, so the epic's gate stops depending on two siblings landing |
 | PR-C | S8 S9 · kitchen-sink README · [DOCS.md](DOCS.md) | PR-A | The shell. Needs real collections to render, so it is the one that waits on siblings |
 
@@ -50,6 +50,35 @@ reconciled against the built components either way.
 **PR-C's outside waits.** `Roster` needs FIX-1475's roster collection; `BoardColumns` needs
 FIX-1476's channel kinds and boards. PR-A is checkable against fixtures before either lands.
 PR-B needs neither, which is the point of the split.
+
+<a name="changesets"></a>
+### Changesets
+
+**Every one of them is `patch`, and each rides its own PR** — the list is not PR-A's job.
+
+| Fragment | Packages | Bump | Rides |
+|---|---|---|---|
+| `flow-navigator-public-boundary` | `react`, `client` | `patch` | PR-A |
+| `navigator-second-host` | `react` | `patch` | PR-B |
+| `devtool-shipped-navigator` | `devtool` | `patch` | PR-B |
+| `roster-and-board-panels` | `react` | `patch` | the panels' PR |
+| `panel-collections-client-read` | `workforce` | `patch` | the panels' PR |
+| — | `orchestration` | **none** | — |
+
+**Why `patch` and not `minor`, including for `workforce`.** The pre-1.0 rule is *"can this break
+somebody"*, not *"is this a new capability"*
+([release-notes-workflow.md](../../../docs/contributing/release-notes-workflow.md#pre-10-discipline-current-state),
+which `AGENTS.md` defers to). Every change here is additive: a new export, a new optional
+section field, and on the collections a `client` declaration plus an `expose` allowlist. No
+consumer's existing code stops compiling or returns anything different. That the roster and the
+board become browser-readable is a real posture change and it belongs in the **body** of
+`panel-collections-client-read`, which already names the org scoping and what each row withholds
+— not in the bump.
+
+**No `orchestration` changeset, settled rather than conditional.** The board's read landed as an
+assign at `packages/workforce/src/channel/channel-board.ts:218`, carrying both `state.read` and
+the `expose` allowlist, so `defineTaskCollection` never gained a forwarded option and that
+package is untouched.
 
 ## Checks
 
@@ -201,7 +230,7 @@ difference is worth knowing before you start.
 | | Where the declaration actually goes | What that costs |
 |---|---|---|
 | **Roster** (`S5`) | On the collection factory in `packages/workforce`, because the client config belongs to the declaration and there is exactly one of those | Every flow installing the roster becomes able to serve it to a browser, not just this shell — including FIX-1475's admin flow. The alternative, a second `defineResourceCollection` in the app with the same pattern, is a second copy of the contract the boot reload joins against, which is the drift this issue exists to close |
-| **Board** (`S6`) | **Not** at FIX-1476's call site. `channelBoardLedger` builds its ledger through `defineTaskCollection`, which accepts no `client` option at all (`packages/orchestration/src/tasks/collection/define-task-collection.ts:54–83`) | Either a new forwarded option on `defineTaskCollection` — a change one package below the board, in `@flow-state-dev/orchestration` — or an assign at `channelBoardLedger`. Pick deliberately and say which in the PR; the forwarded option is the honest shape and the larger blast radius |
+| **Board** (`S6`) | **Not** at FIX-1476's call site. `channelBoardLedger` builds its ledger through `defineTaskCollection`, which accepts no `client` option at all (`packages/orchestration/src/tasks/collection/define-task-collection.ts:54–83`) | Two shapes were open — a forwarded option on `defineTaskCollection`, or an assign at `channelBoardLedger`. **Settled: the assign**, at `packages/workforce/src/channel/channel-board.ts:218`, carrying `state.read` and the `expose` allowlist together. `orchestration` is untouched and takes no changeset ([Changesets](#changesets)) |
 
 **The shell's flow must also declare each collection**, because the read resolves the ref
 against the session's **owning flow** (`resolveOwnerFlow`, then `findResourceConfig`, in
