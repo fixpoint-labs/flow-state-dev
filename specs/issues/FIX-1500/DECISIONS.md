@@ -136,9 +136,12 @@ Verdicts here; what each asserts, how, and what it corrected is in
   door on the rail's own flow; the seat detail assembled from four existing sources with no new
   storage beyond one field and three read declarations.
 - **Review round 1** — no decision moved; the direction was approved as drafted. One check was
-  **removed**: the plan had made the authoring-time evidence checker a permanent gate while the
-  checker itself said it was throwaway, and a spec cannot hold both. Its runtime content was
-  already covered twice over, and the totality concern it uniquely carried went to follow-ups as a
-  question for the package's own suite.
+  **removed**: the plan had made the authoring-time evidence checker a permanent gate, and a spec
+  directory is retained design history rather than a home for live CI machinery (BP-037). The
+  stated read fan-out was **corrected** — the sketch reads a channel's state per channel, so it is
+  three reads plus the seat's channels, not a flat four. A reuse index was added naming the
+  helpers this work must compose rather than re-derive. The four-PR plan was challenged and
+  **kept**: attributability beats throughput on an epic whose defect history is unattributable
+  failures.
 
 **Open: none.**

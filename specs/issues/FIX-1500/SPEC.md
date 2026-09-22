@@ -69,10 +69,17 @@ flowchart LR
   C --> B["BoardColumns · one board's ledger"]
 ```
 
-Four reads, each answering one question at its own source, and none of them a join done in the
-browser. The membership index is keyed seat-first precisely so *"which channels is this seat in"*
-is a prefix read rather than a scan of every channel's member list — filtering at the source
-(BP-033) instead of listing then discarding.
+Each read answers one question at its own source, and none of them is a join done in the browser.
+**Three reads identify the seat** — its roster row, its inventory row, its memberships — and then
+the board names cost **one read per channel it belongs to**, because a channel's declared boards
+live in that channel's own session state. Opening a board is one more. So the fan-out is three
+plus the seat's channels, not a flat four; whether the board names are fetched with the seat or
+deferred until a channel is actually opened is the implementer's call
+([PLAN.md](PLAN.md#at-implement-time)).
+
+The membership index is keyed seat-first precisely so *"which channels is this seat in"* is a
+prefix read rather than a scan of every channel's member list — filtering at the source (BP-033)
+instead of listing then discarding.
 
 ## What stays as it is
 

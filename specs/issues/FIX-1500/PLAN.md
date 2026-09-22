@@ -11,7 +11,7 @@ half is checkable with no app running and the app half is the only one that wait
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the durable-hire sequence | **Move** it out of `apps/kitchen-sink/flows/workforce-admin/flow.ts` and into this package as one exported pair — hire and fire — taking the collection ref, the kind map and the registrar as parameters. The operator flow becomes its **first caller** and keeps its own resolver, its own credential and its fail-closed registration. The sequence itself does not change: refuse-then-mint-then-`create()`-then-register, compensating delete on a registration failure, `create()` **never** `upsert()`. Verified as a move rather than a merge — the sequence is at exactly one site today ([`poc/evidence/`](poc/evidence/README.md) → C2) | BR-11 – BR-15 |
+| S1 | `workforce` · the durable-hire sequence | **Move** it out of `apps/kitchen-sink/flows/workforce-admin/flow.ts` and into `packages/workforce/src/roster/`, beside `reload.ts`, as one exported pair — hire and fire — taking the collection ref, the kind map and the registrar as parameters. The operator flow becomes its **first caller** and keeps its own resolver, its own credential and its fail-closed registration. The sequence itself does not change: refuse-then-mint-then-`create()`-then-register, compensating delete on a registration failure, `create()` **never** `upsert()`. Verified as a move rather than a merge — the sequence is at exactly one site today ([`poc/evidence/`](poc/evidence/README.md) → C2) | BR-11 – BR-15 |
 | S2 | `workforce` · the three inventory collections | Each declares `client: { state: { read: true }, expose: [...] }` ([D3](DECISIONS.md#d3)). **Never bare** — a bare opt-in republishes the stored row unchanged. The allowlists are the fields the seat detail draws and no more | BR-25 BR-26 BR-28 |
 | S3 | `workforce` · the seat inventory row and its writer | The row schema gains the seat's **resolved skill names** — `z.array(z.string()).default([])`, so a row written before the field still reads (BP-030). `InventorySeat` widens to carry them and `openInventory`'s seat write publishes them. Names only; contents are not published (D2) | BR-5 BR-7 BR-9 BR-10 |
 | S4 | `workforce` · a runtime hire's inventory row | A seat hired at runtime gets its inventory row written too, through S1. Without it the seat detail works for file-declared seats and silently not for hired ones — which is the spine's own step 4 | BR-16 |
@@ -101,12 +101,26 @@ Every row names what would make it fail. A check with no producible red state pr
 | V12 | S8 | The rail publishes no affordance that creates a channel or a board | Written as an **allow-list over the surface's actions**, not a denylist of two names, so a third spelling fails too (BR-24) |
 | V13 | S4 S8 | A seat hired through the rail has a seat detail that opens, with its kind and an (empty) register — the same pane a file-declared seat opens | Skip the inventory row on a runtime hire: the roster lists the seat and its detail is blank. That split — listed but not openable — is the failure S4 exists for (BR-16) |
 | V14 | S1 S4 | **Persistence boundary, two assertions.** (a) After a hire, the row is present in the durable store read **out of band**, not through the runtime that wrote it. (b) A runtime built on a **fresh** store handle over the same durable location lists the seat | (a) goes red if the hire only registered in-process. (b) goes red if the reload is skipped. **And the negative control for (b):** point boot two at an **empty** durable location — it must go red. Without that control, a `globalThis` cache or a module-level array makes (b) pass while proving nothing, which is precisely the "does not come from process memory" claim BR-19 makes (BR-18, BR-19) |
-| ~~V15~~ | — | **Dropped in review.** It made [`poc/evidence/`](poc/evidence/README.md) a permanent gate, which **contradicts what that POC says it is** — throwaway, not wired into any suite. A spec cannot call a script disposable and then require it to stay green forever (tenet 1). Its runtime content is already V4 and V5; what it uniquely added was *totality* over collections nobody has classified yet, and that is a repository-wide concern rather than this issue's, so it goes to [Follow-ups](#follow-ups) instead of into spec-local machinery. Kept as a struck row so a reader who remembers it finds where it went | — |
+| ~~V15~~ | — | **Dropped in review.** It made [`poc/evidence/`](poc/evidence/README.md) a permanent gate. **The reason is BP-037, not redundancy:** a spec directory is retained *design history*, and live CI machinery parked in one becomes something every future `packages/workforce` contributor has to maintain from a folder they have no reason to open. It also contradicted the checker's own stated status. Its runtime content is already V4 and V5. What it uniquely carried — *totality* over collections nobody has classified — is real and is **not** replaceable by a package test over the three collections named here, which is the very thing C1 exists to defeat; it needs source-level enumeration because these collections are built inside factory functions and are not module-level values. That belongs in `packages/workforce`, and is raised in [Follow-ups](#follow-ups) rather than solved here. Kept as a struck row so a reader who remembers it finds where it went | — |
 | VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): open the rail → open a seat → its kind, skills, channels and boards render → hire another instance of that kind → the new seat appears **with no page reload** → restart the server → reopen → the seat is there → open a channel's board through the rail and its rows render. **And the network log shows the board rows arriving from the collection route**, with no request to a developer-tool or app-private endpoint anywhere in the run | Serve the board from app-owned state: every DOM assertion still passes and the network assertion fails. That half is what makes this a goal check rather than a screenshot. Reload the page after the hire and the no-reload assertion goes red. Skip the restart and the last two go red |
 
 **No model runs in any of this**, so no `goals/` check applies: every claim is about what a
 browser and a boot do with data the server already has. `VG` is the real-path check, in a suite
 that already drives the built app.
+
+## Reuse — what already exists, so it is not written twice
+
+Every row is a thing the tree already has. Reaching for a new one is the drift this plan exists to
+avoid (tenet 5); if one of these does not fit, that is a finding to raise, not a reason to
+reimplement it.
+
+| For | Use | Not |
+|---|---|---|
+| The prefix of a seat's memberships | `membershipPrefix(seatId)` — it validates the id is one whole path segment and refuses a separator, because one that slipped through *"would file the row under another seat"* (`packages/workforce/src/inventory/collections.ts:217`, `:226`) | A hand-built `` `${seatId}/` `` |
+| Turning a hire request into a stored row, and a stored row into a seat manifest | `toHiredSeatRow` and `hiredSeatManifest` (`packages/workforce/src/roster/`, re-exported from the package root) — the operator flow already builds S1's sequence out of exactly these | A second shape for a row on its way in |
+| Building a seat's address from an org and a seat id | `seatAddress(orgId, seatId)` — it refuses a dotted or empty org, without which `acme` + `support.ada` and `acme.support` + `ada` spell one address and the second hire silently rebinds the first | String concatenation |
+| Where S1's extracted sequence lives | `packages/workforce/src/roster/`, beside `reload.ts` — the boot-side reader of the same rows. One directory owns writing a roster row and reading it back | A new top-level module |
+| Writing a seat's inventory row (S3, S4) | **One writer, shared** with `openInventory`'s seat write. A runtime hire and a boot must not be able to produce differently-shaped rows for the same seat | A second write path for hired seats |
 
 ## Pinned names
 
@@ -128,7 +142,6 @@ file layout, the allowlists' exact members — is yours.
 | Never open a collection's browser read **bare** (BP-015) | With no projection the read returns the stored row unchanged. The roster and board already carry allowlists to copy the shape of rather than invent |
 | Organization is never read from a body, a query or a header the caller controls (BP-031) | It is the whole of D1's safety. `session-routes.ts:277` already refuses to consult `body.orgId`; nothing this issue adds may reintroduce it one layer up |
 | Every new read is filtered at the source (BP-033) | The membership index is keyed seat-first *specifically* so a seat's channels are a prefix read. Listing everything and filtering in React is a second runtime inventory wearing a different name |
-| The membership prefix comes from `membershipPrefix(seatId)`, never from a hand-built `` `${seatId}/` `` (tenet 5) | The helper validates that the id is one whole path segment and refuses a separator, because an id carrying one *"would file the row under another seat"* (`packages/workforce/src/inventory/collections.ts:217`, `:226`). Rebuilding the string is one line and silently drops that check — and this spec's own docs draft did exactly that until the name was read |
 | A new nullable or additive stored field carries a default (BP-030) | A seat row written before `skills` existed must still read, and it will exist in every deployment that has already hired |
 | A component takes its row source from its host (BR-27) | A component that builds its own client reads through no credential and fails against any deployment that authenticates. FIX-1477 pinned this once already; a third component is where it gets forgotten |
 | Empty and failed are different states, everywhere in the seat detail | Three sections rendering and a fourth silently blank is the silent-partial failure this epic keeps rediscovering |
@@ -186,6 +199,11 @@ Re-check these against the repo before building; each of them moves.
   with no trailing segment, so `workforce/roster` parses as `ref: "workforce"`, `topic: "roster"`
   and reads a different collection's item. That failure reads like missing rows rather than like
   a wrong address. FIX-1477 hit it; do not hit it twice.
+- **Decide where the board names are fetched, and write down which.** The sketch reads a channel's
+  session state per channel the seat belongs to, so a seat in M channels costs M reads on top of
+  the three that identify it. Deferring those until a channel is actually opened is a real option
+  and costs a click; fetching them with the seat shows the whole picture at once. **Not decided
+  here** — it is a fan-out question that wants a real seat's channel count in front of it.
 - **Has [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506) landed?** If it has, BR-17
   stops being a named non-goal and the refresh-after-hire in S8 may become a subscription. If it
   has not, do not design one — the seam available today delivers only the writer's own changes.
@@ -250,6 +268,10 @@ justification for discarding one.
   react substrate), keep `SeatDetail`, keep kitchen-sink + `VG`. **Or** one changeset per PR
   instead of three workforce fragments on PR-B." — cursor
   ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2061#pullrequestreview-cursor))
+  — **Declined, and not an implementer's option: the PR plan stays at four.** A throughput
+  argument loses to an attributability one here, because unattributable failures are this epic's
+  own defect history: PR-A touches hiring and nothing else, PR-B touches reading and nothing else,
+  so a red check in either names its own cause. Recorded so it is not re-opened as a fresh idea.
 - "**Doc triplication.** Rejected alternatives appear in the DECISIONS mermaid, each D-card, and
   'Considered and dropped'… **Blocked on** (~45 lines) restates D1/DOCS org limits." — cursor
   (*ibid.*). The C1–C3 repetition it names was folded. The rejected-alternative repetition was
@@ -267,8 +289,11 @@ justification for discarding one.
   `BoardColumns`' and `Roster`'s too, and belongs to whoever answers it for all three.
 - A seat's skill *contents* — what a skill does, not just its name — have no browser-readable home.
   Flagged, not filed: it is a skills-product question, and this issue is explicitly not that.
-- **Nothing asserts that every collection in `packages/workforce` has *decided* about browser
-  readability.** This spec's authoring-time checker does it once, for this change; a collection
-  added later can go browser-unreadable, or bare-readable, with nobody choosing. That belongs in
-  the package's own suite as a standing test, not in spec-local machinery — which is why V15 was
-  dropped rather than kept. Raised by review ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2061#pullrequestreview-cursor)).
+- **Nothing asserts, going forward, that every collection in `packages/workforce` has *decided*
+  about browser readability.** This spec's authoring-time checker does it once, for this change; a
+  collection added later can go browser-unreadable, or bare-readable, with nobody choosing. The
+  standing version belongs in `packages/workforce`, and it has to enumerate from **source**: these
+  collections are built inside factory functions, so a test over module-level values can only
+  check the ones it already names — which is the failure the assertion exists to catch. Filed
+  separately; deliberately not given an issue number here, because a spec that names an unfiled
+  one ages badly.
