@@ -1,4 +1,18 @@
-# FIX-1496 · Documentation draft
+# FIX-1496 · Documentation, reconciled
+
+**Reconciled 2026-09-22, after VG passed.** What shipped matches the draft below with three
+additions the implementation made, each recorded in its place: the lab README gained a row for
+the **acceptance check** (`acceptance-check.mjs` + `acceptance.mts`), which the draft folded into
+the channel and bare-clone rows rather than naming; the channel row names `notify.mts` alongside
+the host, because the address map turned out to be a separate module; and the new goal's
+`goal.md` carries a **controls table** the draft did not anticipate, since five of its six
+controls are model-free and that is worth a reader knowing before they pay for a run.
+
+**One thing the draft got wrong and the implementation corrected.** The draft's channel row said
+the lab "now opens the channel it declares". It opens it **when a check asks** — `channels` is an
+option on `openLab`, absent by default, so the two older checks are untouched. The published
+README says that rather than the draft's flatter claim.
+
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs**
 

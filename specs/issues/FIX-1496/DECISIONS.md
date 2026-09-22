@@ -133,12 +133,12 @@ ref fails because `src/greeting.js` does not exist there.
 | **Extend `it-commits-from-the-seats-own-file` instead of adding a sibling** | Thinner by one file, and it rewrites a check whose stated claim is deliberately *a commit, not a pull request*. Its verdict log would then describe a check that no longer exists |
 | **Grade the artifact by reading its contents for tokens** | The failure the existing goal exists to refuse. A model that never read the brief can still emit a token it was told to emit |
 | **Move the board onto the channel's `boards:` declaration** | Removes the interim tax and is the authored shape FIX-1385 settled — and changes the board the hand-off gates against. A substrate-shaped change wearing a polish label is exactly [ER-25](../../epics/FIX-1457/BUSINESS-RULES.md) |
-| **Wait for [FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440) to land first** | Checked, not assumed: the lab reads dispatch parentage only as provenance, which FIX-1440's own owner amendment keeps, and reads nothing from the browsable child-session surface it removes. Re-derived by [`poc/gap-check/`](poc/gap-check/README.md) |
+| **Wait for [FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440) to land first** | Checked, not assumed: the lab reads dispatch parentage only as provenance, which FIX-1440's own owner amendment keeps, and reads nothing from the browsable child-session surface it removes. Re-derived by `poc/gap-check/`, green on 2026-09-22 and deleted at S8 |
 
 ## Settled
 
 - **FIX-1440 does not fence this work** — re-derived by
-  [`poc/gap-check/`](poc/gap-check/README.md), claim 5: nothing under `goals/devforce-lab/`
+  `poc/gap-check/` (green 2026-09-22, deleted at S8), claim 5: nothing under `goals/devforce-lab/`
   reads the browsable child-session surface FIX-1440 removes, and the one parentage read is the
   provenance form the owner amendment explicitly retains. FIX-1440 is `Spec Approved`, not
   shipped; that remains true and remains irrelevant here.
@@ -149,9 +149,9 @@ ref fails because `src/greeting.js` does not exist there.
   now covers the canonical name, the case is a planted control, and the re-run is green. Anyone
   who took this as verified before 2026-09-22 was taking it on a check that could not fail.
 - **The gap table is four rows, not more** — re-derivable by running
-  [`poc/gap-check/`](poc/gap-check/README.md), which asserts all twelve facts the spec rests on,
+  `poc/gap-check/` before its S8 deletion, which asserted all twelve facts the spec rested on,
   including a totality assertion over every TypeScript file in the lab. Dated runs and the
-  planted red states live in its README, not here.
+  planted red states lived in its README, which the S8 deletion took with it (PLAN.md → the sunset rule).
 
 ## How it got here
 

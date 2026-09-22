@@ -134,13 +134,16 @@ the proof:
     run the brief's condition against the base ref      → fails    (BR-3)
 ```
 
-**POC:** [`poc/gap-check/`](poc/gap-check/README.md) — a Node script that re-derives the twelve
+**POC:** `poc/gap-check/` — a Node script that re-derived the twelve
 facts this spec rests on straight from the repository, with a totality assertion over every
-TypeScript file in the lab and four planted defects each watched going red. Run
-`node specs/issues/FIX-1496/poc/gap-check/check.mjs`. **The premise held**: all twelve green on
-2026-09-22, including the one the brief flagged as worth checking — FIX-1440 does not fence this
-work. Nothing in the design changed because of it; it is here so a reviewer can re-run the
-argument instead of re-reading it. **It is deleted at S8** — see the sunset rule above.
+TypeScript file in the lab and four planted defects each watched going red. **The premise held**:
+all twelve green on 2026-09-22 — re-run at implement time before any code was written, and again
+unchanged — including the one the brief flagged as worth checking: FIX-1440 does not fence this
+work. Nothing in the design changed because of it.
+
+**Deleted at S8**, as the sunset rule above requires, so the command that ran it is no longer
+quoted here. Its totality discipline moved into the new goal's leg 0 and its FIX-1440 provenance
+read into that goal's anti-game section, which is what the sunset rule said to carry forward.
 
 ## At implement time
 
@@ -175,7 +178,7 @@ argument instead of re-reading it. **It is deleted at S8** — see the sunset ru
   practice and is not. `goals/manager-queue-lab/lab/host.mts` is the reference.
 - **Check whether [FIX-1440](https://linear.app/fixpoint-labs/issue/FIX-1440) has landed.** It
   was `Spec Approved` and unshipped when this was written, and
-  [`poc/gap-check/`](poc/gap-check/README.md) claim 5 says it does not fence this work. Re-run
+  `poc/gap-check/` claim 5 said it does not fence this work, re-run green on 2026-09-22. Re-derive
   the checker rather than re-reading this sentence.
 - **Check whether [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481) has landed.** If
   the org-level inventory view exists by then, note in the verdict that the run is
