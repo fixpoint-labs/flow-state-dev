@@ -15,6 +15,12 @@
  * rather than by the request you are looking at, so its row carries a link into that
  * dispatch run (FIX-1071). The link is derived, absent for most tasks, and never
  * something the row is gated on — see `lib/dispatch-run-links`.
+ *
+ * A task also carries a short note about itself on `feedback`, and the Reason
+ * column renders it so a parked row says why without the expander (FIX-1481).
+ * The column is keyed on the field being present, never on the `parked`
+ * status, and the note is rendered exactly as stored — see `showReason` in
+ * `CollectionCard` for why both of those are load-bearing.
  */
 import { useMemo } from "react";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
@@ -100,6 +106,21 @@ function CollectionCard({
 }) {
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
+  // THE PREDICATE IS THE PRESENCE OF THE FIELD, and status is out of it
+  // entirely. Three verbs write `feedback` — parking for review, a failed
+  // attempt heading for a retry, and resuming — and the retry one leaves it on
+  // a row that has gone back to `pending`, so keying this on `parked` would
+  // suppress a true explanation of what the reader is looking at.
+  //
+  // Presence, not truthiness: a stored empty or whitespace note is a note
+  // something wrote, and this panel reports what is stored rather than
+  // deciding which stored values are worth a reader's attention.
+  //
+  // Per board, so a board where nothing carries a note reads exactly as it did
+  // before — no empty column apologising for itself.
+  const showReason = collection.tasks.some(
+    (entry) => entry.task.feedback !== undefined
+  );
 
   return (
     <div className="rounded-md border border-slate-800 bg-slate-900/40">
@@ -134,8 +155,9 @@ function CollectionCard({
               <th className="px-3 py-1.5 font-medium">Id</th>
               <th className="py-1.5 font-medium">Goal</th>
               <th className="py-1.5 font-medium">Status</th>
+              {showReason && <th className="py-1.5 font-medium">Reason</th>}
               <th className="py-1.5 font-medium">Assignee</th>
-              <th className="py-1.5 font-medium">dispatch run</th>
+              <th className="py-1.5 font-medium">Dispatch run</th>
               <th className="py-1.5 font-medium">Latest kind</th>
               <th className="px-3 py-1.5 font-medium text-right">Details</th>
             </tr>
@@ -145,6 +167,7 @@ function CollectionCard({
               <TaskRow
                 key={entry.task.id}
                 entry={entry}
+                showReason={showReason}
                 dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
                 truncation={truncation}
                 onOpenDispatchRun={onOpenDispatchRun}
@@ -159,11 +182,14 @@ function CollectionCard({
 
 function TaskRow({
   entry,
+  showReason,
   dispatchRun,
   truncation,
   onOpenDispatchRun,
 }: {
   entry: ResolvedTask;
+  /** Decided by the board, so every row in one table has the same columns. */
+  showReason: boolean;
   dispatchRun?: ChildSessionSummary;
   truncation: Truncation;
   onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
@@ -180,6 +206,21 @@ function TaskRow({
       <td className="py-1.5 pr-2">
         <StatusPill status={task.status} />
       </td>
+      {showReason && (
+        // Rendered exactly as the row carries it — not trimmed, not
+        // normalized. This panel's job is to report what is stored, and a
+        // stored note of spaces is a fact about the row worth seeing.
+        //
+        // Clamped like the Goal cell beside it, because a note can be an
+        // unbroken stack trace and the table has to stay a table. The whole
+        // string is on the title, and the expander below is still complete.
+        <td
+          className="max-w-[18rem] truncate py-1.5 pr-2 text-slate-300"
+          title={task.feedback}
+        >
+          {task.feedback ?? <span className="text-slate-600">—</span>}
+        </td>
+      )}
       <td className="py-1.5 pr-2 text-slate-400">{task.assignee ?? "—"}</td>
       <td className="py-1.5 pr-2">
         <DispatchRunLink

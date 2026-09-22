@@ -23,6 +23,7 @@ For each storage key the session touches, the debug response includes:
 - Content metadata
 - The underlying resource definition, with its alias list
 - A second copy showing the projection your `client.data` would produce
+- Whether the resource may be written, and whether a model is offered a write tool for its content. Either can be absent; [Read-only resources](#read-only-resources) covers what that means
 
 It does not apply `prefetchWindow`. Every item in every collection is listed. It does not apply `client.data` to the storage view; that projection is shown alongside the raw state, not in place of it.
 
@@ -87,6 +88,28 @@ These states surface in the panel so you can tell "projection is intentionally a
 A resource can be registered under more than one name. The round-robin pattern does this: it dual-registers the participants collection under both `participants` and the pattern-prefixed `roundRobin/participants` so blocks inside the pattern and blocks outside the pattern can both reach it.
 
 The debug response lists every alias for each storage key. The panel shows them as a small "also known as" list under the resource header. If you're chasing a "resource not found" error, check the alias list. The block may be looking for one name while the resource is registered under another.
+
+## Read-only resources
+
+`writable` decides whether a resource's state and content can be written. With `writable: false` both of those writes are refused. A `defineResource` resource refuses with a `FlowError` whose code is `resource_read_only`. A collection instance refuses with a plain `Error` and no code, so match on the message there; [Writable](../resources/collections.md#writable) has the exact strings.
+
+```ts
+defineResource({
+  scope: "org",
+  stateSchema: z.object({}),
+  writable: false,
+});
+```
+
+`llmWritable` decides something narrower: whether a model is offered a tool to overwrite the resource's content. It has no bearing on what your own blocks may do.
+
+The panel marks a resource read-only when `writable` is `false`, and on no other condition. The mark means this handle refuses state and content writes, from your code and from a model alike. It is not a claim about the data: a shared `org` or `user` cell can still be written through another flow that declares it writable, and on a collection the mark leaves `create`, `getOrCreate` and `delete` open. A row without it is not reported read-only, which is not a guarantee that a write will land.
+
+Omit `writable` and the resource can be written, so a resource that declares nothing carries no mark. An [external collection](../resources/external-collections.md#read-only-by-design) is the exception: it has no `writable` field to set, and the panel marks it read-only anyway.
+
+Omit `llmWritable` and no model is offered a write tool for it. Most resources never set it, so that is the ordinary case, and it is not a read-only mark. The panel shows both settings at the top of a resource's detail, so expand the row when you need to tell them apart.
+
+The mark follows the reported `writable` and nothing else. Where the resource was defined does not change it.
 
 ## Enabling the debug endpoint
 

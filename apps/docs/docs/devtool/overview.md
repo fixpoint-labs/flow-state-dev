@@ -129,6 +129,20 @@ A few things worth knowing about a row:
 
 The lists are read when you open a session and when you refresh; they do not update on their own while you watch. See [Work that outlives the turn](/guides/background-work).
 
+## Task boards
+
+The Tasks tab lists the task boards the open session emitted, each as its own table with one row per task. A task board is the queue a flow files work into for workers to claim. Each row shows the task's id, goal, status and assignee.
+
+A row can also carry a short note about itself, in a Reason column. The note is the task's `feedback` field. Parking a task for review records why it is waiting. A failure with retries left records the error and sends the row back to `pending`. Resuming a parked task writes the answer you hand it, or clears the note when you hand it none. The row shows whichever wrote last.
+
+The column appears on boards where at least one task carries a note, and not otherwise.
+
+A note sticks until something overwrites or clears it. A task that failed, retried, then parked with no reason given shows the failure text: the park wrote nothing, so the earlier note stands.
+
+A note is not an error. A failure with no retries left writes the task's `error` field instead, and a row can hold both. Long text is clipped to keep the table readable, so hover the cell for the whole string, or open the row's Details for the full task record.
+
+See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onreview) for parking and resuming.
+
 ## Session state
 
 Inspect current state at every scope level. View session-level state, user-level state, and org-level state. Resources and their content are visible. ClientData values appear in the detail panel.

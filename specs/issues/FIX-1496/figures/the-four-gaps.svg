@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 352" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two lanes over the same five-stage DevForce path: a feature channel, an EM seat that files a row, a board row, a coder seat running a real coding agent, and the artifact it leaves. Today, three stages are built and green — the EM seat files through its own action, the row crosses to the coder seat, and a real Claude Code agent runs — while the declared channel sits unused and the artifact is a commit in an operating-system temp directory that is swept away; a banner across the lane reads never run, no recorded verdict, and the run is marked as using in-memory stores. After, the same five stages with four marked changes: a post on the feature channel now drives the filing, the run is on durable on-disk stores, the artifact is work left at an address that outlives the run, and it is graded against an acceptance condition the brief stated before the run rather than assumed. Two notes beneath read: nothing new is built and the middle three stages are unchanged; and CI runs one leg, in which the run pushes to a bare clone with no network or credential, the pull-request release run being that same path pointed at a real remote.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface);   stroke:var(--rule); stroke-width:1.2; }
+    .n-done { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-new  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .n-gone { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 3; }
+    .lane   { fill:none; stroke:var(--rule); stroke-width:1; }
+    .arrow  { fill:none; stroke:var(--ink-3); stroke-width:1.2; }
+    .arrow-n{ fill:none; stroke:var(--accent); stroke-width:1.6; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink);   font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-red  { fill:var(--gone);  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-new  { fill:var(--accent);font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; font-weight:600; }
+  </style>
+
+  <g id="stage-headings">
+    <text class="t-lbl" x="24"  y="26">THE CHANNEL</text>
+    <text class="t-lbl" x="204" y="26">THE EM SEAT</text>
+    <text class="t-lbl" x="384" y="26">THE BOARD ROW</text>
+    <text class="t-lbl" x="564" y="26">THE CODER SEAT</text>
+    <text class="t-lbl" x="762" y="26">THE ARTIFACT</text>
+  </g>
+
+  <g id="today">
+    <text class="t-lbl" x="24" y="52">TODAY</text>
+    <line class="lane" x1="24" y1="60" x2="916" y2="60"/>
+    <rect class="n-gone" x="24"  y="72" width="156" height="66" rx="5"/>
+    <text class="t-b" x="38" y="96">declared, unused</text>
+    <text class="t-red" x="38" y="114">CHANNEL.md is walked</text>
+    <text class="t-red" x="38" y="128">and never opened</text>
+
+    <rect class="n-done" x="204" y="72" width="156" height="66" rx="5"/>
+    <text class="t-b" x="218" y="96">files the row</text>
+    <text class="t-s" x="218" y="114">through its own action,</text>
+    <text class="t-s" x="218" y="128">not through the channel</text>
+
+    <rect class="n-done" x="384" y="72" width="156" height="66" rx="5"/>
+    <text class="t-b" x="398" y="96">crosses flows</text>
+    <text class="t-s" x="398" y="114">reaches the seat the</text>
+    <text class="t-s" x="398" y="128">assignee names</text>
+
+    <rect class="n-done" x="564" y="72" width="156" height="66" rx="5"/>
+    <text class="t-b" x="578" y="96">a real agent runs</text>
+    <text class="t-s" x="578" y="114">Claude Code in the slot,</text>
+    <text class="t-s" x="578" y="128">prompt from its own files</text>
+
+    <rect class="n-gone" x="744" y="72" width="172" height="66" rx="5"/>
+    <text class="t-b" x="758" y="96">a commit, then gone</text>
+    <text class="t-red" x="758" y="114">in an OS temp directory</text>
+    <text class="t-red" x="758" y="128">nobody can open later</text>
+
+    <path class="arrow" d="M180 105 h24 M356 105 h28 M540 105 h24 M720 105 h24"/>
+    <rect class="n-box" x="24" y="150" width="892" height="40" rx="4" stroke-dasharray="4 3"/>
+    <text class="t-red" x="38" y="166">NEVER RUN — the model-backed check is written and type-checked; its verdict log holds one row and that row says NOT RUN.</text>
+    <text class="t-red" x="38" y="181">And the run is on in-memory stores, which ER-3 does not accept as durable.</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="24" y="218">AFTER</text>
+    <line class="lane" x1="24" y1="226" x2="916" y2="226"/>
+    <rect class="n-new" x="24"  y="232" width="156" height="66" rx="5"/>
+    <text class="t-b" x="38" y="256">a post drives it</text>
+    <text class="t-new" x="38" y="274">GAP 1 · the channel is</text>
+    <text class="t-new" x="38" y="288">opened and used</text>
+
+    <rect class="n-done" x="204" y="232" width="156" height="66" rx="5"/>
+    <text class="t-b" x="218" y="256">files the row</text>
+    <text class="t-s" x="218" y="274">unchanged — it answers</text>
+    <text class="t-s" x="218" y="288">the post instead</text>
+
+    <rect class="n-done" x="384" y="232" width="156" height="66" rx="5"/>
+    <text class="t-b" x="398" y="256">crosses flows</text>
+    <text class="t-s" x="398" y="274">unchanged</text>
+
+    <rect class="n-done" x="564" y="232" width="156" height="66" rx="5"/>
+    <text class="t-b" x="578" y="256">a real agent runs</text>
+    <text class="t-new" x="578" y="274">GAP 2 · on durable</text>
+    <text class="t-new" x="578" y="288">on-disk stores</text>
+
+    <rect class="n-new" x="744" y="232" width="172" height="66" rx="5"/>
+    <text class="t-b" x="758" y="256">work at an address</text>
+    <text class="t-new" x="758" y="274">GAP 3 · outlives the run</text>
+    <text class="t-new" x="758" y="288">GAP 4 · graded, not assumed</text>
+
+    <path class="arrow-n" d="M180 265 h24"/>
+    <path class="arrow" d="M356 265 h28 M540 265 h24"/>
+    <path class="arrow-n" d="M720 265 h24"/>
+  </g>
+
+  <text class="t-s" x="24" y="320">Nothing new is built. The middle three stages are unchanged; the four marked gaps are what this issue closes.</text>
+  <text class="t-s" x="24" y="334">CI runs one leg — the run pushes to a bare clone, no network or credential. The pull-request release run is that same path pointed at a real remote.</text>
+</svg>
