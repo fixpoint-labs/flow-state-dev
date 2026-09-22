@@ -1,10 +1,9 @@
 /**
  * Running an app's real-path vitest specs as a goal check.
  *
- * Three trading-desk goals prove a model-free, deterministic path (portfolio
- * math over real PGlite) whose contract is already pinned end to end by specs
- * that use no mocks. Rather than restate that wiring, those goals execute the
- * specs by hand, outside the default lane.
+ * Some goals prove a model-free, deterministic path whose contract is already
+ * pinned end to end by specs that use no mocks. Rather than restate that
+ * wiring, those goals execute the specs by hand, outside the default lane.
  *
  * Worth being honest about the tension: the README frames a goal check as the
  * thing a mocked CI spec cannot do, so a goal whose body is `vitest run` is

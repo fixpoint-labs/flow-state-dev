@@ -24,7 +24,7 @@ Skipping needs no ceremony. Say "no changeset needed" in the PR description if a
 
 ### Labs and other private packages
 
-`labs/conductor`, `labs/knowledge-hub`, and `labs/trading-desk` are `private: true`, and so are the examples, the apps, the plugin tree, and `goals`. None of them publish, so none of them have a downstream consumer to notify.
+`labs/conductor` and `labs/knowledge-hub` are `private: true`, and so are the examples, the apps, the plugin tree, and `goals`. None of them publish, so none of them have a downstream consumer to notify.
 
 This is enforced by `.changeset/config.json`, which sets `privatePackages: { version: false }`. Every `private: true` package is skipped: the `pnpm changeset` picker will not offer it, and `pnpm version-packages` will not bump it or write it a `CHANGELOG.md`. Adding a fourth lab needs no config change.
 

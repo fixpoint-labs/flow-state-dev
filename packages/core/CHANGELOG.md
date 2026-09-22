@@ -1,5 +1,82 @@
 # @flow-state-dev/core
 
+## 0.2.0
+
+### Minor Changes
+
+- b597600: An agent can now ask what it can work with: `discoveryTools(createManifestRegistry([...]))` returns one `discover` tool that answers from whatever domains a scope registers a source for, and `resourcesManifestSource()` ships the resources domain. Two enumerators that ignored the `llmReadable` gate are closed with it — `resourceTools().listResources` is **removed** (it had no caller), and `globResources` now lists only resources the agent may read (FIX-817).
+- 6b8bfe4: Sessions a dispatcher ran work in are listable on their flow: `GET /sessions` takes `include=dispatch-runs` (off by default), `listSessions` takes `include`, `FlowNavigator` takes `includeDispatchRuns` and draws a run one level under the session that started it, the DevTool shows runs in the rail and inside a session's block tree on demand in place of its Children tab, and `requestHost.livenessOf` now also answers for a dispatch run under the caller's own principal, tenant, organization and flow instance rather than only for one beneath the asking session (FIX-1440).
+
+  The dispatch-run liveness arm compares the caller's organization against the active-request entry as well as the session record. Both comparisons are required: they read separately stamped rows, and a caller whose organization was not forwarded to the read matched only entries carrying no organization at all.
+
+- b48158a: Organization identity is now required on every request (FIX-1442).
+
+  A session, request, dispatched child and scheduled job each carry an
+  organization, and the server checks it on reads and execution alongside the
+  user. It comes from a configured `resolvePrincipal`, or — when an app
+  configures no resolver — from the new reserved `DEFAULT_ORG_ID` exported by
+  `@flow-state-dev/core`. A caller-supplied `orgId` is never authoritative.
+
+  **What you need to change**
+
+  - A resolver must return a verified `orgId`. Returning none, a blank one, or
+    `DEFAULT_ORG_ID` is refused with 401. A machine transport may return
+    `{ orgId }` alone and let `defaultUserId` name its system user.
+  - Direct `runAction` calls must pass `orgId` — your verified organization, or
+    `DEFAULT_ORG_ID` for single-organization development.
+  - `authentication.requireOrg` and a block's `requireOrg` are removed.
+    Organization is unconditional, so the declaration had nothing left to say;
+    a config that still carries either is rejected at definition time rather
+    than ignored.
+  - Client and React session APIs no longer take an `orgId` — the server owns
+    it. `SessionDetail.orgId` is now required on the way back.
+  - `openChannels` no longer takes an `orgId`; the server binds the channel.
+  - A queued BullMQ job that carries no organization now fails terminally
+    instead of being retried: a worker runs below principal resolution, so no
+    later attempt could supply one. Subscribers receive an error terminal rather
+    than waiting for a job that never completes.
+
+  **The schedule index stores the organization.** `schedule_index` gains a
+  nullable `org_id` column in both the SQLite and PostgreSQL adapters, so the
+  organization a schedule fires into survives a round trip through the database.
+  The column is added for you on the next schema init — there is no manual DDL
+  step. Existing rows read back with no organization and are quarantined rather
+  than dispatched, so a schedule written before this upgrade does not fire until
+  it is attributed; rewriting it stamps the organization of the execution that
+  writes it.
+
+  **Upgrading a store with existing data.** Records written before this carry no
+  organization. They are preserved and refused (`409 migration-required`) rather
+  than guessed at, and listings and scheduler scans skip them. Attribute them
+  offline first — the procedure, including dynamic schedules, index rebuild and
+  the reserved-id collision check, is in the persistence guide under "Which
+  organization a record belongs to".
+
+- f25f03c: Rename the read-through collection family from `ExternalResource*` to `ProjectedResource*` (FIX-1518). Call `defineProjectedResourceCollection` and the `projected: true` brand; the old `External*` names and `external: true` brand are gone.
+- bff5e06: FIX-1393: a generator's declared `tools:` is now a runtime fence over capability-contributed tools, not just a documented one.
+
+  A capability's tools used to be unioned onto whatever the block declared, so a block with `tools: []` could still be handed tools it never named. Declaring the slot now drops a capability's catalog-granted tools — `tools: []` reaches the model with none. Omitting `tools:` entirely is unchanged: it declares no fence, so capability tools still flow.
+
+  Capabilities declare tools through two slots. `tools` is a grant from the app's catalog and is fenced. The new `controlTools` is a framework control the consuming block's own configuration asked for, and the fence never touches it — a control is built inside its capability and never exported, so no `tools:` list could name it back in. One capability may use both: the skills library registers the app catalog through `tools` and its own skill loader through `controlTools`, and `taskTools` contributes the delegation board entirely as controls.
+
+  **Migration.** If you relied on a capability's tools arriving past a narrower `tools:` declaration, name them in `tools:` or drop the declaration. Pattern factories (`planAndExecute`, `supervisor`, `routedSpecialists`) forward both slots, so a call site passing `tools` and `uses` together now gets the fence inside the pattern. Capability authors whose tools are framework controls rather than catalog grants should move them to `controlTools`.
+
+### Patch Changes
+
+- e4c443e: A task board now reports when it saves a task's result and then cannot announce
+  it, instead of finishing the run as though nothing went wrong. The failure lands
+  on a persisted `task-board-recorder-failure` item and fails the run once every
+  other task has drained; on a handed-off task it fails that child run. `onError`
+  does not suppress it. Where the board cannot tell whether the write landed —
+  permanently so on a task store you supplied, and on rows that predate write
+  provenance — it says `undetermined` rather than assuming the write was lost, and
+  hands the row back rather than leaving it claimed. `createRecordSuccess` and
+  `createRecordError` composed outside a board raise the failure where it happens,
+  since nothing downstream would read the report (FIX-963).
+- Updated dependencies [b597600]
+- Updated dependencies [e4c443e]
+  - @flow-state-dev/contracts@0.1.2
+
 ## 0.1.2
 
 ### Patch Changes

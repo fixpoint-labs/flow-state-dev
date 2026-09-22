@@ -1,5 +1,129 @@
 # @flow-state-dev/workforce
 
+## 0.3.0
+
+### Minor Changes
+
+- 0f812c9: Skills, seats and channels now answer the agent discovery door and a seat narrows what it sees with its worker file's `discover:` key (FIX-817) — **breaking:** `createWorkforceCapability` no longer accepts `agents` (pass `roster` and `inventory`) or `catalog` (pass it to `defineAgentWorkerFlow({ catalog })` instead), each now a type error naming its replacement.
+- 8faf08e: A `CHANNEL.md` can declare `boards:`, durable task ledgers the channel holds, with `fileTask` and `readBoard` actions on the channel and a `channelBoard()` helper for the worker that drains them (FIX-1385).
+- 17e9748: Workers can call custom tools written as files. A `blocks/` folder registers a block name for the workers that can see it — the app's own folder for everyone, a team's for that team, a worker's own for that one seat — and a worker's `tools:` resolves a name nearest first. Registering does not grant use: the worker still names the block. `fsdev gen` exports the per-seat map as `seatBlocks`, which `hireWorkforce` now takes.
+
+  Migration: a worker kind that hand-declares the admission contract instead of composing `workerConfigSchema()` must add the new `seatTools` key, or it refuses its roster at startup naming that key (FIX-1416).
+
+- 3e43c96: A flow can now be registered and unregistered after the runtime is built — `FlowState.register(flow)` admits one instance and `FlowState.unregister(id)` releases one address, both running exactly the checks construction runs, and a flow registered this way is served from the next request onward without cancelling one already running (FIX-1475).
+
+  A workforce hired at runtime now survives a restart: `defineHiredRosterCollection()` declares the org-scoped roster at `workforce/roster/*`, `reloadHiredSeats({ stores, orgIds, kinds })` reads a whole one back at boot as `{ seats, problems }` for the caller to register a seat at a time, and `seatAddress(orgId, seatId)` is the address a hired seat answers on (FIX-1475).
+
+  Migration: `meta.flowKeys` now reads the registry rather than the construction options, so it lists the instance ids actually being served. An app whose `flows` record keys differ from its instance ids will read different values there than before.
+
+- 1a3a009: A workforce root spelled with a `..` that steps back through an earlier segment — `/srv/app/current/../workforce`, where `current` is a release symlink — is now refused wherever a reader opens a root; pass the path it resolves to instead (FIX-1375).
+- 8291951: `splitResourceModules` turns the generated `resourceModules` map into the two things a flow already takes (FIX-1388).
+
+  ```ts
+  const { capabilities, resources } = splitResourceModules(resourceModules);
+
+  const agent = defineAgentWorkerFlow({ uses: capabilities /* ... */ });
+  const flowResources = { ...resourcesFromDocs(documents), ...resources };
+  ```
+
+  A capability goes to the worker kind's `uses`, where the resources it declares for itself reach the flow; a plain resource or collection merges into the one resource map, under its own ref. Nothing is installed for you — spread both at your own call site. An entry that can be neither is refused, naming its ref.
+
+- b48158a: Organization identity is now required on every request (FIX-1442).
+
+  A session, request, dispatched child and scheduled job each carry an
+  organization, and the server checks it on reads and execution alongside the
+  user. It comes from a configured `resolvePrincipal`, or — when an app
+  configures no resolver — from the new reserved `DEFAULT_ORG_ID` exported by
+  `@flow-state-dev/core`. A caller-supplied `orgId` is never authoritative.
+
+  **What you need to change**
+
+  - A resolver must return a verified `orgId`. Returning none, a blank one, or
+    `DEFAULT_ORG_ID` is refused with 401. A machine transport may return
+    `{ orgId }` alone and let `defaultUserId` name its system user.
+  - Direct `runAction` calls must pass `orgId` — your verified organization, or
+    `DEFAULT_ORG_ID` for single-organization development.
+  - `authentication.requireOrg` and a block's `requireOrg` are removed.
+    Organization is unconditional, so the declaration had nothing left to say;
+    a config that still carries either is rejected at definition time rather
+    than ignored.
+  - Client and React session APIs no longer take an `orgId` — the server owns
+    it. `SessionDetail.orgId` is now required on the way back.
+  - `openChannels` no longer takes an `orgId`; the server binds the channel.
+  - A queued BullMQ job that carries no organization now fails terminally
+    instead of being retried: a worker runs below principal resolution, so no
+    later attempt could supply one. Subscribers receive an error terminal rather
+    than waiting for a job that never completes.
+
+  **The schedule index stores the organization.** `schedule_index` gains a
+  nullable `org_id` column in both the SQLite and PostgreSQL adapters, so the
+  organization a schedule fires into survives a round trip through the database.
+  The column is added for you on the next schema init — there is no manual DDL
+  step. Existing rows read back with no organization and are quarantined rather
+  than dispatched, so a schedule written before this upgrade does not fire until
+  it is attributed; rewriting it stamps the organization of the execution that
+  writes it.
+
+  **Upgrading a store with existing data.** Records written before this carry no
+  organization. They are preserved and refused (`409 migration-required`) rather
+  than guessed at, and listings and scheduler scans skip them. Attribute them
+  offline first — the procedure, including dynamic schedules, index rebuild and
+  the reserved-id collision check, is in the persistence guide under "Which
+  organization a record belongs to".
+
+- f7e98d9: A worker file can now name which of its kind's capabilities that seat wants, and which of their presets (FIX-1388).
+
+  ```md
+  ---
+  description: Fields questions about how the desk is running this week.
+  capabilities:
+    research: [briefing]
+  ---
+  ```
+
+  Read by the built-in `agent` kind. Selecting **adds** to what the kind installed; a seat that names nothing carries every installed capability's own defaults, exactly as before. The whole selection is validated when the roster is hired, so a typo is a refusal at boot rather than a failed turn — including a capability the kind does not carry, a preset the capability does not declare, a preset the app turned off at install, a preset on a capability with open config, and a preset whose surface has to exist before a request runs.
+
+  `SeatCapabilitySelection` is exported as the parsed shape of that key.
+
+- 8bfb08c: `fsdev gen` now finds the TypeScript in a workforce tree's `resources/` folders and exports it as a fourth map, `resourceModules` (FIX-1388).
+
+  **Your committed `workforce.gen.ts` goes stale on upgrade**, whether or not your tree has any `resources/` modules: the file gains the fourth map and a line of its header. `fsdev gen --check` stays red until you run `fsdev gen` and commit the result.
+
+  `renderWorkforceCode` takes the discovered modules as a second argument.
+
+- c315362: A workforce tree can declare read-only documents in `references/` beside the writable ones in `resources/`. A reference's body is served from its file on every execution context rather than from a stored row, so editing the file is the edit; `writable`, `llmWritable`, `render` and `flowIsolation` are derived by the folder and refused in frontmatter. A seat reaches the references at or above its place in the tree — the org's, its own team's and its own folder's — with no install-side filter, narrowed further by a `references:` list in its `WORKER.md`. Installing references on a kind without also passing them to `hireWorkforce` as `references` is refused at hire, naming the option: the wall is derived against that catalog, so omitting it would leave every seat reaching every team's references with nothing to say so. `resources/` behaviour is unchanged. `clearShadowedReferences({ references, orgId, content, installedOn })` migrates a tree where a document was written before it moved — `installedOn` names the flow so the stored content is addressed where it actually lives rather than guessed at (FIX-1467).
+- 68d836a: A `WORKER.md` can declare `resources:`, the documents that seat may touch — naming one grants read, `rw` grants write — and the app supplies its documents through a new `documents` option on `hireWorkforce` (FIX-1381).
+
+  Migration: `resources` is now read by the hire step rather than passed on as a setting, so a worker kind that declared a `resources` setting of its own must rename that setting before upgrading — it no longer receives an authored value. A seat that declares no `resources:` key keeps the reach it has today.
+
+- caffe1c: A team can say once what all its seats are told: an optional `TEAM.md` at `teams/<teamId>/` carries the team's `description` and, in its body, the instructions every seat on that team is given (FIX-1377).
+
+  Two things a consumer can trip over:
+
+  - **`readWorkforce`'s result grows two fields**, `teams` and `teamErrors`. Treat a non-empty `teamErrors` as fatal alongside `errors` and `skillErrors` — a team file that failed is a whole team's seats running without instructions someone wrote for them.
+  - **A hired seat's settings bag can now carry `teamInstructions`.** Every kind that composes `workerConfigSchema()` already declared the key, so nothing new refuses; but a kind that reads its config exhaustively will see a key it did not see before, for seats whose team wrote a `TEAM.md`. It is absent — never empty — for every other seat, so a tree with no `TEAM.md` anywhere behaves exactly as it did.
+
+  A seat's own instructions and its team's stay two separate settings and are never merged. On the built-in `agent` kind both go into the prompt, the team's first and the seat's own last. That order is fixed, and it is a position rather than a ranking: nothing in the prompt path resolves a contradiction between the two.
+
+### Patch Changes
+
+- 68fb69c: `openChannels` accepts an `orgId`, so a channel's session is opened under the org its documents are scoped to (FIX-1412).
+- 0508765: `readDeclaredRoster(root)` on `@flow-state-dev/workforce/loader` reads a whole workforce tree in one call — workers, teams, documents and channels — and returns one flattened `problems` list, each entry tagged with the layer that reported it. Problems are collected rather than thrown, so the caller decides what is fatal. It throws on the `root` and nothing else: a path that cannot be read, a path that is a symlink, or one spelled with an interior `..` that steps back through an earlier segment (FIX-1405).
+- 4cd4f13: `openInventory` fills the live workforce inventory at boot: one row per hired seat, and one per open channel written by that channel itself from its own session state. `channelInstances({ inventory: true })` builds the built-in channel kind carrying the writer, and `inventoryWriterActions(kind)` puts the same two actions on a hand-rolled channel kind (FIX-1405).
+- d49f255: `defineSeatInventoryCollection()`, `defineChannelInventoryCollection()` and `defineMembershipIndexCollection()` declare the org-scoped resource collections for the live workforce inventory, addressed with `membershipKey` and `membershipPrefix` (FIX-1405).
+- 0056b97: The hired roster and a channel board's ledger can now be read by a browser, so a UI can draw them without an action in between. Both are organization-scoped, so a read returns only the reading session's own organization's rows. Each publishes an explicit allowlist rather than the stored row: a roster row crosses as its seat id, flow kind and instructions, withholding the settings bag, and a board row crosses as `CHANNEL_BOARD_CLIENT_FIELDS`, withholding the claim, lease, retry ledger, write log and the task's own payloads (FIX-1477).
+- Updated dependencies [0f812c9]
+- Updated dependencies [b597600]
+- Updated dependencies [8faf08e]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [b48158a]
+- Updated dependencies [f25f03c]
+- Updated dependencies [218de72]
+- Updated dependencies [e4c443e]
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/orchestration@0.3.0
+  - @flow-state-dev/core@0.2.0
+
 ## 0.2.1
 
 ### Patch Changes

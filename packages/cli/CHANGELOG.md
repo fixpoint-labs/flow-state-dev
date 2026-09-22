@@ -1,5 +1,98 @@
 # @flow-state-dev/fsdev
 
+## 0.2.0
+
+### Minor Changes
+
+- 17e9748: Workers can call custom tools written as files. A `blocks/` folder registers a block name for the workers that can see it — the app's own folder for everyone, a team's for that team, a worker's own for that one seat — and a worker's `tools:` resolves a name nearest first. Registering does not grant use: the worker still names the block. `fsdev gen` exports the per-seat map as `seatBlocks`, which `hireWorkforce` now takes.
+
+  Migration: a worker kind that hand-declares the admission contract instead of composing `workerConfigSchema()` must add the new `seatTools` key, or it refuses its roster at startup naming that key (FIX-1416).
+
+- b48158a: Organization identity is now required on every request (FIX-1442).
+
+  A session, request, dispatched child and scheduled job each carry an
+  organization, and the server checks it on reads and execution alongside the
+  user. It comes from a configured `resolvePrincipal`, or — when an app
+  configures no resolver — from the new reserved `DEFAULT_ORG_ID` exported by
+  `@flow-state-dev/core`. A caller-supplied `orgId` is never authoritative.
+
+  **What you need to change**
+
+  - A resolver must return a verified `orgId`. Returning none, a blank one, or
+    `DEFAULT_ORG_ID` is refused with 401. A machine transport may return
+    `{ orgId }` alone and let `defaultUserId` name its system user.
+  - Direct `runAction` calls must pass `orgId` — your verified organization, or
+    `DEFAULT_ORG_ID` for single-organization development.
+  - `authentication.requireOrg` and a block's `requireOrg` are removed.
+    Organization is unconditional, so the declaration had nothing left to say;
+    a config that still carries either is rejected at definition time rather
+    than ignored.
+  - Client and React session APIs no longer take an `orgId` — the server owns
+    it. `SessionDetail.orgId` is now required on the way back.
+  - `openChannels` no longer takes an `orgId`; the server binds the channel.
+  - A queued BullMQ job that carries no organization now fails terminally
+    instead of being retried: a worker runs below principal resolution, so no
+    later attempt could supply one. Subscribers receive an error terminal rather
+    than waiting for a job that never completes.
+
+  **The schedule index stores the organization.** `schedule_index` gains a
+  nullable `org_id` column in both the SQLite and PostgreSQL adapters, so the
+  organization a schedule fires into survives a round trip through the database.
+  The column is added for you on the next schema init — there is no manual DDL
+  step. Existing rows read back with no organization and are quarantined rather
+  than dispatched, so a schedule written before this upgrade does not fire until
+  it is attributed; rewriting it stamps the organization of the execution that
+  writes it.
+
+  **Upgrading a store with existing data.** Records written before this carry no
+  organization. They are preserved and refused (`409 migration-required`) rather
+  than guessed at, and listings and scheduler scans skip them. Attribute them
+  offline first — the procedure, including dynamic schedules, index rebuild and
+  the reserved-id collision check, is in the persistence guide under "Which
+  organization a record belongs to".
+
+- 8bfb08c: `fsdev gen` now finds the TypeScript in a workforce tree's `resources/` folders and exports it as a fourth map, `resourceModules` (FIX-1388).
+
+  **Your committed `workforce.gen.ts` goes stale on upgrade**, whether or not your tree has any `resources/` modules: the file gains the fourth map and a line of its header. `fsdev gen --check` stays red until you run `fsdev gen` and commit the result.
+
+  `renderWorkforceCode` takes the discovered modules as a second argument.
+
+### Patch Changes
+
+- Updated dependencies [0f812c9]
+- Updated dependencies [b597600]
+- Updated dependencies [8faf08e]
+- Updated dependencies [68fb69c]
+- Updated dependencies [17e9748]
+- Updated dependencies [0508765]
+- Updated dependencies [795b550]
+- Updated dependencies [9062055]
+- Updated dependencies [802c053]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [3e43c96]
+- Updated dependencies [4cd4f13]
+- Updated dependencies [d49f255]
+- Updated dependencies [1a3a009]
+- Updated dependencies [8291951]
+- Updated dependencies [b48158a]
+- Updated dependencies [0056b97]
+- Updated dependencies [f7e98d9]
+- Updated dependencies [f25f03c]
+- Updated dependencies [8bfb08c]
+- Updated dependencies [c315362]
+- Updated dependencies [68d836a]
+- Updated dependencies [e4c443e]
+- Updated dependencies [caffe1c]
+- Updated dependencies [bff5e06]
+- Updated dependencies [e4b6576]
+  - @flow-state-dev/workforce@0.3.0
+  - @flow-state-dev/core@0.2.0
+  - @flow-state-dev/devtool@0.2.0
+  - @flow-state-dev/engine@0.2.0
+  - @flow-state-dev/testing@0.2.0
+  - @flow-state-dev/store-sqlite@0.2.0
+  - @flow-state-dev/node@0.1.3
+
 ## 0.1.2
 
 ### Patch Changes

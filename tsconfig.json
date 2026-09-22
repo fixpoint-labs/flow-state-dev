@@ -20,7 +20,6 @@
     { "path": "./packages/thought-fabric-core" },
     { "path": "./packages/orchestration" },
     { "path": "./examples/hello-chat" },
-    { "path": "./labs/trading-desk" },
     { "path": "./apps/kitchen-sink" },
     { "path": "./packages/ui" }
   ]

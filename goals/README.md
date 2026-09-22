@@ -91,7 +91,7 @@ Every goal repeats the same scaffolding around the part that is actually its own
 | `verdict`    | `runGoal` / `pass` / `fail` — the one PASS/FAIL format and exit protocol |
 | `fixture`    | `loadFixture(import.meta.url, "x.json")`, `fixturePath`, `fixtureDir` |
 | `env`        | `intentFreeEnv` / `stripIntentOverrides` / `captureIntentOverrides` — the **prefix** strip of `FSDEV_INTENT_*` + `FSDEV_DEFAULT_MODEL` |
-| `paths`      | `KITCHEN_SINK` / `TRADING_DESK` / `HELLO_CHAT` (repo-anchored, not `../../../`), `goalTmpDir`, `goalSessionId` |
+| `paths`      | `KITCHEN_SINK` / `HELLO_CHAT` (repo-anchored, not `../../../`), `goalTmpDir`, `goalSessionId` |
 | `capture`    | `runFsdev`, `readCapture` (latest snapshot per id), `messageText`, `assistantText`, `answerText`, `actualModel` |
 | `driver`     | `runHarness` — run a sibling `harness.mts` inside an app |
 | `durable`    | `durableStores`, `registryFor`, `approvePending`, `approvalContext`, `silentLogger` |

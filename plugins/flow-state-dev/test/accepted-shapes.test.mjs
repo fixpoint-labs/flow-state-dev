@@ -89,7 +89,6 @@ describe("this repository's own Next apps", () => {
   it.each([
     "examples/hello-chat/next.config.mjs",
     "apps/kitchen-sink/next.config.mjs",
-    "labs/trading-desk/next.config.mjs",
   ])("accepts %s", (path) => {
     // Real configs, not fixtures — each is a `const nextConfig = {…}; export default nextConfig`
     // carrying nested objects and a function-valued key, which the region walk handles.

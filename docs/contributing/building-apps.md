@@ -1,7 +1,7 @@
 # Building Apps with `@flow-state-dev`
 
 Patterns and tradeoffs for putting a flow-state app together, distilled from
-the trading-desk app. This is taste-and-tradeoff guidance, not a rigid
+real application work, including Trading Desk (now at https://github.com/fixpoint-labs/trading-desk). This is taste-and-tradeoff guidance, not a rigid
 rulebook — for hard rules see [`best-practices.md`](./best-practices.md).
 
 ## When to build a capability vs. inline
@@ -19,7 +19,7 @@ The trading-desk's `tradingDesk` capability hit the threshold easily: nine
 generators across four phases share model selection and ticker/date context,
 plus the heavy memo/contribution context bundles are reusable across
 multiple consolidation steps. See
-[`labs/trading-desk/flows/analysis/capability.ts`](../../labs/trading-desk/flows/analysis/capability.ts).
+the Trading Desk capability example (see https://github.com/fixpoint-labs/trading-desk).
 
 ## When per-tool files beat a dispatch abstraction
 
@@ -68,8 +68,7 @@ designed for this.
 
 The trading-desk's first cut used a session-scoped resource for market-data
 deduplication. That was over-architecting — every NVDA fundamentals fetch
-ran once per session. Switching to a process-wide 120s TTL cache (see
-[`labs/trading-desk/lib/cache.ts`](../../labs/trading-desk/lib/cache.ts))
+ran once per session. Switching to a process-wide 120s TTL cache (as used by Trading Desk; see https://github.com/fixpoint-labs/trading-desk)
 let multiple sessions share warm fetches, dropped the cache plumbing
 (`ctx.resources.marketdata`, the `marketDataCollection` definition, the flow
 registration), and made the call sites cleaner.
@@ -164,8 +163,7 @@ const FIXTURE_ROOT = path.resolve(process.cwd(), "fixtures");
 
 If no candidate qualifies, `resolveBaseDir` throws at import time listing
 everything it tried — a flow that cannot locate its files should fail loudly
-at import, not mid-run on a fabricated path. See the trading-desk's
-`lib/app-root.ts` for the live example.
+at import, not mid-run on a fabricated path. See the standalone Trading Desk repository for a live example: https://github.com/fixpoint-labs/trading-desk.
 
 ### Module-level `const` values are frozen at server start
 

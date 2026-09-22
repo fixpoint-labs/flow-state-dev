@@ -1,5 +1,17 @@
 # @flow-state-dev/codex
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [b597600]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [b48158a]
+- Updated dependencies [f25f03c]
+- Updated dependencies [e4c443e]
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/core@0.2.0
+
 ## 0.0.3
 
 ### Patch Changes

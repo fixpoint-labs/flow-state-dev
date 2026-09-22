@@ -1,1 +1,0 @@
-ALTER TABLE "app"."holdings" ADD COLUMN "asset_class_manual" boolean DEFAULT false NOT NULL;
