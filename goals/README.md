@@ -48,6 +48,7 @@ A title (`<describe> › it <behaviour>`), then the fields, then a verdict log. 
 - **Anti-game** (required) — what a hollow pass would look like, and what the check must therefore **not** assert on. If you can't name a way to fake it, the goal is mechanism-shaped, not outcome-shaped — rework it. This is the most important field.
 - **Model** — for a model-backed goal, the real model id (never a mock); use `openai/gpt-5.4-mini` unless the goal needs a stronger one. For a **model-free** goal (real path, no LLM — e.g. suspend/resume, CRUD persistence), state `n/a` (or `none`) here — that is a valid, well-formed goal, not a malformed one, and it needs no model credential.
 - **Run** — the exact command.
+- **Controls** — any `GOAL_CONTROL=<name>` runs this goal understands, and the legs each must fail. Omit if the goal has none.
 - **Verdict log** — a table, one row per run: date, commit, model, verdict, notes. This is what makes the goal a regression record. Append; don't overwrite.
 
 ## Script techniques
@@ -62,6 +63,24 @@ What separates a goal check from a dressed-up unit test:
    - **Assert on terminal/public output**, not trace internals. The action's final output and success flag are on `result`; worker/block execution items are `type: "block_trace"` with an internal `BlockValueInternal` value — don't unwrap those, prefer `result.output` or the public item that carries the value.
    - For non-flow goals, call the public API directly. Mock only true third-party services (payment, email) you genuinely can't call.
 5. **Print an explicit verdict.** `runGoal` does this: return `{ failures, evidence }` and it prints `PASS — <evidence>` (exit 0) or `FAIL —` with a bulleted list (exit 1), so a later reader (or agent) knows the result without re-deriving the criteria.
+
+## Proving a check can fail
+
+[BP-003](../docs/contributing/best-practices.md) says a check you cannot make fail has verified nothing. **Anti-game** names the hollow pass; this is how a goal produces it.
+
+Checks that cannot fail are the common case, not the rare one. A leg asserting `!== null` on a row written at *file* time passes before the worker ever runs. A leg that mounts a component with nothing expanded never exercises the read it exists for. Both look like coverage.
+
+**Prefer a named control over an ad-hoc mutation.** A control is a flag the run already understands, so the red state is reproducible by anyone, on any checkout, without touching the tree:
+
+```bash
+GOAL_CONTROL=by-name pnpm tsx goals/channel-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
+```
+
+`run.mts` reads `process.env.GOAL_CONTROL` and passes it to the harness, which degrades the one behaviour the control names. Declare each one in `goal.md` under **Controls**, with the legs it must fail — *"Must FAIL, and must name legs (d)/(e) rather than leg 0"* — because a control that fails the wrong leg is itself a check that cannot fail. Record the run in the **Verdict log** as a `FAIL (expected)` row with what it printed.
+
+**When no control fits, mutate the code — and snapshot first.** `git restore -- <path>` on the one file you touched, never `git restore .` or `git checkout -- .`. The trap is a fix and a mutation living in the same uncommitted file: the revert looks successful, keeps the tree green, and throws the fix away. A commit is the easiest snapshot, but some workflows hold the first commit until a human approves the change — `git stash create` gives you a dangling snapshot commit without touching the tree or the shared stash stack, and copying the file aside works too. Snapshot, mutate, revert the one file, restore.
+
+**Say when a leg has no isolating red state** — when the mutation that fails it also fails a neighbour. Put it in the **Verdict log** notes or **Anti-game**, so the next reader reads the co-failure as a known property rather than a leak.
 
 ## The shared library (`goals/lib`)
 
