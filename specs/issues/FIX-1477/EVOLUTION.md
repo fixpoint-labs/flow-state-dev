@@ -33,12 +33,20 @@ that is the only form that travels.
   line is now a comment about state defaults. When a claim turns out to be wrong, correct the
   **assertion across the whole set**, not the line the reviewer cited — it will have been written
   more than once.
-- **Name the red state when you write the rule.** Three requirements here were stated with
+- **Name the red state when you write the rule.** Requirements here were repeatedly stated with
   nothing that could fail without them: the shell's viewer-principal binding, BR-20's
-  skipped-seat report, and the unqualified *"the organization's seats"* / *"the rows that board
-  holds"* in BR-19 and BR-21. [V13, V14 and V11](PLAN.md#checks) cover them now. This is the
-  failure a re-read cannot catch — unlike a stale claim, the prose is *correct*; there is simply
-  nothing standing behind it.
+  skipped-seat report, the unqualified *"the organization's seats"* / *"the rows that board
+  holds"* in BR-19 and BR-21, and then the per-organization report itself, whose first check
+  could not fail on either way of getting it wrong. [V11, V13, V14 and V15](PLAN.md#checks) cover
+  them now. **This kept recurring**, in four successive rounds and on four different
+  requirements, which is the part worth knowing: it is not one oversight but the default
+  behaviour of writing a rule and a check at different moments. A re-read cannot catch it —
+  unlike a stale claim, the prose is *correct*; there is simply nothing standing behind it.
+- **Name the thing, don't count it.** *"The last two rows"*, *"the third bullet"* — a positional
+  reference is true until something is inserted above it, and then it is silently wrong with no
+  edit having touched it. The note under [Changesets](PLAN.md#changesets) went stale exactly that
+  way, in the fold that was correcting citations. It is the line-number failure one level up, and
+  the same fix: name the fragment, the rule, the row.
 
 Before implementing, compare these against the repository rather than against this page. The
 devtool files in particular are live code and may have moved; [PLAN.md](PLAN.md) →

@@ -72,11 +72,13 @@ PR-C now waits on #2036 rather than on the siblings directly.
 | `devtool-shipped-navigator` | `devtool` | `patch` | PR-B |
 | `roster-and-board-panels` | `react` | `patch` | PR-A2 ([#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)) |
 | `panel-collections-client-read` | `workforce` | `patch` | PR-A2 ([#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)) |
-| the per-org reload result | `workforce` | `patch` | PR-C — additive return on `reloadHiredSeats`, needed by `S8`'s boot report ([BR-20's transport](#br20-transport)) |
+| the per-org reload result | `workforce` | `patch` | PR-C — additive return on `reloadHiredSeats`, needed by `S8`'s boot report ([BR-20's transport](#br20-transport)). **`packages/workforce/README.md` goes with it** — its API table documents the return as `{ seats, problems }` (BP-009) |
 | — | `orchestration` | **none** | — |
 
-The last two are authored on PR-A2's branch — read them there rather than here, whatever its
-current state.
+`roster-and-board-panels` and `panel-collections-client-read` are authored on PR-A2's branch —
+read them there rather than here, whatever its current state. (Named rather than counted: "the
+last two" stops being true the moment a row is inserted above them, which is how this sentence
+went stale once already.)
 
 **Why `patch` and not `minor`, including for `workforce`.** The pre-1.0 rule is *"can this break
 somebody"*, not *"is this a new capability"*
@@ -114,6 +116,7 @@ Every row names what would make it fail. A check with no producible red state pr
 | V12 | S5 S6 | Reading either collection **without** its `client` declaration is refused `403 State read not permitted` | Remove the declaration: the panels go blank rather than silently reading. Pins the gate so a later refactor cannot delete the opt-in and leave the panels looking merely broken |
 | V13 | S8 | **With a principal resolver configured**, a seat is hired into org `acme`, a shell session is opened carrying that viewer's credential, and the roster panel lists that seat. Asserts on the **row**, not on a 200 | Drop the resolver, or the credential transport, and the shell binds to `__fsd_default_org__`: the read still returns **200 with an empty list**, and the panel renders its empty state. That is the whole point — this is the one failure every other check passes through. V11 and V12 run in the tokenless default organization, where hire and read land in the same place by accident, so neither can see it. Run **both** halves: the same assertion in an unconfigured clone must still pass, or the check has made a credential mandatory where the reference app needs none ([Blocked on](#blocked-on)) |
 | V14 | S8 | A boot in which one stored seat **cannot** be brought back renders a roster panel showing both numbers — what answers, and what was skipped — with the skipped seat's reason among them (BR-20) | Route the report nowhere and the panel renders a clean roster of the seats that loaded: **no error, no empty state, nothing to see**. That silent-partial read is the failure BR-20 exists for, so the check has to assert the *problem* is on screen, not that the panel rendered. Written against what a viewer sees rather than against the transport, so it stays honest if the resource's shape changes under it ([Blocked on](#br20-transport)). Red today: nothing carries the report past `console.log` |
+| V15 | S8 | **Two organizations, two boots.** Boot one: `acme` has a seat that fails to load and `beta` has none. `acme`'s panel names its problem; **`beta`'s panel shows none**. Boot two, with `acme`'s row repaired: `acme`'s panel shows **no** problems. Include a seat that loads but is **refused at registration**, which is recorded by the app rather than by the reload | Two failures this is the only check that catches, and V14 stays green through both. Write the flat list into every org's resource and `beta` reports `acme`'s problem — red on the first boot's second assertion. Return entries only for organizations that had problems and boot two leaves boot one's report standing in a resource nobody rewrote — red on the second boot. The registration-refused seat is the third: attribute it nowhere and `acme` shows a complete roster that is not ([BR-20's transport](#br20-transport)). One organization or one boot cannot fail any of them |
 | VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): the rail lists the kinds; a singleton channel kind opens straight into its conversations; a seat kind opens into seats and then into one seat's conversations; and the **network log shows no session-list request on the kind expand** | Pre-fetch everything: the DOM assertions still pass and the network assertion fails. The network half is what makes this a goal check rather than a screenshot |
 
 **No model runs in any of this**, so no `goals/` check applies: every claim is about what a
@@ -353,6 +356,27 @@ recorded — the loop is `for (const [orgId, rowsByKey] of readsByOrg)` (`:190`)
 additive inside a loop that already runs, and it touches neither bound nor the read barrier.
 Include **every** organization in the result, with an empty list where there were no problems: a
 map of only the failing orgs leaves last boot's problems standing in a resource nobody rewrote.
+
+**The per-organization shape must carry that org's `seats` as well as its `problems`**, and this
+is the half that is easy to miss. Not every problem comes from the reload: the boot then loops
+`reload.seats` and calls `registerFromRoster`, and a seat the registry refuses is caught and
+recorded **by the app** as `` `${seat.id} — ${message}` ``
+(`apps/kitchen-sink/fsdev.config.ts:281`–`:295`). That string names no organization, and nothing
+in `reloadHiredSeats` partitions it. Left alone, a seat rejected at registration lands in no
+org's slice at all, and that organization's panel shows a complete roster that is not — the exact
+failure BR-20 exists to prevent, arriving through the door left open while closing the other one.
+
+So: group the **seats** by org in the return, have the boot iterate per organization, and fold
+each registration refusal into that organization's slice before persisting it. The reload already
+holds the org at seat-construction time (`hiredSeatManifest(orgId, parsed.row)`, inside the same
+loop), so grouping costs it nothing it is not already carrying.
+
+**Do not attribute those refusals from the `FlowInstance` instead.** It looks like the smaller
+change and it does not work: `FlowInstance.org` is an `OrgConfig` — `stateSchema`, `cas`,
+`client` (`packages/core/src/types/flow.ts:406`) — flow configuration, not the organization the
+seat was hired for. And do not split the organization back out of `seat.id`: the address is a
+join, and re-deriving structure from it is the same mistake as parsing the problem strings, one
+field over.
 
 **Do not call the reload once per organization**, which is the obvious-looking alternative and is
 unsafe. Both of its bounds are deliberately **set-wide** (`:154`–`:185`):
