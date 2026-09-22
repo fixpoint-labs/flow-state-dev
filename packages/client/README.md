@@ -130,30 +130,49 @@ A `cardinality: "collection"` flow has many addressable copies, so a copy's sess
 
 You get back exactly one key: `{ flowId: address }` for a copy of a collection flow, `{ flowKind: address }` otherwise. Spread it into `listSessions` alongside whatever else you are filtering by.
 
-### Child sessions
+### Dispatched runs
 
-`listChildSessions` lists the sessions started under a session. Work that outlives
-the turn that started it runs in a session of its own hanging off the parent, so it
-never appears in the parent's requests.
+Work that outlives the turn that started it runs in a session of its own, so it
+never appears in the requests of the session that started it. There are two ways
+to reach one.
+
+`listSessions` with `include: "dispatch-runs"` returns those sessions beside the
+flow's conversations:
+
+```ts
+const rows = await sessions.listSessions({
+  flowKind: "research",
+  include: "dispatch-runs",
+});
+
+// A row a dispatcher started names the session it was started from.
+const runs = rows.filter((row) => row.parentSessionId != null);
+```
+
+Leave the option off and you get the sessions a person started. It widens
+parentage only: rows belonging to another principal, organization or tenant are
+absent either way.
+
+`listChildSessions` asks one session which runs were started from it.
 
 ```ts
 // Paging only: `limit` is 1–100 (25 by default), `offset` is 0–10000.
-const children = await sessions.listChildSessions("sess_1", { limit: 25 });
+const started = await sessions.listChildSessions("sess_1", { limit: 25 });
 
-for (const child of children) {
+for (const run of started) {
   // A row's `id` is a session id, so the reads you already use work on it.
-  const requests = await sessions.listSessionRequests(child.id);
+  const requests = await sessions.listSessionRequests(run.id);
 }
 ```
 
 Each row is a `ChildSessionSummary`: `id`, `parentSessionId`, `createdAt`,
 `updatedAt`, and the optional `flowId`, `topic`, `coordinate`, and `status`. That is
 the whole row — the server sends this named field set rather than a session record.
-`flowId` is the instance that owns the child, the address to read it through when it
-was dispatched into another instance; absent on a child written before owners were
+`flowId` is the instance that owns the run, the address to read it through when it
+was dispatched into another instance; absent on a row written before owners were
 recorded. `topic`
-is the key the child was derived from and `coordinate` the entry it was dispatched
-to; both are display labels, nothing identifies or authorizes from them, and a row
+is the key the run's session was derived from and `coordinate` the entry it was
+dispatched to; both are display labels, nothing identifies or authorizes from them, and a row
 can arrive without either. How legible `topic` is depends on what the flow keyed on,
 so fall back to `id` rather than to a made-up name. Guard all three with `== null`.
 
@@ -161,14 +180,14 @@ so fall back to `id` rather than to a made-up name. Guard all three with `== nul
 happening right now. `"active"` asserts only that the work hasn't finished: queued,
 mid-run, and paused waiting for a person all read `"active"`, and so does work whose
 worker died, until the server records otherwise. The terminal values are
-`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A child that has never
-run anything carries no `status` at all. Don't fold that absence into one of the five
+`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A run that has never
+executed anything carries no `status` at all. Don't fold that absence into one of the five
 values. Your own label for it, like `"Not started"`, is fine; mapping it to
 `"active"` claims work is under way before it started.
 
 A session that started nothing resolves to `[]`; an unknown session, or one the
 caller isn't allowed to read, rejects with `ClientHttpError`. There is no counterpart
-that starts one: whether work runs in a child session is declared on the server when
+that starts one: whether work is dispatched at all is declared on the server when
 the flow is wired up.
 
 ## `createClient` vs `createTypedClient`

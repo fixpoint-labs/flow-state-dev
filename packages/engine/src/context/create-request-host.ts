@@ -69,7 +69,7 @@ import { resolveEntry } from "@flow-state-dev/core";
 import type { DispatchStamp } from "../execution/dispatch-metadata";
 import type { RuntimeConfig } from "../runtime-config";
 import { resolveLineageId, resolveSessionStorageKey } from "../stores/scope-keys";
-import { deriveDispatchChildSessionId, evaluateAdoption } from "./detached-child";
+import { deriveDispatchRunSessionId, evaluateAdoption } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
 import type { DispatchOperation } from "./dispatch-operation";
 import { purgeStaleResourceState } from "./ensure-session-record";
@@ -262,7 +262,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
    * caller named none of the identity — that is what makes the child
    * unreachable except through the parent that owns it.
    */
-  const resolveChildSession = async (
+  const resolveDispatchRunSession = async (
     key: string,
     address: { type: string; action: string },
     targetFlow: FlowInstance
@@ -270,7 +270,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // Instance inequality, not kind inequality: two copies of one definition
     // are two owners, and a child one derives is not the other's.
     const crossFlow = targetFlow.id !== flow.id;
-    const childId = deriveDispatchChildSessionId(
+    const childId = deriveDispatchRunSessionId(
       {
         userId: identity.userId,
         tenantId: identity.tenantId,
@@ -279,7 +279,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       },
       key,
       // Only for a cross-instance address, so every same-instance child keeps
-      // the id it has always derived — see `deriveDispatchChildSessionId`.
+      // the id it has always derived — see `deriveDispatchRunSessionId`.
       crossFlow ? targetFlow.id : undefined
     );
     const storageKey = resolveSessionStorageKey(childId, identity.tenantId);
@@ -423,7 +423,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     if ("id" in spec.session) {
       return resolveExistingSession(spec.session.id, targetFlow);
     }
-    return resolveChildSession(spec.session.key, spec, targetFlow);
+    return resolveDispatchRunSession(spec.session.key, spec, targetFlow);
   };
 
   const crossInstance = (targetFlow: FlowInstance): boolean => targetFlow.id !== flow.id;
@@ -611,7 +611,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
  * renders a blank name where absence renders its fallback.
  *
  * For `coordinate` this is also a consistency rule rather than a preference:
- * `deriveDispatchChildSessionId` length-frames the key, so `key: ""` and an absent
+ * `deriveDispatchRunSessionId` length-frames the key, so `key: ""` and an absent
  * `key` produce the **same child**. Stamping one of them an empty coordinate
  * would let two calls that provably land on the same record disagree about its
  * label, with the winner decided by whoever created it first.

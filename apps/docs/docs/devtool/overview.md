@@ -107,23 +107,25 @@ For generator blocks, the panel also shows what the model actually saw on that t
 
 When a block fails, the detail panel surfaces enough context to diagnose without re-running. The error message renders at the top with the `code` as a small mono-text label. When the runtime captures `details` on the failure — generator output-validation errors carry the raw model text and the Zod issues, author-thrown `FlowError`s carry whatever was attached — the panel renders them as dedicated sections: a "Raw output" pane for the model's text, a typed "Validation issues" list for Zod issues, and a "Details" JSON panel for the rest. For tool-invoked blocks that fail, the panel also surfaces the originating tool call's arguments and the block's resolved input, so the failure stops requiring a hunt through sibling rows for the missing context. See [Error handling](/docs/advanced/error-handling).
 
-## Child sessions
+## Dispatched runs
 
-Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs work in a child session — a session of its own that keeps going after the request which started it has returned — and none of that work shows up in the conversation's own stream or trace.
+Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs work in a session of its own that keeps going after the request which started it has returned, and none of that work shows up in the starting conversation's stream or trace.
 
-The Children tab lists it. One row per child session, with the labels it carries, the state its runs reached, and its session id.
+The rail lists those sessions with the rest of the flow's, indented one level under the session that started each one. Each carries a label saying the dispatcher started it and a link that opens the session it came from. A run started by another run indents once, beside its own parent — the rail shows where work came from without becoming a tree to walk.
 
-Click a row and the workspace opens that session. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it, and a child that dispatched work of its own has a Children tab too. A breadcrumb above the tabs shows how deep you are and takes you back.
+Click a row and the workspace opens that session. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it.
 
-Work dispatched into another flow instance produces a child that instance owns, so opening a row can move you to a different copy as well as a different session. The breadcrumb remembers which copy each step was under, and going back returns you to that copy, not to whichever one you ended up in.
+The Trace tab also lists the runs a session started, under the blocks that ran in it. Each is a collapsed node naming a separate session; expand one and that run's own block tree loads in place, without moving the workspace off the session you are on. Nothing about a run loads until you open it, so a board that drained fifty rows leaves fifty rows to read rather than fifty sessions' items in one tree.
+
+Work dispatched into another flow instance produces a session that instance owns, so opening a row can move you to a different copy as well as a different session.
 
 A few things worth knowing about a row:
 
 - **Status is coarse on purpose.** `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A row with no status has not run anything yet.
-- **Labels can be missing.** The topic and the entry label are stamped when the child is created, and either can be absent. The row still renders — the session id is the address.
-- **The task link is a match, not a foreign key.** Where a row lines up with a task on a board in this session, the Tasks tab shows a link on that task's row and the Children tab names the tasks. Where a task cannot be matched to exactly one child, no link is shown rather than a guessed one.
+- **Labels can be missing.** The topic and the entry label are stamped when the session is created, and either can be absent. The row still renders — the session id is the address.
+- **The task link is a match, not a foreign key.** Where a run lines up with a task on a board in this session, the Tasks tab shows a link on that task's row. Where a task cannot be matched to exactly one run, no link is shown rather than a guessed one.
 
-The list is read when you open a session and when you refresh; it does not update on its own while you watch. See [Work that outlives the turn](/guides/background-work).
+The lists are read when you open a session and when you refresh; they do not update on their own while you watch. See [Work that outlives the turn](/guides/background-work).
 
 ## Session state
 

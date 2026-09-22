@@ -406,6 +406,8 @@ How deep the tree goes comes from each flow's declared `cardinality`. A flow dec
 
 Sessions load when you open a single flow instance, which is a singleton's row or one copy under a collection. Expanding a collection row to see its copies costs no request.
 
+Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers ran work in, each drawn one level under the session that started it. One level is all there is: a run started by another run sits beside its own parent, and a run whose parent is not in the listing sits at the left margin. Nothing extra is fetched to draw it. The `rowTrailing` slot receives `dispatchRun` on those rows, carrying the id of the session that started it, so you can label the row or link to it. Left out, the rail lists the sessions a person started.
+
 The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
 
 The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.

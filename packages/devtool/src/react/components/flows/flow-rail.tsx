@@ -3,8 +3,9 @@
  *
  * The drill-down itself is `FlowNavigator`, shipped from
  * `@flow-state-dev/react`. What lives in this file is the tool's SKIN — a
- * handful of CSS custom properties — and the three affordances that are the
- * tool's own: copy a copy's id, refresh a list, and start a session.
+ * handful of CSS custom properties — and the affordances that are the tool's
+ * own: copy a copy's id, refresh a list, start a session, and read a dispatch
+ * run's provenance.
  *
  * There is no grouping, no cardinality branch, no fetch-on-leaf-expand rule
  * and no read fence here, because a second copy of any of them is the defect
@@ -23,6 +24,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ArrowUpRight,
   Check,
   Copy,
   Inbox,
@@ -40,6 +42,7 @@ import { Button } from "../ui/button";
 import { EmptyState } from "../shared/empty-state";
 import { useDevTool } from "../../context/devtool-context";
 import { useWorkspaceFence } from "../../hooks/use-workspace-fence";
+import { dispatchRunOrigin } from "../../lib/dispatch-run-links";
 
 /**
  * One section, covering every kind.
@@ -105,6 +108,10 @@ export function FlowRail({ sessionRefreshKey = 0, onRefreshActiveSession }: Flow
         userId={config.userId}
         selectedSessionId={activeSessionId ?? undefined}
         onSelectSession={handleSelect}
+        // The tool inspects a running server, so it asks for the sessions
+        // dispatchers ran work in as well. The wire default does not move: an
+        // app's own session list is unchanged unless it asks the same way.
+        includeDispatchRuns
         slots={{
           rowTrailing: (row) => <RowTrailing row={row} />,
           leafToolbar: (leaf) => (
@@ -129,14 +136,116 @@ export function FlowRail({ sessionRefreshKey = 0, onRefreshActiveSession }: Flow
 /**
  * What hangs off the end of a row.
  *
- * Only a collection member gets one. A singleton's row label IS its whole id,
- * so there is nothing a copy button could recover that is not already on
+ * A collection member gets a copy button. A singleton's row label IS its whole
+ * id, so there is nothing a copy button could recover that is not already on
  * screen; an instance id is opaque, often long, and truncated to fit the rail,
  * and retyping what a truncation shows is how the wrong copy gets addressed.
+ *
+ * A session a dispatcher started gets its provenance instead: what the
+ * dispatcher did with the session, and a way to open the one that started it.
+ * The indent beside it is the navigator's; this is the half that needs the
+ * tool's own vocabulary and the tool's own selection.
  */
 function RowTrailing({ row }: { row: FlowNavigatorRow }) {
-  if (row.type !== "instance") return null;
-  return <CopyInstanceId flowId={row.instance.id} />;
+  if (row.type === "instance") return <CopyInstanceId flowId={row.instance.id} />;
+  if (row.type === "session" && row.dispatchRun !== undefined) {
+    return (
+      <DispatchRunProvenance
+        topic={row.session.topic}
+        parentSessionId={row.dispatchRun.parentSessionId}
+        parentInView={row.dispatchRun.parentInView}
+        leafAddress={row.leaf.address}
+      />
+    );
+  }
+  return null;
+}
+
+/**
+ * A dispatch run's label and the way back to what started it.
+ *
+ * The label is read off the run's derivation key — see `dispatchRunOrigin` for
+ * what "re-used" can and cannot claim. The parent link opens the session that
+ * started this one, whether or not it is one of the rows on screen: a run is an
+ * ordinary session of the flow, so this is a selection, not a descent, and
+ * there is nothing to come back from.
+ *
+ * ## Which copy the parent is opened under
+ *
+ * A session id is not addressable on its own — it is addressable under the flow
+ * instance that owns it — and a cross-flow dispatch splits the two owners: the
+ * RUN belongs to the instance it was sent to, while the session that sent it
+ * belongs to the sender. Opening the parent under the run's owner is the defect
+ * the removed descent trail used to cover by remembering each step's owner.
+ *
+ * So the owner is resolved rather than assumed:
+ *
+ * - **Parent on screen** — it is a row of this same leaf, and a leaf lists one
+ *   flow address, so that address owns it. Nothing is read.
+ * - **Parent not on screen** — its owner is unknowable from the rows in hand,
+ *   so the click reads the parent record for it. One read, on an explicit
+ *   navigation, and never during render: the list itself still fetches nothing.
+ */
+function DispatchRunProvenance({
+  topic,
+  parentSessionId,
+  parentInView,
+  leafAddress,
+}: {
+  topic?: string;
+  parentSessionId: string;
+  parentInView: boolean;
+  leafAddress: string;
+}) {
+  const { selectWorkspace, sessionClient } = useDevTool();
+  const origin = dispatchRunOrigin(topic);
+
+  const openParent = useCallback(async () => {
+    if (parentInView) {
+      selectWorkspace(leafAddress, parentSessionId);
+      return;
+    }
+    try {
+      const parent = await sessionClient.getSession(parentSessionId);
+      // A record written before owners were stamped carries none; the leaf we
+      // are listing under is the only honest guess left, and it is the one the
+      // rest of this rail already addresses by.
+      selectWorkspace(parent.flowId ?? leafAddress, parentSessionId);
+    } catch (err) {
+      // Deliberately does NOT fall back to opening it somewhere: a session
+      // opened under the wrong copy addresses every later read to that copy,
+      // which is the failure this resolution exists to prevent.
+      // eslint-disable-next-line no-console
+      console.error("[devtool] could not resolve the parent session's flow", err);
+    }
+  }, [parentInView, leafAddress, parentSessionId, selectWorkspace, sessionClient]);
+
+  return (
+    <>
+      <span
+        data-dispatch-run-origin={origin}
+        title={
+          origin === "re-used"
+            ? "Dispatched work. This session is a worker seat's, re-entered by every row that seat runs."
+            : "Dispatched work. A dispatcher started this session rather than a person."
+        }
+        className="rounded bg-slate-800 px-1 text-[9px] uppercase tracking-wide text-slate-400"
+      >
+        {origin}
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-5 w-5 p-0"
+        title={`Open the session that started this one: ${parentSessionId}`}
+        aria-label={`Open parent session ${parentSessionId}`}
+        data-open-parent-session={parentSessionId}
+        onClick={() => void openParent()}
+      >
+        <ArrowUpRight className="h-3 w-3 text-slate-500" />
+      </Button>
+    </>
+  );
 }
 
 /** Copies the instance's full id. */

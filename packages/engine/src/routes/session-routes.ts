@@ -4,7 +4,7 @@
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { SessionRecord, StoreRegistry } from "../stores/types";
+import type { SessionParentage, SessionRecord, StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { purgeStaleResourceState } from "../context/ensure-session-record";
@@ -51,12 +51,56 @@ type SessionRouteContext = {
   anonymousFlowIds?: Set<string>;
 };
 
+/**
+ * The one include this listing accepts, spelled for callers rather than for
+ * the store (FIX-1440).
+ *
+ * `parentage` is a storage concept with three modes; a caller has one question
+ * — *do I also want the sessions a dispatcher ran work in?* — so that is what
+ * the wire asks. Keeping the two apart is what lets the store grow a fourth
+ * mode without teaching it to every client.
+ */
+const DISPATCH_RUNS_INCLUDE = "dispatch-runs";
+
+/**
+ * Map the `include` query parameter onto a store parentage.
+ *
+ * `undefined` — no include — leaves the option **off**, so the listing narrows
+ * to top-level sessions exactly as it always has. That is the rule, not an
+ * implementation detail: a caller that did not ask gets today's result set,
+ * unchanged (FIX-1009, and `SessionListOptions.parentage`).
+ *
+ * An unrecognised token is a **400 naming what is accepted**, never a silent
+ * ignore: a caller that misspells the include would otherwise be told nothing
+ * and conclude the flow has no dispatch runs.
+ */
+function resolveSessionInclude(
+  raw: string | null
+): { parentage?: SessionParentage } | { error: string } {
+  if (raw === null) return {};
+  const tokens = raw
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  const unknown = tokens.filter((token) => token !== DISPATCH_RUNS_INCLUDE);
+  if (unknown.length > 0) {
+    return {
+      error: `include accepts "${DISPATCH_RUNS_INCLUDE}"; received ${unknown
+        .map((token) => `"${token}"`)
+        .join(", ")}`
+    };
+  }
+  return tokens.length === 0 ? {} : { parentage: "all" };
+}
+
 export async function handleListSessions(
   request: Request,
   _route: Extract<ParsedFlowRoute, { kind: "list_sessions" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
   const url = new URL(request.url);
+  const include = resolveSessionInclude(url.searchParams.get("include"));
+  if ("error" in include) return jsonResponse(400, include);
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
     // Exact owner: one instance of a collection flow. A record with no owner
@@ -81,6 +125,12 @@ export async function handleListSessions(
     // Always pass the tenant (present, possibly undefined) so listing isolates
     // to the calling tenant's sessions (FIX-682).
     tenantId: ctx.tenantId,
+    // Spread rather than always present, so a listing without the include is
+    // byte-identical to the one this route has always issued. The store reads
+    // an absent `parentage` as `"top-level"`, which is the narrowing FIX-1009
+    // put there on purpose; the include is the only way past it, and it widens
+    // parentage alone — never owner, tenant or organization.
+    ...(include.parentage === undefined ? {} : { parentage: include.parentage }),
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });

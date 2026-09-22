@@ -35,7 +35,7 @@ import type { FlowDispatcher } from "../transports/dispatcher";
 import {
   createDispatchOperation,
   type DispatchOperation,
-  type DispatchedChild
+  type DispatchedRun
 } from "../context/dispatch-operation";
 import type { InboundTransportHost } from "../transports/types";
 import type { StoreRegistry } from "../stores/types";
@@ -240,7 +240,7 @@ class InternalFlowState<TSettings extends object>
    * for. Entries remove themselves when they settle, so a long-lived server does
    * not accumulate them.
    */
-  readonly #dispatchedChildren = new Set<DispatchedChild>();
+  readonly #dispatchedRuns = new Set<DispatchedRun>();
   /**
    * The host the request-host operations dispatch through, built on first use
    * and shared by the detached start and the dispatch seam — see
@@ -475,7 +475,7 @@ class InternalFlowState<TSettings extends object>
    * process leaves nothing.
    */
   async #drainDetachedChildren(): Promise<void> {
-    if (this.#dispatchedChildren.size === 0) return;
+    if (this.#dispatchedRuns.size === 0) return;
 
     const budgetMs = resolveDispatchDrainTimeout(this.#options.dispatchDrainTimeoutMs);
     const startedAt = Date.now();
@@ -503,13 +503,13 @@ class InternalFlowState<TSettings extends object>
 
     for (
       let round = 0;
-      this.#dispatchedChildren.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
+      this.#dispatchedRuns.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
       round += 1
     ) {
       const remainingMs = waitDeadline - Date.now();
       if (remainingMs <= 0) break;
 
-      const pending = [...this.#dispatchedChildren];
+      const pending = [...this.#dispatchedRuns];
       // Printed because an unexplained pause at exit reads as a hang — this says
       // what is being waited for.
       //
@@ -539,7 +539,7 @@ class InternalFlowState<TSettings extends object>
       if (!finishedInTime) break;
     }
 
-    if (this.#dispatchedChildren.size > 0) {
+    if (this.#dispatchedRuns.size > 0) {
       await this.#cancelOutstandingChildren(deadline, startedAt, budgetMs);
     }
   }
@@ -575,7 +575,7 @@ class InternalFlowState<TSettings extends object>
     startedAt: number,
     budgetMs: number
   ): Promise<void> {
-    const abandoned = [...this.#dispatchedChildren];
+    const abandoned = [...this.#dispatchedRuns];
 
     for (const child of abandoned) {
       // Best-effort by contract: `false` means the run already deregistered,
@@ -660,7 +660,7 @@ class InternalFlowState<TSettings extends object>
    * with afterwards.
    */
   #reportTruncatedChildren(
-    abandoned: readonly DispatchedChild[],
+    abandoned: readonly DispatchedRun[],
     elapsedMs: number,
     budgetMs: number
   ): void {
@@ -1073,7 +1073,7 @@ class InternalFlowState<TSettings extends object>
     return createDispatchOperation({
       host,
       ...(runsHere
-        ? { onDispatched: (child: DispatchedChild) => this.#trackDetachedChild(child) }
+        ? { onDispatched: (child: DispatchedRun) => this.#trackDispatchedRun(child) }
         : {})
     });
   }
@@ -1087,11 +1087,11 @@ class InternalFlowState<TSettings extends object>
    * handled. Without the `catch` here, the `finally` link would itself reject
    * and become the unhandled rejection this is meant to avoid.
    */
-  #trackDetachedChild(child: DispatchedChild): void {
-    this.#dispatchedChildren.add(child);
+  #trackDispatchedRun(child: DispatchedRun): void {
+    this.#dispatchedRuns.add(child);
     void child.finished
       .catch(() => undefined)
-      .finally(() => this.#dispatchedChildren.delete(child));
+      .finally(() => this.#dispatchedRuns.delete(child));
   }
 
   async #doInit(): Promise<FlowApiRouter> {

@@ -82,8 +82,8 @@ the same string share one child. A shared child serialises its rows:
 `defineFlow` defaults the entry a `per-worker` or `key` seat hands off to
 `queue` concurrency, and an explicit policy on the entry wins.
 
-The child id is derived, never chosen (`deriveDispatchChildSessionId`,
-`engine/src/context/detached-child.ts`): tenant, principal, parent session,
+The child id is derived, never chosen (`deriveDispatchRunSessionId`,
+`engine/src/context/dispatch-run.ts`): tenant, principal, parent session,
 lineage, the `dispatch` namespace and the key, each length-framed, hashed to
 `dsx_<sha256[0:32]>`. The parent session is in the key material because every
 other verb authorises by descent, so a child is reachable only *through* the
@@ -573,7 +573,7 @@ and the row stays as it is.
 | Locality test | `engine/src/transports/host/in-process-dispatcher.ts` → `isInProcessDispatcher` |
 | Dispatch operation install, drain, disposal gate | `engine/src/flowstate/createFlowState.ts` (`dispatchDrainTimeoutMs`) |
 | The dispatch seam: entry, session, envelope, start | `engine/src/context/create-request-host.ts`, `engine/src/context/dispatch-operation.ts` |
-| Child session derivation and adoption | `engine/src/context/detached-child.ts` |
+| Child session derivation and adoption | `engine/src/context/dispatch-run.ts` |
 | Session policy and the child key | `core/src/types/dispatch.ts` → `taskSessionKeyFor` |
 | The hand-off at a dispatcher seat | `orchestration/src/task-board/blocks/hand-off.ts` |
 | The claim gate | `orchestration/src/task-board/task-entry.ts` → `createTaskGate` |

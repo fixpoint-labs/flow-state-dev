@@ -143,6 +143,24 @@ export type SessionSummary = {
   metadata?: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
+  /**
+   * The session a dispatcher was running in when it started this one — the
+   * provenance edge, and the only thing that makes this row a dispatch run
+   * rather than a conversation someone opened.
+   *
+   * Only ever populated when the listing was asked for dispatch runs
+   * (`include: "dispatch-runs"`); without that the listing returns top-level
+   * sessions only, and every row's is absent. A store that nulls absent keys
+   * hands back `null`, so guard with `== null` rather than a truthiness check.
+   */
+  parentSessionId?: string;
+  /**
+   * The key the dispatcher derived this run's session id from. Display only:
+   * it names the body of work, never who may read it.
+   */
+  topic?: string;
+  /** The entry the run was dispatched for, as `<type>:<target>`. Display only. */
+  coordinate?: string;
 };
 
 /**
