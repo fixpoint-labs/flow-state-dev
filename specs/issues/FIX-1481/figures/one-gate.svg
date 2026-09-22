@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 250" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Four documents arrive at a single resolving expression: a references document and a seat's read-only grant, both carrying writable false and llmWritable false, and two that carry no flags at all. On the far side a dashed horizontal line separates marked from unmarked. The two sealed documents come out above it, marked read-only; the two with no flags come out below it, unmarked.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-gate { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-out  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .pill   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .fence  { stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:6 5; }
+    .flow   { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .plain  { stroke:var(--ink-3); stroke-width:1.3; fill:none; stroke-dasharray:5 4; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-q    { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <g id="arrivals">
+    <text class="t-lbl" x="16" y="24">WHAT ARRIVES</text>
+    <rect class="n-box" x="16" y="34" width="238" height="38" rx="5"/>
+    <text class="t-b" x="28" y="51">a references document</text>
+    <text class="t-s" x="28" y="65">writable false &#183; llmWritable false</text>
+
+    <rect class="n-box" x="16" y="80" width="238" height="38" rx="5"/>
+    <text class="t-b" x="28" y="97">a seat's read-only grant</text>
+    <text class="t-s" x="28" y="111">writable false &#183; llmWritable false</text>
+
+    <rect class="n-out" x="16" y="132" width="238" height="38" rx="5"/>
+    <text class="t-b" x="28" y="149">a document with no flags</text>
+    <text class="t-q" x="28" y="163">absent means writable &#183; BR-13</text>
+
+    <rect class="n-out" x="16" y="178" width="238" height="38" rx="5"/>
+    <text class="t-b" x="28" y="195">a server that predates this</text>
+    <text class="t-q" x="28" y="209">nothing on the wire &#183; BR-16</text>
+  </g>
+
+  <g id="the-one-gate">
+    <rect class="n-gate" x="330" y="104" width="240" height="42" rx="5"/>
+    <text class="t-lbl" x="342" y="99">THE ONE GATE</text>
+    <text class="t-b" x="342" y="123">the resolving expression</text>
+    <text class="t-s" x="342" y="138">llmWritable &amp;&amp; writable !== false</text>
+  </g>
+
+  <g id="in">
+    <path class="flow"  d="M254 53  C 300 53,  296 118, 328 120"/>
+    <path class="flow"  d="M254 99  C 296 99,  300 120, 328 124"/>
+    <path class="plain" d="M254 151 C 296 151, 300 132, 328 130"/>
+    <path class="plain" d="M254 197 C 300 197, 300 140, 328 134"/>
+  </g>
+
+  <g id="out">
+    <path class="flow"  d="M570 118 C 610 118, 616 72,  650 68"/>
+    <path class="plain" d="M570 132 C 610 132, 616 180, 650 186"/>
+  </g>
+
+  <g id="verdicts">
+    <text class="t-lbl" x="650" y="24">WHAT THE READER SEES</text>
+    <line class="fence" x1="650" y1="126" x2="924" y2="126"/>
+    <text class="t-q" x="650" y="120">&#8593; marked &#183; &#8595; not marked</text>
+
+    <rect class="n-box" x="650" y="48" width="274" height="40" rx="5"/>
+    <text class="t-b" x="662" y="66">handbook</text>
+    <rect class="pill" x="748" y="54" width="62" height="16" rx="2"/>
+    <text class="t-s" x="754" y="66">read-only</text>
+    <text class="t-s" x="662" y="81">one mark, whichever producer sealed it</text>
+
+    <rect class="n-box" x="650" y="166" width="274" height="40" rx="5"/>
+    <text class="t-b" x="662" y="184">scratchpad</text>
+    <text class="t-s" x="662" y="199">no mark &#183; not a claim that it is writable</text>
+  </g>
+</svg>
