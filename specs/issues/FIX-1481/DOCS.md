@@ -53,7 +53,7 @@ restate the other bullets.
 - Where a resource came from does not produce the mark. A `references/` document and a document
   held under a worker's read-only grant arrive as the same two settings and get the same mark.
 - No marks anywhere means the server predates this and sends neither setting — not that
-  everything is writable (BR-16).
+  everything is writable (BR-15).
 
 **Voice traps here:** introduce "read-only" in terms of the two settings before using it as a
 label; resist "powerful" around a debugging surface.
