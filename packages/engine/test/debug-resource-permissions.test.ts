@@ -18,6 +18,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  defineExternalResourceCollection,
   defineFlow,
   defineResource,
   defineResourceCollection,
@@ -71,10 +72,34 @@ const sealedCollection = defineResourceCollection({
   llmWritable: false
 });
 
+/**
+ * An external collection: read-only because of what it *is*, not what it says.
+ *
+ * `ExternalResourceCollectionConfig` has no `writable` key at all — its own doc
+ * comment calls read-only "structural, not a flag", and the registry refuses
+ * every mutator on it. So the absent-key rule that is right everywhere else
+ * gives the wrong answer here: nothing was declared, but the default is not
+ * writable.
+ */
+const externalPositions = defineExternalResourceCollection({
+  pattern: "positions/*",
+  scope: "org",
+  stateSchema: z.object({ v: z.string().default("") }),
+  read: async () => null,
+  search: async () => ({ items: [], nextCursor: null })
+});
+
 function buildFlow() {
   const block = handler({
     name: "noop",
-    resources: { sealed, modelClosed, plain, openToModel, sealedCollection },
+    resources: {
+      sealed,
+      modelClosed,
+      plain,
+      openToModel,
+      sealedCollection,
+      externalPositions
+    },
     execute: () => "ok"
   });
   return defineFlow({
@@ -157,6 +182,28 @@ describe("the debug snapshot carries both permission settings", () => {
     expect(entry.isCollection).toBe(true);
     expect(entry.writable).toBe(false);
     expect(entry.llmWritable).toBe(false);
+  });
+
+  it("reports an external collection as unwritable, though it declares nothing", async () => {
+    // THE CASE THE ABSENT-KEY RULE GETS WRONG IF THE SERVER STAYS LITERAL.
+    // An external collection cannot declare `writable` — the field does not
+    // exist on its config — and it is refused every mutator by the registry.
+    // Reporting "declared nothing" would put it in the same bucket as an
+    // ordinary mutable resource and leave a genuinely read-only thing
+    // unmarked, which is the false negative the failure taxonomy calls the
+    // worse direction.
+    //
+    // So the field answers "can this be written", not "did somebody type a
+    // key". Absent still means writable; it just stops being the only way to
+    // say nothing was declared.
+    const entry = entryNamed(await listResources(), "externalPositions");
+
+    expect(entry.isCollection).toBe(true);
+    expect(entry.writable).toBe(false);
+    // `llmWritable` has no analogue here — the config has no such field and no
+    // model write tool exists to gate — so it stays absent rather than being
+    // invented.
+    expect(Object.hasOwn(entry, "llmWritable")).toBe(false);
   });
 
   it("changes nothing else about an entry", async () => {

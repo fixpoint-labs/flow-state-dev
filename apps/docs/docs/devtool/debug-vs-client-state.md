@@ -91,7 +91,7 @@ The debug response lists every alias for each storage key. The panel shows them 
 
 ## Read-only resources
 
-`writable` decides whether a resource can be written at all. With `writable: false` the write is refused, state and content alike, with a `FlowError` whose code is `resource_read_only`.
+`writable` decides whether a resource can be written at all. With `writable: false` the write is refused, state and content alike. A `defineResource` resource refuses with a `FlowError` whose code is `resource_read_only`. A collection instance refuses with a plain `Error` and no code, so match on the message there; [Writable](../resources/collections.md#writable) has the exact strings.
 
 ```ts
 defineResource({
@@ -103,13 +103,13 @@ defineResource({
 
 `llmWritable` decides something narrower: whether a model is offered a tool to overwrite the resource's content. It has no bearing on what your own blocks may do.
 
-The panel marks a resource read-only when `writable` is `false`, and on no other condition. The mark means immutable to everyone, your code included. A resource without it can be written.
+The panel marks a resource read-only when `writable` is `false`, and on no other condition. The mark means this handle refuses state and content writes, from your code and from a model alike. It is not a claim about the data: a shared `org` or `user` cell can still be written through another flow that declares it writable, and on a collection the mark leaves `create`, `getOrCreate` and `delete` open. A row without it is not reported read-only, which is not a guarantee that a write will land.
 
 Omit `writable` and the resource can be written, so a resource that declares nothing carries no mark.
 
 Omit `llmWritable` and no model is offered a write tool for it. Most resources never set it, so that is the ordinary case, and it is not a read-only mark. The panel shows both settings at the top of a resource's detail, so expand the row when you need to tell them apart.
 
-The mark follows those two settings and nothing else. Where the resource was defined does not change it.
+The mark follows `writable` and nothing else. Where the resource was defined does not change it.
 
 ## Enabling the debug endpoint
 

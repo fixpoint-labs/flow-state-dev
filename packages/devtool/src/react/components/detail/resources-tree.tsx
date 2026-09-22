@@ -136,25 +136,34 @@ function ScopeBadge({ scope }: { scope: "session" | "user" | "org" }) {
 }
 
 /**
- * The seal: this resource cannot be written at all.
+ * The seal: the store refuses writes to this resource's state and content.
  *
  * Shown on `writable === false` and on nothing else, because that is the one
- * condition the store itself refuses the write on — so the mark means
- * immutable to everyone, from code and from a model alike.
+ * condition the store checks. It is deliberately NOT derived from
+ * `llmWritable`, which asks a different question (is a model offered a write
+ * tool) and is opt-in, so a mark taken from it would brand most of the tree
+ * and stop distinguishing anything. Nor from where the resource was loaded: a
+ * `references/` document and a document held under a seat's read-only grant
+ * are sealed two different ways and arrive as the same setting, and a
+ * folder-derived mark would be silent about the second.
  *
- * It is deliberately NOT derived from `llmWritable`, which asks a different
- * question (is a model offered a write tool) and is opt-in, so a mark taken
- * from it would brand most of the tree and stop distinguishing anything.
- * Nor from where the resource was loaded: a `references/` document and a
- * document held under a seat's read-only grant are sealed two different ways
- * and arrive as the same setting, and a folder-derived mark would be silent
- * about the second.
+ * **What it does not claim.** An earlier version said "immutable to everyone",
+ * which is false in two supported cases: a `writable: false` COLLECTION still
+ * permits `create` / `getOrCreate` / `delete`, none of which consult the flag,
+ * and the flag lives on the definition rather than the storage cell, so a
+ * seat's read-only grant (a shallow copy with both doors shut) leaves the same
+ * shared org or user cell writable through any other flow's own definition.
+ *
+ * The tooltip therefore scopes itself to what this handle refuses and stops
+ * there — a tooltip cannot carry the two exceptions without becoming a
+ * paragraph, and `debug-vs-client-state.md` is one click away and carries them
+ * correctly.
  */
 function ReadOnlyBadge() {
   return (
     <span
       className="flex items-center gap-0.5 rounded-full bg-slate-700/60 px-1.5 text-[9px] font-mono uppercase text-slate-200"
-      title="writable is false — the store refuses every write to this resource, from code and from a model alike"
+      title="writable is false — this handle refuses state and content writes, from your code and from a model alike. It is not a claim about the underlying data."
     >
       <Lock className="h-2.5 w-2.5" aria-hidden />
       read-only
@@ -183,7 +192,7 @@ function PermissionsLine({ entry }: { entry: DebugResourceEntry }) {
   return (
     <div
       className="text-[10px] font-mono text-slate-500"
-      title="writable decides whether this can be written at all; llmWritable only whether a model is offered a write tool"
+      title="writable decides whether the store accepts state and content writes through this handle; llmWritable only whether a model is offered a write tool"
     >
       {parts.join(" · ")}
     </div>

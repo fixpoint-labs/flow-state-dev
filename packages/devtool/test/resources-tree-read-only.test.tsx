@@ -115,6 +115,24 @@ describe("the mark is the seal", () => {
     expect(isMarked("scratchpad")).toBe(false);
   });
 
+  it("marks an external collection, which is unwritable without declaring it", () => {
+    // An external collection has no `writable` field to declare and is refused
+    // every mutator by the registry, so the server reports `writable: false`
+    // for it on structural grounds. The tree needs no second condition for
+    // that — the one predicate already covers it, which is the whole reason
+    // the fix went server-side rather than teaching this component a config
+    // taxonomy.
+    renderTree(
+      entry(
+        "externalPositions",
+        { writable: false },
+        { isCollection: true, collectionPattern: "positions/*", itemCount: 0 }
+      )
+    );
+
+    expect(isMarked("externalPositions")).toBe(true);
+  });
+
   it("BR-14 · marks a sealed collection, not its items one by one", () => {
     renderTree(
       entry(
@@ -161,6 +179,42 @@ describe("what the mark must not claim", () => {
     expect(() => renderTree(old)).not.toThrow();
     expect(isMarked("legacy-doc")).toBe(false);
     expect(screen.queryByText(/read-only/i)).toBeNull();
+  });
+});
+
+describe("what the mark says it means", () => {
+  it("BR-17 · scopes the claim to this handle, and does not promise immutability", () => {
+    // The claim the mark makes is the thing a reader acts on, so it has to be
+    // true in every supported case. "Immutable to everyone" is not:
+    //
+    //  - a `writable: false` COLLECTION still permits `create` and `delete`
+    //    (`resource-registry.ts` consults the flag in neither), and
+    //  - the flag is on the definition, not the storage cell, so a seat's
+    //    read-only grant — a shallow copy with both doors shut — leaves the
+    //    same shared org/user cell writable through another flow's own
+    //    definition.
+    //
+    // Asserted on the wording rather than left to review, because the
+    // overclaiming version read as more reassuring and survived one round.
+    renderTree(entry("handbook", { writable: false, llmWritable: false }));
+
+    const title = within(rowFor("handbook"))
+      .getByText(/read-only/i)
+      .closest("span")
+      ?.getAttribute("title") ?? "";
+
+    // What it must say: the subject of the refusal is THIS HANDLE, and what
+    // is refused is state and content writes. Matched on "this handle" rather
+    // than an exact phrase, so a reword survives but a change of subject does
+    // not — the first version of this test pinned the phrasing and went red on
+    // a shortening that was strictly better.
+    expect(title).toMatch(/this handle/i);
+    expect(title).toMatch(/state and content writes/i);
+    // What it must not say — the retracted claim, in the two shapes it took.
+    expect(title).not.toMatch(/immutable to everyone/i);
+    expect(title).not.toMatch(/refuses every write/i);
+    // ...nor any unqualified promise about the data behind the handle.
+    expect(title).not.toMatch(/cannot be written at all/i);
   });
 });
 

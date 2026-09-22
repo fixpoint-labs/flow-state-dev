@@ -585,11 +585,16 @@ export type DebugResourceEntry = {
   storagePrefix?: string;
   clientConfig: DebugResourceClientConfig;
   /**
-   * Whether the resource may be written at all — the setting the store itself
-   * refuses a write on. **Absent when the server declared nothing, and absent
-   * means writable**, which is the framework's default. A server that predates
-   * this sends neither this nor `llmWritable`, so treat absence as "unknown,
-   * assume open" rather than as `false`.
+   * Whether the store will accept a write to this resource's state or content.
+   * **Absent when nothing makes it unwritable, and absent means writable** —
+   * the framework's default. A server that predates this sends neither this
+   * nor `llmWritable`, so treat absence as "not reported" rather than as
+   * `false`.
+   *
+   * **`false` is narrower than "immutable".** It refuses state and content
+   * writes through this definition. A collection still permits `create` and
+   * `delete`, and another flow holding its own definition of a shared org or
+   * user resource can still write the same underlying cell.
    */
   writable?: boolean;
   /**
