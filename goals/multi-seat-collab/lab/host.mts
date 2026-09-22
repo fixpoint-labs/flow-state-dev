@@ -9,7 +9,7 @@
  *
  * ## The three things that are the lab's rather than the framework's
  *
- * 1. **The two kinds** (`kinds.mts`).
+ * 1. **The two kinds** (`workforce/flows/workers/`).
  * 2. **The desk -> seat map.** It is the app's, supplied by the caller and
  *    never read off the tree. That is what lets `swapped-desks` and `one-seat`
  *    move the routing while each seat's own `WORKER.md` still says where a row
@@ -30,13 +30,8 @@ import {
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { fileURLToPath } from "node:url";
-import {
-  PLANNER_KIND,
-  WORKER_KIND,
-  defineWorkerFlow,
-  definePlannerFlow,
-  type WorkerControl,
-} from "./kinds.mts";
+import { PLANNER_KIND, definePlannerFlow } from "./workforce/flows/workers/planner.mts";
+import { WORKER_KIND, defineWorkerFlow, type WorkerControl } from "./workforce/flows/workers/worker.mts";
 
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
