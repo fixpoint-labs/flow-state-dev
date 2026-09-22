@@ -1,0 +1,149 @@
+<svg viewBox="0 0 940 366" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Left, today: the human rail reads a roster and a board from the organization its own session binds to, a seat row opens into nothing, and the durable hire door sits apart behind an admin credential writing into a different organization — two organization boxes that never meet. Right, after: the seat row opens into a seat detail showing kind, skills, channels and boards, and the hire door has moved onto the rail's own flow, so the hire arrow and the read arrows land in one organization box.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-rail { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-org  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-new  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-off  { fill:none; stroke:var(--gone); stroke-width:1.3; stroke-dasharray:5 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; font-style:italic; }
+    .arr    { fill:none; stroke:var(--ink-2); stroke-width:1.3; }
+    .arr-w  { fill:none; stroke:var(--accent); stroke-width:1.8; }
+    .div    { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+  </style>
+
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/>
+    </marker>
+    <marker id="aw" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--accent)"/>
+    </marker>
+  </defs>
+
+  <g id="headings">
+    <text class="t-lbl" x="16" y="20">TODAY · TWO ORGANIZATIONS, AND THE RAIL CAN ONLY REACH ONE</text>
+    <text class="t-lbl" x="492" y="20">AFTER · ONE ORGANIZATION, BY THE SAME FRAMEWORK PATH</text>
+  </g>
+  <line class="div" x1="470" y1="8" x2="470" y2="358"/>
+
+  <g id="today-rail">
+    <rect class="n-rail" x="16" y="34" width="150" height="150" rx="5"/>
+    <text class="t-lbl" x="28" y="52">HUMAN RAIL</text>
+    <text class="t-b"   x="28" y="72">Channels</text>
+    <text class="t-b"   x="28" y="92">Seats</text>
+    <text class="t-s"   x="28" y="110">support.ada</text>
+    <rect class="n-off" x="24" y="120" width="134" height="52" rx="4"/>
+    <text class="t-gone" x="34" y="140">opens into</text>
+    <text class="t-gone" x="34" y="155">nothing</text>
+  </g>
+
+  <g id="today-panels">
+    <rect class="n-box" x="196" y="34" width="120" height="44" rx="5"/>
+    <text class="t-b" x="208" y="54">Roster</text>
+    <text class="t-s" x="208" y="69">reads</text>
+    <rect class="n-box" x="196" y="90" width="120" height="44" rx="5"/>
+    <text class="t-b" x="208" y="110">BoardColumns</text>
+    <text class="t-s" x="208" y="125">reads</text>
+  </g>
+
+  <g id="today-org-a">
+    <rect class="n-org" x="346" y="34" width="108" height="100" rx="5"/>
+    <text class="t-lbl" x="358" y="52">ORGANIZATION</text>
+    <text class="t-b"   x="358" y="72">the session's</text>
+    <text class="t-s"   x="358" y="92">roster rows</text>
+    <text class="t-s"   x="358" y="106">board rows</text>
+    <text class="t-s"   x="358" y="122">no new seat</text>
+  </g>
+
+  <g id="today-hire">
+    <rect class="n-box" x="196" y="212" width="160" height="62" rx="5"/>
+    <text class="t-lbl" x="208" y="230">DURABLE HIRE</text>
+    <text class="t-b"   x="208" y="249">workforce-admin</text>
+    <text class="t-s"   x="208" y="265">behind a bearer token</text>
+    <rect class="n-org" x="376" y="212" width="78" height="62" rx="5"/>
+    <text class="t-lbl" x="386" y="230">ORG</text>
+    <text class="t-b"   x="386" y="250">the</text>
+    <text class="t-b"   x="386" y="265">token's</text>
+    <path class="arr" d="M356 243 L370 243" marker-end="url(#a)"/>
+    <rect class="n-off" x="16" y="212" width="150" height="62" rx="4"/>
+    <text class="t-gone" x="26" y="234">the rail cannot</text>
+    <text class="t-gone" x="26" y="249">reach this door,</text>
+    <text class="t-gone" x="26" y="264">and never sees it</text>
+  </g>
+
+  <g id="today-arrows">
+    <path class="arr" d="M166 62 L190 58" marker-end="url(#a)"/>
+    <path class="arr" d="M166 104 L190 110" marker-end="url(#a)"/>
+    <path class="arr" d="M316 58 L340 62" marker-end="url(#a)"/>
+    <path class="arr" d="M316 110 L340 104" marker-end="url(#a)"/>
+    <text class="t-gone" x="196" y="296">A hire lands where the rail does not read.</text>
+  </g>
+
+  <g id="after-rail">
+    <rect class="n-rail" x="492" y="34" width="132" height="150" rx="5"/>
+    <text class="t-lbl" x="504" y="52">HUMAN RAIL</text>
+    <text class="t-b"   x="504" y="72">Channels</text>
+    <text class="t-b"   x="504" y="92">Seats</text>
+    <text class="t-s"   x="504" y="110">support.ada</text>
+    <rect class="n-new" x="500" y="120" width="116" height="52" rx="4"/>
+    <text class="t-b" x="510" y="140">Seat detail</text>
+    <text class="t-s" x="510" y="157">kind · skills</text>
+  </g>
+
+  <g id="after-detail">
+    <rect class="n-new" x="652" y="34" width="132" height="150" rx="5"/>
+    <text class="t-lbl" x="664" y="52">ONE SEAT</text>
+    <text class="t-s"   x="664" y="74">kind</text>
+    <text class="t-s"   x="664" y="92">skills</text>
+    <text class="t-s"   x="664" y="110">channels</text>
+    <text class="t-s"   x="664" y="128">boards</text>
+    <text class="t-s"   x="664" y="154">one read each,</text>
+    <text class="t-s"   x="664" y="168">no client join</text>
+  </g>
+
+  <g id="after-org">
+    <rect class="n-org" x="812" y="34" width="112" height="240" rx="5"/>
+    <text class="t-lbl" x="824" y="52">ORGANIZATION</text>
+    <text class="t-b"   x="824" y="72">the session's</text>
+    <text class="t-s"   x="824" y="94">roster rows</text>
+    <text class="t-s"   x="824" y="110">board rows</text>
+    <text class="t-s"   x="824" y="126">seat rows</text>
+    <text class="t-s"   x="824" y="142">channel rows</text>
+    <text class="t-s"   x="824" y="158">memberships</text>
+    <text class="t-b"   x="824" y="186">the new seat,</text>
+    <text class="t-b"   x="824" y="202">written here</text>
+    <text class="t-s"   x="824" y="224">still here after</text>
+    <text class="t-s"   x="824" y="240">a restart</text>
+  </g>
+
+  <g id="after-hire">
+    <rect class="n-new" x="492" y="212" width="292" height="62" rx="5"/>
+    <text class="t-lbl" x="504" y="230">DURABLE HIRE · THE SAME STORED CONTRACT</text>
+    <text class="t-b"   x="504" y="249">an action on the rail's own flow</text>
+    <text class="t-s"   x="504" y="265">organization from the principal, never the body</text>
+  </g>
+
+  <g id="after-arrows">
+    <path class="arr" d="M624 104 L646 104" marker-end="url(#a)"/>
+    <path class="arr-w" d="M784 104 L806 104" marker-end="url(#aw)"/>
+    <path class="arr-w" d="M784 243 L800 243 L800 200 L806 200" marker-end="url(#aw)"/>
+    <text class="t-s" x="492" y="296">Hire and read are the same organization because they resolve it the same way.</text>
+  </g>
+
+  <g id="footnote">
+    <text class="t-s" x="16" y="330">With no viewer identity configured that organization is the default one — the limit FIX-1503 lifts,</text>
+    <text class="t-s" x="16" y="346">and the one thing it cannot do any more is disagree with itself.</text>
+  </g>
+</svg>
