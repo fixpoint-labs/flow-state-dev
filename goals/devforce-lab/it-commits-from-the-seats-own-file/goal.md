@@ -25,7 +25,7 @@ code, before the run starts.
    commit ahead of `main`.
 3. The board row settles `completed`.
 
-**Anti-game:** a model writes a plausible `GREETING.md` without reading anything, so **the file the
+**Anti-game:** a model writes a plausible greeting module without reading anything, so **the file the
 run produced is not graded and must not be**. Only the prompt is evidence that a file was read, and
 it is read off the block input the agent actually received — a `.tap()` in front of the agent —
 rather than by re-running this check's own copy of the prompt builder, which would grade a string

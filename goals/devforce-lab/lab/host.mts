@@ -4,10 +4,11 @@
  * and the same wiring, and differ by one block.
  *
  * What `openLab` does, in order, and nothing else: read the tree, build the two
- * kinds, hire, register, hand back the handles. Every convention file it reads
- * is found by walking from one root; no file is named in this code.
+ * kinds, hire, register, open the declared channels when asked, hand back the
+ * handles. Every convention file it reads is found by walking from one root; no
+ * file is named in this code.
  *
- * Three pieces here are the lab's rather than the framework's, each because the
+ * Four pieces here are the lab's rather than the framework's, each because the
  * framework has no opinion at that spot:
  *
  * 1. **The board and its address map** (`board.mts`). The loader walks four
@@ -20,6 +21,10 @@
  *    wrong seat and watch the negative claim go red.
  * 3. **The harness slot**, handed to the `coder` kind. The one expression that
  *    differs between this lab's two checks.
+ * 4. **The channel's address map** (`notify.mts`), and whether a channel is
+ *    opened at all. The framework keeps the member walk and runs a notify block
+ *    once per declared member; which member resolves to which seat is the app's,
+ *    because the dispatch seam refuses a target read out of stored data.
  *
  * **Not `workforce.gen.ts`.** `fsdev gen` renders that file for an app
  * directory, and `goals/` is not one. The kinds are hand-assembled here, which
@@ -30,7 +35,15 @@
 
 import { createFlowState, runAction } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { hireWorkforce, resourcesFromDocs } from "@flow-state-dev/workforce";
+import {
+  CHANNEL_KIND,
+  channelInstances,
+  defineChannelFlow,
+  hireWorkforce,
+  openChannels,
+  resourcesFromDocs,
+  type ChannelTranscriptLine,
+} from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
   type DeclaredRoster,
@@ -39,7 +52,7 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { fileURLToPath } from "node:url";
 import { LEDGER_ID } from "./board.mts";
 import { INSPECT_ENTRY } from "./seat-config.mts";
-import { implementPhase } from "./phase.mts";
+import { defineImplementPhase } from "./phase.mts";
 import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
@@ -48,6 +61,7 @@ import {
   defineEmWorkerFlow,
 } from "./workforce/flows/workers/em.mts";
 import type { HarnessStub } from "./harness-stub.mts";
+import { labNotify, type NotifyLog } from "./notify.mts";
 
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
@@ -101,6 +115,30 @@ export interface OpenLabOptions {
   root?: string;
   /** Silence the engine's own logging. */
   logger?: unknown;
+  /**
+   * Open the channels the tree declares, and address the fan-out.
+   *
+   * **Absent means absent**, and that is the shape the two existing checks
+   * keep: no channel instance is registered, `openChannels` is not called, and
+   * the lab behaves exactly as it did before the channel door existed. An
+   * entry that is only there to do nothing is worse than none — which is how
+   * `defineChannelFlow`'s own notify slot works, and the reason this is an
+   * option rather than a widening of every check that imports `openLab`.
+   *
+   * `addresses` is member id → hired seat instance id. A declared member absent
+   * from it is recorded in `log.skipped` and never dispatched to.
+   */
+  channels?: {
+    addresses: Record<string, string>;
+    log: NotifyLog;
+  };
+  /**
+   * Make the brief's acceptance check part of the done-condition (BR-4).
+   *
+   * Absent for the two older checks, whose scripted stub writes a file the
+   * current brief does not name. See `phase.mts`.
+   */
+  requireAcceptance?: boolean;
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -143,6 +181,30 @@ export interface Lab {
   drain(seatId: string): Promise<{ output?: unknown; error?: string }>;
   /** Read one row out of the durable ledger. */
   row(taskId: string): Promise<Task | undefined>;
+  /**
+   * Every row on the feature board, by ledger key.
+   *
+   * **Presence is not exclusivity.** BR-7 says a post files *exactly one* row,
+   * and a check that looks up the id it expects can only ever confirm the
+   * first half — a regression that filed a second row under another id would
+   * stay green. This enumerates, so the claim can be graded as written.
+   */
+  rows(): Promise<Record<string, Task>>;
+  /**
+   * The channel the tree declared, once `channels` was asked for.
+   *
+   * The id is minted from where `CHANNEL.md` sits, never named in this code.
+   */
+  channelId?: string;
+  /**
+   * Post one line on that channel, as an operator would.
+   *
+   * The whole of the channel leg's front door: nothing else in this lab files a
+   * row when `channels` is on. Absent when no channel was opened.
+   */
+  post?(body: string): Promise<{ output?: unknown; error?: string }>;
+  /** Read the channel's transcript back. Absent when no channel was opened. */
+  transcript?(): Promise<ChannelTranscriptLine[]>;
   /**
    * Every child session the EM seat's drain started, with the flow it was
    * attributed to — the **dispatch record**.
@@ -203,7 +265,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const coderKind = defineCoderWorkerFlow({
     harness: options.harness,
     workspace: options.workspace,
-    phase: implementPhase,
+    phase: defineImplementPhase({ requireAcceptance: options.requireAcceptance === true }),
     runTimeoutMs: options.runTimeoutMs ?? 60_000,
     resources,
   });
@@ -218,8 +280,27 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     hired.map((seat) => [seat.id, seat]),
   );
 
+  // The channel instances, when the caller asked for a channel door. One
+  // instance per DISTINCT kind, never one per record — the binder's contract,
+  // composed rather than restated. The built-in kind is replaced wholesale with
+  // one carrying this lab's notify slot, because a slot cannot be added to a
+  // kind after it is built.
+  const channelKind =
+    options.channels === undefined
+      ? undefined
+      : defineChannelFlow({ notify: labNotify(options.channels) as never });
+  const instances =
+    channelKind === undefined
+      ? []
+      : channelInstances(roster.channels, {
+          kinds: { [CHANNEL_KIND]: channelKind as never },
+        });
+
   const state = createFlowState({
-    flows: Object.fromEntries(hired.map((seat) => [seat.id, seat])),
+    flows: {
+      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
+      ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
+    },
     stores: { default: { primary: options.stores } },
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
   } as never);
@@ -239,6 +320,86 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const sessionFor = (seatId: string): string => `s_${seatId.replace(/\./g, "_")}`;
 
   /**
+   * The session client `openChannels` is handed.
+   *
+   * Direct store writes rather than the HTTP router: the route is
+   * fire-and-forget and this needs the session to exist before the next line.
+   *
+   * **`openChannels` takes no `orgId`, and no wrapper is written here.** Its
+   * declared `createSession` has no such field and never did — the binder gave
+   * up the authority to choose an organization, and the server-created session
+   * carries one from the verified principal instead (FIX-1442). This stand-in
+   * for the session route binds what that route binds, which is the lab's own
+   * org, and is the only reason an `orgId` is written at all.
+   *
+   * Shaped after `goals/manager-queue-lab/lab/host.mts`, which is the current
+   * reference. `goals/pentest-lab/lab/host.mts` still carries an `omitOrgWrap`
+   * control and a header describing FIX-1412 as open; both are Done, and that
+   * file reads as current practice without being it.
+   */
+  const sessionClient = {
+    createSession: async (create: {
+      flowKind: string;
+      userId: string;
+      sessionId?: string;
+      description?: string;
+      state?: Record<string, unknown>;
+    }) => {
+      const id = String(create.sessionId);
+      if ((await runtime.stores.session.get(id)) !== undefined) {
+        throw Object.assign(new Error(`Session "${id}" exists`), { status: 409 });
+      }
+      const now = Date.now();
+      await runtime.stores.session.set(
+        id,
+        {
+          id,
+          flowKind: create.flowKind,
+          flowId: create.flowKind,
+          userId: create.userId,
+          orgId: LAB_ORG_ID,
+          description: create.description,
+          state: create.state ?? {},
+          lineageId: `lin_${id}`,
+          version: 0,
+          createdAt: now,
+          updatedAt: now,
+          journal: [],
+        } as never,
+        "absent",
+      );
+      return { id };
+    },
+    getSession: async (sessionId: string) => {
+      const found = (await runtime.stores.session.get(sessionId)) as
+        | {
+            flowKind: string;
+            flowId?: string;
+            userId: string;
+            state?: Record<string, unknown>;
+          }
+        | undefined;
+      return {
+        flowKind: String(found?.flowKind),
+        flowId: found?.flowId,
+        userId: String(found?.userId),
+        state: found?.state,
+      };
+    },
+    deleteSession: async (sessionId: string) => {
+      await runtime.stores.session.delete(sessionId);
+    },
+  };
+
+  if (channelKind !== undefined) {
+    await openChannels(roster.channels, { client: sessionClient, userId: LAB_USER_ID });
+  }
+
+  const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
+  /** The one channel this tree declares. Its id is its session id. */
+  const channelId = roster.channels[0]?.id;
+
+  /**
    * Run one action and hand back what it returned.
    *
    * `runAction` rather than the HTTP route, for one reason: the route is
@@ -246,21 +407,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
    * output, so reading an action's result off it is not a thing that works.
    * This is the same entry the route dispatches into.
    */
-  const act = async (
-    seatId: string,
+  const actOn = async (
+    flow: unknown,
+    sessionId: string,
     actionName: string,
     input: unknown,
   ): Promise<{ output?: unknown; error?: string }> => {
-    const seat = seats[seatId];
-    if (seat === undefined) throw new Error(`no seat "${seatId}" was hired`);
     try {
       const result = (await runAction({
-        flow: seat,
+        flow,
         actionName,
         input,
         userId: LAB_USER_ID,
         orgId: LAB_ORG_ID,
-        sessionId: sessionFor(seatId),
+        sessionId,
         stores: runtime.stores,
         runtimeConfig: { ...runtime.runtimeConfig },
       } as never)) as { output?: unknown; error?: unknown };
@@ -275,12 +435,36 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     }
   };
 
+  const act = async (
+    seatId: string,
+    actionName: string,
+    input: unknown,
+  ): Promise<{ output?: unknown; error?: string }> => {
+    const seat = seats[seatId];
+    if (seat === undefined) throw new Error(`no seat "${seatId}" was hired`);
+    return await actOn(seat, sessionFor(seatId), actionName, input);
+  };
+
   return {
     roster: { ...roster, workers },
     seats,
 
     file: (seatId, input) => act(seatId, FILE_ENTRY, input),
     drain: (seatId) => act(seatId, DRAIN_ENTRY, {}),
+
+    ...(channelInstance === undefined || channelId === undefined
+      ? {}
+      : {
+          channelId,
+          post: (body: string) => actOn(channelInstance, channelId, "post", { body }),
+          transcript: async (): Promise<ChannelTranscriptLine[]> => {
+            const result = await actOn(channelInstance, channelId, "read", {});
+            if (result.error !== undefined) {
+              throw new Error(`reading the channel was refused — ${result.error}`);
+            }
+            return (result.output as { transcript: ChannelTranscriptLine[] }).transcript;
+          },
+        }),
 
     row: async (taskId: string) => {
       const record = await runtime.stores.resourceState.get(
@@ -289,6 +473,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         `${LEDGER_ID}/${taskId}`,
       );
       return record?.state as Task | undefined;
+    },
+
+    rows: async () => {
+      const found = await runtime.stores.resourceState.getByPrefix(
+        "user",
+        LAB_USER_ID,
+        `${LEDGER_ID}/`,
+      );
+      return Object.fromEntries(
+        Object.entries(found).map(([key, record]) => [
+          key,
+          (record as { state: unknown }).state as Task,
+        ]),
+      );
     },
 
     dispatched: async (seatId: string) => {

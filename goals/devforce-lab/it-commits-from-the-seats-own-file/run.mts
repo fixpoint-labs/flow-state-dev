@@ -21,7 +21,7 @@
  *   of the scratch repository with git.
  *
  * It does **not** grade what the run wrote. A model writes a plausible
- * `GREETING.md` without reading anything, so the file's contents are not
+ * greeting module without reading anything, so the file's contents are not
  * evidence that a document was read — the prompt is. That asymmetry is the
  * whole reason the two halves exist.
  *
