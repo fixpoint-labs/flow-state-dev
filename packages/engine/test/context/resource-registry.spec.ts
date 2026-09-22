@@ -1232,6 +1232,39 @@ describe("createScopeResourceRegistry — collections", () => {
     await expect((registry as any).items.delete("missing")).rejects.toThrow(/read-only/);
   });
 
+  it("create({ replace: true }) on a writable: false collection does not overwrite a concurrent create (FIX-1510)", async () => {
+    // `exists` is this context's cache. A replace that only checks that view
+    // still writes at "any" and smashes a row another context created in the
+    // window — the same overwrite setState refuses. Intent "create" keeps
+    // populating a missing key without that bypass.
+    const nsConfig = makeCollectionConfig("items/*", {
+      writable: false,
+      stateSchema: z.object({ v: z.number() }).passthrough()
+    });
+    const state: Record<string, JsonObject> = {};
+    const providers = makeStateProviders(state, {
+      beforeFirstPersist: (rows) => {
+        rows.set("items/doc1", { state: { v: 1 }, version: 1, deleted: false });
+      }
+    });
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: { items: nsConfig },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      mutateResourceKey: providers.mutateResourceKey,
+      deleteResourceKey: providers.deleteResourceKey,
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {}
+    });
+
+    await expect(
+      (registry as any).items.create("doc1", { v: 42 }, { replace: true })
+    ).rejects.toThrow(/already exists/);
+    expect(providers.rows.get("items/doc1")?.state).toEqual({ v: 1 });
+  });
+
   it("accepts an instance write on a collection that does not set writable: false (FIX-1261)", async () => {
     // The complementary half: omitting the flag (the normal collection)
     // must still persist. A guard that refused every collection would

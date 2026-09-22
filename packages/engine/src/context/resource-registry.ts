@@ -1449,7 +1449,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           await options.mutateResourceKey(
             storageKey,
             () => state,
-            { intent: replace ? "replace" : "create" }
+            // writable: false never uses replace intent. The cache-miss
+            // branch above stays an add; "create" is terminal on a live row
+            // so a concurrent instance cannot be overwritten.
+            { intent: replace && nsConfig.writable !== false ? "replace" : "create" }
           );
 
           lruAccess.set(storageKey, Date.now());
