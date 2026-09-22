@@ -292,8 +292,9 @@ get "unknown resource", which reads like the rows are missing rather than like t
 wrong. `roster` resolves. The collection's `workforce/roster/*` **pattern** is its storage keys
 and is a different thing.
 
-**`S8` must bind the shell's session to the viewer's organization, or the panels are correct and
-empty.** The rows are organization-scoped, so a session reads the organization it is bound to —
+**The shell's session must be bound to the viewer's organization, or the panels are correct and
+empty — and binding it is [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503)'s, not
+`S8`'s.** The rows are organization-scoped, so a session reads the organization it is bound to —
 and a session binds to the organization of its resolved principal, or to the default one when
 there is no principal (`packages/engine/src/routes/session-routes.ts:235`). Two deployments
 therefore behave differently, and only one of them is fine by accident:

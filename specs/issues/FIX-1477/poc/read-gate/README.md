@@ -16,8 +16,10 @@ and carry its credential or the panel renders correct and empty. That requiremen
 `S8` cannot satisfy it in this repository — there is no credential here that represents a viewer,
 so it is blocked on [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) and ships as a
 documented limit ([PLAN.md → Blocked on](../../PLAN.md#blocked-on)).
-[V13](../../PLAN.md#checks) pins the org-binding mechanism, not a production credential. What the refutation actually moved is the **wall**: a
-per-collection read permission, which stops both panels with or without a credential.
+No check in this issue covers that binding: the one that did required a viewer's credential,
+which nothing here can produce, so it moved to FIX-1503 with the work
+([PLAN.md → Checks](../../PLAN.md#checks)). What the refutation actually moved is the **wall**:
+a per-collection read permission, which stops both panels with or without a credential.
 
 | File | The claim it makes falsifiable |
 |---|---|
