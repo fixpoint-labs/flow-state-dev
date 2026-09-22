@@ -30,7 +30,7 @@ import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LAB_USER_ID, hireLab, readLabTree } from "./host.mts";
-import type { WorkerControl } from "./kinds.mts";
+import type { WorkerControl } from "./workforce/flows/workers/worker.mts";
 
 /** Desk key -> seat id. The app's wiring — see the module header. */
 export const ROUTES: Readonly<Record<string, string>> = {

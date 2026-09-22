@@ -40,7 +40,7 @@ import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts
 import { diffReport } from "../lab/diff-check.mts";
 import { LAB_USER_ID, readLabTree } from "../lab/host.mts";
 import { Scenario, actionOutputOf, serveLab, terminationReasonOf, type ActResult } from "../lab/run-scenario.mts";
-import { DRAIN_ENTRY, type WorkLine } from "../lab/kinds.mts";
+import { DRAIN_ENTRY, type WorkLine } from "../lab/workforce/flows/workers/worker.mts";
 
 type Fixture = {
   piece: { goal: string; desk: string; asks: string; then: { goal: string; desk: string } };

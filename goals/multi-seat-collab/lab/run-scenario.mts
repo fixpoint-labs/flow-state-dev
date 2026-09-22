@@ -27,14 +27,13 @@ import { join } from "node:path";
 import { openChannels } from "@flow-state-dev/workforce";
 import { REPO_ROOT, intentFreeEnv } from "../../lib/index.mts";
 import { LAB_USER_ID, type LabTree } from "./host.mts";
+import { FILE_ENTRY, type FileInput } from "./workforce/flows/workers/planner.mts";
 import {
   ANSWER_ENTRY,
   DRAIN_ENTRY,
-  FILE_ENTRY,
   workLineSchema,
-  type FileInput,
   type WorkLine,
-} from "./kinds.mts";
+} from "./workforce/flows/workers/worker.mts";
 
 /** The config `fsdev dev` is pointed at. */
 export const LAB_CONFIG = join(REPO_ROOT, "goals", "multi-seat-collab", "lab", "fsdev.config.mts");

@@ -1,18 +1,12 @@
 /**
- * The lab's two kinds — `planner` files, `worker` drains. The framework has no
- * opinion about either; both are this lab's.
+ * The `worker` kind — one file under `workforce/flows/workers/`, basename =
+ * the kind id every worker `WORKER.md` names in its `flow:` line. Both worker
+ * seats are hired onto it.
  *
- * Every shape here is taken from a shipped sibling rather than invented:
- *
- * - the planner's one dispatch into the channel's own `fileTask` door is
- *   `goals/channel-boards/it-runs-a-row-a-file-declared-board-holds`' `em`
- *   kind;
- * - the worker's same-flow hand-off with a desk-narrowed claim is
- *   `goals/manager-queue-lab/lab/workforce/flows/workers/builder.mts`.
- *
- * What is new here is the one thing this proof is about: a row that stops to
- * ask a person, and a row that, in finishing, files the next one for another
- * desk.
+ * The same-flow hand-off with a desk-narrowed claim is taken from
+ * `goals/manager-queue-lab/lab/workforce/flows/workers/builder.mts`. What is
+ * new here is the one thing this proof is about: a row that stops to ask a
+ * person, and a row that, in finishing, files the next one for another desk.
  *
  * ## The routing map is an argument, never the tree
  *
@@ -32,6 +26,10 @@
  * as its `feedback` — so the body reads the row and parks only while no answer
  * is on it. `GOAL_CONTROL=ignore-the-answer` swaps that one decision for the
  * wrong one.
+ *
+ * Nothing under `flows/` is read as a convention file — the loader walks
+ * `workers/`, `skills/`, `resources/` and `channels/` under a team and ignores
+ * the rest, which is why the code side can sit inside the tree.
  */
 
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -42,25 +40,18 @@ import type {
   TaskDispatcher,
   TaskWorkerInput,
 } from "@flow-state-dev/orchestration/tasks";
-import {
-  CHANNEL_KIND,
-  workerConfigSchema,
-  type ChannelBoardCollection,
-} from "@flow-state-dev/workforce";
+import { workerConfigSchema, type ChannelBoardCollection } from "@flow-state-dev/workforce";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
+import { pieceInputSchema } from "../piece.mts";
 
-/** The kind every worker `WORKER.md` names in its `flow:` line. */
+/** The kind every worker `WORKER.md` names in its `flow:` line. **Pinned** — the basename must match. */
 export const WORKER_KIND = "worker";
-/** The kind the planner's `WORKER.md` names. */
-export const PLANNER_KIND = "planner";
 
 /** A worker seat's drain: work this seat's share of the board. */
 export const DRAIN_ENTRY = "drain";
 /** The person's door on a worker seat — answer a parked row and drain it. */
 export const ANSWER_ENTRY = "answer";
-/** The planner's one action. */
-export const FILE_ENTRY = "file";
 /** The task entry the same-flow hand-off addresses. Reachable only through the claim gate. */
 export const WORK_ENTRY = "work";
 
@@ -75,18 +66,6 @@ export const WORK_ENTRY = "work";
  *   still passes; only the screen that should show *why* goes red (BR-11).
  */
 export type WorkerControl = "ignore-the-answer" | "silent-park";
-
-/** One unit of work, as the planner files it and the row carries it. */
-export const pieceInputSchema = z.object({
-  /** What only a person can settle before this row can finish. */
-  asks: z.string().min(1).optional(),
-  /** The work this row implies for another desk, filed by whoever finishes it. */
-  then: z.object({ goal: z.string().min(1), desk: z.string().min(1) }).optional(),
-  /** On a row filed by a finishing seat: the row it follows. */
-  follows: z.string().min(1).optional(),
-});
-
-export type PieceInput = z.infer<typeof pieceInputSchema>;
 
 /**
  * One line the work leaves behind — a real file, outside the board entirely.
@@ -296,62 +275,5 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
       },
     },
     task: { actions: { [WORK_ENTRY]: { block: runRow } } },
-  } as never);
-}
-
-export interface PlannerFlowOptions {
-  /** The channel's id — the session its `fileTask` door runs in. */
-  channelId: string;
-  /** The board's LOCAL name, as `CHANNEL.md` wrote it. */
-  boardName: string;
-}
-
-/** What the planner's `file` takes: one piece of work, and the desk it is for. */
-export const fileInputSchema = z.object({
-  goal: z.string().min(1),
-  /** A desk key. Omitted on purpose to file a row for nobody (BR-5). */
-  desk: z.string().min(1).optional(),
-  asks: z.string().min(1).optional(),
-  then: z.object({ goal: z.string().min(1), desk: z.string().min(1) }).optional(),
-  maxAttempts: z.number().int().min(1).optional(),
-});
-
-export type FileInput = z.infer<typeof fileInputSchema>;
-
-/**
- * Build the `planner` kind: one dispatch into the channel's own `fileTask`.
- * No board, no collection, no drain.
- */
-export function definePlannerFlow(options: PlannerFlowOptions) {
-  return defineFlow({
-    kind: PLANNER_KIND,
-    cardinality: "collection",
-    configSchema: workerConfigSchema(),
-    actions: {
-      [FILE_ENTRY]: {
-        block: dispatcher({
-          name: "planner-file-row",
-          flowKind: CHANNEL_KIND,
-          action: "fileTask",
-          inputSchema: fileInputSchema,
-          session: { id: () => options.channelId },
-          payload: (input: FileInput, ctx: BlockContext) => {
-            const piece: PieceInput = {
-              ...(input.asks === undefined ? {} : { asks: input.asks }),
-              ...(input.then === undefined ? {} : { then: input.then }),
-            };
-            return {
-              board: options.boardName,
-              goal: input.goal,
-              ...(input.desk === undefined ? {} : { assignee: input.desk }),
-              ...(input.maxAttempts === undefined ? {} : { maxAttempts: input.maxAttempts }),
-              ...(Object.keys(piece).length === 0 ? {} : { input: piece }),
-              author: String((ctx.flow as { id?: string }).id ?? ""),
-            };
-          },
-        }),
-        description: "File one row onto the channel's board, naming the desk it is for.",
-      },
-    },
   } as never);
 }
