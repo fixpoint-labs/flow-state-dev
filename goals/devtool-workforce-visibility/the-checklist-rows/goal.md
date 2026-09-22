@@ -46,7 +46,7 @@ The view-side red has no named control, because producing it means changing the 
 
 ## Findings
 
-- **The Reason column is legible at 1600px and a horizontal scroll away below that.** The Goal column is up to 28rem wide and sits first, so on this hire the Reason cell starts about 930px into the page. At 1600px, 180px of it shows and the whole reason is on its title. At 1440px, 20px shows. At 1280px, none does, and neither does the Status pill. The Tasks pane scrolls horizontally, so the rest is reachable without an expander, and the checklist's wording is met. A reader on a laptop-width window still has to scroll to learn why a row is parked. This is recorded as a finding, not as a red row.
+- **The Reason column is legible at 1600px and a horizontal scroll away below that.** The Goal column is up to 28rem wide and sits first, so on this hire the Reason cell starts about 930px into the page. At 1600px, 180px of it shows and the whole reason is on its title. At 1440px, 20px shows. At 1280px, none does, and neither does the Status pill. The Tasks pane scrolls horizontally, so the rest is reachable without an expander, and the checklist's wording is met. A reader on a laptop-width window still has to scroll to learn why a row is parked. This is recorded as a finding, not as a red row, and filed as [FIX-1523](https://linear.app/fixpoint-labs/issue/FIX-1523), which proposes putting Reason ahead of Goal or narrowing Goal.
 
 ## Verdict log
 
