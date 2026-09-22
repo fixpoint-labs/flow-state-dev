@@ -414,6 +414,52 @@ The package brings no CSS framework and no icon set. Style the rows by setting t
 
 Before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. There is no `orgId` prop.
 
+### Roster
+
+`Roster` lists the seats hired in an organization. Reach for it when your app has a workforce and you want a standing panel showing who is on it.
+
+```tsx
+import { Roster } from "@flow-state-dev/react";
+
+<Roster sessionId={sessionId} collectionRef="roster" problems={bootProblems} />
+```
+
+The seats come from the standing roster collection, which your session's flow declares. `collectionRef` is the key it is declared under, and it defaults to `roster`. That key is a single path segment, so it carries no slash — the collection's own storage pattern is a different thing and does contain one.
+
+There is no organization filter, and that is deliberate. The collection is organization-scoped on the server, so the read already resolves against the organization the session belongs to. A prop would be a second opinion about a boundary the server holds, and one that quietly did nothing would be worse than none.
+
+`problems` is the list of seats a boot reload could not restore. Reloading a roster hands back the seats it made and a named entry for each row it could not, and that second list only exists on the server, so pass it down. `Roster` shows the count and the entries. A roster that reported only what worked would look complete when it was not.
+
+A seat row carries its id, the flow kind it was hired into, and its instructions. It does not carry the settings bag the seat was configured with; the collection withholds that from clients on purpose.
+
+### BoardColumns
+
+`BoardColumns` draws one task board as columns, grouped by status.
+
+```tsx
+import { BoardColumns } from "@flow-state-dev/react";
+
+<BoardColumns sessionId={sessionId} boardRef="eng.feature.triage" />
+```
+
+`boardRef` is the key the session's flow declares that board's ledger under, which for a channel board is the minted `<channelId>.<boardName>`. Like the roster's ref it is one path segment.
+
+The columns are the task statuses the substrate already has, in the order work moves through them. No new vocabulary is invented for the UI. A row whose status the component does not recognise gets a column of its own at the end rather than vanishing, so a card is never grouped into nowhere.
+
+An empty board says why it is likely empty instead of spinning. Boards are wired to a seat explicitly, so a board with nothing on it is usually a board nothing drains yet — and a spinner there tells someone to wait for something that is not coming. Loading and empty are two different renders.
+
+A card carries what a card shows: the task's id, title, goal, status, assignee, priority, attempts and timestamps. The execution coordinates a running board keeps — who claimed a row, its lease, its retry ledger, its write log — stay on the server.
+
+### Transport and theming for both panels
+
+Both read through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, which is the unauthenticated case.
+
+Each reads one page. `limit` sets how large. Neither pages further, because both draw a standing list someone scans rather than a feed they walk through.
+
+A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
+
+Style them by setting the `--fsd-panel-*` CSS custom properties on any ancestor. Fill in your own affordances through `slots`: `rowTrailing` and `empty` on `Roster`; `card`, `columnHeader` and `empty` on `BoardColumns`.
+
 ### Presentational components moved to `@flow-state-dev/ui`
 
 `ModelBadge`, `AuditAnnotation`, and `AuditAnnotationProgress` are no longer exported from this package. `ModelBadge` and `AuditAnnotation` live in the [`@flow-state-dev/ui`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/ui) registry (see [Flow-Aware Components](https://flow-state.dev/docs/ui/flow-aware-components)), where you own the source after installing it. Install `ModelBadge` with `fsdev ui add model-badge` and import it from `@/components/flow-state/model-badge`. Audit annotations render through the ui `audit-annotation` component, fed by the `responseAuditor` pattern's emitted component item, so no per-item wiring is needed. `AuditAnnotationProgress` had no consumers and was removed outright; there is no replacement.

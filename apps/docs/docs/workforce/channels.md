@@ -110,6 +110,20 @@ A channel holding no board has no `boards` key and answers neither action.
 
 Naming a board the channel does not hold is refused by name, `board-not-declared`, and the message lists the boards it does hold. Naming a board another channel declared is refused the same way: a channel reaches its own boards and no others.
 
+### Showing a board on screen
+
+`readBoard` answers a model. A screen reads the ledger itself, because an action's return value never reaches the browser.
+
+The ledger is readable from a session whose flow declares it, under its minted id:
+
+```tsx
+import { BoardColumns } from "@flow-state-dev/react";
+
+<BoardColumns sessionId={sessionId} boardRef="engineering.incidents.followups" />
+```
+
+Board ledgers are organization-scoped, so that read resolves against the organization the reading session belongs to and returns no other organization's rows. What crosses is narrower than `readBoard`'s projection: the fields a card shows, without the task's `input`, `output`, `metadata` or `context`, and without the execution coordinates and write provenance `readBoard` already withholds.
+
 ### Working the rows
 
 The channel keeps the ledger. It runs nothing. A worker that claims rows declares the same board and drains it:

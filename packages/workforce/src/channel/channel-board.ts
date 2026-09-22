@@ -144,6 +144,51 @@ export function channelBoardNameProblem(name: unknown): string | undefined {
 const ledgers = new Map<string, ChannelBoardCollection>();
 
 /**
+ * The fields a board row is published to a **browser** with — an allowlist, on
+ * the same terms and for the same reason as `channelBoardRowSchema`, which is
+ * the model-facing sibling of this list.
+ *
+ * Naming what goes out rather than what stays in is what makes a later `Task`
+ * field private by default; an omit-list would publish each new one until
+ * somebody noticed. `claimedBy`, `leaseUntil`, `leaseDurationMs`,
+ * `retryLedger`, `abandonments`, `incarnationId`, `revision`, `writeLog` and
+ * `writeLogTruncated` are absent here for the reason they are absent there:
+ * they are execution coordinates, substrate bookkeeping and write provenance,
+ * not what the work is.
+ *
+ * **Narrower than the model's list, deliberately.** A card in a column renders
+ * a title, a status, who holds it and how it is going. It never renders a
+ * task's `input`, `output`, `metadata` or `context`, and those are the fields
+ * that carry arbitrary worker payloads — so a browser, which is a wider
+ * audience than one model's context, does not receive them. That relationship
+ * is asserted rather than described: `cross-org-collection-read.test.ts` fails
+ * if this list ever stops being a subset of `channelBoardRowSchema`'s, which is
+ * what would happen if an execution coordinate were added here.
+ *
+ * It cannot simply re-use `channelBoardRowSchema` because that lives in
+ * `channel-flow.ts`, which imports this module — the dependency runs that way
+ * round, so the shared list would have to move rather than be imported, and
+ * moving it would change what the model-facing action publishes.
+ */
+export const CHANNEL_BOARD_CLIENT_FIELDS = [
+  "id",
+  "title",
+  "goal",
+  "status",
+  "assignee",
+  "priority",
+  "attempts",
+  "maxAttempts",
+  "deps",
+  "labels",
+  "error",
+  "createdAt",
+  "updatedAt",
+  "startedAt",
+  "completedAt"
+] as const;
+
+/**
  * The canonical declaration for one already-minted board id.
  *
  * Internal: the binder holds minted ids, and everybody else holds a channel id
@@ -157,8 +202,22 @@ export function channelBoardLedger(id: string): ChannelBoardCollection {
   // install at org scope, and a channel session is opened with an org for that
   // reason. `defineTaskCollection` asserts the id is a usable collection id, so
   // the second half of the name rule is enforced by the layer that owns it.
+  // `client.state.read` is set HERE rather than through `defineTaskCollection`,
+  // which takes no such option: a task collection is not readable by a browser
+  // in general, and adding the knob to the orchestration factory would open the
+  // question for every board in the framework, including session- and
+  // user-scoped ones. This board is org-scoped (see the note above), so its
+  // rows are already shared across the org, and a board-column panel cannot
+  // render without reading them — an action's return value never reaches the
+  // browser. The read still resolves against the session's own `orgId`, so it
+  // is this org's rows and no other's; `cross-org-collection-read.test.ts`
+  // fails if that stops being true.
+  //
+  // `expose` rather than the identity default (BP-015) — see
+  // {@link CHANNEL_BOARD_CLIENT_FIELDS} for what goes out and why.
   const collection = Object.assign(defineTaskCollection({ id, scope: "org" as const }), {
-    id
+    id,
+    client: { state: { read: true }, expose: CHANNEL_BOARD_CLIENT_FIELDS }
   }) as ChannelBoardCollection;
   ledgers.set(id, collection);
   return collection;
