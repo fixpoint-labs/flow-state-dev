@@ -140,10 +140,32 @@ export const boardColumnsPropNames = [
 
 const KNOWN = new Set<string>(BOARD_STATUS_COLUMNS);
 
+/**
+ * The status `awaiting_review` shipped as `parked` (FIX-1245).
+ *
+ * The substrate maps it forward at its own read boundary, but a client read
+ * does not pass through that boundary: the collection route projects the
+ * stored row and the task collection's `withMigratedStatus` never runs. So a
+ * row persisted before the rename arrives here still carrying the old word,
+ * and without this it would be treated as a status this version does not
+ * know — earning its own column beside `parked` rather than landing in it.
+ *
+ * `packages/ui/registry/components/task-plan-state.ts` carries the same
+ * mapping for the other renderer, at the same kind of fold and for the same
+ * reason. This matches it rather than inventing a second spelling. A row
+ * written after the rename allocates nothing.
+ */
+const LEGACY_PARKED_STATUS = "awaiting_review";
+
 function isCard(value: unknown): value is BoardCard {
   if (value === null || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
   return typeof row.id === "string" && typeof row.status === "string";
+}
+
+/** Map a stored row's status forward, so grouping only ever sees one vocabulary. */
+function migrateCardStatus(card: BoardCard): BoardCard {
+  return card.status === LEGACY_PARKED_STATUS ? { ...card, status: "parked" } : card;
 }
 
 /**
@@ -216,7 +238,7 @@ export function BoardColumns(props: BoardColumnsProps): ReactNode {
     () =>
       state.rows
         .filter((row): row is { topic: string; clientData: BoardCard } => isCard(row.clientData))
-        .map((row) => ({ topic: row.topic, card: row.clientData })),
+        .map((row) => ({ topic: row.topic, card: migrateCardStatus(row.clientData) })),
     [state.rows]
   );
   const columns = useMemo(() => groupIntoColumns(rows), [rows]);

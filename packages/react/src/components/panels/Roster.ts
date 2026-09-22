@@ -38,8 +38,11 @@ import {
  *
  * The stored row carries a `settings` bag too; the collection's `expose`
  * deliberately withholds it, so this is the whole of what arrives.
- * `instructions` is nullable and `== null`-guarded at the one place it is read
- * (BP-030) — a row written before seats had instructions still renders.
+ *
+ * `instructions` is `string | null` and that is true of every row a consumer
+ * is handed, including a row written before seats had instructions — those
+ * arrive with the key absent and are normalised to `null` on the way in
+ * (see `normalizeSeat`). So a slot may compare against `null` and trust it.
  */
 export type RosterSeat = {
   readonly seatId: string;
@@ -120,6 +123,21 @@ function isSeat(value: unknown): value is RosterSeat {
   return typeof row.seatId === "string" && typeof row.flow === "string";
 }
 
+/**
+ * Make a stored row match the declared shape, which for now means one field.
+ *
+ * `instructions` is declared `string | null`, and a row written before seats
+ * had instructions does not carry the key at all — the projection copies only
+ * the keys a row has, so it arrives ABSENT rather than null (BP-030, and
+ * BP-035's null boundary). A slot consumer trusting the declared type would
+ * write `if (seat.instructions !== null) seat.instructions.trim()` and throw
+ * on the oldest rows in the store. Normalising here means the type is true of
+ * every row a consumer can be handed, rather than true of recent ones.
+ */
+function normalizeSeat(row: RosterSeat): RosterSeat {
+  return row.instructions === undefined ? { ...row, instructions: null } : row;
+}
+
 export function Roster(props: RosterProps): ReactNode {
   const {
     sessionId,
@@ -152,7 +170,7 @@ export function Roster(props: RosterProps): ReactNode {
     () =>
       state.rows
         .filter((row): row is { topic: string; clientData: RosterSeat } => isSeat(row.clientData))
-        .map((row) => ({ topic: row.topic, seat: row.clientData })),
+        .map((row) => ({ topic: row.topic, seat: normalizeSeat(row.clientData) })),
     [state.rows]
   );
   const unreadable = state.rows.length - seats.length;

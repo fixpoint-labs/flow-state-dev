@@ -121,6 +121,35 @@ describe("Roster", () => {
     expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
   });
 
+  it("hands a slot `null` for a row written before instructions existed (BP-030)", async () => {
+    // The projection copies only the keys a row HAS, so a pre-instructions row
+    // arrives with the key absent, not null — verified against the real route.
+    // `RosterSeat` declares `string | null`, so a consumer writing
+    // `seat.instructions !== null` before touching it would throw on exactly
+    // the oldest rows in the store.
+    const seen: Array<string | null | undefined> = [];
+    const legacyRow = { topic: "old.zed", clientData: { seatId: "old.zed", flow: "agent" } };
+
+    render(
+      createElement(Roster, {
+        sessionId: "s1",
+        resourceClient: fakeSource([legacyRow]),
+        slots: {
+          rowTrailing: (row) => {
+            seen.push(row.seat.instructions);
+            return null;
+          }
+        }
+      })
+    );
+
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0));
+    // `toBeNull` rather than a falsy check: `undefined` is falsy too, and it is
+    // precisely the value this exists to rule out.
+    expect(seen[0]).toBeNull();
+    expect(seen[0]).not.toBeUndefined();
+  });
+
   it("publishes no organization filter (BR-24)", () => {
     // The type test beside the component is the half that cannot be gamed;
     // this is the runtime half, so a reader sees the rule without compiling.
@@ -151,6 +180,28 @@ describe("BoardColumns", () => {
     expect(
       document.querySelectorAll('[data-column="pending"] [data-task-id]').length
     ).toBe(2);
+  });
+
+  it("lands a pre-rename row in `parked`, not a column of its own (BP-030)", async () => {
+    // `awaiting_review` shipped as `parked`. The substrate maps it forward at
+    // its own read boundary, but a client read does not pass through that one
+    // — verified against the real route, where the legacy word comes back
+    // untouched. Un-normalized, it would read as a status this version does
+    // not know and earn its own column BESIDE `parked`, which is the failure
+    // this asserts away.
+    const source = fakeSource([card("t-legacy", "awaiting_review", { title: "old row" })]);
+    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", resourceClient: source }));
+
+    await waitFor(() => expect(document.querySelector('[data-column="parked"]')).toBeTruthy());
+    expect(
+      document.querySelectorAll('[data-column="parked"] [data-task-id]').length,
+      "the legacy row belongs in parked"
+    ).toBe(1);
+    // No stray column, and none marked unknown — either would mean the row
+    // rendered somewhere a person is not looking for it.
+    expect(document.querySelector('[data-column="awaiting_review"]')).toBeNull();
+    expect(document.querySelector("[data-column-unknown]")).toBeNull();
+    expect(document.querySelectorAll("[data-column]").length).toBe(BOARD_STATUS_COLUMNS.length);
   });
 
   it("gives a status it does not know its own column rather than dropping the row", () => {
