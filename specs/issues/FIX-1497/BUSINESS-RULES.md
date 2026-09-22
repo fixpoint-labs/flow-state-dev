@@ -30,14 +30,14 @@ where a leg has a named control it is named here and the plan owes its red state
 
 ![A box holds what the human leg is: one principal, a non-human seat owning the row, the person answering through a flow action on the owning seat, and the reason as what the screen shows. Outside a dashed fence sit a second principal, originator distinct from reviewer, a durable reviewedBy, and a person claiming rows off the board — each stopped at the fence. One arrow crosses: the answer, as an action.](figures/the-two-fences.svg)
 
-Inside the box is what BR-6 to BR-11 assert; outside is what BR-16 forbids. One thing crosses the
+Inside the box is what BR-6 to BR-11 assert; outside is what BR-19 forbids. One thing crosses the
 fence, and it crosses as an action. The mermaid below is the same four outside shapes by name.
 
 ```mermaid
 flowchart LR
   A["a second principal"] -.->|"refused · BR-9"| F["the fence"]
-  B["originator ≠ reviewer"] -.->|"not built · BR-16"| F
-  C["a durable reviewedBy"] -.->|"not built · BR-16"| F
+  B["originator ≠ reviewer"] -.->|"not built · BR-19"| F
+  C["a durable reviewedBy"] -.->|"not built · BR-19"| F
   D["a person claiming rows"] -.->|"never happens · BR-8"| F
   E["the answer, as an action"] -->|"the one crossing · BR-7"| F
 ```
@@ -100,5 +100,10 @@ refused by name (BR-5), and a claim that was never made is a failure rather than
 One command stands up a real hire, runs the scenario end to end, and leaves a dated verdict row.
 On a browser pointed at that hire, **a person who has not read this spec can say which seat was
 waiting, what it was waiting for, what it was told, and which other seat picked the work up** —
-with no expander opened and no debug flag beyond what `fsdev dev` already sets. Every control
-above has been **seen red**; a green check whose controls were never run does not close this issue.
+crossing at most one link to do it, and setting no debug flag beyond what `fsdev dev` already
+sets for itself.
+
+**The no-expander clause is BR-16's and stays there**: *why this row waited* is legible on the row.
+*Which other seat picked the work up* is read from the ledger collection (BR-17), where opening it
+is the ordinary way to read a collection and is not what BR-16 forbids. Every control above has
+been **seen red**; a green check whose controls were never run does not close this issue.

@@ -108,8 +108,8 @@ answer clean is to let each fail on its own terms. If we later want one demo to 
 two small file trees is an afternoon; unpicking a shared one that lost its sharpness is not.
 
 **What would change my mind:** if you want exactly one thing people are shown for this release —
-one team, one run, one screen. Then we share, and I would want the first demonstration's
-one-worker rule relaxed deliberately and re-gated, not worked around.
+one team, one run, one demonstration to point at. Then we share, and I would want the first
+demonstration's one-worker rule relaxed deliberately and re-gated, not worked around.
 
 **Cost of being wrong: low, and it surfaces immediately.** Both live in the same folder and are a
 few hundred lines each. The expensive mistake is the other direction — bending the first
