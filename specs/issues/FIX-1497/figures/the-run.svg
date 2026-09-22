@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="One board row's life across four lanes against time. Lane one, the planner seat, files a row for the build desk. Lane two, the builder seat, claims it and parks it with a reason naming a question. Lane three, the person, answers through a flow action on the owning seat, carrying the request's own principal — the lane has no claim and no drain on it. Lane two resumes, completes the row, and in completing files a second row for the review desk. Lane four, the reviewer seat, claims that second row and completes it: that crossing from lane two to lane four is the handoff. Below a dashed fence, a fifth lane shows what the DevTool carries at three moments: the board row with a Reason column holding the question, the same row with the answer in its place, and two rows on one board carrying two different assignees.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-seat { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-human { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-tool { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .lane { stroke:var(--rule); stroke-width:1; }
+    .fence { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .flow { stroke:var(--ink-2); stroke-width:1.4; fill:none; }
+    .hand { stroke:var(--code); stroke-width:2.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-hand { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10.5px; }
+  </style>
+
+  <g id="axis">
+    <text class="t-lbl" x="150" y="20">FILE</text>
+    <text class="t-lbl" x="300" y="20">CLAIM</text>
+    <text class="t-lbl" x="440" y="20">PARK · REASON</text>
+    <text class="t-lbl" x="600" y="20">ANSWER</text>
+    <text class="t-lbl" x="740" y="20">HAND OFF</text>
+    <text class="t-lbl" x="860" y="20">DRAIN</text>
+  </g>
+
+  <g id="lanes">
+    <text class="t-lbl" x="16" y="52">eng.planner</text>
+    <line class="lane" x1="16" y1="62" x2="924" y2="62"/>
+    <text class="t-lbl" x="16" y="100">eng.builder</text>
+    <line class="lane" x1="16" y1="110" x2="924" y2="110"/>
+    <text class="t-lbl" x="16" y="148">the person</text>
+    <line class="lane" x1="16" y1="158" x2="924" y2="158"/>
+    <text class="t-lbl" x="16" y="196">eng.reviewer</text>
+    <line class="lane" x1="16" y1="206" x2="924" y2="206"/>
+  </g>
+
+  <g id="planner">
+    <rect class="n-seat" x="140" y="28" width="150" height="30" rx="5"/>
+    <text class="t-b" x="152" y="48">row A · desk build</text>
+    <path class="flow" d="M290 43 L300 43 L300 78"/>
+  </g>
+
+  <g id="builder">
+    <rect class="n-seat" x="300" y="76" width="120" height="30" rx="5"/>
+    <text class="t-b" x="312" y="96">claims it</text>
+    <rect class="n-seat" x="432" y="76" width="150" height="30" rx="5"/>
+    <text class="t-b" x="444" y="96">parks · with why</text>
+    <path class="flow" d="M420 91 L432 91"/>
+    <path class="flow" d="M507 106 L507 124"/>
+    <rect class="n-seat" x="672" y="76" width="140" height="30" rx="5"/>
+    <text class="t-b" x="684" y="96">completes · files B</text>
+    <path class="flow" d="M672 91 L660 91 L660 124"/>
+  </g>
+
+  <g id="person">
+    <rect class="n-human" x="592" y="124" width="140" height="30" rx="5"/>
+    <text class="t-b" x="604" y="144">a flow action</text>
+    <text class="t-s" x="604" y="170">same principal · no drain</text>
+    <path class="flow" d="M507 139 L592 139"/>
+  </g>
+
+  <g id="reviewer">
+    <path class="hand" d="M812 91 L860 91 L860 172"/>
+    <text class="t-hand" x="700" y="72">the handoff · one board, two desks</text>
+    <rect class="n-seat" x="790" y="172" width="134" height="30" rx="5"/>
+    <text class="t-b" x="802" y="192">row B · completed</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="230" x2="924" y2="230"/>
+    <text class="t-lbl" x="16" y="248">WHAT THE DEVTOOL CARRIES</text>
+  </g>
+
+  <g id="devtool">
+    <rect class="n-tool" x="140" y="262" width="230" height="64" rx="5"/>
+    <text class="t-b" x="152" y="284">Tasks · row A</text>
+    <text class="t-s" x="152" y="302">assignee: build · parked</text>
+    <text class="t-s" x="152" y="317">Reason: the question</text>
+
+    <rect class="n-tool" x="400" y="262" width="230" height="64" rx="5"/>
+    <text class="t-b" x="412" y="284">Tasks · row A</text>
+    <text class="t-s" x="412" y="302">assignee: build · completed</text>
+    <text class="t-s" x="412" y="317">Reason: the answer</text>
+
+    <rect class="n-tool" x="660" y="262" width="264" height="64" rx="5"/>
+    <text class="t-b" x="672" y="284">Tasks · rows A and B</text>
+    <text class="t-s" x="672" y="302">one board, assignees build + review</text>
+    <text class="t-s" x="672" y="317">each row links its child session</text>
+
+    <path class="flow" d="M507 106 L507 250 L255 250 L255 262"/>
+    <path class="flow" d="M742 106 L742 250 L515 250 L515 262"/>
+    <path class="flow" d="M860 202 L860 250 L792 250 L792 262"/>
+  </g>
+</svg>
