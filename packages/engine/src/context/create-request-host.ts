@@ -68,7 +68,11 @@ import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveEntry } from "@flow-state-dev/core";
 import type { DispatchStamp } from "../execution/dispatch-metadata";
 import type { RuntimeConfig } from "../runtime-config";
-import { resolveLineageId, resolveSessionStorageKey } from "../stores/scope-keys";
+import {
+  matchesOrgFilter,
+  resolveLineageId,
+  resolveSessionStorageKey
+} from "../stores/scope-keys";
 import { deriveDispatchRunSessionId, evaluateAdoption } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
 import type { DispatchOperation } from "./dispatch-operation";
@@ -594,6 +598,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         principal: { userId: identity.userId, tenantId: identity.tenantId },
         isDescendantSession: (sessionId) =>
           isDescendantSession(stores, sessionId, identity, flow),
+        isDispatchRunOfCaller: (sessionId) =>
+          isDispatchRunOfCaller(stores, sessionId, identity, flow),
         now: nowMs
       });
     return { host, seam };
@@ -651,6 +657,79 @@ function resolveSessionStateDefaults(flow: FlowInstance): Record<string, unknown
  * hop re-checks the principal, so a chain cannot be followed out of its tenant.
  */
 const MAX_LINEAGE_DEPTH = 32;
+
+/**
+ * Whether `sessionId` is **a** dispatch run on this caller's flow, under the
+ * same principal and tenant (FIX-1440).
+ *
+ * The arm beside {@link isDescendantSession}, not a replacement for it. A
+ * dispatcher's work runs in a session of the flow in its own right, so "is my
+ * request still running" should not depend on where that session hangs — but
+ * the walk stays, because it is what keeps the answer inside a subtree for
+ * everything else.
+ *
+ * ## The exact bound, because it is wider than the walk's and is meant to be
+ *
+ * The record must have been dispatched by *something* — `parentSessionId` is
+ * present — under this principal, this tenant and this flow instance. It is
+ * deliberately **not** required that the dispatching session be the caller's
+ * own: that condition is what the descendant walk already tests, and a run
+ * reachable only through it is the case FIX-1440 exists to open. So a run this
+ * principal started from another of their conversations on this flow answers
+ * here, and that is the widening D4 authorised.
+ *
+ * What it still refuses is the whole of what makes it an arm rather than a
+ * removal: another principal, another tenant, **another organization**,
+ * another flow instance, and any session nobody dispatched — a conversation
+ * the same principal opened on this flow is not readable through this arm.
+ *
+ * The organization clause is load-bearing here in a way it is not on the walk.
+ * One person can act for two organizations under one tenant, and the runtime
+ * treats those as two identities (`createExecutionContext` throws
+ * `OrgBindingMismatchError` on a cross-org adoption). The walk inherits the
+ * boundary for free, because a run in the other organization is not in this
+ * caller's chain; this arm does not walk, so it conjoins the organization
+ * itself or it hands one organization's liveness answer to the other.
+ *
+ * **Tightening this to `record.parentSessionId === identity.sessionId` would
+ * make the arm a no-op** — every session it would then admit, the walk already
+ * admits — and would take back the answer this change was built to give. That
+ * is a product and security decision (D4 in the spec), not a simplification to
+ * be made while passing through.
+ *
+ * One read, no walk. Principal, tenant and flow ownership are the same clauses
+ * every hop of the walk applies, in the same order, so the two arms cannot
+ * disagree about what "mine" means; the organization is the one clause this arm
+ * has to add, for the reason above.
+ */
+async function isDispatchRunOfCaller(
+  stores: Pick<StoreRegistry, "session">,
+  sessionId: string | undefined,
+  identity: {
+    userId: string;
+    tenantId: string | undefined;
+    orgId: string | undefined;
+    sessionId: string;
+  },
+  flow: FlowInstance
+): Promise<boolean> {
+  if (sessionId == null) return false;
+  const record: SessionRecord | undefined = await stores.session.get(
+    resolveSessionStorageKey(sessionId, identity.tenantId)
+  );
+  if (record === undefined) return false;
+  // `== null` rather than a truthiness check: a store that nulls absent keys
+  // hands back `null` where an older record reads `undefined`, and both mean
+  // a session nobody dispatched (BP-030).
+  if (record.parentSessionId == null) return false;
+  if (record.userId !== identity.userId) return false;
+  if ((record.tenantId ?? undefined) !== identity.tenantId) return false;
+  // The canonical NULL-safe org comparison, not a hand-rolled `===`: a record
+  // that stored `null` and one that omits the key are the same record, and a
+  // legacy row carrying neither is not in the caller's organization.
+  if (!matchesOrgFilter({ orgId: identity.orgId }, record.orgId)) return false;
+  return ownsRecord(flow, record);
+}
 
 async function isDescendantSession(
   stores: Pick<StoreRegistry, "session">,

@@ -151,7 +151,8 @@ derive.
 
 Two consequences worth naming. **A cross-flow child is not a descendant for
 the verbs that authorise by descent** — `isDescendantSession` re-checks the flow
-kind at every hop, so `livenessOf` will not answer for one. And **addressing is
+kind at every hop, and the dispatch-run arm beside it conjoins the flow instance
+too, so `livenessOf` will not answer for one from the sending flow. And **addressing is
 by flow kind**: both flows must be registered in the same process, and the
 resolved instance's `flow.id` is stamped onto `metadata.dispatch.flowId` as
 provenance rather than being addressable.
@@ -359,11 +360,32 @@ The envelope contract this rests on, including why carrying the selected model
 
 ## Liveness
 
-A parent that wants to know whether the work it dispatched is still running
+A caller that wants to know whether the work it dispatched is still running
 asks `ctx.requestHost.livenessOf(requestIds)`. It takes a batch and answers per
-id; identity filters before the answer is built, so an id outside the caller's
-descendant chain, or under a different principal, comes back indistinguishable
-from an unknown id. There is no enumeration and no existence oracle.
+id; identity filters before the answer is built, so an id that does not pass
+comes back indistinguishable from an unknown id. There is no enumeration and no
+existence oracle.
+
+**What passes, exactly.** The request must be under the caller's own principal,
+tenant and flow instance, and its session must satisfy one of two arms:
+
+- **the descendant chain** — the caller's own session, or one whose
+  `parentSessionId` chain reaches it. `isDescendantSession` re-checks principal,
+  tenant and flow ownership at every hop.
+- **a dispatch run in the caller's organization** — a session carrying a
+  `parentSessionId`, under the same principal, tenant, organization and flow
+  instance, whichever session dispatched it.
+
+The second arm is what lets a caller ask about work it dispatched from another
+of its own conversations on the flow, rather than only about work hanging
+beneath the asking session. It does not reach a session nobody dispatched, so a
+conversation the same principal opened on this flow stays unreadable, and it
+conjoins the organization explicitly: one person can act for two organizations
+under one tenant, and the runtime treats those as two identities.
+
+The two arms are both present on purpose. The walk is the one that keeps every
+other case inside a subtree, and replacing it with the second arm would widen
+the answer from "work I started" to "anything of mine on this flow".
 
 **`false` means "no live registration was found", never "definitely dead".** A
 request that completed, one never registered, and one whose registration was
