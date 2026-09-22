@@ -23,7 +23,7 @@ the check the plan runs. A human reviews this page for a missed case; the plan t
 | BR-7 | A seat resolved no skills | An empty register is shown as such, distinct from not having been read yet | CI · component |
 | BR-8 | A seat is in no channel | The same: an empty list that says so, not a spinner and not a blank | CI · component |
 | BR-9 | A skill is added to a seat's folder while the app is running | The rail keeps showing the register from the last boot until the app restarts (D2) | CI · asserted as the *documented* behaviour so a later change to it is a deliberate one. Holds whatever carrier [Open 1](DECISIONS.md#open) picks: the resolution is boot-time either way |
-| BR-10 | A stored row predates the skills field | It reads, with an empty register (BP-030) | CI. Written against the seat inventory row; if [Open 1](DECISIONS.md#open) picks another carrier the rule survives and the row it names changes |
+| BR-10 | A stored row predates the skills field | It reads, with an empty register (BP-030) | CI, **against whatever carrier [Open 1](DECISIONS.md#open) picks**. This issue stores no skills field anywhere, so the rule states the BP-030 obligation the carrier inherits rather than one it can be checked against today |
 
 ## Hiring from the rail
 
@@ -34,7 +34,7 @@ the check the plan runs. A human reviews this page for a missed case; the plan t
 | BR-13 | Two hires of one id arrive at once | Exactly one succeeds. No lock and no read-before-write of our own | CI |
 | BR-14 | The kind named is not one this app carries | Refused before anything is written, naming the kinds it does carry | CI |
 | BR-15 | The seat mints but registration is refused | The row this call wrote is deleted, and the caller hears about the registration failure rather than about the cleanup | CI |
-| BR-16 | A hire succeeds | The roster list in the rail shows the new seat without a page reload, and its seat detail opens like any other | CI · goal check. **The mechanism is [Open 2](DECISIONS.md#open)** — the panel publishes no refresh, ref or version today, so the *rule* stands and the means does not yet exist |
+| BR-16 | A hire succeeds | The roster list in the rail shows the new seat without a page reload, and its seat detail opens like any other | CI · goal check. **The mechanism is settled: the checked remount of [D4](DECISIONS.md#d4)** — `RosterProps` publishes no refresh, ref or version, and this issue adds none. How much the detail pane then shows rests on [Open 1](DECISIONS.md#open) |
 | BR-17 | A hire succeeds in one browser | Another browser already open is **not** required to show it. That is [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506)'s | Not checked here — named so its absence is deliberate |
 
 ## After a restart

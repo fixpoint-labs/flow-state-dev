@@ -114,17 +114,19 @@ restart, and the rail reaching a channel's board once a board name is obtainable
    deployment that authenticates nobody, anybody who can open the app can hire a seat into the
    default organization — and reversing it later means the Goal 1 run stops being demonstrable
    until identity ships.
-2. **[D2](DECISIONS.md#d2) · A seat's skills are the names its own folders resolved at boot,
-   published on its inventory row.** If wrong: the rail shows a list that a skill added since the
-   last restart is missing from, and we have promised a live view we do not have.
+2. **[D2](DECISIONS.md#d2) · A seat's skills are the names its own folders resolved at boot —
+   a boot-fresh register, not a live one.** If wrong: the rail shows a list that a skill added
+   since the last restart is missing from, and we have promised a live view we do not have.
+   *Where* they are published is [Open 1](DECISIONS.md#open)'s and is not part of this card.
 3. **[D3](DECISIONS.md#d3) · The live inventory becomes ordinary readable in-organization data,
    on the same terms the roster and the board already are.** If wrong: three more collections any
    member of an organization can list, and taking that back later breaks whatever reads them.
 
-**Open: two, and they gate part of what this delivers.** How a seat's skills, channels and boards
-become browser-readable at all, and how the rail refreshes after a hire — both in
-[DECISIONS.md → Open](DECISIONS.md#open). There is also a **conflict with an approved spec**
-raised rather than settled: [EVOLUTION.md → the BR-35 clash](EVOLUTION.md#br35-conflict).
+**Open: one, and it gates part of what this delivers.** How a seat's skills, channels and boards
+become browser-readable at all — [DECISIONS.md → Open](DECISIONS.md#open). How the rail refreshes
+after a hire is **not** open: it is the checked remount of [D4](DECISIONS.md#d4). There is also a
+**conflict with an approved spec** raised rather than settled:
+[EVOLUTION.md → the BR-35 clash](EVOLUTION.md#br35-conflict).
 
 Number 1 is still the decision to weigh — it is the only line here whose cost is not recoverable
 by editing code. The reasoning, what each rejected and what each locks in is in
