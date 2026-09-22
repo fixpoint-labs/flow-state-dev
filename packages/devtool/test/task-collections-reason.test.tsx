@@ -114,11 +114,13 @@ describe("the reason on a task row", () => {
     // TODAY'S BEHAVIOUR, asserted deliberately. `awaitReview` writes
     // `feedback` only when given one, so parking after a failed attempt does
     // not clear the failure text — the row genuinely still says that. The
-    // clearing is an orchestration defect filed as a follow-up; the view
+    // clearing is an orchestration defect, not a view defect, and the view
     // renders what the row carries rather than papering over it.
     //
-    // When that defect is fixed this test goes red, and the red is the fix
-    // landing, not a regression.
+    // THE DEFECT IS FIX-1505. When it lands this test goes red, and the red
+    // is the fix working, not a regression: update the expectation to the
+    // cleared value and move the assertion to orchestration, which is where
+    // the behaviour will then live. Do not re-add a view-side workaround.
     renderBoard({
       id: "task-c",
       goal: "retry then park",
