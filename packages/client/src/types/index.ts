@@ -584,6 +584,25 @@ export type DebugResourceEntry = {
   itemCountTruncated?: boolean;
   storagePrefix?: string;
   clientConfig: DebugResourceClientConfig;
+  /**
+   * Whether the store will accept a write to this resource's state or content.
+   * **Absent when nothing makes it unwritable, and absent means writable** —
+   * the framework's default. A server that predates this sends neither this
+   * nor `llmWritable`, so treat absence as "not reported" rather than as
+   * `false`.
+   *
+   * **`false` is narrower than "immutable".** It refuses state and content
+   * writes through this definition. A collection still permits `create` and
+   * `delete`, and another flow holding its own definition of a shared org or
+   * user resource can still write the same underlying cell.
+   */
+  writable?: boolean;
+  /**
+   * Whether a model is offered a write tool for the resource. A different
+   * question from `writable`, and **opt-in** — most mutable resources leave it
+   * unset — so it never stands in for it. Absent when undeclared.
+   */
+  llmWritable?: boolean;
 };
 
 export type DebugResourcesResponse = {
