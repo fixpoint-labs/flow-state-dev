@@ -1388,13 +1388,6 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           const exists = storageKey in resources;
           const replace = createOptions?.replace === true;
 
-          // writable: false refuses writes to an existing instance — the
-          // same overwrite setState / writeContent already refuse. A new
-          // key stays open (create and getOrCreate can still populate).
-          if (nsConfig.writable === false && replace && exists) {
-            throw new Error(`Resource "${storageKey}" is read-only`);
-          }
-
           // No pre-read already-exists throw. `exists` is this context's cached
           // view, which a concurrent creator can invalidate between the check
           // and the write; the authoritative answer is the store's, and a
@@ -1445,15 +1438,25 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
           // `create` writes at "no live row" and is terminal on conflict, so a
           // loser raises already-exists instead of overwriting the winner.
-          // `replace` is a deliberate unconditional overwrite.
-          await options.mutateResourceKey(
-            storageKey,
-            () => state,
-            // writable: false never uses replace intent. The cache-miss
-            // branch above stays an add; "create" is terminal on a live row
-            // so a concurrent instance cannot be overwritten.
-            { intent: replace && nsConfig.writable !== false ? "replace" : "create" }
-          );
+          // `replace` is a deliberate unconditional overwrite — except on a
+          // writable: false collection, which stays on create-if-absent.
+          // The store, not this context's cache, decides whether a row is
+          // live: a missing key (including one this cache still holds after
+          // another context deleted it) creates, and a live row is the same
+          // read-only refusal as setState.
+          const replaceIntent = replace && nsConfig.writable !== false;
+          try {
+            await options.mutateResourceKey(
+              storageKey,
+              () => state,
+              { intent: replaceIntent ? "replace" : "create" }
+            );
+          } catch (err) {
+            if (replace && !replaceIntent && err instanceof ResourceAlreadyExistsError) {
+              throw new Error(`Resource "${storageKey}" is read-only`);
+            }
+            throw err;
+          }
 
           lruAccess.set(storageKey, Date.now());
 
@@ -1466,10 +1469,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           // deleted generation's state as `prevState`: a create reported as an
           // update, with a previous state that is no longer anyone's.
           //
-          // `replace` is the one case the write cannot answer — it commits at
-          // `"any"` precisely to opt out of version checks — so it keeps the
-          // cached view, which is the posture the caller chose.
-          const wasUpdate = replace && exists;
+          // `replace` on a writable collection is the one case the write cannot
+          // answer — it commits at `"any"` precisely to opt out of version
+          // checks — so it keeps the cached view. A writable: false replace
+          // uses create intent, so success already proved the key was absent.
+          const wasUpdate = replaceIntent && exists;
 
           // Now that the instance really exists, make room for it. Read the
           // resource map fresh — it gained this key — and the just-created key

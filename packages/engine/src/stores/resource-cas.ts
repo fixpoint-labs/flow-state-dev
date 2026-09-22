@@ -101,8 +101,9 @@ const DEFAULT_BASE_DELAY_MS = 10;
  *   live row retries, against a tombstone is terminal.
  * - `create` — create-if-absent. Writes at `0` ("no live row"); any conflict is
  *   terminal, because the loser must not overwrite the winner.
- * - `replace` — deliberate unconditional overwrite (`create({ replace: true })`).
- *   Writes at `"any"`, so it cannot conflict.
+ * - `replace` — deliberate unconditional overwrite (`create({ replace: true })`
+ *   on a writable collection). Writes at `"any"`, so it cannot conflict. A
+ *   `writable: false` collection does not select this intent.
  */
 export type ResourceCASIntent = "mutate" | "create" | "replace";
 

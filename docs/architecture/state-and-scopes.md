@@ -186,7 +186,7 @@ Version-checked, through the driver above:
 
 Deliberately unconditional, each for a stated reason rather than because it was missed:
 
-- **`create({ replace: true })`** writes at `"any"`. It is an explicit overwrite of a key the caller has decided it owns; opting out of the version check is the posture being requested
+- **`create({ replace: true })`** writes at `"any"` on a writable collection. It is an explicit overwrite of a key the caller has decided it owns; opting out of the version check is the posture being requested. A `writable: false` collection does not take this path: replace there is create-if-absent, so a missing key creates and a live row is the read-only refusal, including when this context's cache still shows the key after another context deleted it
 - **`deleteAll`** takes no expected version at all. It is a scope operation, not a key operation — a bulk lifecycle mark over every live key
 - **the two seed helpers in `@flow-state-dev/testing`** pass `"any"` when priming a fresh scope, where no concurrent writer exists by construction
 - **scope state** — `session` / `user` / `org` drive `runWithCAS` directly. Request scope runs that same driver under `withScopeLock` (`serialize: true`), so a same-process fan-out serializes rather than exhausting the retry budget, and the budget stays for a writer the queue cannot see. `createScopePersist` still downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above

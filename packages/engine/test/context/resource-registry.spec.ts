@@ -1233,10 +1233,9 @@ describe("createScopeResourceRegistry — collections", () => {
   });
 
   it("create({ replace: true }) on a writable: false collection does not overwrite a concurrent create (FIX-1510)", async () => {
-    // `exists` is this context's cache. A replace that only checks that view
-    // still writes at "any" and smashes a row another context created in the
-    // window — the same overwrite setState refuses. Intent "create" keeps
-    // populating a missing key without that bypass.
+    // `exists` is this context's cache. A replace that wrote at "any" would
+    // smash a row another context created in the window. Create-if-absent
+    // refuses that live row with the same read-only error as setState.
     const nsConfig = makeCollectionConfig("items/*", {
       writable: false,
       stateSchema: z.object({ v: z.number() }).passthrough()
@@ -1261,8 +1260,50 @@ describe("createScopeResourceRegistry — collections", () => {
 
     await expect(
       (registry as any).items.create("doc1", { v: 42 }, { replace: true })
-    ).rejects.toThrow(/already exists/);
+    ).rejects.toThrow(/read-only/);
     expect(providers.rows.get("items/doc1")?.state).toEqual({ v: 1 });
+  });
+
+  it("create({ replace: true }) on a writable: false collection creates when the cached row is gone (FIX-1510)", async () => {
+    // `exists` is this context's cache. Another context can tombstone the
+    // row (eviction, delete) after this one loaded it. Refusing from that
+    // cache blocks a replace whose authoritative key is missing — the case
+    // the contract says creates. The store's create-if-absent decides.
+    const onCreated = vi.fn();
+    const onUpdated = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      writable: false,
+      stateSchema: z.object({ v: z.number() }).passthrough(),
+      onInstanceCreated: onCreated,
+      onInstanceUpdated: onUpdated
+    });
+    const state: Record<string, JsonObject> = { "items/doc1": { v: 1 } };
+    const providers = makeStateProviders(state, {
+      beforeFirstPersist: (rows) => {
+        const row = rows.get("items/doc1");
+        if (row !== undefined) {
+          row.deleted = true;
+          row.state = {};
+        }
+      }
+    });
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: { items: nsConfig },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      mutateResourceKey: providers.mutateResourceKey,
+      deleteResourceKey: providers.deleteResourceKey,
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {}
+    });
+
+    const ref = await (registry as any).items.create("doc1", { v: 7 }, { replace: true });
+    expect(ref.state).toEqual({ v: 7 });
+    expect(providers.rows.get("items/doc1")?.state).toEqual({ v: 7 });
+    expect(onCreated).toHaveBeenCalledOnce();
+    expect(onUpdated).not.toHaveBeenCalled();
   });
 
   it("accepts an instance write on a collection that does not set writable: false (FIX-1261)", async () => {
