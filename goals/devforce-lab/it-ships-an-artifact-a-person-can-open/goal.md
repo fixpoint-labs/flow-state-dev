@@ -66,16 +66,25 @@ falling back.
 
 ## Controls
 
-Every one is **observed red**, not asserted about. Five of the six cost no inference, which is
-deliberate: a control that can only fire during a paid run is a control that usually does not fire.
+Every one is **observed red**, not asserted about. All nine cost no inference, which is deliberate:
+a control that can only fire during a paid run is a control that usually does not fire.
+
+**Two of them exist because they once passed.** `ends-the-grader` and `forges-the-verdict` are kept
+standing because the first version of the acceptance check took exit status as the verdict, and a
+one-line `process.exit(0)` in the artifact defeated it — a wrong implementation reported ACCEPTED,
+which is D2's whole premise inverted. A defeat that has been closed and not kept as a control is a
+defeat waiting to come back quietly.
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
 | `ignores-the-brief` | a tree with unrelated work in it | the acceptance check REJECTS it — irrelevant work is not accepted |
 | `unrelated-passing-test` | a tree with a passing test that never imports the export | REJECTED — "some test passes" is not the condition |
 | `vacuous-test` | a passing test beside a `greet` that returns the wrong string | REJECTED — the sharp case: the module exists, a test passes, the work is still wrong |
+| `ends-the-grader` | a module that calls `process.exit(0)` at import, before any assertion runs | REJECTED as **tampered**. This one defeated an earlier version of the check outright, which read exit status alone and reported ACCEPT for a wrong implementation |
+| `forges-the-verdict` | a module that prints a plausible `ACCEPT` line and then exits 0 | REJECTED as tampered — the nonce arrives on stdin and is consumed before the module exists, so the shape of a verdict is not enough to produce one |
 | `already-passing` | a base ref seeded with **the artifact the run actually produced** | the base-ref half ACCEPTS, which is the vacuous-green shape BR-3's second half exists to catch |
-| `no-harness` | the harness slot throws, as an unauthenticated SDK does | the row does not settle `completed` and no branch is cut — it fails rather than substituting something. It reads `in_progress`: the attempt died mid-flight, which is what a throwing harness does, and the assertion is deliberately "not completed" rather than a specific terminal status |
+| `no-harness` | the harness slot throws, as an unauthenticated SDK does | the row settles **`errored`** and no branch carries a commit — it fails rather than substituting something |
+| `rejected-work` | a scripted run that commits work the brief did not ask for | the row settles `errored` rather than `completed`, which is **BR-4**: the artifact existing is never sufficient, and the row is what survives the run |
 | `work-reaches-the-reviewer` | the board's `coder` assignee is addressed to the reviewer seat | a board dispatch record carries `flowId` = the reviewer, which the goal forbids |
 
 `already-passing` is built from the run's own product rather than from an implementation written in
@@ -126,7 +135,18 @@ something this check could demonstrate about itself.
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-09-22 | `fix/FIX-1496` | Claude Code Agent SDK | **PASS** | **Leg: the local bare repository — no `gh`, no token, no network.** Artifact address `goals/devforce-lab/.artifacts/1790081251842_19735/feature.git`, branch `conductor/t0/h3d62141…/devforce-tasks--t0--feature/greeting-module--implement`, 1 commit ahead of `main`, resolved after the store was closed and the run's temporary repository and checkouts were deleted. One post on `eng.feature` produced exactly one row (`greeting-module--implement`); the other 2 declared members were seen and skipped. The requester's check ACCEPTED the produced tree and REJECTED `main`. The produced `src/greeting.js` (100 bytes) appears in no lab file, no fixture, this runner or the prompt. A fresh process over the same `lab.db` read the row `completed`, 1 run record reporting `succeeded`, and 1 transcript line. **All six controls seen red** (`ignores-the-brief`, `unrelated-passing-test`, `vacuous-test`, `already-passing`, `no-harness`, `work-reaches-the-reviewer`). Three consecutive runs passed; each produced a *different* artifact (100, 78, 100 bytes), which is what a model-driven run should do. **Known red, not caused by this check:** the model-free sibling `it-wakes-the-seat-a-file-declared` fails its org-less-door leg — see below. |
+| 2026-09-22 | `fix/FIX-1496` | Claude Code Agent SDK | **PASS** | **Leg: the local bare repository — no `gh`, no token, no network.** Artifact address `goals/devforce-lab/.artifacts/1790082844427_29582/feature.git`, branch `conductor/t0/h3d62141…/devforce-tasks--t0--feature/greeting-module--implement`, 1 commit ahead of `main`, resolved after the store was closed and the run's temporary repository and checkouts were deleted. One post on `eng.feature` produced **exactly one row**, enumerated off the ledger rather than looked up. The requester's check ACCEPTED the produced tree and REJECTED `main`. The produced `src/greeting.js` (78 bytes) appears in no lab file, no fixture, this runner or the prompt. A fresh process over the same `lab.db` read the row `completed`, 1 run record reporting `succeeded`, and 1 transcript line. **All nine controls seen red**, including `ends-the-grader` and `forges-the-verdict` (the acceptance check can no longer be defeated by artifact code ending its own grader) and `rejected-work` (committed work that fails the brief settles `errored`, never `completed`). **Known red, not caused by this check:** the model-free sibling `it-wakes-the-seat-a-file-declared` fails its org-less-door leg — see below. |
+
+**This row replaced an earlier one, deliberately.** A first PASS was recorded on 2026-09-22 against
+an acceptance check that took **exit status alone** as its verdict. Codex then showed that a
+produced `src/greeting.js` containing `process.exit(0)` defeated it — the grader died before any
+assertion ran and a wrong implementation was reported ACCEPTED. The check was hardened and the proof
+re-run, so the recorded verdict describes the check that exists rather than one that was superseded.
+**Four runs reached the model and passed** — three against the original check, one against the
+hardened one — each producing a *different* artifact (100, 78, 100, 78 bytes), which is what a
+model-driven run should do and what a replay would not. Two further runs failed before reaching the
+model, both on controls that had been tightened in the same round and were themselves wrong; those
+are recorded in the PR, not here.
 
 **The model-free sibling is red, and this issue did not break it.** `it-wakes-the-seat-a-file-declared`
 fails one leg: *"an org-less read of eng.em was answered rather than refused."* Verified identical on

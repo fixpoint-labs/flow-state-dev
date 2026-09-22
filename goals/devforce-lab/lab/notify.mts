@@ -7,22 +7,29 @@
  * member each post reaches — because the dispatch seam refuses a target taken
  * out of stored data, so a notify block has to declare its own addresses.
  *
- * Two rules, and they are the whole of it:
+ * One rule, and it is the whole of it: **a member with no declared address is
+ * recorded and skipped.** The other members still run, and membership is never
+ * changed by a delivery.
  *
- *   1. **A post with an `author` routes to nobody.** A seat's own answer is a
- *      post like any other, and `channel-flow.ts` taps the hand-off for *every*
- *      post and passes `author` straight through. Without this gate two seats
- *      that answer each other never stop — 1 → 2 → 4 → 8 detached dispatches
- *      with nothing to bound them. Nothing in this lab posts back today, so the
- *      guard is currently inert; it is written anyway because the hazard is in
- *      the primitive rather than in this lab, `author` is still on
- *      `channelNotifyInputSchema`, and ER-Collab's producer is expected to
- *      reuse this channel leg with seats that *do* reply. A cycle break that
- *      arrives with the second poster arrives too late.
- *   2. **A member with no declared address is recorded and skipped.** The other
- *      members still run, and membership is never changed by a delivery.
+ * ## Why there is no cycle break here, unlike `pentest-lab`
  *
- * Rule 2 is how BR-8 is satisfied rather than asserted. `CHANNEL.md` declares
+ * `goals/pentest-lab/lab/notify.mts` carries a second rule — *a post with an
+ * `author` routes to nobody* — because its seats answer on the channel, and two
+ * seats answering each other never stop: 1 → 2 → 4 → 8 detached dispatches with
+ * nothing to bound them.
+ *
+ * **This lab cannot reach that path, and the reason is structural rather than
+ * incidental.** `Lab.post` takes a body and nothing else (`host.mts`), it is the
+ * only caller of the channel's `post` action in this lab, and the EM seat
+ * answers a delivery by filing a row — it never posts back. So `author` is
+ * always absent here, and a guard against it would be a guard against a cycle
+ * this lab has no way to start. Copying one across would teach the next reader
+ * that the cycle is possible here, which is worse than the line costs.
+ *
+ * A lab whose seats *do* reply owes the guard — and owes it before the second
+ * poster, not after. That is a fact about those seats, not about this file.
+ *
+ * The one rule is how BR-8 is satisfied rather than asserted. `CHANNEL.md` declares
  * three members; only the EM is in the address map, so the coder and the
  * reviewer are true no-ops in the fan-out — not "dispatched to a block that
  * happens to do nothing", but never dispatched to at all, with the skip
@@ -64,15 +71,13 @@ export interface NotifyLog {
   addressed: string[];
   /** Every member the router saw with no declared address. */
   skipped: string[];
-  /** Every member whose line was refused routing because it carried an author. */
-  authored: string[];
   /** Every delivery the substrate refused, by message. */
   refusals: string[];
 }
 
 /** A fresh, empty log. */
 export function createNotifyLog(): NotifyLog {
-  return { addressed: [], skipped: [], authored: [], refusals: [] };
+  return { addressed: [], skipped: [], refusals: [] };
 }
 
 export interface LabNotifyOptions {
@@ -113,13 +118,7 @@ export function labNotify(options: LabNotifyOptions) {
         channelId: input.channelId,
         body: input.body,
       };
-      // Rule 1 — the cycle break.
-      if (input.author !== undefined) {
-        log.authored.push(input.member);
-        return nowhere;
-      }
-
-      // Rule 2 — a declared member this lab has no address for.
+      // A declared member this lab has no address for.
       if (!Object.hasOwn(addresses, input.member)) {
         log.skipped.push(input.member);
         return nowhere;

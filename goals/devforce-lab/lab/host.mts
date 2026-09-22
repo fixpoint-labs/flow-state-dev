@@ -52,7 +52,7 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { fileURLToPath } from "node:url";
 import { LEDGER_ID } from "./board.mts";
 import { INSPECT_ENTRY } from "./seat-config.mts";
-import { implementPhase } from "./phase.mts";
+import { defineImplementPhase } from "./phase.mts";
 import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
@@ -132,6 +132,13 @@ export interface OpenLabOptions {
     addresses: Record<string, string>;
     log: NotifyLog;
   };
+  /**
+   * Make the brief's acceptance check part of the done-condition (BR-4).
+   *
+   * Absent for the two older checks, whose scripted stub writes a file the
+   * current brief does not name. See `phase.mts`.
+   */
+  requireAcceptance?: boolean;
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -174,6 +181,15 @@ export interface Lab {
   drain(seatId: string): Promise<{ output?: unknown; error?: string }>;
   /** Read one row out of the durable ledger. */
   row(taskId: string): Promise<Task | undefined>;
+  /**
+   * Every row on the feature board, by ledger key.
+   *
+   * **Presence is not exclusivity.** BR-7 says a post files *exactly one* row,
+   * and a check that looks up the id it expects can only ever confirm the
+   * first half — a regression that filed a second row under another id would
+   * stay green. This enumerates, so the claim can be graded as written.
+   */
+  rows(): Promise<Record<string, Task>>;
   /**
    * The channel the tree declared, once `channels` was asked for.
    *
@@ -249,7 +265,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const coderKind = defineCoderWorkerFlow({
     harness: options.harness,
     workspace: options.workspace,
-    phase: implementPhase,
+    phase: defineImplementPhase({ requireAcceptance: options.requireAcceptance === true }),
     runTimeoutMs: options.runTimeoutMs ?? 60_000,
     resources,
   });
@@ -457,6 +473,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         `${LEDGER_ID}/${taskId}`,
       );
       return record?.state as Task | undefined;
+    },
+
+    rows: async () => {
+      const found = await runtime.stores.resourceState.getByPrefix(
+        "user",
+        LAB_USER_ID,
+        `${LEDGER_ID}/`,
+      );
+      return Object.fromEntries(
+        Object.entries(found).map(([key, record]) => [
+          key,
+          (record as { state: unknown }).state as Task,
+        ]),
+      );
     },
 
     dispatched: async (seatId: string) => {

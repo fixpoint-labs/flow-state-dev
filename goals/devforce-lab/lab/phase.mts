@@ -29,6 +29,7 @@ import type {
   WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import { GIT_TIMEOUT_MS, run } from "@flow-state-dev/harness-manager/checkout";
+import { runAcceptance } from "./acceptance.mts";
 
 /** The phase segment of every run record's topic, and of every row filed here. */
 export const PHASE = "implement";
@@ -125,32 +126,70 @@ async function hasNewCommit(workspacePath: string, baseRef: string): Promise<boo
  * problem rather than a charged attempt's: it pins the base ref this phase
  * compares against and confirms the source repository actually has it.
  */
-export const implementPhase: PhaseSpec = {
-  phase: PHASE,
-  buildPrompt: buildSeatPrompt,
-  isDone: async (context: CompletionRunContext) => {
-    // **The run itself says it ran out of road, so a commit is not the job.**
-    // Checked before the probe: "a commit the base ref lacks" is the weakest
-    // completion signal this repo ships, and a budget-stopped run is precisely
-    // the case where committing something and finishing the work come apart.
-    if (context.stopReport === "stopped-at-limit") return false;
+export interface ImplementPhaseOptions {
+  /**
+   * Also require the brief's acceptance check to pass before the row settles.
+   *
+   * **Off by default, and that is not timidity — it is what keeps the two older
+   * checks meaning what their verdict logs say.** Their scripted stub writes a
+   * file the current brief does not name, so a phase that demanded acceptance
+   * unconditionally would fail rows those checks expect to complete, and would
+   * rewrite claims this issue promised not to touch (S6, BR-17).
+   *
+   * On, it closes [BR-4](../../../specs/issues/FIX-1496/BUSINESS-RULES.md): *a
+   * run that produces an artifact which does not satisfy the acceptance check
+   * does not settle `completed`.* Without it the done-condition is "a commit
+   * exists", the row settles `completed` for work that ignored the brief
+   * entirely, and the goal's later rejection does not undo that — **the row is
+   * what survives the run, and it would be lying.**
+   */
+  requireAcceptance?: boolean;
+}
 
-    const validated = context.validated as ValidatedWorkspace | undefined;
-    if (validated === undefined) {
-      throw new Error(
-        "the implement phase was constructed without its `validate` hook, so it does not " +
-          "know which ref to compare against.",
-      );
-    }
-    return await hasNewCommit(context.workspacePath, validated.baseRef);
-  },
-  validate: (workspace: WorkspaceConfig): ValidatedWorkspace => {
-    // Refused here, before any row is claimed: a base ref the repository does
-    // not have fails the done-condition on EVERY attempt, each time after the
-    // run has already been paid for. This is the exact shape `validate` exists
-    // for — a precondition only the phase knows about, over a workspace only
-    // the host holds.
-    assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
-    return { baseRef: workspace.baseRef };
-  },
-};
+/**
+ * Build the implement phase.
+ *
+ * @param options `requireAcceptance` to add the brief's condition to the
+ *   done-condition. See {@link ImplementPhaseOptions.requireAcceptance}.
+ * @returns The phase spec to hand the coder kind.
+ */
+export function defineImplementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
+  return {
+    phase: PHASE,
+    buildPrompt: buildSeatPrompt,
+    isDone: async (context: CompletionRunContext) => {
+      // **The run itself says it ran out of road, so a commit is not the job.**
+      // Checked before the probe: "a commit the base ref lacks" is the weakest
+      // completion signal this repo ships, and a budget-stopped run is precisely
+      // the case where committing something and finishing the work come apart.
+      if (context.stopReport === "stopped-at-limit") return false;
+
+      const validated = context.validated as ValidatedWorkspace | undefined;
+      if (validated === undefined) {
+        throw new Error(
+          "the implement phase was constructed without its `validate` hook, so it does not " +
+            "know which ref to compare against.",
+        );
+      }
+      if (!(await hasNewCommit(context.workspacePath, validated.baseRef))) return false;
+      if (options.requireAcceptance !== true) return true;
+
+      // The requester's condition, run against the tree this attempt produced.
+      // A rejection re-pends the row with the reason, exactly as any other
+      // unfinished attempt does, so the retry budget still applies.
+      return runAcceptance(context.workspacePath).accepted;
+    },
+    validate: (workspace: WorkspaceConfig): ValidatedWorkspace => {
+      // Refused here, before any row is claimed: a base ref the repository does
+      // not have fails the done-condition on EVERY attempt, each time after the
+      // run has already been paid for. This is the exact shape `validate` exists
+      // for — a precondition only the phase knows about, over a workspace only
+      // the host holds.
+      assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
+      return { baseRef: workspace.baseRef };
+    },
+  };
+}
+
+/** The phase the two older checks use — commit only, unchanged. */
+export const implementPhase: PhaseSpec = defineImplementPhase();

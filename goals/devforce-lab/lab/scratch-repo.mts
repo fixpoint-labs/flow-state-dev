@@ -47,6 +47,7 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { ASK_MARKER_IGNORE_RULE } from "@flow-state-dev/harness-manager";
+import { GIT_TIMEOUT_MS } from "@flow-state-dev/harness-manager/checkout";
 
 /** The branch a fresh checkout is cut from, and what `isDone` compares against. */
 export const BASE_REF = "main";
@@ -95,9 +96,22 @@ export interface ScratchRepoOptions {
   seed?: Record<string, string>;
 }
 
-/** Run git in a repository, returning stdout. */
+/**
+ * Run git in a repository, returning stdout.
+ *
+ * Bounded by `GIT_TIMEOUT_MS`, the same budget the harness manager gives its own
+ * git calls and the same one `it-commits-from-the-seats-own-file` already uses.
+ * A goal that hangs forever because git wedged is worse than one that fails: the
+ * verdict never arrives, so nobody learns anything, and a check whose failure
+ * mode is silence is the shape this whole lab exists to refuse.
+ */
 function git(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, stdio: "pipe", encoding: "utf8" });
+  return execFileSync("git", args, {
+    cwd,
+    stdio: "pipe",
+    encoding: "utf8",
+    timeout: GIT_TIMEOUT_MS,
+  });
 }
 
 /**
@@ -141,7 +155,10 @@ export function createScratchRepo(label: string, options: ScratchRepoOptions = {
   if (options.artifactRepo === undefined) return { sourceRepo, root };
 
   mkdirSync(dirname(options.artifactRepo), { recursive: true });
-  execFileSync("git", ["init", "--bare", "--quiet", options.artifactRepo], { stdio: "pipe" });
+  execFileSync("git", ["init", "--bare", "--quiet", options.artifactRepo], {
+    stdio: "pipe",
+    timeout: GIT_TIMEOUT_MS,
+  });
   git(sourceRepo, "remote", "add", ARTIFACT_REMOTE, options.artifactRepo);
   return { sourceRepo, root };
 }
@@ -182,6 +199,23 @@ export function branchesUnder(repo: string, prefix: string): string[] {
 }
 
 /**
+ * How many commits `ref` carries that `base` does not.
+ *
+ * **The branch is not the work.** Provisioning cuts a `conductor/…` branch
+ * before the harness runs, so a branch exists even for an attempt that produced
+ * nothing — asking whether one appeared measures the checkout, not the run.
+ * Asking how far ahead it is measures the run.
+ *
+ * @param repo The repository holding both refs. Bare or working.
+ * @param base The ref to compare against.
+ * @param ref The branch to measure.
+ * @returns The number of commits `ref` is ahead of `base`.
+ */
+export function commitsAhead(repo: string, base: string, ref: string): number {
+  return Number.parseInt(git(repo, "rev-list", "--count", `${base}..${ref}`).trim(), 10);
+}
+
+/**
  * Clone one ref out of a repository into `dest`.
  *
  * `--no-hardlinks`, so the checkout's objects are its own copy and deleting the
@@ -197,7 +231,7 @@ export function cloneRef(repo: string, ref: string, dest: string): void {
   execFileSync(
     "git",
     ["clone", "--quiet", "--no-hardlinks", "--branch", ref, "--single-branch", repo, dest],
-    { stdio: "pipe" },
+    { stdio: "pipe", timeout: GIT_TIMEOUT_MS },
   );
 }
 

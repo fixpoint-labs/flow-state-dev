@@ -12,9 +12,9 @@
  * ## What it grades
  *
  * 1. **The channel is driven.** An operator posts one line. The line lands in
- *    the transcript, reaches the EM seat and nobody else, and exactly one row
- *    appears on the feature board. Before the post there is no row (BR-6, BR-7,
- *    BR-8, BR-9).
+ *    the transcript, reaches the EM seat and nobody else, and **the board holds
+ *    exactly one row** — enumerated, not looked up, because presence is not
+ *    exclusivity. Before the post there is no row (BR-6, BR-7, BR-8, BR-9).
  * 2. **The artifact outlives the run.** The work is published to a bare
  *    repository at a declared path; the store is closed, the temporary
  *    repository and every checkout are deleted, and the artifact still resolves
@@ -24,7 +24,10 @@
  *    tree, not in this runner, not in the prompt (BR-2).
  * 4. **It satisfies the condition the brief stated first.** The requester's
  *    acceptance check passes against the produced tree **and fails against the
- *    base ref**. One half is not evidence (BR-3).
+ *    base ref**. One half is not evidence (BR-3). The same condition is part of
+ *    the **done-condition**, so work that does not satisfy it never settles the
+ *    row `completed` — the row is what survives the run, and a row that said
+ *    "done" about rejected work would be the durable lie (BR-4).
  * 5. **The prompt still carries the seat's own files** — the four held-out
  *    tokens, unchanged from the sibling (BR-12).
  * 6. **The store was on disk and a fresh process reads it back** (BR-11).
@@ -45,8 +48,15 @@
  *
  * **There is no stub fallback.** A model-backed check that silently degrades to
  * a scripted run is exactly the failure its model-free sibling exists to
- * detect. The two controls below install their own inert harnesses explicitly,
+ * detect. The controls below install their own scripted harnesses explicitly,
  * at their own call sites; nothing reaches one by falling back (BR-13).
+ *
+ * **A control that reads a row reads a terminal one.** `drain` returns once it
+ * has dispatched the detached child, not once the child is finished, so a row
+ * read straight after it can be `in_progress` — a status that is not
+ * `completed` for a reason that has nothing to do with the claim. Every control
+ * here waits for the row to stop moving first. This went wrong three separate
+ * times on this check, twice as a control passing while no row existed at all.
  *
  * ## Provenance is provenance
  *
@@ -85,6 +95,8 @@ import {
   BASE_REF,
   branchesUnder,
   cloneRef,
+  commitAll,
+  commitsAhead,
   createScratchRepo,
   publishArtifact,
 } from "../lab/scratch-repo.mts";
@@ -122,6 +134,13 @@ const BRANCH_PREFIX = "conductor/";
  * Read off the tree at run time rather than restated here: the claim is that
  * the prompt carried what the seat's own files say, and a list this check typed
  * out would be a list this check could get right while the tree changed.
+ *
+ * **The canonical copy is `../it-wakes-the-seat-a-file-declared/fixtures/input.json`
+ * (`tokenHomes`)**, which carries all eight of the lab's tokens; these four are
+ * the subset a *coder* seat's prompt must hold, with the same paths. This is the
+ * third copy in the lab, and the duplication is recorded rather than fixed here
+ * — if one drifts, that fixture is the one that is right. Folding all three onto
+ * it is filed as a follow-up ([FIX-1517](https://linear.app/fixpoint-labs/issue/FIX-1517)).
  */
 const PROMPT_TOKEN_HOMES = {
   "CODER-INSTRUCTIONS-B42D9": "teams/eng/workers/coder/WORKER.md",
@@ -144,6 +163,8 @@ const RUN_TIMEOUT_MS = 10 * 60_000;
 const SETTLE_TIMEOUT_MS = 12 * 60_000;
 /** How long the fan-out has to turn a post into a row. It is one dispatch. */
 const FILED_TIMEOUT_MS = 30_000;
+/** How long a control's scripted run has to reach a terminal row state. */
+const CONTROL_SETTLE_TIMEOUT_MS = 120_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -209,6 +230,38 @@ const inertHarness = () =>
   }) as unknown as HarnessBlock;
 
 /**
+ * A harness that commits work the brief did not ask for.
+ *
+ * `rejected-work`'s instrument. It does real work in the real checkout — a
+ * commit the base ref does not have — so the commit half of the done-condition
+ * is genuinely satisfied and the only thing left to refuse the row is the
+ * acceptance half. A control that committed nothing would pass for the wrong
+ * reason, which is the defect this whole round is about.
+ */
+const committingHarness = (cwd: (ctx: never) => string | Promise<string>) =>
+  handler({
+    name: "devforce-control-committing-harness",
+    inputSchema: harnessRunInputSchema,
+    outputSchema: harnessRunHandleSchema,
+    execute: async (_input: unknown, ctx: unknown) => {
+      const checkout = await cwd(ctx as never);
+      writeFileSync(join(checkout, "UNRELATED.md"), "Work nobody asked for.\n");
+      commitAll(checkout, "Commit something the brief did not ask for");
+      return {
+        source: "devforce-lab/control",
+        status: "completed" as const,
+        sessionId: `sess_control_${Date.now()}`,
+        url: null,
+        dispatchedAt: Date.now(),
+        outcome: "finished" as const,
+        finalMessage: null,
+        usage: null,
+        cost: null,
+      };
+    },
+  }) as unknown as HarnessBlock;
+
+/**
  * A harness that is not there — the red state of BR-13.
  *
  * It throws the way an unauthenticated SDK throws. What the control grades is
@@ -247,13 +300,28 @@ async function waitForRow(lab: Lab, budgetMs: number): Promise<Task | undefined>
   }
 }
 
-/** Wait for a row to stop moving, or give up. */
-async function settle(lab: Lab, budgetMs: number): Promise<Task | undefined> {
+/**
+ * Run the board until the row stops moving, or give up.
+ *
+ * **One `drain` is one pass, not "until the row is finished".** A row whose
+ * attempt did not satisfy the done-condition is re-pended with its reason and
+ * waits for the board to run again — so draining once and then waiting is a
+ * hang for every run that does not succeed first time, which is precisely what
+ * each control exercises. The first version of this did exactly that and sat on
+ * a `pending` row until its budget expired.
+ *
+ * `drain` is called whenever the row is waiting for a seat, and the loop simply
+ * waits while an attempt is in flight. It returns on the first terminal status,
+ * or whatever it last saw when the budget runs out — never `undefined` for a
+ * row that exists, so a caller can tell "never settled" from "never filed".
+ */
+async function runBoardUntilSettled(lab: Lab, budgetMs: number): Promise<Task | undefined> {
   const deadline = Date.now() + budgetMs;
   let row: Task | undefined;
   while (Date.now() < deadline) {
     row = await lab.row(TASK_ID);
     if (row !== undefined && row.status !== "in_progress" && row.status !== "pending") return row;
+    if (row === undefined || row.status === "pending") await lab.drain(COORDINATOR_SEAT);
     await sleep(1_000);
   }
   return row;
@@ -272,8 +340,10 @@ await runGoal(async () => {
   // First and separately. A token the lab's own code could have produced
   // proves nothing about a file being read, and a scan that missed a file
   // proves nothing at all — which is why totality comes before the scan rather
-  // than beside it. Inherited from this spec's `poc/gap-check/`, whose
-  // snapshot claims expired on merge but whose totality discipline did not.
+  // than beside it. The totality discipline is inherited from the spec's own
+  // POC, which measured a snapshot and was deleted once the work it measured
+  // landed — `specs/issues/FIX-1496/PLAN.md` carries the sunset rule and what
+  // it said to carry forward. The snapshot claims expired; this did not.
 
   /** Every `.mts` file under the lab, and the category it belongs to. */
   const classified = new Map<string, string>();
@@ -383,6 +453,29 @@ await runGoal(async () => {
         "test/greeting.test.js": "import { greet } from '../src/greeting.js';\nif (typeof greet !== 'function') throw new Error('no');\n",
       },
     },
+    {
+      // **The check imports artifact-controlled code, so the artifact gets to
+      // run inside its own grader.** An earlier version took exit status alone
+      // as the verdict and this exact tree defeated it: the module ended the
+      // process with status 0 before a single assertion ran, and a wrong
+      // implementation was reported ACCEPTED. Kept as a standing control so the
+      // defeat cannot come back quietly.
+      name: "ends-the-grader",
+      files: {
+        "src/greeting.js": "process.exit(0);\nexport function greet() {\n  return 'wrong';\n}\n",
+      },
+    },
+    {
+      // The other half of the same hole: knowing the verdict's *shape* is not
+      // enough to forge one, because the nonce arrives on stdin and is consumed
+      // before this module exists.
+      name: "forges-the-verdict",
+      files: {
+        "src/greeting.js":
+          "console.log('ACCEPT 0000 3/3 — fine');\nprocess.exit(0);\n" +
+          "export function greet() {\n  return 'wrong';\n}\n",
+      },
+    },
   ];
 
   for (const control of synthetic) {
@@ -440,24 +533,37 @@ await runGoal(async () => {
         );
         return { failures, evidence: "" };
       }
-      await lab.drain(COORDINATOR_SEAT);
-      // The drain has returned idle, so the attempt is over and the row is at
-      // rest. Waiting on a timeout here would add minutes and no information.
-      const row = await lab.row(TASK_ID);
-      const branches = branchesUnder(dirs.sourceRepo, BRANCH_PREFIX);
-      if (row?.status === "completed") {
+      // **Wait for a terminal state, and do not shortcut this.** `drain` returns
+      // once it has dispatched the detached child, not once the child is done,
+      // so reading straight after it found `in_progress` — a nonterminal status
+      // that is not `completed` for the wrong reason. A forbidden fallback that
+      // finished the child a moment later would not have reddened this control.
+      const row = await runBoardUntilSettled(lab, CONTROL_SETTLE_TIMEOUT_MS);
+      // **Commits, not branches.** Provisioning cuts the `conductor/…` branch
+      // before the harness runs, so a branch exists for an attempt that did
+      // nothing — asserting none appeared measured the checkout rather than the
+      // run, and reddened this control for the wrong reason. Observed.
+      const worked = branchesUnder(dirs.sourceRepo, BRANCH_PREFIX).filter(
+        (ref) => commitsAhead(dirs.sourceRepo, BASE_REF, ref) > 0,
+      );
+      if (row === undefined || row.status === "in_progress" || row.status === "pending") {
+        failures.push(
+          `control no-harness: the row never reached a terminal state (${row?.status ?? "never"}), ` +
+            `so "it did not complete" is a statement about a run still in flight`,
+        );
+      } else if (row.status === "completed") {
         failures.push(
           `control no-harness: the row settled "completed" with no harness available, which ` +
             `means something stood in for one`,
         );
-      } else if (branches.length > 0) {
+      } else if (worked.length > 0) {
         failures.push(
-          `control no-harness: no harness ran but ${branches.length} branch(es) appeared, so ` +
+          `control no-harness: no harness ran but ${worked.length} branch(es) carry commits, so ` +
             `work came from somewhere else`,
         );
       } else {
         controls.push(
-          `no-harness red — the row settled "${row?.status ?? "never"}" and no branch was cut`,
+          `no-harness red — the row settled "${row.status}" and no branch carries a commit`,
         );
       }
     } finally {
@@ -502,6 +608,10 @@ await runGoal(async () => {
         failures.push("control work-reaches-the-reviewer: the post filed no row to hand over");
         return { failures, evidence: "" };
       }
+      // One pass is enough here, and this is the one control that does not wait
+      // for a terminal row: the claim is *which seat the board handed work to*,
+      // and the dispatch record is written when the hand-off starts. What the
+      // attempt goes on to do cannot change which seat it reached.
       await lab.drain(COORDINATOR_SEAT);
 
       const reached = (await lab.dispatched(COORDINATOR_SEAT)).filter(
@@ -516,6 +626,75 @@ await runGoal(async () => {
         controls.push(
           `work-reaches-the-reviewer red — ${reached.length} board dispatch(es) with ` +
             `flowId ${REVIEWER_SEAT}`,
+        );
+      }
+    } finally {
+      await lab.dispose();
+      rmSync(dirs.sourceRepo, { recursive: true, force: true });
+      rmSync(dirs.root, { recursive: true, force: true });
+    }
+  }
+  if (failures.length > 0) return { failures, evidence: "" };
+
+  // =========================================================================
+  // Leg D — rejected work does not settle `completed` (BR-4)
+  // =========================================================================
+  //
+  // **The row is what survives the run, so the row is what must not lie.** With
+  // the done-condition on "a commit exists" alone, a run that ignored the brief
+  // entirely settled its row `completed` and the goal's later rejection did not
+  // undo that — the durable record said the work was done. This drives a
+  // scripted run that commits something unrelated and asserts the row refuses
+  // to settle done. No inference: what is under test is the done-condition, and
+  // a model asked to ignore its brief is a slower way of writing this file.
+
+  {
+    const log = createNotifyLog();
+    const dirs = createScratchRepo("rejected");
+    const stores = sqliteStores({ filename: ":memory:" });
+    const lab = await openLab({
+      stores,
+      workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
+      coderSeatId: ASSIGNED_SEAT,
+      logger: silentLogger,
+      channels: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
+      requireAcceptance: true,
+      harness: ({ cwd }) => committingHarness(cwd),
+    });
+    try {
+      await lab.post?.(POST_LINE);
+      if ((await waitForRow(lab, FILED_TIMEOUT_MS)) === undefined) {
+        failures.push("control rejected-work: the post filed no row to run");
+        return { failures, evidence: "" };
+      }
+      const row = await runBoardUntilSettled(lab, CONTROL_SETTLE_TIMEOUT_MS);
+      // Same distinction as `no-harness`, needed here for the opposite reason:
+      // this control is only meaningful if work really was committed, so the
+      // commit half of the done-condition is satisfied and acceptance is the
+      // only thing left to refuse the row. A cut-but-empty branch would not do.
+      const worked = branchesUnder(dirs.sourceRepo, BRANCH_PREFIX).filter(
+        (ref) => commitsAhead(dirs.sourceRepo, BASE_REF, ref) > 0,
+      );
+
+      if (worked.length === 0) {
+        failures.push(
+          `control rejected-work: nothing was committed, so "the row did not complete" says ` +
+            `nothing about the acceptance half of the done-condition`,
+        );
+      } else if (row === undefined || row.status === "in_progress" || row.status === "pending") {
+        failures.push(
+          `control rejected-work: the row never reached a terminal state ` +
+            `(${row?.status ?? "never"})`,
+        );
+      } else if (row.status === "completed") {
+        failures.push(
+          `control rejected-work: a commit that does not satisfy the brief settled the row ` +
+            `"completed" — BR-4 says the artifact existing is never sufficient`,
+        );
+      } else {
+        controls.push(
+          `rejected-work red — work was committed (${worked.length} branch ahead of ` +
+            `${BASE_REF}) and the row still settled "${row.status}" rather than "completed"`,
         );
       }
     } finally {
@@ -625,6 +804,23 @@ await runGoal(async () => {
       };
     }
 
+    // **BR-7 says exactly one row, so enumerate — presence is not exclusivity.**
+    // Looking up the id this check expects can only ever confirm the first half:
+    // a regression that filed a second row under another id, or one per declared
+    // member, would leave the expected row exactly where it was and stay green.
+    const allRows = await lab.rows();
+    const rowKeys = Object.keys(allRows);
+    if (rowKeys.length !== 1 || rowKeys[0] !== ROW_KEY) {
+      failures.push(
+        `the board holds ${rowKeys.length} row(s) [${rowKeys.join(", ")}]; BR-7 says one post ` +
+          `files exactly one row, addressed to the coder assignee`,
+      );
+    }
+    if (filedRow.assignee !== "coder") {
+      failures.push(`the row is addressed to "${String(filedRow.assignee)}"; wanted the coder assignee`);
+    }
+    if (failures.length > 0) return { failures, evidence: "" };
+
     // BR-8's positive half: exactly the EM was addressed, and the other two
     // declared members were seen and skipped. Not an absence — a record.
     const skipped = [...notifyLog.skipped].sort();
@@ -640,16 +836,6 @@ await runGoal(async () => {
           `a declared member the router never saw is a member the claim does not cover`,
       );
     }
-    // The cycle break must not have fired. An operator's post carries no
-    // `author`, so a member landing here means the guard swallowed the very
-    // post this proof is about — which would look identical to a post that was
-    // never delivered, and is why it is asserted rather than assumed.
-    if (notifyLog.authored.length > 0) {
-      failures.push(
-        `the cycle break refused routing for [${notifyLog.authored.join(", ")}]; an operator's ` +
-          `post carries no author and must reach the EM seat`,
-      );
-    }
     if (notifyLog.refusals.length > 0) {
       failures.push(`the fan-out recorded ${notifyLog.refusals.length} refusal(s): ${notifyLog.refusals.join("; ")}`);
     }
@@ -661,8 +847,7 @@ await runGoal(async () => {
     );
 
     // ---- the run --------------------------------------------------------
-    await lab.drain(COORDINATOR_SEAT);
-    const row = await settle(lab, SETTLE_TIMEOUT_MS);
+    const row = await runBoardUntilSettled(lab, SETTLE_TIMEOUT_MS);
 
     if (row?.status !== "completed") {
       failures.push(
@@ -756,7 +941,21 @@ await runGoal(async () => {
   const producedVerdict = runAcceptance(producedTree);
   const baseVerdict = runAcceptance(baseTree);
 
-  if (!producedVerdict.accepted) {
+  // A tampered verdict is its own finding, never folded into "did not satisfy
+  // the brief": one means the run produced wrong work, the other means the run
+  // reached the instrument that judges it, which is a different and worse fact.
+  for (const [what, verdict] of [
+    ["produced tree", producedVerdict],
+    [`${BASE_REF}`, baseVerdict],
+  ] as const) {
+    if (verdict.tampered) {
+      failures.push(
+        `the acceptance check could not return a verdict it would sign for the ${what} — ` +
+          `${verdict.reason}`,
+      );
+    }
+  }
+  if (!producedVerdict.accepted && !producedVerdict.tampered) {
     failures.push(`the produced tree does not satisfy the brief — ${producedVerdict.reason}`);
   }
   if (baseVerdict.accepted) {
