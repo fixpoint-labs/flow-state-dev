@@ -71,9 +71,10 @@ paths are cited so the next reader cannot re-merge them.
 > [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502)'s, still blocked on
 > [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486). Only the ground under the third
 > justification moved, and it re-derives to something true: not a security hole but an **absent
-> addressing axis**. The epic records the same correction in
-> [ER-Devtool](../../epics/FIX-1457/BUSINESS-RULES.md#er-devtool) and its
-> [EVOLUTION.md](../../epics/FIX-1457/EVOLUTION.md). **Do not cite the closed hole as live.**
+> addressing axis**. Epic amendment
+> [#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033) records the same correction for
+> W5, in FIX-1457's `BUSINESS-RULES.md` and `EVOLUTION.md`. **It is open as of this writing**, so
+> those documents on `main` do not carry it yet. **Do not cite the closed hole as live.**
 
 
 ## Decided, not asked
