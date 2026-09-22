@@ -182,7 +182,7 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 ### `SessionView.childSessions`
 
-`ReadonlyArray<ChildSessionSummary>` of the sessions started under this one — one entry per child, carrying `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate?, status? }`, which is the whole row. The field is `childSessions` and a row is a `ChildSessionSummary`; one row is one dispatch run. `flowId` is the instance that owns the child — the address to read it through when it was dispatched into another instance. Absent on a row that records no owner. Empty for a session that started none. Separate from `items`: a child session is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
+`ReadonlyArray<ChildSessionSummary>` of the dispatch runs started from this session — work that outlives the turn and runs in a session of its own. One entry per run, carrying `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate?, status? }`, which is the whole row. `flowId` is the instance that owns the run — the address to read it through when it was dispatched into another instance. Absent on a row that records no owner. Empty for a session that started none. Separate from `items`: a run is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
 
 Carries one page of the most recent entries, newest first. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than one page keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
 
@@ -203,14 +203,17 @@ Current as of the reader's last interaction. It is re-read on mount, at the star
 
 `SessionView.childSessionsStale` is `true` in two cases with different remedies: the most recent re-read failed, which the next successful read clears; or the requested `limit` is above the server's cap, which only a smaller `limit` clears. The rows already read are kept either way — the hook never empties the list.
 
-To open one, read it as the session it is, passing the **same flow kind as the conversation it belongs to**. A child runs on its parent's flow and is stamped with that flow's kind rather than a kind of its own, so the value is one you already have. A different name reads as a different flow: an active child's stream 404s and the view stays on its first snapshot.
+To open one, read it as the session it is, passing the flow **the run belongs to**, which is not always the conversation's — a run dispatched into another instance belongs to that instance. The row's `flowId` is that address whenever it carries one; fall back to the conversation's own kind when it does not. A different name reads as a different flow: an active run's stream 404s and the view stays on its first snapshot.
 
 ```tsx
-function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {
+function DispatchRunDetail({ row, flowKind }: { row: ChildSessionSummary; flowKind: string }) {
   // `autoResume` is required here: without it this loads one snapshot and
-  // never fills in as the job keeps working.
-  const job = useSession(jobId, { flowKind, autoResume: true });
-  return <ItemsRenderer items={job.items} />;
+  // never fills in as the run keeps working.
+  const run = useSession(row.id, {
+    flowKind: row.flowId ?? flowKind,   // the run's flow, not the conversation's
+    autoResume: true,
+  });
+  return <ItemsRenderer items={run.items} />;
 }
 ```
 

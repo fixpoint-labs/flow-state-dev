@@ -78,7 +78,7 @@ Session is the only scope you can seed.
 
 ## Background work
 
-A flow can dispatch a unit of work into a child session, which keeps running after the request that started it has returned. `fsdev run` and `fsdev chat` can start one. What the command does about it depends on how the app is wired.
+A flow can dispatch a unit of work into a *dispatch run*, a session of its own that keeps running after the request that started it has returned. `fsdev run` and `fsdev chat` can start one. What the command does about it depends on how the app is wired.
 
 | Your setup | What the command does |
 |---|---|
@@ -91,7 +91,7 @@ For where dispatched work comes from and how it compares to the other kinds, see
 
 ### Waiting for in-process work
 
-Without a queue, the child runs inside the same process as the command. The action that launched it returns as soon as the runtime accepts the dispatch, so `flow_complete` lands on stdout while the background work is still going. The command holds the process open until that work finishes, and logs a warning on stderr naming how many requests it is still waiting on.
+Without a queue, the run executes inside the same process as the command. The action that launched it returns as soon as the runtime accepts the dispatch, so `flow_complete` lands on stdout while the background work is still going. The command holds the process open until that work finishes, and logs a warning on stderr naming how many requests it is still waiting on.
 
 A run whose NDJSON already looks complete but whose shell prompt hasn't come back is usually sitting here.
 
@@ -107,7 +107,7 @@ When the config hands `createFlowState` a worker adapter that dispatches, meanin
 
 By the time the command returns, the request has been recorded and the queue has accepted the job. A failed store write or a rejected enqueue fails the dispatch rather than reporting a start, so a queue you can't reach surfaces as an error instead of as silence.
 
-None of that says the job survives, or that it ever runs. Whatever consumes the queue decides that, and a queue with nothing draining it is an ordinary state: the job sits in it, and the command finishes the same way it would if a worker were pulling from it. Read the child session's own requests to find out what became of it. See [Dispatched work](/docs/server/background-work).
+None of that says the job survives, or that it ever runs. Whatever consumes the queue decides that, and a queue with nothing draining it is an ordinary state: the job sits in it, and the command finishes the same way it would if a worker were pulling from it. Read the run's own requests to find out what became of it. See [Dispatched work](/docs/server/background-work).
 
 ### Without a config, background work can't start
 

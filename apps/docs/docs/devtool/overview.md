@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
 title: "DevTool"
+sidebar_label: Overview
 ---
 
 # DevTool
@@ -109,7 +110,7 @@ When a block fails, the detail panel surfaces enough context to diagnose without
 
 ## Dispatched runs
 
-Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs work in a session of its own that keeps going after the request which started it has returned, and none of that work shows up in the starting conversation's stream or trace.
+Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs it in a **dispatch run**: a session of its own that keeps going after the request which started it has returned. None of that work shows up in the starting conversation's stream or trace. See [Dispatched work](/docs/server/background-work) for what the server records about one.
 
 The rail lists those sessions with the rest of the flow's, indented one level under the session that started each one. Each carries a label saying the dispatcher started it and a link that opens the session it came from. A run started by another run indents once, beside its own parent.
 

@@ -93,7 +93,7 @@ principal, organization or tenant stay absent. Any other value answers `400`.
 
 ### `sessions.listChildSessions(parentSessionId, options?)`
 
-List the dispatch runs started from one session. Work that outlives a turn runs in a session of its own, so it doesn't appear in the starting session's own requests. The call is `listChildSessions` and a row is a `ChildSessionSummary`; one row is one dispatch run.
+List the dispatch runs started from one session. Work that outlives a turn runs in a session of its own, so it doesn't appear in the starting session's own requests.
 
 ```ts
 const runs = await sessions.listChildSessions("sess_1", {
@@ -121,7 +121,7 @@ Each row is a `ChildSessionSummary`:
 
 The table is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
 
-`ChildSessionStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check. `topic` and `coordinate` are labels to display and nothing else — don't route or identify from them, and fall back to `id` rather than to a made-up name. Guard all three with `== null`.
+`ChildSessionStatus` is `"active" | "completed" | "failed" | "incomplete" | "aborted"`. `active` asserts only that the work hasn't finished, covering queued, running, and paused waiting for a person alike. It's the last state the server recorded, not a liveness check; [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value. `topic` and `coordinate` are labels to display and nothing else — don't route or identify from them, and fall back to `id` rather than to a made-up name. Guard all three with `== null`.
 
 A session that started nothing returns `[]`. An unknown session, or one the caller isn't allowed to read, throws `ClientHttpError`.
 

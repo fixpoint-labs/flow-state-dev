@@ -272,8 +272,8 @@ const documents = defineFlow({
 });
 ```
 
-- **`internal.actions`** — reached by a `dispatcher({ action })` block running in this flow, which sends the work to a child session or an existing one. See [Starting a job from a flow](/docs/server/background-work#starting-a-job-from-a-flow).
-- **`task.actions`** — reached by a `dispatcher({ action, session })` sitting as a seat on a task board, which hands each claimed task to a child session. See [Seats that hand off](/docs/orchestration/task-board#seats-that-hand-off).
+- **`internal.actions`** — reached by a `dispatcher({ action })` block running in this flow, which sends the work to a session of its own (a *dispatch run*) or to one that already exists. See [Starting a job from a flow](/docs/server/background-work#starting-a-job-from-a-flow).
+- **`task.actions`** — reached by a `dispatcher({ action, session })` sitting as a seat on a task board, which hands each claimed task to a dispatch run. See [Seats that hand off](/docs/orchestration/task-board#seats-that-hand-off).
 
 Each map is looked up on its own. An action named `summarize` does not satisfy a dispatcher whose action is the internal entry `summarize`, and `defineFlow()` throws at definition time when a reachable dispatcher names an entry its map does not hold. Both maps nest under `actions`; the flat spelling `internal: { summarize: { block } }` is refused by name.
 

@@ -84,8 +84,7 @@ const all = await sessions.listSessions({
   include: "dispatch-runs",
 });
 
-// Or: the runs started from one conversation. The call is `listChildSessions`
-// and a row is a `ChildSessionSummary`; one row is one dispatch run.
+// Or: the dispatch runs started from one conversation, one row each.
 const started = await sessions.listChildSessions("sess_abc");
 const first = started[0];
 const runs = first === undefined ? [] : await sessions.listSessionRequests(first.id);
@@ -134,7 +133,7 @@ Read next: **[Starting a job from a flow](/docs/server/background-work#starting-
 
 ### From a task board seat
 
-A board is a list of tasks plus a set of named workers that claim them. A seat normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ action, session })` in the seat's position instead and the board hands each claimed row to a worker running in a session of its own. The worker is declared once on the flow, under `task.actions`, and the seat names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
+A board is a list of tasks plus a set of named workers that claim them. A seat normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ action, session })` in the seat's position instead and the board hands each claimed row off to a dispatch run. How many runs that is depends on the seat's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the seat names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -203,6 +202,6 @@ Read next: **[Dispatched work](/docs/server/background-work)** for the HTTP surf
 Whichever path the work takes, the thing you observe is a request — for a side chain, the request it runs inside; for the other two, one of their own. Every run has an id, a lifecycle status, and an item log, and the same tools read all three.
 
 - Attach live with `GET /api/flows/:kind/requests/:requestId/stream`. See [Streaming](/docs/streaming/overview).
-- Read a session's requests with `listSessionRequests`, and the runs started from it with `listChildSessions`. See [Client API](/docs/api/client).
+- Read a session's requests with `listSessionRequests`, and the dispatch runs started from it with `listChildSessions`. See [Client API](/docs/api/client).
 - Reconnect and resume from a sequence number rather than replaying from zero. See [Connection resilience](/docs/server/connection-resilience).
 - Inspect any of it block by block in the [DevTool](/docs/devtool/overview).
