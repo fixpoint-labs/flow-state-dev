@@ -59,6 +59,40 @@ neither that the create was the roster's nor that the two sat in one sequence, a
 because exactly one file happened to match. Tightened, and the written claim narrowed to what a
 proximity check can support.
 
+<a name="br35-conflict"></a>
+## A conflict with an approved spec — raised, not settled
+
+**This is not a fork for this spec to decide.** [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475)
+is merged and approved, and one of its rules forbids something a draft of this spec proposed. Per
+BP-002, a surface a merged spec already decided is raised for re-gating rather than quietly
+reversed or worked around.
+
+**What FIX-1475 decided.** BR-35: *"A seat is hired at runtime → it gets **no live-inventory
+row**. The roster (`workforce/roster/*`) and the inventory (`inventory/seats/*`) are two
+contracts: the inventory never deletes a row, a roster must."* Its plan gives the reasoning in
+order of weight — the two contracts disagree by design, so writing both makes a fire remove one
+and leave the other, and *"a reader could not tell which answer was current"*.
+
+**What this spec's draft proposed.** S4: a seat hired at runtime also gets an inventory row, so
+that its detail pane opens like a file-declared seat's. That is BR-35's exact prohibition.
+
+**Why it is worse now than when FIX-1475 wrote it.** BR-35 was a parity and tidiness argument
+against an inventory nobody could read. [D3](DECISIONS.md#d3) makes the inventory
+**browser-readable**, so a stale row is no longer an internal inconsistency — it is a **fired
+seat still advertised to a person as live**. The fire path removes the roster row and the
+registrar address and nothing else.
+
+**Candidate resolutions, none chosen here:**
+
+| | Shape | What it would need |
+|---|---|---|
+| 1 | Amend FIX-1475's BR-35 to permit the dual write **and add a deletion rule**, so fire removes both | Re-gating BR-35 with its owner. The inventory's *"nothing is ever deleted"* header becomes conditional, which is a contract change reaching every inventory reader, not just this app |
+| 2 | Hired seats keep getting no inventory row; the seat detail reads the roster **and** the inventory as two sources | No change to BR-35. But two sources joined for one list is close to the *"client-side joins that become a second runtime inventory"* invent-kill unless the join is server-side |
+| 3 | Neither collection carries the browse answer; a separate read model does ([Open 1](DECISIONS.md#open), candidate B) | Dissolves the clash rather than resolving it, and carries Open 1's own question about whether that read model is a second inventory |
+
+Resolution 3 would make this conflict moot, so **Open 1 should be answered before this is
+re-gated** — they are one decision viewed from two sides, not two independent ones.
+
 **Not superseded, and not a lineage claim:**
 [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476)'s channel-kind and `CHANNEL.md`
 contract, [FIX-1405](https://linear.app/fixpoint-labs/issue/FIX-1405)'s inventory and

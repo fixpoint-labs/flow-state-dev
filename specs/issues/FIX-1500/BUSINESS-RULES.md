@@ -18,12 +18,12 @@ the check the plan runs. A human reviews this page for a missed case; the plan t
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-5 | A seat row in the rail is opened | Its kind, its resolved skill names, the channels it is in and those channels' declared board names are shown | CI · component |
-| BR-6 | A seat's channels are fetched | One read, filtered at the source by the seat's own key prefix. No read returns another seat's memberships for the browser to discard | CI · asserted on the *request*, not only on the rendered rows |
+| BR-5 | A seat row in the rail is opened | Its kind and instructions are shown. **What else it shows depends on [Open 1](DECISIONS.md#open)** — skills, channels and board names have no browser-readable source in this app today, so this rule states an intent whose carrier is unresolved | CI · component, against whatever Open 1 lands. **Not provable as written** |
+| BR-6 | A seat's channels are fetched | One read, filtered at the source by the seat's own key prefix. No read returns another seat's memberships for the browser to discard | CI · asserted on the *request*, not only on the rendered rows. **Conditional on [Open 1](DECISIONS.md#open)**: if channels never become readable, this rule has nothing to govern |
 | BR-7 | A seat resolved no skills | An empty register is shown as such, distinct from not having been read yet | CI · component |
 | BR-8 | A seat is in no channel | The same: an empty list that says so, not a spinner and not a blank | CI · component |
-| BR-9 | A skill is added to a seat's folder while the app is running | The rail keeps showing the register from the last boot until the app restarts (D2) | CI · asserted as the *documented* behaviour so a later change to it is a deliberate one |
-| BR-10 | A seat's inventory row predates the skills field | It reads, with an empty register (BP-030) | CI |
+| BR-9 | A skill is added to a seat's folder while the app is running | The rail keeps showing the register from the last boot until the app restarts (D2) | CI · asserted as the *documented* behaviour so a later change to it is a deliberate one. Holds whatever carrier [Open 1](DECISIONS.md#open) picks: the resolution is boot-time either way |
+| BR-10 | A stored row predates the skills field | It reads, with an empty register (BP-030) | CI. Written against the seat inventory row; if [Open 1](DECISIONS.md#open) picks another carrier the rule survives and the row it names changes |
 
 ## Hiring from the rail
 
@@ -34,22 +34,22 @@ the check the plan runs. A human reviews this page for a missed case; the plan t
 | BR-13 | Two hires of one id arrive at once | Exactly one succeeds. No lock and no read-before-write of our own | CI |
 | BR-14 | The kind named is not one this app carries | Refused before anything is written, naming the kinds it does carry | CI |
 | BR-15 | The seat mints but registration is refused | The row this call wrote is deleted, and the caller hears about the registration failure rather than about the cleanup | CI |
-| BR-16 | A hire succeeds | The roster list in the rail shows the new seat without a page reload, and its seat detail opens like any other | CI · goal check |
+| BR-16 | A hire succeeds | The roster list in the rail shows the new seat without a page reload, and its seat detail opens like any other | CI · goal check. **The mechanism is [Open 2](DECISIONS.md#open)** — the panel publishes no refresh, ref or version today, so the *rule* stands and the means does not yet exist |
 | BR-17 | A hire succeeds in one browser | Another browser already open is **not** required to show it. That is [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506)'s | Not checked here — named so its absence is deliberate |
 
 ## After a restart
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-18 | The process that performed a hire ends and a new one starts | The seat is in the rail's list again, rebuilt from durable organization state | CI · persistence boundary, plus the goal check |
-| BR-19 | The post-restart read is served | It does not come from process memory — not a module-level cache, not a `globalThis` slot, not the registrar the previous process filled | CI · persistence boundary, with the empty-store negative control that proves the check reaches the durable read |
+| BR-18 | The process that performed a hire ends and a new one starts | The seat is in the rail's list again, rebuilt from durable organization state | CI · persistence boundary (V14), at node level. **Not the browser suite**: it launches the server itself with an in-memory store, so a restart there discards the row and the step could not fail honestly |
+| BR-19 | The post-restart read is served | It does not come from process memory — not a module-level cache, not a `globalThis` slot, not the registrar the previous process filled | CI · persistence boundary (V14), with the empty-store negative control that proves the check reaches the durable read. Same suite caveat as BR-18 |
 | BR-20 | A stored row cannot be brought back at boot | The rail says so rather than showing a shorter list that looks complete | **Inherited, not re-proved here.** [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) built the boot report, its organization-scoped transport and the `problems` prop that renders it, and its own checks cover them. A seat hired through this rail writes an ordinary roster row, so the same reload and the same report already cover it — there is no failure mode here that FIX-1477's checks do not already turn red. Stated rather than dropped, so the behaviour is a promise this rail keeps and not an accident of what it mounts |
 
 ## Channels and boards
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-21 | A channel is opened through the rail | Its declared board names come from the channel's own session state, and each board's rows from that board's ledger — the shipped surfaces, not app-owned state | CI · goal check asserts the network path |
+| BR-21 | A channel is opened through the rail | Each board's rows come from that board's own ledger — a shipped collection, not app-owned state. **Where the board NAMES come from is unresolved**: they are not in a channel's session state, which carries members, instructions and transcript only. An earlier draft of this rule said they were, and was wrong | CI · goal check asserts the network path for the **rows**. The names wait on [Open 1](DECISIONS.md#open) |
 | BR-22 | A channel declares no boards | The channel opens and says it has none | CI · component |
 | BR-23 | A board is declared but has never been written to | An empty column that states the likely cause, as the shipped panel already does | Existing `BoardColumns` behaviour |
 | BR-24 | Anything in the rail tries to create a channel or a board | It cannot. There is no such affordance | CI · asserted as an allow-list over the surface's published actions, so a fourth spelling fails too |
@@ -73,9 +73,17 @@ rebuild one stored seat is not a failed boot; it is a named problem in the rail 
 
 ## Acceptance criteria this issue owns
 
-One run, in the kitchen-sink human rail, with no developer tool and no hand-made HTTP call
-anywhere in it: open the rail, open a seat and read its kind, skills, channels and boards; hire
-another instance of that kind; see the new seat in the same surface; restart the process; find the
-seat still there; open a channel's board through the same navigation and confirm its rows came
-from the shipped collection route. That run is the goal check, and it is the issue's completion
-gate.
+**The half that is settled.** One run, in the kitchen-sink human rail, with no developer tool and
+no hand-made HTTP call anywhere in it: open the rail, open a **file-declared** seat and read what
+its pane shows; hire another instance of that kind; see the **hired** seat in the same surface and
+open its pane too; open a channel's board through the same navigation and confirm its **rows**
+came from the shipped collection route. That run is `VG`, and it is the issue's completion gate.
+
+**Durability is asserted beside it, not inside it** (V14, at node level): the row survives in the
+durable store and a runtime built on a fresh store handle finds it. The browser suite cannot host
+that step as configured, and saying so is better than a step that cannot fail.
+
+**The half that is open.** How much a seat's pane shows — skills, the channels it is in, those
+channels' board names — rests on [Open 1](DECISIONS.md#open). Until that is answered, this issue
+cannot promise the issue text's desired outcome 2, and the acceptance bar above deliberately does
+not claim it.

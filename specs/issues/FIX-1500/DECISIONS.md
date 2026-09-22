@@ -61,6 +61,14 @@ paying for (tenet 5); two doors over one is ordinary.
 | **Because** | The register a seat actually holds is `org/skills ∪ teams/<id>/skills ∪ worker-local`, computed by `readSeatSkills` and imposed as the `seatSkills` key of the `WorkerConfig` admission bag ([FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367)). That is a boot-time answer and there is no honest way to make it a live one, because the loader is Node-only and reads folders. Publishing the names beside the seat's identity — where the binder already writes a row for that seat — shows the register itself rather than a catalog standing in for it, which is the distinction the Architect's fence draws |
 | **Locks in** | The rail's skills view is as fresh as the last boot. A skill added to a folder while the app is running does not appear until it restarts, and that is a promise we are making rather than a bug somebody will file. It also means the seat inventory row carries something derived from a seat's configuration, so a future change to how a seat resolves skills has a second reader |
 
+**This decision is contingent, and review is what made that visible.** D2 says *where* a seat's
+skills are published and *how fresh they are*. It assumed the seat inventory row was a live
+surface in this app; it is not — nothing calls `openInventory` under `apps/kitchen-sink`, so
+there are no inventory rows at all, for hired or file-declared seats. **What D2 decides still
+holds — names, resolved register, boot-fresh — but the carrier is now part of
+[Open 1](#open).** If that fork lands somewhere other than the seat inventory row, D2's *Instead
+of* and *Because* are unchanged and only the row it rides on moves.
+
 **Names, not contents.** What a skill *does* is not published here. This is visibility and
 navigation, not a skills product, and the fence is explicit that catalog-only visibility is not
 the proof — the resolved register is.
@@ -161,5 +169,69 @@ Verdicts here; what each asserts, how, and what it corrected is in
   And S7's *"organization from `ctx.org`"* was **ambiguous in the dangerous direction**: the
   operator flow's credential-derived org is also "not the body" and is the wrong source, so S7 now
   names the session's own binding and the reuse index carries it as a guardrail.
+- **Review round 4** — the first material rework. Automated review found that **three of the four
+  sources the seat detail was drawn from do not exist**: skills live in flow config, the live
+  inventory is never opened in this app, and a channel's declared boards are in an action's
+  **output** schema rather than in its session state, which this spec had cited wrongly. The
+  design's hire half is untouched; its browse half became [Open 1](#open). Two mechanisms were
+  also found missing rather than merely unspecified — a public panel refresh and a restartable
+  test harness — and a **conflict with an approved spec** was raised rather than settled
+  ([BR-35](EVOLUTION.md#br35-conflict)).
 
-**Open: none.**
+<a name="open"></a>
+## Open
+
+Two forks, both surfaced by review rather than by drafting, and both change what this issue
+delivers. Neither is the implementer's to settle.
+
+### Open 1 · A seat's skills, channels and boards have no browser-readable source. What builds one?
+
+**In plain terms.** The issue asks that opening a seat shows its kind, its skills, the channels
+it is in and those channels' boards. Only the kind has a path to a browser today. The other three
+are real data the app already computes — it just never publishes any of it.
+
+**The trade-off.** The live inventory is the framework's designed answer and would serve channels
+directly, but this app never opens one, and the spec that last looked at this said standing one
+up is *"a surface, not a line"*. Building less means the seat detail shows less than the issue
+asks for.
+
+**The candidates**, none picked:
+
+| | What it is | What it costs |
+|---|---|---|
+| **A** | Stand up the live inventory in kitchen-sink — call `openInventory` at boot, declare its three collections on the rail's flow | The largest. Needs a seat-writer flow and a boot door. Also runs into the [BR-35 clash](EVOLUTION.md#br35-conflict) for hired seats, and still answers **no** for board names |
+| **B** | One purpose-built org-scoped read model the boot writes: per seat, its kind, skills, channels and boards | Smaller and answers all three at once. But it is new substrate, and it sits close to the *"client-side joins that become a second runtime inventory"* invent-kill — near enough that it needs the Architect's read, not mine |
+| **C** | Ship the seat detail with what has a source — kind and instructions — and move skills, channels and boards to a follow-up | Cheapest and keeps the spine's hire-and-observe steps intact. It does **not** deliver the issue's desired outcome 2 |
+
+**My recommendation: C for this issue, with B filed as the follow-up that completes it.** The
+acceptance spine's load-bearing half — enter, hire, observe, restart, still there — closes under
+C, and that is the half no other child proves. Outcome 2 is real but it is a *browsing* feature,
+and buying it here means either standing up a surface FIX-1475 already priced as out of scope, or
+inventing a read model beside the inventory while an invent-kill points at exactly that shape.
+
+**What would change my mind:** the Architect reading B as ordinary composition rather than as a
+second inventory. Then B is one collection for three answers and is clearly better than deferring.
+
+**What being wrong costs:** under C, Goal 1 acceptance demonstrates a thinner seat view than the
+issue's text promises, and somebody has to agree that is still Goal 1. Under B, we ship substrate
+that a later inventory rollout may duplicate.
+
+### Open 2 · How does the rail's roster refresh after a hire, with no public trigger?
+
+**In plain terms.** After hiring, the new seat must appear without a page reload. The panel that
+lists seats has no way for the app to tell it to re-read.
+
+**The trade-off.** Adding a public refresh to the panel is a published API on a package other
+people hold; remounting is free but is the app steering a component by side effect.
+
+**The candidates:** (a) a public `refresh`/version contract on `Roster` — widens PR-B into a
+`react` API change that outside consumers then hold; (b) a supported remount strategy, specified
+and checked, with no new API.
+
+**My recommendation: (b), specified and checked.** It needs no public surface, and a remount is
+what a host already controls. **What would change my mind:** a second consumer needing the same
+trigger — then it is a contract, not a workaround, and (a) is right. **What being wrong costs:**
+(b) done carelessly looks like a flicker or loses scroll position; (a) is a public API we cannot
+withdraw.
+
+**Open: the two above.** No decision card is open.

@@ -58,28 +58,35 @@ made unreachable.
   })
 ```
 
-## How a seat's detail is assembled
+## How a seat's detail is assembled — and what does not exist yet
 
 ```mermaid
 flowchart LR
-  S["a seat row in the rail"] --> R["roster row · kind"]
-  S --> I["seat inventory row · resolved skill names"]
-  S --> M["membership index · topicPrefix seatId/"]
-  M --> C["channel session state · declared board names"]
-  C --> B["BoardColumns · one board's ledger"]
+  S["a seat row in the rail"] --> R["roster row · kind, instructions"]
+  S -.->|"no browser source today"| I["resolved skill names"]
+  S -.->|"no browser source today"| M["the channels it is in"]
+  M -.->|"no browser source today"| B["the boards those channels declare"]
 ```
 
-Each read answers one question at its own source, and none of them is a join done in the browser.
-**Three reads identify the seat** — its roster row, its inventory row, its memberships — and then
-the board names cost **one read per channel it belongs to**, because a channel's declared boards
-live in that channel's own session state. Opening a board is one more. So the fan-out is three
-plus the seat's channels, not a flat four; whether the board names are fetched with the seat or
-deferred until a channel is actually opened is the implementer's call
-([PLAN.md](PLAN.md#at-implement-time)).
+**One of the four reads exists. Three do not, and review found that after the first draft claimed
+otherwise.** The roster is already browser-readable and answers a seat's kind. The other three
+have no path to a browser in this app today:
 
-The membership index is keyed seat-first precisely so *"which channels is this seat in"* is a
-prefix read rather than a scan of every channel's member list — filtering at the source (BP-033)
-instead of listing then discarding.
+| What a seat detail shows | Where the answer lives | Reachable from a browser? |
+|---|---|---|
+| kind, instructions | the hired-roster collection | **Yes** — already declared readable, and the panels read it |
+| resolved skills | each seat flow's own config bag (`seatSkills`), computed at boot from folders | **No.** Config is not a readable surface |
+| the channels it is in | the live inventory's membership index | **No.** `openInventory` is called nowhere in this app — verified, and [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) says the same: *"Standing one up is a surface, not a line"* |
+| declared board names | `CHANNEL.md` → a channel action's **output** schema | **No.** Action output has no path to a browser; a channel's *session state* carries members, instructions and transcript, and no boards |
+
+So the honest statement of this issue's cost is: **the seat detail needs a browser-readable source
+for three things that have none**, and building it is a surface rather than a wiring change. That
+is a scope question the objective does not already answer, so it is [open](DECISIONS.md#open)
+rather than decided here.
+
+Everything else in this spec stands on its own and is unaffected: the hire door and its one
+organization ([D1](DECISIONS.md#d1)), the extracted hire sequence, durable persistence across a
+restart, and the rail reaching a channel's board once a board name is obtainable.
 
 ## What stays as it is
 
@@ -114,6 +121,11 @@ instead of listing then discarding.
    on the same terms the roster and the board already are.** If wrong: three more collections any
    member of an organization can list, and taking that back later breaks whatever reads them.
 
-**Open: none.** Number 1 is the one to weigh — it is the only line here with a cost that is not
-recoverable by editing code. The reasoning, what each rejected and what each locks in is in
+**Open: two, and they gate part of what this delivers.** How a seat's skills, channels and boards
+become browser-readable at all, and how the rail refreshes after a hire — both in
+[DECISIONS.md → Open](DECISIONS.md#open). There is also a **conflict with an approved spec**
+raised rather than settled: [EVOLUTION.md → the BR-35 clash](EVOLUTION.md#br35-conflict).
+
+Number 1 is still the decision to weigh — it is the only line here whose cost is not recoverable
+by editing code. The reasoning, what each rejected and what each locks in is in
 [DECISIONS.md](DECISIONS.md); the cases in [BUSINESS-RULES.md](BUSINESS-RULES.md).
