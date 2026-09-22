@@ -36,7 +36,7 @@ So the check reads the cell under the `Reason` heading, in the active Tasks pane
 
 **Model:** n/a. The seat bodies are deterministic.
 
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/the-checklist-rows/run.mts`. The run builds the DevTool bundle first. On a clean checkout, run `pnpm --filter @flow-state-dev/devtool build` once before it. The run needs `goals/multi-seat-collab/`, which lands with FIX-1497's PR.
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/the-checklist-rows/run.mts`. The run builds the DevTool bundle first. On a clean checkout, run `pnpm --filter @flow-state-dev/devtool build` once before it. The run reads the hire in `goals/multi-seat-collab/` (FIX-1497).
 
 **Controls:** Each one runs as `GOAL_CONTROL=<name>` on the same command. The lab's config reads the same variable. Each control must fail at exactly the legs named, and the run checks that itself. The row-6 line is the same under every control and is left out of that self-check.
 
