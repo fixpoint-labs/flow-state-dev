@@ -324,7 +324,13 @@ issue's scope and lives at FIX-1503.
 | Admin tokens configured | **Render correct and empty.** The hires are under a real organization; the shell has no viewer credential to bind to one, so it reads the default organization and finds nothing |
 
 That second row is a **known limit, documented here and in [DOCS.md](DOCS.md)** — not a defect
-for someone to rediscover from an empty panel. `S8` builds the binding as far as the substrate
+for someone to rediscover from an empty panel.
+
+**The deferral is deliberate on both sides, which is why shipping with the limit is coherent
+rather than a shortcut.** FIX-1503's own *Out* names this issue — *"UI packaging (this work only
+dissolves `list_flows` openness pressure)"* — and rules out *"Hard-blocking W4 / W5 /
+kitchen-sink on this Backlog epic."* So it does not expect to gate the reference app, and this
+issue does not expect to build identity. Neither side is waiting on the other by accident. `S8` builds the binding as far as the substrate
 allows and stops there; whether this issue ships with the limit or waits for FIX-1503 is a
 product call, and the spec holds either way without another amendment.
 

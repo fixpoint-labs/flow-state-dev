@@ -216,9 +216,12 @@ hole is open either way; the difference is whether we ship the app that walks pe
   session with no resolved identity binds to the default organization, **not** to the one the
   caller asked for: the organization is never the caller's to choose. **What survived is the
   credential requirement itself** — a shell that resolves no principal reads the default
-  organization, so wherever real organizations exist the panel renders correct and empty. That is
-  live on `S8` ([PLAN.md → Blocked on](PLAN.md#blocked-on)); only an unconfigured clone reads
-  these panels with no credential at all. What the refutation moved is the *wall*: a
+  organization, so wherever real organizations exist the panel renders correct and empty. **That
+  requirement is real and `S8` cannot satisfy it here** — there is no credential in this
+  repository representing a viewer, so it is blocked on
+  [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) and `S8` ships the limit instead
+  ([PLAN.md → Blocked on](PLAN.md#blocked-on)). Only an unconfigured clone reads these panels
+  correctly with no credential at all. What the refutation moved is the *wall*: a
   per-collection read permission neither collection declares, which stops the roster and the
   board alike with or without a credential. The fork was re-framed around that, the product owner
   answered it, and it is now [D4](#d4). The seat-list fork above is untouched and still open.

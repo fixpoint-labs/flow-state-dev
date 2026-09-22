@@ -12,8 +12,11 @@ two experiments were written to make that falsifiable rather than argued.
 **Its premise is refuted; its conclusion is not.** A caller never chooses the organization — that
 half is dead. But a session with no resolved identity binds to the *default* organization, so
 wherever admin tokens put hires under a real one, the shell must still resolve a viewer principal
-and carry its credential or the panel renders correct and empty. That requirement is live on `S8`
-and pinned by [V13](../../PLAN.md#checks). What the refutation actually moved is the **wall**: a
+and carry its credential or the panel renders correct and empty. That requirement is real, and
+`S8` cannot satisfy it in this repository — there is no credential here that represents a viewer,
+so it is blocked on [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) and ships as a
+documented limit ([PLAN.md → Blocked on](../../PLAN.md#blocked-on)).
+[V13](../../PLAN.md#checks) pins the org-binding mechanism, not a production credential. What the refutation actually moved is the **wall**: a
 per-collection read permission, which stops both panels with or without a credential.
 
 | File | The claim it makes falsifiable |
