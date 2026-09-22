@@ -122,7 +122,7 @@ import { BoardColumns } from "@flow-state-dev/react";
 <BoardColumns sessionId={sessionId} boardRef="engineering.incidents.followups" />
 ```
 
-Board ledgers are organization-scoped, so that read resolves against the organization the reading session belongs to and returns no other organization's rows. What crosses is narrower than `readBoard`'s projection: the fields a card shows, without the task's `input`, `output`, `metadata` or `context`, and without the execution coordinates and write provenance `readBoard` already withholds.
+Board ledgers are organization-scoped, so the read resolves against the organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`, `assignee`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`.
 
 ### Working the rows
 

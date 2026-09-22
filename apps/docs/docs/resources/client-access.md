@@ -199,13 +199,11 @@ client: {
 }
 ```
 
-An allowlist and an omit-list behave differently as the row grows. A field added to the schema later is published by default under `exclude`, and stays private under `expose` until someone adds it. For a row carrying anything the server set for itself — a lease, a claim, a retry count, an audit trail — prefer `expose`.
+An allowlist and an omit-list behave differently as the row grows. A field added to the schema later is published by default under `exclude`, and stays private under `expose` until someone adds it. For a row carrying anything the server set for itself, such as a lease, a claim, a retry count or an audit trail, prefer `expose`.
 
-### A read is scoped by the session, not by the request
+### How a read is scoped
 
-An org-scoped collection resolves against the organization the reading session is bound to, and a session takes that binding from the authenticated principal when it is created. Nothing the caller sends afterwards moves it: an `orgId` in a body, a query string or a header is not consulted. So opening `state.read` on an org-scoped collection makes it readable by that organization's own members and by nobody else, and a component reading it needs no organization filter — there is nothing for one to do.
-
-The same is true one axis over: a user-scoped collection resolves against the session's user. Decide which scope a collection lives in before you open it, because that scope is the boundary the read enforces.
+An org-scoped collection resolves against the organization the session is bound to, and a session takes that binding from the authenticated principal when it is created. Opening `state.read` on one makes it readable by that organization's members. A user-scoped collection resolves the same way, against the session's user. Pick the scope a collection lives in before you open the read, because that scope is the boundary the read enforces.
 
 ## Snapshot shape
 

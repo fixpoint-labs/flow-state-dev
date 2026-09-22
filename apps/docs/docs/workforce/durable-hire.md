@@ -256,7 +256,7 @@ import { Roster } from "@flow-state-dev/react";
 
 Keep the list from the boot somewhere your app can reach it. `reloadHiredSeats` runs on the server, and nothing carries its result to a browser on its own.
 
-The roster collection itself is readable by a browser, so the seats come straight from it. Being organization-scoped, that read resolves against the organization the reading session belongs to. A seat crosses as its id, its flow kind and its instructions; the settings bag stays on the server.
+The roster collection itself is readable by a browser, so the seats come straight from it. Being organization-scoped, that read resolves against the organization the reading session belongs to. A seat crosses as `seatId`, `flow` and `instructions`. The settings bag stays on the server.
 
 The call is bounded on both sides, and neither bound returns a partial roster:
 

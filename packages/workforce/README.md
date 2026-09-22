@@ -1147,13 +1147,11 @@ holding none omits it and declares neither action.
 without the execution coordinates (`claimedBy`, the lease) or the substrate's write provenance.
 `channelBoardRowSchema` is that shape.
 
-A board's ledger is also readable directly by a browser, which is what lets a UI draw the board as
+A board's ledger is readable directly by a browser, which is what lets a UI draw the board as
 columns without going through an action. The ledger is org-scoped, so that read resolves against the
-organization the reading session belongs to and returns no other organization's rows. What crosses is
-an allowlist, `CHANNEL_BOARD_CLIENT_FIELDS` — narrower than `readBoard`'s, because a card on a screen
-shows less than a model reads: it leaves out a task's `input`, `output`, `metadata` and `context`
-along with everything `channelBoardRowSchema` already withholds. A field added to the task envelope
-later stays private until someone adds it to that list.
+organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`,
+`assignee`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`,
+`updatedAt`, `startedAt` and `completedAt`.
 
 The channel owns the ledger and runs nothing. A seat that claims rows resolves the same declaration
 with `channelBoard`, declares it as a resource, and drains it:
@@ -1274,9 +1272,8 @@ that did not take should not leave a seat waiting at the next start.
 
 The collection is readable by a browser, so a roster panel can name the seats without an action in
 between. Because it is org-scoped, that read resolves against the reading session's own organization
-and returns no other's. What crosses is the seat's id, its flow kind and its instructions. The
-settings bag stays on the server: it belongs to the flow kind's own config schema and may hold
-anything that schema grows, which is not a shape to hand to every browser in the organization.
+and returns no other's. What crosses is `seatId`, `flow` and `instructions`. The settings bag stays
+on the server.
 
 A row holds the seat's id within its organization, the flow kind, the settings bag and the
 instructions. The envelope is this package's to version; the settings bag is handed back to the

@@ -424,13 +424,13 @@ import { Roster } from "@flow-state-dev/react";
 <Roster sessionId={sessionId} collectionRef="roster" problems={bootProblems} />
 ```
 
-The seats come from the standing roster collection, which your session's flow declares. `collectionRef` is the key it is declared under, and it defaults to `roster`. That key is a single path segment, so it carries no slash — the collection's own storage pattern is a different thing and does contain one.
+The seats come from the standing roster collection, which your session's flow declares. `collectionRef` is the key it is declared under, and it defaults to `roster`. That key is a single path segment, so it carries no slash.
 
-There is no organization filter, and that is deliberate. The collection is organization-scoped on the server, so the read already resolves against the organization the session belongs to. A prop would be a second opinion about a boundary the server holds, and one that quietly did nothing would be worse than none.
+The seats it shows are the ones hired in the session's own organization. There is no `orgId` prop.
 
-`problems` is the list of seats a boot reload could not restore. Reloading a roster hands back the seats it made and a named entry for each row it could not, and that second list only exists on the server, so pass it down. `Roster` shows the count and the entries. A roster that reported only what worked would look complete when it was not.
+`problems` is the list of seats a boot reload could not restore. Reloading a roster hands back the seats it made and a named entry for each row it could not, and that second list only exists on the server, so pass it down. `Roster` shows the count and the entries.
 
-A seat row carries its id, the flow kind it was hired into, and its instructions. It does not carry the settings bag the seat was configured with; the collection withholds that from clients on purpose.
+A seat row carries `seatId`, `flow` (the kind it was hired into) and `instructions`. It does not carry the seat's settings.
 
 ### BoardColumns
 
@@ -444,17 +444,17 @@ import { BoardColumns } from "@flow-state-dev/react";
 
 `boardRef` is the key the session's flow declares that board's ledger under, which for a channel board is the minted `<channelId>.<boardName>`. Like the roster's ref it is one path segment.
 
-The columns are the task statuses the substrate already has, in the order work moves through them. No new vocabulary is invented for the UI. A row whose status the component does not recognise gets a column of its own at the end rather than vanishing, so a card is never grouped into nowhere.
+The columns are the task statuses, in the order work moves through them: `pending`, `in_progress`, `blocked`, `parked`, `completed`, `errored`, `cancelled`. The package exports that list as `BOARD_STATUS_COLUMNS`. A row whose status the component does not recognise gets a column of its own at the end rather than vanishing.
 
-An empty board says why it is likely empty instead of spinning. Boards are wired to a seat explicitly, so a board with nothing on it is usually a board nothing drains yet — and a spinner there tells someone to wait for something that is not coming. Loading and empty are two different renders.
+A board with no rows renders an empty state rather than a spinner. Boards are wired to a seat explicitly, so a board with nothing on it usually has no worker draining it yet.
 
-A card carries what a card shows: the task's id, title, goal, status, assignee, priority, attempts and timestamps. The execution coordinates a running board keeps — who claimed a row, its lease, its retry ledger, its write log — stay on the server.
+A card is labelled with the task's `title`, falling back to its `goal`, then to its `id`. It carries the `assignee` beside that label when the row has one. Its status is the column it sits in.
 
 ### Transport and theming for both panels
 
-Both read through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, which is the unauthenticated case.
+Both read through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, with no auth headers.
 
-Each reads one page. `limit` sets how large. Neither pages further, because both draw a standing list someone scans rather than a feed they walk through.
+Each reads one page. `limit` sets its size. Neither pages beyond it.
 
 A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 
