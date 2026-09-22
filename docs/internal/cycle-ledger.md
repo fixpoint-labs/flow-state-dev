@@ -3108,8 +3108,17 @@ commits — a weaker derivation, marked `~`, and not to be compared against an e
 
 **Method — endpoints.** Per the endpoint table: implementation PRs end at merge; the epic PR ends at
 **epic-PR close** (#1376 closed unmerged 2026-08-23T02:08Z); the spec PR ends at **revision-bound
-direction approval** (#1888, "Approved", 2026-09-18T17:17Z, closed unmerged the same minute). Every
-artifact reached its own endpoint. **There are no partials in this entry.**
+direction approval** (#1888, "Approved", 2026-09-18T17:17Z, closed unmerged the same minute). All
+twelve reached their own endpoint.
+
+**Method — the thirteenth artifact, added after this entry was first written.** The wrap's
+**docs-polish PR [#2058](https://github.com/fixpoint-labs/flow-state-dev/pull/2058)** finished after
+the twelve above were collected. It is **open and draft**, so its endpoint falls back to collection
+time and it is a **partial** — the only one in this entry, and never to be compared against a
+completed total. It is recorded as a row with its four factual corrections named, and is **excluded
+from every class count and every percentage in this entry**, which were computed over the twelve.
+Cycle 14's precedent for a late or uncollected artifact: record the endpoint, state the exclusion,
+do not silently move a denominator.
 
 | PR | Kind | Rounds | Endpoint | Feedback classes (deduped) | Felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
@@ -3125,6 +3134,7 @@ artifact reached its own endpoint. **There are no partials in this entry.**
 | [#1406](https://github.com/fixpoint-labs/flow-state-dev/pull/1406) impl FIX-1220 | impl | ~2 | merge | docs-miss ×1 · over-engineered ×2 · nit ×3 (6) | no | — |
 | [#1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888) spec FIX-1440 | spec | **4** | direction approval | missed-edge-case ×3 · docs-miss ×2 · stale-restatement ×1 · nit ×2 (6 threads + 16 conversation comments) | **yes** — **an approved direction was superseded by the owner 21 minutes later**, then amended again on presentation | not a review-rework row; see below |
 | [#2028](https://github.com/fixpoint-labs/flow-state-dev/pull/2028) impl FIX-1440 | impl | **2** | merge | **missed-edge-case ×7** · docs-miss ×2 · over-engineered ×2 · nit ×7 (18) | no | **round 1's own fix opened round 2's race; round 1's own org fix was inert in production** |
+| [#2058](https://github.com/fixpoint-labs/flow-state-dev/pull/2058) docs-polish (wrap) | docs | **4 (in flight)** — *self-driven revision rounds, not automated waves; not comparable to the column above* | collection time — **partial** | **excluded from every count in this entry.** Four factual corrections, named in the PR body: the flow a run opens under · run-is-a-session · not one run per row · a seat can name another flow | no | **the cross-flow fact was wrong in three files across two rounds** |
 
 **Load: ~28 spent waves across the ten implementation artifacts (4+3+2+1+6+3+2+3+2 on the nine
 cleanup PRs, 2 on #2028), plus ~9 on the epic PR and 4 on the spec PR.** Both direction artifacts blew the two-round budget, and **for opposite reasons** — which is
@@ -3327,6 +3337,35 @@ a check fails when the thing it checks is broken. That is BP-003 and the blast r
 population. Counting it toward the proposal would be "aimed at a neighbour" in the entry that spends a
 section on neighbours. Recorded here, and as a guard below.
 
+**The thirteenth artifact says the same thing about instruments, and it is the sharper statement of it.**
+#2058's four factual corrections were found by a **code** check, not by the editorial passes that
+preceded them; the blind reads found the prose defects and, on the one factual question they reached,
+resolved it the wrong way round. The docs agent's own generalisation is worth keeping verbatim: *"a
+corpus pass which reconciles vocabulary will surface factual defects as a side effect, because making
+two pages agree forces someone to decide which one is right — and a `docs-editor` is structurally the
+wrong instrument for the half it uncovers."* Same discriminator as the two instances above: the
+perturbation has to reach the thing that would actually differ. Making two pages agree perturbs the
+**corpus** and reveals a disagreement; only a code read perturbs the **claim** and decides it.
+
+**And `polish-docs` does not ask for the code check.** Grepped: the skill's only instrument line is
+*"Run `docs-editor` over the pages you rewrote before opening the PR"* (`polish-docs/SKILL.md:86`).
+There is no fact-check step. **No proposal, and the reason is cycle 14's, again** — this pass ran the
+code check anyway, unprompted, and cycle 14 declined to mint claim 6's method on exactly that ground:
+*"a cycle that applies a step and finds it useful has not yet shown the step is needed by anyone who
+was not already going to do it."* What would carry a proposal is a docs-polish pass that **skipped**
+the check and shipped a factual defect. That sample does not exist yet, so this is a claim below, not
+a rule.
+
+**One correction to how this was reported to me.** The brief said every round found a defect in the
+round before it. Read against the commits, **two** are confirmed fix-induced — `c6d6e54` explicitly
+fixes `9a5c148`'s replacement definition (*"the cross-flow case biting a third time, in the definition
+itself"*), and `8f07918` fixes the first head's own half-carried term (*"the term introduced and
+abandoned inside one page"*). Round 1 (`dc7a75b`) corrected a **pre-existing corpus defect the
+reconciliation surfaced**, which is a different and better thing. The fourth I could not attribute
+from the commit messages and have not counted. The part that survives intact is the part hardest to
+dismiss: **one fact — cross-flow ownership — wrong in three files, by three authors, across two
+rounds.**
+
 **Claim 2 — the 30–40% band — is not comparable on this sample.** Three `vacuous-assertion` instances
 across twelve artifacts (#1387's uncompiled `.test-d.ts`; #1395's first export-graph pass, caught by
 its own control; #2028's org fixture) against a denominator dominated by deletions and prose. A
@@ -3357,8 +3396,8 @@ BP-003:
 | 7 — two reviewers said "already tight" | **CONFIRMED with one correction.** Cursor's Code Snob returned *"outcome 3: already tight. No POC"* on **both** rounds and Cursor's Simplify pass **APPROVED** on round 2, while Codex filed four P2s on that same head. But the four are not four capability regressions: **three** are (read-failure surfacing, truncation disclosure, run status — all capability the removed Children tab had, and all three made the new surface state something false), and the fourth is the fence race that round 1's own fix introduced. The org-filter bug was found by **Cursor's** follow-up, not Codex. Different lens, different blind spot — in both directions. |
 | 8 — spec-review rounds are ledger signal | **CONFIRMED, and it inverts.** #1888's four rounds were **not** review rework: round 1 was six findings folded in one pass, and rounds 2–4 were the **owner** superseding his own D1 sign-off 21 minutes after giving it, then specifying DevTool presentation, then asking for wireframes. Scoring that as spec-authoring cost would blame the author for direction that arrived late. #1376's nine waves *are* rework, and six of them are self-inflicted. **The two direction artifacts overran the same budget for opposite reasons, and a rounds column alone cannot tell them apart.** |
 | 5 — `onBrokenAnchors` | **CONFIRMED by experiment — run by the docs-polish agent, not re-run here.** The config half is read off the file: `apps/docs/docusaurus.config.ts` sets `onBrokenLinks: "throw"` (line 16) and `onBrokenMarkdownLinks: "warn"` (line 20) and **does not set `onBrokenAnchors` at all**. The behavioural half was *produced* rather than inferred: a bogus anchor inserted into an edited page made the build print `[WARNING] Docusaurus found broken anchors!` naming it and **exit 0**; reverting it went clean. That also shows the check reached the edited pages, which is the other half — a green result from a check that never opened your files proves nothing either. Docusaurus's own upstream default is still unverified and is now beside the point. `@docusaurus/core` is not installed in this worktree (there is no `node_modules` at all), so this entry records another agent's observation with its negative control, not a re-run. Filed as a one-line config change, like cycle 1's C0/NUL gate — not a lesson. |
-| 4 — blind review's bounded competence | **NOT DERIVABLE from these artifacts.** The `docs-editor` run's inputs and outputs are session-level; nothing on #2028 records what it was denied. Recorded as coordinator-reported. |
-| 1 — four CI completion signals pointing at stale state | **NOT DERIVABLE from these artifacts.** Webhook-delivery timing against a workflow run's `head_sha` leaves no trace in PR review data. Recorded as coordinator-reported; it is a harness shape, not a code-review rework class, and would need its own instrument. |
+| 4 — blind review's bounded competence | **DERIVABLE after all — from the thirteenth artifact, not the twelve.** This row first read *not derivable*, correctly scoped to the twelve I had sampled and wrong about the useful claim. #2058's own PR body records the measurement: two cold `docs-editor` reads *"caught the term being introduced and abandoned, and surfaced the run-versus-session contradiction"* — then **"That contradiction was settled against the code, which inverted four of the second read's findings — they were not applied."** Both halves of your observation, on the record: the blind read found a real class no code-holder would have seen, and got the factual resolution wrong. **Isolation buys prose judgement, not factual arbitration** — which is close to your wording, now with a countable four behind it. |
+| 1 — four CI completion signals pointing at stale state | **NOT DERIVABLE from these artifacts.** Webhook-delivery timing against a workflow run's `head_sha` leaves no trace in PR review data. Recorded as coordinator-reported; it is a harness shape, not a code-review rework class, and would need its own instrument. **Read the scoping literally** — observation 4 carried this same verdict and a sibling artifact overturned it, so "not derivable from what I sampled" is all this says, and it is not a claim that no artifact carries it. |
 
 ### Candidates considered and dropped
 
@@ -3419,7 +3458,16 @@ BP-003:
    (9 waves, self-inflicted) are opposite phenomena in the same column. Record the split on the next
    two direction artifacts and decide whether the ledger needs the distinction as a column rather than
    as prose.
-4. **Does the release-note class fall on a non-removal epic?** 20 of 61 (33%) is the highest surface
+4. **Does a docs-polish pass that skips the code fact-check ship a factual defect?** #2058 ran one
+   unprompted and it found three of the four corrections, including a fact two editorial rounds had
+   already walked past; `polish-docs` asks only for `docs-editor`. **The measurement this needs is a
+   pass that did not run it** — until one exists, a fact-check step would be minted on a sample where
+   it was never absent, which is the shape cycle 14 declined.
+5. **Does a vocabulary reconciliation keep surfacing factual defects?** #2058's claim is that it does
+   so *structurally* — agreeing two pages forces someone to pick which is right. One artifact, four
+   corrections. If a second corpus pass reproduces the ratio, the finding is about corpus passes, not
+   about this corpus.
+6. **Does the release-note class fall on a non-removal epic?** 20 of 61 (33%) is the highest surface
    concentration in this file, on an epic whose deliverable *is* the release note. If it stays above
    20% on an epic that ships features, the "property of the sample" reading is wrong and the class
    needs an instrument rather than another sentence.
