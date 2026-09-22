@@ -2,7 +2,7 @@
  * Repo-anchored paths and per-run scratch names.
  *
  * Goal runners reach into sibling workspaces (`apps/kitchen-sink`,
- * `labs/trading-desk`, `examples/hello-chat`). Each used to spell that as
+ * `examples/hello-chat`). Each used to spell that as
  * `fileURLToPath(new URL("../../../apps/kitchen-sink", import.meta.url))` — a
  * hardcoded `../../../` that silently breaks the third nesting level the README
  * explicitly allows. These resolve from the workspace root instead, so a goal's
@@ -39,8 +39,6 @@ export function repoPath(...segments: string[]): string {
 
 /** `apps/kitchen-sink` — the app whose node_modules resolve `@flow-state-dev/*` + `@/*`. */
 export const KITCHEN_SINK: string = repoPath("apps", "kitchen-sink");
-/** `labs/trading-desk` — the desk app; `fsdev` config search is cwd-only, so run from here. */
-export const TRADING_DESK: string = repoPath("labs", "trading-desk");
 /** `examples/hello-chat` — the chat harness example. */
 export const HELLO_CHAT: string = repoPath("examples", "hello-chat");
 

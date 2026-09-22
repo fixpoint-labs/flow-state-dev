@@ -3,7 +3,7 @@
  *
  * Builds the flow's `.prompt.md` loader with
  * `@flow-state-dev/engine/prompt-file`'s `createPromptLoader`, mirroring
- * `labs/trading-desk/src/flows/analysis/lib/prompt.ts`. Paths passed to
+ * the standalone Trading Desk repository. Paths passed to
  * `loadPrompt` are relative to the chat-agent flow root (e.g.
  * `"run/assistant/prompts/ask.prompt.md"`).
  *
