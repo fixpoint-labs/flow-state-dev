@@ -16,7 +16,7 @@ there, and re-point this link at `BUSINESS-RULES.md#er-26` once that merges.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `goals/multi-seat-collab/lab/workforce/` · the tree | One team, one `CHANNEL.md` declaring `boards: [work]` and three members, three `WORKER.md` files naming two kinds and two desk keys. **No ledger id anywhere.** Start from the POC's tree — it loads and hires | BR-1 |
+| S1 | `goals/multi-seat-collab/lab/workforce/` · the tree | One team, one `CHANNEL.md` declaring `boards: [work]` and three members, three `WORKER.md` files naming two kinds and two desk keys. **No ledger id anywhere.** Take the POC's `workforce/` tree and its four `flows/*/flow.ts` shims — they load, hire and serve. **Take nothing else from it, and `hire.ts` least of all** — see the fence below | BR-1 |
 | S2 | `goals/multi-seat-collab/lab/host.mts` · the hire | Read the tree, build the kinds, hire, hand back handles. The **seat → desk map is the app's**, supplied by the caller, never read off the tree — that is what lets `swapped-desks` go red | BR-3 BR-13 |
 | S3 | `goals/multi-seat-collab/lab/` · the two kinds | `planner`: one dispatcher into the channel's own `fileTask`; no board, no drain. `worker`: the channel's board with a desk-narrowed claim, a same-flow dispatcher per desk into its task entry, `onReview: "exit"`, a `drain` action and an `answer` action on the board's unpark-and-drain step | BR-2 BR-4 BR-5 BR-6 BR-7 BR-12 |
 | S4 | `goals/multi-seat-collab/lab/flows/` · what `fsdev dev` discovers | One module per registered instance, each default-exporting one hired seat or the channel kind from the shared host. This is the whole of *serving* the hire — there is no app and no wrapper (D1, BR-18) | BR-15 BR-18 |
@@ -26,6 +26,18 @@ there, and re-point this link at `BUSINESS-RULES.md#er-26` once that merges.
 
 **Nothing is removed.** Named because tenet 3 expects the question asked: `channel-boards` and
 `manager-queue-lab` keep their trees, their claims and their verdict logs untouched.
+
+### What comes from the POC, and what must not
+
+The POC proved a premise; it is not a starting skeleton, and one part of it is the exact
+anti-pattern the guardrails below forbid. **Taking the whole file would produce work that follows
+this plan and fails `swapped-desks`**, which is the worst shape a defect can have here.
+
+| From the POC | From the sibling labs | **Never** |
+|---|---|---|
+| `workforce/` — the tree, unchanged | The worker kind and its desk-narrowed claim: `manager-queue-lab/lab/workforce/flows/workers/builder.mts` | `hire.ts`'s `SEAT_DESKS` — it derives the map from each worker's own `answersFor`, putting the tree on both sides of routing |
+| The four `flows/*/flow.ts` shims — one instance per module, which is what `fsdev dev` discovers | The planner's filing dispatcher: `channel-boards`' `em` kind | `hire.ts`'s `deskDispatcher`, for the same reason — and the monolith shape generally, which PLAN splits into S2/S3/S4 |
+| The `fsdev dev` spawn and the stripped environment in `check.mts` | The host/kinds split, and the **caller-supplied** assignee map: `manager-queue-lab/lab/host.mts` | Any map read off the tree. S2's map is the app's, or `swapped-desks` grades nothing |
 
 ## Sequence
 
@@ -105,7 +117,10 @@ worker.answer(taskId, text)   → unpark with the answer, then drain, in the ans
 PR. It showed the premise holds — the shipped `fsdev dev` registers a file-declared hire as three
 ordinary seat copies plus the channel singleton with its four doors, so the DevTool has something
 to open and no wrapper is needed. Both of its controls were run red. **It grades registration
-only, deliberately**: driving the scenario is V1–VG's job, not a registration probe's.
+only, deliberately**: driving the scenario is V1–VG's job, not a registration probe's. **Read
+[what comes from it and what must not](#what-comes-from-the-poc-and-what-must-not) before lifting
+a line out of it** — its `hire.ts` carries a routing shape this plan forbids, labelled as such in
+the file's own header.
 
 **One thing it had to settle on the way, and did.** Every action on the served path appeared to
 stall at `in_progress` — including on a shipped goal fixture and on a three-line control flow. It
@@ -132,6 +147,37 @@ README; the guardrail above is what keeps it out of your run.
   editing the view.
 - **BR-9 is asserted, not yet observed.** If a second principal's answer does land, that is a
   finding to comment up ([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)), not a rule to soften.
+
+## Notes from review
+
+Below-the-bar feedback from the spec PR, verbatim, one line each. **Inputs, not instructions** —
+adopt, adapt or discard, and you owe no justification for discarding one. A note that turns out to
+reveal a design problem is a spec blind spot: surface it and fold it back.
+
+- "Four `as never` casts hide whether `defineFlow` / `hireWorkforce` types are actually satisfied.
+  Existing labs export typed kind factories (`defineBuilderWorkerFlow`, etc.). Worth matching that
+  pattern in the **goal** lab even if this throwaway POC keeps casts — otherwise the implementation
+  PR may inherit the escape hatch." — cursor
+  ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2045#discussion_r4068612568))
+- "Control naming: README tells humans to set `POC_CONTROL`, but the child sees
+  `ER_COLLAB_POC_CONTROL` (and `hire.ts` reads the latter). Single env var end-to-end would make
+  re-running the documented controls less error-prone — minor, but cheap simplification." — cursor
+  ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2045#discussion_r4068612576))
+- "For a slimmer retained POC, `runRow` could be a constant-return stub and you could drop
+  `awaitReview` / park wiring until the goal lab owns V3/VB. **Trade-off:** less 'preview' of the
+  scenario in spec evidence vs. less risk someone ports 200 lines of scenario into S3 when PLAN
+  already points at sibling labs for the real bodies." — cursor
+  ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2045#discussion_r4068612565))
+- "Spec corpus density (optional) — `FSDEV_DEFAULT_MODEL` / served-path stall, ER-26 / #2033, and
+  the two-fences diagram appear in several files. Not wrong, but trimming to one canonical
+  paragraph (POC README + links elsewhere) would shrink future amend cost." — cursor
+  ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2045#pullrequestreview-5274326546))
+
+**One of those is declined on the record rather than left to the implementer: the ER-26 half of the
+density note.** The repetition is the point. A rule that is not yet on `main` has to say so
+*wherever* it is cited, because a reader arrives at one citation site and not at all of them, and a
+single canonical paragraph elsewhere is exactly the thing they will not have read. The stall
+paragraph and the figure are fair game.
 
 ## Follow-ups
 

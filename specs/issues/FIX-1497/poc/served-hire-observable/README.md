@@ -79,7 +79,8 @@ The A/B, one variable, on the same three-line flow:
 
 `goals/lib/env` (`intentFreeEnv` / `stripIntentOverrides`) strips exactly this prefix set before
 every goal run, which is why the shipped fixture has a green verdict elsewhere and stalled here.
-`check.mts` now strips it the same way when it spawns the server, and the goal check must too — it
+`check.mts` **imports that helper** rather than copying it — a local subset could drift away from
+the verdict it is evidence for — and the goal check must use it too. It
 is a guardrail in [PLAN.md](../../PLAN.md).
 
 **Two things follow.** [D1](../../DECISIONS.md#d1) stands: the served path executes. And the

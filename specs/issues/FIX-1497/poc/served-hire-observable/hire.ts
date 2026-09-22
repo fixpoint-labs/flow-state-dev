@@ -1,6 +1,23 @@
 /**
  * The hire, assembled once and imported by the four flow modules beside it.
  *
+ * ## DO NOT COPY `deskDispatcher` OR `SEAT_DESKS` INTO THE GOAL LAB
+ *
+ * Read this before lifting anything out of this file. Below, the seat → desk
+ * map is derived from each worker's own `answersFor` line, which puts the tree
+ * on **both sides** of routing. That is fine here, where nothing is graded on
+ * where a row ran, and it is **wrong for the graded run**: it is precisely the
+ * defect `swapped-desks` (BR-3) exists to catch, and a check built on it cannot
+ * go red however badly a row was routed. `manager-queue-lab`'s own README
+ * records shipping that defect and fixing it.
+ *
+ * `goals/multi-seat-collab` takes the **tree** and the **flow shims** from here
+ * and nothing else. Its map is **caller-supplied**, the way
+ * `goals/manager-queue-lab/lab/host.mts` supplies one, and execution is graded
+ * against each seat's own `WORKER.md` read at run time — never against the map
+ * that routed it. [PLAN.md](../../PLAN.md) S1 says the same thing from the
+ * other end.
+ *
  * **Retained experiment, not production code.** It exists to answer one
  * question this spec rests on: can a hired Workforce — two worker seats and a
  * planner seat across one channel that declares a board — be served by the

@@ -31,6 +31,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+// The shared helper, not a copy of it. PLAN's guardrail says the graded run
+// strips the intent overrides "exactly as every other goal does", and the A/B
+// this POC banked is what makes that guardrail load-bearing — a local subset
+// could drift away from the verdict it is evidence for.
+import { intentFreeEnv } from "../../../../../goals/lib/env.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const FLOW_DIR = join(HERE, "flows");
@@ -51,24 +56,16 @@ const API = `${ORIGIN}/api/flows`;
 const CONTROL = process.env.POC_CONTROL ?? "";
 
 /**
- * The server's environment, with the intent overrides stripped.
+ * Why the server is spawned on a stripped environment at all.
  *
  * `FSDEV_DEFAULT_MODEL` set while no flow declares an intent makes
  * `createModelResolver` throw, and on the served path that throw leaves a
  * request at `in_progress` with no items and nothing on the router's
- * `onError` — for a flow with no generator in it at all. `goals/lib/env`
- * (`intentFreeEnv` / `stripIntentOverrides`) strips exactly this prefix set
- * before every goal run, for exactly this reason. A probe that inherited them
- * would be measuring the environment.
+ * `onError` — for a flow with no generator in it at all. A probe that
+ * inherited the overrides would be measuring the environment. The A/B that
+ * established this is in README.md; `goals/lib/env` strips the same prefix
+ * set before every goal run, for the same reason.
  */
-function intentFreeEnv(): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith("FSDEV_INTENT_") || key === "FSDEV_DEFAULT_MODEL") continue;
-    out[key] = value;
-  }
-  return out;
-}
 
 const notes: string[] = [];
 const failures: string[] = [];
@@ -106,14 +103,13 @@ try {
     ],
     {
       cwd: workDir,
-      env: {
-        ...intentFreeEnv(),
+      env: intentFreeEnv(process.env, {
         FSDEV_DEBUG_ENDPOINTS: "1",
         ...(CONTROL === "no-tree"
           ? { ER_COLLAB_POC_TREE: join(workDir, "no-such-workforce") }
           : {}),
         ...(CONTROL === "" ? {} : { ER_COLLAB_POC_CONTROL: CONTROL }),
-      },
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
