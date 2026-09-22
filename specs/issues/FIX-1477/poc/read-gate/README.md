@@ -6,9 +6,15 @@ outside default test, lint and knip discovery ([specs/README.md](../../../../REA
 ## What it checks
 
 The merged spec said the roster panel was blocked on the reference app carrying a credential,
-because a session with no resolved identity takes whatever organization the caller sent. Both
-halves of that turned out to be wrong, and the real wall is somewhere else. These two
-experiments were written to make each half falsifiable rather than argued.
+because a session with no resolved identity takes whatever organization the caller sent. These
+two experiments were written to make that falsifiable rather than argued.
+
+**Its premise is refuted; its conclusion is not.** A caller never chooses the organization — that
+half is dead. But a session with no resolved identity binds to the *default* organization, so
+wherever admin tokens put hires under a real one, the shell must still resolve a viewer principal
+and carry its credential or the panel renders correct and empty. That requirement is live on `S8`
+and pinned by [V13](../../PLAN.md#checks). What the refutation actually moved is the **wall**: a
+per-collection read permission, which stops both panels with or without a credential.
 
 | File | The claim it makes falsifiable |
 |---|---|

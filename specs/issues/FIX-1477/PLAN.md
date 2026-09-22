@@ -72,6 +72,7 @@ PR-C now waits on #2036 rather than on the siblings directly.
 | `devtool-shipped-navigator` | `devtool` | `patch` | PR-B |
 | `roster-and-board-panels` | `react` | `patch` | PR-A2 ([#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)) |
 | `panel-collections-client-read` | `workforce` | `patch` | PR-A2 ([#2036](https://github.com/fixpoint-labs/flow-state-dev/pull/2036)) |
+| the per-org reload result | `workforce` | `patch` | PR-C — additive return on `reloadHiredSeats`, needed by `S8`'s boot report ([BR-20's transport](#br20-transport)) |
 | — | `orchestration` | **none** | — |
 
 The last two are authored on PR-A2's branch — read them there rather than here, whatever its
@@ -339,15 +340,41 @@ boot. So the edit is a write beside a write, which is what keeps the carve-out n
 resource's **declaration** goes on the shell's flow in `flows/chat-agent/`, not in the contested
 file at all.
 
-**One thing to get right, and it is a leak rather than a detail.** `reloadHiredSeats` is called
-**once for every organization at once** and returns **one flat `problems` list**, whose entries
-name their organization inside the message text (`organization "acme", row "…"`,
-`reload.ts:193`). Writing that flat list into each org's resource would put one organization's
-names in front of another — the precise thing `D4` is scoped on. **Call the reload per
-organization** and write each result to that organization's key; the boot already loops `orgIds`,
-and per-call reads are what the function does internally anyway. Do **not** reach for the
-alternative of teaching `reloadHiredSeats` to group its output by org: that is a framework change
-in `packages/workforce`, and this report is the app's to publish.
+**One thing to get right, and it is a leak rather than a detail.** `reloadHiredSeats` returns
+**one flat `problems` list** for every organization at once, whose entries name their
+organization inside the message text (`organization "acme", row "…"`,
+`packages/workforce/src/roster/reload.ts:193`). Writing that flat list into each org's resource
+would put one organization's names in front of another — the precise thing `D4` is scoped on.
+
+**Partition it at the source: add a per-organization shape to what `reloadHiredSeats` returns**,
+alongside the existing flat `problems` rather than instead of it, and have the boot write each
+org's slice to that org's key. The `orgId` is already in hand at both places a problem is
+recorded — the loop is `for (const [orgId, rowsByKey] of readsByOrg)` (`:190`) — so this is
+additive inside a loop that already runs, and it touches neither bound nor the read barrier.
+Include **every** organization in the result, with an empty list where there were no problems: a
+map of only the failing orgs leaves last boot's problems standing in a resource nobody rewrote.
+
+**Do not call the reload once per organization**, which is the obvious-looking alternative and is
+unsafe. Both of its bounds are deliberately **set-wide** (`:154`–`:185`):
+
+- `maxOrgs` is checked **before the first read**, and refuses rather than slices — *"serving the
+  first N would be a short roster that looks like the whole one."* Per-org calls are each under
+  the cap by construction, so the cap stops meaning anything.
+- The timeout is one budget over the whole set, and the comment there is a rebuttal written in
+  advance: *"A per-read bound multiplies by the org count, so a roster of fifty organizations
+  could legitimately spend fifty times the budget and still be 'within bounds', which is not a
+  bound on the boot at all."*
+
+Per-org calls also let earlier organizations register before a later read fails, which breaks
+FIX-1475's all-reads-before-registration barrier. In a deployment over the cap or with slow
+stores that yields an unbounded, partially loaded boot — worse than the leak it would be fixing.
+
+**And do not parse the organization back out of the problem strings.** They are formatted prose,
+not a record. Re-deriving structure from a message is how the next stale premise gets written.
+
+`reload.ts` is not a contested file — the guardrail names `fsdev.config.ts` and `hire.ts` — so
+this does not widen the carve-out. It does add a `@flow-state-dev/workforce` change to the issue:
+additive, `patch` ([Changesets](#changesets)).
 
 **Declare the board's read with a projection, never bare.** With no `expose`, `exclude` or
 `data`, the read returns the stored row unchanged

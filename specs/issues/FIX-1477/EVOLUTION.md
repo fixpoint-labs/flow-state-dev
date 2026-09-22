@@ -23,82 +23,22 @@ designs at all: a sentence in a ticket, a picture, and three statements this spe
 someone else's code. They are here because an implementer who finds them will reasonably treat
 them as current, and five of the six would send the work the wrong way.
 
-**Why the last three were wrong is worth more than the corrections.** All three were parsed off
-the engine rather than run against it. Two quoted a file that had already changed under them;
-the third described a capability the engine has never had, so it was never checkable by reading
-at all. The failure is one failure with two faces, and the cheap guard is the same for both:
-name the red state, then produce it. The first two corrections have one each, re-runnable —
-[`poc/read-gate/`](poc/read-gate/README.md) carries the experiments, the exact commands and the
-observed output. The third has no red state to produce, which is itself the finding: there is no
-seam to point a check at, and that is why it is deferred as substrate rather than fixed here.
+**Two habits would have prevented most of what this page records.** Stated as rules, because
+that is the only form that travels.
 
-**The habit that catches this is "name the tree you are citing"** — `main`, or a branch, or a
-commit — because a bare `file:line` is only true of one tree and says nothing about which. Seven
-of these turned up while this amendment was being written, from three different people, and the
-last one is the instructive one: a reviewer cited a line number from a working checkout that was
-74 lines behind `main`, while *correcting someone else's citation*. **The habit only works if it
-is applied to your own reads**, and the moment it feels unnecessary is the moment it is being
-skipped.
-
-<a name="sweep-the-claim"></a>
-**And when you correct one, sweep the claim — not the file, and not the shape you have in mind.**
-This page measured that. Correcting only the line a reviewer cited leaked about **60%** of the
-time: three of five findings in one round were earlier corrections still alive in a document the
-previous fold had not opened. Sweeping by *shape* did better — a pass for mutable-state language
-caught two further instances unprompted. But it is still not enough, and the proof is the row
-below: one claim about credentials was corrected in `DECISIONS.md`, then in **row 16** of this
-table, and survived in **row 17** — the adjacent row, of the table being edited, in the file
-already open. It took a **fourth** fold to kill.
-
-A shape-sweep only finds what you already suspect. **Grep the assertion itself**, across the
-whole set, and read every hit — because most of them will be a different claim wearing similar
-words. That credential sweep returned eight: **three** about the *flow list*'s no-credential
-exposure, which is a different axis and correct; **four** panel statements already carrying the
-qualification; and **one** defect. Seven of eight were fine, which is exactly why a sweep that
-skims for familiar wording fails in both directions at once — it stops on the harmless ones and
-reads past the live one.
-
-Every live citation on this page was re-derived against `origin/main`. **One deliberately does
-not resolve**: `session-routes.ts:192` in the row below is quoted as the *stale* reference the
-merged spec carried, and on `main` that line is now a comment about state defaults. It is
-evidence of the error, not a pointer to the code.
-
-**And the same defect got into the correction — twice.** Review caught both.
-
-`read-gate-probe`'s second case was named for two claims — the refusal *and* the ledger declaring
-no client config — but only the refusal was asserted. The declaration was a `console.log`, so
-half of what the test's own name promised could not fail.
-
-Worse, the probe **called the wrong route**. It built a path ending in `/state`, and the router
-reads a trailing segment as an item topic
-(`packages/engine/src/routes/router.ts:220`–`:234`), so every case exercised a single-item
-lookup for an item named "state" rather than the list route the panels actually use. The 403s
-were real — both routes carry the same gate — but the `200` proved only that a *nonexistent*
-item is readable. A check aimed at a neighbour of the claim, inside the artifact built to prove
-premises by execution.
-
-Both are fixed: the probe now calls the list route, seeds a row, and asserts the row comes back,
-so an empty `200` can no longer pass. Recorded rather than quietly repaired, because it is the
-same failure as the three rows above wearing a different coat — and it says the habit this page
-is about is easier to slip than the page makes it sound.
-
-<a name="unchecked-requirements"></a>
-**And a second defect, distinct from the stale-premise one above: requirements written without
-the check that makes them real.** Three rounds of review found three, none of them a claim that
-had gone stale — each was a rule the spec stated and nothing could fail:
-
-| The requirement | What passed anyway | Now |
-|---|---|---|
-| `S8` binds the shell's session to the viewer's organization | Every check ran in the tokenless default organization, where the hire and the read coincide by accident. Drop the resolver entirely and all of them stay green, shipping the correct-and-empty panel two sections of this spec warn about | **V13** |
-| [BR-20](BUSINESS-RULES.md) — the skipped-seat count and list are *shown, not only logged* | `Roster` takes a `problems` prop and renders it, and **nothing fills it**. The boot's report is a module export read only by `console.log`. A roster of the seats that loaded looks complete, which is the exact failure BR-20 exists for | **V14**, plus the transport itself, decided and written into `S8` at [BR-20's transport](PLAN.md#br20-transport) |
-| [BR-19](BUSINESS-RULES.md) / [BR-21](BUSINESS-RULES.md) — *the organization's seats*, *the rows that board holds*, both unqualified | The list route pages at 50 and returns a cursor. A panel that reads page one and stops satisfies every field assertion and truncates silently at 51 | **V11**, now seeded past one page |
-
-**This is the more valuable of the two patterns on this page.** A stale claim is caught by
-re-reading the artifact; an unchecked requirement is invisible to re-reading, because the prose
-is *correct* — it simply has nothing standing behind it. Two of these three were introduced by
-this amendment, inside the document written to correct unfalsifiable checks. The habit that
-would have caught all three is the one the Checks table already states and the prose kept
-forgetting: **name the red state when you write the rule, not when someone asks for it.**
+- **Name the tree when you cite.** A bare `file:line` is true of exactly one tree and says
+  nothing about which — `main`, a branch, a commit. Every citation on this page was re-derived
+  against `origin/main`, and **one deliberately does not resolve**: `session-routes.ts:192` in
+  the row above is quoted as the *stale* reference the merged spec carried, and on `main` that
+  line is now a comment about state defaults. When a claim turns out to be wrong, correct the
+  **assertion across the whole set**, not the line the reviewer cited — it will have been written
+  more than once.
+- **Name the red state when you write the rule.** Three requirements here were stated with
+  nothing that could fail without them: the shell's viewer-principal binding, BR-20's
+  skipped-seat report, and the unqualified *"the organization's seats"* / *"the rows that board
+  holds"* in BR-19 and BR-21. [V13, V14 and V11](PLAN.md#checks) cover them now. This is the
+  failure a re-read cannot catch — unlike a stale claim, the prose is *correct*; there is simply
+  nothing standing behind it.
 
 Before implementing, compare these against the repository rather than against this page. The
 devtool files in particular are live code and may have moved; [PLAN.md](PLAN.md) →
