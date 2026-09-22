@@ -41,10 +41,13 @@ restate the other bullets.
 **What the reader must learn:**
 
 - Two settings, and they answer different questions. `writable` decides whether the resource can
-  be written **at all** — the store refuses the write when it is `false`. `llmWritable` decides
-  only whether a model is offered a write tool for it.
-- **The read-only mark is the first one.** A resource is marked when `writable` is `false`, and
-  that mark means immutable to everyone.
+  be written through this handle — the write is refused when it is `false`, state and content
+  alike. `llmWritable` decides only whether a model is offered a write tool for it.
+- **The read-only mark is the first one.** A resource is marked when `writable` is `false`. The
+  mark says this handle refuses writes, from your code and from a model alike. It is **not** a
+  claim about the data: a shared cell may still be written through another flow that declares it
+  writable, and on a collection the mark leaves `create`, `getOrCreate` and `delete` open. Do not
+  write "immutable" (BR-17).
 - `writable` defaults to allowing the write, so a resource declaring nothing is writable and
   carries no mark — this is the sentence readers will get backwards.
 - `llmWritable` is **opt-in**, so most resources never set it. Not being offered to a model is
@@ -53,7 +56,7 @@ restate the other bullets.
 - Where a resource came from does not produce the mark. A `references/` document and a document
   held under a worker's read-only grant arrive as the same two settings and get the same mark.
 - No marks anywhere means the server predates this and sends neither setting — not that
-  everything is writable (BR-16).
+  everything is writable (BR-15).
 
 **Voice traps here:** introduce "read-only" in terms of the two settings before using it as a
 label; resist "powerful" around a debugging surface.
