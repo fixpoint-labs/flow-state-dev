@@ -28,7 +28,7 @@ import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts
 import { launchChromium } from "../../lib/playwright.mts";
 import { readLabTree } from "../../multi-seat-collab/lab/host.mts";
 import { Scenario, serveLab } from "../../multi-seat-collab/lab/run-scenario.mts";
-import { WORKER_KIND } from "../../multi-seat-collab/lab/kinds.mts";
+import { WORKER_KIND } from "../../multi-seat-collab/lab/workforce/flows/workers/worker.mts";
 
 type Fixture = {
   row4: { piece: { goal: string; desk: string; asks: string } };
