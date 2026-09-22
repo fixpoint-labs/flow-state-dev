@@ -313,7 +313,7 @@ A registry seat can also run its tasks somewhere other than the request that cla
 
 A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead hand each claimed row off to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
 
-A dispatch run is an ordinary session of this flow, derived from the seat's session key. `per-task` gives every row a run to itself; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
+A dispatch run is an ordinary session — of this flow, or of the flow the seat names with `flowKind`. Which session a row lands in is derived from the seat's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
 A seat hands off when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the seat names it by `action`. The stamped address is `type: "task"` — do not set `type` on the seat. A board can mix seats that hand off with seats that run inline:
 
@@ -367,7 +367,7 @@ export default defineFlow({
 | `"per-worker"` | one per seat, shared by every task the seat runs | the worker should remember what it already did |
 | `{ key: (task: TaskWorkerInput) => string }` | one per distinct key | one issue across several seats, or a key you compute from the task |
 
-The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two seats, or two boards, that return the same string share one session. A `key` function that returns an empty string fails that task.
+The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two seats, or two boards, that return the same string share one session. The sharing is scoped to the conversation dispatching them — the same key from another conversation is a different run — and to the instance a cross-flow seat names. A `key` function that returns an empty string fails that task.
 
 ```ts
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
@@ -384,6 +384,8 @@ A run that handles several tasks does so under its entry's `concurrency` policy.
 ```ts
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
 ```
+
+The in-process dispatcher applies that policy. On a deployment that hands dispatches to an external queue, the run starts in another worker and the entry's `concurrency` does not gate it.
 
 ### What the board requires
 
