@@ -6,7 +6,10 @@ const root = resolve(import.meta.dirname, "../..");
 export default defineConfig({
   test: {
     // Stubs DNS so the fetch/crawl network guard never hits a real resolver.
-    setupFiles: [resolve(import.meta.dirname, "test/setup/dns.ts")],
+    setupFiles: [
+      "./test/setup-env.ts",
+      resolve(import.meta.dirname, "test/setup/dns.ts"),
+    ],
   },
   resolve: {
     alias: {

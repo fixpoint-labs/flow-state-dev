@@ -7,6 +7,7 @@ const root = resolve(appDir, "../..");
 
 export default defineConfig({
   test: {
+    setupFiles: ["./test/setup-env.ts"],
     // Playwright specs live under `e2e/` and are run by `pnpm test:e2e`.
     // Vitest must not collect them.
     exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],

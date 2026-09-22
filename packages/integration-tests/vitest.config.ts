@@ -12,6 +12,7 @@ export default defineConfig({
     // honest and avoids cross-scenario interleaving in console output.
     sequence: { concurrent: false },
     reporters: ["default"],
-    include: ["src/scenarios/**/*.test.ts", "test/**/*.test.ts"]
+    include: ["src/scenarios/**/*.test.ts", "test/**/*.test.ts"],
+    setupFiles: ["./test/setup-env.ts"],
   }
 });

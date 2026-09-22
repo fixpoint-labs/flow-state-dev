@@ -6,6 +6,7 @@ export default defineConfig({
     // the default 5s timeout on slower CI runners. The suite already runs
     // serially, so bumping the per-test ceiling is the safe knob.
     testTimeout: 30_000,
-    hookTimeout: 30_000
+    hookTimeout: 30_000,
+    setupFiles: ["./test/setup-env.ts"],
   }
 });

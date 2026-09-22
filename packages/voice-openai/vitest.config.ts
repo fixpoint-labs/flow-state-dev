@@ -4,6 +4,9 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "../..");
 
 export default defineConfig({
+  test: {
+    setupFiles: ["./test/setup-env.ts"],
+  },
   resolve: {
     alias: {
       "@flow-state-dev/core/resource-template": resolve(root, "packages/core/src/resource-template/resource-template.ts"),
