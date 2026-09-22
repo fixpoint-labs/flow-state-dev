@@ -138,7 +138,7 @@ Change the data through the app's own handlers and store. The next `get` or `lis
 
 ## Migration
 
-Callers of `defineExternalResourceCollection` switch to `defineProjectedResourceCollection`. The `ExternalResource*` types become `ProjectedResource*`. `isExternalResourceCollection` becomes `isProjectedResourceCollection`. The brand is `projected: true`, not `external: true`.
+Callers of `defineExternalResourceCollection` switch to `defineProjectedResourceCollection`. The `ExternalResource*` types become `ProjectedResource*`. `isExternalResourceCollection` becomes `isProjectedResourceCollection`.
 
 ## See also
 
