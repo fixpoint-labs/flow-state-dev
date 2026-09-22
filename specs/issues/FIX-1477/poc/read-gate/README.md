@@ -17,33 +17,45 @@ experiments were written to make each half falsifiable rather than argued.
 
 ## How to run them
 
-Neither file sits in a package, so each is copied into the package whose test config and
-resolved dependencies it needs, and run there. Both import `@flow-state-dev/*` by package name
-rather than by relative path; `read-gate-probe` additionally reaches into `workforce`'s own
-source for the two declarations under test, which is what pins it to that package. From the
-repository root:
+Neither file sits in a package, so both are copied into `packages/engine/test` and run there.
+They import `@flow-state-dev/*` by package name; `read-gate-probe` additionally reaches into
+`workforce`'s source for the two declarations under test. From the repository root:
 
 ```bash
 cp specs/issues/FIX-1477/poc/read-gate/premise-proof.test.ts   packages/engine/test/zz-poc-premise.test.ts
-cp specs/issues/FIX-1477/poc/read-gate/read-gate-probe.test.ts packages/workforce/test/zz-poc-gate.test.ts
+cp specs/issues/FIX-1477/poc/read-gate/read-gate-probe.test.ts packages/engine/test/zz-poc-gate.test.ts
 
-(cd packages/engine    && ../../node_modules/.bin/vitest run test/zz-poc-premise.test.ts)
-(cd packages/workforce && ../../node_modules/.bin/vitest run test/zz-poc-gate.test.ts)
+(cd packages/engine && ../../node_modules/.bin/vitest run test/zz-poc-premise.test.ts test/zz-poc-gate.test.ts)
 
-rm packages/engine/test/zz-poc-premise.test.ts packages/workforce/test/zz-poc-gate.test.ts
+rm packages/engine/test/zz-poc-premise.test.ts packages/engine/test/zz-poc-gate.test.ts
 ```
+
+**Both run from `engine`, including the one that tests `workforce`'s declarations.** That is not
+tidiness: a block dispatched from a test in `packages/workforce` never executes — the request
+stays `in_progress` forever, even for a handler that declares no resources — so an action-seeded
+row never lands there and a read would show an empty collection that looks like a passing test.
+No test in that package drives the router today, which is presumably why nobody has hit it. It
+is noted here because it bit this POC, not because this POC is the place to fix it.
 
 ## What was observed
 
 Run against `main` at `119661150`. Both files green:
 
 ```
-premise-proof      2 passed
-read-gate-probe    3 passed
-  ROSTER ->          403 {"error":"State read not permitted for \"roster\""}
-  BOARD ->           403 {"error":"State read not permitted for \"eng.feature.triage\""}
-  ROSTER + OPT-IN -> 200 null
+premise-proof        2 passed
+read-gate-probe      3 passed
+  ROSTER LIST ->            403 {"error":"State read not permitted for \"roster\""}
+  BOARD LIST ->             403 {"error":"State read not permitted for \"eng.feature.triage\""}
+  ROSTER LIST + OPT-IN ->   200 {"items":[{"topic":"support.ada",
+                                "storageKey":"workforce/roster/support.ada",
+                                "clientData":{"seatId":"support.ada","flow":"support-agent",
+                                              "settings":{},"instructions":null}}]}
 ```
+
+Three things in that last line are the point. It is the **list** route, which is what the panels
+use. It returns a **seeded row**, so the 200 is not an empty success. And the row comes back
+**whole** — every field of the stored record — which is the bare-opt-in hazard
+[D4](../../DECISIONS.md#d4) warns about, visible here rather than argued.
 
 That the board ledger declares no `client` config is **asserted**, not printed — it is half of
 what the second case claims, so it has to be able to fail by itself.
@@ -59,10 +71,12 @@ the line's own comment now says `body.orgId` is deliberately not consulted, at a
 
 In `read-gate-probe.test.ts` the red state is built in and needs no edit: the third case is
 the same collection shape as the first, differing by the single `client: { state: { read:
-true } }` line, and it returns 200 where the first returns 403. Delete that line and the case
-fails. The declaration assertion has its own, checked separately: assigning
-`client: { state: { read: true } }` onto the ledger before the route is called turns it red
-(`expected true to be false`) without touching the engine.
+true } }` line, and it returns 200 where the first returns 403. Commenting that one line out
+was run, and turns it red — `ROSTER LIST + OPT-IN -> 403`, `expected 403 to be 200`. The other
+two assertions have their own: assigning a `client` config onto the ledger turns the
+declaration check red (`expected true to be false`) without touching the engine, and the
+seeded-row assertion fails on an empty list (`expected [] to have a length of 1`) — which it
+did, twice, while this probe was being written.
 
 ## Limits
 
@@ -70,7 +84,12 @@ fails. The declaration assertion has its own, checked separately: assigning
   persistence adapter. It settles what the route decides, not how a deployment is configured.
 - **`premise-proof.test.ts` uses its own two flows**, not the reference app's. It proves the
   route's rule; it does not prove what the reference app's flow currently declares.
-- **The 200 in the third case reads an empty organization.** It proves the door opens. It does
-  not exercise a populated roster, cross-flow visibility, or pagination.
+- **One row, one flow, one organization.** The third case proves the list route returns a
+  seeded row. It does not exercise cross-flow visibility, pagination, or a second organization.
+- **Every session here binds to the default organization**, because nothing authenticates
+  anybody. So these prove a session cannot read the **wrong** organization; they do **not**
+  prove the shell reads the **right** one in a deployment that has real organizations. That
+  binding requirement is [PLAN.md → Blocked on](../../PLAN.md#blocked-on), not something this
+  POC settles.
 - **Nothing here says whether the rows *should* be readable.** That is
   [D4](../../DECISIONS.md#d4), which is a product call, answered separately.

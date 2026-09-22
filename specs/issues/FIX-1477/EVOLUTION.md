@@ -32,12 +32,24 @@ name the red state, then produce it. The first two corrections have one each, re
 observed output. The third has no red state to produce, which is itself the finding: there is no
 seam to point a check at, and that is why it is deferred as substrate rather than fixed here.
 
-**And the same defect got into the correction.** Review caught it: `read-gate-probe`'s second
-case was named for two claims — the refusal *and* the ledger declaring no client config — but
-only the refusal was asserted. The declaration was a `console.log`, so half of what the test's
-own name promised could not fail. It is now an assertion with its own red state. Worth recording
-rather than just fixing: a probe written to prove a premise stale had an unfalsifiable half in
-it, which says the habit this page is about is easier to slip than the page makes it sound.
+**And the same defect got into the correction — twice.** Review caught both.
+
+`read-gate-probe`'s second case was named for two claims — the refusal *and* the ledger declaring
+no client config — but only the refusal was asserted. The declaration was a `console.log`, so
+half of what the test's own name promised could not fail.
+
+Worse, the probe **called the wrong route**. It built a path ending in `/state`, and the router
+reads a trailing segment as an item topic
+(`packages/engine/src/routes/router.ts:220`–`:234`), so every case exercised a single-item
+lookup for an item named "state" rather than the list route the panels actually use. The 403s
+were real — both routes carry the same gate — but the `200` proved only that a *nonexistent*
+item is readable. A check aimed at a neighbour of the claim, inside the artifact built to prove
+premises by execution.
+
+Both are fixed: the probe now calls the list route, seeds a row, and asserts the row comes back,
+so an empty `200` can no longer pass. Recorded rather than quietly repaired, because it is the
+same failure as the three rows above wearing a different coat — and it says the habit this page
+is about is easier to slip than the page makes it sound.
 
 Before implementing, compare these against the repository rather than against this page. The
 devtool files in particular are live code and may have moved; [PLAN.md](PLAN.md) →

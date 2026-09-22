@@ -20,7 +20,7 @@ two consumers and are independent of each other. S9 may split off as a fourth, a
 | S7 | `devtool` · consume, and **remove** | Take a dependency on `@flow-state-dev/react`. Render S4 with the tool's own skin and its affordances as slots. **Delete** `src/react/components/navigator/`, `src/react/hooks/use-sessions.ts` and `src/react/hooks/use-read-fence.ts`, repointing its three remaining fence users (`DevToolPanel.tsx`, `use-child-sessions.ts`, `use-workspace-fence.ts`) and their test at the `react` export — an import path, no behaviour change. **The tool's bearer transport has to survive the move** | BR-15 BR-17 BR-29 |
 | S8 | kitchen-sink · the shell | `app/page.tsx`: the rail becomes one `FlowNavigator` with a Channels and a Seats section; the right panel becomes standing `BoardColumns` + `Roster` and **loses its build-mode conditional**; the narrow-width order is wired. **Remove** `components/session-sidebar.tsx` | BR-13 BR-18 BR-25 – BR-28 |
 | S9 | kitchen-sink · the drifted copies | Reconcile the **five** registry-installed files that no longer match their source: `conversation.tsx`, `message.tsx`, `chat-assistant.tsx`, `task-plan.tsx`, `task-plan-state.ts`. Each is either pushed back into the registry or reverted to it — never left forked | BR-14 |
-| S10 | Docs · changeset | [DOCS.md](DOCS.md)'s operations; `packages/react/README.md`; `apps/kitchen-sink/README.md`. One `minor` changeset for `client` and `react` (new exports) and one `patch` for `devtool` (a new dependency, no API change). **None for kitchen-sink** — private (BP-022) |  |
+| S10 | Docs · changeset | [DOCS.md](DOCS.md)'s operations; `packages/react/README.md`; `apps/kitchen-sink/README.md`. One `minor` changeset for `client` and `react` (new exports), one `patch` for `devtool` (a new dependency, no API change), and one `minor` for **`workforce`** — opening the roster's browser read changes observable behaviour for every consumer that installs that collection, not just this app. Add **`orchestration`** too if the board's read lands as a forwarded `defineTaskCollection` option rather than an assign ([Blocked on](#blocked-on)). **None for kitchen-sink** — private (BP-022) |  |
 
 **S2, S3 and S4 are one internal module, not three exports.** Only `FlowNavigator` and the read
 fence leave the package ([Pinned names](#pinned-names)). Three public hooks would let three
@@ -67,6 +67,8 @@ Every row names what would make it fail. A check with no producible red state pr
 | V8 | S9 | Every registry target **the app has installed** is byte-identical to its source, and the number compared is asserted. The manifest declares 25 items over **27 files**; the app installs 25 of them, and the two `generative/` targets it never took are not drift | **Red today: 5 of the 25 installed differ** — `conversation.tsx`, `message.tsx`, `chat-assistant.tsx`, `task-plan.tsx`, `task-plan-state.ts`. The count is the anti-game clause: deleting a manifest row, or quietly un-installing a target, would otherwise make the check pass by shipping less |
 | V9 | S8 | No component the shell's three regions define reads flow, session, roster or board data except through a package export (BR-13) | **Red today**: the session sidebar imports session types from `@flow-state-dev/client` directly. Scoped to the regions [ER-7](../../epics/FIX-1455/BUSINESS-RULES.md) assigns this issue — rail, stream, panel — not to every file in the app |
 | V10 | S4 S8 | Rendered at three widths: boards yield first, the rail second, the stream never (BR-25 – BR-28) | Reorder the breakpoints: the stream collapses below `sm` and the check catches it. Assert at all three widths, not two |
+| V11 | S5 S6 | Each panel's collection is read over the **list** route with at least one row seeded, and the body carries **exactly** the projected fields that panel renders — no `claimedBy`, no lease, no retry ledger, no write log on a board row | Drop the `expose` (or the projection function) and the check goes red on the extra keys, not on a missing one. Asserting the *absence* of the withheld fields is the anti-game clause: a check that only looked for the fields it wanted would pass on the whole envelope. Seed a row first — a 200 with an empty list passes any field assertion vacuously, which is exactly how [`poc/read-gate/`](poc/read-gate/README.md) first fooled itself |
+| V12 | S5 S6 | Reading either collection **without** its `client` declaration is refused `403 State read not permitted` | Remove the declaration: the panels go blank rather than silently reading. Pins the gate so a later refactor cannot delete the opt-in and leave the panels looking merely broken |
 | VG | S8 | **Playwright, against the Next-built app** (`apps/kitchen-sink/e2e/`): the rail lists the kinds; a singleton channel kind opens straight into its conversations; a seat kind opens into seats and then into one seat's conversations; and the **network log shows no session-list request on the kind expand** | Pre-fetch everything: the DOM assertions still pass and the network assertion fails. The network half is what makes this a goal check rather than a screenshot |
 
 **No model runs in any of this**, so no `goals/` check applies: every claim is about what a
@@ -211,6 +213,23 @@ stated as the contract on the factory itself, and the boot reload already depend
 `/sessions/:id/resources/:ref/state`, so a ref spelt `workforce/roster` splits across path
 segments and 404s; `roster` resolves. The collection's `workforce/roster/*` **pattern** is its
 storage keys and is a different thing. Costs one confusing debugging cycle if you meet it cold.
+
+**`S8` must bind the shell's session to the viewer's organization, or the panels are correct and
+empty.** The rows are organization-scoped, so a session reads the organization it is bound to —
+and a session binds to the organization of its resolved principal, or to the default one when
+there is no principal (`packages/engine/src/routes/session-routes.ts:235`). Two deployments
+therefore behave differently, and only one of them is fine by accident:
+
+| Deployment | What happens |
+|---|---|
+| A clean clone with no admin tokens configured | `adminPrincipalResolver()` returns `undefined` (`apps/kitchen-sink/lib/workforce-admin-auth.ts:126`), so nothing authenticates anybody, hires and reads both land on the default organization, and the panels show the seats that were hired. The reference app demonstrates something real |
+| A deployment that configures admin tokens | Hiring runs under the token's organization. A shell session with no credential binds to the **default** organization and lists none of those rows — a panel that is empty and gives no reason |
+
+So `S8` owns wiring the shell's flow to resolve a principal, not merely declaring the
+collections. **This is a requirement, not a reopened question** — [D4](DECISIONS.md#d4) settles
+*who may read these rows*, and this settles *which organization's rows arrive*. The POC proves a
+session cannot read the **wrong** organization; nothing in it proves the shell reads the
+**right** one ([`poc/read-gate/`](poc/read-gate/README.md) → Limits).
 
 **Declare the board's read with a projection, never bare.** With no `expose`, `exclude` or
 `data`, the read returns the stored row unchanged

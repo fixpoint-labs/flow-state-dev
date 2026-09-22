@@ -100,6 +100,11 @@ of a hundred seats from becoming a hundred requests.
    sections inside it.** If wrong: a 256px rail holding two lists that scroll independently, and
    the second component-per-concern the epic exists to prevent, arrived by layout instead of by
    argument.
+4. **[D4](DECISIONS.md#d4) · A hired roster and a channel board are ordinary in-organization
+   data, so the roster and board panels read them directly.** Answered already — a member of an
+   organization may see what that organization holds, unless it is scoped to one user. If wrong:
+   we put a team's roster and every row of its work in front of everyone in that organization,
+   and narrowing it later means taking a shipped panel away.
 
 **Open: one, and it is yours.** The rail's seat rows would come from a list the server answers to
 anyone who asks it — no credential — and after durable hire lands that list names every

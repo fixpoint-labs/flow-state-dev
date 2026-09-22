@@ -99,11 +99,16 @@ components from the client packages.`
 > reload, because the items are durable — the stream is where they are read from, not how long
 > they live.
 >
-> **From a standing collection.** The navigator, the roster and the board columns read a
-> collection that lives outside any one session — the same rows for everyone in the
-> organization, not one session's copy. They read it when they mount, and they do not watch it
-> afterwards: a change somebody else makes appears the next time the panel mounts. If you need a
-> fresh read on demand, change the component's React `key` — that remounts it and refetches.
+> **From a standing collection.** The roster and the board columns read a collection that lives
+> outside any one session — the same rows for everyone in the organization, not one session's
+> copy. They read it when they mount, and they do not watch it afterwards: a change somebody
+> else makes appears the next time the panel mounts. If you need a fresh read on demand, change
+> the component's React `key` — that remounts it and refetches.
+>
+> **The navigator is neither.** It reads your server's flow list, plus a session list for each
+> leaf you open. That list is not organization-scoped and is not a collection, which is why the
+> rail can show you kinds while the roster beside it shows only your own organization's seats.
+> It refreshes on the same terms as the panels: on mount, not on a watch.
 >
 > Reaching for the wrong one shows up immediately: a region built on the item stream shows one
 > session's view of something the whole organization shares.
