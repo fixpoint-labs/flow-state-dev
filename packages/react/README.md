@@ -206,11 +206,14 @@ Current as of the reader's last interaction. It is re-read on mount, at the star
 To open one, read it as the session it is, passing the flow **the run belongs to**, which is not always the conversation's — a run dispatched into another instance belongs to that instance. The row's `flowId` is that address whenever it carries one; fall back to the conversation's own kind when it does not. A different name reads as a different flow: an active run's stream 404s and the view stays on its first snapshot.
 
 ```tsx
-function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {
+function DispatchRunDetail({ row, flowKind }: { row: ChildSessionSummary; flowKind: string }) {
   // `autoResume` is required here: without it this loads one snapshot and
-  // never fills in as the job keeps working.
-  const job = useSession(jobId, { flowKind, autoResume: true });
-  return <ItemsRenderer items={job.items} />;
+  // never fills in as the run keeps working.
+  const run = useSession(row.id, {
+    flowKind: row.flowId ?? flowKind,   // the run's flow, not the conversation's
+    autoResume: true,
+  });
+  return <ItemsRenderer items={run.items} />;
 }
 ```
 

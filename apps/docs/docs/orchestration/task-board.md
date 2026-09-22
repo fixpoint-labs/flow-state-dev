@@ -311,7 +311,9 @@ A registry seat can also run its tasks somewhere other than the request that cla
 
 ## Seats that hand off
 
-A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead hand each claimed row to a worker running in a **dispatch run**, a session of its own under the one draining, and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
+A seat in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. A seat can instead hand each claimed row off to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
+
+A dispatch run is an ordinary session of this flow, derived from the seat's session key. `per-task` gives every row a run to itself; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
 A seat hands off when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the seat names it by `action`. The stamped address is `type: "task"` — do not set `type` on the seat. A board can mix seats that hand off with seats that run inline:
 
@@ -359,7 +361,7 @@ export default defineFlow({
 
 `session` on the dispatcher decides, per row:
 
-| `session` | Session | Reach for it when |
+| `session` | How many runs | Reach for it when |
 |---|---|---|
 | `"per-task"` | one per task | tasks are independent |
 | `"per-worker"` | one per seat, shared by every task the seat runs | the worker should remember what it already did |
@@ -377,7 +379,7 @@ implement: dispatcher({
 }),
 ```
 
-A run that handles several tasks runs them under its entry's `concurrency` policy. The entry a `per-worker` or `key` seat hands off to defaults to `"queue"`, so those tasks run one at a time; a `per-task` seat's entry keeps the flow's default. An explicit `concurrency` on the entry wins:
+A run that handles several tasks does so under its entry's `concurrency` policy. The entry a `per-worker` or `key` seat hands off to defaults to `"queue"`, so those tasks run one at a time; a `per-task` seat's entry keeps the flow's default. An explicit `concurrency` on the entry wins:
 
 ```ts
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
@@ -402,7 +404,9 @@ A board with any seat that hands off fixes each task's assignee at admission: `s
 
 The drain's final `task-board-meta` item reports `terminationReason: "handed-off"` when every outstanding task is running in a dispatch run, with `counts.in_progress` saying how many. The drain returned; the work did not finish. See [Termination](#termination-onidle-modes).
 
-The hand-off block itself returns `{ handedOff: true, taskId, sessionId, requestId, adopted }`, where `sessionId` is the run's session and `requestId` the request within it. The task's worker input has to survive a JSON round-trip; a payload carrying a `Date`, a `Map`, a class instance, or `undefined` in object position fails the task in the drain, naming the offending path. A refused dispatch fails the task through the board's ordinary error path, with the same `DispatchRefusedError` a `dispatcher()` block throws, so a `.rescue()` can read its `refused` code either way.
+The hand-off block itself returns `{ handedOff: true, taskId, sessionId, requestId, adopted }`, where `sessionId` is the run and `requestId` the request the dispatch became. The task's worker input has to survive a JSON round-trip; a payload carrying a `Date`, a `Map`, a class instance, or `undefined` in object position fails the task in the drain, naming the offending path. A refused dispatch fails the task through the board's ordinary error path, with the same `DispatchRefusedError` a `dispatcher()` block throws, so a `.rescue()` can read its `refused` code either way.
+
+Don't read `sessionId` as an id for this hand-off. `requestId` is the one value that is always one per dispatch. `sessionId` is the run, which is shared under `per-worker` and a shared `{ key }`; even under `per-task` it identifies the row rather than the dispatch, so a retry of that row re-enters the same session. `adopted` is how you tell the two apart: `false` when the dispatch created the session, `true` when it re-entered one that already existed.
 
 When the dispatch arrives, the run re-reads the row and runs the worker only if the claim is still current: same attempt, same row, still `in_progress`, still routed to this seat. Otherwise it throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing; the row stays `in_progress` until its lease runs out and the next drain reclaims it.
 
@@ -451,7 +455,7 @@ The item is persisted, so it is still there after the run. The [`chatAssistantRe
 | `committed` | The result is saved. Only the announcement failed. |
 | `undetermined` | The board cannot tell whether the result was saved. |
 
-Then the run fails, after every other task has finished. `onError: "skip"` does not suppress it — `skip` governs tasks, not the board's own bookkeeping.
+Then the board run fails, after every other task has finished. `onError: "skip"` does not suppress it — `skip` governs tasks, not the board's own bookkeeping.
 
 `undetermined` is never reported as "it wasn't saved". It is a permanent answer, not a transient one, and you get it in these cases:
 
@@ -462,7 +466,7 @@ A row the board is unsure about is handed back rather than left claimed, so it s
 
 On a [seat that hands off](#seats-that-hand-off) there is no batch to drain and no board run to defer to, so the failure fails the dispatch run itself — again regardless of `onError`.
 
-Nothing retries a failed announcement. The item and the run's failure are the whole of what the board does about it.
+Nothing retries a failed announcement. The item and that failure are the whole of what the board does about it.
 
 A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `unpark`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. A task handed back out because its worker died is not one of those paths: it is bounded by its own allowance and settles `errored` once that runs out.
 

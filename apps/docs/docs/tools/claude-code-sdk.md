@@ -114,8 +114,8 @@ resource (an open connection, for example).
 
 ### Turning it off for background work
 
-Background work runs in a *dispatch run*, a session of its own outside the
-request that started it. If you dispatch the agent into one, set `detached: true`:
+Background work runs in a *dispatch run*, a session of its flow separate from
+the request that started it. If you dispatch the agent into one, set `detached: true`:
 
 ```ts
 const agent = claudeCodeAgent({ detached: true });
