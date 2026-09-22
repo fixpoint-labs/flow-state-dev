@@ -14,6 +14,23 @@ pnpm --filter @flow-state-dev/devtool build:assets
 pnpm tsx <repo>/packages/cli/bin/fsdev.ts dev --config <repo>/goals/multi-seat-collab/lab/fsdev.config.mts
 ```
 
+## How it is wired
+
+![How the lab is wired: the Markdown tree under lab/workforce/teams/eng on the left, the lab's code in the middle (host.mts, the planner and worker kinds under flows/workers, the driver), and what runs on the right (fsdev.config.mts with the app's desk-to-seat map, the shipped fsdev dev, the shipped DevTool). The person's answer enters only through the owning seat's own answer action.](figures/setup.svg)
+
+Read it left to right: files on disk, code, what runs. The one arrow that crosses from the tree into
+routing goes through `ROUTES` in the config, never through a `WORKER.md` — each seat's `answersFor`
+is only what the checks grade against — and the person reaches the board by one door, the owning
+seat's `answer` action.
+
+## How a run moves
+
+![How one run moves: four lanes against time (eng.planner, eng.builder, the person, eng.reviewer) with the check that grades each step, and below them the three DevTool screens that read it.](figures/flow.svg)
+
+The crossing from `eng.builder`'s lane to `eng.reviewer`'s is the handoff, a second row on the same
+board; each step carries the leg that grades it, and every screen below the fence is graded by VB
+against what the ledger holds.
+
 ## What is here
 
 | File | What it is |
