@@ -18,8 +18,9 @@
  *
  * A task also carries a short note about itself on `feedback`, and the Reason
  * column renders it so a parked row says why without the expander (FIX-1481).
- * See {@link taskReason} for why the column is keyed on the note rather than
- * on the status.
+ * The column is keyed on the field being present, never on the `parked`
+ * status, and the note is rendered exactly as stored — see `showReason` in
+ * `CollectionCard` for why both of those are load-bearing.
  */
 import { useMemo } from "react";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
@@ -29,7 +30,6 @@ import {
   type BoardMeta,
   type CollectionView,
   type ResolvedTask,
-  type Task,
   type TaskStreamItem,
 } from "../../lib/task-collection-state";
 import {
@@ -106,10 +106,20 @@ function CollectionCard({
 }) {
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
-  // Per board, so a board where nothing ever parked or failed reads exactly as
-  // it did before — no empty column apologising for itself.
+  // THE PREDICATE IS THE PRESENCE OF THE FIELD, and status is out of it
+  // entirely. Three verbs write `feedback` — parking for review, a failed
+  // attempt heading for a retry, and resuming — and the retry one leaves it on
+  // a row that has gone back to `pending`, so keying this on `parked` would
+  // suppress a true explanation of what the reader is looking at.
+  //
+  // Presence, not truthiness: a stored empty or whitespace note is a note
+  // something wrote, and this panel reports what is stored rather than
+  // deciding which stored values are worth a reader's attention.
+  //
+  // Per board, so a board where nothing carries a note reads exactly as it did
+  // before — no empty column apologising for itself.
   const showReason = collection.tasks.some(
-    (entry) => taskReason(entry.task) !== undefined
+    (entry) => entry.task.feedback !== undefined
   );
 
   return (
@@ -185,7 +195,6 @@ function TaskRow({
   onOpenChildSession: (childSession: ChildSessionSummary) => void;
 }) {
   const { task } = entry;
-  const reason = taskReason(task);
   return (
     <tr className="border-b border-slate-800/50 align-top hover:bg-slate-900/40">
       <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">
@@ -198,14 +207,18 @@ function TaskRow({
         <StatusPill status={task.status} />
       </td>
       {showReason && (
-        // Clamped like the Goal cell beside it: a reason can be an unbroken
-        // stack trace, and the table has to stay a table. The whole string is
-        // on the title, and the expander below is still the complete record.
+        // Rendered exactly as the row carries it — not trimmed, not
+        // normalized. This panel's job is to report what is stored, and a
+        // stored note of spaces is a fact about the row worth seeing.
+        //
+        // Clamped like the Goal cell beside it, because a note can be an
+        // unbroken stack trace and the table has to stay a table. The whole
+        // string is on the title, and the expander below is still complete.
         <td
           className="max-w-[18rem] truncate py-1.5 pr-2 text-slate-300"
-          title={reason}
+          title={task.feedback}
         >
-          {reason ?? <span className="text-slate-600">—</span>}
+          {task.feedback ?? <span className="text-slate-600">—</span>}
         </td>
       )}
       <td className="py-1.5 pr-2 text-slate-400">{task.assignee ?? "—"}</td>
@@ -330,25 +343,6 @@ function ChildSessionLink({
       {unverified && <span aria-hidden>?</span>}
     </button>
   );
-}
-
-/**
- * The note a task currently carries about itself, or nothing.
- *
- * Read off `feedback`, which is **not a parked-only field**. Three verbs write
- * it — parking for review, a failed attempt heading for a retry, and resuming
- * — and the retry one leaves it on a row that has gone back to `pending`. So
- * the column is keyed on the note being there, never on the status: hiding it
- * on a `pending` row would suppress a true explanation to keep a column's name
- * tidy, and it is the reason there is no *Waiting on you* column or status
- * here either (that stays a reading over parked plus a reason).
- *
- * Blank is nothing. A note of spaces is not something a person can read, and
- * treating it as present would put an empty column on the board.
- */
-function taskReason(task: Task): string | undefined {
-  const reason = task.feedback?.trim();
-  return reason ? reason : undefined;
 }
 
 function StatusPill({ status }: { status: string }) {

@@ -4,13 +4,22 @@
  * A task carries a short note about itself on `feedback`, and until now the
  * only way to read it was the per-row JSON expander. The column renders it.
  *
- * The predicate is the PRESENCE OF THE NOTE, never the `parked` status. Three
- * verbs write the field — parking for review, a failed attempt heading for a
- * retry, and resuming — so a `pending` row can legitimately carry one, and a
+ * The predicate is the PRESENCE OF THE FIELD, never the `parked` status. Three
+ * verbs write it — parking for review, a failed attempt heading for a retry,
+ * and resuming — so a `pending` row can legitimately carry one, and a
  * parked-keyed column would have to suppress it. The two rules that pin this
  * are BR-4 (a `pending` row with a note shows it) and BR-8 (a board where
  * nothing carries one grows no column); keying on status breaks one or the
  * other, so neither can be satisfied by accident.
+ *
+ * **Presence, not truthiness, and the value is rendered as stored.** BR-4 says
+ * the predicate is the presence of the field and BR-3 says the field is
+ * rendered as the row carries it. Both `awaitReview` and `unpark` accept an
+ * empty or whitespace string through `z.string().optional()`, so that value
+ * reaches the board as a real stored note. A panel whose job is to report what
+ * the substrate holds has no business deciding that one is not worth showing,
+ * and trimming on the way out would silently rewrite a stored value. The two
+ * `whitespace` cases below are what hold that line.
  */
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -161,6 +170,36 @@ describe("the reason on a task row", () => {
 
     expect(screen.getByText("resumed: budget raised")).toBeInTheDocument();
     expect(screen.queryByText("the old reason")).not.toBeInTheDocument();
+  });
+
+  it("BR-4 · whitespace · summons the column for a note that is only spaces", () => {
+    // `awaitReview(id, "   ")` and `unpark(id, "")` both persist, because
+    // `feedback` is `z.string().optional()` and neither verb rejects a blank.
+    // So this is a row that genuinely carries a note, and the column is keyed
+    // on the field being there — not on the value being worth reading.
+    //
+    // Suppressing it would hide the caller's bug in the one surface whose job
+    // is to show what is stored, and it would make BR-4's predicate
+    // "presence of the field" false as written.
+    renderBoard({
+      id: "task-blank",
+      goal: "parked with a blank note",
+      status: "parked",
+      feedback: "   ",
+    });
+
+    expect(screen.getByRole("columnheader", { name: /reason/i })).toBeInTheDocument();
+    expect(reasonCellOf("task-blank").textContent).toBe("   ");
+  });
+
+  it("BR-3 · whitespace · renders a note's surrounding spaces as stored", () => {
+    // BR-3: "the field is rendered as the row carries it." Trimming here
+    // would be a silent rewrite of a stored value — the same smoothing BR-3
+    // forbids one case over, arriving as a display convenience.
+    renderBoard({ ...parkedWithReason, feedback: "  see the thread  " });
+
+    expect(reasonCellOf("task-a").textContent).toBe("  see the thread  ");
+    expect(reasonCellOf("task-a").getAttribute("title")).toBe("  see the thread  ");
   });
 
   it("BR-6 · keeps a long, unbroken or marked-up reason readable and the full text reachable", () => {
