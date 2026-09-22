@@ -9,8 +9,8 @@ sign-off surface; everything else here is context for them.
 
 ```mermaid
 flowchart TD
-  I["FIX-1496 · which artifact counts, and how thin"] --> D1["D1 · a pull request on a separate repo<br/>real = three falsifiable properties"]
-  D1 -.->|"rejected"| X1["a commit in a durable local repo<br/>only the runner can reach it · closer to a transcript"]
+  I["FIX-1496 · which artifact counts, and how thin"] --> D1["D1 · work at an address that outlives the run<br/>bare clone in CI, a pull request for the release run<br/>real = three falsifiable properties"]
+  D1 -.->|"rejected"| X1["a commit left in the run's temp directory<br/>swept away · a transcript with a SHA"]
   D1 -.->|"rejected"| X2["a pull request on this repository<br/>strongest evidence, but an agent opening PRs on production"]
   I --> D2["D2 · grade the product against a<br/>pre-stated, executable condition"]
   D2 -.->|"rejected"| X3["keep grading only the prompt<br/>proves the plumbing, never the work"]
@@ -23,13 +23,13 @@ is **not** a fork: driving the channel is the epic's wording, recorded under
 [Decided, not asked](#decided-not-asked).
 
 <a name="d1"></a>
-## D1 · The artifact is a pull request on a separate throwaway repository, and "real" is defined by three falsifiable properties rather than by taste
+## D1 · The artifact is work left at an address that outlives the run — a pushed bare clone on the one automated leg, a pull request for the release run — and "real" is three falsifiable properties rather than a judgement call
 
 | | |
 |---|---|
-| **Instead of** | A commit in a durable local repository, or a pull request against `flow-state-dev` itself |
-| **Because** | ER-DevForce contrasts a real artifact with *a transcript*. A commit only the machine that produced it can reach is a transcript with a SHA. A pull request has an address a person opens, a title and a body the run wrote, and a diff a person accepts or rejects — which is the thing the launch claim is actually about |
-| **Locks in** | Producing the release proof costs a credential, a network call and a throwaway repository, once. And we have committed to a definition of *real work* that the next Lab proof has to keep meeting — a later artifact that cannot satisfy the three properties does not get to call itself real by analogy |
+| **Instead of** | Leaving the commit in the run's own temporary directory, as today; or opening the pull request against `flow-state-dev` itself |
+| **Because** | ER-DevForce contrasts a real artifact with *a transcript*. What makes something more than a transcript is that it is still there, at an address, once the run is over — so the automated leg pushes to a **bare clone at a declared path** rather than leaving a commit in a directory the machine will sweep. The release run points that same path at a real remote and opens a pull request, because a title, a body and a diff a person accepts or rejects is what the launch claim is actually about |
+| **Locks in** | The **release** run costs a credential, a network call and a throwaway repository, once — CI costs none of them, which is what the one-leg trim bought. And we have committed to a definition of *real work* that the next Lab proof has to keep meeting: a later artifact that cannot satisfy the three properties does not get to call itself real by analogy |
 
 **The three properties, each with its falsifier.** This is what makes *"would a person accept
 this as real work?"* checkable instead of a matter of taste:
@@ -40,9 +40,18 @@ this as real work?"* checkable instead of a matter of taste:
 | **The Lab did not author it** | Any graded token of the artifact's content is also found in the lab's own code, its fixtures, or the prompt — the held-out discipline, inverted onto the product |
 | **It satisfies a condition the requester stated before the run, executed** | The condition is run in the produced tree and does not pass; or the condition would have passed before the run, which makes it no evidence at all |
 
-**What would change my mind:** if the owner reads "exists outside the run" as *outside the
-process* rather than *outside the machine*, a bare repository at a declared path is cheaper and
-needs no credential. Say so and the pull-request leg becomes optional rather than the proof.
+**What would change my mind — and half of it already has.** The original card said that if
+*"exists outside the run"* means outside the **process** rather than outside the **machine**,
+then a bare repository at a declared path is cheaper and needs no credential. Review round 1
+took exactly that for the automated leg, which is why CI now needs no token: the cheap reading
+won everywhere it could.
+
+What is still open is the other half: **whether the release proof also settles for the bare
+clone.** If the owner reads a durable local address as enough evidence for a launch claim, the
+pull-request leg drops entirely and this decision reduces to the three properties with no remote
+at all. I would not recommend it — a person outside the run cannot open a path on somebody's
+disk, and that is the audience the whole proof exists for — but it is a one-line change to make,
+and nothing is built against it.
 
 <a name="d2"></a>
 ## D2 · The proof grades what the run produced, against an acceptance condition the brief states first and a machine executes

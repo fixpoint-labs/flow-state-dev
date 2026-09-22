@@ -8,8 +8,8 @@ Feature · `goals/devforce-lab` only · **small** · 1 PR · epic [FIX-1457](../
 
 | Someone who… | Today | After |
 |---|---|---|
-| **is deciding whether Workforce is ready to ship** | "A Lab can build" rests on a check that was written, type-checked, and **never executed**. Its verdict log has one row and that row reads `NOT RUN` | Opens a pull request a hired coder seat wrote, and reads the diff. The verdict log carries a dated `PASS` with the pull request's address in it |
-| **asks what the workforce actually produced** | A commit in a temporary directory on whatever machine ran it, swept away with the rest of `/tmp` | A pull request with a title, a body and a diff, at an address that still resolves after the run is over |
+| **is deciding whether Workforce is ready to ship** | "A Lab can build" rests on a check that was written, type-checked, and **never executed**. Its verdict log has one row and that row reads `NOT RUN` | Opens the work a hired coder seat produced and reads the diff. The verdict log carries a dated `PASS` naming the artifact's address and which leg ran |
+| **asks what the workforce actually produced** | A commit in a temporary directory on whatever machine ran it, swept away with the rest of `/tmp` | Work at an address that still resolves after the run is over — a pushed branch in CI, and for the release run a pull request with a title, a body and a diff |
 | **asks whether the work is any good, not merely that it exists** | Nothing grades the product. The check grades the *prompt*, deliberately, so a model that improvised a plausible file still passes | The brief names an acceptance condition **before** the run, and the check executes it against what the run produced. Improvising does not pass |
 | **asks whether the seats really used their channels** | The feature channel is a Markdown file the loader walks and nothing ever opens | A post on the feature channel is what starts the work. The channel is driven, not decorated |
 | **has to re-run this proof a year from now** | Impossible: it has never been run once | One command, and it is what CI runs: no network, no token, no `gh`. The pull-request release run is the same path pointed at a real remote |
@@ -22,7 +22,7 @@ and letting what it makes survive.
 
 ## What changes
 
-![Two lanes over the same five-stage DevForce path. Today three stages are built and green while the declared channel sits unused and the artifact is a commit in a temp directory; a banner reads never run, on in-memory stores. After, the same five stages with four marked gaps closed: a post on the feature channel drives the filing, the run is on durable on-disk stores, the artifact is a pull request at an address a person can open, and it is graded against an acceptance condition the brief stated before the run.](figures/the-four-gaps.svg)
+![Two lanes over the same five-stage DevForce path. Today three stages are built and green while the declared channel sits unused and the artifact is a commit in a temp directory; a banner reads never run, on in-memory stores. After, the same five stages with four marked gaps closed: a post on the feature channel drives the filing, the run is on durable on-disk stores, the artifact is work left at an address that outlives the run, and it is graded against an acceptance condition the brief stated before the run rather than assumed.](figures/the-four-gaps.svg)
 
 The five stages are the same in both lanes, and the middle three are untouched. Only the two
 ends move, plus two properties of the run. **Nothing new is built** — the four gaps are the whole
@@ -48,7 +48,7 @@ issue ([D1](DECISIONS.md#d1), [D2](DECISIONS.md#d2), and the channel leg the epi
 + checkout and you cannot edit it. Adding a test of your own does not
 + substitute for it.
 +
-+ Put this marker in the body of the pull request you open:
++ Put this marker in your commit message:
 
   FEATURE-BRIEF-E61B8
 ```
@@ -83,10 +83,11 @@ declared and never dispatched, which is a negative claim the existing gate alrea
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · The artifact is a pull request on a separate throwaway repository,
-   and "real" is three falsifiable properties rather than a judgement call.** *If wrong:* the
-   release proof needs a token and network once, and we have committed to a definition of "real
-   work" that a later Lab has to keep meeting.
+1. **[D1](DECISIONS.md#d1) · The artifact is work left at an address that outlives the run — a
+   pushed bare clone in CI, a pull request for the release run — and "real" is three falsifiable
+   properties rather than a judgement call.** *If wrong:* the release run needs a token and
+   network once, and we have committed to a definition of "real work" that a later Lab has to
+   keep meeting.
 2. **[D2](DECISIONS.md#d2) · The proof grades what the run produced, against a condition the
    brief stated first and a machine executes.** *If wrong:* every future DevForce brief owes an
    executable acceptance condition, and a brief that cannot state one cannot be proved this way.
