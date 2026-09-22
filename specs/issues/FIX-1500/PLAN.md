@@ -13,9 +13,9 @@ half is checkable with no app running and the app half is the only one that wait
 |---|---|---|---|
 | S1 | `workforce` · the durable-hire sequence | **Move** it out of `apps/kitchen-sink/flows/workforce-admin/flow.ts` and into `packages/workforce/src/roster/`, beside `reload.ts`, as one exported pair — hire and fire — taking the collection ref, the kind map and the registrar as parameters. The operator flow becomes its **first caller** and keeps its own resolver, its own credential and its fail-closed registration. The sequence itself does not change: refuse-then-mint-then-`create()`-then-register, compensating delete on a registration failure, `create()` **never** `upsert()`. Verified as a move rather than a merge — the sequence is at exactly one site today ([`poc/evidence/`](poc/evidence/README.md) → C2) | BR-11 – BR-15 |
 | S2 | `workforce` · the three inventory collections | Each declares `client: { state: { read: true }, expose: [...] }` ([D3](DECISIONS.md#d3)). **Never bare** — a bare opt-in republishes the stored row unchanged. The allowlists are the fields the seat detail draws and no more | BR-25 BR-26 BR-28 |
-| ~~S3~~ | **Blocked on [Open 1](DECISIONS.md#open).** Written against the seat inventory row, which **this app never populates** — `openInventory` is called nowhere under `apps/kitchen-sink`. Its content (names only, `.default([])` for BP-030, boot-fresh) survives whatever carrier Open 1 picks; the carrier does not. Do not build as written | The row schema gains the seat's **resolved skill names** — `z.array(z.string()).default([])`, so a row written before the field still reads (BP-030). `InventorySeat` widens to carry them and `openInventory`'s seat write publishes them. Names only; contents are not published (D2) | BR-5 BR-7 BR-9 BR-10 |
-| ~~S4~~ | **Blocked on a conflict with an approved spec** ([BR-35](EVOLUTION.md#br35-conflict)) *and* on [Open 1](DECISIONS.md#open). It proposed exactly what FIX-1475's BR-35 forbids, and D3's browser read makes the consequence worse: a fired seat still advertised as live. Do not build as written | A seat hired at runtime gets its inventory row written too, through S1. Without it the seat detail works for file-declared seats and silently not for hired ones — which is the spine's own step 4 | BR-16 |
-| S5 | `react` · `SeatDetail` | One seat's kind, skills, channels and declared boards. Host-passed `PanelRowSource`, the same seam `Roster` and `BoardColumns` take — **it must not build its own client** (BR-27). Each section has a distinct empty state; a section that failed to read says so rather than rendering as empty | BR-5 – BR-8 BR-27 |
+| ~~S3~~ | **Struck — blocked on [Open 1](DECISIONS.md#open).** It was written against the seat inventory row, which **this app never populates**: `openInventory` is called nowhere under `apps/kitchen-sink` | **Not build guidance.** What D2 decides — resolved skill names only, boot-fresh, `.default([])` for BP-030 — **survives only under Open 1's carrier**, and this issue ships no carrier. Nothing here is buildable until that fork closes | BR-5 BR-7 BR-9 BR-10 |
+| ~~S4~~ | **Struck — it is forbidden by an approved spec** ([BR-35](EVOLUTION.md#br35-conflict)) *and* blocked on [Open 1](DECISIONS.md#open). It proposed exactly what FIX-1475's BR-35 forbids, and D3's browser read makes the consequence worse: a fired seat still advertised as live | **Not build guidance.** No hired seat gets an inventory row in this issue. If a hired seat ever needs a browse answer, it **survives only under Open 1's carrier**, under the single-writer rule ([Decided, not asked](DECISIONS.md#d4)) | BR-16 |
+| S5 | `react` · `SeatDetail` | One seat's kind and instructions, from the hired-roster collection. **The skills, channels and declared-boards sections are gated on [Open 1](DECISIONS.md#open)** — none has a browser-readable source in this app, so how many sections this component ships with moves with that fork. Host-passed `PanelRowSource`, the same seam `Roster` and `BoardColumns` take — **it must not build its own client** (BR-27). Each section has a distinct empty state; a section that failed to read says so rather than rendering as empty | BR-5 – BR-8 BR-27 |
 | S6 | `react` · the panels' shared read | `usePanelRows` forwards `topicPrefix`, which the client's `listCollectionItems` already accepts (`packages/client/src/resource-client/resources.ts:105`–`:109`) and the hook does not pass today. This is what makes a seat's channels a read at the source rather than a scan | BR-6 |
 | S7 | kitchen-sink · the hire door | One action on the flow the rail's session runs on, calling S1. **The organization is the one the session is already bound to** — the principal-or-default-org binding the engine applies when the session is created, which is the same resolution the panels' reads go through. Never from the body, and **not** `workforce-admin`'s credential-derived org either: that is also "not the body" and is the wrong source, because it is the operator's organization rather than this session's ([D1](DECISIONS.md#d1), BR-2). **The flow must declare every collection the rail reads, under slash-free refs** — a read resolves its ref against the session's *owning flow*, and `chat-agent` today declares only memory's user resources (`flows/chat-agent/flow.ts:144`). Making a collection browser-readable does **not** make it reachable; the ref has to exist on this flow too. Today that is the roster; whatever [Open 1](DECISIONS.md#open) adds is declared here as well | BR-1 – BR-3 BR-11 – BR-15 |
 | S8 | kitchen-sink · the rail | A seat row opens `SeatDetail`; a channel row opens its declared boards and mounts `BoardColumns` per board; the hire affordance calls S7 and then refreshes the roster by a **specified, checked remount** ([the remount call](DECISIONS.md#d4)) — **`RosterProps` publishes no refresh, ref or version** (`packages/react/src/components/panels/Roster.ts`), and this issue adds none. **No create affordance for a channel or a board** | BR-16 BR-21 – BR-24 |
@@ -44,15 +44,13 @@ flowchart TD
   S5 --> S8["S8 · the rail wires both"]
   S7 --> S8
   O1["Open 1 · a source for skills, channels, boards"] -.->|"unresolved"| S5
-  O2["Open 2 · how the roster refreshes"] -.->|"unresolved"| S8
   classDef proposed stroke-dasharray:4 3
-  class O1,O2 proposed
+  class O1 proposed
 ```
 
 Dashed nodes are unanswered questions, not surfaces. **S3 and S4 are struck** and are not in this
-graph; what replaces them depends on [Open 1](DECISIONS.md#open).
-
-```
+graph; what replaces them depends on [Open 1](DECISIONS.md#open). How the roster refreshes after a
+hire is **not** an open question — it is the checked remount of [D4](DECISIONS.md#d4).
 
 <a name="pr-plan"></a>
 ## PR plan
@@ -99,7 +97,7 @@ Every row names what would make it fail. A check with no producible red state pr
 | V4 | S2 | Each collection's browser read returns **exactly** its allowlisted fields, with rows seeded first | Drop the `expose` and it goes red on the **extra** keys. Asserting only the fields you wanted passes on the whole envelope, and a 200 with an empty list satisfies any field assertion vacuously — so seed rows, and assert the absence of what is withheld (BR-25) |
 | V5 | S2 | Reading an inventory collection **without** its declaration is refused `403 State read not permitted` | Remove the declaration: the seat detail goes visibly empty rather than silently reading. Pins the opt-in so a later refactor cannot delete it and leave the pane merely looking broken (BR-26) |
 | V6 | S2 | Two organizations, one seat id in each: each session lists its own row and not the other's | Bind both sessions to one organization and it goes red. Two organizations, asserted separately — one org proves nothing about a boundary (BR-28) |
-| V7 | S3 | A seat whose folders resolved three skills publishes those three names; a seat that resolved none publishes an empty array; **a row written before the field reads with an empty array** | Three assertions, one per failure mode, because none covers another. Drop the `.default([])` and the third goes red while the first two stay green — that is the BP-030 regression (BR-10). Publish the org's whole catalog instead of the seat's register and the *first* goes red only if the two seats in the fixture resolve **different** sets, so the fixture must give them different sets or the assertion is vacuous (BR-5) |
+| ~~V7~~ | — | **Struck with [S3](#surfaces)** — it checked a seat's skills on a row this app never writes, so an implementer could satisfy it against a surface that does not exist. **Whatever [Open 1](DECISIONS.md#open) lands needs a check of this shape, written against the carrier it picks**: three assertions, one per failure mode — the resolved names, the empty register, and a row written before the field (the BP-030 regression, BR-10) — with the fixture's two seats resolving **different** sets, or the first assertion is vacuous (BR-5) | — |
 | V8 | S6 | A seat's channel read sends `topicPrefix=<seatId>/` and the response contains no other seat's membership | Assert on the **request**, not on the rendered rows: a component that fetched everything and filtered in React renders identically and is the invent-kill this check exists for (BR-6) |
 | V9 | S5 | Rendered against a deployment whose resource routes require `Authorization`, with the host passing its own resource client, the rows arrive | Build the component on `useResourceCollection` instead and it 401s — that hook constructs a client with no fetcher and none is plumbed through the react context. This is [FIX-1477's V16](../FIX-1477/PLAN.md#checks) pointed at a third component; every other check here passes against a deployment that authenticates nobody, so nothing else catches it (BR-27) |
 | V10 | S5 | Four distinguishable states per section: rows, empty, still loading, failed to read | Collapse *empty* and *failed* into one: the check goes red. A seat that is genuinely in no channel and a channel read that 403'd must not look the same — that is the silent-partial shape (BR-7, BR-8) |
@@ -127,14 +125,14 @@ reimplement it.
 | Building a seat's address from an org and a seat id | `seatAddress(orgId, seatId)` — it refuses a dotted or empty org, without which `acme` + `support.ada` and `acme.support` + `ada` spell one address and the second hire silently rebinds the first | String concatenation |
 | The organization a hire lands in (S7) | **The session's own binding** — the principal-or-default resolution the engine already applies, the same one the panels' reads resolve through, so hire and read cannot diverge | `orgOf(credential)` as `workforce-admin` derives it — that is the **operator's** organization, and using it here rebuilds the exact split D1 exists to close, while looking correct because it is not the body |
 | Where S1's extracted sequence lives | `packages/workforce/src/roster/`, beside `reload.ts` — the boot-side reader of the same rows. One directory owns writing a roster row and reading it back | A new top-level module |
-| Writing a seat's inventory row (S3, S4) | **One writer, shared** with `openInventory`'s seat write. A runtime hire and a boot must not be able to produce differently-shaped rows for the same seat | A second write path for hired seats |
+| ~~Writing a seat's inventory row~~ | **Struck with [S3](#surfaces) and [S4](#surfaces).** Nothing in this issue writes a seat's inventory row, so there is no writer here to share. The single-writer rule itself survives and applies to whatever [Open 1](DECISIONS.md#open) lands ([Decided, not asked](DECISIONS.md#d4)) | — |
 
 ## Pinned names
 
 | Where | Name | Why pinned |
 |---|---|---|
 | `react` export | `SeatDetail` | Public, and it sits beside `Roster` and `BoardColumns` in the same family |
-| Seat inventory row field | `skills` | Public: a stored field on a shipped collection, and moving it later breaks every deployment that has written one |
+| ~~Seat inventory row field~~ | ~~`skills`~~ | **Struck with [S3](#surfaces).** This issue stores no such field. Whatever carrier [Open 1](DECISIONS.md#open) picks pins its own name, on the same reasoning: a stored field on a shipped collection cannot be moved without breaking every deployment that has written one |
 | Panel read option | `topicPrefix` | Already the client's spelling; a second name for one concept is the bug |
 
 Everything else — the extracted helper's name and signature, the hire action's name, hook names,
@@ -207,9 +205,11 @@ Re-check these against the repo before building; each of them moves.
   yourself to unblock a check.
 - **Has the operator flow's hire sequence changed?** S1 moves what is there, so read it fresh
   rather than from this plan's summary of it. If it has gained a step, the step moves too.
-- **What are the inventory row schemas now?** S3 adds a field to one of them. They are a public
-  storage surface and their own header says moving a prefix breaks every deployment that has
-  already hired.
+- ~~**What are the inventory row schemas now?**~~ **Struck with [S3](#surfaces)** — this issue
+  adds no field to them. It becomes live again only if [Open 1](DECISIONS.md#open) picks an
+  inventory row as the carrier, and then it is that fork's bullet to write: the schemas are a
+  public storage surface and their own header says moving a prefix breaks every deployment that
+  has already hired.
 - **Does the rail's flow already install the roster collection?** S7 needs it, because a
   collection read resolves the ref against the session's **owning flow**. And the ref it is
   declared under must contain **no slash** — the list route is `/sessions/:id/resources/:ref`
@@ -343,11 +343,12 @@ justification for discarding one.
   depend on inventory population elsewhere (`openInventory` / demo wiring). VG fixtures should
   assert **both** paths, not only post-hire rows." — cursor, round 2
   ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2061#pullrequestreview-5282457130))
-  — **Declined: it is inverted.** A file-declared seat already gets its inventory row from
-  `openInventory`'s boot seat write, which is S3's surface. The path with no row is the **hired**
-  one, which is exactly what S4 says it closes. V13 already asserts both panes. What the note did
-  reveal is that VG left its two-path coverage *inferred*, so VG now names which seat is declared
-  and which is hired — a clause, not a restructure.
+  — **Overtaken by the strike of S3 and S4.** The reply this note first got argued the inverse —
+  that a declared seat already had a row from `openInventory` and S4 closed the hired path. Neither
+  is true in this app: **no seat of either kind has an inventory row**, S3, S4 and V13 are struck,
+  and what a pane shows rests on [Open 1](DECISIONS.md#open). What the note did reveal survives:
+  VG had left its two-path coverage *inferred*, so VG now names which seat is declared and which is
+  hired — a clause, not a restructure.
 - "**~230 lines of custom parsing is a lot for throwaway evidence. C2+C3 might suffice; reserve
   C1-style totality for the `packages/workforce` follow-up.**" — cursor, round 2 (*ibid.*)
   — **Declined.** The same review says C1's totality assertion "is doing real work (it caught

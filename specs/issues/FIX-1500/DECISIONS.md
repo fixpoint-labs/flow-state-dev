@@ -18,7 +18,7 @@ flowchart TD
   D1 -.->|"rejected"| X1a["reach workforce-admin from the browser<br/>the browser would have to hold an operator token"]
   D1 -.->|"rejected"| X1b["a server route that holds the token and proxies<br/>a kitchen-sink-only API, and the org still disagrees"]
   D1 -.->|"rejected"| X1c["ship browse-only, no hire<br/>fails the acceptance spine it exists to close"]
-  I --> D2["D2 · a seat's skills are boot-resolved names<br/>published on its inventory row"]
+  I --> D2["D2 · a seat's skills are boot-resolved names<br/>the carrier is Open 1's"]
   D2 -.->|"rejected"| X2["present the skills catalog as the seat's skills<br/>a catalog is not a seat's resolved register"]
   I --> D3["D3 · the live inventory is readable in-org data"]
   D3 -.->|"rejected"| X3a["join channel member lists in the browser<br/>a second runtime inventory, client-side"]
@@ -53,29 +53,25 @@ than a merge. Two doors over two copies of an invariant is the defect class this
 paying for (tenet 5); two doors over one is ordinary.
 
 <a name="d2"></a>
-## D2 · A seat's skills are the names its own folders resolved at boot, published on its inventory row
+## D2 · A seat's skills are the names its own folders resolved at boot
 
 | | |
 |---|---|
 | **Instead of** | The live skills catalog, presented as the seat's skills ([why it loses](#considered-and-dropped)) |
-| **Because** | The register a seat actually holds is `org/skills ∪ teams/<id>/skills ∪ worker-local`, computed by `readSeatSkills` and imposed as the `seatSkills` key of the `WorkerConfig` admission bag ([FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367)). That is a boot-time answer and there is no honest way to make it a live one, because the loader is Node-only and reads folders. Publishing the names beside the seat's identity — where the binder already writes a row for that seat — shows the register itself rather than a catalog standing in for it, which is the distinction the Architect's fence draws |
+| **Because** | The register a seat actually holds is `org/skills ∪ teams/<id>/skills ∪ worker-local`, computed by `readSeatSkills` and imposed as the `seatSkills` key of the `WorkerConfig` admission bag ([FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367)). That is a boot-time answer and there is no honest way to make it a live one, because the loader is Node-only and reads folders. Publishing the names beside the seat's identity shows the register itself rather than a catalog standing in for it, which is the distinction the Architect's fence draws. **Where they are published is [Open 1](#open)'s** |
 | **Locks in** | The rail's skills view is as fresh as the last boot. A skill added to a folder while the app is running does not appear until it restarts, and that is a promise we are making rather than a bug somebody will file. It also means **whatever carrier [Open 1](#open) picks** holds something derived from a seat's configuration, so a future change to how a seat resolves skills gains a second reader |
 
-**This decision is contingent, and review is what made that visible.** D2 says *where* a seat's
-skills are published and *how fresh they are*. It assumed the seat inventory row was a live
-surface in this app; it is not — nothing calls `openInventory` under `apps/kitchen-sink`, so
-there are no inventory rows at all, for hired or file-declared seats. **What D2 decides still
-holds — names, resolved register, boot-fresh — but the carrier is now part of
-[Open 1](#open).** If that fork lands somewhere other than the seat inventory row, D2's *Instead
-of* and *Because* are unchanged and only the row it rides on moves.
+**What D2 decides, and what it does not.** It decides *what* a seat's skills are — the resolved
+register, as names — and *how fresh* they are: boot-fresh. It does **not** decide where they are
+published. That carrier is [Open 1](#open)'s, and no surface in this issue writes one today.
 
 **Names, not contents.** What a skill *does* is not published here. This is visibility and
 navigation, not a skills product, and the fence is explicit that catalog-only visibility is not
 the proof — the resolved register is.
 
 **What would change my mind:** the skills register becoming a runtime-writable surface for seats
-rather than a boot-time resolution. Then a seat's skills have a live home and the inventory row
-should point at it rather than copy from it.
+rather than a boot-time resolution. Then a seat's skills have a live home, and whatever carrier
+Open 1 picks should point at it rather than copy from it.
 
 <a name="d3"></a>
 ## D3 · The live inventory becomes ordinary readable in-organization data
@@ -104,24 +100,20 @@ if it could not be, the collection would come off the list.
   seat is not in it. `workforce-admin` keeps `fire`, and the extracted helper carries both halves
   so a later issue adding it to the rail writes no new sequence. Smaller is the conservative
   direction here (tenet 3).
-- **The hire's refresh is not a subscription, whatever mechanism [Open 2](#open) picks.**
+- **The hire's refresh is not a subscription** — it is [D4](#d4)'s remount.
   Cross-session liveness is [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506)'s, and
   designing against a seam that delivers only the writer's own changes would be designing against
-  a seam that does not exist. *A draft of this bullet said the host calls the panel's own
-  `refresh`; `RosterProps` publishes none, so only the no-subscription half was ever decided.*
+  a seam that does not exist.
 - **A board's ledger id stays `<channelId>.<boardName>`, minted by the workforce package** — the
-  UI never re-derives that join. *That is all this bullet decides. A draft of it also said board
-  NAMES come from a channel's session state, citing `channel-flow.ts:108`; they do not — that line
-  is the channel read action's **output** schema, and session state carries members, instructions
-  and transcript. Where a name comes from is [Open 1](#open).*
+  UI never re-derives that join. That is all this bullet decides: where a board *name* comes from
+  is [Open 1](#open)'s.
 - **The seat detail is a `react` component, not kitchen-sink code.** Everything else the rail
   renders ships from the package ([FIX-1477 D1](../FIX-1477/DECISIONS.md#d1)); a seat detail built
   in the app is the fork that decision exists to prevent.
 - **If a browse carrier ever holds hired seats, one writer holds it.** Two writers over one row
-  shape is the drift a shared writer exists to prevent. *A draft of this bullet decided the
-  carrier was the seat inventory row and that a hire wrote one; that is what FIX-1475's BR-35
-  forbids ([the clash](EVOLUTION.md#br35-conflict)) and S4 is struck. What survives is the
-  single-writer rule, which applies to whatever [Open 1](#open) lands.*
+  shape is the drift a shared writer exists to prevent. The rule applies to whatever
+  [Open 1](#open) lands; it does not name a carrier, and the seat inventory row is not one —
+  FIX-1475's BR-35 forbids it ([the clash](EVOLUTION.md#br35-conflict)).
 
 <a name="considered-and-dropped"></a>
 ## Considered and dropped
@@ -188,12 +180,9 @@ Verdicts here; what each asserts, how, and what it corrected is in
   also found missing rather than merely unspecified — a public panel refresh and a restartable
   test harness — and a **conflict with an approved spec** was raised rather than settled
   ([BR-35](EVOLUTION.md#br35-conflict)).
-- **Review round 5** — a coherence pass caught **residual drift from round 4's own rework**: three
-  *Decided, not asked* bullets, the plan's sketch and a changeset fragment still asserted the
-  mechanisms round 4 had withdrawn — board names from session state, a host-callable panel
-  `refresh`, and a hired seat's inventory row. Scrubbed. The lesson is the anti-addenda rule's:
-  re-drafting the documents a finding names is not enough when a withdrawn mechanism is *cited*
-  elsewhere, and an implementer reading only the plan would have rebuilt the draft.
+- **Review round 5** — no decision moved; a coherence pass scrubbed passages still asserting the
+  mechanisms round 4 had withdrawn, and closed the refresh fork as [D4](#d4). The transferable
+  lesson is in [EVOLUTION.md](EVOLUTION.md#retraction-sweep).
 
 <a name="open"></a>
 ## Open
