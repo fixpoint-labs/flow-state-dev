@@ -59,7 +59,7 @@ paying for (tenet 5); two doors over one is ordinary.
 |---|---|
 | **Instead of** | The live skills catalog, presented as the seat's skills ([why it loses](#considered-and-dropped)) |
 | **Because** | The register a seat actually holds is `org/skills ∪ teams/<id>/skills ∪ worker-local`, computed by `readSeatSkills` and imposed as the `seatSkills` key of the `WorkerConfig` admission bag ([FIX-1367](https://linear.app/fixpoint-labs/issue/FIX-1367)). That is a boot-time answer and there is no honest way to make it a live one, because the loader is Node-only and reads folders. Publishing the names beside the seat's identity — where the binder already writes a row for that seat — shows the register itself rather than a catalog standing in for it, which is the distinction the Architect's fence draws |
-| **Locks in** | The rail's skills view is as fresh as the last boot. A skill added to a folder while the app is running does not appear until it restarts, and that is a promise we are making rather than a bug somebody will file. It also means the seat inventory row carries something derived from a seat's configuration, so a future change to how a seat resolves skills has a second reader |
+| **Locks in** | The rail's skills view is as fresh as the last boot. A skill added to a folder while the app is running does not appear until it restarts, and that is a promise we are making rather than a bug somebody will file. It also means **whatever carrier [Open 1](#open) picks** holds something derived from a seat's configuration, so a future change to how a seat resolves skills gains a second reader |
 
 **This decision is contingent, and review is what made that visible.** D2 says *where* a seat's
 skills are published and *how fresh they are*. It assumed the seat inventory row was a live
@@ -96,22 +96,24 @@ if it could not be, the collection would come off the list.
   seat is not in it. `workforce-admin` keeps `fire`, and the extracted helper carries both halves
   so a later issue adding it to the rail writes no new sequence. Smaller is the conservative
   direction here (tenet 3).
-- **A hire refreshes the roster by calling the panel's own `refresh`.** `PanelRows.refresh` is
-  already published for exactly this and its own note says it is safe to call from a host
-  affordance (`packages/react/src/components/panels/reads.ts`). Not a subscription: cross-session
-  liveness is [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506)'s, and designing against
-  a seam that delivers only the writer's own changes would be designing against a seam that does
-  not exist yet.
-- **Board names come from the channel's session state**, where `CHANNEL.md`'s `boards:` already
-  lands as a `boards: string[]` projection (`packages/workforce/src/channel/channel-flow.ts:108`).
-  No new storage, and the board's ledger id stays `<channelId>.<boardName>` minted by the
-  workforce package — the UI does not re-derive that join.
+- **The hire's refresh is not a subscription, whatever mechanism [Open 2](#open) picks.**
+  Cross-session liveness is [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506)'s, and
+  designing against a seam that delivers only the writer's own changes would be designing against
+  a seam that does not exist. *A draft of this bullet said the host calls the panel's own
+  `refresh`; `RosterProps` publishes none, so only the no-subscription half was ever decided.*
+- **A board's ledger id stays `<channelId>.<boardName>`, minted by the workforce package** — the
+  UI never re-derives that join. *That is all this bullet decides. A draft of it also said board
+  NAMES come from a channel's session state, citing `channel-flow.ts:108`; they do not — that line
+  is the channel read action's **output** schema, and session state carries members, instructions
+  and transcript. Where a name comes from is [Open 1](#open).*
 - **The seat detail is a `react` component, not kitchen-sink code.** Everything else the rail
   renders ships from the package ([FIX-1477 D1](../FIX-1477/DECISIONS.md#d1)); a seat detail built
   in the app is the fork that decision exists to prevent.
-- **A hired seat's row is written by the same binder that writes a declared seat's.** A runtime
-  hire that produced no inventory row would make the rail's seat detail work for file-declared
-  seats and silently not for hired ones — which is the acceptance spine's own step 4.
+- **If a browse carrier ever holds hired seats, one writer holds it.** Two writers over one row
+  shape is the drift a shared writer exists to prevent. *A draft of this bullet decided the
+  carrier was the seat inventory row and that a hire wrote one; that is what FIX-1475's BR-35
+  forbids ([the clash](EVOLUTION.md#br35-conflict)) and S4 is struck. What survives is the
+  single-writer rule, which applies to whatever [Open 1](#open) lands.*
 
 <a name="considered-and-dropped"></a>
 ## Considered and dropped
@@ -177,6 +179,12 @@ Verdicts here; what each asserts, how, and what it corrected is in
   also found missing rather than merely unspecified — a public panel refresh and a restartable
   test harness — and a **conflict with an approved spec** was raised rather than settled
   ([BR-35](EVOLUTION.md#br35-conflict)).
+- **Review round 5** — a coherence pass caught **residual drift from round 4's own rework**: three
+  *Decided, not asked* bullets, the plan's sketch and a changeset fragment still asserted the
+  mechanisms round 4 had withdrawn — board names from session state, a host-callable panel
+  `refresh`, and a hired seat's inventory row. Scrubbed. The lesson is the anti-addenda rule's:
+  re-drafting the documents a finding names is not enough when a withdrawn mechanism is *cited*
+  elsewhere, and an implementer reading only the plan would have rebuilt the draft.
 
 <a name="open"></a>
 ## Open
@@ -234,4 +242,20 @@ trigger — then it is a contract, not a workaround, and (a) is right. **What be
 (b) done carelessly looks like a flicker or loses scroll position; (a) is a public API we cannot
 withdraw.
 
-**Open: the two above.** No decision card is open.
+### Input on these forks, from review — not an answer to them
+
+The FSD Architect read both, on the record and **explicitly not as owner approval**
+([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2061#issuecomment-5782491000)):
+**C** for Open 1 and **(b)** for Open 2, matching the recommendations above. Two things it added
+that the candidates did not carry:
+
+- **B is not the invent-kill by default, but it is near-miss substrate.** The kill names
+  *client-side* joins; a **server-written** org-scoped projection is a different thing. It becomes
+  the kill if it turns into a second inventoriable seat store, so if B is ever filed it is fenced:
+  projection ≠ inventory · one writer · **fire updates or deletes the projection** · no second
+  hire/fire store. That fire clause is load-bearing — without it a browser-readable projection
+  recreates BR-35's failure exactly, as a fired seat still advertised live.
+- **Do not pick A while BR-35 stands** without an owner re-gate.
+
+**Open: the two above.** No decision card is open. A reviewer agreeing with a recommendation does
+not close a fork that changes what the issue delivers; that is the owner's.

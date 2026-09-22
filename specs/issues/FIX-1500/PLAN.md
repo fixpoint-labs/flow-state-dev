@@ -75,7 +75,7 @@ has already found more than once, so `VG` does not move to a follow-up.
 |---|---|---|---|
 | `durable-hire-one-home` | `workforce` | `patch` | PR-A |
 | `inventory-client-read` | `workforce` | `patch` | PR-B |
-| `seat-skills-on-inventory-row` | `workforce` | `patch` | PR-B |
+| ~~`seat-skills-on-inventory-row`~~ | — | — | **Struck with [S3](#surfaces)** — it named a row this app never writes. Whatever [Open 1](DECISIONS.md#open) lands brings its own fragment, named for the carrier it actually ships |
 | `panel-read-topic-prefix` | `react` | `patch` | PR-B |
 | `seat-detail` | `react` | `patch` | PR-C |
 | — | kitchen-sink | **none** | private (BP-022) |
@@ -169,18 +169,20 @@ the extracted hire, in the workforce package:
     create   the roster row            ← the throw IS the duplicate refusal
     register the address
     on a registration failure: delete the row, report the registration failure
-    write    the seat's inventory row  ← S4, so a hired seat has a detail pane
+    ── no third write here. S4's inventory row is struck (BR-35), and anything
+       Open 1 adds needs the compensation boundary widened first (Guardrails)
 
 the rail's door:
     org ← the session's, from the principal or the default        (never the body)
     call the extracted hire with the app's kind map and registrar
 
 opening a seat:
-    kind      ← its roster row
-    skills    ← its seat inventory row                            (boot-resolved names)
-    channels  ← memberships, read with topicPrefix "<seatId>/"    ← the whole of S6
-    boards    ← for each channel, that channel's session state
-                then BoardColumns on "<channelId>.<board>"
+    kind, instructions ← its roster row                           ← the part that works
+    skills             ← ??  no browser-readable source           ← Open 1
+    channels           ← ??  no inventory exists in this app      ← Open 1
+    boards             ← ??  names are in an ACTION's output      ← Open 1
+                             once a name is obtainable:
+                             BoardColumns on "<channelId>.<board>"
 ```
 
 **POC:** [`poc/evidence/`](poc/evidence/README.md) — authoring-time evidence for this spec's
@@ -223,6 +225,11 @@ Re-check these against the repo before building; each of them moves.
   [EVOLUTION.md](EVOLUTION.md) records that its hire sequence gains a home rather than changing
   its contract; once that is true in code, its own rules should read that way rather than leaving
   a reader to join two documents.
+- **Under [Open 1](DECISIONS.md#open)'s candidate C, decide whether S2 still rides this issue.**
+  Opening three inventory collections to a browser is posture for a pane that, under C, will not
+  read them yet — and nothing in this app writes rows to them either, so the read would return
+  empty by construction. It is optional, not spine: it may ride the browse follow-up instead.
+  Raised by review as a soft fence; not decided here, because it moves with Open 1's answer.
 - **Decide where the board names are fetched, and write down which.** The sketch reads a channel's
   session state per channel the seat belongs to, so a seat in M channels costs M reads on top of
   the three that identify it. Deferring those until a channel is actually opened is a real option
