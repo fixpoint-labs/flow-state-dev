@@ -117,34 +117,28 @@ no reader in any plan. FIX-1502 was filed to own it; 1481 keeps verifying the ro
    flow declaring the three collections is the workforce **channel** flow
    (`packages/workforce/src/channel/channel-flow.ts`), so today they are reachable solely through a
    channel's own session.
-4. **And an org-scoped read cannot be told *which* org.** Its storage identity **is** an org id,
-   and the engine only ever has one to hand it: the session's, which flows through
-   `createExecutionContext` → `resolveOrgStorageKey`. **No request can supply another.** A session's
-   org is set once at creation from the configured resolver — `body.orgId` is **not consulted at
-   all** ([FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442)) — and **there is no `orgId`
-   query parameter on any engine route**, because an organization is never a caller's to name.
-   Those two facts are the whole of it, and they hold whichever internal function derives the scope
-   id. (`packages/engine/src/resources/internal.ts` states the same invariant in so many words —
-   *"never from caller input (BP-031)"* — though it states it for the *external*-collection path,
-   which these three are not.)
+4. **And an org-scoped read cannot be told *which* org to read.** Its storage key comes from the
+   execution's `orgId` (`createExecutionContext` → `resolveOrgStorageKey`), which is the org the
+   **session** carries. That org is set once at creation from the configured resolver:
+   `body.orgId` is **never consulted**
+   ([FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442)), and the listing has **no `orgId`
+   query fallback** by design. Where no resolver is configured, it is `DEFAULT_ORG_ID`
+   ([`projects-on-org-scope.md`](../../../apps/docs/guides/projects-on-org-scope.md): *"Configure
+   no `resolvePrincipal` and everything runs under `DEFAULT_ORG_ID`"*); where one is, it is that
+   principal's org.
 
-**So the axis is missing because nothing can *name* an org — not because no org is reachable.**
-Declaring a `client` config on the inventory collections would not open an org picker; it would
-open the read onto whichever org the session already holds. On a host that configures **no
-`resolvePrincipal`** — which nothing under `packages/devtool`, `packages/fsdev` or `apps/devtool`
-does — that is always the default org
-([`projects-on-org-scope.md`](../../../apps/docs/guides/projects-on-org-scope.md): *"Configure no
-`resolvePrincipal` and everything runs under `DEFAULT_ORG_ID`"*); a host that *does* configure one
-binds each session to that principal's org instead, so the default is a property of the
-unauthenticated shell, not of the framework. **No surface anywhere accepts *show me organization
-X*, and supplying that is exactly
-[FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)'s subject.** **Building it inside W5 is
-the [ER-25](#what-no-child-may-do) substrate growth the owner fenced**, arriving under a polish
-label; raised up per [ER-17](#er-17) rather than answered locally.
+**So the gap is that you cannot *choose* the org — not that no org is reachable.** State it that
+way round, because the sloppy version is wrong in a way that matters: **the surface can be asked,
+it just always answers with the same org.** Declaring a `client` config on these collections would
+not add an org picker; it would open the read onto whichever org the session already holds.
+**Supplying the ability to select one is exactly
+[FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)'s subject**, and building it inside W5
+is the [ER-25](#what-no-child-may-do) substrate growth the owner fenced — raised up per
+[ER-17](#er-17) rather than answered locally.
 
-**Plan the successor against the naming gap, not against reachability.** The two read differently:
-a reachability story invites a child to widen a read, and the naming story says the work is an
-address the request can carry, which is the shape FIX-1486 actually has.
+**Plan the successor against selection, not against access.** An access story invites a child to
+widen a read; a selection story says the work is an address the request can carry, which is the
+shape FIX-1486 actually has.
 
 > **Two corrections inside the correction, because this mechanism has now been got wrong twice.**
 >
@@ -158,17 +152,20 @@ address the request can carry, which is the shape FIX-1486 actually has.
 > **Two.** The first draft of *this* amendment replaced it with a second false claim: that the
 > session listing *"withholds every row that is not on that org."* It does not. `handleListSessions`
 > filters on `isOrgAttributed(s) && (allowed === undefined || s.orgId === DEFAULT_ORG_ID)`, and
-> `allowed` is `ctx.anonymousFlowIds` — which is never set on this path at all, because
-> `authorizeManagementRoute` returns `ALLOWED` at its first guard when the host is on the default
-> resolver and no flow authenticates (`packages/engine/src/routes/route-auth.ts`). The second
-> conjunct is therefore vacuously true and **only unattributed legacy rows are withheld**; the
-> `DEFAULT_ORG_ID` narrowing reaches that filter solely in the *mixed-app anonymous* case.
-> **And it was irrelevant as well as wrong**: that route lists **sessions, not inventory
-> resources**, so it was never evidence about an inventory read. Caught on sibling PR
-> [#2037](https://github.com/fixpoint-labs/flow-state-dev/pull/2037), whose re-derivation this
-> wording now matches, and corrected here before merge. The conclusion never depended on it.
+> `allowed === undefined` means *no flow in this app authenticates*: `authorizeManagementRoute`
+> returns `ALLOWED` at its **first** guard when the host is on the default resolver and nothing
+> authenticates, so the anonymous branch is never reached at all, and the branch that *is* reached
+> in a mixed app always returns a `Set` (`packages/engine/src/routes/route-auth.ts`). The second
+> conjunct is therefore vacuously true on that path and **only unattributed legacy rows are
+> withheld**; the `DEFAULT_ORG_ID` narrowing reaches that filter solely in the *mixed-app
+> anonymous* case.
 >
-> **What both errors had in common** is that they reasoned about handlers instead of reading them,
-> and both landed on *reachability* — which org can be got at — when the real constraint is
-> **naming**. A child that inherits the reachability framing will try to widen a read; the naming
-> framing points it at the address instead.
+> **The clause is dropped rather than repaired, because it was doing no work even when true**:
+> that route lists **sessions**, and this rule is about reading **inventory resources**. It was
+> never evidence for the claim it was attached to. Caught on sibling PR
+> [#2037](https://github.com/fixpoint-labs/flow-state-dev/pull/2037), whose re-derivation the
+> wording above now matches, and corrected here before merge. The conclusion never depended on it.
+>
+> **What all three wrong versions had in common** is that they reasoned about handlers instead of
+> reading them, and each landed on *access* — which org can be got at — when the real constraint
+> is **selection**. A child that inherits the access framing will try to widen a read.
