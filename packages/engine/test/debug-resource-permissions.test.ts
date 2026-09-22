@@ -18,7 +18,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  defineExternalResourceCollection,
+  defineProjectedResourceCollection,
   defineFlow,
   defineResource,
   defineResourceCollection,
@@ -73,15 +73,15 @@ const sealedCollection = defineResourceCollection({
 });
 
 /**
- * An external collection: read-only because of what it *is*, not what it says.
+ * A projected collection: read-only because of what it *is*, not what it says.
  *
- * `ExternalResourceCollectionConfig` has no `writable` key at all — its own doc
+ * `ProjectedResourceCollectionConfig` has no `writable` key at all — its own doc
  * comment calls read-only "structural, not a flag", and the registry refuses
  * every mutator on it. So the absent-key rule that is right everywhere else
  * gives the wrong answer here: nothing was declared, but the default is not
  * writable.
  */
-const externalPositions = defineExternalResourceCollection({
+const externalPositions = defineProjectedResourceCollection({
   pattern: "positions/*",
   scope: "org",
   stateSchema: z.object({ v: z.string().default("") }),
@@ -184,9 +184,9 @@ describe("the debug snapshot carries both permission settings", () => {
     expect(entry.llmWritable).toBe(false);
   });
 
-  it("reports an external collection as unwritable, though it declares nothing", async () => {
+  it("reports a projected collection as unwritable, though it declares nothing", async () => {
     // THE CASE THE ABSENT-KEY RULE GETS WRONG IF THE SERVER STAYS LITERAL.
-    // An external collection cannot declare `writable` — the field does not
+    // A projected collection cannot declare `writable` — the field does not
     // exist on its config — and it is refused every mutator by the registry.
     // Reporting "declared nothing" would put it in the same bucket as an
     // ordinary mutable resource and leave a genuinely read-only thing

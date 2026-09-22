@@ -22,7 +22,7 @@ import { hasClientProjection, resolveClientProjection } from "@flow-state-dev/co
 import {
   getPersistedData,
   isCollectionConfig,
-  isExternalResourceCollection,
+  isProjectedResourceCollection,
   type ResolvedResourceScope,
   type ResourceFlowLike,
   type ResourceOwnerFlow,
@@ -84,7 +84,7 @@ export interface DebugResourceEntry {
    * **Omitted when nothing makes it unwritable**, which is the common case.
    *
    * Usually this is `config.writable` as the author declared it. The one place
-   * it is not is an external collection, which has no `writable` field to
+   * it is not is a projected collection, which has no `writable` field to
    * declare and is refused every mutator structurally — reported as `false`
    * because it is, not because anybody said so.
    *
@@ -191,22 +191,22 @@ function describeClientConfig(
  * the framework's default, and the rule a reader must not get backwards
  * (BR-12, BR-14).
  *
- * **An external collection is the case where they come apart.** Its config has
- * no `writable` field at all — `ExternalResourceCollectionConfig` calls
+ * **A projected collection is the case where they come apart.** Its config has
+ * no `writable` field at all — `ProjectedResourceCollectionConfig` calls
  * read-only "structural, not a flag" — and the registry refuses it every
  * mutator. Staying literal there would report "declared nothing", which the
  * reader is told to take as writable, leaving a genuinely unwritable
  * collection unmarked. That is a false negative, and the failure taxonomy is
  * explicit that a wrong mark is the worse direction than silence.
  *
- * `llmWritable` gets no such treatment: an external collection has no
+ * `llmWritable` gets no such treatment: a projected collection has no
  * model-write door to describe, so the key stays absent rather than inventing
  * an answer.
  */
 function describePermissions(
   config: ResourceConfig | ResourceCollectionConfig
 ): { writable?: boolean; llmWritable?: boolean } {
-  if (isExternalResourceCollection(config)) {
+  if (isProjectedResourceCollection(config)) {
     return { writable: false };
   }
   return {

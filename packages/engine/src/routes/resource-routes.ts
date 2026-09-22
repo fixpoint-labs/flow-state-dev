@@ -7,11 +7,11 @@
  */
 import type {
   CollectionClientConfig,
-  ExternalResourceCollectionConfig,
+  ProjectedResourceCollectionConfig,
   JsonObject,
   ResourceQuery,
 } from "@flow-state-dev/core/types";
-import { getPatternPrefix, matchesPattern, resolveCollectionKey, searchExternalRecords } from "@flow-state-dev/core/types";
+import { getPatternPrefix, matchesPattern, resolveCollectionKey, searchProjectedRecords } from "@flow-state-dev/core/types";
 import { resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
@@ -31,11 +31,11 @@ import { ValidationError } from "../errors/flow-error";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
-  buildExternalResourceContextFromSession,
+  buildProjectedResourceContextFromSession,
   findResourceConfig,
   getPersistedData,
   isCollectionConfig,
-  isExternalResourceCollection,
+  isProjectedResourceCollection,
   readExternalCollectionState,
   renderContent,
   type ResourceOwnerFlow,
@@ -166,10 +166,10 @@ export async function handleGetCollectionItemContent(
     }
   }
 
-  // FIX-858: external collections have no stored content — the state is read
+  // FIX-858: projected collections have no stored content — the state is read
   // through the app store and the content is template-rendered from it.
-  if (isExternalResourceCollection(config)) {
-    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId, _request.signal);
+  if (isProjectedResourceCollection(config)) {
+    const extCtx = buildProjectedResourceContextFromSession(session, scope, route.sessionId, _request.signal);
     const extState = await readExternalCollectionState(
       config,
       extractBareTopic(config.pattern, storageKey),
@@ -227,10 +227,10 @@ export async function handleCreateCollectionItem(
     return jsonResponse(400, { error: `"${route.ref}" is not a collection` });
   }
 
-  // FIX-858: external collections are read-only — no write reaches FSD storage.
+  // FIX-858: projected collections are read-only — no write reaches FSD storage.
   // The definer already forbids client.content.create, so this is defense in depth.
-  if (isExternalResourceCollection(config)) {
-    return jsonResponse(403, { error: `"${route.ref}" is a read-only external collection` });
+  if (isProjectedResourceCollection(config)) {
+    return jsonResponse(403, { error: `"${route.ref}" is a read-only projected collection` });
   }
 
   if (!config.client?.content?.create) {
@@ -340,9 +340,9 @@ export async function handleUpdateResourceContent(
   const { config, scope } = found;
 
   if (isCollectionConfig(config)) {
-    // FIX-858: external collections are read-only (defense in depth).
-    if (isExternalResourceCollection(config)) {
-      return jsonResponse(403, { error: `"${route.ref}" is a read-only external collection` });
+    // FIX-858: projected collections are read-only (defense in depth).
+    if (isProjectedResourceCollection(config)) {
+      return jsonResponse(403, { error: `"${route.ref}" is a read-only projected collection` });
     }
     if (!config.client?.content?.update) {
       return jsonResponse(403, { error: `Update not permitted for "${route.ref}"` });
@@ -409,7 +409,7 @@ function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {
  * `client.state.read`; works for session, user, and org scope.
  *
  * Store-backed collections page by keyset over lexicographically-sorted storage
- * keys (`cursor` = the last key returned). External collections (FIX-858) push
+ * keys (`cursor` = the last key returned). Projected collections (FIX-858) push
  * the page down to the app's `search` hook and pass its opaque cursor straight
  * through — the framework never enumerates the app store.
  */
@@ -451,18 +451,18 @@ export async function handleListCollectionState(
     return jsonResponse(400, { error: `limit must be 1–${STATE_LIST_MAX_LIMIT}` });
   }
 
-  // FIX-858: external collections read through their `search` hook — the app
+  // FIX-858: projected collections read through their `search` hook — the app
   // engine runs the page. The opaque `nextCursor` is the app's, echoed back
   // verbatim on the next request. `topicPrefix` maps to the query's `prefix`.
-  if (isExternalResourceCollection(config)) {
-    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId, request.signal);
+  if (isProjectedResourceCollection(config)) {
+    const extCtx = buildProjectedResourceContextFromSession(session, scope, route.sessionId, request.signal);
     const query: ResourceQuery = {
       limit,
       ...(cursor !== undefined ? { cursor } : {}),
       ...(topicPrefix !== undefined ? { prefix: topicPrefix } : {}),
     };
-    const { hits, nextCursor } = await searchExternalRecords(
-      config as unknown as ExternalResourceCollectionConfig,
+    const { hits, nextCursor } = await searchProjectedRecords(
+      config as unknown as ProjectedResourceCollectionConfig,
       query,
       extCtx
     );
@@ -574,10 +574,10 @@ export async function handleGetCollectionItemState(
   }
 
   let value: JsonObject | undefined;
-  if (isExternalResourceCollection(config)) {
+  if (isProjectedResourceCollection(config)) {
     // FIX-858: read-through to the app store, not FSD storage. The bare topic is
     // the app's within-scope row key.
-    const extCtx = buildExternalResourceContextFromSession(session, scope, route.sessionId, _request.signal);
+    const extCtx = buildProjectedResourceContextFromSession(session, scope, route.sessionId, _request.signal);
     value = await readExternalCollectionState(
       config,
       extractBareTopic(config.pattern, storageKey),
@@ -742,9 +742,9 @@ export async function handleDeleteCollectionItem(
     return jsonResponse(400, { error: `"${route.ref}" is not a collection` });
   }
 
-  // FIX-858: external collections are read-only (defense in depth).
-  if (isExternalResourceCollection(config)) {
-    return jsonResponse(403, { error: `"${route.ref}" is a read-only external collection` });
+  // FIX-858: projected collections are read-only (defense in depth).
+  if (isProjectedResourceCollection(config)) {
+    return jsonResponse(403, { error: `"${route.ref}" is a read-only projected collection` });
   }
 
   if (!config.client?.content?.delete) {

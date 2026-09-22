@@ -123,19 +123,19 @@ describe("what auto-discovery will and will not mount", () => {
     expect(mountsFor({ artifacts: ordinary })).toEqual(["artifacts"]);
   });
 
-  it("leaves an external collection alone", () => {
+  it("leaves a projected collection alone", () => {
     // It answers the duck-type — `pattern` and `list` are both there — and is
     // projectable through neither. Its `list` is paged, so hydrate's
     // `for (const entry of await list())` throws before the run starts, and it
     // carries no mutators for a writable mount to flush through.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const external = {
+      const projected = {
         pattern: "tickets/**",
-        external: true,
+        projected: true,
         list: () => Promise.resolve({ items: [], nextCursor: null }),
       };
-      expect(mountsFor({ tickets: external })).toEqual([]);
+      expect(mountsFor({ tickets: projected })).toEqual([]);
       expect(warn.mock.calls.map((c) => c[0]).join(" ")).toMatch(/tickets/);
     } finally {
       warn.mockRestore();

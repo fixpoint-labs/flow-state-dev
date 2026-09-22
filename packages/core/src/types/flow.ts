@@ -12,7 +12,7 @@ import type {
   ResourceCollectionConfig,
   ResourceCollectionRef
 } from "./resource-collection";
-import type { ExternalResourceCollectionRef } from "./external-resource-collection";
+import type { ProjectedResourceCollectionRef } from "./projected-resource-collection";
 import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
 import type { WebhookConfig } from "./webhooks";
@@ -27,12 +27,12 @@ export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
 
 type InferResourceRefs<TResources extends Record<string, DeclaredResourceEntry>> = {
   // All collection refs expose async reads regardless of prefetchMode
-  // — FIX-700 collapsed the eager/lazy type split. An `external`-branded
+  // — FIX-700 collapsed the eager/lazy type split. An `projected`-branded
   // collection (FIX-858) resolves to the read-only ref — tested FIRST because
   // it is a narrower `DefinedResourceCollection`, so the plain-collection branch
   // would otherwise swallow it.
-  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S> & { external: true }
-    ? ExternalResourceCollectionRef<S>
+  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S> & { projected: true }
+    ? ProjectedResourceCollectionRef<S>
     : TResources[K] extends DefinedResourceCollection<infer S>
       ? ResourceCollectionRef<S>
       : TResources[K] extends DefinedResource<infer S>
@@ -44,7 +44,7 @@ type InferResourceRefs<TResources extends Record<string, DeclaredResourceEntry>>
 export type AnyResourceHandle =
   | ResourceRef<any>
   | ResourceCollectionRef<any>
-  | ExternalResourceCollectionRef<any>;
+  | ProjectedResourceCollectionRef<any>;
 
 /**
  * Context provided to a clientData compute function.
@@ -363,7 +363,7 @@ export type RequestConfig = {
    * When true, durable sequencer checkpoints (FIX-401) are deleted on
    * terminal completion (success / error / abort). When false (default),
    * checkpoints are retained — useful for post-mortem inspection, audit,
-   * or letting an external process decide retention.
+   * or letting a projected process decide retention.
    *
    * Latest-only persistence keeps storage bounded regardless of this
    * setting (one record per sequencer instance per request), so retention

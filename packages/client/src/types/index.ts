@@ -311,7 +311,7 @@ export type CollectionSnapshotEntry = {
  * One page of collection state returned by `GET /sessions/:id/resources/:ref`.
  * Cursor-paged: `nextCursor` is an opaque token present only when more rows
  * remain (its absence means the last page). Pass it back as `cursor` to fetch
- * the next page. Store-backed collections page by keyset; external collections
+ * the next page. Store-backed collections page by keyset; projected collections
  * (FIX-858) return the app store's own cursor.
  */
 export type CollectionListPage = {

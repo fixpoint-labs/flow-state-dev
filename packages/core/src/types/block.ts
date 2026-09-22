@@ -7,7 +7,7 @@ import type {
 } from "./scope";
 import type { AnyResourceRef, DefinedResource, ResourceRef } from "./resource";
 import type { DefinedResourceCollection, ResourceCollectionRef } from "./resource-collection";
-import type { ExternalResourceCollectionRef } from "./external-resource-collection";
+import type { ProjectedResourceCollectionRef } from "./projected-resource-collection";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { RequestHost } from "./request-host";
@@ -1238,11 +1238,11 @@ export type InferResourcesFromDefinitions<T> =
   T extends Record<string, DeclaredResourceEntry>
     ? {
         // All collection refs expose async reads regardless of prefetchMode
-        // — FIX-700 collapsed the eager/lazy type split. An `external`-branded
+        // — FIX-700 collapsed the eager/lazy type split. An `projected`-branded
         // collection (FIX-858) resolves to the read-only ref, tested FIRST so
         // the plain-collection branch doesn't swallow the narrower type.
-        [K in keyof T]: T[K] extends DefinedResourceCollection<infer S> & { external: true }
-          ? ExternalResourceCollectionRef<S>
+        [K in keyof T]: T[K] extends DefinedResourceCollection<infer S> & { projected: true }
+          ? ProjectedResourceCollectionRef<S>
           : T[K] extends DefinedResourceCollection<infer S>
             ? ResourceCollectionRef<S>
             : T[K] extends DefinedResource<infer S>

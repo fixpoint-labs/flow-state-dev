@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { defineExternalResourceCollection, defineFlow, handler } from "@flow-state-dev/core";
+import { defineProjectedResourceCollection, defineFlow, handler } from "@flow-state-dev/core";
 import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
-import type { ExternalResourceCollectionRef, ExternalResourceContext } from "@flow-state-dev/core/types";
+import type { ProjectedResourceCollectionRef, ProjectedResourceContext } from "@flow-state-dev/core/types";
 import { createExecutionContext, createInMemoryStores } from "../src";
 
 // An in-process "app store" standing in for a SQL table / API — the source of
-// truth the external collection reads through to. Never copied into FSD storage.
+// truth the projected collection reads through to. Never copied into FSD storage.
 const positionSchema = z.object({
   ticker: z.string().default(""),
   shares: z.number().default(0),
@@ -16,15 +16,15 @@ const positionSchema = z.object({
 type Position = z.infer<typeof positionSchema>;
 
 function makePositions(opts: {
-  read: (args: { key: string; ctx: ExternalResourceContext }) => Promise<Position | null>;
-  search?: (args: { query: unknown; ctx: ExternalResourceContext }) => Promise<{
+  read: (args: { key: string; ctx: ProjectedResourceContext }) => Promise<Position | null>;
+  search?: (args: { query: unknown; ctx: ProjectedResourceContext }) => Promise<{
     hits: Array<{ key: string; state: Position; score?: number; snippet?: string }>;
     nextCursor?: string;
   }>;
   contentTemplate?: ReturnType<typeof parseResourceTemplate>;
   client?: Record<string, unknown>;
 }) {
-  return defineExternalResourceCollection({
+  return defineProjectedResourceCollection({
     pattern: "positions/*",
     scope: "user",
     stateSchema: positionSchema,
@@ -54,11 +54,11 @@ async function createCtx(coll: ReturnType<typeof makePositions>) {
   return { ctx, stores };
 }
 
-function portfolio(ctx: any): ExternalResourceCollectionRef<Position> {
-  return ctx.resources.portfolio as ExternalResourceCollectionRef<Position>;
+function portfolio(ctx: any): ProjectedResourceCollectionRef<Position> {
+  return ctx.resources.portfolio as ProjectedResourceCollectionRef<Position>;
 }
 
-describe("external resource collection — read redirect", () => {
+describe("projected resource collection — read redirect", () => {
   it("get(key) resolves through the read hook (not the store)", async () => {
     const read = vi.fn(async ({ key }: { key: string }) =>
       key === "AAPL" ? { ticker: "AAPL", shares: 10 } : null
@@ -138,8 +138,8 @@ describe("external resource collection — read redirect", () => {
   });
 
   it("hands read a trusted, server-derived context (userId/scope, never caller input)", async () => {
-    let seen: ExternalResourceContext | undefined;
-    const read = vi.fn(async ({ key, ctx }: { key: string; ctx: ExternalResourceContext }) => {
+    let seen: ProjectedResourceContext | undefined;
+    const read = vi.fn(async ({ key, ctx }: { key: string; ctx: ProjectedResourceContext }) => {
       seen = ctx;
       return key === "AAPL" ? { ticker: "AAPL", shares: 3 } : null;
     });
@@ -161,7 +161,7 @@ describe("external resource collection — read redirect", () => {
   });
 });
 
-describe("external resource collection — list (search pushdown)", () => {
+describe("projected resource collection — list (search pushdown)", () => {
   it("pushes the query to search and resolves hits to read-only refs + nextCursor", async () => {
     const search = vi.fn(async () => ({
       hits: [

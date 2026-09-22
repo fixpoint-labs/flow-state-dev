@@ -3,20 +3,20 @@
  */
 import { isOrgAttributed, UnattributedOrgError, type OrgAttributedRecord } from "../context/org-attribution";
 import type {
-  ExternalResourceCollectionConfig,
-  ExternalResourceContext,
+  ProjectedResourceCollectionConfig,
+  ProjectedResourceContext,
   JsonObject,
   ResourceConfig,
   ResourceCollectionConfig,
   ResourceScope,
   ScopeType,
 } from "@flow-state-dev/core/types";
-import { buildExternalResourceRef } from "../resources/external-ref";
+import { buildProjectedResourceRef } from "../resources/projected-ref";
 import {
   extractBareTopic,
-  isExternalResourceCollection,
+  isProjectedResourceCollection,
   matchesPattern,
-  readExternalRecord,
+  readProjectedRecord,
   resolveCollectionKey,
 } from "@flow-state-dev/core/types";
 import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
@@ -238,43 +238,43 @@ export function createScopeResources(options: {
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
   /**
-   * FIX-858: trusted context for reading external collections through their
+   * FIX-858: trusted context for reading projected collections through their
    * `read` backing when a scope-level `client.data` function references one.
-   * Omitted when the scope has no external collections.
+   * Omitted when the scope has no projected collections.
    */
-  externalContext?: ExternalResourceContext;
+  projectedContext?: ProjectedResourceContext;
 }): Record<string, Record<string, unknown>> {
   const handles: Record<string, Record<string, unknown>> = {};
   const contentMap = options.persistedContent ?? {};
   const storageKeys = resourceStorageKeys(options.configs);
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
-    if (isExternalResourceCollection(maybeConfig)) {
+    if (isProjectedResourceCollection(maybeConfig)) {
       // FIX-858: read-through handle for a scope `client.data` reading an
-      // external collection. `get`/`getOptional` route through `read`; `list`
+      // projected collection. `get`/`getOptional` route through `read`; `list`
       // does not enumerate the app source (discovery is via the list/search
       // route), so it returns empty here.
-      const extConfig = maybeConfig as unknown as ExternalResourceCollectionConfig &
+      const extConfig = maybeConfig as unknown as ProjectedResourceCollectionConfig &
         ResourceCollectionConfig;
       const pattern = extConfig.pattern;
       const readThrough = async (
         key: string | Record<string, string>
       ): Promise<Record<string, unknown> | undefined> => {
-        if (options.externalContext === undefined) return undefined;
+        if (options.projectedContext === undefined) return undefined;
         const storageKey = resolveCollectionKey(pattern, key);
         // Reject out-of-pattern keys before the app hook, matching the item
         // route and the execution-context handle — a single-level `positions/*`
         // must not resolve `positions/AAPL/history` through `read`.
         if (!matchesPattern(pattern, storageKey)) return undefined;
-        const state = await readExternalRecord<JsonObject>(
+        const state = await readProjectedRecord<JsonObject>(
           extConfig,
           extractBareTopic(pattern, storageKey),
-          options.externalContext
+          options.projectedContext
         );
         if (state === undefined) return undefined;
         // Same read-only ref shape (and template rendering) as the execution
         // context's handle — built by the shared helper so the two can't drift.
-        return buildExternalResourceRef({
+        return buildProjectedResourceRef({
           scope: options.scope as ResourceScope,
           storageKey,
           readState: () => (isJsonObject(state) ? state : {}),
@@ -289,13 +289,13 @@ export function createScopeResources(options: {
       // 501 list-state route and the snapshot's absent count.
       const unsupportedEnumeration = (method: string): never => {
         throw new Error(
-          `${method}() is not supported for external collection "${pattern}" in a client.data projection — read instances by key; listing/search pushdown is a follow-up`
+          `${method}() is not supported for projected collection "${pattern}" in a client.data projection — read instances by key; listing/search pushdown is a follow-up`
         );
       };
       handles[resourceName] = {
         pattern,
         config: extConfig,
-        external: true,
+        projected: true,
         async list() {
           return unsupportedEnumeration("list");
         },
@@ -306,7 +306,7 @@ export function createScopeResources(options: {
           const ref = await readThrough(key);
           if (ref === undefined) {
             throw new Error(
-              `Resource instance "${resolveCollectionKey(pattern, key)}" not found in external collection "${pattern}"`
+              `Resource instance "${resolveCollectionKey(pattern, key)}" not found in projected collection "${pattern}"`
             );
           }
           return ref;
@@ -469,7 +469,7 @@ export async function buildResourceSnapshot(options: {
     if (isCollectionConfig(maybeConfig)) {
       if (maybeConfig.client === undefined) continue;
 
-      // FIX-858: external collections are read-through — the snapshot does NOT
+      // FIX-858: projected collections are read-through — the snapshot does NOT
       // enumerate the app source (it holds only instances loaded this request,
       // typically none). Emit an empty anchor keyed on a serializable
       // `prefetched: []` — NOT `count: undefined`, which `JSON.stringify` drops
@@ -477,7 +477,7 @@ export async function buildResourceSnapshot(options: {
       // resource (it discriminates a collection by a present `count`/`prefetched`
       // key). `count` stays absent (honest unknown cardinality — never a false 0);
       // the client discovers instances via the list/search route + per-URI reads.
-      if (isExternalResourceCollection(maybeConfig)) {
+      if (isProjectedResourceCollection(maybeConfig)) {
         out[resourceName] = { prefetched: [] };
         hasAny = true;
         continue;

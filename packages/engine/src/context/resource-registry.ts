@@ -12,10 +12,10 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import type {
   CollectionHookContext,
-  ExternalResourceCollectionConfig,
-  ExternalResourceCollectionRef,
-  ExternalResourceContext,
-  ExternalResourceRef,
+  ProjectedResourceCollectionConfig,
+  ProjectedResourceCollectionRef,
+  ProjectedResourceContext,
+  ProjectedResourceRef,
   JsonObject,
   JsonValue,
   ResourceConfig,
@@ -31,9 +31,9 @@ import {
   matchesPattern,
   getPatternPrefix,
   extractBareTopic,
-  isExternalResourceCollection,
-  readExternalRecord,
-  searchExternalRecords,
+  isProjectedResourceCollection,
+  readProjectedRecord,
+  searchProjectedRecords,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
@@ -69,7 +69,7 @@ import {
   renderResourceTemplate,
 } from "@flow-state-dev/core/resource-template";
 import { loadResourceTemplate } from "../resource-template-loader";
-import { buildExternalResourceRef } from "../resources/external-ref";
+import { buildProjectedResourceRef } from "../resources/projected-ref";
 
 function asJsonValue(value: unknown): JsonValue {
   if (
@@ -588,10 +588,10 @@ export async function loadDeclaredScopeContent(
   const collectionReads: Array<Promise<Record<string, string>>> = [];
 
   for (const [accessor, config] of accessors) {
-    // FIX-858: external collections are read-through — they hold no content in
+    // FIX-858: projected collections are read-through — they hold no content in
     // FSD storage, so skip the getByPrefix scan (it would only scan the store
     // for nothing and undercut the no-copy guarantee).
-    if (isExternalResourceCollection(config)) continue;
+    if (isProjectedResourceCollection(config)) continue;
     if (isCollectionConfig(config)) {
       const prefix = getPatternPrefix(config.pattern);
       // A non-empty static prefix targets the collection's `prefix/...`
@@ -647,8 +647,8 @@ export async function loadDeclaredResourceState(
   const collectionReads: Array<Promise<Record<string, VersionedResourceState>>> = [];
 
   for (const [accessor, config] of accessors) {
-    // FIX-858: external collections are read-through — skip the store scan.
-    if (isExternalResourceCollection(config)) continue;
+    // FIX-858: projected collections are read-through — skip the store scan.
+    if (isProjectedResourceCollection(config)) continue;
     if (isCollectionConfig(config)) {
       const prefix = getPatternPrefix(config.pattern);
       const keyPrefix = prefix === "" ? "" : `${prefix}/`;
@@ -805,15 +805,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     /** Cross-scope template resolver, populated post-construction. */
     templateResolverRef?: { current: ((ref: string) => string | null) | null };
     /**
-     * FIX-858: trusted, server-derived context handed to an external
+     * FIX-858: trusted, server-derived context handed to a projected
      * collection's `read` / `search` backing hooks. Built by
      * `createExecutionContext` from the loaded session / scope identity
      * (`userId`/`orgId`/`tenantId`/`flowKind`/`signal`), never from caller
-     * input (BP-031). Omitted for scopes with no external collections and for
+     * input (BP-031). Omitted for scopes with no projected collections and for
      * mock registries — a fallback context is synthesized from `scope`/`scopeId`
      * when a read is attempted without one.
      */
-    externalResourceContext?: ExternalResourceContext;
+    projectedResourceContext?: ProjectedResourceContext;
     /**
      * The organization this execution runs under, surfaced to collection
      * lifecycle hooks as `CollectionHookContext.orgId` (FIX-1442). Server-derived.
@@ -1179,24 +1179,24 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     return ref;
   }
 
-  // FIX-858: build the read-only handle for an external resource collection.
+  // FIX-858: build the read-only handle for a projected resource collection.
   // Instead of the store, `get`/`getOptional` route through the config's `read`
   // hook, validate the result through `stateSchema`, and cache it per request
   // (read-through memoization — no copy in FSD storage). Concurrent reads of the
   // same key single-flight through one `read` call. The resolved instance ref is
   // read-only: no mutators, no content-write.
   function createExternalCollectionHandle(
-    extConfig: ExternalResourceCollectionConfig & ResourceCollectionConfig
-  ): ExternalResourceCollectionRef<JsonObject> {
+    extConfig: ProjectedResourceCollectionConfig & ResourceCollectionConfig
+  ): ProjectedResourceCollectionRef<JsonObject> {
     const pattern = extConfig.pattern;
-    const refScope = options.scope as ExternalResourceContext["scope"];
+    const refScope = options.scope as ProjectedResourceContext["scope"];
     // Per-request read-through cache + single-flight, keyed by canonical storage
     // key. Holds only what this request read; never persisted.
     const cache = new Map<string, JsonObject>();
     const inflight = new Map<string, Promise<JsonObject | undefined>>();
 
-    const externalCtx = (): ExternalResourceContext =>
-      options.externalResourceContext ?? {
+    const externalCtx = (): ProjectedResourceContext =>
+      options.projectedResourceContext ?? {
         scope: refScope,
         scopeId: options.scopeId,
         userId: options.scopeId,
@@ -1211,7 +1211,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         // Shared read+validate contract (throws on schema failure — §4.5). Feed
         // the app the pattern-normalized bare topic (not the caller's raw key),
         // so `.get("/AAPL")` and the HTTP route resolve the same record.
-        const record = await readExternalRecord(extConfig, extractBareTopic(pattern, storageKey), externalCtx());
+        const record = await readProjectedRecord(extConfig, extractBareTopic(pattern, storageKey), externalCtx());
         if (record === undefined) return undefined;
         const state = isJsonObject(record) ? asJsonObject(record) : ({} as JsonObject);
         cache.set(storageKey, state);
@@ -1223,8 +1223,8 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       return run;
     };
 
-    const makeRef = (storageKey: string): ExternalResourceRef<JsonObject> =>
-      buildExternalResourceRef({
+    const makeRef = (storageKey: string): ProjectedResourceRef<JsonObject> =>
+      buildProjectedResourceRef({
         scope: refScope,
         storageKey,
         readState: (): JsonObject => {
@@ -1241,9 +1241,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     return {
       pattern,
       scope: refScope,
-      external: true,
+      projected: true,
       config: { llmReadable: extConfig.llmReadable, pattern, scope: refScope },
-      async get(key: string): Promise<ExternalResourceRef<JsonObject>> {
+      async get(key: string): Promise<ProjectedResourceRef<JsonObject>> {
         const storageKey = resolveCollectionKey(pattern, key);
         // Reject out-of-pattern keys before hitting the app hook — a
         // single-level `positions/*` must not resolve `positions/AAPL/history`,
@@ -1251,18 +1251,18 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         // the prefix cache; the read-through path needs this explicit check).
         if (!matchesPattern(pattern, storageKey)) {
           throw new Error(
-            `Key "${storageKey}" does not match external collection pattern "${pattern}"`
+            `Key "${storageKey}" does not match projected collection pattern "${pattern}"`
           );
         }
         const state = await readThrough(storageKey);
         if (state === undefined) {
           throw new Error(
-            `Resource instance "${storageKey}" not found in external collection "${pattern}"`
+            `Resource instance "${storageKey}" not found in projected collection "${pattern}"`
           );
         }
         return makeRef(storageKey);
       },
-      async getOptional(key: string): Promise<ExternalResourceRef<JsonObject> | undefined> {
+      async getOptional(key: string): Promise<ProjectedResourceRef<JsonObject> | undefined> {
         const storageKey = resolveCollectionKey(pattern, key);
         if (!matchesPattern(pattern, storageKey)) return undefined;
         const state = await readThrough(storageKey);
@@ -1270,11 +1270,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async list(
         query?: string | ResourceQuery
-      ): Promise<{ items: ExternalResourceRef<JsonObject>[]; nextCursor?: string }> {
+      ): Promise<{ items: ProjectedResourceRef<JsonObject>[]; nextCursor?: string }> {
         // Push the query DOWN to the app's `search` (no in-memory enumeration —
         // BP-033). A bare string is `{ search }` shorthand.
         const q: ResourceQuery = typeof query === "string" ? { search: query } : query ?? {};
-        const { hits, nextCursor } = await searchExternalRecords<JsonObject>(extConfig, q, externalCtx());
+        const { hits, nextCursor } = await searchProjectedRecords<JsonObject>(extConfig, q, externalCtx());
         const items = hits.map((hit) => {
           // Seed the per-request cache so each ref's synchronous `.state`
           // resolves against the searched state, exactly like a read-through get.
@@ -1291,11 +1291,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
   const storageKeys = resourceStorageKeys(configs);
 
   for (const [resourceName, config] of Object.entries(configs)) {
-    if (isExternalResourceCollection(config)) {
-      // --- Read-only external collection (FIX-858): reads route through the
+    if (isProjectedResourceCollection(config)) {
+      // --- Read-only projected collection (FIX-858): reads route through the
       // config's `read` hook, not the store. ---
       handles[resourceName] = createExternalCollectionHandle(
-        config as unknown as ExternalResourceCollectionConfig & ResourceCollectionConfig
+        config as unknown as ProjectedResourceCollectionConfig & ResourceCollectionConfig
       ) as unknown as ResourceCollectionRef<JsonObject>;
       continue;
     }

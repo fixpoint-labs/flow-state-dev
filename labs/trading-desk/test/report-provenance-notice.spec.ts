@@ -27,7 +27,7 @@ import {
   createFlowRegistry,
   createInMemoryStores,
 } from "@flow-state-dev/engine";
-import { isExternalResourceCollection } from "@flow-state-dev/core";
+import { isProjectedResourceCollection } from "@flow-state-dev/core";
 import analysisFlow from "../flows/analysis/flow";
 import { memosCollection } from "../flows/analysis/resources";
 import { DATA_HONESTY_CONTRACT_VERSION } from "../flows/analysis/data-honesty-contract";
@@ -458,7 +458,7 @@ describe("what the client actually reads off a session that never ran", () => {
  * made UNREACHABLE for a bound session, and this is what keeps it that way.
  *
  * `buildResourceSnapshot` emits `count` for a collection iff it declares a
- * `client` config and is not external — an external collection omits `count`
+ * `client` config and is not external — a projected collection omits `count`
  * deliberately (honest unknown cardinality, never a false 0). Both are
  * properties of the collection definition, so both are asserted from it.
  *
@@ -475,8 +475,8 @@ describe("the memo count reaches the client", () => {
     expect(memosCollection.client).toBeDefined();
   });
 
-  it("memos is not an external collection, which would omit `count` by design", () => {
-    expect(isExternalResourceCollection(memosCollection)).toBe(false);
+  it("memos is not a projected collection, which would omit `count` by design", () => {
+    expect(isProjectedResourceCollection(memosCollection)).toBe(false);
   });
 });
 

@@ -134,7 +134,7 @@ It's a `createFlowState` option, not a handler option, because the router is bui
 
 ### Error capture
 
-`errorCapture` is an opt-in, block-aware sink for routing runtime block failures to an external observability service (Sentry, Datadog, Bugsnag). It's distinct from `onError`, which is an HTTP-level sink. The callback receives a provider-neutral `ErrorCaptureEvent` (the normalized `FlowError` plus the failing block's identity and the flow/request/session/user IDs), fires once per failing block, and is fire-and-forget — a throw or rejection is swallowed and logged, never affecting the request.
+`errorCapture` is an opt-in, block-aware sink for routing runtime block failures to a projected observability service (Sentry, Datadog, Bugsnag). It's distinct from `onError`, which is an HTTP-level sink. The callback receives a provider-neutral `ErrorCaptureEvent` (the normalized `FlowError` plus the failing block's identity and the flow/request/session/user IDs), fires once per failing block, and is fire-and-forget — a throw or rejection is swallowed and logged, never affecting the request.
 
 ```ts
 import * as Sentry from "@sentry/node";
@@ -582,7 +582,7 @@ See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and th
 - `createInProcessDispatcher` — Default dispatcher that calls `runAction` in the current process
 - `StreamBridge` / `StreamPublisher` / `StreamSubscriber` — Bridges live SSE events between a remote worker and the web process. The worker writes events to the bridge; the web process reads them and forwards to SSE
 - `StreamEvent` — Single event published through the bridge, matching the SSE event shape
-- Pass `dispatcher` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through an external queue. Most deployments should prefer the `worker` option — the adapter wires the dispatcher and the worker together; `dispatcher` is the low-level escape hatch (mutually exclusive with `worker`)
+- Pass `dispatcher` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through a projected queue. Most deployments should prefer the `worker` option — the adapter wires the dispatcher and the worker together; `dispatcher` is the low-level escape hatch (mutually exclusive with `worker`)
 
 **Errors:**
 - `FlowError` and canonical subclasses
@@ -881,7 +881,7 @@ createFlowApiRouter({
   // Heartbeat-age threshold the sweeper uses to mark a request `interrupted`.
   // Should be ≥ 2× the executor's registry heartbeat. Default 60_000 ms.
   staleSweepThresholdMs: 60_000,
-  // How long a request queued with an external dispatcher may wait, unclaimed,
+  // How long a request queued with a projected dispatcher may wait, unclaimed,
   // before a sweep treats it as lost. Default 600_000 ms (10 minutes).
   queuedGraceMs: 600_000,
   // Sources from your own inbound transports that `retry` / `continue` /
@@ -907,7 +907,7 @@ Clients consume the wire heartbeat through `useSession`'s watchdog: it surfaces 
 
 ## Debug endpoints
 
-The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/resources` and `/api/flows/sessions/:id/debug/resources/:ref`. Each response carries the full server-side state for the matching storage keys alongside the projected client view, so a debugger can show you exactly what `client.data` is dropping. There are no write paths here; the endpoint cannot mutate state. A response lists one entry per resource. Each entry reports the resource's `writable` and `llmWritable` settings where the config declares them. A setting the config does not declare is left out of the entry rather than reported as `false`, with one exception: an [external collection](https://flow-state.dev/docs/resources/external-collections) has no `writable` field, and its entry always reports `writable: false`.
+The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/resources` and `/api/flows/sessions/:id/debug/resources/:ref`. Each response carries the full server-side state for the matching storage keys alongside the projected client view, so a debugger can show you exactly what `client.data` is dropping. There are no write paths here; the endpoint cannot mutate state. A response lists one entry per resource. Each entry reports the resource's `writable` and `llmWritable` settings where the config declares them. A setting the config does not declare is left out of the entry rather than reported as `false`, with one exception: a [projected collection](https://flow-state.dev/docs/resources/projected-collections) has no `writable` field, and its entry always reports `writable: false`.
 
 The endpoint is off by default. Opt in with `debugEndpointsEnabled: true` on `createFlowApiRouter`, or set `FSDEV_DEBUG_ENDPOINTS=1` in the environment. By default the route accepts only loopback origins; widen with `debugAllowedOrigins` for non-loopback DevTool hosts.
 
