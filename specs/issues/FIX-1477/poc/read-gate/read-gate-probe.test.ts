@@ -8,10 +8,12 @@
  * Runs the REAL router; nothing is stubbed.
  *
  * Runs from `packages/engine/test/`, reaching into `workforce`'s source for the
- * two declarations under test. It cannot run from `packages/workforce`: no test
- * there drives the router, and a block dispatched from that package never
- * executes (the request stays `in_progress` forever, even for a handler with no
- * resources). README.md records that as a limit rather than working around it.
+ * two declarations under test: the route under test is engine's, and that is
+ * where this file's imports resolve without ceremony. Built the way this probe
+ * builds its runtime, a seeded block did not execute when the file lived in
+ * `packages/workforce` — a property of this construction, not of that package.
+ * See `packages/workforce/test/cross-org-collection-read.test.ts`, which seeds
+ * from there through `createFlowState` and works.
  *
  * These call the **list** route — `GET /sessions/:id/resources/:ref`, with no
  * trailing segment. That matters: `router.ts` maps a trailing segment to

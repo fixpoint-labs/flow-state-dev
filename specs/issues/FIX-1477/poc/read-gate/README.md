@@ -30,12 +30,17 @@ cp specs/issues/FIX-1477/poc/read-gate/read-gate-probe.test.ts packages/engine/t
 rm packages/engine/test/zz-poc-premise.test.ts packages/engine/test/zz-poc-gate.test.ts
 ```
 
-**Both run from `engine`, including the one that tests `workforce`'s declarations.** That is not
-tidiness: a block dispatched from a test in `packages/workforce` never executes — the request
-stays `in_progress` forever, even for a handler that declares no resources — so an action-seeded
-row never lands there and a read would show an empty collection that looks like a passing test.
-No test in that package drives the router today, which is presumably why nobody has hit it. It
-is noted here because it bit this POC, not because this POC is the place to fix it.
+**Both run from `engine`, including the one that reads `workforce`'s declarations.** The thing
+under test is an engine route, both files drive that router directly, and engine is where its
+imports resolve without ceremony.
+
+One local snag, recorded so the next reader does not re-derive it: built the way this probe
+builds — `createFlowApiRouter` over `createInMemoryStores` — a seeded block did not execute when
+the file lived in `packages/workforce`, though the identical file ran from `packages/engine`.
+That is a property of how *this* probe constructs the runtime, **not** of the package.
+`packages/workforce/test/cross-org-collection-read.test.ts` builds through `createFlowState` and
+seeds through the action path from that package perfectly well — it is the working
+counter-example, and the better model to copy if you need one there.
 
 ## What was observed
 
