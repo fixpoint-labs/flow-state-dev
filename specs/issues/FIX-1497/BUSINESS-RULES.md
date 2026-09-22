@@ -22,6 +22,7 @@ where a leg has a named control it is named here and the plan owes its red state
 |---|---|---|---|
 | BR-6 | The work reaches something only a person can settle | **The seat that owns the row parks it**, with a reason naming what it needs. The drain returns and the row stays parked and durable | Goal · the drain's own termination reason, and the row read back after the drain returned |
 | BR-7 | The person answers | Through a **flow action on the owning seat**, carrying the request's own principal. The answer replaces the reason, the row re-queues, and the same seat finishes it | Goal |
+| BR-7a | The resumed attempt runs | It **finishes the row rather than parking it again.** The resumed attempt is handed the same `input` that asked the question, so a worker that decides to park by looking at *what it was asked* parks forever. What changed is the **answer**, carried as the row's feedback, and that is what the decision reads | Goal · control `ignore-the-answer`: a worker that branches on the question re-parks and the run never settles |
 | BR-8 | Across the whole run | **Nothing claims a row on a person's behalf.** Every claim in the run belongs to a seat, and the person's only door is the answer action | Goal · asserted on the claiming identity of every claim, not on the absence of a feature |
 | BR-9 | An answer is delivered as a different person | It does not land. A session belongs to one user, and nothing in the scenario derives a second | Goal · control `second-principal`. **If the run shows it landing, that is a finding to raise up ([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)), never a rule to soften** |
 | BR-10 | One park is answered twice | The second delivery is declined and the first answer stands | Goal |
@@ -46,7 +47,7 @@ flowchart LR
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-12 | A seat finishes a row whose work implies another desk's | It files **a second row** for that desk, on the same board, naming the first | Goal |
-| BR-13 | The second row is drained | By the **other seat**, in its own child session. Two rows, two assignees, two seat instances — and the seat that ran each is read from that seat's own file, never from the map that routed it | Goal · control `one-seat`, which points both desks at one seat: every row still runs and still completes, and only this leg moves |
+| BR-13 | The second row is drained | By the **other seat**, in its own child session. Two rows, two assignees, two seat instances — and the seat that ran each is read from that seat's own file, never from the map that routed it | Goal · control `one-seat`, which points both desks at one seat. Every row still runs and still completes, and it reddens **this leg and BR-3 together** — widening one seat's eligibility is what puts a review row on a `build` seat. [PLAN](PLAN.md#checks) attributes both |
 | BR-14 | Anything tries to move a row's assignee | Refused (`immutable-assignee`), and nothing in the run depends on it succeeding | Goal · asserted on the decline, so a later board that permitted it would be caught |
 
 ## It is observed in the DevTool

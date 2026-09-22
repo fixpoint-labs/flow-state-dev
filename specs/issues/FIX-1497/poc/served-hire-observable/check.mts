@@ -40,7 +40,17 @@ import { intentFreeEnv } from "../../../../../goals/lib/env.mts";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const FLOW_DIR = join(HERE, "flows");
 const REPO_ROOT = resolve(HERE, "..", "..", "..", "..", "..");
-const PORT = 4297;
+/**
+ * A port this run is unlikely to share, and **never** a fixed one.
+ *
+ * A fixed port is a false-PASS waiting to happen: if anything already owns it —
+ * including a second copy of this probe — the spawned server dies on
+ * `EADDRINUSE` while the readiness poll happily answers from the incumbent, and
+ * a catalog that happens to match makes the check report PASS having served
+ * nothing. The child-exit guard below closes the same hole from the other side;
+ * both are here because either alone leaves a window.
+ */
+const PORT = 4300 + Math.floor(Math.random() * 400);
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const API = `${ORIGIN}/api/flows`;
 
@@ -73,10 +83,24 @@ const check = (ok: boolean, failure: string) => {
   if (!ok) failures.push(failure);
 };
 
+/**
+ * Wait for **our** server, not for whichever one answers.
+ *
+ * A healthy `/healthz` proves something is listening, not that it is the child
+ * this run spawned. So the child's exit is watched too, and an exit before
+ * readiness ends the wait as a failure rather than letting the poll settle on
+ * an incumbent process — the false-PASS Codex named (`EADDRINUSE` plus a
+ * catalog that happens to match).
+ */
 async function waitForServer(): Promise<boolean> {
   for (let i = 0; i < 120; i += 1) {
+    if (childExit !== undefined) return false;
     try {
-      if ((await fetch(`${ORIGIN}/healthz`)).status === 200) return true;
+      if ((await fetch(`${ORIGIN}/healthz`)).status === 200) {
+        // One more look: the child may have died in the same tick the
+        // incumbent answered.
+        return childExit === undefined;
+      }
     } catch {
       /* not listening yet */
     }
@@ -87,6 +111,8 @@ async function waitForServer(): Promise<boolean> {
 
 let server: ChildProcess | undefined;
 let serverLog = "";
+/** Set the moment the spawned server exits, whenever that happens. */
+let childExit: { code: number | null; signal: string | null } | undefined;
 try {
   const workDir = mkdtempSync(join(tmpdir(), "er-collab-poc-"));
   server = spawn(
@@ -115,11 +141,34 @@ try {
   );
   server.stdout?.on("data", (c) => (serverLog += String(c)));
   server.stderr?.on("data", (c) => (serverLog += String(c)));
+  server.on("exit", (code, signal) => (childExit = { code, signal }));
 
   if (!(await waitForServer())) {
     // Under `no-tree` the server refuses to start at all, which is a red state
     // for every assertion below rather than a reason to stop reading.
-    check(false, `the dev server never became ready on ${ORIGIN}`);
+    //
+    // A missing DevTool bundle lands here too, and it is the one failure a
+    // reader is likely to hit on a clean checkout, so it names its own fix
+    // rather than being reported as a generic timeout.
+    if (serverLog.includes("DevTool assets not found")) {
+      check(
+        false,
+        "the DevTool bundle is not built, so `fsdev dev` refused to start. Build it once:\n" +
+          "      pnpm --filter @flow-state-dev/devtool build\n" +
+          "      pnpm --filter @flow-state-dev/devtool build:assets\n" +
+          "    (`cd apps/devtool && pnpm build` alone is NOT enough — it needs the\n" +
+          "    `packages/devtool` build first, and only `build:assets` populates\n" +
+          "    `packages/devtool/dist-client`, which is what resolves from any cwd.)",
+      );
+    } else if (childExit !== undefined) {
+      check(
+        false,
+        `the dev server exited before it was ready (code ${childExit.code}, signal ${childExit.signal}) — ` +
+          `nothing this run spawned ever served ${ORIGIN}`,
+      );
+    } else {
+      check(false, `the dev server never became ready on ${ORIGIN}`);
+    }
     for (const want of ["eng.planner", "eng.builder", "eng.reviewer", "channel"]) {
       check(false, `the served catalog is missing "${want}" — the server did not start`);
     }

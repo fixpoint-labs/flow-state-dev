@@ -61,18 +61,34 @@ worth splitting.
 | V0 | S1 | BR-1. Every file under the scenario is read and searched for the minted ledger id; a hit fails. **This is the leg that makes the rest mean something** |
 | V1 | S5 | BR-2, BR-5. One row per piece **in both directions** — one row carries one piece, one piece is carried by one row — and a row filed for an undeclared desk settles loudly where it would have run |
 | V2 | S5 | BR-3, BR-4. Each row ran on the seat whose **own file** answers for its desk, proved by a file on disk. Control `swapped-desks` must fail here and nowhere else |
-| V3 | S5 | BR-6, BR-7, BR-10. The drain returns with the row still parked and durable; the answer lands through the seat's action and the same seat finishes the row; a second delivery declines |
+| V3 | S5 | BR-6, BR-7, BR-7a, BR-10. The drain returns with the row still parked and durable; the answer lands through the seat's action and the same seat **finishes** the row rather than re-parking it; a second delivery declines. Control `ignore-the-answer` must fail here only |
 | V4 | S5 | BR-8, BR-9. Every claim in the run belongs to a seat; control `second-principal` must not land. **Assert on the claim records, not on the absence of a feature** |
-| V5 | S5 | BR-12, BR-13, BR-14. Two rows, two assignees, two seat instances, the second naming the first. Control `one-seat` must fail here only — every row still runs and still completes under it |
+| V5 | S5 | BR-12, BR-13, BR-14. Two rows, two assignees, two seat instances, the second naming the first. Control `one-seat` points both desks at a single seat and **must fail V5 *and* V2, in that order and for those two reasons** — see below |
 | V6 | S6 | BR-20. The exported `TaskStatus` union equals a written-out list, so a later widening fails here rather than passing quietly |
 | VB | S6 | BR-15, BR-16, BR-17. In Chromium against the shipped bundle: each seat is its own navigator row by its exact seat id; the Tasks tab shows the board; the reason is on the row with nothing expanded, then the answer in its place; two assignees on one board. Control `silent-park` must fail **here only** |
 | VG | S7 | **The goal.** One command: two seats work one channel's board, a person answers a parked row through a flow action, work changes hands, and a reader can say what happened from the screen. `goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/run.mts` |
 | V7 | S7 | BR-19. Diff gate, derived from `git diff` against the merge base: every changed path inside `goals/` or `specs/issues/FIX-1497/`. Nothing under `packages/` |
 
-**Every control must be seen red, and must fail at the leg it names.** Each run ends by checking
-that the failures it collected belong to its own control — a control that goes red somewhere else
-has demonstrated a different check. Record each as a `FAIL (expected)` row in the verdict log with
-what it printed, the way the sibling labs do.
+**Every control must be seen red, and must fail at the legs it names.** Each run ends by checking
+that the failures it collected belong to its own control — a control that goes red somewhere it did
+not declare has demonstrated a different check. Record each as a `FAIL (expected)` row in the
+verdict log with what it printed, the way the sibling labs do.
+
+**`one-seat` is the one control that reddens two legs, and it says so rather than claiming
+isolation it cannot have.** A single seat cannot claim both desk keys without widening its
+eligibility, and once widened the review row runs on a seat whose own `WORKER.md` names the other
+desk — so the per-seat desk oracle (V2 / BR-3) is falsified by the same edit that removes
+cross-seat identity. The two failures are not interchangeable and the control asserts both:
+
+| Leg | Why it goes red under `one-seat` |
+|---|---|
+| V5 / BR-13 | Two rows ran on **one** seat instance, so nothing changed hands. This is the claim the control exists to test |
+| V2 / BR-3 | The review row ran on a seat whose own file answers for `build`. Unavoidable collateral: it is what widening the eligibility *means* |
+
+A run of this control that reddens **only** V2 has not tested the handoff at all, and a run that
+reddens only V5 means the eligibility was not really widened — so requiring both is what keeps the
+control honest. Every other control isolates to one leg; that asymmetry is deliberate and recorded
+rather than smoothed over.
 
 ## Pinned names · four, and only four
 
@@ -108,10 +124,16 @@ nothing downstream of a published package changes (BP-022).
 planner.file(goal, desk)      → dispatch into the channel's own fileTask
 worker.drain()                → claim, narrowed to this seat's desk; hand off per-task
   the row's work:
-     if it needs a person:     park it, with the question as the reason
-     else:                     do it, and file the next row for the other desk
+     if the answer is not here yet:   park it, with the question as the reason
+     otherwise:                       do it, and file the next row for the other desk
 worker.answer(taskId, text)   → unpark with the answer, then drain, in the answering request
 ```
+
+**The park condition is the one line in this sketch that is not free.** The resumed attempt is
+handed the same `input` that asked the question, so branching on *what was asked* parks forever
+(BR-7a). Branch on whether the **answer** has arrived — it is on the row, written by the unpark,
+not on the worker's input payload. Reach the row through the board's task collection; the worker's
+input is a projection and carries no write surface.
 
 **POC:** [`poc/served-hire-observable/`](poc/served-hire-observable/README.md), cited from the spec
 PR. It showed the premise holds — the shipped `fsdev dev` registers a file-declared hire as three

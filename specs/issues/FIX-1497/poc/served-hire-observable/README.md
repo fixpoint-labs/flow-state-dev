@@ -36,8 +36,21 @@ Nothing writes a ledger id — the framework mints it from where the channel fol
 Run it:
 
 ```bash
+# Once per checkout: fsdev dev refuses to start without a built DevTool bundle.
+pnpm --filter @flow-state-dev/devtool build
+pnpm --filter @flow-state-dev/devtool build:assets
+
 pnpm tsx specs/issues/FIX-1497/poc/served-hire-observable/check.mts
 ```
+
+**Both build steps, in that order, and not the CLI's suggestion.** `fsdev dev`'s error names
+`cd apps/devtool && pnpm build`, which fails on a clean checkout — that app's build typechecks
+against `packages/devtool`'s declarations, so the package has to be built first. And only
+`build:assets` populates `packages/devtool/dist-client`, which is the copy that resolves through
+`node_modules` from **any** working directory; `apps/devtool/dist` is found only when the server's
+cwd is the repository root, and this probe deliberately runs the server in a scratch directory so
+it cannot read or pollute the repo's own `.fsdev/data`. If you skip this, the check now fails
+naming these two commands rather than timing out.
 
 ## Both controls were run
 
