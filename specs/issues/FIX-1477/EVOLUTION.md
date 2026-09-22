@@ -52,11 +52,24 @@ that is the only form that travels.
   one was written in the same breath as the requirement and still could not fail, because the
   assertion was aimed at the **scenario** rather than at each thing the scenario was assembled to
   exclude.
-- **When you change what a step does, grep the step's name.** A claim is not the only thing that
-  goes stale: so does every sentence elsewhere describing the *consequence* of a step. Changing
-  `S8` from "binds the viewer's organization" to "ships that as a documented limit" left four
-  documents still saying the requirement was live on `S8` — none of them a citation, all of them
-  a consequence. Correct the assertion **and** sweep the identifier.
+- **When a step's scope changes, sweep its name — its prose, its row, and its checks.** A claim
+  is not the only thing that goes stale: so does every sentence describing a step's
+  *consequence*, and so do the rows and checks that encode it as a *requirement*. Narrowing `S8`
+  from "binds the viewer's organization" to "ships that as a documented limit" left it stated in
+  six places across four documents. Grepping the phrase caught the four that were prose; the
+  surfaces row and a V-check survived, because they never used the phrase — they encoded the
+  same claim structurally.
+- **A check can fail by being uncompletable, not only by being unfalsifiable.** V13 required a
+  credential that does not exist in this repository, so as an `S8` check nothing in scope could
+  turn it green — a required check an implementer can only satisfy by building the thing the
+  spec just deferred. It moved to the issue that owns the credential. The two failures are
+  mirror images: one cannot go red, the other cannot go green, and both look like coverage.
+- **When you fix a defect, sweep for the defect — not for the file.** The retained premise proof
+  returned from an action as soon as the event stream closed, while the probe **beside it in the
+  same directory** carries a comment explaining that draining is not enough because the block is
+  still running. The fix had been written once and not looked for elsewhere. Worst placed of the
+  three occurrences on this issue: a retained proof fails in the *reassuring* direction, because
+  a read that sees nothing looks exactly like the isolation it exists to demonstrate.
 - **Name the thing, don't count it.** *"The last two rows"*, *"the third bullet"* — a positional
   reference is true until something is inserted above it, and then it is silently wrong with no
   edit having touched it. The note under [Changesets](PLAN.md#changesets) went stale exactly that

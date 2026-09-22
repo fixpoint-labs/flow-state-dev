@@ -41,6 +41,11 @@ components from the client packages.`
 > />
 > ```
 >
+> **The Seats section above depends on an answer this page does not have yet** — see *Limits*.
+> If the flow listing your deployment exposes is not organization-scoped, drop that second entry
+> and the rail is Channels only; nothing else in the example changes. This block is reconciled
+> against the shipped shell before publication, so it shows one arrangement rather than two.
+>
 > `channel` is the channel kind the framework ships; `agent` is the seat kind. A section is a
 > label and a set of kind names and nothing else, so an app that declares a channel kind of its
 > own adds that name to the same list.

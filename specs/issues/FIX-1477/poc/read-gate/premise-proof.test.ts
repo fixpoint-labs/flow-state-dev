@@ -132,13 +132,41 @@ async function post(
     body: JSON.stringify(body)
   });
   const response = await router.POST(request, { params: { path } });
+
+  // Drain, then WAIT for a terminal status. Draining alone is not enough: the
+  // SSE stream closes while the block is still running, so anything issued
+  // straight after it can observe a write that has not landed. Here that would
+  // fail in the reassuring direction — an org read that sees nothing looks
+  // exactly like the isolation this file exists to demonstrate.
+  let stream = "";
   if (response.body !== null) {
     const reader = response.body.getReader();
-    while (!(await reader.read()).done) {
-      /* drain */
+    const decoder = new TextDecoder();
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      stream += decoder.decode(chunk.value);
     }
   }
-  return response;
+  const requestId = stream.match(/"requestId":"([^"]+)"/)?.[1];
+  if (requestId === undefined) return response;
+
+  const statusPath = [path[0]!, "requests", requestId, "status"];
+  for (let attempt = 0; attempt < 100; attempt++) {
+    // Same headers as the POST: on a flow whose resolver reads one, an
+    // unauthenticated status read is refused 401 and the poll never resolves.
+    const status = await router.GET(
+      new Request(`http://localhost/api/flows/${statusPath.join("/")}`, {
+        method: "GET",
+        headers
+      }),
+      { params: { path: statusPath } }
+    );
+    const body = (await status.json()) as { status?: string };
+    if (body.status === "completed" || body.status === "failed") return response;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`action ${path.join("/")} never reached a terminal status`);
 }
 
 async function createShellSession(
