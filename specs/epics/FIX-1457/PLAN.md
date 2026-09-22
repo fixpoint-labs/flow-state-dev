@@ -99,9 +99,11 @@ HITL consumers · [FIX-1430](https://linear.app/fixpoint-labs/issue/FIX-1430) ma
 [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) org-never-optional (both W4-side;
 FIX-1442 **gates the wrap**) · **[FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)** org
 identity on flow and session listing — **new here 2026-09-22**: it blocks
-[FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) and is deliberately **not** pulled in,
-because building it under a QA epic is the [ER-25](BUSINESS-RULES.md) growth the owner fenced
-([Open 1](DECISIONS.md#open)) · **CyberForce**, which [D8](DECISIONS.md#d8) leaves out this cycle
+[FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) in Linear and is deliberately **not**
+pulled in, because building **org selection** under a QA epic is the
+[ER-25](BUSINESS-RULES.md) growth the owner fenced. **Row 5's own reader is not that work**, and
+whether row 5 needs selection at all is [Open 1](DECISIONS.md#open), reopened by the 2026-09-22
+settlement · **CyberForce**, which [D8](DECISIONS.md#d8) leaves out this cycle
 while admitting DevForce. Linked from the rules, never re-parented.
 
 ## Wrap
