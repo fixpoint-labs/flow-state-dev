@@ -2,20 +2,106 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · **Evolution**
 
-Three earlier intents reach this issue, and each one is retained, amended or superseded in a
-different way. This page exists because two of them would otherwise be read as still binding —
-the issue's own Linear description says something about *inline* that the code contradicts, and
-the epic's region figure was drawn before the navigator decision.
+Six earlier intents reach this issue, and each one is retained, amended or superseded in a
+different way. This page exists because five of them would otherwise be read as still binding —
+the issue's own Linear description says something about *inline* that the code contradicts, the
+epic's region figure was drawn before the navigator decision, and **three statements in this
+spec's own merged text were refuted against the engine** (the last three rows).
 
 | Prior intent and precise source | Treatment | Why / evidence | Replacement | Compatibility |
 |---|---|---|---|---|
 | **"Inline = request / stream / turn-local … reflects what is happening inside this turn."** Source: this issue's own Linear description, *Locked shape definitions*, written 2026-09-20 | **Amended.** The two-shape split is retained; the lifetime claim attached to it is dropped | It is wrong about the code, and the epic corrected it before this spec was written ([D5](../../epics/FIX-1455/DECISIONS.md#d5), and *Decided in review* in the same file). `Conversation` and `RequestGroupRenderer` render the full persisted `session.items`; `Approval` reconstructs a resolution from that same persisted stream; [streaming.md](../../../docs/architecture/streaming.md) makes most item types durable | **Inline names which source a region reads** — the session's item stream — against **resource-backed**, a standing collection. Both survive a reload ([DOCS.md](DOCS.md) → *Two sources*) | No behaviour changes. Read the old way, this issue would have shipped a channel that drops earlier turns and re-arms resolved approvals on reload |
 | **The rail is a channel list beside a seat list — two regions.** Source: [`figures/shell-regions.svg`](../../epics/FIX-1455/figures/shell-regions.svg), retained at the epic and inherited by this issue | **Superseded in part.** What the figure is evidence *for* — that every rail region is resource-backed — is retained and unchanged. Its labelling of the rail as two lists is replaced | The figure predates [D8](../../epics/FIX-1455/DECISIONS.md#d8), which settles that there is one navigator. The epic's plan says so in as many words and hands the redraw to this issue rather than editing it in place | [`figures/where-it-ships-from.svg`](figures/where-it-ships-from.svg), which draws the rail as one navigator with two sections ([D3](DECISIONS.md#d3)), and adds the thing the epic figure did not carry: where each region's code comes from | The epic's figure is not deleted; it stays as authored evidence. A reader who finds it should read the rail labels as superseded and everything else as current |
 | **The flow navigator as a flat list over instances**, with its instance → sessions drill-down and its cardinality branch. Source: `packages/devtool/src/react/components/navigator/` and `src/react/hooks/use-sessions.ts`, shipped by [FIX-1324](https://linear.app/fixpoint-labs/issue/FIX-1324) | **Retained and promoted, except the list level and the pre-list sweep.** The drill-down, the cardinality branch and the read fence come across; the flat-over-instances list is replaced, and `checkInterrupted` is deliberately left behind | The file says what it was for: *"two copies of one kind are two rows here, and nothing about a row is derived from its kind"*. That was right for a tool inspecting one server and is wrong for a rail browsing a workforce, which needs the kind above the copies | [PLAN.md](PLAN.md) S2 (grouping by kind — the genuinely new level) over S1 and S3, which carry the branch and the fenced read forward | The developer tool keeps every affordance it has today, through slots, and its folder is deleted, so there is no second copy to drift ([D2](DECISIONS.md#d2)). What the **rail** does not inherit is the stale-request sweep the tool runs before every list: a rail pays only for the list it draws, so an abandoned request reads `in_progress` there until something else sweeps it ([PLAN.md](PLAN.md) → Guardrails) |
+| **"Reading an org-scoped collection from the shell requires the shell's flow to resolve a principal, because without one a session's org is whatever the caller sent."** Source: this spec's own [`DECISIONS.md` → Open](DECISIONS.md#open), as merged in [PR #1994](https://github.com/fixpoint-labs/flow-state-dev/pull/1994) (commit `114f063d6`) | **Superseded.** The sentence is wrong in both halves and nothing is salvaged from it. What the fork was *for* — deciding whether these rows may be shown — is retained and is now [D4](DECISIONS.md#d4) | Refuted by execution, not by reading. A session with no resolved identity binds to the default organization: `orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID` (`packages/engine/src/routes/session-routes.ts:235`), and `body.orgId` is consulted nowhere under `packages/engine/src/routes/` — its only three occurrences there are comments saying it is deliberately ignored. FIX-1442 closed it. The probe plants a row under a victim organization through an authenticated flow, then has an unauthenticated shell claim that organization in the session-create body, the action body and two headers: it binds to `__fsd_default_org__` and cannot see the planted row. Reverting that one line to the expression the spec quoted flips both assertions red ([`poc/read-gate/`](poc/read-gate/README.md)) | [D4](DECISIONS.md#d4), which answers the question on its real axis — whether org-scoped rows are ordinary in-organization data — and [PLAN.md → Blocked on](PLAN.md#blocked-on), re-derived against `main` | Nothing built on the old sentence; it blocked work rather than shaping it. **Refuted premise, surviving conclusion — keep them apart.** What died is *where the organization comes from*: it is never the caller's to choose. What did **not** die is the shell needing to resolve a viewer principal. A credentialless session binds to the default organization, so in a deployment with admin tokens configured the hires land under a real organization and the panel renders correct and empty with no reason given. That requirement is real, and `S8` cannot satisfy it in this repository — it is blocked on [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) and shipped as a documented limit ([PLAN.md → Blocked on](PLAN.md#blocked-on)); only an unconfigured clone reads these panels with no credential. Said plainly because the same slip happened twice on this issue — the premise was refuted and the conclusion was assumed to fall with it, and a row whose whole job is recording a refutation is the worst place for that. It also detaches the roster from the [seat-list fork](DECISIONS.md#open), which is unchanged and still open on a different axis — the flow list answers anyone with no credential and no organization at all |
+| **The `Blocked on` section's quoted engine expression**, `orgId: ctx.principal === undefined ? getString(body.orgId) : ctx.principal.orgId`, cited at `packages/engine/src/routes/session-routes.ts:192`, and the conclusion drawn from it that "anyone can create a session claiming any org and read that org's roster". Source: this spec's own [`PLAN.md` → Blocked on](PLAN.md#blocked-on), same merged PR | **Superseded.** The code it quotes does not exist on `main`, and the conclusion falls with it. One neighbouring fact is **retained**: the shell's flow really does resolve no principal, and its test still pins that | Same root cause and same evidence as the row above. The retained half is `apps/kitchen-sink/test/management-routes-reachable.test.ts:54`, which still asserts the shell flow's `resolvePrincipal` is `undefined` — true, and no longer load-bearing, because a missing resolver now means the default organization rather than a caller-chosen one | A re-derived [Blocked on](PLAN.md#blocked-on): both panels are held by `config.client?.state?.read !== true` on the two collection-state read routes (`packages/engine/src/routes/resource-routes.ts:440`, `:560`), which neither collection declares. Verified by execution — both return `403 State read not permitted`, and the same shape with the declaration returns 200 | A reader who acted on the old text would have gone looking for a **caller-supplied** organization, and would have missed the wall that actually stops both panels. **This issue does still need an authentication story** — wherever admin tokens put hires in a non-default organization, the shell must resolve a viewer principal and carry its credential, or the panels read the default organization and render correct and empty. That requirement is real, and nothing in this repository can satisfy it: there is no credential here representing a viewer, so the binding belongs to [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) and what `S8` owes is a documented limit. The check written for it went the same way, being uncompletable here. No rule, check or surface in the spec was derived from the refuted sentence. **Fourth fold of this one claim** — `DECISIONS.md`, then row 16, then here — and the sentence that kept surviving correction was sitting *inside the table of corrected sentences*, one row below the correction |
+| **"The navigator, the roster and the board columns subscribe to a collection outside any session and re-render when it changes. Two people looking at the same board see the same rows."** Source: this spec's own [`DOCS.md`](DOCS.md), *Two sources, and which one a component reads*, as merged in [PR #1994](https://github.com/fixpoint-labs/flow-state-dev/pull/1994) | **Superseded** — and note *why*, because it changes what happens next. This is a **build constraint the spec did not know about**, not a change of mind: nobody decided the panels should be less live. The capability the sentence assumes has never existed, so the promise was never implementable as written. Under [BP-002](../../../docs/contributing/best-practices/process.md) that is a conflict to **re-gate**, not a fork to offer. The second sentence's *true* half is retained — the rows really are shared rather than one session's copy | A resource change is announced on the **emitting execution's own stream** and nowhere else. `makeResourceChangeHandler` is built inside `createExecutionContext` (`packages/engine/src/context/createExecutionContext.ts:2191`), closing over the emitter taken from *this request's* response (`:2179`–`:2181`), and returns `undefined` when there is neither an emitter nor a `reactTo` binding. What it emits carries that request's `requestId` and is appended to that request's event log (`packages/engine/src/streaming/response-emitter.ts:632`). The client agrees: the only invalidation channel is the viewer's **own** session's notice channel, and the hook that reads it takes a session as a required argument (`packages/react/src/hooks/useResourceCollection.ts:186`, `:156`). And there is no cross-session fan-out to reach for — the whole route surface holds exactly two streaming routes (`packages/engine/src/routes/parseFlowRoute.ts:8`–`:47`): one request's stream, and a per-user stream that **returns 501, `User stream is not enabled in Phase 1`** (`packages/engine/src/routes/http-handlers.ts:492`–`:495`). Every collection read is a one-shot GET | The corrected [`DOCS.md`](DOCS.md) paragraph, which states what ships: the panels read their collection on mount, do not watch it, and a host that wants a fresh read remounts them. The liveness promise itself is deferred to its own tracked unit of work ([PLAN.md → Follow-ups](PLAN.md#follow-ups)), because it is substrate rather than a panel fix | No rule, check or surface in the spec was derived from the sentence, and no component's read changes. **Polling is not the cheap substitute**: the spec's own [failure taxonomy](BUSINESS-RULES.md) already forbids a region that re-reads on a timer, which hides a broken deployment behind a spinner. A reader who acted on the old text would have built a subscription against a seam that delivers only their own writes |
 
-**None of the three is wholly superseded**, and two are not designs at all — one is a sentence in
-a ticket and one is a picture. They are here because an implementer who finds them will
-reasonably treat them as current, and two of the three would send the work the wrong way.
+**The first three are not wholly superseded, and the last three are** — those three are factual
+claims rather than designs, and a refuted fact leaves nothing to keep. Four of the six are not
+designs at all: a sentence in a ticket, a picture, and three statements this spec wrote about
+someone else's code. They are here because an implementer who finds them will reasonably treat
+them as current, and five of the six would send the work the wrong way.
+
+**Two habits would have prevented most of what this page records.** Stated as rules, because
+that is the only form that travels.
+
+- **Name the tree when you cite.** A bare `file:line` is true of exactly one tree and says
+  nothing about which — `main`, a branch, a commit. Every citation on this page was re-derived
+  against `origin/main`, and **one deliberately does not resolve**: `session-routes.ts:192` in
+  the row above is quoted as the *stale* reference the merged spec carried, and on `main` that
+  line is now a comment about state defaults. When a claim turns out to be wrong, correct the
+  **assertion across the whole set**, not the line the reviewer cited — it will have been written
+  more than once.
+- **Name the red state when you write the rule.** Requirements here were repeatedly stated with
+  nothing that could fail without them: the shell's viewer-principal binding, BR-20's
+  skipped-seat report, the unqualified *"the organization's seats"* / *"the rows that board
+  holds"* in BR-19 and BR-21, and then the per-organization report itself, whose first check
+  could not fail on either way of getting it wrong. [V11, V14 and V15](PLAN.md#checks) cover
+  three of them. The fourth — the viewer-principal binding — has **no check here at all**: the
+  one written for it turned out to be uncompletable in this repository and went to FIX-1503 with
+  the work, and what this issue owes instead is a documented limit. **This kept recurring**, in four successive rounds and on four different
+  requirements, which is the part worth knowing: it is not one oversight but the default
+  behaviour of writing a rule and a check at different moments. A re-read cannot catch it —
+  unlike a stale claim, the prose is *correct*; there is simply nothing standing behind it.
+- **A comment warning against a mistake does not prevent it; only a red check does.** The panels'
+  row source is `Pick<ResourceClient, "listCollectionItems">`, and the type's own doc says a
+  panel building its own client "would read through no credential and fail against any deployment
+  that authenticates". The design was right and the hazard was named at the definition site — and
+  nothing in the checks could fail if an implementer reached for the convenient hook instead,
+  because every panel check ran against a deployment that authenticates nobody (now V16). A
+  warning is read only by someone already in the right file, which is not the person about to
+  make the mistake.
+- **A check added to enforce a named rule must be named by that rule.** Not every check needs
+  this — most are anchored by the surface they run after, which is its own answer to "why does
+  this exist". The risk is narrower: a check written *because a rule demanded it* and not cited
+  from the rule has nothing explaining it, and reads as redundant to whoever tidies next. BR-29
+  named only the navigator's check while V16 pinned the panel half of the same transport rule,
+  so V16 was the one that would have been deleted six months from now. **An orphaned check is
+  the mirror of an unchecked rule** — one invites an implementer to assume coverage, the other
+  invites a reader to remove it — and the second fails later, which makes it the quieter of the
+  two.
+- **A fix is a change, and gets the same scrutiny as the thing it fixes.** Three times on this
+  PR the act of correcting a defect produced a fresh instance of it: the check written to close
+  an unfalsifiable check shipped unfalsifiable; the rule written about overstated scope
+  overstated its own; a citation added to fix orphaned checks overstated what its check proves.
+  Each passed review as *a fix* rather than as *a claim* — and a fix arrives with a reason
+  already attached, which is what makes it skim as justified. Generalising from one instance is
+  when its boundaries are least visible, and a fix is a generalisation written at speed.
+- **One assertion per failure mode you are excluding.** If two ways of being wrong turn the same
+  assertion red, that is one check, not two. This is the sharper form of the rule above, and it
+  was learnt the hard way: **V15 — the check written to close the previous unfalsifiable check —
+  shipped unable to fail on the specific failure it was created for.** Its scenario named a
+  registration-refused seat, and its assertion said the panel *"names its problem"*, singular,
+  which a different failure in the same setup already satisfied. Listing a condition in the setup
+  is not asserting on it. The other unchecked requirements had their checks written later; this
+  one was written in the same breath as the requirement and still could not fail, because the
+  assertion was aimed at the **scenario** rather than at each thing the scenario was assembled to
+  exclude.
+- **When a step's scope changes, re-read every section that names it** — not: grep for the
+  sentence you remember writing. Narrowing `S8` from "binds the viewer's organization" to "ships
+  that as a documented limit" took **three rounds of sweeping** to clear, because each round
+  searched for the form it had just fixed. The same claim was standing as a sentence, a table
+  row, a check, a section headline, and a cross-reference in a POC README; a search for any one
+  of those finds none of the others. **A claim has more than one grammatical form, and a text
+  search finds only the form you thought of.** The list of forms is open-ended, so the instrument
+  cannot be a longer checklist — it has to be reading every section that names the step.
+- **A check can fail by being uncompletable, not only by being unfalsifiable.** V13 required a
+  credential that does not exist in this repository, so as an `S8` check nothing in scope could
+  turn it green — a required check an implementer can only satisfy by building the thing the
+  spec just deferred. It moved to the issue that owns the credential. The two failures are
+  mirror images: one cannot go red, the other cannot go green, and both look like coverage.
+- **When you fix a defect, sweep for the defect — not for the file.** The retained premise proof
+  returned from an action as soon as the event stream closed, while the probe **beside it in the
+  same directory** carries a comment explaining that draining is not enough because the block is
+  still running. The fix had been written once and not looked for elsewhere. Worst placed of the
+  three occurrences on this issue: a retained proof fails in the *reassuring* direction, because
+  a read that sees nothing looks exactly like the isolation it exists to demonstrate.
+- **Name the thing, don't count it.** *"The last two rows"*, *"the third bullet"* — a positional
+  reference is true until something is inserted above it, and then it is silently wrong with no
+  edit having touched it. The note under [Changesets](PLAN.md#changesets) went stale exactly that
+  way, in the fold that was correcting citations. It is the line-number failure one level up, and
+  the same fix: name the fragment, the rule, the row.
 
 Before implementing, compare these against the repository rather than against this page. The
 devtool files in particular are live code and may have moved; [PLAN.md](PLAN.md) →

@@ -41,6 +41,11 @@ components from the client packages.`
 > />
 > ```
 >
+> **The Seats section above depends on an answer this page does not have yet** — see *Limits*.
+> If the flow listing your deployment exposes is not organization-scoped, drop that second entry
+> and the rail is Channels only; nothing else in the example changes. This block is reconciled
+> against the shipped shell before publication, so it shows one arrangement rather than two.
+>
 > `channel` is the channel kind the framework ships; `agent` is the seat kind. A section is a
 > label and a set of kind names and nothing else, so an app that declares a channel kind of its
 > own adds that name to the same list.
@@ -99,9 +104,16 @@ components from the client packages.`
 > reload, because the items are durable — the stream is where they are read from, not how long
 > they live.
 >
-> **From a standing collection.** The navigator, the roster and the board columns subscribe to a
-> collection outside any session and re-render when it changes. Two people looking at the same
-> board see the same rows.
+> **From a standing collection.** The roster and the board columns read a collection that lives
+> outside any one session — the same rows for everyone in the organization, not one session's
+> copy. They read it when they mount, and they do not watch it afterwards: a change somebody
+> else makes appears the next time the panel mounts. If you need a fresh read on demand, change
+> the component's React `key` — that remounts it and refetches.
+>
+> **The navigator is neither.** It reads your server's flow list, plus a session list for each
+> leaf you open. That list is not organization-scoped and is not a collection, which is why the
+> rail can show you kinds while the roster beside it shows only your own organization's seats.
+> It refreshes on the same terms as the panels: on mount, not on a watch.
 >
 > Reaching for the wrong one shows up immediately: a region built on the item stream shows one
 > session's view of something the whole organization shares.
@@ -121,13 +133,21 @@ components from the client packages.`
 > is not behind your authentication. So the navigator browses **channel kinds** rather than hired
 > seats, and your team is in the roster, which is organization-scoped. When the flow listing
 > carries an organization, a seats section becomes available and this page will say so.
+>
+> **Which organization you see depends on how your deployment signs people in.** These panels
+> show the rows belonging to the organization your session is bound to, and a session is bound
+> from the identity your server resolves for the person making the request. With no sign-in
+> configured there is one organization and you see it. If you have configured credentials that
+> hire into a real organization but have not yet given the app a way to identify *the person
+> viewing it*, the panels bind to the default organization and come up empty — correct, and
+> empty. Wiring that identity is the missing piece, not the panels.
 
 ## UPDATE · `packages/react/README.md` · a new section after "Render helpers"
 
 > ### Workforce components
 >
 > `FlowNavigator`, `Roster` and `BoardColumns` browse your flow kinds and their sessions, and
-> render a roster and a channel's boards from live collections. They bring no CSS framework and
+> render a roster and a channel's boards from standing collections. They bring no CSS framework and
 > no icon set — style them with CSS custom properties and fill them through slots. Navigator
 > depth is read from each flow's declared `cardinality`; there is no depth prop. The flow listing
 > carries no organization, so the navigator is not organization-scoped. See

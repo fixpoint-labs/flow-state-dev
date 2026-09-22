@@ -1,14 +1,14 @@
 /**
- * DevToolPanel — following background work into the instance that owns it, and
- * getting back.
+ * DevToolPanel — opening a dispatch run under the instance that owns it.
  *
- * Work dispatched into another flow instance produces a child that instance
- * owns, and a same-kind peer is the case that hides: the child looks like an
- * ordinary session of the flow already on screen. Opening it under the parent's
- * copy addresses every subsequent read to the wrong one.
+ * Work dispatched into another flow instance produces a run that instance owns,
+ * and a same-kind peer is the case that hides: the run looks like an ordinary
+ * session of the flow already on screen. Opening it under the sending copy
+ * addresses every subsequent read to the wrong one.
  *
- * So a descent moves BOTH axes in one transition, and each step of the trail
- * remembers the owner it was under, because returning has to undo both.
+ * So opening a run moves BOTH axes in one transition. There is no trail back:
+ * a run is an ordinary session of its flow and is listed as one, so the way
+ * back is the rail, not a breadcrumb.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
@@ -56,8 +56,8 @@ function applyWorkspace(flowId: string, sessionId: string): void {
   devToolState.workspaceToken += 1;
 }
 
-/** The child rows the panel hands to the ChildSessions tab. */
-const childRows: Array<Record<string, unknown>> = [];
+/** The dispatch runs the panel renders as nodes in the block tree. */
+const runRows: Array<Record<string, unknown>> = [];
 
 vi.mock("../src/react/context/devtool-context", () => ({
   DevToolProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -68,9 +68,9 @@ vi.mock("../src/react/hooks/use-session-requests", () => ({
   useSessionRequests: () => ({ requests: [], refresh: vi.fn() }),
 }));
 
-vi.mock("../src/react/hooks/use-child-sessions", () => ({
-  useChildSessions: () => ({
-    childSessions: childRows,
+vi.mock("../src/react/hooks/use-dispatch-runs", () => ({
+  useDispatchRuns: () => ({
+    dispatchRuns: runRows,
     isLoading: false,
     error: null,
     truncation: "complete" as const,
@@ -128,46 +128,28 @@ vi.mock("../src/react/hooks/use-continue-request", () => ({
   }),
 }));
 
-/** Stand-in for the ChildSessions tab, exposing its open link as a button. */
-vi.mock("../src/react/components/workspace/child-sessions-view", () => ({
-  ChildSessionsView: ({
-    childSessions,
-    onOpen,
-  }: {
-    childSessions: Array<{ id: string }>;
-    onOpen: (child: unknown) => void;
-  }) => (
-    <div>
-      {childSessions.map((child) => (
-        <button key={child.id} onClick={() => onOpen(child)}>
-          open-{child.id}
-        </button>
-      ))}
-    </div>
-  ),
-}));
-
 import { DevToolPanel } from "../src/react/DevToolPanel";
 
-async function openChildTab() {
+/** The runs render as nodes in the block tree, which is the Trace tab. */
+async function openTraceTab() {
   await act(async () => {
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /ChildSessions/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Trace/ }));
   });
 }
 
-describe("DevToolPanel — cross-owner descent and return", () => {
+describe("DevToolPanel — opening a dispatch run", () => {
   beforeEach(() => {
     selectWorkspace.mockReset();
-    childRows.length = 0;
+    runRows.length = 0;
     devToolState.activeFlowId = "engineer-a";
     devToolState.activeFlow = engineerA;
     devToolState.activeSessionId = "sess_parent";
     devToolState.workspaceToken = 0;
   });
 
-  it("opens a child under the instance that owns it, not the one on screen", async () => {
-    childRows.push({
-      id: "child_1",
+  it("opens a run under the instance that owns it, not the one on screen", async () => {
+    runRows.push({
+      id: "dsx_1",
       parentSessionId: "sess_parent",
       flowId: "engineer-b",
       topic: "review",
@@ -176,22 +158,22 @@ describe("DevToolPanel — cross-owner descent and return", () => {
     });
 
     await act(async () => render(<DevToolPanel userId="u1" />));
-    await openChildTab();
+    await openTraceTab();
 
     await act(async () => {
-      fireEvent.click(screen.getByText("open-child_1"));
+      fireEvent.click(screen.getByLabelText("Open dispatch run dsx_1"));
     });
 
-    // Both axes, in one call. Two updates would leave a render with the child
+    // Both axes, in one call. Two updates would leave a render with the run
     // open under `engineer-a`, and that render's reads go to the wrong copy.
-    expect(selectWorkspace).toHaveBeenCalledWith("engineer-b", "child_1");
+    expect(selectWorkspace).toHaveBeenCalledWith("engineer-b", "dsx_1");
   });
 
-  it("keeps a child with no recorded owner in the instance it was opened from", async () => {
+  it("keeps a run with no recorded owner in the instance it was opened from", async () => {
     // Written before owners existed. The only instance that could have started
     // it under the old same-flow rule is the one we are already in.
-    childRows.push({
-      id: "child_legacy",
+    runRows.push({
+      id: "dsx_legacy",
       parentSessionId: "sess_parent",
       topic: "legacy",
       createdAt: 1,
@@ -199,42 +181,13 @@ describe("DevToolPanel — cross-owner descent and return", () => {
     });
 
     await act(async () => render(<DevToolPanel userId="u1" />));
-    await openChildTab();
+    await openTraceTab();
 
     await act(async () => {
-      fireEvent.click(screen.getByText("open-child_legacy"));
+      fireEvent.click(screen.getByLabelText("Open dispatch run dsx_legacy"));
     });
 
-    expect(selectWorkspace).toHaveBeenCalledWith("engineer-a", "child_legacy");
+    expect(selectWorkspace).toHaveBeenCalledWith("engineer-a", "dsx_legacy");
   });
 
-  it("returns to the parent's own instance, not whichever copy is selected", async () => {
-    childRows.push({
-      id: "child_1",
-      parentSessionId: "sess_parent",
-      flowId: "engineer-b",
-      topic: "review",
-      createdAt: 1,
-      updatedAt: 1,
-    });
-
-    const { rerender } = await act(async () => render(<DevToolPanel userId="u1" />));
-    await openChildTab();
-    await act(async () => {
-      fireEvent.click(screen.getByText("open-child_1"));
-    });
-
-    // The provider applies the descent: the workspace is now B's child.
-    applyWorkspace("engineer-b", "child_1");
-    await act(async () => rerender(<DevToolPanel userId="u1" />));
-
-    selectWorkspace.mockClear();
-    await act(async () => {
-      fireEvent.click(screen.getByTitle(/^Back to sess_parent/));
-    });
-
-    // The trail carried the parent's owner. Without it, "back" would return the
-    // right session under `engineer-b`, which is where we currently are.
-    expect(selectWorkspace).toHaveBeenCalledWith("engineer-a", "sess_parent");
-  });
 });

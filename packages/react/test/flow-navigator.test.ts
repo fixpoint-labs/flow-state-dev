@@ -262,6 +262,7 @@ describe("FlowNavigator · the published props are an allow-list (V5, BR-3, BR-2
     // the list cannot drift from the type it stands for.
     expect([...flowNavigatorPropNames]).toEqual([
       "client",
+      "includeDispatchRuns",
       "onSelectSession",
       "sections",
       "selectedSessionId",

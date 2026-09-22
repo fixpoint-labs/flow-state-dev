@@ -182,7 +182,7 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 ### `SessionView.childSessions`
 
-`ReadonlyArray<ChildSessionSummary>` of the sessions started under this one — one entry per child, carrying `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate?, status? }`, which is the whole row. `flowId` is the instance that owns the child — the address to read it through when it was dispatched into another instance; absent on a child written before owners were recorded. Empty for a session that started none. Separate from `items`: a child session is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
+`ReadonlyArray<ChildSessionSummary>` of the sessions started under this one — one entry per child, carrying `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate?, status? }`, which is the whole row. The field is `childSessions` and a row is a `ChildSessionSummary`; one row is one dispatch run. `flowId` is the instance that owns the child — the address to read it through when it was dispatched into another instance. Absent on a row that records no owner. Empty for a session that started none. Separate from `items`: a child session is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
 
 Carries one page of the most recent entries, newest first. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than one page keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
 
@@ -406,6 +406,8 @@ How deep the tree goes comes from each flow's declared `cardinality`. A flow dec
 
 Sessions load when you open a single flow instance, which is a singleton's row or one copy under a collection. Expanding a collection row to see its copies costs no request.
 
+Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers ran work in, each drawn one level under the session that started it. One level is all there is: a run started by another run sits beside its own parent, and a run whose parent is not in the listing sits at the left margin. The `rowTrailing` slot receives `dispatchRun` on those rows, carrying the id of the session that started it, so you can label the row or link to it. Left out, the rail lists the sessions a person started.
+
 The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
 
 The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.
@@ -413,6 +415,54 @@ The package brings no CSS framework and no icon set. Style the rows by setting t
 `leafToolbar` is handed that instance's session list, a `refresh` for it, and the flow-list entry the row was drawn from. The entry carries what the flow declares — its actions, for example — so the toolbar can render them without fetching the flow list itself.
 
 Before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. There is no `orgId` prop.
+
+### Roster
+
+`Roster` lists the seats hired in an organization. Reach for it when your app has a workforce and you want a standing panel showing who is on it.
+
+```tsx
+import { Roster } from "@flow-state-dev/react";
+
+<Roster sessionId={sessionId} collectionRef="roster" problems={bootProblems} />
+```
+
+The seats come from the standing roster collection, which your session's flow declares. `collectionRef` is the key it is declared under, and it defaults to `roster`. That key is a single path segment, so it carries no slash.
+
+The seats it shows are the ones hired in the session's own organization. There is no `orgId` prop.
+
+`problems` is the list of seats a boot reload could not restore. Reloading a roster hands back the seats it made and a named entry for each row it could not, and that second list only exists on the server, so pass it down. `Roster` shows the count and the entries.
+
+A seat row carries `seatId`, `flow` (the kind it was hired into) and `instructions`. It does not carry the seat's settings.
+
+### BoardColumns
+
+`BoardColumns` draws one task board as columns, grouped by status.
+
+```tsx
+import { BoardColumns } from "@flow-state-dev/react";
+
+<BoardColumns sessionId={sessionId} boardRef="eng.feature.triage" />
+```
+
+`boardRef` is the key the session's flow declares that board's ledger under, which for a channel board is the minted `<channelId>.<boardName>`. Like the roster's ref it is one path segment.
+
+The columns are the task statuses, in the order work moves through them: `pending`, `in_progress`, `blocked`, `parked`, `completed`, `errored`, `cancelled`. The package exports that list as `BOARD_STATUS_COLUMNS`. A row whose status the component does not recognise gets a column of its own at the end rather than vanishing.
+
+A board with no rows renders an empty state rather than a spinner.
+
+A card is labelled with the task's `title`, falling back to its `goal`, then to its `id`. It carries the `assignee` beside that label when the row has one. Its status is the column it sits in.
+
+### Transport and theming for both panels
+
+Both read through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, with no auth headers.
+
+Each reads one page. `limit` sets its size. Neither pages beyond it.
+
+A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
+
+Style them by setting the `--fsd-panel-*` CSS custom properties on any ancestor. Fill in your own affordances through `slots`: `rowTrailing` and `empty` on `Roster`; `card`, `columnHeader` and `empty` on `BoardColumns`.
+
+`BoardColumns` renders the `<li>` around every card and puts the task's id on it, so a `card` slot returns the body that goes inside one rather than a list item of its own.
 
 ### Presentational components moved to `@flow-state-dev/ui`
 

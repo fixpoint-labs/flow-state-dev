@@ -1,5 +1,5 @@
 /**
- * The ChildSessions listing hook (FIX-1071).
+ * The dispatch runs listing hook (FIX-1071).
  *
  * Two classes of defect live here, and both are invisible rather than loud —
  * the panel renders a plausible list either way, which is what makes them worth
@@ -28,7 +28,7 @@ vi.mock("../src/react/context/devtool-context", () => ({
   useDevTool: () => devToolState,
 }));
 
-import { useChildSessions } from "../src/react/hooks/use-child-sessions";
+import { useDispatchRuns } from "../src/react/hooks/use-dispatch-runs";
 import { useReadFence } from "@flow-state-dev/react";
 
 function row(id: string, overrides: Partial<ChildSessionSummary> = {}): ChildSessionSummary {
@@ -50,10 +50,10 @@ beforeEach(() => {
   sessionClientMock.listChildSessions.mockReset().mockResolvedValue([]);
 });
 
-describe("useChildSessions — reading one page", () => {
+describe("useDispatchRuns — reading one page", () => {
   it("reads a single page, not the whole history", async () => {
     // `docs/architecture/server-and-client.md` fixes the budget for this axis:
-    // "The cost is one ChildSession read per turn, independent of task-board
+    // "The cost is one dispatch run read per turn, independent of task-board
     // activity." Walking every page made the cost grow with how much background
     // work a session had — on a host configured to a one-row page size, ~500
     // sequential requests on every mount and every action refresh.
@@ -65,10 +65,10 @@ describe("useChildSessions — reading one page", () => {
         opts?.offset === undefined ? [row("dsx_1"), row("dsx_2")] : []
     );
 
-    const { result } = renderHook(() => useChildSessions("sess_parent"));
+    const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
     await waitFor(() =>
-      expect(result.current.childSessions.map((w) => w.id)).toEqual(["dsx_1", "dsx_2"])
+      expect(result.current.dispatchRuns.map((w) => w.id)).toEqual(["dsx_1", "dsx_2"])
     );
     expect(result.current.truncation).toBe("complete");
     // The page plus its sentinel. Two whatever the session holds — the page
@@ -80,7 +80,7 @@ describe("useChildSessions — reading one page", () => {
     // The route REJECTS an out-of-range limit with a 400 rather than clamping,
     // and `maxChildSessionListLimit` is an operator's setting.
     sessionClientMock.listChildSessions.mockResolvedValue([]);
-    renderHook(() => useChildSessions("sess_parent"));
+    renderHook(() => useDispatchRuns("sess_parent"));
 
     await waitFor(() => expect(sessionClientMock.listChildSessions).toHaveBeenCalled());
     const [, options] = sessionClientMock.listChildSessions.mock.calls[0]!;
@@ -90,10 +90,10 @@ describe("useChildSessions — reading one page", () => {
   it("costs one request when the session has no background work", async () => {
     sessionClientMock.listChildSessions.mockResolvedValue([]);
 
-    const { result } = renderHook(() => useChildSessions("sess_parent"));
+    const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.childSessions).toEqual([]);
+    expect(result.current.dispatchRuns).toEqual([]);
     expect(result.current.truncation).toBe("complete");
     expect(sessionClientMock.listChildSessions).toHaveBeenCalledTimes(1);
   });
@@ -108,10 +108,10 @@ describe("useChildSessions — reading one page", () => {
         opts?.offset === undefined ? first : [row("dsx_beyond")]
     );
 
-    const { result } = renderHook(() => useChildSessions("sess_parent"));
+    const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
     await waitFor(() => expect(result.current.truncation).toBe("more"));
-    expect(result.current.childSessions).toHaveLength(25);
+    expect(result.current.dispatchRuns).toHaveLength(25);
     expect(sessionClientMock.listChildSessions).toHaveBeenCalledWith("sess_parent", {
       offset: 25,
     });
@@ -124,7 +124,7 @@ describe("useChildSessions — reading one page", () => {
     // alone by the catch, so a first load that never landed reported the list
     // as verified COMPLETE while `error` separately said it had failed. Only a
     // consumer holding both could combine them — and the Tasks tab holds one,
-    // which is why it rendered a definitive "no childSession" for every task.
+    // which is why it rendered a definitive "no dispatchRun" for every task.
     // Driven through a SUCCESSFUL read first, so `truncation` genuinely holds
     // `"complete"` before the failure. A first-load failure would pass against
     // the bug, because nothing had established completeness to begin with.
@@ -133,7 +133,7 @@ describe("useChildSessions — reading one page", () => {
         opts?.offset === undefined ? [row("dsx_1")] : []
     );
 
-    const { result } = renderHook(() => useChildSessions("sess_parent"));
+    const { result } = renderHook(() => useDispatchRuns("sess_parent"));
     await waitFor(() => expect(result.current.truncation).toBe("complete"));
 
     sessionClientMock.listChildSessions.mockRejectedValue(new Error("network down"));
@@ -145,7 +145,7 @@ describe("useChildSessions — reading one page", () => {
     expect(result.current.truncation).toBe("unknown");
     // The rows stay, because a failed re-read does not mean the list emptied —
     // but nothing about its completeness survives.
-    expect(result.current.childSessions).toHaveLength(1);
+    expect(result.current.dispatchRuns).toHaveLength(1);
   });
 
   it("keeps a page whose sentinel failed, and says the check did not come back", async () => {
@@ -165,9 +165,9 @@ describe("useChildSessions — reading one page", () => {
       }
     );
 
-    const { result } = renderHook(() => useChildSessions("sess_parent"));
+    const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
-    await waitFor(() => expect(result.current.childSessions).toHaveLength(25));
+    await waitFor(() => expect(result.current.dispatchRuns).toHaveLength(25));
     expect(result.current.truncation).toBe("unknown");
     // The page succeeded, so this is not a failed read.
     expect(result.current.error).toBeNull();
@@ -175,21 +175,21 @@ describe("useChildSessions — reading one page", () => {
 
   it("does not claim more when a full page is the whole list", async () => {
     // The other direction, and the one a full-page heuristic gets wrong:
-    // exactly a page's worth of childSessions and nothing behind it.
+    // exactly a page's worth of dispatchRuns and nothing behind it.
     const first = page(0, 25);
     sessionClientMock.listChildSessions.mockImplementation(
       async (_id: string, opts?: { offset?: number }) =>
         opts?.offset === undefined ? first : []
     );
 
-    const { result } = renderHook(() => useChildSessions("sess_parent"));
+    const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
-    await waitFor(() => expect(result.current.childSessions).toHaveLength(25));
+    await waitFor(() => expect(result.current.dispatchRuns).toHaveLength(25));
     expect(result.current.truncation).toBe("complete");
   });
 });
 
-describe("useChildSessions — a superseded read stops working", () => {
+describe("useDispatchRuns — a superseded read stops working", () => {
   /** Every page request made, held open so the walk can be stepped one at a time. */
   type PendingRead = {
     sessionId: string;
@@ -221,7 +221,7 @@ describe("useChildSessions — a superseded read stops working", () => {
     const pending = armSteppableReads();
 
     const { rerender } = renderHook(
-      ({ sessionId }: { sessionId: string }) => useChildSessions(sessionId),
+      ({ sessionId }: { sessionId: string }) => useDispatchRuns(sessionId),
       { initialProps: { sessionId: "sess_parent" } }
     );
     await waitFor(() => expect(pending).toHaveLength(1));
@@ -245,7 +245,7 @@ describe("useChildSessions — a superseded read stops working", () => {
     // replacement — the case no identity change announces.
     const pending = armSteppableReads();
 
-    const { unmount } = renderHook(() => useChildSessions("sess_parent"));
+    const { unmount } = renderHook(() => useDispatchRuns("sess_parent"));
     await waitFor(() => expect(pending).toHaveLength(1));
 
     unmount();
@@ -283,7 +283,7 @@ describe("useChildSessions — a superseded read stops working", () => {
     const pending = armSteppableReads();
 
     const { result, rerender } = renderHook(
-      ({ sessionId }: { sessionId: string }) => useChildSessions(sessionId),
+      ({ sessionId }: { sessionId: string }) => useDispatchRuns(sessionId),
       { initialProps: { sessionId: "sess_parent" } }
     );
     await waitFor(() => expect(pending).toHaveLength(1));
@@ -300,7 +300,7 @@ describe("useChildSessions — a superseded read stops working", () => {
       return found!;
     });
 
-    // Abandon the parent's walk and complete the child's.
+    // Abandon the parent's walk and complete the run's.
     await act(async () => {
       pending[1]!.resolve(page(25, 25));
       child.resolve([row("dsx_child")]);
@@ -314,14 +314,14 @@ describe("useChildSessions — a superseded read stops working", () => {
       childTail.resolve([]);
     });
 
-    expect(result.current.childSessions.map((w) => w.id)).toEqual(["dsx_child"]);
+    expect(result.current.dispatchRuns.map((w) => w.id)).toEqual(["dsx_child"]);
     // An abandoned walk read fewer rows than exist. Reporting that as a cap
     // would tell the user their list is truncated when it was merely dropped.
     expect(result.current.truncation).toBe("complete");
   });
 });
 
-describe("useChildSessions — a callback outliving its identity", () => {
+describe("useDispatchRuns — a callback outliving its identity", () => {
   /** A listing that ends after one page, so a walk terminates. */
   function onePage(rows: ChildSessionSummary[]) {
     return async (_id: string, opts?: { offset?: number }) =>
@@ -340,11 +340,11 @@ describe("useChildSessions — a callback outliving its identity", () => {
     sessionClientMock.listChildSessions.mockImplementation(onePage([row("dsx_parent")]));
 
     const { result, rerender } = renderHook(
-      ({ sessionId }: { sessionId: string }) => useChildSessions(sessionId),
+      ({ sessionId }: { sessionId: string }) => useDispatchRuns(sessionId),
       { initialProps: { sessionId: "sess_parent" } }
     );
     await waitFor(() =>
-      expect(result.current.childSessions.map((w) => w.id)).toEqual(["dsx_parent"])
+      expect(result.current.dispatchRuns.map((w) => w.id)).toEqual(["dsx_parent"])
     );
 
     // Captured while the parent was open.
@@ -353,7 +353,7 @@ describe("useChildSessions — a callback outliving its identity", () => {
     sessionClientMock.listChildSessions.mockImplementation(onePage([row("dsx_child")]));
     rerender({ sessionId: "sess_child" });
     await waitFor(() =>
-      expect(result.current.childSessions.map((w) => w.id)).toEqual(["dsx_child"])
+      expect(result.current.dispatchRuns.map((w) => w.id)).toEqual(["dsx_child"])
     );
 
     const callsBefore = sessionClientMock.listChildSessions.mock.calls.length;
@@ -362,7 +362,7 @@ describe("useChildSessions — a callback outliving its identity", () => {
       await staleRefresh();
     });
 
-    expect(result.current.childSessions.map((w) => w.id)).toEqual(["dsx_child"]);
+    expect(result.current.dispatchRuns.map((w) => w.id)).toEqual(["dsx_child"]);
     // And it should not have gone to the network at all — a read it may not
     // write is a read worth not making.
     expect(sessionClientMock.listChildSessions.mock.calls.length).toBe(callsBefore);
@@ -377,11 +377,11 @@ describe("useChildSessions — a callback outliving its identity", () => {
 
     sessionClientMock.listChildSessions.mockImplementation(onePage([row("dsx_parent")]));
     const { result, rerender } = renderHook(
-      ({ sessionId }: { sessionId: string }) => useChildSessions(sessionId),
+      ({ sessionId }: { sessionId: string }) => useDispatchRuns(sessionId),
       { initialProps: { sessionId: "sess_parent" } }
     );
     await waitFor(() =>
-      expect(result.current.childSessions.map((w) => w.id)).toEqual(["dsx_parent"])
+      expect(result.current.dispatchRuns.map((w) => w.id)).toEqual(["dsx_parent"])
     );
     const staleRefresh = result.current.refresh;
 
@@ -409,11 +409,11 @@ describe("useChildSessions — a callback outliving its identity", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.childSessions.map((w) => w.id)).toEqual(["dsx_child"]);
+    expect(result.current.dispatchRuns.map((w) => w.id)).toEqual(["dsx_child"]);
   });
 });
 
-describe("useChildSessions — superseded reads", () => {
+describe("useDispatchRuns — superseded reads", () => {
   it("clears the spinner when the session goes away while a read is in flight", async () => {
     // Retiring an identity has to retire its SPINNER too, and the fence that
     // makes the guards correct is what hides this: the in-flight read resolves
@@ -421,7 +421,7 @@ describe("useChildSessions — superseded reads", () => {
     // correctly, it no longer owns it — and the replacement read takes the
     // no-session path, which starts nothing and so clears nothing. Nobody owns
     // the `true` that is already on screen, and the panel sits on
-    // "Loading childSessions…" until some later session completes a read.
+    // "Loading dispatchRuns…" until some later session completes a read.
     //
     // Driven through the real transition rather than the no-session path alone,
     // because that path in isolation never sets the flag and would pass either
@@ -434,7 +434,7 @@ describe("useChildSessions — superseded reads", () => {
     );
 
     const { result, rerender } = renderHook(
-      ({ sessionId }: { sessionId: string | null }) => useChildSessions(sessionId),
+      ({ sessionId }: { sessionId: string | null }) => useDispatchRuns(sessionId),
       { initialProps: { sessionId: "sess_parent" as string | null } }
     );
     await waitFor(() => expect(result.current.isLoading).toBe(true));
@@ -448,7 +448,7 @@ describe("useChildSessions — superseded reads", () => {
     });
 
     expect(result.current.isLoading).toBe(false);
-    expect(result.current.childSessions).toEqual([]);
+    expect(result.current.dispatchRuns).toEqual([]);
   });
 
   it("drops the previous session's rows before the new session's read lands", async () => {
@@ -457,17 +457,17 @@ describe("useChildSessions — superseded reads", () => {
       .mockResolvedValueOnce([]);
 
     const { result, rerender } = renderHook(
-      ({ sessionId }: { sessionId: string }) => useChildSessions(sessionId),
+      ({ sessionId }: { sessionId: string }) => useDispatchRuns(sessionId),
       { initialProps: { sessionId: "sess_parent" } }
     );
-    await waitFor(() => expect(result.current.childSessions).toHaveLength(1));
+    await waitFor(() => expect(result.current.dispatchRuns).toHaveLength(1));
 
     // A read that never resolves stands in for the window between the switch
     // and the new session's response.
     sessionClientMock.listChildSessions.mockReturnValueOnce(new Promise(() => {}));
     rerender({ sessionId: "sess_child" });
 
-    expect(result.current.childSessions).toEqual([]);
+    expect(result.current.dispatchRuns).toEqual([]);
     // The other side of retiring the spinner with the identity: clearing it must
     // not put a `false` on screen for a switch that immediately starts another
     // read. Both effects run in one commit, so the clear and the new read's
@@ -485,7 +485,7 @@ describe("useChildSessions — superseded reads", () => {
     );
 
     const { result, rerender } = renderHook(
-      ({ sessionId }: { sessionId: string }) => useChildSessions(sessionId),
+      ({ sessionId }: { sessionId: string }) => useDispatchRuns(sessionId),
       { initialProps: { sessionId: "sess_parent" } }
     );
 
@@ -493,12 +493,12 @@ describe("useChildSessions — superseded reads", () => {
     rerender({ sessionId: "sess_child" });
 
     // The parent's read comes back late. Applying it would relabel the parent
-    // conversation's background work as the child's — rows the user can click.
+    // conversation's background work as the run's — rows the user can click.
     await act(async () => {
       resolveParent([row("dsx_parent")]);
     });
 
-    expect(result.current.childSessions).toEqual([]);
+    expect(result.current.dispatchRuns).toEqual([]);
   });
 
   it("does not let an older read for the SAME session overwrite newer rows", async () => {
@@ -512,7 +512,7 @@ describe("useChildSessions — superseded reads", () => {
       })
     );
 
-    const { result } = renderHook(() => useChildSessions("sess_parent"));
+    const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
     // A manual Refresh overlapping the mount read, resolving first.
     sessionClientMock.listChildSessions
@@ -521,14 +521,14 @@ describe("useChildSessions — superseded reads", () => {
     await act(async () => {
       await result.current.refresh();
     });
-    expect(result.current.childSessions[0]?.status).toBe("completed");
+    expect(result.current.dispatchRuns[0]?.status).toBe("completed");
 
     // The mount read finally lands, holding the stale pre-completion view.
     await act(async () => {
       resolveMount([row("dsx_1", { status: "active" })]);
     });
 
-    expect(result.current.childSessions[0]?.status).toBe("completed");
+    expect(result.current.dispatchRuns[0]?.status).toBe("completed");
   });
 
   it("does not leave a stale error banner over rows a newer read succeeded with", async () => {
@@ -544,7 +544,7 @@ describe("useChildSessions — superseded reads", () => {
       })
     );
 
-    const { result } = renderHook(() => useChildSessions("sess_parent"));
+    const { result } = renderHook(() => useDispatchRuns("sess_parent"));
 
     // A manual Refresh overlaps it and lands FIRST, with real rows.
     sessionClientMock.listChildSessions
@@ -553,7 +553,7 @@ describe("useChildSessions — superseded reads", () => {
     await act(async () => {
       await result.current.refresh();
     });
-    expect(result.current.childSessions).toHaveLength(1);
+    expect(result.current.dispatchRuns).toHaveLength(1);
 
     // Only now does the older mount read reject. It is superseded, so it owns
     // nothing on screen — its failure must not be reported over the fresh rows.
@@ -562,7 +562,7 @@ describe("useChildSessions — superseded reads", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.childSessions).toHaveLength(1);
+    expect(result.current.dispatchRuns).toHaveLength(1);
     expect(result.current.error).toBeNull();
   });
 
@@ -576,7 +576,7 @@ describe("useChildSessions — superseded reads", () => {
       })
     );
 
-    const { result, rerender } = renderHook(() => useChildSessions("sess_parent"));
+    const { result, rerender } = renderHook(() => useDispatchRuns("sess_parent"));
 
     devToolState.sessionClient = { listChildSessions: vi.fn().mockResolvedValue([]) } as never;
     rerender();
@@ -585,7 +585,7 @@ describe("useChildSessions — superseded reads", () => {
       resolveOld([row("dsx_stale")]);
     });
 
-    expect(result.current.childSessions).toEqual([]);
+    expect(result.current.dispatchRuns).toEqual([]);
 
     devToolState.sessionClient = sessionClientMock;
   });

@@ -56,9 +56,9 @@ vi.mock("../src/react/context/devtool-context", () => ({
 vi.mock("../src/react/hooks/use-session-requests", () => ({
   useSessionRequests: () => ({ requests: [], refresh: vi.fn() }),
 }));
-vi.mock("../src/react/hooks/use-child-sessions", () => ({
-  useChildSessions: () => ({
-    childSessions: [],
+vi.mock("../src/react/hooks/use-dispatch-runs", () => ({
+  useDispatchRuns: () => ({
+    dispatchRuns: [],
     isLoading: false,
     error: null,
     truncation: "complete" as const,

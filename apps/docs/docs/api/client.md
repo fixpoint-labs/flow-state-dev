@@ -65,19 +65,45 @@ const snapshot = await sessions.getSessionState(sessionId, {
 await sessions.delete(sessionId);
 ```
 
-### `sessions.listChildSessions(parentSessionId, options?)`
+### `sessions.listSessions(options?)`
 
-List the sessions started under one session. Work that outlives a turn runs in a session of its own hanging off the parent, so it doesn't appear in the parent's own requests.
+List a flow's sessions.
 
 ```ts
-const children = await sessions.listChildSessions("sess_1", {
+const conversations = await sessions.listSessions({ flowKind: "research" });
+
+const withRuns = await sessions.listSessions({
+  flowKind: "research",
+  include: "dispatch-runs",
+});
+```
+
+| Option | Type | Notes |
+|--------|------|-------|
+| `flowKind` | `string` | Every session of a flow kind. |
+| `flowId` | `string` | One copy of a collection flow, by its exact id. |
+| `userId` | `string` | Filter to one user. An authenticated caller always gets their own sessions only. |
+| `limit` / `offset` | `number` | Paging. |
+| `include` | `"dispatch-runs"` | Also return the sessions dispatchers ran work in. |
+
+Without `include`, the response holds the sessions a person started. With it, a
+row a dispatcher started carries `parentSessionId` — the session it was started
+from — plus the `topic` and `coordinate` labels below. Rows belonging to another
+principal, organization or tenant stay absent. Any other value answers `400`.
+
+### `sessions.listChildSessions(parentSessionId, options?)`
+
+List the dispatch runs started from one session. Work that outlives a turn runs in a session of its own, so it doesn't appear in the starting session's own requests. The call is `listChildSessions` and a row is a `ChildSessionSummary`; one row is one dispatch run.
+
+```ts
+const runs = await sessions.listChildSessions("sess_1", {
   limit: 25,  // 1–100, defaults to 25
   offset: 0,  // 0–10000
 });
 
 // A row's `id` is a session id, so every session read works on it.
-for (const child of children) {
-  const requests = await sessions.listSessionRequests(child.id);
+for (const run of runs) {
+  const requests = await sessions.listSessionRequests(run.id);
 }
 ```
 
@@ -85,13 +111,13 @@ Each row is a `ChildSessionSummary`:
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `id` | `string` | The child's own session id. |
-| `parentSessionId` | `string` | The session this work hangs off. |
+| `id` | `string` | The run's own session id. |
+| `parentSessionId` | `string` | The session this run was started from. |
 | `createdAt` / `updatedAt` | `number` | |
-| `topic` | `string \| undefined` | Display label: the key the child was derived from. |
+| `topic` | `string \| undefined` | Display label: the key the run's session was derived from. |
 | `coordinate` | `string \| undefined` | Display label for the entry running it. |
-| `status` | `ChildSessionStatus \| undefined` | Absent until the child has run something. |
-| `flowId` | `string \| undefined` | The flow instance that owns the child; the address to read it through. Absent on a child that records no owner. |
+| `status` | `ChildSessionStatus \| undefined` | Absent until the run has executed something. |
+| `flowId` | `string \| undefined` | The flow instance that owns the run; the address to read it through. Absent on a row that records no owner. |
 
 The table is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
 
@@ -99,9 +125,9 @@ The table is the whole row. The server sends this named field set rather than a 
 
 A session that started nothing returns `[]`. An unknown session, or one the caller isn't allowed to read, throws `ClientHttpError`.
 
-There is no counterpart that starts one. Whether work runs in a child session is declared by the flow on the server.
+There is no counterpart that starts one. Whether work is dispatched at all is declared by the flow on the server.
 
-Full walkthrough: [Client > Overview](/docs/client/overview#child-sessions).
+Full walkthrough: [Client > Overview](/docs/client/overview#dispatched-runs).
 
 ## SSE Clients
 

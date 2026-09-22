@@ -1,48 +1,52 @@
 /**
- * Deriving and adopting the child session a dispatch targets (FIX-999).
+ * Deriving and adopting the session a dispatch runs in (FIX-999).
  *
  * The seam's safety rule: a caller supplies the *target* of an operation and
  * never the *authority* for it. It hands over a routing seed and the seam builds
- * the child session id from that seed together with the running request's
- * server-derived identity — principal, tenant, **and parent session**.
+ * the run's session id from that seed together with the running request's
+ * server-derived identity — principal, tenant, **and the session dispatching
+ * it**.
  *
- * The parent session is in the key material because every other verb on this
- * seam authorises by **descent**: settle resolves the board in the session that
- * dispatched this request, and interrupt and liveness answer only for a session
- * whose parent chain reaches the current one. A child is therefore unreachable
- * except *through* the parent that owns it, which makes the parent part of what
- * the child **is**. A key that omits it names a child two owners can both claim,
- * and the loser's work settles onto the wrong board while its own interrupt and
- * liveness calls refuse — unsettleable, uninterruptible, invisible.
+ * The dispatching session is in the key material because it is part of what the
+ * run **is**: the board a run settles against is the one in the session that
+ * dispatched it, so a key that omits that session names a run two callers can
+ * both claim, and the loser's work settles onto the wrong board. Conjoining it
+ * makes those two different runs, so nothing has to detect the case.
+ *
+ * The id is derived, not chosen, and that is what makes "adopt if it already
+ * exists" the ordinary retry path rather than a conflict. **Neither the `dsx_`
+ * prefix nor the hash material may move**: an in-flight run that retries across
+ * an upgrade has to land on the session it started, not mint a second one
+ * beside it.
  */
 import { createHash } from "node:crypto";
 import type { FlowCardinality } from "@flow-state-dev/core/types";
 import { framed } from "@flow-state-dev/core/types";
 import { ownsRecord } from "./record-owner";
 
-/** The server-derived facts a child key is built from. Never caller-supplied. */
+/** The server-derived facts a run's key is built from. Never caller-supplied. */
 export type DerivationIdentity = {
   /** The running request's principal. */
   userId: string;
   /** The tenant the running request belongs to, if multi-tenant. */
   tenantId: string | undefined;
-  /** The session that is spawning the child — the child's parent. */
+  /** The session dispatching the work — recorded on the run as its provenance. */
   parentSessionId: string;
   /**
    * The lineage the parent belongs to (FIX-1068).
    *
    * In the key material because a session id can be deleted and recreated: the
-   * same id, same principal and same seed would otherwise derive the same child,
-   * and the new conversation would ADOPT the old lineage's child — silently
+   * same id, same principal and same seed would otherwise derive the same run,
+   * and the new conversation would ADOPT the old lineage's run — silently
    * inheriting an address belonging to a conversation that no longer exists.
-   * Conjoining the lineage makes the two children different sessions, so nothing
+   * Conjoining the lineage makes the two runs different sessions, so nothing
    * has to detect the case.
    */
   lineageId: string;
 };
 
-/** Prefix so a derived child id is recognisable in a store dump. */
-const CHILD_ID_PREFIX = "dsx_";
+/** Prefix so a derived run id is recognisable in a store dump. */
+const RUN_ID_PREFIX = "dsx_";
 
 // Fields are length-framed with core's codec so field boundaries cannot be
 // confused: without it `("u_ab", "c")` and `("u_a", "bc")` hash identically,
@@ -51,39 +55,39 @@ const CHILD_ID_PREFIX = "dsx_";
 // prevent. An absent tenant frames as the empty field.
 
 /**
- * The namespace a dispatched child's key is framed under, so no other
- * derivation from the same parent can land on a dispatched child by choosing
+ * The namespace a dispatched run's key is framed under, so no other
+ * derivation from the same session can land on a dispatched run by choosing
  * the same string.
  */
 const DISPATCH_NAMESPACE = "dispatch";
 
 /**
- * Derive the child session id for a `{ key }`-targeted dispatch.
+ * Derive the session id for a `{ key }`-targeted dispatch.
  *
  * The identity material — tenant, principal, parent session and lineage,
  * none of them caller-supplied — with the key
  * framed under its own namespace. Deterministic by design: the same key from
- * the same parent lands on the same child, which is what makes "adopt if it
+ * the same session lands on the same run, which is what makes "adopt if it
  * already exists" the ordinary retry path rather than a conflict. The key alone
- * discriminates among a parent's dispatched children, so two dispatchers in one
- * flow that compute the same key share one child — a board that wants its
- * per-task children apart from another board's frames its own id into the key.
+ * discriminates among one session's dispatched runs, so two dispatchers in one
+ * flow that compute the same key share one run — a board that wants its
+ * per-task runs apart from another board's frames its own id into the key.
  *
  * `targetFlowId` is the **other** flow instance a cross-instance dispatch
  * addresses — its exact id — and is part of the material precisely because
- * the key alone discriminates: without it, one parent dispatching key `"job"`
- * to two different instances derives one child id for both, and the second
+ * the key alone discriminates: without it, one session dispatching key `"job"`
+ * to two different instances derives one run id for both, and the second
  * dispatch meets a record another instance owns and is refused `key-occupied`
  * — a collision between two addresses that have nothing to do with each
- * other. Two same-kind peers are two instances here, and get two children.
+ * other. Two same-kind peers are two instances here, and get two runs.
  * Appended rather than folded into the existing fields, so a same-instance
  * derivation (which omits it) still produces the id it produced before this
- * shipped: an in-flight retry across the upgrade re-enters the child it
+ * shipped: an in-flight retry across the upgrade re-enters the run it
  * started, rather than minting a second one beside it. For two singletons the
- * id is the kind, so the bytes a cross-flow child derived under kind-based
+ * id is the kind, so the bytes a cross-flow run derived under kind-based
  * addressing are preserved too.
  */
-export function deriveDispatchChildSessionId(
+export function deriveDispatchRunSessionId(
   identity: DerivationIdentity,
   key: string,
   targetFlowId?: string
@@ -99,11 +103,11 @@ export function deriveDispatchChildSessionId(
   ].join("|");
 
   const digest = createHash("sha256").update(material, "utf8").digest("hex");
-  return `${CHILD_ID_PREFIX}${digest.slice(0, 32)}`;
+  return `${RUN_ID_PREFIX}${digest.slice(0, 32)}`;
 }
 
-/** The identity a genuine child of this request must carry. */
-export type ExpectedChildIdentity = {
+/** The identity a genuine run of this request must carry. */
+export type ExpectedRunIdentity = {
   flowKind: string;
   /** The owning instance's id; a record's stored owner must be exactly this. */
   flowId: string;
@@ -118,8 +122,8 @@ export type ExpectedChildIdentity = {
   orgId: string | undefined;
   parentSessionId: string;
   /**
-   * The parent's lineage. A `{ key }` dispatch always requires the child to
-   * share it, since `sharedToLineage` resources in the child resolve against
+   * The parent's lineage. A `{ key }` dispatch always requires the run to
+   * share it, since `sharedToLineage` resources in the run resolve against
    * that root. Optional only so a caller that compares nothing else can omit
    * it; absent → not compared.
    */
@@ -159,14 +163,14 @@ function sameOptional(a: string | undefined | null, b: string | undefined | null
 }
 
 /**
- * Decide whether a record found at the derived child key may be adopted.
+ * Decide whether a record found at the derived key may be adopted.
  *
  * **Why this validates more than the key implies.** The derivation already binds
  * principal, tenant and parent session, so a record the *seam* created at this
  * key necessarily matches. But the seam is not the only writer: the public
  * session-create route lets a caller choose both the session id and its
  * metadata, so a same-principal caller can pre-create a record sitting at the
- * deterministic child id. `createExecutionContext` validates user, tenant and org
+ * deterministic run id. `createExecutionContext` validates user, tenant and org
  * bindings — but **not `flowKind` and not `parentSessionId`** — so a pre-created
  * top-level record, or one belonging to another flow, would sail through that
  * check and be adopted.
@@ -181,13 +185,13 @@ function sameOptional(a: string | undefined | null, b: string | undefined | null
  */
 export function evaluateAdoption(
   record: AdoptionCandidate,
-  expected: ExpectedChildIdentity
+  expected: ExpectedRunIdentity
 ): AdoptionVerdict {
   if (record.flowKind !== expected.flowKind) {
     return { adoptable: false, mismatch: "flowKind" };
   }
   // The owner, exactly, on the one stored-owner interpretation: same-kind
-  // peers are two owners, and a legacy child with no stored owner belongs to
+  // peers are two owners, and a legacy run with no stored owner belongs to
   // its kind's singleton alone.
   if (
     !ownsRecord(
@@ -212,7 +216,7 @@ export function evaluateAdoption(
   // The lineage is in the derivation, so a record the seam minted carries the
   // parent's lineage by construction. A pre-created record does not: it was
   // minted with whatever lineage the session route gave it, and adopting it
-  // would put every lineage-shared resource in the child on a different root
+  // would put every lineage-shared resource in the run on a different root
   // than the parent's — the ledger a hand-off must settle against.
   if (expected.lineageId !== undefined && !sameOptional(record.lineageId, expected.lineageId)) {
     return { adoptable: false, mismatch: "lineageId" };

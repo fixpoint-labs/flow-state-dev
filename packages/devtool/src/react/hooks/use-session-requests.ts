@@ -17,10 +17,10 @@ export function useSessionRequests(sessionId: string | null) {
   // requests across a switch is not cosmetic: live mode picks its subscription
   // target out of this list, so a stale in-progress row makes the panel attach
   // to a request in the session the user just left and render its items under
-  // the new one. Reachable from the navigator, and reliably so when descending
-  // into a ChildSession while the conversation that started it is still running.
+  // the new one. Reachable from the navigator, and reliably so when opening a
+  // dispatch run while the conversation that started it is still running.
   //
-  // Shared with `use-child-sessions` rather than restated: this hook previously
+  // Shared with `use-dispatch-runs` rather than restated: this hook previously
   // ASSIGNED its own ref inside the read, so a callback the panel handed to a
   // view that has since unmounted rewrote the guard for every reader.
   // The identity these rows were read under, stamped with them. What this hook

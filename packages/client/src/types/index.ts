@@ -143,6 +143,24 @@ export type SessionSummary = {
   metadata?: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
+  /**
+   * The session a dispatcher was running in when it started this one — the
+   * provenance edge, and the only thing that makes this row a dispatch run
+   * rather than a conversation someone opened.
+   *
+   * Only ever populated when the listing was asked for dispatch runs
+   * (`include: "dispatch-runs"`); without that the listing returns top-level
+   * sessions only, and every row's is absent. A store that nulls absent keys
+   * hands back `null`, so guard with `== null` rather than a truthiness check.
+   */
+  parentSessionId?: string;
+  /**
+   * The key the dispatcher derived this run's session id from. Display only:
+   * it names the body of work, never who may read it.
+   */
+  topic?: string;
+  /** The entry the run was dispatched for, as `<type>:<target>`. Display only. */
+  coordinate?: string;
 };
 
 /**
@@ -584,6 +602,25 @@ export type DebugResourceEntry = {
   itemCountTruncated?: boolean;
   storagePrefix?: string;
   clientConfig: DebugResourceClientConfig;
+  /**
+   * Whether the store will accept a write to this resource's state or content.
+   * **Absent when nothing makes it unwritable, and absent means writable** —
+   * the framework's default. A server that predates this sends neither this
+   * nor `llmWritable`, so treat absence as "not reported" rather than as
+   * `false`.
+   *
+   * **`false` is narrower than "immutable".** It refuses state and content
+   * writes through this definition. A collection still permits `create` and
+   * `delete`, and another flow holding its own definition of a shared org or
+   * user resource can still write the same underlying cell.
+   */
+  writable?: boolean;
+  /**
+   * Whether a model is offered a write tool for the resource. A different
+   * question from `writable`, and **opt-in** — most mutable resources leave it
+   * unset — so it never stands in for it. Absent when undeclared.
+   */
+  llmWritable?: boolean;
 };
 
 export type DebugResourcesResponse = {

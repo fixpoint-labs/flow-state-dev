@@ -91,7 +91,7 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    *
    * **This field carries no authority, and neither does
    * {@link SessionRecord.coordinate}.** `evaluateAdoption` together with the
-   * `key-occupied` refusal (`context/detached-child.ts`) is the *sole*
+   * `key-occupied` refusal (`context/dispatch-run.ts`) is the *sole*
    * discriminator for "is this session ours" — routing, authorization,
    * adoption and identity are decided there and nowhere else. Nothing may read
    * these two fields to make any of those decisions; they exist to put a

@@ -40,7 +40,7 @@ never a status value or a column of its own (BR-18).
 | BR-14 | A collection is sealed | The mark sits on the collection, whose config carries the flags. Its items are not marked one by one | CI |
 | BR-15 | The DevTool is pointed at a server that predates this change and sends neither flag | No mark anywhere, and no error. Absent is absent, not false | CI · the second path (BP-035), run against a snapshot with the fields removed |
 | BR-16 | The tree renders any document at all | The scope badge it shows today is unchanged and still present | CI |
-| BR-17 | A reader asks what the mark means | **Immutable to everyone** — the store refuses the write, from code and from the model alike. It does **not** mean "the agent is not offered a write tool"; that is a different question with a different answer, and the row detail carries it | CI · the mark asserted on `writable` alone, and asserted **absent** on a document that is merely not offered to the model |
+| BR-17 | A reader asks what the mark means | **This handle refuses state and content writes** — from code and from the model alike. It does **not** mean "the agent is not offered a write tool"; that is a different question with a different answer, and the row detail carries it. Nor is it a claim about the underlying data: a shared `org` or `user` cell can still be written through another flow that declares it writable, and on a collection the mark leaves `create`, `getOrCreate` and `delete` open ([FIX-1510](https://linear.app/fixpoint-labs/issue/FIX-1510)) | CI · the mark asserted on `writable` alone, and asserted **absent** on a document that is merely not offered to the model |
 
 ![Four documents arrive at one resolving expression: a references document and a seat's read-only grant, both carrying writable false and llmWritable false, and two carrying no flags at all. A dashed horizontal line on the far side separates marked from unmarked; the two sealed documents come out above it, the two with no flags below](figures/one-gate.svg)
 
@@ -57,6 +57,26 @@ flowchart LR
   D["a server that predates this"] -.->|"nothing on the wire · BR-15"| G
   G --> M["marked, or not"]
 ```
+
+> **Correction · 2026-09-22 · BR-17's gloss only.** BR-17 used to answer *what the mark means*
+> with **"immutable to everyone — the store refuses the write."** That overstates it in two
+> directions. `writable: false` closes the state-write and content-write doors **on the handle that declares it**, not on the
+> storage cell: a seat's read-only copy is a shallow copy of the declared entry
+> (`packages/workforce/src/seat-resources.ts` → `readOnly`), so the same `org` or `user` cell
+> remains writable through a flow that declares it writable. And on a **collection** the flag
+> gates two functions — `persistNamespaceInstanceState` and the instance `writeContent` — and
+> therefore every operation that routes through them, `upsert` on an existing key included. What it
+> does **not** gate is the lifecycle: `create` (including `{ replace: true }`), `getOrCreate` and
+> `delete` never consult it (`packages/engine/src/context/resource-registry.ts`), which is
+> [FIX-1510](https://linear.app/fixpoint-labs/issue/FIX-1510).
+>
+> **The predicate and every other rule are unchanged.** BR-10 … BR-16 stand as written, the
+> mark is still `writable === false` and nothing else, and no CI proof moves. Only the sentence a
+> reader is handed when they ask what it *promises* was too wide.
+>
+> The implementation PR [#2039](https://github.com/fixpoint-labs/flow-state-dev/pull/2039) carries
+> the narrower wording in the tooltip and in `debug-vs-client-state.md`. **It is open as of this
+> writing**, so the published page does not say this yet.
 
 ## What neither row may do
 

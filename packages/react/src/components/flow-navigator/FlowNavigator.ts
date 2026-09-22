@@ -36,6 +36,7 @@ import {
   type FlowNavigatorFlowSource,
   type FlowNavigatorSessionSource
 } from "./reads";
+import { arrangeSessionRows, type SessionRow } from "./dispatch-runs";
 
 /** A leaf, plus the state of its session list — what a slot is handed. */
 export type FlowNavigatorLeafState = FlowNavigatorLeaf & {
@@ -65,6 +66,17 @@ export type FlowNavigatorRow =
       readonly leaf: FlowNavigatorLeaf;
       readonly session: SessionSummary;
       readonly isSelected: boolean;
+      /**
+       * Present when a dispatcher started this session rather than a person
+       * (FIX-1440). `parentSessionId` is the session it was started from, and
+       * `parentInView` says whether that session is one of the rows on screen
+       * — a run whose parent is not in the listing is drawn at the left margin
+       * and still carries its provenance.
+       */
+      readonly dispatchRun?: {
+        readonly parentSessionId: string;
+        readonly parentInView: boolean;
+      };
     };
 
 /**
@@ -107,6 +119,16 @@ export type FlowNavigatorProps = {
   readonly client?: FlowNavigatorFlowSource;
   /** The host's own session client, so leaf reads carry the host's transport. Stable, as above. */
   readonly sessionClient?: FlowNavigatorSessionSource;
+  /**
+   * Also list the sessions a dispatcher ran work in, drawn one level under the
+   * session that started each one (FIX-1440).
+   *
+   * Off by default, matching the server: a host that does not ask lists the
+   * sessions a person started, exactly as before. A tool that inspects a
+   * running server asks; a product surface showing someone their own
+   * conversations usually does not.
+   */
+  readonly includeDispatchRuns?: boolean;
   readonly slots?: FlowNavigatorSlots;
 };
 
@@ -120,6 +142,7 @@ export type FlowNavigatorProps = {
  */
 export const flowNavigatorPropNames = [
   "client",
+  "includeDispatchRuns",
   "onSelectSession",
   "sections",
   "selectedSessionId",
@@ -255,6 +278,20 @@ function retryLine(message: string, onRetry: () => void, depth: number): ReactNo
 }
 
 /**
+ * What a row says about its provenance, if anything.
+ *
+ * A run drawn at depth 0 is one whose parent is not in this listing — the
+ * provenance is still true, so the slot still receives it; only the indent is
+ * withheld, because there is nothing on screen to indent under.
+ */
+function describeDispatchRun(
+  entry: SessionRow
+): { parentSessionId: string; parentInView: boolean } | undefined {
+  if (entry.parentSessionId === undefined) return undefined;
+  return { parentSessionId: entry.parentSessionId, parentInView: entry.depth === 1 };
+}
+
+/**
  * A leaf's session list, mounted only while the leaf is open.
  *
  * Mounting IS the gate: no open leaf, no hook, no request. Collapsing unmounts
@@ -267,11 +304,26 @@ function LeafSessionList(props: {
   readonly source: FlowNavigatorSessionSource;
   readonly userId: string | undefined;
   readonly selectedSessionId: string | undefined;
+  readonly includeDispatchRuns: boolean;
   readonly onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
   readonly slots: FlowNavigatorSlots;
 }): ReactNode {
-  const { leaf, depth, source, userId, selectedSessionId, onSelectSession, slots } = props;
-  const state = useLeafSessions(source, leaf, userId);
+  const {
+    leaf,
+    depth,
+    source,
+    userId,
+    selectedSessionId,
+    includeDispatchRuns,
+    onSelectSession,
+    slots
+  } = props;
+  const state = useLeafSessions(source, leaf, userId, includeDispatchRuns);
+  // Arranged, not re-sorted: the listing's order is the server's, and this only
+  // moves a dispatch run to sit under the session that started it. With the
+  // include off there are no runs in the list and every row comes back at
+  // depth 0 in the order it arrived.
+  const arranged = useMemo(() => arrangeSessionRows(state.sessions), [state.sessions]);
 
   const toolbar = slots.leafToolbar?.({
     ...leaf,
@@ -296,17 +348,24 @@ function LeafSessionList(props: {
               { role: "none" },
               createElement("p", { style: noteStyle(depth) }, "No sessions yet")
             )
-          : state.sessions.map((session) => {
+          : arranged.map((entry) => {
+              const { session } = entry;
               const isSelected = selectedSessionId === session.id;
+              const dispatchRun = describeDispatchRun(entry);
               return createElement(
                 "li",
                 { key: session.id },
                 row({
-                  depth,
+                  // One level under the session that started it, and never a
+                  // second: `entry.depth` is 0 or 1 by construction.
+                  depth: depth + entry.depth,
                   isSelected,
                   button: {
                     "aria-current": isSelected ? "true" : undefined,
                     "data-session-id": session.id,
+                    ...(dispatchRun === undefined
+                      ? {}
+                      : { "data-dispatch-run-of": dispatchRun.parentSessionId }),
                     onClick: () => onSelectSession(session.id, leaf)
                   },
                   content: [
@@ -316,7 +375,8 @@ function LeafSessionList(props: {
                     type: "session",
                     leaf,
                     session,
-                    isSelected
+                    isSelected,
+                    ...(dispatchRun === undefined ? {} : { dispatchRun })
                   })
                 })
               );
@@ -344,17 +404,28 @@ function KindRow(props: {
   readonly source: FlowNavigatorSessionSource;
   readonly userId: string | undefined;
   readonly selectedSessionId: string | undefined;
+  readonly includeDispatchRuns: boolean;
   readonly onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
   readonly slots: FlowNavigatorSlots;
 }): ReactNode {
-  const { group, open, toggle, source, userId, selectedSessionId, onSelectSession, slots } =
-    props;
+  const {
+    group,
+    open,
+    toggle,
+    source,
+    userId,
+    selectedSessionId,
+    includeDispatchRuns,
+    onSelectSession,
+    slots
+  } = props;
   const isOpen = open.has(`kind:${group.kind}`);
 
   const leafProps = {
     source,
     userId,
     selectedSessionId,
+    includeDispatchRuns,
     onSelectSession,
     slots
   };
@@ -564,6 +635,7 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
                   source: sources.sessions,
                   userId,
                   selectedSessionId: props.selectedSessionId,
+                  includeDispatchRuns: props.includeDispatchRuns ?? false,
                   onSelectSession: props.onSelectSession,
                   slots
                 })

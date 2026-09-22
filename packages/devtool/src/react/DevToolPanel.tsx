@@ -8,7 +8,7 @@
  * `userIdControl="host"` so the panel doesn't expose its own userId editor.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, Layers, PanelLeft, User } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, User } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
 
@@ -27,7 +27,7 @@ import { SettingsSheet } from "./components/shared/settings-sheet";
 import { StreamView, type RequestGroup } from "./components/workspace/stream-view";
 import { TraceView } from "./components/workspace/trace-view";
 import { TaskCollectionsView } from "./components/workspace/task-collections-view";
-import { ChildSessionsView } from "./components/workspace/child-sessions-view";
+import { DispatchRunNodes } from "./components/workspace/dispatch-run-nodes";
 import { SuspensionsView } from "./components/workspace/suspensions-view";
 import { ActionBar } from "./components/workspace/action-bar";
 import { LiveSwitch } from "./components/workspace/live-switch";
@@ -43,11 +43,10 @@ import { useReplay } from "./hooks/use-replay";
 import { useContinueRequest } from "./hooks/use-continue-request";
 import { useLiveMode } from "./hooks/use-live-mode";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
-import { useChildSessions } from "./hooks/use-child-sessions";
+import { useDispatchRuns } from "./hooks/use-dispatch-runs";
 import { useReadFence } from "@flow-state-dev/react";
 import { flattenTaskItems } from "./lib/task-collection-state";
 import { pickFurthestStatus } from "./lib/request-status";
-import { shortSessionId } from "./lib/utils";
 
 const NAV_EXPANDED_WIDTH = 300;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -137,11 +136,11 @@ function PanelContent({ className }: { className?: string }) {
 
   // The panel's own staleness check, on the same primitive its hooks use.
   //
-  // `descentSessionRef` cannot serve: it is synchronised by a PASSIVE EFFECT,
-  // so between a workspace change committing and that effect running there is a
-  // window where it still names the session just left. An awaited callback
-  // settling in that window passes the check and installs its request as the
-  // active stream under the session now open.
+  // A ref synchronised by a PASSIVE EFFECT cannot serve, which is what this
+  // replaced: between a workspace change committing and that effect running
+  // there is a window where such a ref still names the session just left. An
+  // awaited callback settling in that window passes the check and installs its
+  // request as the active stream under the session now open.
   //
   // That is the render-versus-effect trap for the third time here — a
   // generation counter read too late, then captured too early, now a cell
@@ -157,16 +156,17 @@ function PanelContent({ className }: { className?: string }) {
   const sessionFence = useReadFence([workspaceToken, effectiveSessionId]);
 
   const { requests, refresh: refreshRequests } = useSessionRequests(effectiveSessionId);
-  // Owned here rather than inside the ChildSessions tab: the Tasks tab draws a
-  // link per task from the same rows, and each row costs the server a
-  // request-store lookup, so the list is fetched once and shared.
+  // The dispatch runs started from this session, read through the provenance
+  // route. The Tasks tab draws a link per task from these rows, and the block
+  // tree renders one collapsed node per run, so the list is fetched once here
+  // and shared rather than read twice.
   const {
-    childSessions,
-    isLoading: childSessionsLoading,
-    error: childSessionsError,
-    truncation: childSessionsTruncation,
-    refresh: refreshChildSessions,
-  } = useChildSessions(effectiveSessionId);
+    dispatchRuns,
+    truncation: dispatchRunsTruncation,
+    isLoading: dispatchRunsLoading,
+    error: dispatchRunsError,
+    refresh: refreshDispatchRuns,
+  } = useDispatchRuns(effectiveSessionId);
   const { sendAction, isSending, lastResponse } = useActionDispatch();
 
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -254,10 +254,10 @@ function PanelContent({ className }: { className?: string }) {
   const refreshActiveSession = useCallback(() => {
     void refreshRequests();
     // Background work is never streamed into this session, so nothing else
-    // brings the ChildSession list current — it has to ride the same refresh.
-    void refreshChildSessions();
+    // brings the dispatch-run list current — it has to ride the same refresh.
+    void refreshDispatchRuns();
     setStateRefreshKey((k) => k + 1);
-  }, [refreshRequests, refreshChildSessions]);
+  }, [refreshRequests, refreshDispatchRuns]);
 
   // Bring the open session current when the developer returns to the DevTool
   // (tab visible again or window refocused), so out-of-band changes show up
@@ -411,7 +411,7 @@ function PanelContent({ className }: { className?: string }) {
     return groups;
   }, [requests, liveItems, liveRawItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
 
-  // The flat item stream the Tasks and ChildSessions tabs fold. Derived here
+  // The flat item stream the Tasks tab and the block tree fold. Derived here
   // rather than in the JSX because `flatMap` returns a NEW array on every
   // render: computing it at each call site handed those panels a fresh `items`
   // reference every time, so their own `useMemo`s recomputed even when the
@@ -430,77 +430,28 @@ function PanelContent({ className }: { className?: string }) {
   // Trace tabs, which read `requestGroups` directly and want it newest-first.
   const taskItems = useMemo(() => flattenTaskItems(requestGroups), [requestGroups]);
 
-  // The sessions we descended through to reach the open one, outermost first,
-  // with the open session itself last. Empty while looking at a session picked
-  // from the navigator.
+  // Opening a dispatch run is opening a session — the same move as picking one
+  // from the rail, because that is what a run now is. It carries no trail and
+  // no way back beyond the rail itself: the run is listed there, under the
+  // session that started it, so there is nothing to retrace.
   //
-  // A ChildSession IS a session, so opening one swaps the workspace and every
-  // tab follows — which is the point, and also why the trail exists: once
-  // swapped, nothing on screen would otherwise say the workspace has left the
-  // conversation the navigator still highlights. Nesting is real (a ChildSession
-  // can start its own), so this is a stack rather than a single parent.
+  // The run's own admitted owner, when the server recorded one. A record
+  // written before owners existed has none, and the only honest reading of that
+  // is "the instance we are already in" — it is the one that could have started
+  // it under the old same-flow rule.
   //
-  // Each entry carries its OWNER, not just its session id. Work dispatched into
-  // another instance produces a child that instance owns — a same-kind peer
-  // included — so descending is a move in both axes and returning has to undo
-  // both. A trail of bare session ids would send the operator back to the right
-  // conversation under whichever copy happened to be selected.
-  const [descent, setDescent] = useState<
-    Array<{ id: string; label: string; flowId: string }>
-  >([]);
-  // The session id `descent` describes. Any other id arriving in
-  // `effectiveSessionId` came from the navigator or the restore — a fresh pick,
-  // not a step in this descent — so the trail is dropped.
-  const descentSessionRef = useRef<string | null>(effectiveSessionId);
-
-  useEffect(() => {
-    if (descentSessionRef.current === effectiveSessionId) return;
-    descentSessionRef.current = effectiveSessionId;
-    setDescent([]);
-  }, [effectiveSessionId]);
-
-  const handleOpenChildSession = useCallback(
-    (childSession: ChildSessionSummary) => {
-      const from = effectiveSessionId;
-      if (from === null || activeFlowId === null || from === childSession.id) return;
-      // The child's own admitted owner, when the server recorded one. A child
-      // written before owners existed has none, and the only honest reading of
-      // that is "the instance we are already in" — it is the one that could have
-      // started it under the old same-flow rule.
-      const childFlowId = childSession.flowId ?? activeFlowId;
-      setDescent((prev) => [
-        ...(prev.length > 0
-          ? prev
-          : [{ id: from, label: shortSessionId(from), flowId: activeFlowId }]),
-        {
-          id: childSession.id,
-          label: childSession.topic ?? shortSessionId(childSession.id),
-          flowId: childFlowId,
-        },
-      ]);
-      descentSessionRef.current = childSession.id;
-      // Instance and session in ONE transition. Two updates would leave a render
-      // in which the child is open under the parent's instance, and the reads
-      // that render fires would be addressed to the wrong copy.
-      selectWorkspace(childFlowId, childSession.id);
+  // Instance and session move in ONE transition. Two updates would leave a
+  // render in which the run is open under the other instance, and the reads
+  // that render fires would be addressed to the wrong copy.
+  const handleOpenDispatchRun = useCallback(
+    (run: ChildSessionSummary) => {
+      if (activeFlowId === null || effectiveSessionId === run.id) return;
+      selectWorkspace(run.flowId ?? activeFlowId, run.id);
     },
     [effectiveSessionId, activeFlowId, selectWorkspace],
   );
 
-  const handleReturnTo = useCallback(
-    (index: number) => {
-      const entry = descent[index];
-      if (entry === undefined) return;
-      // Returning to the outermost session is leaving the descent entirely — a
-      // one-crumb trail would claim we are still inside something.
-      setDescent(index === 0 ? [] : descent.slice(0, index + 1));
-      descentSessionRef.current = entry.id;
-      selectWorkspace(entry.flowId, entry.id);
-    },
-    [descent, selectWorkspace],
-  );
-
-  // The ChildSession axis is interaction-scoped
+  // The dispatch-run axis is interaction-scoped
   // (`docs/architecture/server-and-client.md`): it advances on every
   // work-starting call, and on nothing else. The panel's paths, against the
   // four that contract names, so the set is enumerated rather than rediscovered
@@ -515,7 +466,7 @@ function PanelContent({ className }: { className?: string }) {
   //
   // Deliberately NOT refreshed: `handleReplayFull`, `handleReplayFromCursor`
   // and `handleReconnect`. Replay re-streams a request that already ran — it
-  // starts no work and can create no ChildSession, so a read there would be a
+  // starts no work and can start no dispatch run, so a read there would be a
   // request per inspection with nothing to find.
   //
   // A SECOND enumeration over the same callbacks, because they carry a second
@@ -524,7 +475,7 @@ function PanelContent({ className }: { className?: string }) {
   // reached across an `await` can — a click handler cannot fire after its
   // component is gone.
   //
-  // - `handleSendAction`  — awaits its dispatch. Fenced on `descentSessionRef`.
+  // - `handleSendAction`  — awaits its dispatch. Fenced on `sessionFence`.
   // - `handleResumed`     — invoked by `SuspensionsView` after ITS await, so it
   //                         outlives the component. Fenced at entry, below.
   // - `handleContinueItems` — fires during a continuation stream, but
@@ -532,15 +483,15 @@ function PanelContent({ className }: { className?: string }) {
   //                         on `sessionId` precisely so it is not called into a
   //                         stale view. Guarded upstream; nothing owed here.
   // - `handleContinue`, `handleReplay*`, `handleReconnect`,
-  //   `handleOpenChildSession`, `handleReturnTo` — synchronous click handlers
-  //   with no await before their writes, so there is no window in which the
-  //   session can move underneath them.
+  //   `handleOpenDispatchRun` — synchronous click handlers with no await before
+  //   their writes, so there is no window in which the session can move
+  //   underneath them.
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
       if (!activeFlowId || !effectiveSessionId) return;
       const stillCurrent = sessionFence.begin();
       if (stillCurrent === null) return;
-      // Re-read the ChildSession axis at the START of the call, which is what
+      // Re-read the dispatch-run axis at the START of the call, which is what
       // `docs/architecture/server-and-client.md` specifies and what
       // `useSession` does. The reason it is the start rather than the end: the
       // read is anchored to a local fact — this panel dispatched an interaction
@@ -553,17 +504,16 @@ function PanelContent({ className }: { className?: string }) {
       // It needs no session fence of its own: nothing is awaited before it, so
       // it always names the session on screen, and the hook already retires its
       // own read by generation if the workspace moves while it is in flight.
-      void refreshChildSessions();
+      void refreshDispatchRuns();
       const response = await sendAction(activeFlowId, effectiveSessionId, action, input);
-      // The workspace can move while this is in flight — descending into a
-      // ChildSession is a click away — and the session-change reset has already
-      // cleared both ids by the time we resume. Installing them now would put a
-      // request from the session just LEFT in front of the live stream, and
-      // render its items under the session now open.
+      // The workspace can move while this is in flight — opening a dispatch run
+      // is a click away — and the session-change reset has already cleared both
+      // ids by the time we resume. Installing them now would put a request from
+      // the session just LEFT in front of the live stream, and render its items
+      // under the session now open.
       //
-      // `descentSessionRef` is the panel's existing record of which session the
-      // workspace is on; it is updated eagerly on a descent and by the reset
-      // effect on a navigator pick, so it is the right thing to compare against
+      // `sessionFence` is the panel's record of which session the workspace is
+      // on, mirrored during render, so it is the right thing to compare against
       // rather than a second generation counter.
       if (!stillCurrent()) return;
       if (response?.request.id) {
@@ -571,7 +521,7 @@ function PanelContent({ className }: { className?: string }) {
         setDispatchedRequestId(response.request.id);
       }
     },
-    [activeFlowId, effectiveSessionId, sendAction, refreshChildSessions, sessionFence],
+    [activeFlowId, effectiveSessionId, sendAction, refreshDispatchRuns, sessionFence],
   );
 
   // After a suspension is resolved, re-attach the live stream to the continued
@@ -622,9 +572,9 @@ function PanelContent({ className }: { className?: string }) {
       // notification. That IS the earliest point the panel learns of it, which
       // is the same principle applied where it can be: a local fact, read
       // immediately, with nothing downstream able to skip it.
-      void refreshChildSessions();
+      void refreshDispatchRuns();
     },
-    [refreshRequests, refreshChildSessions, sessionFence],
+    [refreshRequests, refreshDispatchRuns, sessionFence],
   );
 
   // Per-row Continue action (FIX-865) — supersedes the legacy top-level
@@ -671,7 +621,7 @@ function PanelContent({ className }: { className?: string }) {
       // dispatch: a continuation resumes a run mid-flight, which can reach a
       // board that dispatches detached work. Read before the call so a
       // continuation that hangs or throws cannot skip it.
-      void refreshChildSessions();
+      void refreshDispatchRuns();
       void continueRequest(requestId, existingItems).catch((err) => {
         console.error("[devtool] continue failed", err);
       });
@@ -683,7 +633,7 @@ function PanelContent({ className }: { className?: string }) {
       streamState,
       streamRequestId,
       continueRequest,
-      refreshChildSessions,
+      refreshDispatchRuns,
     ],
   );
 
@@ -836,7 +786,7 @@ function PanelContent({ className }: { className?: string }) {
             particular request of a particular session.
           - THE READ FENCE (`useReadFence`, from `@flow-state-dev/react`) retires
             the readers that STAY mounted across a switch — the panel's own
-            request and ChildSession lists, which live above here. The rail's
+            request and dispatch-run lists, which live above here. The rail's
             session list is fenced inside `FlowNavigator`, not here.
           - THE RENDER-PHASE RESET above retires this component's own transient
             request state (`activeRequestId`, the item maps, replay), which no
@@ -865,18 +815,9 @@ function PanelContent({ className }: { className?: string }) {
                 <TabsTrigger value="stream">Stream</TabsTrigger>
                 <TabsTrigger value="trace">Trace</TabsTrigger>
                 <TabsTrigger value="tasks">Tasks</TabsTrigger>
-                <TabsTrigger value="childSessions">
-                  ChildSessions
-                  {childSessions.length > 0 && (
-                    <span className="ml-1.5 rounded bg-slate-800 px-1 text-[10px] tabular-nums text-slate-400">
-                      {childSessions.length}
-                    </span>
-                  )}
-                </TabsTrigger>
                 <TabsTrigger value="suspensions">Suspensions</TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-3 min-w-0">
-                <DescentTrail descent={descent} onReturnTo={handleReturnTo} />
                 <SessionIdBadge sessionId={effectiveSessionId} />
                 {(liveStatus !== "idle" || showToggle) && (
                   <LiveSwitch
@@ -905,29 +846,28 @@ function PanelContent({ className }: { className?: string }) {
               />
             </TabsContent>
 
-            <TabsContent value="trace" className="flex-1 min-h-0 m-0">
+            <TabsContent value="trace" className="flex-1 min-h-0 m-0 overflow-auto">
               <TraceView requestGroups={requestGroups} />
+              {/*
+                The work this session dispatched, under the work that dispatched
+                it. Collapsed, and nothing about a run is read until a reader
+                opens one — see `dispatch-run-nodes`.
+              */}
+              <DispatchRunNodes
+                runs={dispatchRuns}
+                truncation={dispatchRunsTruncation}
+                isLoading={dispatchRunsLoading}
+                error={dispatchRunsError}
+                onOpen={handleOpenDispatchRun}
+              />
             </TabsContent>
 
             <TabsContent value="tasks" className="flex-1 min-h-0 m-0 overflow-auto">
               <TaskCollectionsView
                 items={taskItems}
-                childSessions={childSessions}
-                truncation={childSessionsTruncation}
-                onOpenChildSession={handleOpenChildSession}
-              />
-            </TabsContent>
-
-            <TabsContent value="childSessions" className="flex-1 min-h-0 m-0">
-              <ChildSessionsView
-                sessionId={effectiveSessionId}
-                childSessions={childSessions}
-                isLoading={childSessionsLoading}
-                error={childSessionsError}
-                truncation={childSessionsTruncation}
-                onRefresh={() => void refreshChildSessions()}
-                items={taskItems}
-                onOpen={handleOpenChildSession}
+                dispatchRuns={dispatchRuns}
+                truncation={dispatchRunsTruncation}
+                onOpenDispatchRun={handleOpenDispatchRun}
               />
             </TabsContent>
 
@@ -977,55 +917,6 @@ function PanelContent({ className }: { className?: string }) {
       </div>
     </div>
     </TraceLookupProvider>
-  );
-}
-
-/**
- * Where in a chain of ChildSessions the workspace currently is, and the way back
- * out. Renders nothing at the top level, which is where most sessions stay.
- *
- * Only ancestors are clickable — the last crumb is the open session, and the
- * whole point of the trail is that the navigator's highlight no longer says
- * which one that is.
- */
-function DescentTrail({
-  descent,
-  onReturnTo,
-}: {
-  descent: ReadonlyArray<{ id: string; label: string; flowId: string }>;
-  onReturnTo: (index: number) => void;
-}) {
-  if (descent.length === 0) return null;
-
-  return (
-    <nav
-      aria-label="ChildSession trail"
-      className="flex min-w-0 items-center gap-1 text-[10px] text-slate-500"
-    >
-      <Layers className="h-3 w-3 shrink-0" aria-hidden />
-      {descent.map((entry, index) => {
-        const isCurrent = index === descent.length - 1;
-        return (
-          <span key={entry.id} className="flex min-w-0 items-center gap-1">
-            {index > 0 && <span className="text-slate-700">/</span>}
-            {isCurrent ? (
-              <span className="max-w-[10rem] truncate text-slate-300">
-                {entry.label}
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onReturnTo(index)}
-                title={`Back to ${entry.id}\nin ${entry.flowId}`}
-                className="max-w-[10rem] truncate hover:text-slate-200 hover:underline"
-              >
-                {entry.label}
-              </button>
-            )}
-          </span>
-        );
-      })}
-    </nav>
   );
 }
 

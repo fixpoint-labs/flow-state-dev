@@ -1,0 +1,84 @@
+<svg viewBox="0 0 940 340" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: six rules by four columns. Engine owns mint as the only open route, verified default, authenticated-global list_flows, and the 15-minute JWT. Cutover owns HTTP consumers presenting Bearer. CyberForce owns the proof. FIX-906 owns session and resource principal parity. Every rule has exactly one owner cell; other columns consume or stay blank.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .cell  { fill:none; stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE</text>
+  <text class="t-col" x="300" y="44">Engine &#183; unfiled</text>
+  <text class="t-col" x="468" y="44">Cutover &#183; unfiled</text>
+  <text class="t-col" x="636" y="44">Proof &#183; unfiled</text>
+  <text class="t-col" x="788" y="44">FIX-906</text>
+
+  <g id="er1">
+    <text class="t-row" x="16" y="78">ER-1 / ER-2 mint + default</text>
+    <rect class="own" x="292" y="58" width="152" height="36" rx="3"/>
+    <text class="t-own" x="304" y="80">OWNS</text>
+    <rect class="use" x="460" y="58" width="152" height="36" rx="3"/>
+    <text class="t-use" x="472" y="80">consumes</text>
+    <rect class="use" x="628" y="58" width="140" height="36" rx="3"/>
+    <text class="t-use" x="640" y="80">consumes</text>
+    <rect class="use" x="780" y="58" width="144" height="36" rx="3"/>
+    <text class="t-use" x="792" y="80">consumes</text>
+  </g>
+  <g id="er3">
+    <text class="t-row" x="16" y="122">ER-3 list_flows gated</text>
+    <rect class="own" x="292" y="102" width="152" height="36" rx="3"/>
+    <text class="t-own" x="304" y="124">OWNS</text>
+    <rect class="cell" x="460" y="102" width="152" height="36" rx="3"/>
+    <rect class="cell" x="628" y="102" width="140" height="36" rx="3"/>
+    <rect class="cell" x="780" y="102" width="144" height="36" rx="3"/>
+  </g>
+  <g id="er4">
+    <text class="t-row" x="16" y="166">ER-4 15-minute JWT</text>
+    <rect class="own" x="292" y="146" width="152" height="36" rx="3"/>
+    <text class="t-own" x="304" y="168">OWNS</text>
+    <rect class="use" x="460" y="146" width="152" height="36" rx="3"/>
+    <text class="t-use" x="472" y="168">consumes</text>
+    <rect class="use" x="628" y="146" width="140" height="36" rx="3"/>
+    <text class="t-use" x="640" y="168">consumes</text>
+    <rect class="cell" x="780" y="146" width="144" height="36" rx="3"/>
+  </g>
+  <g id="er5">
+    <text class="t-row" x="16" y="210">ER-5 HTTP consumers</text>
+    <rect class="cell" x="292" y="190" width="152" height="36" rx="3"/>
+    <rect class="own" x="460" y="190" width="152" height="36" rx="3"/>
+    <text class="t-own" x="472" y="212">OWNS</text>
+    <rect class="use" x="628" y="190" width="140" height="36" rx="3"/>
+    <text class="t-use" x="640" y="212">consumes</text>
+    <rect class="cell" x="780" y="190" width="144" height="36" rx="3"/>
+  </g>
+  <g id="er6">
+    <text class="t-row" x="16" y="254">ER-6 CyberForce proof</text>
+    <rect class="cell" x="292" y="234" width="152" height="36" rx="3"/>
+    <rect class="cell" x="460" y="234" width="152" height="36" rx="3"/>
+    <rect class="own" x="628" y="234" width="140" height="36" rx="3"/>
+    <text class="t-own" x="640" y="256">OWNS</text>
+    <rect class="cell" x="780" y="234" width="144" height="36" rx="3"/>
+  </g>
+  <g id="er7">
+    <text class="t-row" x="16" y="298">ER-7 leftover parity</text>
+    <rect class="cell" x="292" y="278" width="152" height="36" rx="3"/>
+    <rect class="cell" x="460" y="278" width="152" height="36" rx="3"/>
+    <rect class="use" x="628" y="278" width="140" height="36" rx="3"/>
+    <text class="t-use" x="640" y="300">consumes</text>
+    <rect class="own" x="780" y="278" width="144" height="36" rx="3"/>
+    <text class="t-own" x="792" y="300">OWNS</text>
+  </g>
+</svg>

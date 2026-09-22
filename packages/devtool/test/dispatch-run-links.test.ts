@@ -1,5 +1,5 @@
 /**
- * The two derivations the ChildSessions panel rests on (FIX-1071).
+ * The two derivations the dispatch runs panel rests on (FIX-1071).
  *
  * Both matter because both fail *quietly* if they are wrong. A key that
  * mis-parses names the wrong board or row on screen and nothing errors; a
@@ -16,11 +16,11 @@ import { describe, expect, it } from "vitest";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
 import { taskSessionKeyFor } from "@flow-state-dev/core";
 import {
-  decodeChildSessionEntry,
-  decodeChildSessionKey,
-  linkChildSessionsToTasks,
+  decodeDispatchRunEntry,
+  decodeDispatchRunKey,
+  linkDispatchRunsToTasks,
   taskLinkKey,
-} from "../src/react/lib/child-session-links";
+} from "../src/react/lib/dispatch-run-links";
 import { groupCollections } from "../src/react/lib/task-collection-state";
 import type {
   CollectionView,
@@ -89,7 +89,7 @@ function board(id: string, tasks: Task[]): CollectionView {
   };
 }
 
-function childSession(overrides: Partial<ChildSessionSummary> & { id: string }): ChildSessionSummary {
+function dispatchRun(overrides: Partial<ChildSessionSummary> & { id: string }): ChildSessionSummary {
   return {
     parentSessionId: "sess_parent",
     createdAt: 1,
@@ -99,9 +99,9 @@ function childSession(overrides: Partial<ChildSessionSummary> & { id: string }):
   };
 }
 
-describe("decodeChildSessionKey", () => {
+describe("decodeDispatchRunKey", () => {
   it("reads a per-task key back into its board and row", () => {
-    expect(decodeChildSessionKey(perTaskKey("issue-work", "task-a"))).toEqual({
+    expect(decodeDispatchRunKey(perTaskKey("issue-work", "task-a"))).toEqual({
       policy: "per-task",
       boardId: "issue-work",
       taskId: "task-a",
@@ -109,7 +109,7 @@ describe("decodeChildSessionKey", () => {
   });
 
   it("reads a per-worker key back into its board and seat", () => {
-    expect(decodeChildSessionKey(perWorkerKey("issue-work", "implement"))).toEqual({
+    expect(decodeDispatchRunKey(perWorkerKey("issue-work", "implement"))).toEqual({
       policy: "per-worker",
       boardId: "issue-work",
       seat: "implement",
@@ -119,7 +119,7 @@ describe("decodeChildSessionKey", () => {
   it("splits fields by their length, not on the first separator", () => {
     // The whole reason the key is length-framed: a board id containing `|` or
     // `:` would make a naive `split` report a board that does not exist.
-    expect(decodeChildSessionKey(perTaskKey("issue|work", "a:b|c"))).toEqual({
+    expect(decodeDispatchRunKey(perTaskKey("issue|work", "a:b|c"))).toEqual({
       policy: "per-task",
       boardId: "issue|work",
       taskId: "a:b|c",
@@ -129,8 +129,8 @@ describe("decodeChildSessionKey", () => {
   it("returns null for a flow-computed key rather than guessing at it", () => {
     // A `{ key }` policy's string is opaque by contract. "FIX-1" names something
     // to the flow's author and nothing to this reader.
-    expect(decodeChildSessionKey("FIX-1")).toBeNull();
-    expect(decodeChildSessionKey("wake")).toBeNull();
+    expect(decodeDispatchRunKey("FIX-1")).toBeNull();
+    expect(decodeDispatchRunKey("wake")).toBeNull();
   });
 
   it("returns null for a label whose framing does not check out, instead of half-parsing it", () => {
@@ -138,59 +138,59 @@ describe("decodeChildSessionKey", () => {
     // Accepting any of them prints a board or a row that was never declared,
     // which reads as fact on a debugging surface.
     const good = perTaskKey("issue-work", "task-a");
-    expect(decodeChildSessionKey(`${good}x`)).toBeNull(); // trailing bytes
-    expect(decodeChildSessionKey(good.slice(0, -1))).toBeNull(); // short value
-    expect(decodeChildSessionKey("task|9:issue-work|6:task-a")).toBeNull(); // wrong length
-    expect(decodeChildSessionKey("task|010:issue-work|6:task-a")).toBeNull(); // leading zero
-    expect(decodeChildSessionKey("task|10:issue-work;6:task-a")).toBeNull(); // wrong separator
-    expect(decodeChildSessionKey("task|10:issue-work")).toBeNull(); // one field
-    expect(decodeChildSessionKey("task|0:|6:task-a")).toBeNull(); // empty board
-    expect(decodeChildSessionKey("row|10:issue-work|6:task-a")).toBeNull(); // unknown tag
-    expect(decodeChildSessionKey("10:issue-work|6:task-a")).toBeNull(); // no tag
+    expect(decodeDispatchRunKey(`${good}x`)).toBeNull(); // trailing bytes
+    expect(decodeDispatchRunKey(good.slice(0, -1))).toBeNull(); // short value
+    expect(decodeDispatchRunKey("task|9:issue-work|6:task-a")).toBeNull(); // wrong length
+    expect(decodeDispatchRunKey("task|010:issue-work|6:task-a")).toBeNull(); // leading zero
+    expect(decodeDispatchRunKey("task|10:issue-work;6:task-a")).toBeNull(); // wrong separator
+    expect(decodeDispatchRunKey("task|10:issue-work")).toBeNull(); // one field
+    expect(decodeDispatchRunKey("task|0:|6:task-a")).toBeNull(); // empty board
+    expect(decodeDispatchRunKey("row|10:issue-work|6:task-a")).toBeNull(); // unknown tag
+    expect(decodeDispatchRunKey("10:issue-work|6:task-a")).toBeNull(); // no tag
   });
 
   it("treats both spellings of absent as absent", () => {
     // A record written before the labels existed reads `undefined`; a store that
     // nulls absent keys hands back `null` (BP-030).
-    expect(decodeChildSessionKey(undefined)).toBeNull();
-    expect(decodeChildSessionKey(null)).toBeNull();
-    expect(decodeChildSessionKey("")).toBeNull();
+    expect(decodeDispatchRunKey(undefined)).toBeNull();
+    expect(decodeDispatchRunKey(null)).toBeNull();
+    expect(decodeDispatchRunKey("")).toBeNull();
   });
 });
 
-describe("decodeChildSessionEntry", () => {
+describe("decodeDispatchRunEntry", () => {
   it("splits the dispatch type from the entry name at the first colon", () => {
-    expect(decodeChildSessionEntry("task:implement")).toEqual({
+    expect(decodeDispatchRunEntry("task:implement")).toEqual({
       type: "task",
       action: "implement",
     });
-    expect(decodeChildSessionEntry("internal:wake")).toEqual({ type: "internal", action: "wake" });
+    expect(decodeDispatchRunEntry("internal:wake")).toEqual({ type: "internal", action: "wake" });
     // A dispatch type never contains `:`; a target may.
-    expect(decodeChildSessionEntry("task:ns:implement")).toEqual({
+    expect(decodeDispatchRunEntry("task:ns:implement")).toEqual({
       type: "task",
       action: "ns:implement",
     });
   });
 
   it("returns null for a label that names no entry", () => {
-    expect(decodeChildSessionEntry("opaque")).toBeNull();
-    expect(decodeChildSessionEntry(":implement")).toBeNull();
-    expect(decodeChildSessionEntry("task:")).toBeNull();
-    expect(decodeChildSessionEntry(undefined)).toBeNull();
-    expect(decodeChildSessionEntry(null)).toBeNull();
+    expect(decodeDispatchRunEntry("opaque")).toBeNull();
+    expect(decodeDispatchRunEntry(":implement")).toBeNull();
+    expect(decodeDispatchRunEntry("task:")).toBeNull();
+    expect(decodeDispatchRunEntry(undefined)).toBeNull();
+    expect(decodeDispatchRunEntry(null)).toBeNull();
   });
 });
 
-describe("linkChildSessionsToTasks", () => {
+describe("linkDispatchRunsToTasks", () => {
   it("links a per-task child to the row its key names, in both directions", () => {
-    const ws = childSession({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
+    const ws = dispatchRun({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
+    const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
       [ws],
       [board("issues", [task({ id: "task-a", assignee: "implement" }), task({ id: "task-b" })])]
     );
     expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
     expect(byTask.get(taskLinkKey("issues", "task-b"))).toBeUndefined();
-    expect(byChildSession.get("dsx_1")).toEqual([
+    expect(byDispatchRun.get("dsx_1")).toEqual([
       { collectionId: "issues", task: task({ id: "task-a", assignee: "implement" }) },
     ]);
   });
@@ -199,8 +199,8 @@ describe("linkChildSessionsToTasks", () => {
     // Not a collision to resolve — it is the substrate's behaviour. A
     // `per-worker` seat runs all of its rows in one child, so the panel has to
     // be able to say so, and each of those rows points back at the same child.
-    const ws = childSession({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
+    const ws = dispatchRun({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
+    const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
       [ws],
       [
         board("issues", [
@@ -212,7 +212,7 @@ describe("linkChildSessionsToTasks", () => {
         ]),
       ]
     );
-    expect(byChildSession.get("dsx_impl")?.map((l) => l.task.id)).toEqual(["task-a", "task-c"]);
+    expect(byDispatchRun.get("dsx_impl")?.map((l) => l.task.id)).toEqual(["task-a", "task-c"]);
     expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
     expect(byTask.get(taskLinkKey("issues", "task-c"))).toBe(ws);
     expect(byTask.get(taskLinkKey("issues", "task-b"))).toBeUndefined();
@@ -222,8 +222,8 @@ describe("linkChildSessionsToTasks", () => {
   it("pairs a per-task key on the row's id, not its assignee", () => {
     // The key names one row. Whatever seat the row is on now — or none — the
     // child derived for it is this one.
-    const ws = childSession({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
-    const { byTask } = linkChildSessionsToTasks(
+    const ws = dispatchRun({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
+    const { byTask } = linkDispatchRunsToTasks(
       [ws],
       [board("issues", [task({ id: "task-a" })])]
     );
@@ -231,65 +231,65 @@ describe("linkChildSessionsToTasks", () => {
   });
 
   it("links nothing off a flow-computed key", () => {
-    // A `{ key }` policy child is a board's child too, but its key says nothing
+    // A `{ key }` policy run is a board's child too, but its key says nothing
     // this reader can act on. Matching it against a task carrying the same
     // string in some field would be a guess dressed as a rule.
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [childSession({ id: "dsx_1", topic: "task-a" })],
+    const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
+      [dispatchRun({ id: "dsx_1", topic: "task-a" })],
       [board("issues", [task({ id: "task-a", assignee: "implement" })])]
     );
     expect(byTask.size).toBe(0);
-    expect(byChildSession.size).toBe(0);
+    expect(byDispatchRun.size).toBe(0);
   });
 
   it("links nothing off a key whose framing does not check out", () => {
     // One byte off from a real key. A lenient reader that recovered "task-a"
     // from it would link on a label the writer never wrote.
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [childSession({ id: "dsx_1", topic: `${perTaskKey("issue-work", "task-a")}x` })],
+    const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
+      [dispatchRun({ id: "dsx_1", topic: `${perTaskKey("issue-work", "task-a")}x` })],
       [board("issues", [task({ id: "task-a", assignee: "implement" })])]
     );
     expect(byTask.size).toBe(0);
-    expect(byChildSession.size).toBe(0);
+    expect(byDispatchRun.size).toBe(0);
   });
 
-  it("links nothing off an unlabelled ChildSession instead of matching everything", () => {
+  it("links nothing off an unlabelled dispatch run instead of matching everything", () => {
     // A row with no topic is unlabelled, not a wildcard. Treating absence as a
     // match would attach the first task on every board to it.
-    const { byTask } = linkChildSessionsToTasks(
-      [childSession({ id: "dsx_1", topic: undefined, coordinate: undefined })],
+    const { byTask } = linkDispatchRunsToTasks(
+      [dispatchRun({ id: "dsx_1", topic: undefined, coordinate: undefined })],
       [board("issues", [task({ id: "task-a" })])]
     );
     expect(byTask.size).toBe(0);
   });
 
-  it("links nothing off a child that is not a board's", () => {
+  it("links nothing off a run that is not a board's", () => {
     // An `internal:` dispatch's key is whatever the block chose. Even one that
     // happens to equal a task id names no row.
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [childSession({ id: "dsx_wake", topic: "task-a", coordinate: "internal:wake" })],
+    const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
+      [dispatchRun({ id: "dsx_wake", topic: "task-a", coordinate: "internal:wake" })],
       [board("issues", [task({ id: "task-a", assignee: "implement" })])]
     );
     expect(byTask.size).toBe(0);
-    expect(byChildSession.size).toBe(0);
+    expect(byDispatchRun.size).toBe(0);
   });
 
-  it("leaves a task with no matching ChildSession unlinked", () => {
+  it("leaves a task with no matching dispatch run unlinked", () => {
     // The majority case: an inline seat runs inside the request being viewed.
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
-      [childSession({ id: "dsx_1", topic: perTaskKey("issue-work", "task-z") })],
+    const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
+      [dispatchRun({ id: "dsx_1", topic: perTaskKey("issue-work", "task-z") })],
       [board("issues", [task({ id: "task-a" })])]
     );
     expect(byTask.size).toBe(0);
-    expect(byChildSession.size).toBe(0);
+    expect(byDispatchRun.size).toBe(0);
   });
 
   it("does not let the entry label stand in for the key", () => {
-    // `coordinate` names the entry the child was dispatched for, and a seat's
+    // `coordinate` names the entry the run was dispatched for, and a seat's
     // name is usually its entry's — but "usually" is not a pairing rule. A
     // child whose key does not decode stays unlinked however apt its entry.
-    const { byTask } = linkChildSessionsToTasks(
-      [childSession({ id: "dsx_1", topic: "FIX-1", coordinate: "task:implement" })],
+    const { byTask } = linkDispatchRunsToTasks(
+      [dispatchRun({ id: "dsx_1", topic: "FIX-1", coordinate: "task:implement" })],
       [board("issues", [task({ id: "task-a", assignee: "implement" })])]
     );
     expect(byTask.size).toBe(0);
@@ -304,8 +304,8 @@ describe("linkChildSessionsToTasks", () => {
     // to `review` in a later one. Requests arrive newest-first, so a fold that
     // takes the last item it walks past holds the `implement` snapshot, and the
     // link then resolves against a seat the task is no longer on.
-    const reviewWs = childSession({ id: "dsx_review", topic: perWorkerKey("issue-work", "review") });
-    const implementWs = childSession({
+    const reviewWs = dispatchRun({ id: "dsx_review", topic: perWorkerKey("issue-work", "review") });
+    const implementWs = dispatchRun({
       id: "dsx_impl",
       topic: perWorkerKey("issue-work", "implement"),
     });
@@ -316,17 +316,17 @@ describe("linkChildSessionsToTasks", () => {
       taskChange({ requestId: "req_1", ts: 1_000, assignee: "implement" }),
     ]);
 
-    const { byTask, byChildSession } = linkChildSessionsToTasks(
+    const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
       [reviewWs, implementWs],
       collections
     );
 
     expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(reviewWs);
-    expect(byChildSession.get("dsx_impl")).toBeUndefined();
+    expect(byDispatchRun.get("dsx_impl")).toBeUndefined();
   });
 
   describe("the board leg, which cannot be checked and so is detected", () => {
-    // A key frames `boardId` in beside the row or the seat, so a child belongs
+    // A key frames `boardId` in beside the row or the seat, so a run belongs
     // to ONE board — but nothing on the task side carries a board id.
     // `task-change` and `task-board-meta` emit `collectionId`, and `taskBoard`
     // documents that as a deliberately different string from `boardId`, so
@@ -336,8 +336,8 @@ describe("linkChildSessionsToTasks", () => {
     // unrelated work, so contention draws nothing.
 
     it("draws no link when two collections hold the row a per-task child names", () => {
-      const ws = childSession({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
-      const { byTask, byChildSession } = linkChildSessionsToTasks(
+      const ws = dispatchRun({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
+      const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
         [ws],
         [
           board("issues", [task({ id: "task-a", assignee: "implement" })]),
@@ -345,14 +345,14 @@ describe("linkChildSessionsToTasks", () => {
         ]
       );
       expect(byTask.size).toBe(0);
-      expect(byChildSession.size).toBe(0);
+      expect(byDispatchRun.size).toBe(0);
     });
 
     it("draws no link when two collections carry the seat a per-worker child names", () => {
       // Seat names are per board, so two boards may each declare `implement`.
       // Only one of them owns this child, and nothing on the wire says which.
-      const ws = childSession({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
-      const { byTask, byChildSession } = linkChildSessionsToTasks(
+      const ws = dispatchRun({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
+      const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
         [ws],
         [
           board("issues", [task({ id: "task-a", assignee: "implement" })]),
@@ -360,30 +360,30 @@ describe("linkChildSessionsToTasks", () => {
         ]
       );
       expect(byTask.size).toBe(0);
-      expect(byChildSession.size).toBe(0);
+      expect(byDispatchRun.size).toBe(0);
     });
 
     it("draws no link when two children name the same row", () => {
       // The other direction of the same gap: two boards' per-task children for
       // a `task-a`, and one rendered collection holding a `task-a`. The keys
       // carry different board ids, and the task carries none to pick with.
-      const { byTask, byChildSession } = linkChildSessionsToTasks(
+      const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
         [
-          childSession({ id: "dsx_a", topic: perTaskKey("board-a", "task-a") }),
-          childSession({ id: "dsx_b", topic: perTaskKey("board-b", "task-a") }),
+          dispatchRun({ id: "dsx_a", topic: perTaskKey("board-a", "task-a") }),
+          dispatchRun({ id: "dsx_b", topic: perTaskKey("board-b", "task-a") }),
         ],
         [board("issues", [task({ id: "task-a", assignee: "implement" })])]
       );
       expect(byTask.size).toBe(0);
-      expect(byChildSession.size).toBe(0);
+      expect(byDispatchRun.size).toBe(0);
     });
 
     it("keeps one collection's tasks linked when it is the only claimant", () => {
       // The guard against over-reading contention: two collections in the
       // session is not itself ambiguity. Only the collection whose task
-      // actually fits the child claims it, so the link stands.
-      const ws = childSession({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
-      const { byTask } = linkChildSessionsToTasks(
+      // actually fits the run claims it, so the link stands.
+      const ws = dispatchRun({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
+      const { byTask } = linkDispatchRunsToTasks(
         [ws],
         [
           board("issues", [task({ id: "task-a", assignee: "implement" })]),
@@ -398,7 +398,7 @@ describe("linkChildSessionsToTasks", () => {
   it("keys a link by collection, so one board's row is never another's", () => {
     // Same task id on two boards is legal, which is why the key carries the
     // collection. Asserted on the key itself rather than through a link, because
-    // two boards claiming one ChildSession is refused outright.
+    // two boards claiming one dispatch run is refused outright.
     expect(taskLinkKey("issues", "task-a")).not.toBe(taskLinkKey("chores", "task-a"));
   });
 });
