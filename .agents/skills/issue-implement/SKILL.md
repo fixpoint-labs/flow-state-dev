@@ -507,6 +507,7 @@ Leave it alone. The `eyes` reaction is already there, which is acknowledgment en
 #### 10.5: Reply style
 
 - Short and concrete. No performative agreement ("Great catch!", "Good point!").
+- An agent-authored review submission, PR comment, or review comment starts with the agent-mailbox header (`from:` / `session:` / `kind:`, blank line, then the body). Nothing before the header. The grammar and why an unmarked owner-login post is not a gate are in [`orchestration.md`](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge) → Gates.
 - Describe *what* changed (or *why* nothing changed), not your reasoning narrative.
 - Reference file paths and commit shas when describing a fix.
 - One reply per comment thread, not a wall of text.

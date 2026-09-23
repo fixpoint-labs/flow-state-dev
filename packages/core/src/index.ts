@@ -307,6 +307,7 @@ export type {
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,
+  InstanceOwnerPin,
   FlowType,
   FlowCardinality,
   McpConfig,

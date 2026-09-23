@@ -30,7 +30,7 @@ The controls below are the other half of this. A control has to fail **at the le
 
 > **On where the answer attempts live.** They run inside one harness execution, not as a retry loop in `run.mts`. `runHarness` shells out with `execFileSync`, so every call is a fresh child process — a caller-side retry would re-run loading, hiring and registration on each attempt, re-running the mechanism under test and letting a transient fault in it be retried away as model flakiness. The harness hires once and repeats only the question; load, hire and registration failures are returned as themselves and never retried.
 
-> **On the org id.** The built-in kind's skills collection is org-scoped, so a request carrying only a `userId` fails with `Resource "skills" is not registered` before the model is reached. The harness sends an `orgId`. This is a property of the kind, not of this check.
+> **On the organization.** The built-in kind stores skills at organization scope. The harness sends `userId` and no organization id. The server binds the organization from the principal — here, the framework development organization, because the harness configures no resolver — and the seat's skills resolve there. This check does not grade which organization that is.
 
 ## Verdict log
 

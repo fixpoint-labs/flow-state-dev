@@ -10,12 +10,16 @@
 export {
   HIRED_ROSTER_PREFIX,
   defineHiredRosterCollection,
+  defineHiredRosterPrivateCollection,
   hiredSeatRowSchema,
   type HiredSeatRow,
 } from "./collections";
 
 export {
+  encodeUserSegment,
+  hiredRosterStorageKey,
   hiredSeatManifest,
+  hiredSeatOwnerPin,
   hiredSeatRowFromManifest,
   parseHiredSeatRow,
   seatAddress,
@@ -23,6 +27,11 @@ export {
   toHiredSeatRow,
   type RowProblem,
 } from "./rows";
+
+export {
+  hiredSeatOwnerPinFromRosterOwner,
+  registerHiredSeat,
+} from "./register-hired-seat";
 
 export {
   DEFAULT_MAX_RELOAD_ORGS,

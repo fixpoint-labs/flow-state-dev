@@ -58,7 +58,9 @@ import {
   deregisterAbortController
 } from "./abort-registry";
 import { FlowInstanceBindingMismatchError } from "../context/binding-errors";
+import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
+import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -368,6 +370,128 @@ function stripEphemeralContent(items: OutputItem[]): OutputItem[] {
     }
 
     return { ...message, content: filtered };
+  });
+}
+
+/**
+ * Settle a FRESH request whose setup died after acceptance.
+ *
+ * `onRegistered` (and often `emitRequestStatus("in_progress")`) has already
+ * run, and the HTTP 202 path awaits that — not `finished`. Replay
+ * continuations stay where they were (`suspended` / `interrupted`); a new
+ * request that never started must not linger `in_progress` or 404 after a
+ * 202. Writes a failed record when createExecutionContext threw before its
+ * own write (user/org/tenant binding), or patches the one it did write
+ * (model-resolver construction).
+ *
+ * Does not touch a row this run does not own — a create-race loser must
+ * not overwrite the winner with its own `failed` record. The record write
+ * (and item snapshot) lands before `request.failed` so a client that
+ * closes the stream on the terminal event cannot re-read `in_progress`.
+ */
+async function settleFreshRequestSetupFailure(options: {
+  stores: StoreRegistry;
+  requestId: string;
+  flow: FlowInstance;
+  actionName: string;
+  userId: string;
+  sessionId?: string;
+  orgId?: string;
+  tenantId?: string;
+  source: string;
+  metadata?: Record<string, unknown>;
+  input: unknown;
+  emittedItems: readonly OutputItem[];
+  response: {
+    emitItemAdded: (item: ErrorItem) => Promise<unknown>;
+    emitItemDone: (item: ErrorItem) => Promise<unknown>;
+    emitRequestStatus: (status: "failed") => Promise<unknown>;
+  };
+  error: unknown;
+  logger: RuntimeLogger;
+}): Promise<void> {
+  const now = Date.now();
+  const normalized = normalizeError(options.error, { scope: "request" });
+  const item: ErrorItem = {
+    id: `item_error_${now}_${Math.random().toString(16).slice(2)}`,
+    type: "error",
+    status: "failed",
+    requestId: options.requestId,
+    itemIndex: getResponseItemCount(options.response),
+    provenance: RUNTIME_PROVENANCE,
+    ts: now,
+    message: normalized.message,
+    code: normalized.code
+  };
+
+  let settled = false;
+  try {
+    const current = await options.stores.request.get(options.requestId);
+    const foreignOrTerminal =
+      current !== undefined &&
+      (isTerminalRequestStatus(current.status) || !ownsRecord(options.flow, current));
+
+    if (!foreignOrTerminal) {
+      const base =
+        current ??
+        createInitialRequestRecord(
+          {
+            requestId: options.requestId,
+            flowKind: options.flow.kind,
+            flowId: options.flow.id,
+            actionName: options.actionName,
+            userId: options.userId,
+            sessionId: options.sessionId,
+            tenantId: options.tenantId,
+            orgId: options.orgId,
+            source: options.source,
+            metadata: options.metadata,
+            input: options.input
+          },
+          now
+        );
+      const items = stripEphemeralContent(
+        mergeItemsById(base.items ?? [], [...options.emittedItems, item]).filter(
+          (entry) => entry.transient !== true
+        )
+      );
+      const written = await options.stores.request.set(
+        options.requestId,
+        {
+          ...base,
+          status: "failed",
+          failedAtMs: now,
+          updatedAt: now,
+          items
+        },
+        current === undefined ? "absent" : "any"
+      );
+      if (written.ok) {
+        options.stores.request.persistItems(options.requestId, items);
+        await options.stores.request.flushItems(options.requestId);
+        settled = true;
+      }
+    }
+  } catch (err) {
+    logRuntimeEvent(options.logger, "warn", "[flow-state] failed to settle a setup failure", {
+      requestId: options.requestId,
+      error: String(err)
+    });
+  }
+
+  if (settled) {
+    try {
+      await options.response.emitItemAdded(item);
+      await options.response.emitItemDone(item);
+      await options.response.emitRequestStatus("failed");
+    } catch {
+      // The record write is what a polling client sees; stream emit is extra.
+    }
+  }
+
+  logRuntimeEvent(options.logger, "error", "[flow-state] action setup failed", {
+    requestId: options.requestId,
+    error: summarizeForLog(normalized)
   });
 }
 
@@ -992,10 +1116,11 @@ export async function runActionInternal<
         }
       }
 
-      // Tenant-binding guard (FIX-682): this write runs before
-      // createExecutionContext's binding check, so without it a no-tenant caller
-      // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
-      // latestRequestId (an auto-resume hijack) even though the run then fails.
+      // Tenant- and user-binding guards (FIX-682 / FIX-1511): this write runs
+      // before createExecutionContext's binding checks, so without them a
+      // no-tenant caller passing `sessionId = "${tenant}:${id}"` — or a
+      // different user on the same session — would overwrite latestRequestId
+      // (an auto-resume hijack) even though the run then fails.
       //
       // A delivery into an EXISTING session does not stamp `latestRequestId` at
       // all. That field serves auto-resume discovery — a client attaching to a
@@ -1007,7 +1132,8 @@ export async function runActionInternal<
       if (
         stamp?.recipientLineageId === undefined &&
         session !== undefined &&
-        tenantMatches(session.tenantId, options.tenantId)
+        tenantMatches(session.tenantId, options.tenantId) &&
+        session.userId === options.userId
       ) {
         await options.stores.session.set(
           sessionKey,
@@ -1486,15 +1612,36 @@ export async function runActionInternal<
     }
   } catch (setupError) {
     // This catch covers every PRE-transition step (buildReplayLog,
-    // createExecutionContext, checkpoint restore). The record has NOT crossed
-    // the point of no return, so leave it `suspended` (never `failed`) and, for
-    // a replay continuation, revert the resolved suspension back to `pending`
-    // so the resume stays re-attemptable (FIX-811). Then clean up the abort
-    // controller / heartbeat (as the prior createExecutionContext catch did)
-    // and rethrow so `finished` rejects.
+    // createExecutionContext, checkpoint restore). A replay continuation has
+    // NOT crossed the point of no return, so leave it `suspended` /
+    // `interrupted` (never `failed`) and revert the resolved suspension so
+    // the resume stays re-attemptable (FIX-811). A FRESH request has already
+    // been accepted (`onRegistered`) and often already has an `in_progress`
+    // row — the HTTP 202 path will not see this throw — so settle it failed
+    // rather than leave a client polling forever (FIX-1511). Then clean up
+    // the abort controller / heartbeat and rethrow so `finished` rejects.
     await recoverFromPreTransitionFailure();
     deregisterAbortController(requestId);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+    if (!isReplayMode) {
+      await settleFreshRequestSetupFailure({
+        stores: options.stores,
+        requestId,
+        flow: options.flow,
+        actionName: options.actionName as string,
+        userId: options.userId,
+        sessionId: options.sessionId,
+        orgId: options.orgId,
+        tenantId: options.tenantId,
+        source,
+        metadata: options.metadata,
+        input: options.input,
+        emittedItems: itemsToPersist(),
+        response,
+        error: setupError,
+        logger
+      });
+    }
     throw setupError;
   }
 

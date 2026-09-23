@@ -23,9 +23,11 @@ The two facts it was written against, and where each landed:
   The kind now declares `flowIsolation`, and each seat is seeded from its own resolved union (C3).
 
 One property of that second fix is worth carrying forward, because it reaches callers: the
-collection is still **org-scoped**, so a request to a built-in worker must be bound to an org.
-A request carrying only a `userId` fails with `Resource "skills" is not registered` before the
-model is reached. Tracked as FIX-1403.
+collection is still **org-scoped**. The organization is the one already on the principal. A
+request to a built-in worker sends `userId` and does not carry an organization id; the seat's
+skills resolve in that organization. An app that configures no resolver runs in the framework
+development organization. The kind does not invent an organization, and it does not read one
+off the request.
 
 Related, and deliberately not restated here:
 

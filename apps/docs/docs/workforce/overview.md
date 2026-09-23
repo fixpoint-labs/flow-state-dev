@@ -53,7 +53,7 @@ flowRegistry.registerMany(seats);
 
 That worker file names no `flow:`, so it runs on the built-in worker kind. Its body becomes its instructions, and it talks.
 
-It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. Those skills are stored at organization scope, so each organization keeps its own copy. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
+It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. Each organization keeps its own copy of a seat's skills. On the action call, send `userId` beside `input`. The skills read are the ones stored for the organization that caller already belongs to. The call does not name the organization. Every request runs in one. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 
 To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
 

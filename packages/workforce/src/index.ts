@@ -52,7 +52,17 @@
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
-export { hireWorkforce, type HireOptions } from "./hire";
+export {
+  createSeatHireCapability,
+  hiredSeatOwnerPinFromRosterOwner,
+  registerHiredSeat,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_HIRE_CAPABILITY,
+  SEAT_INVENTORY_RESOURCE,
+  type HiredSeatOwnerPin,
+  type SeatHireCapabilityOptions,
+} from "./seat-hire-capability";
+export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
 export { resourcesFromDocs } from "./resources-from-docs";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";
 export {

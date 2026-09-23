@@ -1,0 +1,11 @@
+{
+  "ownerOrg": "acme",
+  "otherOrg": "globex",
+  "ownerUser": "alice",
+  "peerUser": "bob",
+  "foreignUser": "mallory",
+  "seatId": "research",
+  "legacySeatId": "eng.lead",
+  "secret": "ACME-ONLY-ROADMAP-MARKER",
+  "widePattern": "workforce/[area]/[owner]/[seat]"
+}

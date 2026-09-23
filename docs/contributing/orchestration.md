@@ -360,8 +360,8 @@ being wrong in that direction is one unnecessary document rather than ungated co
 
 | Gate | Human direction signal | Release condition | Blocks |
 |---|---|---|---|
-| **Spec approval** | An approving comment, approving review, owner-applied `spec approved` label, or explicit in-session human go-ahead attributable to the reviewed head | Approval plus required repository checks and confirmed spec PR merge | Implementing the issue |
-| **Epic objective** | An approving comment, approving review, owner-applied `epic approved` label, or explicit in-session human go-ahead attributable to the reviewed head | Approval plus required repository checks and confirmed epic spec PR merge | Ramping the epic's children |
+| **Spec approval** | In-session human go-ahead on the reviewed head, a non-owner non-author human approving comment or review with no agent header, or an owner-applied `spec approved` label bound to that head. An owner-login review or comment is not this signal | Approval plus required repository checks and confirmed spec PR merge | Implementing the issue |
+| **Epic objective** | In-session human go-ahead on the reviewed head, a non-owner non-author human approving comment or review with no agent header, or an owner-applied `epic approved` label bound to that head. An owner-login review or comment is not this signal | Approval plus required repository checks and confirmed epic spec PR merge | Ramping the epic's children |
 
 Approval signs off **direction**, not finished implementation detail. Ask it as a
 business decision using [`asking-for-decisions.md`](asking-for-decisions.md): the
@@ -373,6 +373,50 @@ but still wait for their parent epic's release condition.
 `approvedInSession:<reviewed head>`; it authorizes only that revision and becomes stale
 when the head changes. Recording this human decision is not an agent-authored
 self-approval comment, and it waives none of the merge requirements below.
+
+**Agent-authored GitHub reviews are not owner approval.** Agents post under the product
+owner's GitHub login, with `author_association: MEMBER`. Trusting that login reports a
+confident wrong author.
+
+An agent review body starts with the [agent-mailbox](../../.agents/skills/agent-mailbox/SKILL.md)
+header and nothing before it:
+
+```
+from: <standing-role>
+session: <stable-label>
+kind: review
+
+<body>
+```
+
+`from` and `session` are the mailbox values. `kind` is `ask`, `reply`, `block`, `decision`,
+or `review`. An optional `to:` line may sit between `session` and `kind`. Then a blank line,
+then a non-empty body. That is the mailbox parser's grammar. A role signature or a "not the
+gate" disclaimer is not this marker. Timestamp proximity is not this marker.
+
+The same header is required on agent-authored PR comments and review comments. The
+approving-comment path is how a review that is not `APPROVED` still gets read as a gate.
+This is not a backfill of comments already posted.
+
+`epic-wake` classifies `approvalArtifacts` and does not trust the scout's approval boolean
+for comments and reviews:
+
+- A valid header is agent-authored. It never satisfies a gate, and it is not a human
+  `CHANGES_REQUESTED`.
+- An `APPROVED` review, or a comment the scan would have treated as approving, under the
+  configured owner login, with no valid header, is **suspect**. It does not satisfy the
+  gate. The wake lists it in `suspectOwnerApprovals`. Escalate it. Do not implement.
+- The owner is not excluded merely for authoring the PR (FIX-1300). That exception stops
+  author-exclusion from ruling them out by construction. It does not turn an owner-login
+  review into their signature. Their sign-off on that shared login is a message in the
+  coordinator conversation, recorded as `approvedInSession` on the reviewed head.
+- A non-owner human who did not author the PR still satisfies the gate with an `APPROVED`
+  review or an approving comment that has no agent header, on the current head.
+- Bots never count.
+
+A label has no body, so this marker cannot classify it. The owner-applied label channel
+stays, and agents still must not apply `spec approved` or `epic approved`. Turning that
+channel off, or giving agents a second GitHub identity, is an owner call.
 
 **No self-approval or stale-label bypass.** Agents never apply approval labels or count
 their own comments, generated comments, or bot reviews as human sign-off. An approval
@@ -541,9 +585,10 @@ So the discipline is ours, not theirs:
   back-and-forth to reach agreement with a bot, and never a re-review to satisfy one.
 - **A reviewer restating a below-the-bar point is still below the bar.** Repetition
   doesn't promote it. Reply once; the second occurrence needs no new answer.
-- **Only a human's approving comment or review trips the gate** (see Gates above) — bot
-  reviews are explicitly excluded. A bot leaving `CHANGES_REQUESTED` on a spec PR does
-  **not** hold the gate, and does not extend the round budget.
+- **Only a human gate signal trips the gate** (see Gates above) — bot reviews are excluded,
+  and so is an agent-authored or unmarked owner-login review. A bot leaving
+  `CHANGES_REQUESTED` on a spec PR does **not** hold the gate, and does not extend the
+  round budget. An agent-marked review does not either.
 - **The spec PR description carries reviewer guidance** (`issue-spec` Step 6) — the static
   contract (what this document is, what to challenge, what is out of scope), collapsed below
   the fold, plus a per-PR *"Parts worth reviewing closely"* above it. The contract is the one
