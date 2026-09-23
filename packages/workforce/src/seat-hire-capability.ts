@@ -246,8 +246,13 @@ export function createSeatHireCapability(
         flow: input.flow,
         settings: input.settings,
         instructions: input.instructions ?? null,
+        owningOrgId: orgId,
       });
       const record = hiredSeatManifest(orgId, row);
+      // Type narrowing, not a second fence: the row was just stamped with this org.
+      if ("problem" in record) {
+        throw new Error(`"${address}" could not be hired: ${record.problem}.`);
+      }
       const [seat] = hireWorkforce([record.manifest], {
         kinds,
         channelBoards: options.channelBoards,
