@@ -235,29 +235,18 @@ the URL you sent. The failure that drops a figure does not delete the tag. It wr
 <img src="``https://raw.githubusercontent.com/…/figure.svg"`` width="940" alt="…" />
 ```
 
-That `src` does not load. It is the body #1905 stored at create, on 2026-09-18. It is not what
-an update does to a clean line. #1944 stored three clean `<img>` lines at create and still had
-them after every later edit. A remeasure on 2026-09-23 stored the same clean line on a
-description create, a description update, and a comment, including the line inside a code
-fence (#2082, #2083). GitHub's rendered HTML for that create contained the `<img>`.
-
-There is no create-versus-update rule, and a comment is not a different rule. An earlier
-note that tied the backticks to update, or to the comment channel, does not match those
-bodies. Write the line, then GET the stored body.
+That `src` does not load. Write the line, then GET the stored body. A 403 on `POST` or
+`PATCH /pulls` from this session's token is not a write, and it is not a stripped body.
 
 - **No backtick in the `src`, and it starts with `https://`.** It renders. Leave it. A later
-  edit keeps it. That is how a refreshed epic body still shows the figure. Do not drop the
-  figure because an update is assumed to kill it.
+  edit keeps it, including a comment. Do not drop the figure because an update is assumed to
+  kill it.
 - **A backtick in the `src`.** It will not render, and sending the same write again will not
   clear the backticks. Put a link to the blob view, which renders the figure, where the image
   would have been, and hand a person the clean line — the line you sent, not the line that
   came back. A person pasting the clean line into the description works.
 - **A body a person has repaired is not rewritten.** A refresh returns the new pins for them
   to change. Rewriting that body is how a repaired figure gets lost.
-
-GET is the check. The Cloud session's own token cannot create or update a pull request — the
-pulls API returns 403 — so a curl PATCH from that token is not a write, and a 403 is not a
-stripped body.
 
 ## Verify (BP-003)
 

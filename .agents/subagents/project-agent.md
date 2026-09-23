@@ -115,12 +115,10 @@ Commit and push; **never merge, never delete the branch**.
   here that is unrecoverable through the API.
 - **An `<img>` line you write into a PR body carries no backticks and sits in no code fence** —
   plain double quotes, raw HTML, per
-  [`spec-figures.md`](../../docs/contributing/spec-figures.md) → "In the PR body". Read the stored
-  body back. A `src` with no backtick renders, and a later edit keeps it. If a `src` comes back
-  with a backtick in it, don't fight that write: leave a link to `SPEC.md`'s blob view and return
-  the clean lines in `pins:` (the lines you sent, not the stored ones). **A body a person has
-  pasted into or hand-fixed is never rewritten** — re-pinning there is a line they change, and
-  your report says so.
+  [`spec-figures.md`](../../docs/contributing/spec-figures.md) → "In the PR body". Follow that
+  section's stored-body check. When it says to hand a person the clean line, return it in
+  `pins:`. **A body a person has pasted into or hand-fixed is never rewritten** — re-pinning
+  there is a line they change, and your report says so.
 - **Refresh on epic-level transitions only.** An issue opening or merging is never your trigger. If
   a dispatch hands you issue churn, refresh nothing and say so — Linear and implementation PRs already carry it.
 - **One worktree at a time on `project/<slug>`.** Two epics may run under one project, and both may
