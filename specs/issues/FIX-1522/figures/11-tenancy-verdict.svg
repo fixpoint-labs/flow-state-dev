@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 440" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A verdict matrix. Rows are boundaries: two users in one org, two orgs, one user acting for two orgs, two tenants, and an app with no verifier. Columns are sessions, data, flow instances and the catalog. Two users in one org: sessions separate, user data separate and org data shared by design, instances and catalog shared by design. Two orgs: sessions and data separate, but instances cross, since another org's seat can be run with its configuration, and the catalog leaks. One user in two orgs: sessions and org data separate, user data leaks across orgs, listings separate. Two tenants: sessions separate, user and org data shared, instances and catalog global. No verifier: one shared org and self-declared identity everywhere.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .shr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .wry   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .bad   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" width="940" height="440"/>
+
+  <g id="columns">
+    <text class="t-lbl" x="16" y="30">BOUNDARY</text>
+    <text class="t-lbl" x="236" y="30">SESSIONS</text>
+    <text class="t-lbl" x="408" y="30">DATA CELLS</text>
+    <text class="t-lbl" x="580" y="30">FLOW INSTANCES</text>
+    <text class="t-lbl" x="752" y="30">CATALOG</text>
+  </g>
+
+  <g transform="translate(0 44)">
+    <text class="t-b" x="16" y="24">two users, one org</text><text class="t-s" x="16" y="40">alice ↔ bob @ acme</text>
+    <rect class="ok" x="228" y="4" width="164" height="48" rx="4"/><text class="t-c" x="238" y="24">separate</text><text class="t-s" x="238" y="40">M3 · C2</text>
+    <rect class="shr" x="400" y="4" width="164" height="48" rx="4"/><text class="t-c" x="410" y="24">user separate, org shared</text><text class="t-s" x="410" y="40">C1 · M1 · by design</text>
+    <rect class="shr" x="572" y="4" width="164" height="48" rx="4"/><text class="t-c" x="582" y="24">shared</text><text class="t-s" x="582" y="40">same org · by design</text>
+    <rect class="shr" x="744" y="4" width="180" height="48" rx="4"/><text class="t-c" x="754" y="24">shared</text><text class="t-s" x="754" y="40">same org · by design</text>
+  </g>
+
+  <g transform="translate(0 104)">
+    <text class="t-b" x="16" y="24">two orgs</text><text class="t-s" x="16" y="40">acme ↔ globex</text>
+    <rect class="ok" x="228" y="4" width="164" height="48" rx="4"/><text class="t-c" x="238" y="24">separate</text><text class="t-s" x="238" y="40">M3</text>
+    <rect class="ok" x="400" y="4" width="164" height="48" rx="4"/><text class="t-c" x="410" y="24">separate</text><text class="t-s" x="410" y="40">S1 · F3</text>
+    <rect class="bad" x="572" y="4" width="164" height="48" rx="4"/><text class="t-c" x="582" y="24">CROSSES</text><text class="t-s" x="582" y="40">run acme's seat · F2</text>
+    <rect class="bad" x="744" y="4" width="180" height="48" rx="4"/><text class="t-c" x="754" y="24">leaks</text><text class="t-s" x="754" y="40">every id · F1 · C8</text>
+  </g>
+
+  <g transform="translate(0 164)">
+    <text class="t-b" x="16" y="24">one user, two orgs</text><text class="t-s" x="16" y="40">alice @ acme ↔ @ globex</text>
+    <rect class="ok" x="228" y="4" width="164" height="48" rx="4"/><text class="t-c" x="238" y="24">separate</text><text class="t-s" x="238" y="40">M3 · M4 listings</text>
+    <rect class="wry" x="400" y="4" width="164" height="48" rx="4"/><text class="t-c" x="410" y="24">org separate, user shared</text><text class="t-s" x="410" y="40">M2 · S2 · C7</text>
+    <rect class="bad" x="572" y="4" width="164" height="48" rx="4"/><text class="t-c" x="582" y="24">crosses</text><text class="t-s" x="582" y="40">as two orgs · F2</text>
+    <rect class="bad" x="744" y="4" width="180" height="48" rx="4"/><text class="t-c" x="754" y="24">leaks</text><text class="t-s" x="754" y="40">as two orgs</text>
+  </g>
+
+  <g transform="translate(0 224)">
+    <text class="t-b" x="16" y="24">two tenants</text><text class="t-s" x="16" y="40">x-tenant-id t1 ↔ t2</text>
+    <rect class="ok" x="228" y="4" width="164" height="48" rx="4"/><text class="t-c" x="238" y="24">separate</text><text class="t-s" x="238" y="40">404 · T1</text>
+    <rect class="wry" x="400" y="4" width="164" height="48" rx="4"/><text class="t-c" x="410" y="24">shared</text><text class="t-s" x="410" y="40">user + org · T1</text>
+    <rect class="wry" x="572" y="4" width="164" height="48" rx="4"/><text class="t-c" x="582" y="24">shared</text><text class="t-s" x="582" y="40">one registry</text>
+    <rect class="wry" x="744" y="4" width="180" height="48" rx="4"/><text class="t-c" x="754" y="24">shared</text><text class="t-s" x="754" y="40">one registry</text>
+  </g>
+
+  <g transform="translate(0 284)">
+    <text class="t-b" x="16" y="24">no verifier</text><text class="t-s" x="16" y="40">default resolver</text>
+    <rect class="bad" x="228" y="4" width="696" height="48" rx="4"/>
+    <text class="t-c" x="238" y="24">no boundary: every caller names their own user, and every caller is in one shared org</text>
+    <text class="t-s" x="238" y="40">U1 · D4 · the documented dev-only mode; @flow-state-dev/node refuses to serve it on a network</text>
+  </g>
+
+  <g id="legend" transform="translate(16 360)">
+    <rect class="ok" x="0" y="0" width="14" height="14" rx="3"/><text class="t-c" x="22" y="11">separate</text>
+    <rect class="shr" x="100" y="0" width="14" height="14" rx="3"/><text class="t-c" x="122" y="11">shared by design</text>
+    <rect class="wry" x="250" y="0" width="14" height="14" rx="3"/><text class="t-c" x="272" y="11">shared, easy to mistake for separate</text>
+    <rect class="bad" x="500" y="0" width="14" height="14" rx="3"/><text class="t-c" x="522" y="11">crosses or leaks between tenants</text>
+    <text class="t-s" x="0" y="40">ids are legs in poc/security-model/model.poc.test.ts (M, S, F, T, U) and poc/owner-planes/planes.poc.test.ts (C, D)</text>
+    <text class="t-s" x="0" y="56">open in Linear and not re-run here: FIX-1022 (session key carries no principal), FIX-1286 (run workspace keyed on a caller's requestId)</text>
+  </g>
+</svg>

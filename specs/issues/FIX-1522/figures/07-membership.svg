@@ -1,0 +1,75 @@
+<svg viewBox="0 0 940 400" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Membership. On the left, the host's verifier issues one principal per request: a user and an org. In the middle, users alice, bob and mallory are joined to orgs acme and globex by lines, each line a principal the verifier issued: alice with acme and with globex, bob with acme, mallory with globex. So an org has many users and a user has many orgs, and the framework keeps no membership list of its own. On the right, sessions, each pinned to exactly one user and one org for life: alice at acme, alice at globex, bob at acme. Along the bottom, the tenant header, read straight from the request and not verified, which only partitions sessions.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .n-ver { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-usr { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-org { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-ses { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .n-ten { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .edge  { stroke:var(--ink-2); stroke-width:1.4; }
+    .a     { fill:none; stroke:var(--ink-3); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="400"/>
+
+  <g id="verifier">
+    <text class="t-lbl" x="16" y="26">1 · THE VERIFIER (HOST-OWNED)</text>
+    <rect class="n-ver" x="16" y="40" width="200" height="112" rx="6"/>
+    <text class="t-b" x="30" y="64">resolvePrincipal</text>
+    <text class="t-s" x="30" y="84">per request, from a token</text>
+    <text class="t-s" x="30" y="98">the caller cannot forge</text>
+    <text class="t-c" x="30" y="124">→ { userId, orgId }</text>
+    <text class="t-s" x="30" y="142">both required (FIX-1442)</text>
+    <path class="a" d="M220 96 H 262" marker-end="url(#h)"/>
+  </g>
+
+  <g id="membership">
+    <text class="t-lbl" x="272" y="26">2 · WHO MAY ACT FOR WHICH ORG</text>
+    <rect class="n-usr" x="272" y="44" width="110" height="30" rx="4"/><text class="t-c" x="284" y="63">alice</text>
+    <rect class="n-usr" x="272" y="92" width="110" height="30" rx="4"/><text class="t-c" x="284" y="111">bob</text>
+    <rect class="n-usr" x="272" y="140" width="110" height="30" rx="4"/><text class="t-c" x="284" y="159">mallory</text>
+    <rect class="n-org" x="482" y="62" width="110" height="30" rx="4"/><text class="t-c" x="494" y="81">acme</text>
+    <rect class="n-org" x="482" y="122" width="110" height="30" rx="4"/><text class="t-c" x="494" y="141">globex</text>
+    <path class="edge" d="M382 59 L482 77 M382 59 L482 137 M382 107 L482 77 M382 155 L482 137"/>
+    <text class="t-s" x="272" y="194">an org has many users · a user has many orgs (M1, M2)</text>
+    <text class="t-s" x="272" y="210">each line is a principal the verifier issued — the</text>
+    <text class="t-s" x="272" y="224">framework keeps no membership list of its own</text>
+  </g>
+
+  <g id="sessions">
+    <text class="t-lbl" x="640" y="26">3 · SESSIONS — ONE USER, ONE ORG, FOR LIFE</text>
+    <rect class="n-ses" x="640" y="44" width="284" height="30" rx="4"/><text class="t-c" x="652" y="63">s1 · alice @ acme</text>
+    <rect class="n-ses" x="640" y="84" width="284" height="30" rx="4"/><text class="t-c" x="652" y="103">s2 · alice @ globex</text>
+    <rect class="n-ses" x="640" y="124" width="284" height="30" rx="4"/><text class="t-c" x="652" y="143">s3 · bob @ acme</text>
+    <text class="t-s" x="640" y="176">alice@globex on s1 → 403, or 202 then refused (M3)</text>
+    <text class="t-s" x="640" y="192">bob on s1 → 403 (M3)</text>
+    <text class="t-s" x="640" y="208">listings show your user AND your current org (M4)</text>
+  </g>
+
+  <g id="tenant">
+    <rect class="n-ten" x="16" y="262" width="908" height="68" rx="6"/>
+    <text class="t-lbl" x="30" y="284">BESIDE ALL OF THIS · THE TENANT HEADER</text>
+    <text class="t-c" x="30" y="304">x-tenant-id is read straight from the request and never verified. It namespaces sessions only:</text>
+    <text class="t-c" x="30" y="320">the same user's user and org data is the same data under every tenant (T1). It is a partition, not a security boundary.</text>
+  </g>
+
+  <g id="answer">
+    <text class="t-b" x="16" y="364">Many users per org, and many orgs per user. The verifier is the membership.</text>
+    <text class="t-s" x="16" y="384">The framework trusts whatever pair it is handed, and pins each session to that pair.</text>
+  </g>
+</svg>

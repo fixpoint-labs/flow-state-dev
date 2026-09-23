@@ -1,0 +1,64 @@
+<svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A matrix of storage scopes against who shares them. Session scope is keyed by the session id, namespaced by tenant, and is shared with no one. User scope is keyed by the bare user id: not shared with other users, but shared across every org the user is in, across every tenant, and across flows unless the resource is flow-isolated. Org scope is keyed by the bare org id: shared by every member of the org by design, not shared with other orgs, shared across tenants, and across flows unless flow-isolated. Flow isolation adds the instance id to a user or org key, separating flows but nothing else.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .sep   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .shr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .wry   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" width="940" height="330"/>
+
+  <g id="columns">
+    <text class="t-lbl" x="16" y="30">SCOPE · KEYED BY</text>
+    <text class="t-lbl" x="236" y="30">OTHER USERS, SAME ORG</text>
+    <text class="t-lbl" x="408" y="30">SAME USER, OTHER ORG</text>
+    <text class="t-lbl" x="580" y="30">OTHER FLOWS</text>
+    <text class="t-lbl" x="752" y="30">OTHER TENANTS</text>
+  </g>
+
+  <g id="row-session" transform="translate(0 44)">
+    <text class="t-b" x="16" y="24">session</text><text class="t-s" x="16" y="40">sessionId (+ tenant)</text>
+    <rect class="sep" x="228" y="4" width="164" height="48" rx="4"/><text class="t-c" x="238" y="24">separate</text><text class="t-s" x="238" y="40">owner only · M3</text>
+    <rect class="sep" x="400" y="4" width="164" height="48" rx="4"/><text class="t-c" x="410" y="24">separate</text><text class="t-s" x="410" y="40">org pinned · M3</text>
+    <rect class="sep" x="572" y="4" width="164" height="48" rx="4"/><text class="t-c" x="582" y="24">separate</text><text class="t-s" x="582" y="40">one instance per session</text>
+    <rect class="sep" x="744" y="4" width="180" height="48" rx="4"/><text class="t-c" x="754" y="24">separate</text><text class="t-s" x="754" y="40">404 across tenants · T1</text>
+  </g>
+
+  <g id="row-user" transform="translate(0 104)">
+    <text class="t-b" x="16" y="24">user</text><text class="t-s" x="16" y="40">bare userId</text>
+    <rect class="sep" x="228" y="4" width="164" height="48" rx="4"/><text class="t-c" x="238" y="24">separate</text><text class="t-s" x="238" y="40">C1</text>
+    <rect class="wry" x="400" y="4" width="164" height="48" rx="4"/><text class="t-c" x="410" y="24">shared</text><text class="t-s" x="410" y="40">follows the person · S2</text>
+    <rect class="shr" x="572" y="4" width="164" height="48" rx="4"/><text class="t-c" x="582" y="24">shared by default</text><text class="t-s" x="582" y="40">unless flowIsolation</text>
+    <rect class="wry" x="744" y="4" width="180" height="48" rx="4"/><text class="t-c" x="754" y="24">shared</text><text class="t-s" x="754" y="40">T1</text>
+  </g>
+
+  <g id="row-org" transform="translate(0 164)">
+    <text class="t-b" x="16" y="24">org</text><text class="t-s" x="16" y="40">bare orgId</text>
+    <rect class="shr" x="228" y="4" width="164" height="48" rx="4"/><text class="t-c" x="238" y="24">shared, by design</text><text class="t-s" x="238" y="40">M1</text>
+    <rect class="sep" x="400" y="4" width="164" height="48" rx="4"/><text class="t-c" x="410" y="24">separate</text><text class="t-s" x="410" y="40">S1 · M2</text>
+    <rect class="shr" x="572" y="4" width="164" height="48" rx="4"/><text class="t-c" x="582" y="24">shared by default</text><text class="t-s" x="582" y="40">unless flowIsolation</text>
+    <rect class="wry" x="744" y="4" width="180" height="48" rx="4"/><text class="t-c" x="754" y="24">shared</text><text class="t-s" x="754" y="40">T1</text>
+  </g>
+
+  <g id="note">
+    <text class="t-s" x="16" y="248">flowIsolation: true appends the instance id to a user or org key. It separates flows, and nothing else on this grid.</text>
+  </g>
+
+  <g id="legend" transform="translate(16 272)">
+    <rect class="sep" x="0" y="0" width="14" height="14" rx="3"/><text class="t-c" x="22" y="11">separate</text>
+    <rect class="shr" x="110" y="0" width="14" height="14" rx="3"/><text class="t-c" x="132" y="11">shared, and that is the point of the scope</text>
+    <rect class="wry" x="400" y="0" width="14" height="14" rx="3"/><text class="t-c" x="422" y="11">shared, and a multi-org or multi-tenant host may not expect it</text>
+    <text class="t-s" x="0" y="42">ids are legs in poc/security-model/model.poc.test.ts and poc/owner-planes/planes.poc.test.ts</text>
+  </g>
+</svg>

@@ -5,6 +5,10 @@ set is deliberately skipped: this directory holds the findings, six figures, and
 they come from ([`poc/owner-planes/`](poc/owner-planes/README.md), 24 legs, all green on `main`
 at `d8d4c26`). Linear: [FIX-1522](https://linear.app/fixpoint-labs/issue/FIX-1522).
 
+> **See also: [the multitenancy model](SECURITY-MODEL.md).** How users, orgs, sessions and flow
+> instances relate, in five figures. It found one cross-org gap: any org can run another org's
+> hired seat with that org's instructions (F2).
+
 ## The short version
 
 **One hire store works.** An org's team and each user's private team can share FIX-1475's roster
