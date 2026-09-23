@@ -7,5 +7,7 @@
   "seatId": "research",
   "legacySeatId": "eng.lead",
   "secret": "ACME-ONLY-ROADMAP-MARKER",
-  "widePattern": "workforce/[area]/[owner]/[seat]"
+  "widePattern": "workforce/[area]/[owner]/[seat]",
+  "managerId": "eng.manager",
+  "hiredSeatId": "analyst"
 }

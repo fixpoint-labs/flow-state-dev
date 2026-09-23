@@ -1,6 +1,6 @@
 # hire-plane › it keeps a hired seat with its owner
 
-**Issue:** FIX-1529
+**Issue:** FIX-1529 (leg h: FIX-1542)
 **Outcome:** A seat hired for one person in one organization stays there. A teammate cannot list, open, or run it. Another organization cannot either, including after the process restarts and the row is read back. The org roster's browser collection does not hand back that person's private row, and a flow whose collection pattern could resolve onto those rows is not admitted.
 **Input:** `fixtures/input.json` — two orgs, three users, two seat ids, the private marker, and the wide pattern. Held-out: every id and the marker are read from the fixture and graded against HTTP responses and the `seen/*` rows the actions write. Swapping any of them must still pass.
 **Signal:** against `createFlowState`'s HTTP router, in-memory stores, no model.
@@ -11,13 +11,15 @@
 (e) A private roster row holding the marker is invisible to the teammate's read through the browser collection: the action records `undefined`, and the marker is absent.
 (f) Registering a flow that declares the fixture's wide pattern throws, and no `seen` row from that flow contains the marker.
 (g) A stored row whose `owningOrgId` is the other organization is a reload problem. Opening the address it would have minted is `404`.
+(h) A manager seat calls `createSeatHireCapability`'s `hire` under the owner organization, with the fixture marker as instructions. The row it wrote is copied as-is into both organizations' roster cells. Reloaded in the owner organization it mints; reloaded in the other it is a named problem and mints nothing. The other organization's user opens the address the copy would have minted and gets `404`, so the marker is never read there.
 
-**Anti-game:** a hollow pass would assert that `ownerPin` is set, or that some request returned 404, without an owner run that actually writes the marker — both hold if every address 404s, and the pin field holds if admission never consults it. So the check MUST see the marker written by the owner, MUST see that same marker absent from the teammate's and the other organization's reads, MUST see the shared app flow still run for the other organization, and MUST grade the catalog by who is asking. It must not grade `pinOf` or the address string.
+**Anti-game:** a hollow pass would assert that `ownerPin` is set, or that some request returned 404, without an owner run that actually writes the marker — both hold if every address 404s, and the pin field holds if admission never consults it. So the check MUST see the marker written by the owner, MUST see that same marker absent from the teammate's and the other organization's reads, MUST see the shared app flow still run for the other organization, and MUST grade the catalog by who is asking. It must not grade `pinOf` or the address string. For (h), a refused reload proves nothing on its own, because a broken row is refused everywhere: the same copied row MUST mint in the owner organization, and the row MUST come from the real `hire` tool, not be hand-written with a stamp.
 **Model:** n/a — handlers only. The property is who can open and read the seat, not model output.
 **Run:** `pnpm tsx goals/hire-plane/keeps-a-hired-seat-with-its-owner/run.mts`
 **Controls:** none in the runner. The red state is a source revert, so it fails for the reason a missing fence fails and not because the runner skipped a leg.
 - Drop the collection pattern check in `packages/engine/src/context/resource-registry.ts`. Must FAIL leg (e) only.
 - Make `rosterPatternOverlapsPrivate` return false in `packages/core/src/types/collection-patterns.ts`. Must FAIL leg (f) only.
+- Drop `owningOrgId: orgId` from the `hire` tool's `toHiredSeatRow` call in `packages/workforce/src/seat-hire-capability.ts`, then rebuild workforce. Must FAIL leg (h) only.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
