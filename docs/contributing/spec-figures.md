@@ -227,26 +227,37 @@ Three facts decide that form:
 `#gh-light-mode-only` / `#gh-dark-mode-only` suffixes follows GitHub's theme instead, and is the
 one reason to render PNGs for a body. Default to the SVG.
 
-**Some tooling refuses to write an image into a body.** The GitHub tool this repo's cloud agents
-write PR bodies with wraps every absolute image URL in backticks on write — SVG or PNG, markdown or
-`<img>`, reference-style or bare — so the body arrives with the image defanged into code.
+**Read the stored body after you write it.** The line above renders when the stored `src` is
+the URL you sent. The failure that drops a figure does not delete the tag. It wraps the
+`raw.githubusercontent.com` URL in backticks and takes the attribute's closing quote with it:
 
-**Three things about it, measured on a real PR rather than assumed** (#1818):
+```html
+<img src="``https://raw.githubusercontent.com/…/figure.svg"`` width="940" alt="…" />
+```
 
-- **It is deterministic, not sporadic.** The same URL defangs on every write, so a retry is not a
-  fix and "it worked last time" is not evidence.
-- **It keys on the URL, not the link text.** Renaming a link changed nothing; changing what the URL
-  pointed at fixed it. A `.md` filename can trigger it too, not only an image — so a *link* can
-  arrive defanged while the images beside it survive.
-- **Creating a PR does not defang; updating one does.** Images written by `create_pull_request`
-  render; the first `update_pull_request` kills them. So the safe pattern is **get the body right
-  on the first write**, and treat every later edit as unable to carry an image — which is the real
-  reason the never-rewrite rule below is not merely about politeness to a human's paste. Two
-rules follow. **If the image line comes back as code, don't fight it**: leave a link to the spec's
-blob view (which renders every figure) where the image would have been, and hand the person the
-exact `<img>` line to paste — a person pasting it into the description works. **A body a person
-has pasted an image into is never rewritten by that tool again**: the rewrite would defang what
-they pasted. Re-pinning on such a PR is a line the person changes, and the refresh says so.
+That `src` does not load. It is the body #1905 stored at create, on 2026-09-18. It is not what
+an update does to a clean line. #1944 stored three clean `<img>` lines at create and still had
+them after every later edit. A remeasure on 2026-09-23 stored the same clean line on a
+description create, a description update, and a comment, including the line inside a code
+fence (#2082, #2083). GitHub's rendered HTML for that create contained the `<img>`.
+
+There is no create-versus-update rule, and a comment is not a different rule. An earlier
+note that tied the backticks to update, or to the comment channel, does not match those
+bodies. Write the line, then GET the stored body.
+
+- **No backtick in the `src`, and it starts with `https://`.** It renders. Leave it. A later
+  edit keeps it. That is how a refreshed epic body still shows the figure. Do not drop the
+  figure because an update is assumed to kill it.
+- **A backtick in the `src`.** It will not render, and sending the same write again will not
+  clear the backticks. Put a link to the blob view, which renders the figure, where the image
+  would have been, and hand a person the clean line — the line you sent, not the line that
+  came back. A person pasting the clean line into the description works.
+- **A body a person has repaired is not rewritten.** A refresh returns the new pins for them
+  to change. Rewriting that body is how a repaired figure gets lost.
+
+GET is the check. The Cloud session's own token cannot create or update a pull request — the
+pulls API returns 403 — so a curl PATCH from that token is not a write, and a 403 is not a
+stripped body.
 
 ## Verify (BP-003)
 
