@@ -372,6 +372,13 @@ The renderer resolves components from `FlowProvider`'s `renderers` prop:
 - Class-based types (`message`, `reasoning`, etc.) → one component each
 - Parameterized types (`component`, `container`) → sub-key lookup by `item.component`
 
+`ItemsRenderer` supplies its unfiltered item array through `SessionItemsProvider`
+in `@flow-state-dev/react`; nested renderers read it with `useSessionItems()`.
+Nested lists inherit the enclosing source rather than replacing it with their
+subset. An explicit provider overrides that source, including with an empty
+array. Standalone renderers outside `ItemsRenderer` need an explicit source;
+`FlowProvider` supplies defaults and renderer registration, not item data.
+
 ## Action Execution Flow
 
 ```

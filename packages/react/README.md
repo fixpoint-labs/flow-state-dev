@@ -366,6 +366,10 @@ The player exposes `enqueueChunk(chunk)` for direct callers and `dispose()` for 
 <ItemsRenderer items={session.items} />
 ```
 
+`ItemsRenderer` supplies its unfiltered `items` array to descendant renderers through `useSessionItems(): OutputItem[]`. Nested lists preserve the enclosing item source, so a renderer can read sibling items even when its own list displays a subset. `FlowProvider` configures defaults and renderers; it does not supply session items.
+
+For a standalone renderer, wrap it in `<SessionItemsProvider value={items}>`. Both `SessionItemsProvider` and `useSessionItems` are exported from `@flow-state-dev/react`. An explicit provider overrides the enclosing source, including when `value={[]}`. Without a provider or an enclosing `ItemsRenderer`, the hook returns an empty array.
+
 Custom renderers receive `{ item }` as their prop:
 
 ```tsx

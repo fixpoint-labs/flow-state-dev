@@ -128,7 +128,6 @@ import {
   ItemsRenderer,
 } from "@flow-state-dev/react";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
-import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { Conversation } from "@/components/flow-state/conversation";
 
 export function ContentReview({ userId }: { userId: string }) {
@@ -149,11 +148,9 @@ function ReviewSurface() {
 
   return (
     <SuspensionResolverProvider resolve={session.resumeSuspension}>
-      <SessionItemsProvider value={session.items}>
-        <Conversation>
-          <ItemsRenderer items={session.items} />
-        </Conversation>
-      </SessionItemsProvider>
+      <Conversation>
+        <ItemsRenderer items={session.items} />
+      </Conversation>
 
       <form
         onSubmit={(e) => {
@@ -176,7 +173,7 @@ Submitting runs the flow until the gate. The `Approval` card appears in the conv
 Two pieces make the live, in-place update work:
 
 - **`SuspensionResolverProvider`** hands the card the session's streaming resume (`session.resumeSuspension`). Without it, the card still resolves, but the continuation only appears after the session refetches. With it, the resumed output streams onto the same request the user is watching. This matters most on serverless, where the continuation runs in a different invocation than the original stream.
-- **`SessionItemsProvider`** lets the card see the `suspension_resume` item that records the outcome, so it shows the receipt on resolve and after a reload. It's the same context `TaskPlan` and other stream-aware components use.
+- **`ItemsRenderer`** supplies the session items to its renderers, including the `suspension_resume` item that records the outcome. The card uses it to show the receipt on resolve and after a reload. A standalone card outside `ItemsRenderer` needs `<SessionItemsProvider value={session.items}>`, imported from `@flow-state-dev/react`.
 
 ### Without the ui registry
 

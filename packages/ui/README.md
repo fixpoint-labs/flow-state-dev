@@ -39,7 +39,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `shimmer` | Animated text shimmer for streaming/loading states |
 | `streaming-indicator` | In-flight status indicator with a "Working..." fallback (muted "Tidying up..." during background drain) |
 | `request-group` | Groups items by request ID with streaming and sources |
-| `session-items-context` | React context for passing session items to nested components |
+| `session-items-context` | Re-exports `SessionItemsProvider` and `useSessionItems` from `@flow-state-dev/react` |
 | `task-plan` | Section-grouped renderer for a TaskCollection. Subscribes to `task-change` and `task-board-meta` |
 | `artifact` | Composable artifact viewer shell with header, actions, and content areas |
 | `file-tree` | Tree-structured file and folder display with expand/collapse and selection |
@@ -73,6 +73,8 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 </FlowProvider>
 ```
 
+`ItemsRenderer` supplies the full input array to nested renderers through `useSessionItems()`, so the composition above needs no extra item provider. Nested lists preserve that source. `FlowProvider` supplies defaults and the renderer registry, not session items.
+
 Sources are excluded from the renderer map (`source: false`) — render them grouped separately via `<SourcesGroup>` to display as a collapsed list after the message thread.
 
 `chatAssistantRenderers` maps the `suspension` slot to a `SuspensionCard` that picks the right card by the suspension's reason and `resumeSchema` shape: the `Approval` card for `human_approval`, and the `Question` / `Selection` / `Form` cards for `human_input` (free text, a choice from an enum, or a flat-object form). All four are thin views over `useSuspensionForm` / `useApproval`. Nested or union schemas fall outside the flat-form boundary — name your own component via the suspension's `render.component` hint for those.
@@ -100,7 +102,7 @@ const renderers = {
 ```tsx
 import { TaskPlan } from "@/components/flow-state/task-plan";
 
-// inside a session-aware view (SessionItemsProvider in scope)
+// inside an ItemsRenderer renderer or an explicit SessionItemsProvider
 <TaskPlan collectionId="research-board" />
 
 // with assignee sub-grouping
@@ -115,7 +117,7 @@ import { TaskPlan } from "@/components/flow-state/task-plan";
 
 Sections render in canonical order (`pending → in_progress → blocked → parked → completed → errored`), empty sections hide, `cancelled` is hidden by default. Statuses outside the canonical seven trail at the end with a humanized label, so pattern wrappers that emit extended states (`planning`, `replanning`, `reviewing`) still render. Pass `statusConfig` to customize their presentation.
 
-`TaskPlan` reads its items from `useSessionItems()` by default; pass an explicit `items` prop when rendering outside that context (tests, replayed snapshots).
+`TaskPlan` reads its items from `useSessionItems()` by default. Outside `ItemsRenderer`, supply `<SessionItemsProvider value={items}>` or pass `items` directly to `TaskPlan` for a standalone board or replayed snapshot. An explicit provider overrides the enclosing source, including an empty array. The registry’s `session-items-context` re-exports the provider and hook from `@flow-state-dev/react`; both imports share the same item source.
 
 ### Generative UI
 

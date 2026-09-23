@@ -45,7 +45,7 @@ Human-in-the-loop approval card for `suspension` items. Shows the gate's message
 fsdev ui add approval
 ```
 
-The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. It reads the resolution from `SessionItemsProvider`, so wrap your item list in one for the receipt to show on reload. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
+The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. `ItemsRenderer` supplies the session items the card uses to show its resolution receipt on reload. A standalone card needs `<SessionItemsProvider value={session.items}>` around it. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
 
 ## ModelBadge
 
@@ -71,7 +71,9 @@ fsdev ui add audit-annotation
 
 ## SessionItemsContext
 
-React context for passing session items down to nested components. Required by any component that needs to subscribe to the item stream without prop drilling — `TaskPlan`, `RequestGroup`, and registry components that watch their own items.
+The registry re-exports `SessionItemsProvider` and `useSessionItems` from `@flow-state-dev/react`. `ItemsRenderer` supplies its unfiltered input array automatically, so the `FlowProvider` + `Conversation` + `ItemsRenderer` composition above needs no extra provider. Nested lists preserve the enclosing item source.
+
+Use an explicit provider for standalone components or to override the enclosing source. An empty array is a valid override. `useSessionItems()` returns an empty array when no item source is present.
 
 ```bash
 fsdev ui add session-items-context
@@ -80,7 +82,7 @@ fsdev ui add session-items-context
 ```tsx
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 
-<SessionItemsProvider items={session.items}>
+<SessionItemsProvider value={session.items}>
   <TaskPlan collectionId="research-board" />
 </SessionItemsProvider>
 ```
@@ -106,6 +108,8 @@ import { TaskPlan } from "@/components/flow-state/task-plan";
 
 <TaskPlan collectionId="research-board" />
 ```
+
+Outside `ItemsRenderer`, wrap `TaskPlan` in `SessionItemsProvider` as shown above, or pass `<TaskPlan collectionId="research-board" items={session.items} />`.
 
 For a board-style horizontal layout, build a `TaskCollection` consumer of the same item streams rather than forking this renderer.
 

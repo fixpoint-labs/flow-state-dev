@@ -1,12 +1,4 @@
 "use client";
 
-import { createContext, useContext } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
-
-const SessionItemsContext = createContext<OutputItem[]>([]);
-
-export const SessionItemsProvider = SessionItemsContext.Provider;
-
-export function useSessionItems(): OutputItem[] {
-  return useContext(SessionItemsContext);
-}
+// Share the item source that ItemsRenderer supplies to registered renderers.
+export { SessionItemsProvider, useSessionItems } from "@flow-state-dev/react";

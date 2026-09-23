@@ -177,6 +177,8 @@ export {
   type FlowProviderProps
 } from "./context/FlowContext";
 
+export { SessionItemsProvider, useSessionItems } from "./context/SessionItemsContext";
+
 export {
   SuspensionResolverProvider,
   useSuspensionResolver,

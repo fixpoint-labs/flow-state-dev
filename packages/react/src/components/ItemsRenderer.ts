@@ -4,7 +4,7 @@
  * Items are rendered in the order provided — callers (useSession, etc.)
  * are responsible for sorting.
  */
-import { createElement, Fragment, type ComponentType, type ReactNode } from "react";
+import { createElement, Fragment, useContext, type ComponentType, type ReactNode } from "react";
 import type {
   ToolOutputItem,
   ComponentItem,
@@ -15,6 +15,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
+import { SessionItemsContext, SessionItemsProvider } from "../context/SessionItemsContext";
 import type { RendererRegistry } from "../registry/block-renderers";
 import { ItemRenderer } from "./ItemRenderer";
 
@@ -204,6 +205,8 @@ export function buildItemRenderStream(
 
 /**
  * Renders output items in the order provided.
+ * Supplies the unfiltered items to nested renderers via useSessionItems.
+ * Nested lists preserve the enclosing item source, including explicit providers.
  *
  * Does not re-sort — useSession already sorts by timestamp with
  * itemIndex as tiebreaker.
@@ -215,9 +218,10 @@ export function buildItemRenderStream(
  * items in the filtered stream render as a single group via the supplied
  * component rather than individually.
  */
-export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
+export function ItemsRenderer(props: ItemsRendererProps): ReactNode {
   const { deduplicateByKey = true, showSubAgents = false, toolGroupRenderer } = props;
   const { renderers } = useFlowContext();
+  const sessionItems = useContext(SessionItemsContext) ?? props.items;
 
   const stream = buildItemRenderStream(props.items, renderers, {
     deduplicateByKey,
@@ -241,7 +245,7 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
     }
   }
 
-  return stream.map((segment, index) => {
+  const children = stream.map((segment, index) => {
     if (segment.kind === "group") {
       const key = `tool-group-${segment.items[0]?.id ?? index}`;
       return createElement(
@@ -262,4 +266,5 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
     }
     return createElement(ItemRenderer, { item, key: item.id });
   });
+  return createElement(SessionItemsProvider, { value: sessionItems }, children);
 }

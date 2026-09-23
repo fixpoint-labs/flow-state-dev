@@ -235,6 +235,10 @@ import { ItemRenderer, ItemsRenderer } from "@flow-state-dev/react";
 <ItemRenderer item={item} />
 ```
 
+`ItemsRenderer` makes its unfiltered `items` array available to descendant renderers through `useSessionItems(): OutputItem[]`. Nested lists preserve the enclosing source, even when they render only a subset. `FlowProvider` supplies defaults and the renderer registry; it does not supply session items.
+
+For a standalone renderer, use `<SessionItemsProvider value={items}>`. Import the provider and hook from `@flow-state-dev/react`. An explicit provider overrides the enclosing source, including `value={[]}`. Without a provider or an enclosing `ItemsRenderer`, the hook returns an empty array.
+
 ### Custom Renderers
 
 All custom renderers receive `{ item }` as their prop:
