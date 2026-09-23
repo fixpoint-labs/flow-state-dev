@@ -73,6 +73,28 @@ const peekPrivate = handler({
   },
 });
 
+/** PROBE-D: read a private row by exact key through the single-segment BROWSER roster. */
+const peekViaBrowserRoster = handler({
+  name: "peek-via-browser-roster",
+  inputSchema: tagInput,
+  outputSchema: z.object({ ok: z.boolean() }),
+  resources,
+  execute: async (input, ctx) => {
+    const ref = ctx.resources.roster as unknown as ResourceCollectionRef;
+    let got: string;
+    try {
+      const row = await ref.getOptional("~alice/research");
+      got = row === undefined ? "undefined" : JSON.stringify((row as any).state ?? row);
+    } catch (e) {
+      got = `threw: ${(e as Error).message}`;
+    }
+    const seen = ctx.resources.seen as unknown as ResourceCollectionRef;
+    const { userId = "", orgId = "" } = ctx.session.identity;
+    await seen.create(input.tag, { instance: "peek-browser", as: `${userId}@${orgId}`, instructions: got });
+    return { ok: true };
+  },
+});
+
 /** PROBE-B2: read one other user's row by its exact key. */
 const peekAlice = handler({
   name: "peek-alice",
@@ -158,6 +180,7 @@ const appFlow = defineFlow({
     hand: { inputSchema: tagInput, block: handToAcmeSeat },
     peek: { inputSchema: tagInput, block: peekPrivate },
     peekAlice: { inputSchema: tagInput, block: peekAlice },
+    peekBrowser: { inputSchema: tagInput, block: peekViaBrowserRoster },
   },
   authentication: verified,
 });
@@ -362,6 +385,20 @@ describe("after · probes", () => {
     const s = await h.open(BOB);
     const r = await h.call("GET", ["sessions", (s as any).id, "debug", "resources", "privateRoster", "items"], BOB);
     console.log("PROBE-B4", r.status, JSON.stringify(r.json).slice(0, 300));
+  });
+
+  it("PROBE-D bob reads alice's private row by exact key through the browser roster (server-side and HTTP)", async () => {
+    const stores = inMemoryStores();
+    await storeRow(stores, "acme", "~alice/research", {
+      seatId: "research", flow: "seat", settings: {}, instructions: "ALICE-PRIVATE", owningOrgId: "acme", ownerUserId: "alice",
+    });
+    const h = await boot(stores);
+    const s = await h.open(BOB);
+    await h.act(BOB, (s as any).id, "peekBrowser", { tag: "via-browser" });
+    const server = (await h.runtime.stores.resourceState.get("org", "acme", "seen/via-browser")) as any;
+    console.log("PROBE-D server", server?.state?.instructions);
+    const http = await h.call("GET", ["sessions", (s as any).id, "resources", "roster", "~alice", "research"], BOB);
+    console.log("PROBE-D http", http.status, JSON.stringify(http.json).slice(0, 200));
   });
 
   it("PROBE-C2 a fully parameterised deep pattern slips the structural guard and lists private rows", async () => {
