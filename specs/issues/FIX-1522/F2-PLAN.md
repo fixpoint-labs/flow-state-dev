@@ -151,7 +151,9 @@ can refuse it.
 ![E7 in two lanes: before, a globex session's dispatch runs acme's seat; after, admission refuses it](figures/16-f2-e7-dispatch.svg)
 
 **E7 never touches `create_session`.** The dispatch seam creates the child session itself,
-so a fix that guards only session creation would leave this open.
+so a fix that guards only session creation would leave this open. Its board-drain leg (an org
+board draining onto a user-owned seat) is tracked as
+[FIX-1534](https://linear.app/fixpoint-labs/issue/FIX-1534).
 
 ![The flow catalog per caller: before, everyone sees every seat; after, each caller sees only matching seats](figures/18-f2-catalog.svg)
 
@@ -189,8 +191,9 @@ each is a different storage cell. The legs are R1–R3 in the
 
 **Plane 1 is a real plane, not a leftover.** It's the engine's `user` scope, and it already
 exists. What it lacks is a choice. Every shared user-scoped resource follows Alice into every
-org. Nothing lets one resource say "Acme only". That choice is the user-within-org cell in
-[README ask 1](README.md#need-your-sign-off), and it stays soft-later.
+org. Nothing lets one resource say "Acme only". That choice is the user-within-org cell from
+[README decision 1](README.md#decided), filed as the storage-cell engine issue under
+[FIX-1528](https://linear.app/fixpoint-labs/issue/FIX-1528).
 
 **On the rule of thumb for plane 2.** It's close, but the deciding fact is not who creates the
 resource. It's the **scope the resource declares**, together with the session's org:
@@ -231,13 +234,15 @@ and writes Acme's one org cell (M1).
 - Folding plane 3 into plane 1. Hire-private state must not rely on the shared user cell.
 - Reading org membership out of the user bag. Membership is the verifier's (M2).
 
-**Soft-later, named here and not filed:**
-- The user-within-org cell, so one resource can stay in one org.
-- Org ACLs and roles.
+**Soft-later:**
+- The user-within-org cell, so one resource can stay in one org. Filed as the storage-cell
+  engine issue under FIX-1528.
+- Org ACLs and roles. Not filed.
 - Tenant and auth rework (FIX-1503).
-- A full user-bag product.
+- A full user-bag product. Not filed.
 - Per-resource isolation for seat kinds (FIX-1396).
-- Caller-scoping on the debug listing (B4).
+- Caller-scoping on the debug listing (B4), filed as
+  [FIX-1535](https://linear.app/fixpoint-labs/issue/FIX-1535).
 
 ## What would falsify a FIX-1529 implementation
 
@@ -249,8 +254,8 @@ is true:
 - A foreign instance acks `202` before refusing (E1, E2).
 - The catalog is filtered in kitchen-sink rather than in the route (the invent-kill on
   KS-only fences).
-- A hire writer can register a hired seat without a pin, including the seat-hire tools in
-  flight on fixpoint-labs/flow-state-dev#2079 (c).
+- A hire writer can register a hired seat without a pin, including the seat-hire tools
+  shipped in fixpoint-labs/flow-state-dev#2079 (c).
 - A reloaded row can name an org other than the cell it came from (E5).
 
 ## Inside the invent-kills
@@ -268,6 +273,7 @@ is true:
 
 - **Unverified apps.** Every caller is `DEFAULT_ORG_ID`, so every pin matches and the fence
   is a no-op. That is the documented dev-only mode, not a gap. X1 (a runtime hire under
-  `DEFAULT_ORG_ID` makes the reload reject) is separate and still open.
+  `DEFAULT_ORG_ID` makes the reload reject) is separate, filed as
+  [FIX-1536](https://linear.app/fixpoint-labs/issue/FIX-1536).
 - **What a seat's tools reach outside FSD.** The pin stops another org from *running* the
   seat. It says nothing about credentials the seat's tools hold.

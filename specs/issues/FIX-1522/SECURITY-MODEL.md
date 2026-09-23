@@ -81,26 +81,21 @@ caller's org may use the instance.
 **Where tenancy holds and where it doesn't.** Read the "two orgs" row: sessions and data hold,
 instances and the catalog don't.
 
-## Need your sign-off
+## Decisions
 
-**1 · Should an instance belong to an org, and refuse everyone else's?** *Plain terms:* today a
+**1 · An instance belongs to an org, and refuses everyone else's.** Decided and built. Today a
 seat one customer hired can be run by any other customer's user, with the first customer's
-prompt and tools. *Trade-off:* binding instances to an org closes that. It needs an engine
-change: an instance records an owning org, and session creation, admission and the catalog all
-honour it. Shared app flows, the singletons everyone is meant to use, stay unbound. *My
-recommendation:* do it, and treat it as a security issue ahead of any multi-customer deploy of
-Workforce. Runtime hire should always set the owner, since the hiring org is known at that
-point. *What would change my mind:* if every real deployment is one customer per server
-process, the exposure is theoretical. Even then I'd fix it before anyone relies on that.
-*If we're wrong:* one customer runs another's agents with their instructions and tools, and
-that's the kind of incident that ends a deal.
+prompt and tools. The fence is an owning org recorded on each hired instance, honoured at
+session creation, admission and the catalog. Shared app flows stay unbound. It shipped as
+[FIX-1529](https://linear.app/fixpoint-labs/issue/FIX-1529) in
+fixpoint-labs/flow-state-dev#2091 (merged). See [What closes it](#what-closes-it).
 
-**2 · Is the tenant header meant to be a security boundary?** *Plain terms:* the header is set
-by the caller and only separates sessions. User and org data are shared across tenants
-(T1, already documented in `state-and-scopes.md`). *My recommendation:* no change to the
-engine, but say plainly in the user docs that tenant is a partition, not isolation, and that
-isolation comes from orgs. *What would change my mind:* a customer who uses tenants as their
-isolation unit. Then tenant has to come from the verifier like org does.
+**2 · The tenant header is a partition, not a security boundary.** The header is set by the
+caller and only separates sessions. User and org data are shared across tenants (T1, already
+documented in `state-and-scopes.md`). The recommendation, carried by approving this record: no
+engine change, and the user docs say plainly that tenant is a partition and that isolation
+comes from orgs. *What would change it:* a customer who uses tenants as their isolation unit.
+Then tenant has to come from the verifier like org does.
 
 ## Already known, not re-run here
 
@@ -115,6 +110,6 @@ The catalog leak (F1, C8) is the listing half of
 
 ## What closes it
 
-[F2-PLAN.md](F2-PLAN.md) shapes the fix now filed as
-[FIX-1529](https://linear.app/fixpoint-labs/issue/FIX-1529): an owner pin on every hired
-instance, read at open-session, admission and the catalog.
+[F2-PLAN.md](F2-PLAN.md) shapes the fix that shipped as
+[FIX-1529](https://linear.app/fixpoint-labs/issue/FIX-1529) (fixpoint-labs/flow-state-dev#2091,
+merged): an owner pin on every hired instance, read at open-session, admission and the catalog.

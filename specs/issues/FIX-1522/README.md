@@ -1,6 +1,7 @@
 # FIX-1522 · org- and user-owned Workforce planes: what the POC found
 
-An Explore, not a spec. There is no approval gate, and nothing here ships. The five-document spec
+An Explore, not a spec, and nothing here ships. It merges as a retained record once its direction
+is approved. The five-document spec
 set is deliberately skipped: this directory holds the findings, six figures, and the runnable POC
 they come from ([`poc/owner-planes/`](poc/owner-planes/README.md), 24 legs, all green on `main`
 at `d8d4c26`). Linear: [FIX-1522](https://linear.app/fixpoint-labs/issue/FIX-1522).
@@ -94,30 +95,43 @@ and a seat is one.
 shipped Workforce declarations that need an owner parameter (small). The dashed box, plus C7, is
 engine work.
 
-## Need your sign-off
+## Decided
 
-**1 · Does a person's private team follow them across orgs, or stay in the org it was built in?**
-*Plain terms:* if alice builds a private research team at Acme and then signs into Globex, should
-her Acme team be there? Today the storage says yes, and the key trick in the POC only hides it
-from some readers. *Trade-off:* following her is simpler and feels personal. Staying put is what
-every org admin will assume, and it matches "org is never optional". *My recommendation:* stays
-in the org. That needs the engine to gain a user-within-org storage cell, and I'd file it as an
-engine issue rather than work around it in Workforce. *What would change my mind:* a customer
-story where the private team is explicitly personal, like a personal assistant that goes wherever
-you go. *If we're wrong:* choosing per-org and later wanting it portable is a data move. Choosing
-portable and later needing per-org means users already have cross-org data we'd have to split.
+Both product questions this Explore raised are answered. Nothing is waiting on a product call.
 
-**2 · Do user planes wait for the catalog to be scoped?** *Plain terms:* every seat's address is
-visible to anyone who asks the server, and a user seat's address carries the user id and the seat
-name (`acme.~alice.therapy-notes`). *Trade-off:* waiting ties user planes to
-[FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)'s listing work. Not waiting ships a
-name leak. *My recommendation:* wait. Org seats leak the same way today, but a seat name a user
-typed is personal data in a way an org's `eng.lead` isn't. *What would change my mind:* seat
-names that are always system-generated. *If we're wrong:* a privacy incident that's cheap to
-cause and hard to take back.
+**1 · A private team stays in the org it was built in.** Decided by the product owner on
+2026-09-23. If alice builds a private research team at Acme and then signs into Globex, her Acme
+team is not there. It is not portable. Portability could come later as an explicit opt-in,
+and that is out of scope here. *What it locks in:* the engine needs a user-within-org storage
+cell, since today's user cell is one per person across orgs (C7). That is engine work, filed
+as the storage-cell engine issue under
+[FIX-1528](https://linear.app/fixpoint-labs/issue/FIX-1528), not a workaround in Workforce.
+*Why this way round:* per-org is what every org admin will assume and matches "org is never
+optional". Making it portable later is a data move. Splitting cross-org data that users already
+have would be much harder.
 
-No sign-off is needed on the bridge. It's falsified, and the invent-kill stands: cross-plane
+**2 · User planes wait for the catalog to be scoped.** Settled by the Architect on this PR:
+user planes wait on [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486). Every seat's
+address is visible to anyone who asks the server, and a user seat's address carries the user id
+and the seat name (`acme.~alice.therapy-notes`). A seat name a user typed is personal data in a
+way an org's `eng.lead` isn't. So no user plane ships until the listing is scoped.
+
+No decision was needed on the bridge. It's falsified, and the invent-kill stands: cross-plane
 collaboration stays a named gap, and its door is an explicit grant or invite rather than a seat.
+
+## Where the other findings went
+
+| Finding | Went to | State |
+|---|---|---|
+| F2, the cross-org instance fence ([F2-PLAN.md](F2-PLAN.md)) | [FIX-1529](https://linear.app/fixpoint-labs/issue/FIX-1529), fixpoint-labs/flow-state-dev#2091 | Merged |
+| Seat-hire capability | FIX-1525 / FIX-1526, fixpoint-labs/flow-state-dev#2079 | Shipped |
+| E7's board-drain leg | [FIX-1534](https://linear.app/fixpoint-labs/issue/FIX-1534) | Filed |
+| B4, debug endpoints skip per-user scoping | [FIX-1535](https://linear.app/fixpoint-labs/issue/FIX-1535) | Filed |
+| X1, a runtime hire under the default org bricks the reload | [FIX-1536](https://linear.app/fixpoint-labs/issue/FIX-1536) | Filed |
+| Per-resource isolation for seat kinds | [FIX-1396](https://linear.app/fixpoint-labs/issue/FIX-1396) | Existing issue |
+| The user-within-org storage cell (decision 1) | The storage-cell engine issue under FIX-1528 | Being filed |
+
+fixpoint-labs/flow-state-dev#2092 was closed as superseded by #2091.
 
 ## Found on the way
 
