@@ -148,7 +148,7 @@ See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onr
 
 Inspect current state at every scope level. View session-level state, user-level state, and org-level state. Resources and their content are visible. ClientData values appear in the detail panel.
 
-The Resources panel reads from a privileged debug endpoint and shows the full server-side state. Each entry can be toggled between the raw server view, the client view (what production clients receive after `client.data` projection), and a diff between the two. Production clients see only what each resource's `client` config allows. See [Debug vs client state](./debug-vs-client-state.md) for the mental model and how to enable the endpoint locally.
+The Resources panel reads from a privileged debug endpoint and shows the full server-side state, except for workforce roster seats owned by a user other than the session's user. Each entry can be toggled between the raw server view, the client view (what production clients receive after `client.data` projection), and a diff between the two. Production clients see only what each resource's `client` config allows. See [Debug vs client state](./debug-vs-client-state.md) for the mental model and how to enable the endpoint locally.
 
 ## Replay
 

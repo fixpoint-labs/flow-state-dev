@@ -5,7 +5,7 @@ title: "Debug vs client state"
 
 # Debug vs client state
 
-The DevTool shows you the full server-side state of a session. Your production clients see only what you let them see. This page explains the difference and how to control it.
+The DevTool shows you the full server-side state of a session, with one exception on the workforce roster. Your production clients see only what you let them see. This page explains the difference and how to control it.
 
 ## Two views of the same session
 
@@ -13,7 +13,7 @@ There are two ways to look at a session.
 
 Production clients (your React app, your CLI, anything calling the public API) read the session through the normal endpoints. What they get back is filtered: each resource's `client` config decides which fields ship, and collections obey `prefetchWindow` so a client only sees the items it asked for.
 
-The DevTool talks to a different surface. It calls a privileged debug endpoint that returns the raw server-side state, ignoring `client.data` projections and `prefetchWindow` entirely. It's the same session, but the DevTool sees it the way the runtime sees it.
+The DevTool talks to a different surface. It calls a privileged debug endpoint that returns the raw server-side state, ignoring `client.data` projections and `prefetchWindow`, with one roster exception [covered below](#what-the-debug-endpoint-returns). It's the same session, but the DevTool sees it the way the runtime sees it.
 
 ## What the debug endpoint returns
 
@@ -25,7 +25,13 @@ For each storage key the session touches, the debug response includes:
 - A second copy showing the projection your `client.data` would produce
 - Whether the resource may be written, and whether a model is offered a write tool for its content. Either can be absent; [Read-only resources](#read-only-resources) covers what that means
 
-It does not apply `prefetchWindow`. Every item in every collection is listed. It does not apply `client.data` to the storage view; that projection is shown alongside the raw state, not in place of it.
+It does not apply `prefetchWindow`: a collection lists all of its items, not a window of them.
+
+The workforce roster is the exception. A [user-owned seat](../workforce/durable-hire.md) that belongs to a user other than the session's user doesn't appear in the collection's item list or its item count, and fetching its content returns 404.
+
+On any collection, fetching content for a topic that doesn't match the collection's pattern also returns 404.
+
+It does not apply `client.data` to the storage view; that projection is shown alongside the raw state, not in place of it.
 
 The endpoint is read-only. You can't mutate state through it.
 
