@@ -24,7 +24,7 @@ All from `@flow-state-dev/workforce`:
 | `defineHiredRosterCollection()` | Declares the stored roster: an organization-scoped resource collection at `workforce/roster/*`, one row per hired seat. Takes no options. |
 | `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, with the user escaped, so two people can hire the same seat id. Throws when the organization id is not a single address segment, or when the seat id starts with `~`. |
 | `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
-| `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems }`. It registers nothing. |
+| `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems, byOrg }`. It registers nothing. |
 
 Two smaller helpers appear in the example below: `toHiredSeatRow` builds a stored row out of what a hire supplied, and `hiredSeatManifest` turns a row back into the record `hireWorkforce` takes.
 
@@ -258,6 +258,8 @@ import { Roster } from "@flow-state-dev/react";
 ```
 
 Keep the list from the boot somewhere your app can reach it. `reloadHiredSeats` runs on the server, and nothing carries its result to a browser on its own.
+
+The same result splits both lists by organization. `byOrg` has one entry per organization you passed in, in that order, each with that organization's `orgId`, `seats` and `problems`. An organization with nothing to report still gets an entry, with empty lists. Store each organization's problems where only that organization reads them, and write the empty ones too, so a problem fixed since the last start stops showing. A seat your registry then refuses belongs in its own organization's list as well.
 
 The roster collection itself is readable by a browser, so the seats come straight from it. Being organization-scoped, that read resolves against the organization the reading session belongs to. A seat crosses as `seatId`, `flow` and `instructions`. The settings bag stays on the server.
 
