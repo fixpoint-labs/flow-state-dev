@@ -274,7 +274,7 @@
       "title": "Session Items Context",
       "type": "registry:component",
       "description": "React context for passing session items to nested components like plan task correlation.",
-      "dependencies": ["@flow-state-dev/core"],
+      "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react"],
       "registryDependencies": [],
       "files": [{
         "type": "registry:component",

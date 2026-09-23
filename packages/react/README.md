@@ -366,6 +366,21 @@ The player exposes `enqueueChunk(chunk)` for direct callers and `dispose()` for 
 <ItemsRenderer items={session.items} />
 ```
 
+`ItemsRenderer` puts that `items` array in scope for nested `useSessionItems()` consumers when no `SessionItemsProvider` is already mounted. An ancestor provider stays in place. `ItemRenderer` does not mount one.
+
+When you render a stream-aware card outside `ItemsRenderer`, mount the provider yourself:
+
+```tsx
+import { SessionItemsProvider } from "@flow-state-dev/react";
+import { TaskPlan } from "@/components/flow-state/task-plan";
+
+<SessionItemsProvider value={session.items}>
+  <TaskPlan collectionId="research-board" />
+</SessionItemsProvider>
+```
+
+`useSessionItems()` returns `[]` when no provider is mounted.
+
 Custom renderers receive `{ item }` as their prop:
 
 ```tsx

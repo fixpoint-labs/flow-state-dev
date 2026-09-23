@@ -142,6 +142,42 @@ describe("the seats source", () => {
     expect(await seats!.entries(ctx)).toEqual([]);
   });
 
+  it("leaves a roster row owned by another org out of this cell's catalog", async () => {
+    // Both rows parse. The globex row is a reason from hiredSeatManifest, and
+    // reading it as a manifest would throw and blank the domain. The acme
+    // hire beside it is the one Discover should still list.
+    const { seats } = sourcesOf(EMPTY, { seats: "seatRows" }, "hiredRows");
+    const ctx = ctxWith(
+      {
+        seatRows: [
+          { id: "acme.eng.ada", kind: "agent" },
+          { id: "globex.eng.ada", kind: "agent" },
+        ],
+        hiredRows: [
+          {
+            seatId: "eng.ada",
+            flow: "agent",
+            settings: {},
+            instructions: "You take support tickets.",
+            owningOrgId: "acme",
+          },
+          {
+            seatId: "eng.ada",
+            flow: "agent",
+            settings: {},
+            instructions: "Globex body.",
+            owningOrgId: "globex",
+          },
+        ],
+      },
+      "acme",
+    );
+
+    const entries = await seats!.entries(ctx);
+    expect(entries.map((entry) => entry.id)).toEqual(["acme.eng.ada"]);
+    expect(entries[0]!.purpose).toBe("You take support tickets.");
+  });
+
   it("FIX-1526 · a file-declared seat still wins over a same-id roster row", async () => {
     const roster: DeclaredWorkforce = {
       workers: [worker("acme.eng.ada", "Declared on disk.")],

@@ -235,6 +235,8 @@ import { ItemRenderer, ItemsRenderer } from "@flow-state-dev/react";
 <ItemRenderer item={item} />
 ```
 
+`ItemsRenderer` puts its `items` array in scope for nested `useSessionItems()` consumers when no `SessionItemsProvider` is already mounted. An ancestor provider stays in place. `ItemRenderer` does not mount one. When you render a stream-aware card outside `ItemsRenderer`, wrap it in `<SessionItemsProvider value={items}>`.
+
 ### Custom Renderers
 
 All custom renderers receive `{ item }` as their prop:

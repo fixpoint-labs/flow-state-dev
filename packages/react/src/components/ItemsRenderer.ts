@@ -15,6 +15,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
+import { SessionItemsGate } from "../context/SessionItemsContext";
 import type { RendererRegistry } from "../registry/block-renderers";
 import { ItemRenderer } from "./ItemRenderer";
 
@@ -214,8 +215,13 @@ export function buildItemRenderStream(
  * When `toolGroupRenderer` is provided, consecutive `tool_output`
  * items in the filtered stream render as a single group via the supplied
  * component rather than individually.
+ *
+ * Mounts a session-items provider with `items` when none is already in
+ * scope, so container and HITL renderers can call `useSessionItems()`
+ * under the documented FlowProvider + ItemsRenderer composition. An
+ * ancestor provider is kept: its list may be a superset of `items`.
  */
-export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
+export function ItemsRenderer(props: ItemsRendererProps): ReactNode {
   const { deduplicateByKey = true, showSubAgents = false, toolGroupRenderer } = props;
   const { renderers } = useFlowContext();
 
@@ -241,7 +247,7 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
     }
   }
 
-  return stream.map((segment, index) => {
+  const nodes = stream.map((segment, index) => {
     if (segment.kind === "group") {
       const key = `tool-group-${segment.items[0]?.id ?? index}`;
       return createElement(
@@ -262,4 +268,6 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
     }
     return createElement(ItemRenderer, { item, key: item.id });
   });
+
+  return createElement(SessionItemsGate, { value: props.items }, nodes);
 }

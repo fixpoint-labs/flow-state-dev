@@ -16,9 +16,9 @@ import { useSessionItems } from "./session-items-context";
  * outcome) comes from `useApproval`; this component is presentation only.
  *
  * Wire it as a renderer type: it's included in `chatAssistantRenderers` as
- * `suspension: Approval`. Resolved state is derived from the session item stream
- * (via `useSessionItems`), so wrap your item list in `<SessionItemsProvider>` for
- * the card to collapse to a receipt on reload — the same requirement as `TaskPlan`.
+ * `suspension: Approval`. Resolved state is derived from the session item
+ * list via `useSessionItems`. `ItemsRenderer` provides that list; mount
+ * `<SessionItemsProvider>` only when rendering this card outside it.
  */
 export function Approval({ item }: { item: SuspensionItem }) {
   // Find the matching resume in the stream to know if (and how) this resolved.
