@@ -100,6 +100,10 @@ Restructuring breaks links and moves anchors — prove it didn't:
   `@docusaurus/plugin-client-redirects`).
 - Re-read moved/merged pages once as a reader to confirm the rearrangement flows.
 
+Where the pass changed what a page asserts, not only its wording, sweep every claim you corrected:
+run [`issue-implement`](../issue-implement/SKILL.md) 10.6's word and surface sweeps over the docs
+and package READMEs, and report both in the PR.
+
 ## Output
 
 - **Standalone:** present the working changes for review — a short summary of *what moved, what
