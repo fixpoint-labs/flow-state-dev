@@ -105,7 +105,7 @@ team is not there. It is not portable. Portability could come later as an explic
 and that is out of scope here. *What it locks in:* the engine needs a user-within-org storage
 cell, since today's user cell is one per person across orgs (C7). That is engine work, filed
 as the storage-cell engine issue under
-[FIX-1528](https://linear.app/fixpoint-labs/issue/FIX-1528), not a workaround in Workforce.
+[FIX-1538](https://linear.app/fixpoint-labs/issue/FIX-1538/a-users-private-team-stays-in-the-org-it-was-built-in), not a workaround in Workforce.
 *Why this way round:* per-org is what every org admin will assume and matches "org is never
 optional". Making it portable later is a data move. Splitting cross-org data that users already
 have would be much harder.
@@ -129,7 +129,8 @@ collaboration stays a named gap, and its door is an explicit grant or invite rat
 | B4, debug endpoints skip per-user scoping | [FIX-1535](https://linear.app/fixpoint-labs/issue/FIX-1535) | Filed |
 | X1, a runtime hire under the default org bricks the reload | [FIX-1536](https://linear.app/fixpoint-labs/issue/FIX-1536) | Filed |
 | Per-resource isolation for seat kinds | [FIX-1396](https://linear.app/fixpoint-labs/issue/FIX-1396) | Existing issue |
-| The user-within-org storage cell (decision 1) | The storage-cell engine issue under FIX-1528 | Being filed |
+| The user-within-org storage cell (decision 1) | [FIX-1538](https://linear.app/fixpoint-labs/issue/FIX-1538/a-users-private-team-stays-in-the-org-it-was-built-in) | Filed |
+| Unstamped hire rows from the seat-hire capability | [FIX-1542](https://linear.app/fixpoint-labs/issue/FIX-1542) | Fixed in #2116 |
 
 fixpoint-labs/flow-state-dev#2092 was closed as superseded by #2091.
 

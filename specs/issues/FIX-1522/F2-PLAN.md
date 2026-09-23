@@ -193,7 +193,7 @@ each is a different storage cell. The legs are R1–R3 in the
 exists. What it lacks is a choice. Every shared user-scoped resource follows Alice into every
 org. Nothing lets one resource say "Acme only". That choice is the user-within-org cell from
 [README decision 1](README.md#decided), filed as the storage-cell engine issue under
-[FIX-1528](https://linear.app/fixpoint-labs/issue/FIX-1528).
+[FIX-1538](https://linear.app/fixpoint-labs/issue/FIX-1538/a-users-private-team-stays-in-the-org-it-was-built-in).
 
 **On the rule of thumb for plane 2.** It's close, but the deciding fact is not who creates the
 resource. It's the **scope the resource declares**, together with the session's org:
@@ -236,7 +236,7 @@ and writes Acme's one org cell (M1).
 
 **Soft-later:**
 - The user-within-org cell, so one resource can stay in one org. Filed as the storage-cell
-  engine issue under FIX-1528.
+  engine issue under FIX-1538.
 - Org ACLs and roles. Not filed.
 - Tenant and auth rework (FIX-1503).
 - A full user-bag product. Not filed.
