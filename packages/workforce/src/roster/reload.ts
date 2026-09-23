@@ -132,6 +132,28 @@ export interface HiredRosterReload {
    * honest.
    */
   problems: string[];
+  /**
+   * The same seats and problems, one entry per organization in `orgIds`, in
+   * that order. **Every organization is present**, with empty lists where it
+   * had nothing: a caller that publishes a report per organization has to
+   * rewrite the clean ones too, or last boot's problems stay standing where
+   * nobody overwrote them.
+   *
+   * Carries the seats as well as the problems because a seat can still be
+   * refused after this returns, at registration, and that refusal belongs to
+   * the organization the seat was hired for. The flat fields above are the
+   * union of these slices, unchanged.
+   */
+  byOrg: HiredRosterOrgReload[];
+}
+
+/** One organization's share of a {@link HiredRosterReload}. */
+export interface HiredRosterOrgReload {
+  orgId: string;
+  /** This organization's seats, ordered by address. */
+  seats: FlowInstance[];
+  /** This organization's problems, in the dialect of the flat `problems`. */
+  problems: string[];
 }
 
 function messageOf(error: unknown): string {
@@ -186,8 +208,11 @@ export async function reloadHiredSeats(
 
   const seats: FlowInstance[] = [];
   const problems: string[] = [];
+  const byOrg: HiredRosterOrgReload[] = [];
 
   for (const [orgId, rowsByKey] of readsByOrg) {
+    const org: HiredRosterOrgReload = { orgId, seats: [], problems: [] };
+    byOrg.push(org);
     for (const key of Object.keys(rowsByKey).sort()) {
       const stored = rowsByKey[key]!;
       const where = `organization "${orgId}", row "${key}"`;
@@ -196,13 +221,13 @@ export async function reloadHiredSeats(
       if ("problem" in parsed) {
         // Left on disk exactly as it is. A boot that repaired a row it did not
         // understand would destroy the evidence of why it did not.
-        problems.push(`${where} — ${parsed.problem}`);
+        org.problems.push(`${where} — ${parsed.problem}`);
         continue;
       }
 
       const record = hiredSeatManifest(orgId, parsed.row);
       if ("problem" in record) {
-        problems.push(`${where} — ${record.problem}`);
+        org.problems.push(`${where} — ${record.problem}`);
         continue;
       }
 
@@ -217,15 +242,18 @@ export async function reloadHiredSeats(
       // already the careful one.
       try {
         const hired = hireWorkforce([record.manifest], { kinds: options.kinds });
-        seats.push(...hired);
+        org.seats.push(...hired);
       } catch (error) {
-        problems.push(`${where} — ${messageOf(error)}`);
+        org.problems.push(`${where} — ${messageOf(error)}`);
       }
     }
+    org.seats.sort((left, right) => left.id.localeCompare(right.id));
+    seats.push(...org.seats);
+    problems.push(...org.problems);
   }
 
   seats.sort((left, right) => left.id.localeCompare(right.id));
-  return { seats, problems };
+  return { seats, problems, byOrg };
 }
 
 /**
