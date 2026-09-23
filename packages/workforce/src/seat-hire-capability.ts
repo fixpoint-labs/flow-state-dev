@@ -248,6 +248,9 @@ export function createSeatHireCapability(
         instructions: input.instructions ?? null,
       });
       const record = hiredSeatManifest(orgId, row);
+      if ("problem" in record) {
+        throw new Error(`"${address}" could not be hired: ${record.problem}.`);
+      }
       const [seat] = hireWorkforce([record.manifest], {
         kinds,
         channelBoards: options.channelBoards,
