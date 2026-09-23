@@ -1536,22 +1536,14 @@ check('an owner-applied label still passes both gates', async () => {
 })
 
 check('FIX-1418: an agent-marked owner review is not the gate, and an unmarked one is suspect', async () => {
-  const { hasAgentAuthoredMarker, authorExcludedFromApproval, classifyApprovalArtifacts } = loadRules('epic-wake.js', [
+  const { hasAgentAuthoredMarker, classifyApprovalArtifacts } = loadRules('epic-wake.js', [
     'hasAgentAuthoredMarker',
-    'authorExcludedFromApproval',
     'classifyApprovalArtifacts',
   ])
   const header = 'from: fsd-head-of-engineering\nsession: epic-1355\nkind: review\n\nClear to implement.'
   assert.equal(hasAgentAuthoredMarker(header), true, 'the mailbox header is the marker')
   assert.equal(hasAgentAuthoredMarker('**FSD Architect** — Clear to implement.'), false, 'prose is not a marker')
   assert.equal(hasAgentAuthoredMarker('from: fsd-claude\nsession: x\nkind: review\n\n'), false, 'a header with no body is not a marker')
-  assert.equal(
-    authorExcludedFromApproval('jake', true, 'jake'),
-    false,
-    'FIX-1300: the owner is not excluded for being the PR author',
-  )
-  assert.equal(authorExcludedFromApproval('worker', true, 'jake'), true, 'every other author is still a self-approval')
-  assert.equal(authorExcludedFromApproval('jake', false, 'jake'), false)
 
   const ownerReview = {
     channel: 'review',
@@ -1572,12 +1564,17 @@ check('FIX-1418: an agent-marked owner review is not the gate, and an unmarked o
     'jake',
   )
   assert.equal(unmarked.approved, false, 'an unmarked owner-looking approval is not satisfied')
-  assert.equal(unmarked.suspectOwnerApproval, true, 'absence of the marker is suspect, not proof of the human')
   assert.equal(
-    authorExcludedFromApproval('jake', true, 'jake'),
-    false,
-    'the rejection is the suspect rule, not a regression of owner-counts-when-author',
+    unmarked.suspectOwnerApproval,
+    true,
+    'FIX-1300: the owner stays in the set as the author, and absence of the marker is suspect',
   )
+  const ownerNotAuthor = classifyApprovalArtifacts(
+    [{ ...ownerReview, prAuthor: false, body: 'Approved.' }],
+    'jake',
+  )
+  assert.equal(ownerNotAuthor.approved, false)
+  assert.equal(ownerNotAuthor.suspectOwnerApproval, true, 'an owner-login review is suspect even when they did not open the PR')
 
   const comment = classifyApprovalArtifacts(
     [{ ...ownerReview, channel: 'comment', state: 'COMMENT', body: 'Approved. Lets proceed.' }],

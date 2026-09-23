@@ -1665,18 +1665,7 @@ function bindByPosition(results, ids, onMismatch) {
   return byId
 }
 
-/**
- * Agent-authored GitHub reviews and comments.
- *
- * The grammar is the agent-mailbox header, copied so a workflow script (no imports) can
- * classify a body. `.omp/extensions/mailbox.ts` `parseMail` is the source of that grammar;
- * `verify.mjs` fails if the two literals drift. A valid header is `from`, `session`, an
- * optional `to`, then `kind` (`ask|reply|block|decision|review`), a blank line, and a
- * non-empty body. Anything else — a role signature, a disclaimer, a timestamp — is not a marker.
- *
- * @param {string} body review or comment body, from its first character
- * @returns {boolean} true when the body carries a well-formed agent header
- */
+/** Mailbox `parseMail` grammar, copied because a workflow script cannot import. `verify.mjs` fails if the literal drifts. */
 function hasAgentAuthoredMarker(body) {
   if (typeof body !== 'string' || !body) return false
   const match = body.replace(/\r\n/g, '\n').match(
@@ -1686,42 +1675,14 @@ function hasAgentAuthoredMarker(body) {
 }
 
 /**
- * Whether author-exclusion drops this login.
- *
- * FIX-1300: the configured owner is not excluded for being the PR author. Every PR is
- * opened under that login, so a literal "not the author" rule ruled the owner out by
- * construction. Every other author is still excluded — that is what stops a worker
- * approving its own PR. The exception does not make an owner-login review the owner's
- * signature; `classifyApprovalArtifacts` applies that check separately.
- *
- * @param {string} login GitHub login on the review or comment
- * @param {boolean} prAuthor true when that login opened the PR
- * @param {string | null | undefined} owner configured approval owner
- * @returns {boolean} true when this login's approval is a self-approval
- */
-function authorExcludedFromApproval(login, prAuthor, owner) {
-  if (!prAuthor) return false
-  const ownerLogin = typeof owner === 'string' ? owner.trim().toLowerCase() : ''
-  if (ownerLogin && String(login || '').toLowerCase() === ownerLogin) return false
-  return true
-}
-
-/**
- * Decide whether GitHub comments and reviews satisfy a direction gate.
- *
- * The scout's approval boolean is not this decision. Agents post as the owner, so login
- * and `MEMBER` cannot tell them apart. A valid agent header never counts. An approval-shaped
- * artifact under the owner login with no header is suspect — not satisfied. A non-owner
- * human who is not the PR author still counts, on the current head only. Bots never count.
- * Prose and timestamps are not inputs.
- *
- * @param {Array<object>} artifacts review and comment records the scout copied
- * @param {string | null | undefined} owner configured approval owner
+ * Comment/review gate. The scout boolean is not an input.
+ * @param {Array<object>} artifacts
+ * @param {string | null | undefined} owner
  * @returns {{ approved: boolean, suspectOwnerApproval: boolean, agentMarkedApproval: boolean }}
  */
 function classifyApprovalArtifacts(artifacts, owner) {
   const list = Array.isArray(artifacts) ? artifacts : []
-  const ownerLogin = typeof owner === 'string' && owner.trim() ? owner.trim().toLowerCase() : null
+  const ownerLogin = typeof owner === 'string' && owner.trim() ? owner.trim().toLowerCase() : ''
   let approved = false
   let suspectOwnerApproval = false
   let agentMarkedApproval = false
@@ -1739,8 +1700,10 @@ function classifyApprovalArtifacts(artifacts, owner) {
       agentMarkedApproval = true
       continue
     }
-    if (authorExcludedFromApproval(login, artifact.prAuthor === true, owner)) continue
-    if (ownerLogin && login.toLowerCase() === ownerLogin) {
+    const loginKey = login.toLowerCase()
+    // FIX-1300: the owner is not dropped for opening the PR. Every other author is.
+    if (artifact.prAuthor === true && loginKey !== ownerLogin) continue
+    if (ownerLogin && loginKey === ownerLogin) {
       suspectOwnerApproval = true
       continue
     }
@@ -2240,26 +2203,13 @@ const rows = input.issues || []
 // (the scouts are told to report it false); comment and review approval are unaffected. Fail-closed
 // on purpose: widening to any human here is the same class of bug as reading the label at all was.
 const approvalOwner = typeof input.owner === 'string' && input.owner.trim() ? input.owner.trim() : null
-// Who may approve by COMMENT or REVIEW. "Not the PR author" exists so a worker cannot approve its own
-// PR — and every PR here is opened under the owner's login, so read literally it excluded the owner
-// by construction (FIX-1300). The owner stays eligible as author. That exception is not a signature:
-// agents post under the same login, so an owner-login review is classified from approvalArtifacts
-// (agent header → not approval; no header → suspect, not satisfied). Every OTHER login keeps the
-// author exclusion, and bots never count. With no owner configured there is nobody to mark suspect.
+// The wake classifies approvalArtifacts. This prompt is only what the scout must copy, plus the
+// CHANGES_REQUESTED exception the classifier does not apply.
 const authorshipScan =
-  `Return approvalArtifacts: every review submission, plus every PR comment or review comment you would treat as an approving comment. ` +
-  `Copy each body from its first character — do not strip a header. ` +
-  `channel is review or comment; login; bot; prAuthor true when that login opened the PR; state one of APPROVED, COMMENTED, CHANGES_REQUESTED, DISMISSED, COMMENT; onCurrentHead; countsAsApprovalAttempt true only for a COMMENTED review or a comment you would have called approving. ` +
-  `The wake IGNORES your approved/specApproved boolean for comments and reviews and classifies this array. An empty array means no comment/review approval. ` +
-  `A body is agent-authored only when it opens with the agent-mailbox header: from:, then session:, an optional to:, then kind: whose value is ask, reply, block, decision, or review, then a blank line and a non-empty body. ` +
-  `That marker never satisfies the gate, and an agent-marked review is not a human CHANGES_REQUESTED. ` +
-  `An APPROVED review, or an approval-attempt comment, under the configured owner login with no such header is SUSPECT — include it and do not treat it as the gate. ` +
-  `Do not use timestamp proximity or prose style as a discriminator. ` +
-  `Author exclusion: a human who is not the PR author` +
-  (approvalOwner
-    ? `. EXCEPT \`${approvalOwner}\`, who is NOT excluded for being the PR author (FIX-1300) — every PR is opened under that login, and the exclusion exists so a worker cannot approve its own PR. The exception does not make an \`${approvalOwner}\` review or comment into their sign-off. Every other login is still excluded when it authored the PR.`
-    : '. No owner login is configured, so no login is exempt from author exclusion and none is owner-looking.') +
-  ` Bots ([bot], Bugbot, Codex, Copilot) never count.\n`
+  `Return approvalArtifacts: every review submission, plus every PR comment or review comment you would treat as approving. Copy each body from its first character — do not strip a header. Do not drop an item because of who posted it.\n` +
+  `channel is review or comment; login; bot; prAuthor true when that login opened the PR; state one of APPROVED, COMMENTED, CHANGES_REQUESTED, DISMISSED, COMMENT; onCurrentHead; countsAsApprovalAttempt true only for a COMMENTED review or a comment you would have called approving. Do not use timestamp proximity or prose style to decide that.\n` +
+  `The wake ignores your approved/specApproved boolean and classifies this array. An empty array means no comment/review approval.\n` +
+  `A humanChangesRequested review is a human's latest CHANGES_REQUESTED only — not a bot, and not a body that opens with the agent-mailbox header (from:, session:, an optional to:, kind: ask|reply|block|decision|review, a blank line, and a non-empty body).\n`
 // An explicit positive cap wins; anything else (absent, 0, junk) falls back to the default
 // rather than silently becoming it.
 const cap = Number.isFinite(input.cap) && input.cap > 0 ? input.cap : 3

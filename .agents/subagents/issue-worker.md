@@ -68,10 +68,10 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   the `poc-agent`. It costs **zero** rounds. **Record the claim in `DECISIONS.md → Open` marked
   `(POC in flight)` and push it before you exit** — your status line dies with this dispatch,
   so the spec doc is the only thing that carries the settlement downstream.
-- **spec approved** → this signal is a coordinator decision, not a GitHub review you read as
-  the owner. An owner-login review or comment is not approval: a mailbox header (`from:` /
-  `session:` / `kind:`) means an agent wrote it, and an approving one with no header is
-  suspect. Do not merge or implement on either. Follow the
+- **spec approved** → a coordinator decision under
+  [Gates](../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge),
+  not a GitHub review you read as the owner. Do not merge or implement on an owner-login
+  review or comment. Follow the
   [canonical merge contract](../../docs/contributing/orchestration.md#merging-and-amending-a-spec)
   only after the coordinator has actually accepted the gate.
   Only an explicitly authorized `implement` backstop may merge first and then continue,

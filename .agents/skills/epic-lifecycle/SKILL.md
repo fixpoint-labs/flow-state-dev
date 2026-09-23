@@ -175,14 +175,11 @@ The epic-specific delta:
    **Establish the `owner` login here too** — the GitHub account whose approval *label* passes a gate. It is the product owner you are
    reporting to, so ask them once if you don't already know it, and persist it beside the epic
    handle; a login you inferred from a PR author or a commit trailer is a guess, and this one
-   authorizes work.    If you cannot establish it, say so and carry on without it: the wake turns
-   the label channel off rather than trusting an unattributable label. A GitHub review or
-   comment under the shared owner login is not the gate — agents post as that login. An
-   unmarked owner-looking approval is suspect (`suspectOwnerApprovals` on the wake result);
-   escalate it and do not implement. The sign-off that releases a gate is a message from
-   the user in this conversation (`approvedInSession` on the reviewed head), a non-owner
-   human review the wake's authorship check accepts, or, when `owner` is set, an
-   owner-applied label with provenance. What you must not do is leave the field out silently —
+   authorizes work. If you cannot establish it, say so and carry on without it: the wake turns
+   the label channel off rather than trusting an unattributable label. A review or comment
+   under that login is not the gate
+   ([Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)).
+   What you must not do is leave the field out silently —
    an owner who signs off by label alone would then wait forever on a channel nothing reads.
 
    Two more coordinator-owned fields live here for the same reason — nothing else holds them
@@ -306,12 +303,11 @@ The epic-specific delta:
    unsettled, verdicts, settleRequests, dispatched, deferred, converged, crossSpecGate, moreWorkNow,
    mayWrap, suspectOwnerApprovals }` — persist `epic` and `issues` verbatim.
 
-   **`suspectOwnerApprovals`** is an owner-login GitHub review or approving comment with no
-   agent-mailbox header. It is not sign-off. Tell the user which PR, and that the gate is still
-   their message in this conversation. Do not dispatch implementation because of it. A separate
-   accepted signal (in-session go-ahead, non-owner human review, owner label) can still satisfy
-   the gate in the same wake. When you post a review or PR comment yourself, start the body with
-   the header in [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge).
+   **`suspectOwnerApprovals`** — escalate per
+   [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge).
+   Tell the user which PR, and do not dispatch because of it. A separate accepted signal in the
+   same wake still counts. When you post a review or PR comment, start the body with the header
+   named there.
 
    Preserve `approvedHeadSha` and `specMerged` independently on epic and issue records.
    A `spec-merge` gate names the `pr` (and `issueId` for an issue). It is an execution/checks
@@ -489,9 +485,9 @@ The epic-specific delta:
    can fan down and an approving comment or review on the epic PR is caught). **The two
    sign-off gates now ride that stream** — both a comment and a review submission are
    delivered PR-activity events, so a spec- or epic-PR approval in either of those forms wakes
-   the coordinator immediately. Waking is not acceptance: an owner-login review or comment is
-   classified by the wake (agent header, or suspect if unmarked) and does not satisfy the gate
-   by itself. The owner's **label** is the third channel and the slow one: a
+   the coordinator immediately. Waking is not acceptance
+   ([Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)).
+   The owner's **label** is the third channel and the slow one: a
    `labeled` webhook never arrives, so it is found only by the wake's scout refresh. The
    transitions webhooks *don't* cover — CI success and merge/close — are caught on that same
    refresh (step 2). Schedule one check-in
