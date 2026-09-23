@@ -6,6 +6,14 @@ build. This page names the surfaces, the smallest fail-closed change at each one
 experiments that would catch a fix that only looks closed. Leg ids point at the two POCs
 ([owner planes](poc/owner-planes/README.md), [security model](poc/security-model/README.md)).
 
+## At a glance
+
+![A scoreboard of nine experiments, each red on main and green on the FIX-1529 branch, plus three open probes](figures/19-f2-scoreboard.svg)
+
+**What changes, leg by leg.** The left column is today on `main`, and the right is the
+FIX-1529 branch (fixpoint-labs/flow-state-dev#2091). Every plan leg flips. The three probes
+at the bottom sit outside the paths this plan named, and are still open.
+
 ## The problem, in one paragraph
 
 A run takes its **data** from the session, and that path is gated end to end (S1, F3, M3).
@@ -29,6 +37,12 @@ address.** The pin is `{ orgId, userId? }`. `orgId` is the owning org (acceptanc
 - **Unpinned means shared.** App and kind flows stay unbound and global, as the Architect
   enrich locks.
 
+![Two panels: before, a caller reaches acme's seat with nothing checking the owner; after, the registry holds a pin and every entry reads it](figures/12-f2-the-rule.svg)
+
+**The whole fix is the right-hand box.** Before, the address is the only key, so a globex
+caller runs acme's config. After, the registry holds a pin beside the address, and every
+entry compares the caller to it before any block runs.
+
 ## Surfaces, and the smallest fail-closed change at each
 
 | # | Surface | Today | Smallest change | Proves |
@@ -41,6 +55,11 @@ address.** The pin is `{ orgId, userId? }`. `orgId` is the owning org (acceptanc
 | f | **Catalog** (`GET /api/flows`) | Auth-exempt; lists every instance | Resolve the principal if one is present, without making the route 401. Omit every pinned instance the caller doesn't match. An anonymous caller sees unpinned flows only | 2 |
 | g | **Roster read** (the collection's browser read) | `client.state.read: true` with `expose: [seatId, flow, instructions]`: every org member lists every row | A user-owned row must not come back to another member of the org. See the open wall below | 5 |
 
+![Seven surfaces, each with its before state in red and its after state in green](figures/13-f2-seven-surfaces.svg)
+
+**Read across each row.** Every surface keeps its shape. The change is one field, one
+comparison or one filter, and the right-hand column names the acceptance item it proves.
+
 Why (d) and (e) are both needed:
 - (d) alone misses every path that isn't a fresh session. A globex session opened on
   `acme.eng.lead` before the fix lands keeps working after a restart unless admission
@@ -48,6 +67,11 @@ Why (d) and (e) are both needed:
 - (e) alone refuses after the `202` ack, so the request is never discoverable. That is the
   "Found on the way" bug in the [README](README.md#found-on-the-way). (d) keeps the common
   case synchronous.
+
+![Seven ways into a seat. Before, all reach it. After, fresh HTTP entries stop at check d and everything else at check e](figures/14-f2-every-door.svg)
+
+**Two checks, seven doors.** (d) answers the three fresh entries before anything is written.
+(e) is the net under all of them, including the four that never open a session.
 
 Legacy sessions with no `flowId` resolve their instance the same way `route-auth.ts` does
 today. An ambiguous one is refused, not guessed.
@@ -82,6 +106,12 @@ One caution for the build: the sub-prefix hides a row from the *browser read* on
 in the org that declares a collection over `workforce/roster/**` can still read it on the
 server. Nothing should declare one, and the FIX-1529 suite should pin that.
 
+![Acme's org cell with flat and nested roster keys, and four readers: two that hold and two that don't](figures/17-f2-roster-readers.svg)
+
+**Who can read a private row.** Green readers are the ones option 1 relies on, and they hold
+on #2091. The two red ones are probes B and C from the after suite: a flow that declares the
+private writer reads every user's rows, and the pattern guard only tests one sample key.
+
 ## Experiments worth running
 
 Each has concrete steps and an expected refusal. "Before" means run it before the fix lands,
@@ -110,6 +140,32 @@ today's code):
 | E9 | alongside | Re-register `acme.eng.lead` with pin `globex` while it is held with pin `acme` | Refused at registration |
 
 E3 and E7 are the two most likely to catch a fix that only gates the session-create route.
+
+![E3 in two lanes: before, a session opened through the hole survives a restart and runs acme's prompt; after, the reload pins the seat and the resume is refused](figures/15-f2-e3-restart.svg)
+
+**E3, the reason (e) exists.** The session already exists when the fix ships. Only admission
+can refuse it.
+
+![E7 in two lanes: before, a globex session's dispatch runs acme's seat; after, admission refuses it](figures/16-f2-e7-dispatch.svg)
+
+**E7 never touches `create_session`.** The dispatch seam creates the child session itself,
+so a fix that guards only session creation would leave this open.
+
+![The flow catalog per caller: before, everyone sees every seat; after, each caller sees only matching seats](figures/18-f2-catalog.svg)
+
+**E8, the catalog.** Green on the right means the pin decides who sees a seat. An anonymous
+caller still gets a `200`, with shared flows only.
+
+## Found on the FIX-1529 branch
+
+The after suite ([f2-experiments](poc/f2-experiments/README.md#after-run-against-the-fix-1529-branch))
+ran on #2091 at `01b29f0d`: 9 passed. Every plan leg is closed. Three probes found gaps
+outside the paths above. B and C are shown in the roster figure. A is here:
+
+![Probe A: two users' private seats with the same name share one address on #2091; the proposal gives each user its own address](figures/20-f2-address-collision.svg)
+
+**A user-owned address needs the user in it.** The pin stays the fence. The address only has
+to be unique, and today two users' `research` seats are one address.
 
 ## What would falsify a FIX-1529 implementation
 

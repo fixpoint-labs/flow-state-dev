@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 346" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="E3, wrong-org restart, before and after. Process 1: acme.eng.lead is registered with no pin, and mallory at globex opens a session on it through the F2 hole. Restart: reloadHiredSeats reads acme's row. Before, it registers the seat with no owner, and mallory's resumed session completes with acme's instructions; bob resuming it is refused, showing admission runs but has no pin to read. After, the legacy row is pinned to acme, the cell it was read in, and mallory's resume is refused at admission before any block runs. Verified on pull request 2091 at 01b29f0d. A check at session creation alone cannot catch this.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .box   { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .acme  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .usr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .no    { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .warn  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .pin   { fill:var(--code); }
+    .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .gap   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .div   { stroke:var(--rule); stroke-width:1.2; }
+    .a     { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .a-x   { fill:none; stroke:var(--gone); stroke-width:1.8; }
+    .a-ok  { fill:none; stroke:var(--code); stroke-width:1.6; }
+    .a-d   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-w   { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-pin { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; font-weight:700; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/></marker>
+    <marker id="hx" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/></marker>
+    <marker id="ho" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/></marker>
+    <marker id="hd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="346"/>
+  <text class="t-lbl" x="16" y="26">E3 · WRONG-ORG RESTART</text>
+  <text class="t-lbl" x="160" y="50">PROCESS 1</text>
+  <text class="t-lbl" x="420" y="50">RESTART</text>
+  <text class="t-lbl" x="640" y="50">PROCESS 2 · SAME STORES</text>
+  <text class="t-h" x="16" y="100">before</text>
+  <text class="t-s" x="16" y="118">main</text>
+  <rect class="usr" x="150" y="64" width="230" height="104" rx="6"/>
+  <text class="t-b" x="162" y="84">acme.eng.lead, no pin</text>
+  <text class="t-s" x="162" y="102">(any pre-fix process)</text>
+  <text class="t-c" x="162" y="126">mallory@globex opens</text>
+  <text class="t-c" x="162" y="142">a session on it</text>
+  <text class="t-s" x="162" y="160">the F2 hole</text>
+  <path class="a" d="M380 116 H 406" marker-end="url(#h)"/>
+  <rect class="box" x="410" y="64" width="190" height="104" rx="6"/>
+  <text class="t-b" x="422" y="84">reloadHiredSeats</text>
+  <text class="t-s" x="422" y="104">row → acme.eng.lead</text>
+  <text class="t-s" x="422" y="120">registered, no owner</text>
+  <path class="a" d="M600 116 H 616" marker-end="url(#h)"/>
+  <rect class="no" x="620" y="64" width="304" height="104" rx="6"/>
+  <text class="t-b" x="632" y="84">mallory resumes her session</text>
+  <text class="t-x" x="632" y="108">completes as mallory@globex</text>
+  <text class="t-s" x="632" y="126">with acme's instructions</text>
+  <text class="t-s" x="632" y="144">bob@acme resuming it is refused (control):</text>
+  <text class="t-s" x="632" y="158">admission runs, it just has no pin to read</text>
+  <text class="t-h" x="16" y="232">after</text>
+  <text class="t-s" x="16" y="250">FIX-1529</text>
+  <rect class="usr" x="150" y="196" width="230" height="104" rx="6"/>
+  <text class="t-b" x="162" y="216">acme.eng.lead, no pin</text>
+  <text class="t-s" x="162" y="234">(any pre-fix process)</text>
+  <text class="t-c" x="162" y="258">mallory@globex opens</text>
+  <text class="t-c" x="162" y="274">a session on it</text>
+  <text class="t-s" x="162" y="292">the F2 hole</text>
+  <path class="a" d="M380 248 H 406" marker-end="url(#h)"/>
+  <rect class="box" x="410" y="196" width="190" height="104" rx="6"/>
+  <text class="t-b" x="422" y="216">reloadHiredSeats</text>
+  <text class="t-s" x="422" y="236">legacy row → pin acme</text>
+  <text class="t-s" x="422" y="252">(the cell it was read in)</text>
+  <rect class="pin" x="422" y="266" width="51.8" height="15" rx="7"/>
+  <text class="t-pin" x="427" y="277">pin acme</text>
+  <path class="a" d="M600 248 H 616" marker-end="url(#h)"/>
+  <rect class="ok" x="620" y="196" width="304" height="104" rx="6"/>
+  <text class="t-b" x="632" y="216">mallory resumes her session</text>
+  <text class="t-ok" x="632" y="240">refused at admission</text>
+  <text class="t-s" x="632" y="258">globex ≠ pin acme</text>
+  <text class="t-s" x="632" y="276">no block runs, nothing written</text>
+  <text class="t-s" x="632" y="290">verified on #2091 · 01b29f0d</text>
+  <text class="t-c" x="16" y="330">A check at session creation alone can't catch this: the session already exists when the fix ships.</text>
+</svg>

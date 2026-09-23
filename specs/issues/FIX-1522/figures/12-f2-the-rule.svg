@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Before and after the F2 fix. Before: mallory, verified in globex, addresses acme.eng.lead. The registry holds it with acme's prompt and tools and no owner. There is no instance to org check, so the run takes acme's config and globex's data. After: the registry holds acme.eng.lead with a pin to acme, and the shared app flow with no pin. Every entry reads the pin. Globex does not match acme, so a fresh HTTP call gets 404 Unknown flow and every other door throws InstancePinMismatchError, before any block runs. The address is never parsed for an owner.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .box   { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .acme  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .usr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .no    { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .warn  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .pin   { fill:var(--code); }
+    .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .gap   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .div   { stroke:var(--rule); stroke-width:1.2; }
+    .a     { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .a-x   { fill:none; stroke:var(--gone); stroke-width:1.8; }
+    .a-ok  { fill:none; stroke:var(--code); stroke-width:1.6; }
+    .a-d   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-w   { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-pin { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; font-weight:700; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/></marker>
+    <marker id="hx" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/></marker>
+    <marker id="ho" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/></marker>
+    <marker id="hd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="360"/>
+  <text class="t-lbl" x="16" y="26">BEFORE · TODAY ON MAIN</text>
+  <text class="t-lbl" x="488" y="26">AFTER · FIX-1529</text>
+  <line class="div" x1="470" y1="16" x2="470" y2="352"/>
+  <rect class="usr" x="16" y="44" width="150" height="44" rx="6"/>
+  <text class="t-b" x="28" y="63">mallory</text>
+  <text class="t-s" x="28" y="79">verified · org globex</text>
+  <path class="a" d="M166 66 H 212" marker-end="url(#h)"/>
+  <text class="t-s" x="174" y="58">calls</text>
+  <rect class="panel" x="216" y="40" width="236" height="118" rx="6"/>
+  <text class="t-lbl" x="228" y="58">REGISTRY</text>
+  <rect class="acme" x="228" y="66" width="212" height="40" rx="4"/>
+  <text class="t-b" x="238" y="84">acme.eng.lead</text>
+  <text class="t-s" x="238" y="99">config: acme's prompt, tools</text>
+  <rect class="box" x="228" y="112" width="212" height="38" rx="4"/>
+  <text class="t-b" x="238" y="130">app</text>
+  <text class="t-s" x="238" y="144">no owner anywhere</text>
+  <rect class="gap" x="16" y="176" width="436" height="58" rx="6"/>
+  <text class="t-b" x="28" y="196">no instance ↔ org check</text>
+  <text class="t-s" x="28" y="214">session ↔ principal is checked (M3)</text>
+  <text class="t-s" x="28" y="228">session ↔ instance is not</text>
+  <path class="a-x" d="M234 234 V 262" marker-end="url(#hx)"/>
+  <rect class="no" x="16" y="266" width="436" height="70" rx="6"/>
+  <text class="t-x" x="28" y="288">runs: config from acme, data from globex</text>
+  <text class="t-s" x="28" y="306">F2 · E1 · E3 · E7</text>
+  <text class="t-s" x="28" y="322">the address is the only key</text>
+  <rect class="usr" x="488" y="44" width="150" height="44" rx="6"/>
+  <text class="t-b" x="500" y="63">mallory</text>
+  <text class="t-s" x="500" y="79">verified · org globex</text>
+  <path class="a" d="M638 66 H 684" marker-end="url(#h)"/>
+  <text class="t-s" x="646" y="58">calls</text>
+  <rect class="panel" x="688" y="40" width="236" height="118" rx="6"/>
+  <text class="t-lbl" x="700" y="58">REGISTRY</text>
+  <rect class="acme" x="700" y="66" width="212" height="40" rx="4"/>
+  <text class="t-b" x="710" y="84">acme.eng.lead</text>
+  <text class="t-s" x="710" y="99">config: acme's prompt, tools</text>
+  <rect class="pin" x="818" y="76" width="51.8" height="15" rx="7"/>
+  <text class="t-pin" x="823" y="87">pin acme</text>
+  <rect class="box" x="700" y="112" width="212" height="38" rx="4"/>
+  <text class="t-b" x="710" y="130">app</text>
+  <text class="t-s" x="710" y="144">no pin = shared</text>
+  <rect class="gate" x="488" y="176" width="436" height="58" rx="6"/>
+  <text class="t-b" x="500" y="196">every entry reads the pin</text>
+  <text class="t-s" x="500" y="214">globex ≠ acme → 404 Unknown flow (fresh HTTP)</text>
+  <text class="t-s" x="500" y="228">or InstancePinMismatchError (every other door)</text>
+  <path class="a-ok" d="M706 234 V 262" marker-end="url(#ho)"/>
+  <rect class="ok" x="488" y="266" width="436" height="70" rx="6"/>
+  <text class="t-ok" x="500" y="288">refused before any block runs</text>
+  <text class="t-s" x="500" y="306">acme's prompt never reaches mallory's run</text>
+  <text class="t-s" x="500" y="322">the address is never parsed for an owner</text>
+</svg>

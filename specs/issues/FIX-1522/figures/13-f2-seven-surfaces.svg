@@ -1,0 +1,109 @@
+<svg viewBox="0 0 940 406" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Seven surfaces, before and after. a hire row: before seatId, flow, settings, instructions; after adds nullable owningOrgId and ownerUserId. b reload: before the org is the cell it was read from; after a row naming another org is a named problem. c registration: before register(flow) with the id as the only key; after register(flow, pin) with a pin per address. d open session: before any caller on any instance; after outside the pin gets 404 before the ack. e admission: before session to principal only; after also session to pin before any block. f catalog: before every instance to everyone; after pinned ones only to their owners. g roster read: before every row with instructions to the org; after user-owned rows are nested and not listed.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .box   { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .acme  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .usr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .no    { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .warn  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .pin   { fill:var(--code); }
+    .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .gap   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .div   { stroke:var(--rule); stroke-width:1.2; }
+    .a     { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .a-x   { fill:none; stroke:var(--gone); stroke-width:1.8; }
+    .a-ok  { fill:none; stroke:var(--code); stroke-width:1.6; }
+    .a-d   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-w   { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-pin { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; font-weight:700; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/></marker>
+    <marker id="hx" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/></marker>
+    <marker id="ho" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/></marker>
+    <marker id="hd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="406"/>
+  <text class="t-lbl" x="16" y="26">SURFACE</text>
+  <text class="t-lbl" x="190" y="26">BEFORE</text>
+  <text class="t-lbl" x="530" y="26">AFTER</text>
+  <text class="t-lbl" x="880" y="26">PROVES</text>
+  <rect class="box" x="16" y="38" width="160" height="40" rx="4"/>
+  <text class="t-b" x="28" y="63">a · hire row</text>
+  <rect class="no" x="190" y="38" width="318" height="40" rx="4"/>
+  <text class="t-s" x="200" y="62">{ seatId, flow, settings, instructions }</text>
+  <path class="a" d="M510 58 H 526" marker-end="url(#h)"/>
+  <rect class="ok" x="530" y="38" width="338" height="40" rx="4"/>
+  <text class="t-s" x="540" y="62">+ owningOrgId, ownerUserId (nullable)</text>
+  <text class="t-c" x="900" y="62" text-anchor="middle">1</text>
+  <rect class="box" x="16" y="86" width="160" height="40" rx="4"/>
+  <text class="t-b" x="28" y="111">b · reload</text>
+  <rect class="no" x="190" y="86" width="318" height="40" rx="4"/>
+  <text class="t-s" x="200" y="110">org = the cell it was read from</text>
+  <path class="a" d="M510 106 H 526" marker-end="url(#h)"/>
+  <rect class="ok" x="530" y="86" width="338" height="40" rx="4"/>
+  <text class="t-s" x="540" y="110">row naming another org → named problem</text>
+  <text class="t-c" x="900" y="110" text-anchor="middle">3</text>
+  <rect class="box" x="16" y="134" width="160" height="40" rx="4"/>
+  <text class="t-b" x="28" y="159">c · registration</text>
+  <rect class="no" x="190" y="134" width="318" height="40" rx="4"/>
+  <text class="t-s" x="200" y="158">register(flow) · id is the only key</text>
+  <path class="a" d="M510 154 H 526" marker-end="url(#h)"/>
+  <rect class="ok" x="530" y="134" width="338" height="40" rx="4"/>
+  <text class="t-s" x="540" y="158">register(flow, { pin }) · pin per address</text>
+  <text class="t-c" x="900" y="158" text-anchor="middle">1 · 3</text>
+  <rect class="box" x="16" y="182" width="160" height="40" rx="4"/>
+  <text class="t-b" x="28" y="207">d · open session</text>
+  <rect class="no" x="190" y="182" width="318" height="40" rx="4"/>
+  <text class="t-s" x="200" y="206">any caller, any instance → 201 / 202</text>
+  <path class="a" d="M510 202 H 526" marker-end="url(#h)"/>
+  <rect class="ok" x="530" y="182" width="338" height="40" rx="4"/>
+  <text class="t-s" x="540" y="206">outside the pin → 404 before the ack</text>
+  <text class="t-c" x="900" y="206" text-anchor="middle">2 · 5</text>
+  <rect class="box" x="16" y="230" width="160" height="40" rx="4"/>
+  <text class="t-b" x="28" y="255">e · admission</text>
+  <rect class="no" x="190" y="230" width="318" height="40" rx="4"/>
+  <text class="t-s" x="200" y="254">session ↔ principal only</text>
+  <path class="a" d="M510 250 H 526" marker-end="url(#h)"/>
+  <rect class="ok" x="530" y="230" width="338" height="40" rx="4"/>
+  <text class="t-s" x="540" y="254">+ session ↔ pin, before any block</text>
+  <text class="t-c" x="900" y="254" text-anchor="middle">3 · 5</text>
+  <rect class="box" x="16" y="278" width="160" height="40" rx="4"/>
+  <text class="t-b" x="28" y="303">f · catalog</text>
+  <rect class="no" x="190" y="278" width="318" height="40" rx="4"/>
+  <text class="t-s" x="200" y="302">every instance, to everyone</text>
+  <path class="a" d="M510 298 H 526" marker-end="url(#h)"/>
+  <rect class="ok" x="530" y="278" width="338" height="40" rx="4"/>
+  <text class="t-s" x="540" y="302">pinned ones only to their owners</text>
+  <text class="t-c" x="900" y="302" text-anchor="middle">2</text>
+  <rect class="box" x="16" y="326" width="160" height="40" rx="4"/>
+  <text class="t-b" x="28" y="351">g · roster read</text>
+  <rect class="no" x="190" y="326" width="318" height="40" rx="4"/>
+  <text class="t-s" x="200" y="350">every row, instructions, to the org</text>
+  <path class="a" d="M510 346 H 526" marker-end="url(#h)"/>
+  <rect class="ok" x="530" y="326" width="338" height="40" rx="4"/>
+  <text class="t-s" x="540" y="350">user-owned rows nested, not listed</text>
+  <text class="t-c" x="900" y="350" text-anchor="middle">5</text>
+  <text class="t-c" x="16" y="390">Acceptance 1 owning-org stamp · 2 catalog and open fence · 3 wrong-org restart refused · 5 roster owner refused.</text>
+</svg>
