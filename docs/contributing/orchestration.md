@@ -495,7 +495,9 @@ altitude: *does acting on this change the approach?* Then pick exactly one dispo
 name which decision or which part of the approach changes, it is not spec-level —
 it's a note. Genuine factual corrections and broken references are the one cheap
 exception: fix them inline without ceremony (they don't move the design, so they don't
-cost a round).
+cost a round). Any correction, inline or folded, still owes its echoes: before the push, run
+[`issue-implement`](../../.agents/skills/issue-implement/SKILL.md) 10.6's word and surface
+sweeps over every claim you corrected, and report both.
 
 Two things follow that are worth stating outright, because the instinct runs the other way:
 

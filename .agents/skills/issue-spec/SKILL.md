@@ -547,7 +547,7 @@ For each piece of feedback ask the only question that matters at this altitude: 
 
 **Settle on the loop, not on the assertion.** A claim asserted *once* — however confidently, however wrong it sounds — is ordinary triage: answer it, fold it, or drop it with a pointer to the code. The trigger is the **second** pass: the claim came back after being answered, or the spec has already flipped on it, or two rounds reached opposite conclusions. That repetition is the signal prose has failed on it, and it's the one case where another round of argument is predictably wasted. Fire then, and not before — POC-ing every assertion would replace a two-round review with a queue of experiments, which costs more than the debate did.
 
-**The default is Note, and the burden of proof is on folding.** If you can't name which decision card or which part of the approach changes, it isn't spec-level. The one cheap exception: genuine factual corrections and broken references get fixed inline without ceremony — they don't move the design, so they don't cost a round.
+**The default is Note, and the burden of proof is on folding.** If you can't name which decision card or which part of the approach changes, it isn't spec-level. The one cheap exception: genuine factual corrections and broken references get fixed inline without ceremony — they don't move the design, so they don't cost a round. Any correction, inline or folded, still owes its echoes: before the push, run [`issue-implement`](../issue-implement/SKILL.md) 10.6's word and surface sweeps over every claim you corrected, and report both.
 
 Two instincts to override, because both run the wrong way:
 
