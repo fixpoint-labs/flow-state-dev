@@ -94,13 +94,14 @@ by side now. FIX-1538 assembles the proof, so it closes last.
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · The rest is one feature and two bugs, with no proof issue.**
-   If wrong: the epic wraps on three green PRs without the assembled check.
+1. **This epic closes the plane gap for hired seats, and nothing here teaches user planes
+   ([D4](DECISIONS.md#d4)).** If wrong: we certify foundation honesty while a user's own boards and
+   listings are still open. They are unshipped, so nothing leaks through them today.
 2. **[D2](DECISIONS.md#d2) · Only a hired seat's own data moves to a per-(org, user) cell.**
    If wrong: Alice's seat still leaks through a shared bucket, or every user loses cross-org data
    nobody decided to take.
-3. **[D4](DECISIONS.md#d4) · Nothing here teaches user planes.** If wrong: docs promise a plane
-   whose seat names any caller can list.
+3. **[D1](DECISIONS.md#d1) · The rest is one feature and two bugs, with no proof issue.**
+   If wrong: the epic wraps on three green PRs without the assembled check.
 
 **Open: none.** Both product questions were answered before this spec: a private team is not
 portable, and user planes wait for FIX-1486 ([Decided](DECISIONS.md#decided-before-this-spec)).
