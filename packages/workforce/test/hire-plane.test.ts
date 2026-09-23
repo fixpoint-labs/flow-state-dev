@@ -8,7 +8,8 @@
  * browser pattern.
  */
 import { describe, expect, it } from "vitest";
-import { defineResourceCollection } from "@flow-state-dev/core";
+import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { createFlowRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
 import {
   defineHiredRosterCollection,
@@ -23,7 +24,6 @@ import {
 import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { hireWorkforce } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
-import { defineFlow, handler } from "@flow-state-dev/core";
 
 const work = handler({
   name: "desk-work",
@@ -57,7 +57,7 @@ describe("hire row pin", () => {
 
     const bound = hiredSeatManifest("acme", row);
     if (!("manifest" in bound)) throw new Error(bound.problem);
-    expect(bound.manifest.id).toBe("acme.research");
+    expect(bound.manifest.id).toBe("acme.~alice.research");
     expect(bound.manifest.ownerPin).toEqual({ orgId: "acme", userId: "alice" });
 
     const [seat] = hireWorkforce([bound.manifest], { kinds });
@@ -143,6 +143,92 @@ describe("hire row pin", () => {
     expect(defineHiredRosterCollection().pattern).toBe("workforce/roster/*");
     expect(defineHiredRosterPrivateCollection().pattern).toBe("workforce/roster/[owner]/[seat]");
     expect(defineHiredRosterPrivateCollection().client?.state?.read).not.toBe(true);
+    expect(() =>
+      defineResourceCollection({
+        pattern: "workforce/roster/[owner]/notes",
+        scope: "org",
+        stateSchema: z.object({}),
+      })
+    ).toThrow(/user-owned roster rows/);
+    expect(() =>
+      defineResourceCollection({
+        pattern: "workforce/roster/*/*",
+        scope: "org",
+        stateSchema: z.object({}),
+      })
+    ).toThrow(/user-owned roster rows/);
+  });
+
+  it("registers the branded private writer and refuses a hand-built copy of its pattern", () => {
+    const registry = createFlowRegistry();
+    const ping = handler({
+      name: "ping",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    });
+    const branded = defineFlow({
+      kind: "branded-writer",
+      resources: { roster: defineHiredRosterPrivateCollection() },
+      actions: { ping: { inputSchema: z.object({}), block: ping } },
+    })();
+    expect(() => registry.register(branded)).not.toThrow();
+
+    const copy = defineFlow({
+      kind: "copied-writer",
+      resources: {
+        roster: defineResourceCollection({
+          pattern: "workforce/roster/[owner]/[seat]",
+          scope: "org",
+          stateSchema: z.object({}),
+        }),
+      },
+      actions: { ping: { inputSchema: z.object({}), block: ping } },
+    })();
+    expect(() => registry.register(copy)).toThrow(/cannot be redeclared/);
+  });
+
+  it("gives alice and bob different addresses for the same seat id, and the pin stays the row", () => {
+    const alice = toHiredSeatRow({
+      seatId: "research",
+      flow: "desk-clerk",
+      instructions: "ALICE-PRIVATE",
+      owningOrgId: "acme",
+      ownerUserId: "alice",
+    });
+    const bob = toHiredSeatRow({
+      seatId: "research",
+      flow: "desk-clerk",
+      instructions: "BOB-PRIVATE",
+      owningOrgId: "acme",
+      ownerUserId: "bob",
+    });
+    const aliceBound = hiredSeatManifest("acme", alice);
+    const bobBound = hiredSeatManifest("acme", bob);
+    if (!("manifest" in aliceBound) || !("manifest" in bobBound)) {
+      throw new Error("expected both rows to mint");
+    }
+    expect(aliceBound.manifest.id).toBe("acme.~alice.research");
+    expect(bobBound.manifest.id).toBe("acme.~bob.research");
+    expect(aliceBound.manifest.ownerPin).toEqual({ orgId: "acme", userId: "alice" });
+    expect(bobBound.manifest.ownerPin).toEqual({ orgId: "acme", userId: "bob" });
+
+    const crafted = hiredSeatRowFromManifest("acme", {
+      id: "acme.~bob.research",
+      declared: { flow: "desk-clerk" },
+      body: "from the row",
+      ownerPin: { orgId: "acme", userId: "alice" },
+    });
+    if (!("row" in crafted)) throw new Error(crafted.problem);
+    expect(crafted.row.seatId).toBe("research");
+    expect(crafted.row.ownerUserId).toBe("alice");
+    expect(() =>
+      toHiredSeatRow({ seatId: "~alice.research", flow: "desk-clerk" })
+    ).not.toThrow();
+    expect(() => hiredSeatManifest("acme", toHiredSeatRow({
+      seatId: "~alice.research",
+      flow: "desk-clerk",
+    }))).toThrow(/starts with "~"/);
   });
 });
 

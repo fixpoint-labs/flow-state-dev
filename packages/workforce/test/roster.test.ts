@@ -213,6 +213,9 @@ describe("V4 · the org segment is what makes the address unambiguous", () => {
     // and it is refused at the segment check rather than discovered later by
     // whichever hire happened to land second.
     expect(seatAddress("acme", "support.ada")).toBe("acme.support.ada");
+    expect(seatAddress("acme", "research", "alice")).toBe("acme.~alice.research");
+    expect(seatAddress("acme", "research", "alice@acme.com")).toBe("acme.~alice%40acme%2Ecom.research");
+    expect(() => seatAddress("acme", "~research", "alice")).toThrow(/starts with "~"/);
     expect(() => seatAddress("acme.support", "ada")).toThrow(/Organization id/);
     expect(() => seatAddress("acme.support", "ada")).toThrow(/"\."/);
   });

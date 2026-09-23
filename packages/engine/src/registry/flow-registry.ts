@@ -653,8 +653,7 @@ function assertFlowRosterPatterns(flow: FlowInstance): void {
   for (const entry of Object.values(resources)) {
     const pattern = (entry as { pattern?: unknown }).pattern;
     if (typeof pattern !== "string") continue;
-    const client = (entry as { client?: { state?: { read?: boolean } } }).client;
-    assertRosterCollectionIsNotDeep({ pattern, client });
+    assertRosterCollectionIsNotDeep(entry as { pattern: string; client?: { state?: { read?: boolean } } }, "register");
   }
 }
 

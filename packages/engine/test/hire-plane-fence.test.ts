@@ -14,7 +14,11 @@ import {
   dispatcher,
   handler,
 } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import {
+  HIRED_ROSTER_PRIVATE_PATTERN,
+  markHiredRosterPrivateCollection,
+  type ResourceCollectionRef,
+} from "@flow-state-dev/core/types";
 import { createFlowRegistry, createFlowState, inMemoryStores, runAction } from "../src";
 import { InstancePinMismatchError } from "../src/context/hire-plane";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -91,12 +95,41 @@ const seatKind = defineFlow({
   authentication: verified,
 });
 
+const privateRoster = markHiredRosterPrivateCollection(
+  defineResourceCollection({
+    pattern: HIRED_ROSTER_PRIVATE_PATTERN,
+    scope: "org",
+    flowIsolation: false,
+    stateSchema: z.object({ instructions: z.string() }),
+  }),
+);
+
+const peekPrivate = handler({
+  name: "peek-private",
+  inputSchema: tagInput,
+  outputSchema: z.object({ ok: z.boolean() }),
+  resources: { ...resources, privateRoster },
+  execute: async (input, ctx) => {
+    const rows = await (ctx.resources.privateRoster as unknown as ResourceCollectionRef).list();
+    const seen = ctx.resources.seen as unknown as ResourceCollectionRef;
+    const instructions = rows.map((row) => String(row.state.instructions ?? "")).join("|");
+    const { userId = "", orgId = "" } = ctx.session.identity;
+    await seen.create(input.tag, {
+      instance: "peek",
+      as: `${userId}@${orgId}`,
+      instructions,
+    });
+    return { ok: true };
+  },
+});
+
 const appFlow = defineFlow({
   kind: "app",
-  resources,
+  resources: { ...resources, privateRoster },
   actions: {
     whoami: { inputSchema: tagInput, block: whoami },
     hand: { inputSchema: tagInput, block: handToAcmeSeat },
+    peek: { inputSchema: tagInput, block: peekPrivate },
   },
   authentication: verified,
 });
@@ -303,6 +336,36 @@ describe("FIX-1529 hire plane", () => {
     ]);
   });
 
+  it("B a branded private writer lists only the caller's rows", async () => {
+    const stores = inMemoryStores();
+    const primary = await stores.resolve(["primary"]);
+    await primary.resourceState!.set(
+      "org",
+      "acme",
+      "workforce/roster/~alice/research",
+      { instructions: ALICE_PROMPT },
+      "any",
+    );
+    const h = await boot(stores);
+    const bob = await h.call("POST", ["app", "sessions"], BOB, { userId: "bob" });
+    expect(bob.status).toBe(201);
+    expect(await h.act(BOB, bob.json.session.id as string, "peek", { tag: "bob-peek" })).toEqual({
+      http: 202,
+      outcome: "completed",
+    });
+    expect(await h.seenIn("acme")).toEqual([
+      { instance: "peek", as: "bob@acme", instructions: "" },
+    ]);
+
+    const alice = await h.call("POST", ["app", "sessions"], ALICE, { userId: "alice" });
+    expect(await h.act(ALICE, alice.json.session.id as string, "peek", { tag: "alice-peek" })).toEqual({
+      http: 202,
+      outcome: "completed",
+    });
+    const seen = await h.seenIn("acme");
+    expect(seen).toContainEqual({ instance: "peek", as: "alice@acme", instructions: ALICE_PROMPT });
+  });
+
   it("E6 the pin is not the address: acme.x pinned to globex admits globex and refuses acme", async () => {
     const h = await boot();
     h.state.register(seat("acme.x", "GLOBEX-PINNED"), { pin: { orgId: "globex" } });
@@ -438,6 +501,44 @@ describe("FIX-1529 hire plane", () => {
       roster: { pattern: "workforce/roster/**", scope: "org" },
     };
     expect(() => registry.register(leak)).toThrow(/workforce\/roster\/\*\*|user-owned roster/);
+
+    const redeclared = defineFlow({
+      kind: "redeclared",
+      actions: {
+        ping: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "ping-2",
+            inputSchema: z.object({}),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: () => ({ ok: true }),
+          }),
+        },
+      },
+    })();
+    (redeclared as { resources: unknown }).resources = {
+      roster: { pattern: "workforce/roster/[owner]/[seat]", scope: "org" },
+    };
+    expect(() => registry.register(redeclared)).toThrow(/cannot be redeclared/);
+
+    const notes = defineFlow({
+      kind: "notes",
+      actions: {
+        ping: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "ping-3",
+            inputSchema: z.object({}),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: () => ({ ok: true }),
+          }),
+        },
+      },
+    })();
+    (notes as { resources: unknown }).resources = {
+      roster: { pattern: "workforce/roster/[owner]/notes", scope: "org" },
+    };
+    expect(() => registry.register(notes)).toThrow(/user-owned roster/);
   });
 
   it("a shared app flow stays open to another org", async () => {

@@ -239,8 +239,12 @@ export {
   extractPatternParams,
   assertRosterCollectionIsNotDeep,
   patternReadsPrivateRoster,
+  rosterPatternIsTooDeep,
+  isHiredRosterPrivateCollection,
+  markHiredRosterPrivateCollection,
   HIRED_ROSTER_BROWSER_PATTERN,
   HIRED_ROSTER_PRIVATE_PATTERN,
+  HIRED_ROSTER_PRIVATE_BRAND,
 } from "./resource-collection";
 
 export type {

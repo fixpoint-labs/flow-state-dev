@@ -22,7 +22,7 @@ All from `@flow-state-dev/workforce`:
 | Call | What it does |
 | --- | --- |
 | `defineHiredRosterCollection()` | Declares the stored roster: an organization-scoped resource collection at `workforce/roster/*`, one row per hired seat. Takes no options. |
-| `seatAddress(orgId, seatId)` | Returns `<orgId>.<seatId>`, the address a hired seat answers on. Throws when the organization id is not a single address segment. |
+| `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, with the user escaped, so two people can hire the same seat id. Throws when the organization id is not a single address segment, or when the seat id starts with `~`. |
 | `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
 | `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems }`. It registers nothing. |
 

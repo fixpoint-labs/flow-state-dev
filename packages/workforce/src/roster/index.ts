@@ -16,6 +16,7 @@ export {
 } from "./collections";
 
 export {
+  encodeUserSegment,
   hiredRosterStorageKey,
   hiredSeatManifest,
   hiredSeatOwnerPin,

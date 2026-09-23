@@ -118,13 +118,14 @@ async function callAdmin(
   stores: ReturnType<typeof createInMemoryStores>,
   actionName: "hire" | "fire",
   input: unknown,
-  orgId: string = ORG
+  orgId: string = ORG,
+  userId: string = "admin",
 ) {
   return runAction({
     flow,
     actionName,
     input,
-    userId: "admin",
+    userId,
     orgId,
     stores,
     runtimeConfig: { modelResolver },
@@ -287,7 +288,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     // "back".
     const row = await storedRow(stores, "support.ada");
     expect(row).toMatchObject({ flow: "desk-clerk", settings: { desk: "front" } });
-    expect(registrar.held.get("acme.support.ada")?.config).toMatchObject({ desk: "front" });
+    expect(registrar.held.get("acme.~admin.support.ada")?.config).toMatchObject({ desk: "front" });
   });
 
   it("refuses when a ROW exists although no instance holds the address", async () => {
@@ -311,7 +312,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
       settings: { desk: "front" },
     });
     // The address is released; the row is left exactly where it was.
-    registrar.held.delete("acme.support.ada");
+    registrar.held.delete("acme.~admin.support.ada");
     expect(await storedRow(stores, "support.ada")).toBeDefined();
 
     const second = await callAdmin(flow, stores, "hire", {
@@ -357,7 +358,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     });
     expectAccepted(hired);
 
-    expect(registrar.held.get("acme.support.ada")?.kind).toBe("desk-clerk");
+    expect(registrar.held.get("acme.~admin.support.ada")?.kind).toBe("desk-clerk");
     expect(await storedRow(stores, "support.ada")).toMatchObject({ flow: "desk-clerk" });
 
     // The stored kind and the live kind agree, so the mismatch branch in
@@ -366,7 +367,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
     expectAccepted(fired);
     expect(fired.output).toMatchObject({ released: true });
-    expect(registrar.held.has("acme.support.ada")).toBe(false);
+    expect(registrar.held.has("acme.~admin.support.ada")).toBe(false);
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
   });
 
@@ -435,8 +436,8 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
 
     expectAccepted(one);
     expectAccepted(two);
-    expect(registrar.held.has("acme.support.ada")).toBe(true);
-    expect(registrar.held.has("bravo.support.ada")).toBe(true);
+    expect(registrar.held.has("acme.~admin.support.ada")).toBe(true);
+    expect(registrar.held.has("bravo.~admin.support.ada")).toBe(true);
     expect(await storedRow(stores, "support.ada", ORG)).toMatchObject({ settings: { desk: "front" } });
     expect(await storedRow(stores, "support.ada", OTHER_ORG)).toMatchObject({ settings: { desk: "back" } });
   });
@@ -506,8 +507,8 @@ describe("fire", () => {
     const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
 
     expectAccepted(fired);
-    expect(fired.output).toMatchObject({ address: "acme.support.ada", released: true });
-    expect(registrar.held.has("acme.support.ada")).toBe(false);
+    expect(fired.output).toMatchObject({ address: "acme.~admin.support.ada", released: true });
+    expect(registrar.held.has("acme.~admin.support.ada")).toBe(false);
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
   });
 
@@ -566,9 +567,9 @@ describe("fire", () => {
 
     // The restart: the address is released and re-taken by a seat this app did
     // NOT register from the row — same address, same kind.
-    workforceRegistrar.unregister("acme.support.ada");
-    registrar.held.set("acme.support.ada", {
-      id: "acme.support.ada",
+    workforceRegistrar.unregister("acme.~admin.support.ada");
+    registrar.held.set("acme.~admin.support.ada", {
+      id: "acme.~admin.support.ada",
       kind: "desk-clerk",
     } as unknown as FlowInstance);
 
@@ -578,7 +579,7 @@ describe("fire", () => {
     expect(fired.output).toMatchObject({ released: false });
     // The row goes — this org did hire it. The file-declared seat stays.
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
-    expect(registrar.held.has("acme.support.ada")).toBe(true);
+    expect(registrar.held.has("acme.~admin.support.ada")).toBe(true);
   });
 
   it("V15 · leaves an address alone when a foreign instance holds it", async () => {
@@ -595,8 +596,8 @@ describe("fire", () => {
     // Something else takes the address between the hire and the fire. The
     // address grammar is supposed to make this unreachable; the check is here
     // because a guarantee nobody checks is how this goes wrong.
-    registrar.held.set("acme.support.ada", {
-      id: "acme.support.ada",
+    registrar.held.set("acme.~admin.support.ada", {
+      id: "acme.~admin.support.ada",
       kind: "some-other-kind",
     } as unknown as FlowInstance);
 
@@ -607,7 +608,33 @@ describe("fire", () => {
     // The row goes; the foreign instance stays. Unregistering by address alone
     // would take it offline.
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
-    expect(registrar.held.get("acme.support.ada")?.kind).toBe("some-other-kind");
+    expect(registrar.held.get("acme.~admin.support.ada")?.kind).toBe("some-other-kind");
+  });
+});
+
+describe("user-owned addresses", () => {
+  it("lets alice and bob both hire research, on different addresses, without naming a kind", async () => {
+    const registrar = stubRegistrar();
+    const flow = adminFlow();
+    const stores = createInMemoryStores();
+    const hired = async (userId: string) =>
+      callAdmin(
+        flow,
+        stores,
+        "hire",
+        { seatId: "research", flow: "desk-clerk", instructions: `${userId}-PRIVATE` },
+        ORG,
+        userId,
+      );
+
+    const alice = await hired("alice");
+    const bob = await hired("bob");
+    expectAccepted(alice);
+    expectAccepted(bob);
+    expect(alice.output).toMatchObject({ address: "acme.~alice.research" });
+    expect(bob.output).toMatchObject({ address: "acme.~bob.research" });
+    expect(registrar.held.has("acme.~alice.research")).toBe(true);
+    expect(registrar.held.has("acme.~bob.research")).toBe(true);
   });
 });
 

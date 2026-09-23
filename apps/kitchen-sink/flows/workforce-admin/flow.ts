@@ -149,7 +149,10 @@ const hire = handler({
     // Refuses a dotted, empty or over-long org before anything else looks at
     // it: without this, `acme` + `support.ada` and `acme.support` + `ada` spell
     // one address and the second hire silently rebinds the first.
-    const address = seatAddress(orgId, input.seatId);
+    const userId = userOf(ctx);
+    // User-owned seats carry the user in the address, so two members can hire
+    // the same seat id without sharing one address. The pin is the row, below.
+    const address = seatAddress(orgId, input.seatId, userId);
 
     if (!Object.hasOwn(kitchenSinkKinds, input.flow)) {
       throw new Error(
@@ -167,7 +170,6 @@ const hire = handler({
       );
     }
 
-    const userId = userOf(ctx);
     const row = toHiredSeatRow({
       seatId: input.seatId,
       flow: input.flow,
@@ -237,7 +239,6 @@ const fire = handler({
   execute: async (input, ctx) => {
     const orgId = orgOf(ctx);
     const userId = userOf(ctx);
-    const address = seatAddress(orgId, input.seatId);
     const rows = rosterOf(ctx);
     const owned = privateRosterOf(ctx);
 
@@ -248,6 +249,9 @@ const fire = handler({
     // org-visible row is still the flat key.
     const ownedRow = await owned.getOptional({ owner: `~${userId}`, seat: input.seatId });
     const existing = ownedRow ?? (await rows.getOptional(input.seatId));
+    // A user-owned row answers on `<org>.~<user>.<seat>`. A legacy flat row,
+    // and a file-declared seat, stay on `<org>.<seat>`.
+    const address = seatAddress(orgId, input.seatId, ownedRow !== undefined ? userId : null);
     if (existing === undefined) {
       const held = workforceRegistrar.kindAt(address);
       throw new Error(

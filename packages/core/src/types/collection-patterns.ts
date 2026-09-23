@@ -156,36 +156,98 @@ export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
 
 /**
  * Server-side writer for a user-owned roster row. Two segments, no browser
- * read. The only multi-segment pattern admitted under `workforce/roster/`.
+ * read. Admitted only when the object carries {@link HIRED_ROSTER_PRIVATE_BRAND},
+ * which `defineHiredRosterPrivateCollection` sets. Any other declaration of
+ * this pattern, and any other two-or-more-segment pattern under
+ * `workforce/roster/`, is refused.
  */
 export const HIRED_ROSTER_PRIVATE_PATTERN = "workforce/roster/[owner]/[seat]";
 
-/** A key the browser roster must not list, and a deep glob must not be able to. */
-const PRIVATE_ROSTER_PROBE = "workforce/roster/~alice/research";
+/**
+ * Brand on the workforce-owned private roster writer.
+ *
+ * Non-enumerable, so copying the config with a spread drops it. Registration
+ * admits {@link HIRED_ROSTER_PRIVATE_PATTERN} only while this is set.
+ */
+export const HIRED_ROSTER_PRIVATE_BRAND: symbol = Symbol.for(
+  "@flow-state-dev/hired-roster-private",
+);
+
+/** Stamp `collection` as the workforce-owned private roster writer. */
+export function markHiredRosterPrivateCollection<T extends object>(collection: T): T {
+  Object.defineProperty(collection, HIRED_ROSTER_PRIVATE_BRAND, {
+    value: true,
+    enumerable: false,
+  });
+  return collection;
+}
+
+/** Whether `value` is the workforce-owned private roster writer. */
+export function isHiredRosterPrivateCollection(value: object): boolean {
+  return Reflect.get(value, HIRED_ROSTER_PRIVATE_BRAND) === true;
+}
+
+const ROSTER_ROOT = "workforce/roster";
 
 /**
- * Whether `pattern` can address a user-owned roster row.
+ * Whether `pattern` has two or more segments under `workforce/roster/`, or is
+ * a deep glob whose prefix can reach that tree.
  *
- * A bare `**` is included: the single-segment matcher does not treat it as
- * a deep glob, and it would still be a collection over every key.
+ * The browser pattern is one segment. The private writer is two, and is not
+ * "too deep" here — admission of that one pattern is a separate brand check.
+ * A single probe key is not enough: `workforce/roster/[owner]/notes` never
+ * matches `workforce/roster/~alice/research` and would still read every user's
+ * notes.
+ */
+export function rosterPatternIsTooDeep(pattern: string): boolean {
+  if (pattern === HIRED_ROSTER_BROWSER_PATTERN || pattern === HIRED_ROSTER_PRIVATE_PATTERN) {
+    return false;
+  }
+  if (pattern.includes("**")) {
+    const star = pattern.indexOf("**");
+    const prefix = pattern.slice(0, star).replace(/\/$/, "");
+    return (
+      prefix.length === 0 ||
+      ROSTER_ROOT.startsWith(prefix) ||
+      prefix.startsWith(ROSTER_ROOT)
+    );
+  }
+  if (pattern !== ROSTER_ROOT && !pattern.startsWith(`${ROSTER_ROOT}/`)) return false;
+  const rest = pattern.startsWith(`${ROSTER_ROOT}/`)
+    ? pattern.slice(ROSTER_ROOT.length + 1)
+    : "";
+  const segments = rest.split("/").filter((segment) => segment.length > 0);
+  return segments.length >= 2;
+}
+
+/**
+ * Whether `pattern` can address a user-owned roster row on the server.
+ *
+ * True for the private writer, for any deeper pattern under the roster, and
+ * for a deep glob that reaches it. The browser pattern is one segment and is
+ * not included.
  */
 export function patternReadsPrivateRoster(pattern: string): boolean {
-  if (pattern === "**") return true;
-  return matchesPattern(pattern, PRIVATE_ROSTER_PROBE);
+  if (pattern === HIRED_ROSTER_PRIVATE_PATTERN) return true;
+  return rosterPatternIsTooDeep(pattern);
 }
 
 /**
  * Refuse a collection that can read user-owned roster rows on the server.
  *
- * The private sub-prefix hides those rows from the browser collection only.
- * A `workforce/roster/**` (or any other deep pattern that reaches the same
- * keys) would hand them back to every flow in the org. The browser pattern
- * and the one server-side writer, with no browser read, are the exceptions.
+ * At definition, the private writer pattern is allowed so the workforce
+ * factory can build it, and then {@link markHiredRosterPrivateCollection}
+ * brands the result. At registration, that pattern is admitted only with the
+ * brand, and still never with a browser read. Every other two-segment roster
+ * pattern, and every deep glob that reaches the roster, is refused at both.
  */
-export function assertRosterCollectionIsNotDeep(config: {
-  pattern: string;
-  client?: { state?: { read?: boolean } };
-}): void {
+export function assertRosterCollectionIsNotDeep(
+  config: {
+    pattern: string;
+    client?: { state?: { read?: boolean } };
+  },
+  stage: "define" | "register" = "define",
+): void {
   const { pattern } = config;
   if (pattern === HIRED_ROSTER_BROWSER_PATTERN) return;
   if (pattern === HIRED_ROSTER_PRIVATE_PATTERN) {
@@ -195,9 +257,15 @@ export function assertRosterCollectionIsNotDeep(config: {
           `User-owned roster rows stay off the browser collection.`
       );
     }
+    if (stage === "register" && !isHiredRosterPrivateCollection(config)) {
+      throw new Error(
+        `Collection pattern "${pattern}" is the workforce roster writer and cannot be redeclared. ` +
+          `User-owned roster rows are read through the hire and fire helpers, for the caller only.`
+      );
+    }
     return;
   }
-  if (!patternReadsPrivateRoster(pattern)) return;
+  if (!rosterPatternIsTooDeep(pattern)) return;
   throw new Error(
     `Collection pattern "${pattern}" can read user-owned roster rows on the server. ` +
       `Declare "${HIRED_ROSTER_BROWSER_PATTERN}" for the org roster. ` +
