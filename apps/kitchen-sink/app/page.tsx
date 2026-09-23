@@ -2,7 +2,9 @@
 
 import { memo, Suspense, useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
+  FlowNavigator,
   FlowProvider,
   SuspensionResolverProvider,
   useFlow,
@@ -10,9 +12,13 @@ import {
   useClientData,
   useResourceCollectionList,
   useVoice,
+  type FlowNavigatorLeaf,
+  type FlowNavigatorLeafState,
+  type FlowNavigatorSection,
 } from "@flow-state-dev/react";
+import { createResourceClient } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
-import { Menu, MessageSquareText, Package, RotateCcw } from "lucide-react";
+import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
 
 import {
   Conversation,
@@ -31,7 +37,6 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { StuckRequestBanner } from "@/components/flow-state/stuck-request-banner";
 
-import { SessionSidebar } from "@/components/session-sidebar";
 import { AgentResponseCard } from "@/components/agent-response-card";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
 import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking-style-selector";
@@ -41,6 +46,7 @@ import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
+import { TeamPanel } from "@/components/team-panel";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
@@ -49,6 +55,8 @@ import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
+import { cn } from "@/lib/utils";
+import { CHANNEL_KINDS, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
@@ -61,7 +69,47 @@ const chatAgentRenderers: RendererRegistry = {
 
 type MobilePanel = "chat" | "artifacts";
 
-const SIDEBAR_DEFAULT_WIDTH = 480;
+/**
+ * Whether the rail lists hired seats.
+ *
+ * The seat rows come from the server's flow list, which carries no
+ * organization and is answered without a credential, so every organization's
+ * hired seats are listed to anyone who can load this page. Set this to
+ * `false` to ship the rail with channels only; the roster panel on the right
+ * is organization-scoped either way.
+ */
+const SHOW_SEATS_IN_RAIL = true;
+
+/**
+ * The rail's sections. How deep each kind goes is read off the flow's declared
+ * cardinality, never written here: a channel kind opens straight into its
+ * conversations, a seat kind opens into seats and then one seat's.
+ *
+ * "Assistant" is this app's own chat flow, so its conversations stay one click
+ * away.
+ */
+const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
+  { label: "Channels", kinds: CHANNEL_KINDS },
+  ...(SHOW_SEATS_IN_RAIL ? [{ label: "Seats", kinds: SEAT_KINDS }] : []),
+  { label: "Assistant", kinds: [SHELL_FLOW_KIND] },
+];
+
+/** The rail's theme: the navigator's custom properties, set to this app's tokens. */
+const RAIL_THEME = {
+  "--fsd-nav-fg": "var(--color-foreground)",
+  "--fsd-nav-muted-fg": "var(--color-muted-foreground)",
+  "--fsd-nav-selected-bg": "var(--color-accent)",
+  "--fsd-nav-selected-fg": "var(--color-accent-foreground)",
+} as CSSProperties;
+
+/**
+ * A session picked in the rail that is not one of the assistant's own.
+ * `address` is the flow it belongs to: the kind for a channel, the seat's own
+ * id for a seat. Continuing or retrying a request is routed by it.
+ */
+type PickedSession = { sessionId: string; kind: string; address: string };
+
+const SIDEBAR_DEFAULT_WIDTH = 360;
 const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 700;
 const SIDEBAR_STORAGE_KEY = "ks-sidebar-width";
@@ -101,6 +149,9 @@ function PageInner() {
 }
 
 function KitchenSinkApp() {
+  // The assistant's own sessions, and which one the stream is on. The rail's
+  // navigator reads the flow list once more for itself: one extra read per
+  // page, never one per row.
   const flow = useFlow({ autoCreateSession: true });
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
@@ -111,7 +162,9 @@ function KitchenSinkApp() {
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
-  const [isSessionDrawerOpen, setIsSessionDrawerOpen] = useState(false);
+  const [isRailDrawerOpen, setIsRailDrawerOpen] = useState(false);
+  const [isTeamSheetOpen, setIsTeamSheetOpen] = useState(false);
+  const [picked, setPicked] = useState<PickedSession | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
     const stored = sessionStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -126,8 +179,10 @@ function KitchenSinkApp() {
     });
   }, []);
 
-  const sidebarStyle = useMemo<CSSProperties>(
-    () => ({ width: sidebarWidth, minWidth: SIDEBAR_MIN_WIDTH, maxWidth: SIDEBAR_MAX_WIDTH }),
+  // Applied through a custom property so it only takes effect where the panel
+  // is a column (`lg` and up); below that the panel is a sheet with its own width.
+  const teamPanelStyle = useMemo(
+    () => ({ "--team-panel-width": `${sidebarWidth}px` }) as CSSProperties,
     [sidebarWidth],
   );
 
@@ -137,17 +192,25 @@ function KitchenSinkApp() {
     autoPlayTTS: ttsEnabled,
   });
 
-  // Refresh session list when the active session's title changes (e.g. from auto-title).
-  const prevTitleRef = useRef(session.detail?.title);
-  useEffect(() => {
-    const currentTitle = session.detail?.title;
-    if (currentTitle !== prevTitleRef.current) {
-      prevTitleRef.current = currentTitle;
-      if (currentTitle !== undefined) {
-        void flow.refreshSessions();
-      }
-    }
-  }, [session.detail?.title, flow]);
+  // A channel's or a seat's session, when one is picked in the rail. Read
+  // only: the composer below talks to the assistant's flow and no other.
+  // This session and the assistant's (`session`, above) are both live
+  // subscriptions while a rail session is open — deliberate, not an oversight:
+  // the rail panel needs its own stream to update live, and the composer
+  // stays wired to the assistant's session regardless of what is picked.
+  const pickedSession = useSession(picked?.sessionId, {
+    flowKind: picked?.address,
+    items: true,
+    autoResume: true,
+  });
+
+  // One resource client for every panel read, held stable: the panels fence
+  // their reads on it, so a new object each render would read as a new
+  // backend each render.
+  const resourceClient = useMemo(() => createResourceClient({ baseUrl: "" }), []);
+  // The panels read through the assistant's session, because that flow is the
+  // one declaring the roster and the boards.
+  const panelSessionId = flow.activeSessionId;
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
@@ -233,19 +296,54 @@ function KitchenSinkApp() {
     [flow.activeSessionId, mode, thinkingStyle, features, session]
   );
 
-  const handleNewSession = useCallback(async () => {
-    await flow.createSession();
-    setIsSessionDrawerOpen(false);
-    setMobilePanel("chat");
-  }, [flow]);
-
-  const handleSelectSession = useCallback(
-    (id: string) => {
-      flow.selectSession(id);
-      setIsSessionDrawerOpen(false);
+  const handleNewSession = useCallback(
+    async (leaf: FlowNavigatorLeafState) => {
+      await flow.createSession();
+      setPicked(null);
+      leaf.refresh();
+      setIsRailDrawerOpen(false);
       setMobilePanel("chat");
     },
     [flow]
+  );
+
+  const handleSelectSession = useCallback(
+    (id: string, leaf: FlowNavigatorLeaf) => {
+      if (leaf.kind === SHELL_FLOW_KIND) {
+        flow.selectSession(id);
+        setPicked(null);
+      } else {
+        setPicked({ sessionId: id, kind: leaf.kind, address: leaf.address });
+      }
+      setIsRailDrawerOpen(false);
+      setMobilePanel("chat");
+    },
+    [flow]
+  );
+
+  // The assistant's leaf, while it is open, so a session that gets its title
+  // after the first turn can be re-read into the rail.
+  const assistantLeafRefresh = useRef<(() => void) | null>(null);
+  const sessionTitle = session.detail?.title;
+  useEffect(() => {
+    if (sessionTitle !== undefined) assistantLeafRefresh.current?.();
+  }, [sessionTitle]);
+
+  const railSlots = useMemo(
+    () => ({
+      // "New session" sits inside the assistant's own leaf, the one place a
+      // new conversation can be started from this page.
+      leafToolbar: (leaf: FlowNavigatorLeafState) =>
+        leaf.kind === SHELL_FLOW_KIND ? (
+          <AssistantLeafToolbar
+            leaf={leaf}
+            refreshRef={assistantLeafRefresh}
+            disabled={flow.isLoading}
+            onNewSession={handleNewSession}
+          />
+        ) : null,
+    }),
+    [handleNewSession, flow.isLoading]
   );
 
   const handleSelectedModelChange = useCallback(
@@ -291,41 +389,88 @@ function KitchenSinkApp() {
 
   const isDisabled = !session.canSendAction || !flow.activeSessionId || flow.isLoading;
 
+  const chatPanel = (
+    <ChatPanel
+      message={message}
+      mode={mode}
+      thinkingStyle={thinkingStyle}
+      selectedModel={selectedModel}
+      thinkingEnabled={thinkingEnabled}
+      features={features}
+      isDisabled={isDisabled}
+      session={session}
+      voice={voice}
+      ttsEnabled={ttsEnabled}
+      onToggleTTS={() => setTtsEnabled((v) => !v)}
+      onSetMessage={setMessage}
+      onSetMode={handleModeChange}
+      onSetThinkingStyle={setThinkingStyle}
+      onSelectedModelChange={handleSelectedModelChange}
+      onThinkingEnabledChange={handleThinkingEnabledChange}
+      onSetFeatures={setFeatures}
+      onSubmit={handleSubmit}
+      onSuggestionClick={handleSuggestionClick}
+    />
+  );
+  const stream =
+    picked === null ? chatPanel : <PickedSessionPanel session={pickedSession} kind={picked.kind} />;
+
+  const teamPanel = (
+    <TeamPanel
+      sessionId={panelSessionId}
+      resourceClient={resourceClient}
+      top={
+        mode === "build" ? (
+          <ArtifactPanel
+            artifacts={artifacts}
+            selectedId={selectedArtifactId}
+            onSelect={setSelectedArtifactId}
+            className="h-72 shrink-0 border-b border-l-0"
+          />
+        ) : null
+      }
+    />
+  );
+
+  // Three regions, and the order they give way in as the window narrows:
+  // below `lg` the team panel becomes a sheet opened from the header, below
+  // `sm` the rail becomes a drawer too, and the stream never yields.
+  //
+  // The rail and the panel are each mounted ONCE, at every width. A drawer is
+  // the same element restyled, not a second copy, so there is one flow-list
+  // read, one scroll container and one set of open rows whatever the width.
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
-      <SessionSidebar
-        className="hidden lg:flex"
-        sessions={flow.sessions}
-        activeSessionId={flow.activeSessionId}
-        isLoading={flow.isLoading}
-        onNewChat={() => void handleNewSession()}
-        onSelectSession={handleSelectSession}
-      />
-
-      {isSessionDrawerOpen && (
-        <div className="fixed inset-0 z-40 flex bg-black/40 lg:hidden" role="dialog" aria-modal="true" aria-label="Session list drawer">
-          <SessionSidebar
-            className="w-[18rem] max-w-[85vw] border-r bg-background shadow-2xl"
-            sessions={flow.sessions}
-            activeSessionId={flow.activeSessionId}
-            isLoading={flow.isLoading}
-            onNewChat={() => void handleNewSession()}
-            onSelectSession={handleSelectSession}
-          />
-          <button
-            type="button"
-            className="flex-1"
-            aria-label="Close sessions drawer"
-            onClick={() => setIsSessionDrawerOpen(false)}
-          />
-        </div>
+      {isRailDrawerOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/40 sm:hidden"
+          aria-label="Close navigator"
+          onClick={() => setIsRailDrawerOpen(false)}
+        />
       )}
+      <aside
+        className={cn(
+          "shrink-0 flex-col border-r sm:static sm:z-auto sm:flex sm:w-64 sm:max-w-none sm:bg-muted/30 sm:shadow-none",
+          isRailDrawerOpen
+            ? "fixed inset-y-0 left-0 z-50 flex w-[18rem] max-w-[85vw] bg-background shadow-2xl"
+            : "hidden",
+        )}
+        data-testid="rail"
+        aria-label="Channels, seats and conversations"
+      >
+        <Rail
+          slots={railSlots}
+          selectedSessionId={picked?.sessionId ?? flow.activeSessionId}
+          onSelectSession={handleSelectSession}
+        />
+      </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-w-0 flex-1 flex-col" data-testid="stream">
         <div className="flex items-center gap-2 border-b px-3 py-2 sm:px-4 lg:hidden">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsSessionDrawerOpen(true)}>
+          <Button variant="outline" size="sm" className="gap-2 sm:hidden" onClick={() => setIsRailDrawerOpen(true)}>
             <Menu className="h-4 w-4" />
-            Sessions
+            Browse
           </Button>
           <Button
             variant={mobilePanel === "chat" ? "secondary" : "outline"}
@@ -336,7 +481,7 @@ function KitchenSinkApp() {
             <MessageSquareText className="h-4 w-4" />
             Chat
           </Button>
-          {mode === "build" && (
+          {mode === "build" && picked === null && (
             <Button
               variant={mobilePanel === "artifacts" ? "secondary" : "outline"}
               size="sm"
@@ -347,7 +492,17 @@ function KitchenSinkApp() {
               Artifacts ({artifacts.length})
             </Button>
           )}
-          <div className="ml-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            aria-label="Open boards and roster"
+            onClick={() => setIsTeamSheetOpen(true)}
+          >
+            <Users className="h-4 w-4" />
+            Team
+          </Button>
+          <div className="ml-auto sm:hidden">
             <ThemeToggle />
           </div>
         </div>
@@ -366,31 +521,9 @@ function KitchenSinkApp() {
         <BackgroundWorkRefresh session={session} />
 
         <div className="flex min-h-0 flex-1 sm:hidden">
-          {mobilePanel === "chat" && (
-            <ChatPanel
-              message={message}
-              mode={mode}
-              thinkingStyle={thinkingStyle}
-              selectedModel={selectedModel}
-              thinkingEnabled={thinkingEnabled}
-              features={features}
-              isDisabled={isDisabled}
-              session={session}
-              voice={voice}
-              ttsEnabled={ttsEnabled}
-              onToggleTTS={() => setTtsEnabled((v) => !v)}
-              onSetMessage={setMessage}
-              onSetMode={handleModeChange}
-              onSetThinkingStyle={setThinkingStyle}
-              onSelectedModelChange={handleSelectedModelChange}
-              onThinkingEnabledChange={handleThinkingEnabledChange}
-              onSetFeatures={setFeatures}
-              onSubmit={handleSubmit}
-              onSuggestionClick={handleSuggestionClick}
-            />
-          )}
+          {(mobilePanel === "chat" || picked !== null) && stream}
 
-          {mobilePanel === "artifacts" && mode === "build" && (
+          {mobilePanel === "artifacts" && mode === "build" && picked === null && (
             <div className="flex min-w-0 flex-1">
               <ArtifactPanel
                 artifacts={artifacts}
@@ -402,42 +535,36 @@ function KitchenSinkApp() {
           )}
         </div>
 
-        <div className="hidden min-h-0 flex-1 sm:flex">
-          <ChatPanel
-            message={message}
-            mode={mode}
-            thinkingStyle={thinkingStyle}
-            selectedModel={selectedModel}
-            thinkingEnabled={thinkingEnabled}
-            features={features}
-            isDisabled={isDisabled}
-            session={session}
-            voice={voice}
-            ttsEnabled={ttsEnabled}
-            onToggleTTS={() => setTtsEnabled((v) => !v)}
-            onSetMessage={setMessage}
-            onSetMode={handleModeChange}
-            onSetThinkingStyle={setThinkingStyle}
-            onSelectedModelChange={handleSelectedModelChange}
-            onThinkingEnabledChange={handleThinkingEnabledChange}
-            onSetFeatures={setFeatures}
-            onSubmit={handleSubmit}
-            onSuggestionClick={handleSuggestionClick}
-          />
-
-          {mode === "build" && (
-            <>
-              <ResizeHandle onResize={handleSidebarResize} />
-              <ArtifactPanel
-                artifacts={artifacts}
-                selectedId={selectedArtifactId}
-                onSelect={setSelectedArtifactId}
-                style={sidebarStyle}
-              />
-            </>
-          )}
-        </div>
+        <div className="hidden min-h-0 flex-1 sm:flex">{stream}</div>
       </main>
+
+      <ResizeHandle onResize={handleSidebarResize} className="hidden lg:flex" />
+      {isTeamSheetOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          aria-label="Close boards and roster"
+          onClick={() => setIsTeamSheetOpen(false)}
+        />
+      )}
+      <aside
+        className={cn(
+          "shrink-0 flex-col border-l lg:static lg:z-auto lg:flex lg:w-[var(--team-panel-width)] lg:max-w-none lg:shadow-none",
+          isTeamSheetOpen
+            ? "fixed inset-y-0 right-0 z-50 flex w-[28rem] max-w-[90vw] bg-background shadow-2xl"
+            : "hidden",
+        )}
+        style={teamPanelStyle}
+        data-testid="team-panel"
+        aria-label="Boards and roster"
+      >
+        <div className="flex items-center justify-end border-b px-2 py-1 lg:hidden">
+          <Button variant="ghost" size="icon-sm" aria-label="Close boards and roster" onClick={() => setIsTeamSheetOpen(false)}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        {teamPanel}
+      </aside>
 
       <ArtifactDialog
         artifact={selectedArtifact}
@@ -446,6 +573,101 @@ function KitchenSinkApp() {
         onClose={() => setSelectedArtifactId(null)}
       />
     </div>
+  );
+}
+
+/**
+ * The strip inside the assistant's open leaf: "New session", plus a handle on
+ * the leaf's re-read for as long as the leaf is open.
+ */
+function AssistantLeafToolbar({
+  leaf,
+  refreshRef,
+  disabled,
+  onNewSession,
+}: {
+  leaf: FlowNavigatorLeafState;
+  refreshRef: React.MutableRefObject<(() => void) | null>;
+  disabled: boolean;
+  onNewSession: (leaf: FlowNavigatorLeafState) => Promise<void>;
+}) {
+  const { refresh } = leaf;
+  useEffect(() => {
+    refreshRef.current = refresh;
+    return () => {
+      if (refreshRef.current === refresh) refreshRef.current = null;
+    };
+  }, [refresh, refreshRef]);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-7 w-full justify-start gap-2 text-xs"
+      onClick={() => void onNewSession(leaf)}
+      disabled={disabled}
+    >
+      <Plus className="h-3.5 w-3.5" />
+      New session
+    </Button>
+  );
+}
+
+/** The rail: one navigator over every section, and the app's links underneath it. */
+function Rail({
+  slots,
+  selectedSessionId,
+  onSelectSession,
+}: {
+  slots: { leafToolbar: (leaf: FlowNavigatorLeafState) => React.ReactNode };
+  selectedSessionId: string | undefined;
+  onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
+}) {
+  return (
+    <>
+      <div className="min-h-0 flex-1 py-1" style={RAIL_THEME}>
+        <FlowNavigator
+          sections={RAIL_SECTIONS}
+          selectedSessionId={selectedSessionId}
+          onSelectSession={onSelectSession}
+          slots={slots}
+        />
+      </div>
+      <div className="flex items-center gap-1 border-t p-3">
+        <ThemeToggle />
+        <Button asChild variant="ghost" size="icon-sm" aria-label="Open DevTool">
+          <Link href="/devtool" target="_blank" rel="noopener" title="Open DevTool">
+            <Wrench className="h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * A session from another flow, opened from the rail: its transcript, and no
+ * composer, because this page sends turns to the assistant only.
+ */
+function PickedSessionPanel({ session, kind }: { session: ReturnType<typeof useSession>; kind: string }) {
+  return (
+    <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
+      <Conversation className="min-h-0 flex-1" data-testid="conversation">
+        <ConversationBody
+          items={session.items}
+          isStreaming={session.isStreaming}
+          isFinishing={session.isFinishing}
+          statusMessage={session.statusMessage}
+          isLoading={session.isLoading}
+          error={session.error}
+          emptyTitle="Nothing here yet"
+          emptyDescription={`This ${kind} session has no turns yet.`}
+        />
+        <ConversationScrollButton />
+      </Conversation>
+      <p className="border-t px-4 py-3 text-xs text-muted-foreground">
+        Read only. Messages from this page go to the assistant, so pick one of its conversations to reply.
+      </p>
+    </section>
   );
 }
 
@@ -479,6 +701,8 @@ const ConversationBody = memo(function ConversationBody({
   statusMessage,
   isLoading,
   error,
+  emptyTitle = "Kitchen Sink",
+  emptyDescription = "A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use.",
 }: {
   items: import("@flow-state-dev/core/items").OutputItem[];
   isStreaming: boolean;
@@ -486,6 +710,8 @@ const ConversationBody = memo(function ConversationBody({
   statusMessage: string;
   isLoading: boolean;
   error: { message: string } | null;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
   return (
     <>
@@ -493,10 +719,7 @@ const ConversationBody = memo(function ConversationBody({
       <SessionItemsProvider value={items}>
         <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
           {items.length === 0 && !isLoading && (
-            <ConversationEmptyState
-              title="Kitchen Sink"
-              description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
-            />
+            <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
           )}
           <RequestGroupRenderer items={items} isStreaming={isStreaming} isFinishing={isFinishing} statusMessage={statusMessage} />
           {error && (

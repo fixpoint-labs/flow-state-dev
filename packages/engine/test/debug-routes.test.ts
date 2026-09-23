@@ -706,7 +706,11 @@ describe("handleDebugGetCollectionItemContent", () => {
     expect(await res.text()).toBe("memo body");
   });
 
-  it("resolves a multi-segment topic via the pattern prefix", async () => {
+  // The item listing never shows a key outside the pattern, and neither the
+  // resource handle nor the production item route reads one. A nested key
+  // under a single-segment pattern can be another collection's row (a
+  // user-owned hire row sits under the org roster's prefix), so it is absent.
+  it("404s a multi-segment topic the collection's pattern does not match", async () => {
     const ctx = await setupCtx({
       resources: { "memos/nested/key": { title: "T", body: "B" } }
     });
@@ -726,8 +730,8 @@ describe("handleDebugGetCollectionItemContent", () => {
       },
       ctx
     );
-    expect(res.status).toBe(200);
-    expect(await res.text()).toBe("deep body");
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("deep body");
   });
 
   it("404s with content_not_found when the item has no content", async () => {

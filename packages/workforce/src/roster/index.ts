@@ -37,6 +37,7 @@ export {
   DEFAULT_MAX_RELOAD_ORGS,
   DEFAULT_ROSTER_READ_TIMEOUT_MS,
   reloadHiredSeats,
+  type HiredRosterOrgReload,
   type HiredRosterReload,
   type HiredRosterStores,
   type ReloadHiredSeatsOptions,

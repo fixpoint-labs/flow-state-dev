@@ -459,7 +459,7 @@ A card is labelled with the task's `title`, falling back to its `goal`, then to 
 
 Both read through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, with no auth headers.
 
-Each reads one page. `limit` sets its size. Neither pages beyond it.
+Each reads every page of its collection, following the list route's cursor rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders — a collection larger than `limit` still renders in full.
 
 A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 

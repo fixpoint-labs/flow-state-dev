@@ -2,10 +2,10 @@
  * The one read both panels make (FIX-1477 S5, S6).
  *
  * `Roster` and `BoardColumns` differ in what they draw and agree on how they
- * fetch: one page of a collection's per-item state, for one session, fenced on
- * its identity. Internal on purpose — exporting it would let a host mount the
- * same read twice and pay for it twice, which is the shape the navigator's own
- * reads module exists to prevent.
+ * fetch: every page of a collection's per-item state, for one session, fenced
+ * on its identity. Internal on purpose — exporting it would let a host mount
+ * the same read twice and pay for it twice, which is the shape the
+ * navigator's own reads module exists to prevent.
  *
  * The fence answers two hazards a collection read has, and an "is this still
  * the ref I want?" comparison answers only the first: a response can outlive
@@ -46,17 +46,33 @@ export type PanelRows<TClient = unknown> = {
 /** Stable empty list, so a stale hold hands back the same reference each render. */
 const EMPTY: PanelRow<never>[] = [];
 
+/**
+ * A ceiling on pages read for ONE identity, not on rows.
+ *
+ * Both panels are "a list a person scans" (see `usePanelRows`), not a feed
+ * with an unbounded tail, so this is a guard against a misbehaving transport
+ * handing back a `nextCursor` forever rather than a limit anyone is expected
+ * to reach. At the route's largest page (`STATE_LIST_MAX_LIMIT`, 200 —
+ * `packages/engine/src/routes/resource-routes.ts`) this still covers 200,000
+ * rows before it gives up and shows what it has.
+ */
+const MAX_PAGES = 1000;
+
 function describe(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
 }
 
 /**
- * One page of a collection's rows, for one session.
+ * Every row of a collection, for one session — traversing `nextCursor` until
+ * the route stops returning one.
  *
- * Deliberately one page and no `loadMore`: both panels draw a standing list
- * that a person scans, not a feed they page through, and a cursor the host
- * cannot see is worse than a limit it can. A collection larger than `limit`
- * renders its first page; raising the limit is the host's call.
+ * Deliberately no `loadMore`: both panels draw a standing list that a person
+ * scans, not a feed they page through, and a cursor the host cannot see is
+ * worse than none. `limit` sets the page **size** the read requests each
+ * time, not a cap on what the panel shows — a collection larger than `limit`
+ * still renders every row, in `limit`-sized fetches (bounded by `MAX_PAGES`,
+ * see above), because a panel that stopped at the first page would truncate
+ * silently (BR-19, BR-21).
  */
 export function usePanelRows<TClient = unknown>(
   source: PanelRowSource,
@@ -85,18 +101,21 @@ export function usePanelRows<TClient = unknown>(
     setError(null);
     setHeldIdentity(fence.identity);
     try {
-      const page = await source.listCollectionItems(
-        sessionId,
-        ref,
-        limit === undefined ? {} : { limit }
-      );
-      if (!stillCurrent()) return;
-      setRows(
-        page.items.map((item) => ({
-          topic: item.topic,
-          clientData: item.clientData as TClient
-        }))
-      );
+      const collected: PanelRow<TClient>[] = [];
+      let cursor: string | undefined;
+      for (let pageCount = 0; pageCount < MAX_PAGES; pageCount++) {
+        const page = await source.listCollectionItems(sessionId, ref, {
+          ...(limit === undefined ? {} : { limit }),
+          ...(cursor === undefined ? {} : { cursor })
+        });
+        if (!stillCurrent()) return;
+        for (const item of page.items) {
+          collected.push({ topic: item.topic, clientData: item.clientData as TClient });
+        }
+        if (page.nextCursor === undefined) break;
+        cursor = page.nextCursor;
+      }
+      setRows(collected);
     } catch (err) {
       if (!stillCurrent()) return;
       setError(describe(err, failureMessage));

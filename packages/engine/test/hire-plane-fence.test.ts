@@ -167,12 +167,13 @@ const MALLORY: Who = { user: "mallory", org: "globex" };
 const ACME_PROMPT = "ACME-CONFIDENTIAL: you work on acme's roadmap";
 const ALICE_PROMPT = "ALICE-PRIVATE: my research assistant";
 
-async function boot(stores = inMemoryStores()) {
+async function boot(stores = inMemoryStores(), options: { debug?: boolean } = {}) {
   const state = createFlowState({
     flows: { app: appFlow() },
     resolvePrincipal: verified.resolvePrincipal,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
+    debugEndpointsEnabled: options.debug ?? false,
   });
   const router = (await state.getRouter()) as {
     GET: (request: Request, ctx: { params: { path: string[] } }) => Promise<Response>;
@@ -200,9 +201,11 @@ async function boot(stores = inMemoryStores()) {
       { params: { path } }
     );
     const text = await response.text();
+    const isJson = response.headers.get("content-type")?.includes("json") ?? true;
     return {
       status: response.status,
-      json: text.length > 0 ? JSON.parse(text) : undefined,
+      json: text.length > 0 && isJson ? JSON.parse(text) : undefined,
+      text,
     };
   };
 
@@ -656,5 +659,102 @@ describe("FIX-1529 hire plane", () => {
       http: 202,
       outcome: "completed",
     });
+  });
+});
+
+/**
+ * FIX-1535. The debug endpoints read the store without the resource handle,
+ * so they get the same caller fence the handle applies: the private roster
+ * writer shows a session only its own user's rows, and a topic outside a
+ * collection's pattern is not read. Debug endpoints are on for these legs,
+ * which is what `fsdev dev` does.
+ */
+describe("FIX-1535 debug listing keeps the hire plane", () => {
+  async function seeded() {
+    const stores = inMemoryStores();
+    const primary = await stores.resolve(["primary"]);
+    await primary.resourceState!.set(
+      "org",
+      "acme",
+      "workforce/roster/~alice/research",
+      { seatId: "research", instructions: ALICE_PROMPT },
+      "any",
+    );
+    await primary.content!.set("org", "acme", "workforce/roster/~alice/research", ALICE_PROMPT);
+    await primary.resourceState!.set(
+      "org",
+      "acme",
+      "workforce/roster/eng.lead",
+      { seatId: "eng.lead", instructions: ACME_PROMPT },
+      "any",
+    );
+    const h = await boot(stores, { debug: true });
+    const open = async (who: Who) => {
+      const opened = await h.call("POST", ["app", "sessions"], who, { userId: who.user });
+      expect(opened.status).toBe(201);
+      return opened.json.session.id as string;
+    };
+    const debug = (who: Who, sessionId: string, ...rest: string[]) =>
+      h.call("GET", ["sessions", sessionId, "debug", "resources", ...rest], who);
+    return { h, open, debug };
+  }
+
+  it("bob's session does not list alice's private hire row", async () => {
+    const { open, debug } = await seeded();
+    const bob = await open(BOB);
+    const items = await debug(BOB, bob, "privateRoster", "items");
+    expect(items.status).toBe(200);
+    expect(JSON.stringify(items.json)).not.toContain("ALICE-PRIVATE");
+    expect(items.json.items).toEqual([]);
+
+    const tree = await debug(BOB, bob);
+    expect(tree.status).toBe(200);
+    const entry = (tree.json.resources as Array<{ primaryName: string; itemCount?: number }>).find(
+      (row) => row.primaryName === "privateRoster",
+    );
+    expect(entry?.itemCount).toBe(0);
+  });
+
+  it("bob's session does not read alice's row content by topic, through either roster", async () => {
+    const { open, debug } = await seeded();
+    const bob = await open(BOB);
+    for (const ref of ["privateRoster", "roster"]) {
+      const content = await debug(BOB, bob, ref, "~alice", "research", "content");
+      expect(content.status).toBe(404);
+      expect(content.text).not.toContain("ALICE-PRIVATE");
+    }
+  });
+
+  it("alice's own session still lists and reads her row", async () => {
+    const { open, debug } = await seeded();
+    const alice = await open(ALICE);
+    const items = await debug(ALICE, alice, "privateRoster", "items");
+    expect(items.status).toBe(200);
+    expect(items.json.items).toHaveLength(1);
+    expect(items.json.items[0].state.instructions).toBe(ALICE_PROMPT);
+
+    const tree = await debug(ALICE, alice);
+    const entry = (tree.json.resources as Array<{ primaryName: string; itemCount?: number }>).find(
+      (row) => row.primaryName === "privateRoster",
+    );
+    expect(entry?.itemCount).toBe(1);
+
+    const content = await debug(ALICE, alice, "privateRoster", "~alice", "research", "content");
+    expect(content.status).toBe(200);
+    expect(content.text).toBe(ALICE_PROMPT);
+  });
+
+  it("a session in another org lists none of acme's hire rows", async () => {
+    const { open, debug } = await seeded();
+    const bob = await open(BOB);
+    const acmeRoster = await debug(BOB, bob, "roster", "items");
+    expect(acmeRoster.json.items.map((row: { topic: string }) => row.topic)).toEqual(["eng.lead"]);
+
+    const mallory = await open(MALLORY);
+    for (const ref of ["privateRoster", "roster"]) {
+      const items = await debug(MALLORY, mallory, ref, "items");
+      expect(items.status).toBe(200);
+      expect(items.json.items).toEqual([]);
+    }
   });
 });

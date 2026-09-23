@@ -1,0 +1,10 @@
+{
+  "namedOrg": "acme",
+  "namedUser": "alice",
+  "devUser": "dev",
+  "devSeatId": "lead",
+  "namedSeatId": "support.ada",
+  "strayOrg": "globex",
+  "straySeatId": "stray",
+  "marker": "ACME-SEAT-ANSWERED-AFTER-RESTART"
+}
