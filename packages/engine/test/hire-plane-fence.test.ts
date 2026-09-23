@@ -467,9 +467,15 @@ describe("FIX-1529 hire plane", () => {
     h.state.register(seat("acme.eng.lead", ACME_PROMPT), { pin: { orgId: "acme" } });
     const opened = await h.call("POST", ["app", "sessions"], MALLORY, { userId: "mallory" });
     const sessionId = opened.json.session.id as string;
-    expect(await h.act(MALLORY, sessionId, "hand", { tag: "handed" })).toMatchObject({
+    // Refused at the seam, so the sender sees it and nothing is minted on the
+    // seat. A refusal that waited for the child's admission would be accepted
+    // here, and a board's row handed to that child would stay claimed.
+    expect(await h.act(MALLORY, sessionId, "hand", { tag: "handed" })).toEqual({
       http: 202,
+      outcome: "failed",
     });
+    const minted = await h.runtime.stores.session.list({ userId: "mallory", parentage: "all" });
+    expect(minted.filter((record) => record.flowId === "acme.eng.lead")).toEqual([]);
     for (let i = 0; i < 40; i++) {
       if ((await h.seenIn("globex")).length > 0 || (await h.seenIn("acme")).length > 0) break;
       await new Promise((resolve) => setTimeout(resolve, 5));
