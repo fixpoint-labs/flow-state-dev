@@ -118,7 +118,10 @@ export type BoardColumnsProps = {
    * and its credential (BR-29). Pass a STABLE reference — see `Roster`.
    */
   readonly resourceClient?: PanelRowSource;
-  /** Most rows to read in one page. */
+  /**
+   * Rows to request per page. The panel reads every page regardless — this
+   * sets the size of each fetch, not a cap on what renders (BR-21).
+   */
   readonly limit?: number;
   readonly slots?: BoardColumnsSlots;
 };

@@ -205,7 +205,8 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  * @returns the record, or a reason when the row's owning organization is
  * not `orgId`. A row that predates the stamp binds `orgId` — the cell it
  * was read from — rather than refusing. A bad ORG still throws, via
- * {@link seatAddress}.
+ * {@link seatAddress}; a caller walking stored rows catches that per row, as
+ * `reloadHiredSeats` does, so one unaddressable row is one skip.
  */
 export function hiredSeatManifest(
   orgId: string,
