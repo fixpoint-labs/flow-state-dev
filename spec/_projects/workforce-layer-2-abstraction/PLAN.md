@@ -7,11 +7,11 @@ deliberately not next. Each epic's own plan owns its checks.
 
 ![The arc](figures/arc.svg)
 
-Thirteen days, not three months. The project opened in June, but every epic here was filed from
-**Sep 8** onward; the vocabulary era before it left 52 issues under no epic. The overlap this
-project ran all week collapsed on Sep 20: **W4 and W3 wrapped three minutes apart**, and W5 is the
-only bar crossing the now line. Seven lanes — four closed, one open, one that starts today with no
-bar yet, and one that never opened.
+Sixteen days, not three months. The project opened in June, but every epic here was filed from
+**Sep 8** onward, and 74 issues still sit under no epic. **W4 and W3 wrapped
+three minutes apart on Sep 20**, and three bars now cross the now line: W5, the kitchen-sink
+rebuild, and plane isolation, whose children were shipping a day before the epic was filed. Eight
+lanes — four closed, three open, and one that never opened.
 
 ## What each epic consumes and releases
 
