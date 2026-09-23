@@ -40,7 +40,6 @@ const WORKFORCE_DIR = process.env.GOAL_WORKFORCE_DIR ?? "";
 const MIXED_DIR = process.env.GOAL_MIXED_DIR ?? "";
 const USER_ID = process.env.GOAL_USER_ID ?? "u_goal";
 const QUESTION = process.env.GOAL_QUESTION ?? "";
-const ORG_ID = process.env.GOAL_ORG_ID ?? "org_goal";
 /** Worker id -> its held-out token, for the stopping rule only. See the loop. */
 const TOKENS = JSON.parse(process.env.GOAL_TOKENS ?? "{}") as Record<string, string>;
 /**
@@ -147,7 +146,7 @@ async function main(): Promise<void> {
     const res = await router.POST(
       new Request(`http://goal/api/flows/${path.join("/")}`, {
         method: "POST",
-        body: JSON.stringify({ userId: USER_ID, orgId: ORG_ID, input: { message: QUESTION } }),
+        body: JSON.stringify({ userId: USER_ID, input: { message: QUESTION } }),
       }),
       { params: { path } } as never,
     );
@@ -240,7 +239,7 @@ async function main(): Promise<void> {
     const res = await afterRouter.POST(
       new Request(`http://goal/api/flows/${path.join("/")}`, {
         method: "POST",
-        body: JSON.stringify({ userId: USER_ID, orgId: ORG_ID, input: { message: QUESTION } }),
+        body: JSON.stringify({ userId: USER_ID, input: { message: QUESTION } }),
       }),
       { params: { path } } as never,
     );
