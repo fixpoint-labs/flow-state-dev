@@ -201,26 +201,6 @@ export async function reloadHiredSeats(
         continue;
       }
 
-      // The address is built here, and it THROWS for a cell whose org id is
-      // not a legal segment (`DEFAULT_ORG_ID`, where an app with no principal
-      // resolver hires) or a seat id carrying the user-owned `~` marker. That
-      // is a past write the code cannot address, so it is one named skip like
-      // the rest — left uncaught it rejected the whole reload, and every
-      // other org's team with it. The owning-org fence inside runs first and
-      // is untouched: a row stamped for another org is still refused, never
-      // re-bound to a cell it could be addressed under.
-      let record: ReturnType<typeof hiredSeatManifest>;
-      try {
-        record = hiredSeatManifest(orgId, parsed.row);
-      } catch (error) {
-        problems.push(`${where} — ${messageOf(error)}`);
-        continue;
-      }
-      if ("problem" in record) {
-        problems.push(`${where} — ${record.problem}`);
-        continue;
-      }
-
       // **One manifest per call, not one call for the roster.** `hireWorkforce`
       // refuses the WHOLE roster when any record is bad — it throws and hires
       // nothing — so a batch call would turn one stale row into a boot with no
@@ -231,6 +211,11 @@ export async function reloadHiredSeats(
       // three; this covers all of them, and reuses the refusal wording that is
       // already the careful one.
       try {
+        const record = hiredSeatManifest(orgId, parsed.row);
+        if ("problem" in record) {
+          problems.push(`${where} — ${record.problem}`);
+          continue;
+        }
         const hired = hireWorkforce([record.manifest], { kinds: options.kinds });
         seats.push(...hired);
       } catch (error) {
