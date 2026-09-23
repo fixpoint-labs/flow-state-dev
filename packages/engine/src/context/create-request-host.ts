@@ -51,6 +51,9 @@
  *   a sender)
  * - a cross-flow address in a process with no flow registry wired, or naming a
  *   flow it has not registered → `flow-not-found`
+ * - an address naming a hired instance whose pin the running request's
+ *   principal is outside → `flow-not-found`, the same answer, before anything
+ *   is written
  * - the liveness gate refused → `livenessOf` is **absent from the bundle**
  */
 import type {
@@ -77,6 +80,7 @@ import { deriveDispatchRunSessionId, evaluateAdoption } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
 import type { DispatchOperation } from "./dispatch-operation";
 import { purgeStaleResourceState } from "./ensure-session-record";
+import { pinRejectsCaller } from "./hire-plane";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
 
@@ -447,7 +451,16 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       spec.flowKind === undefined || spec.flowKind === flow.id
         ? flow
         : inputs.resolveFlow?.(spec.flowKind);
-    if (targetFlow === undefined) {
+    // A pinned instance this request's principal is outside gets the answer an
+    // unregistered address gets, as it does at the HTTP doors, so a sender
+    // cannot probe which it was. Decided here, before a child session is
+    // written or a request started: past acceptance the refusal would land in
+    // a child nobody awaits, and a task row handed to it would stay claimed.
+    // `createExecutionContext` still refuses the pin as the net under this.
+    if (
+      targetFlow === undefined ||
+      pinRejectsCaller(targetFlow.ownerPin, { userId: identity.userId, orgId: identity.orgId })
+    ) {
       return refuse(
         "flow-not-found",
         `no flow instance "${spec.flowKind}" is registered in this process, so the ${spec.type} ` +

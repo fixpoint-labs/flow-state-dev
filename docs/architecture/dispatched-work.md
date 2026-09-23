@@ -119,7 +119,14 @@ one that has no such entry, both reaching the sending block as
 map. The seam's flow lookup is wired from the host's registry
 (`RequestHostConstructionInputs.resolveFlow`); a process without one refuses
 every cross-flow address as `flow-not-found`, which is what it can honestly
-say.
+say. A hired instance whose pin (`{ orgId, userId? }`, see `context/hire-plane.ts`)
+the sending request's principal is outside is refused the same way, with the
+same sentence, before a child session is written — the dispatch-side twin of the
+HTTP doors' `404 Unknown flow`. Refusing there rather than at the child's
+admission is what lets a board hand-off put the claim back and fail the row,
+instead of reporting an accepted hand-off whose child
+`createExecutionContext` then refuses, leaving the row claimed until its lease
+lapses.
 
 Two things about the child differ from a same-flow one, and both follow from
 the boundary being a **storage** boundary as much as a routing one:

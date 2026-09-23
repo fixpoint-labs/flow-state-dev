@@ -1,0 +1,11 @@
+{
+  "ownerOrg": "acme",
+  "otherOrg": "globex",
+  "ownerUser": "alice",
+  "peerUser": "bob",
+  "foreignUser": "mallory",
+  "orgSeat": "acme.eng.lead",
+  "privateSeat": "acme.~alice.research",
+  "unregisteredSeat": "acme.eng.ghost",
+  "marker": "ACME-SEAT-RAN-MARKER"
+}
