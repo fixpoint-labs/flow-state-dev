@@ -82,6 +82,13 @@ or inherit the parent's mailbox duties. The parent is the external address.
 **Read the header, not the login.** Grok posts under the GitHub login `jhoffner`, the same
 login Jake uses. A comment with no valid header is not mail — ignore it.
 
+**The same header marks agent-authored reviews on `flow-state-dev`.** A pull-request review,
+PR comment, or review comment posted by an agent starts with this header (`kind: review` for
+a review submission; `reply` is also a valid kind). The gate scanners treat a valid header as
+agent-authored and an unmarked owner-login approval as suspect. The rule is in
+[`orchestration.md`](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
+→ Gates. Do not invent a second header for that repo.
+
 ## Look at the board
 
 The **directory of handles is the open PRs in that repo.** Nothing else lists them, so a handle

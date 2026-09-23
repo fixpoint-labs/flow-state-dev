@@ -252,20 +252,51 @@ function product(spec) {
 
 // Most lifecycle scenarios run after the epic spec has landed. Merge-wait scenarios override
 // specMerged explicitly; approval remains a separate flag and cannot be inferred from this fixture.
-const gateRes = (over = {}) => ({
-  approvedHeadSha: over.headSha === undefined ? 'abc' : over.headSha,
-  specMerged: true,
-  ...over,
+/** A non-owner, non-author APPROVED review. The comment/review channel's positive case. */
+const qualifyingHumanReview = () => ({
+  channel: 'review',
+  login: 'reviewer',
+  bot: false,
+  prAuthor: false,
+  state: 'APPROVED',
+  onCurrentHead: true,
+  body: 'Approved.',
+  countsAsApprovalAttempt: true,
 })
 
+const gateRes = (over = {}) => {
+  const base = {
+    approvedHeadSha: over.headSha === undefined ? 'abc' : over.headSha,
+    specMerged: true,
+    ...over,
+  }
+  // The wake classifies artifacts and ignores the boolean. A fixture that claims approval
+  // without evidence would fail closed, so the default evidence is a real human review.
+  if (!('approvalArtifacts' in over)) {
+    base.approvalArtifacts = base.approved ? [qualifyingHumanReview()] : []
+  }
+  return base
+}
+
 /** Build an epic-wake responder from per-issue fresh PR state and per-issue worker results. */
-function epicResponder({ approved = true, approvedByLabel = false, gateChangesRequested = false, gateHeadSha = 'abc', gateApprovedHeadSha = gateHeadSha, gateSpecMerged = true, epicReviewEvents = false, fresh = {}, worker = {}, poc = {}, fold = {}, refresh = {}, linear = {}, nulls = [] } = {}) {
+function epicResponder({ approved = true, approvedByLabel = false, gateChangesRequested = false, gateHeadSha = 'abc', gateApprovedHeadSha = gateHeadSha, gateSpecMerged = true, epicReviewEvents = false, gateArtifacts, fresh = {}, worker = {}, poc = {}, fold = {}, refresh = {}, linear = {}, nulls = [] } = {}) {
   return (prompt, opts) => {
     const label = opts.label || ''
     // `nulls` names labels whose agent "died" — the harness returns null for those.
     if (nulls.includes(label)) return null
     if (label === 'gate:epic') {
-      return gateRes({ approved, approvedByLabel, humanChangesRequested: gateChangesRequested, approver: approved ? 'jake' : null, headSha: gateHeadSha, approvedHeadSha: gateApprovedHeadSha, specMerged: gateSpecMerged, newReviewEvents: epicReviewEvents, latestActivityAt: '2026-07-05T00:00:00Z' })
+      return gateRes({
+        approved,
+        approvedByLabel,
+        humanChangesRequested: gateChangesRequested,
+        approver: approved ? 'jake' : null,
+        headSha: gateHeadSha,
+        approvedHeadSha: gateApprovedHeadSha,
+        specMerged: gateSpecMerged,
+        newReviewEvents: epicReviewEvents,
+        latestActivityAt: '2026-07-05T00:00:00Z',
+        ...(gateArtifacts ? { approvalArtifacts: gateArtifacts } : {}),
+      })
     }
     if (label === 'fold:epic') return { roundsSpent: 1, aboveBar: false, folded: 'tightened the objective', fanOut: [], ...fold }
     if (label === 'refresh:epic') return { refreshed: 'set table, path', ...refresh }
@@ -307,6 +338,7 @@ const freshRow = (over = {}) => ({
   phase: 'NEEDS_SPEC',
   specApproved: false,
   specApprovedByLabel: false,
+  approvalArtifacts: over.specApproved ? [qualifyingHumanReview()] : [],
   // A retained spec is the ordinary implementation fixture. Open-spec merge tests say false;
   // this observation alone still cannot authorize an unapproved spec or one without a PR.
   specMerged: true,
@@ -1501,6 +1533,135 @@ check('an owner-applied label still passes both gates', async () => {
     }),
   })
   assert.equal(result.epicApproved, true, 'the owner label releases the epic')
+})
+
+check('FIX-1418: an agent-marked owner review is not the gate, and an unmarked one is suspect', async () => {
+  const { hasAgentAuthoredMarker, classifyApprovalArtifacts } = loadRules('epic-wake.js', [
+    'hasAgentAuthoredMarker',
+    'classifyApprovalArtifacts',
+  ])
+  const header = 'from: fsd-head-of-engineering\nsession: epic-1355\nkind: review\n\nClear to implement.'
+  assert.equal(hasAgentAuthoredMarker(header), true, 'the mailbox header is the marker')
+  assert.equal(hasAgentAuthoredMarker('**FSD Architect** — Clear to implement.'), false, 'prose is not a marker')
+  assert.equal(hasAgentAuthoredMarker('from: fsd-claude\nsession: x\nkind: review\n\n'), false, 'a header with no body is not a marker')
+
+  const ownerReview = {
+    channel: 'review',
+    login: 'jake',
+    bot: false,
+    prAuthor: true,
+    state: 'APPROVED',
+    onCurrentHead: true,
+    countsAsApprovalAttempt: true,
+  }
+  const marked = classifyApprovalArtifacts([{ ...ownerReview, body: header }], 'jake')
+  assert.equal(marked.approved, false, 'an agent-authored APPROVED review must not release the gate')
+  assert.equal(marked.agentMarkedApproval, true)
+  assert.equal(marked.suspectOwnerApproval, false, 'a marked review is identified, not an ambiguous owner approval')
+
+  const unmarked = classifyApprovalArtifacts(
+    [{ ...ownerReview, body: '**FSD Architect** — Clear to implement.' }],
+    'jake',
+  )
+  assert.equal(unmarked.approved, false, 'an unmarked owner-looking approval is not satisfied')
+  assert.equal(
+    unmarked.suspectOwnerApproval,
+    true,
+    'FIX-1300: the owner stays in the set as the author, and absence of the marker is suspect',
+  )
+  const ownerNotAuthor = classifyApprovalArtifacts(
+    [{ ...ownerReview, prAuthor: false, body: 'Approved.' }],
+    'jake',
+  )
+  assert.equal(ownerNotAuthor.approved, false)
+  assert.equal(ownerNotAuthor.suspectOwnerApproval, true, 'an owner-login review is suspect even when they did not open the PR')
+
+  const comment = classifyApprovalArtifacts(
+    [{ ...ownerReview, channel: 'comment', state: 'COMMENT', body: 'Approved. Lets proceed.' }],
+    'jake',
+  )
+  assert.equal(comment.approved, false)
+  assert.equal(comment.suspectOwnerApproval, true, 'the approving-comment path is the same hole')
+
+  const human = classifyApprovalArtifacts([qualifyingHumanReview()], 'jake')
+  assert.equal(human.approved, true, 'a non-owner, non-author human review still counts')
+  const self = classifyApprovalArtifacts([{ ...qualifyingHumanReview(), login: 'worker', prAuthor: true }], 'jake')
+  assert.equal(self.approved, false, 'a worker still cannot approve the PR they opened')
+  assert.equal(self.suspectOwnerApproval, false)
+  const bot = classifyApprovalArtifacts([{ ...qualifyingHumanReview(), login: 'cursor[bot]', bot: true }], 'jake')
+  assert.equal(bot.approved, false)
+  const stale = classifyApprovalArtifacts([{ ...qualifyingHumanReview(), onCurrentHead: false }], 'jake')
+  assert.equal(stale.approved, false, 'a review of an older head does not approve the current one')
+
+  const mailbox = readFileSync(join(HERE, '../../.omp/extensions/mailbox.ts'), 'utf8')
+  const wake = readFileSync(join(HERE, 'epic-wake.js'), 'utf8')
+  const grammar =
+    '/^from:[ \\t]*([a-z0-9._-]+)[ \\t]*\\nsession:[ \\t]*([a-z0-9._-]+)[ \\t]*\\n(?:to:[ \\t]*([a-z0-9._-]+)[ \\t]*\\n)?kind:[ \\t]*(ask|reply|block|decision|review)[ \\t]*\\n[ \\t]*\\n([\\s\\S]+)$/i'
+  assert.ok(mailbox.includes(grammar), 'mailbox parseMail no longer uses the header grammar the gate copies')
+  assert.ok(wake.includes(grammar), 'the gate marker drifted from the mailbox header grammar')
+})
+
+check('FIX-1418: the wake will not implement on an owner-looking GitHub approval', async () => {
+  const ownerReview = {
+    channel: 'review',
+    login: 'jake',
+    bot: false,
+    prAuthor: true,
+    state: 'APPROVED',
+    onCurrentHead: true,
+    body: 'Approved. Lets proceed.',
+    countsAsApprovalAttempt: true,
+  }
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      owner: 'jake',
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })],
+    }),
+    respond: epicResponder({
+      approved: true,
+      gateArtifacts: [ownerReview],
+      fresh: {
+        'FIX-2': {
+          phase: 'NEEDS_IMPLEMENTATION',
+          specPr: 8,
+          specApproved: true,
+          specMerged: false,
+          headSha: 'abc',
+          approvedHeadSha: 'abc',
+          approvalArtifacts: [
+            {
+              channel: 'review',
+              login: 'jake',
+              bot: false,
+              prAuthor: true,
+              state: 'COMMENTED',
+              onCurrentHead: true,
+              body: 'from: fsd-head-of-engineering\nsession: architect\nkind: review\n\nNo holds. Clear to implement.',
+              countsAsApprovalAttempt: true,
+            },
+          ],
+        },
+      },
+    }),
+  })
+  assert.equal(result.epicApproved, false, 'an unmarked owner APPROVED review does not sign the epic off')
+  assert.ok(
+    result.suspectOwnerApprovals.some((s) => s.kind === 'epic' && s.pr === 100),
+    'the unmarked owner review is surfaced as suspect',
+  )
+  assert.equal(result.issues[0].specApproved, false, 'an agent-marked review does not approve the spec')
+  assert.equal(result.issues[0].phase, 'AWAITING_SPEC_APPROVAL', 'the scout cannot jump the gate by reporting implementation')
+  assert.deepEqual(workerLabels(calls), [], 'nothing is dispatched on a suspect or agent-marked approval')
+  assert.ok(result.gates.some((g) => g.kind === 'epic-objective'))
+
+  const accepted = await run('epic-wake.js', {
+    args: epicArgs({ owner: 'jake' }),
+    respond: epicResponder({
+      approved: false,
+      gateArtifacts: [qualifyingHumanReview()],
+    }),
+  })
+  assert.equal(accepted.result.epicApproved, true, 'the artifact check, not the scout boolean, accepts a non-owner human review')
 })
 
 check('GATE: implementation waits for the cross-spec coherence pass', async () => {
@@ -8569,7 +8730,7 @@ check('INVARIANT: every gating field is schema-required', async () => {
   // if the script BRANCHES on a schema field, that field must be required.
   const gating = {
     'epic-wake.js': {
-      GATE_SCHEMA: ['approved', 'approvedHeadSha', 'specMerged', 'newReviewEvents', 'approvedByLabel', 'humanChangesRequested'],
+      GATE_SCHEMA: ['approved', 'approvedHeadSha', 'specMerged', 'newReviewEvents', 'approvedByLabel', 'humanChangesRequested', 'approvalArtifacts', 'channel', 'login', 'bot', 'prAuthor', 'state', 'onCurrentHead', 'body', 'countsAsApprovalAttempt'],
       // `merged` joined this list once completion was derived from it in both directions: optional, a
       // scan could report DONE and omit it, and the corrected demotion then had no action and no gate,
       // parking the row for good.
@@ -8586,7 +8747,7 @@ check('INVARIANT: every gating field is schema-required', async () => {
       // schema while omitting it, `cursorUsable` correctly refused the batch, and the planner — with
       // no way to tell that refusal apart from a genuinely converged review — logged "converged" for a
       // fold that never ran. FIX-1303.
-      PR_STATE_SCHEMA: ['specApproved', 'approvedHeadSha', 'specMerged', 'observed', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha', 'latestActivityAt'],
+      PR_STATE_SCHEMA: ['specApproved', 'approvedHeadSha', 'specMerged', 'observed', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha', 'latestActivityAt', 'approvalArtifacts', 'channel', 'login', 'bot', 'prAuthor', 'state', 'onCurrentHead', 'body', 'countsAsApprovalAttempt'],
       // `multiPrPending` earns its place here for a reason the others don't share: it was optional AND
       // had no clearing path, because the prompt asked only for the true case. So an omission had to
       // preserve the carried value (coercing it to false strands cap-deferred slices no event will

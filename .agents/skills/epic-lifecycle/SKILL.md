@@ -176,8 +176,10 @@ The epic-specific delta:
    reporting to, so ask them once if you don't already know it, and persist it beside the epic
    handle; a login you inferred from a PR author or a commit trailer is a guess, and this one
    authorizes work. If you cannot establish it, say so and carry on without it: the wake turns
-   the label channel off rather than trusting an unattributable label, and the owner's comment
-   or review still passes every gate. What you must not do is leave the field out silently —
+   the label channel off rather than trusting an unattributable label. A review or comment
+   under that login is not the gate
+   ([Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)).
+   What you must not do is leave the field out silently —
    an owner who signs off by label alone would then wait forever on a channel nothing reads.
 
    Two more coordinator-owned fields live here for the same reason — nothing else holds them
@@ -299,7 +301,13 @@ The epic-specific delta:
    It returns
    `{ epicApproved, epic, epicFold, epicNotes, issues, gates, blockers, blocked, held, heldForFold,
    unsettled, verdicts, settleRequests, dispatched, deferred, converged, crossSpecGate, moreWorkNow,
-   mayWrap }` — persist `epic` and `issues` verbatim.
+   mayWrap, suspectOwnerApprovals }` — persist `epic` and `issues` verbatim.
+
+   **`suspectOwnerApprovals`** — escalate per
+   [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge).
+   Tell the user which PR, and do not dispatch because of it. A separate accepted signal in the
+   same wake still counts. When you post a review or PR comment, start the body with the header
+   named there.
 
    Preserve `approvedHeadSha` and `specMerged` independently on epic and issue records.
    A `spec-merge` gate names the `pr` (and `issueId` for an issue). It is an execution/checks
@@ -477,7 +485,9 @@ The epic-specific delta:
    can fan down and an approving comment or review on the epic PR is caught). **The two
    sign-off gates now ride that stream** — both a comment and a review submission are
    delivered PR-activity events, so a spec- or epic-PR approval in either of those forms wakes
-   the coordinator immediately. The owner's **label** is the third channel and the slow one: a
+   the coordinator immediately. Waking is not acceptance
+   ([Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)).
+   The owner's **label** is the third channel and the slow one: a
    `labeled` webhook never arrives, so it is found only by the wake's scout refresh. The
    transitions webhooks *don't* cover — CI success and merge/close — are caught on that same
    refresh (step 2). Schedule one check-in
