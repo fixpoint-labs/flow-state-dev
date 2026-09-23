@@ -46,7 +46,7 @@
   </defs>
   <rect class="bg" width="940" height="316"/>
   <text class="t-lbl" x="16" y="26">PROBE A · ONE ADDRESS PER ORG AND SEAT NAME</text>
-  <text class="t-h" x="16" y="78">on #2091</text>
+  <text class="t-h" x="16" y="78">01b29f0d</text>
   <rect class="usr" x="120" y="44" width="220" height="44" rx="5"/>
   <text class="t-b" x="132" y="62">~alice/research</text>
   <text class="t-s" x="132" y="78">alice's private hire</text>
@@ -64,7 +64,7 @@
   <text class="t-s" x="652" y="104">hire: “already served by a flow</text>
   <text class="t-s" x="652" y="118">of kind …” tells bob alice's</text>
   <text class="t-s" x="652" y="132">private seat exists (read, not run)</text>
-  <text class="t-h" x="16" y="230">proposed</text>
+  <text class="t-h" x="16" y="230">fdca49fd</text>
   <rect class="usr" x="120" y="196" width="220" height="44" rx="5"/>
   <text class="t-b" x="132" y="214">~alice/research</text>
   <text class="t-s" x="132" y="230">alice's private hire</text>

@@ -40,7 +40,7 @@ It runs against a checkout of fixpoint-labs/flow-state-dev#2091 (head `01b29f0d`
 bash specs/issues/FIX-1522/poc/f2-experiments/run-after.sh /path/to/fix-1529-checkout
 ```
 
-**9 passed.**
+**First run, 9 passed.**
 
 Six CLOSED legs, each refused as the plan expects:
 - **E3:** a session opened before the pin existed is refused on resume after the reload pins
@@ -61,6 +61,18 @@ The fence holds on every path the plan named. Three probes found gaps outside it
 | **A** address collision | Alice's `~alice/research` and Bob's `~bob/research` both mint `acme.research`, because a user-owned seat's address is `<org>.<seatId>` with no user in it. The reload returns both; the second is refused as "already registered". At hire time, kitchen-sink's refusal names the holder's kind (read, not run), which tells Bob that a private seat by that name exists |
 | **B** private writer is readable | Any flow may declare `defineHiredRosterPrivateCollection()`, whose pattern the guard exempts. An app action in bob@acme's session listed it and read `ALICE-PRIVATE` |
 | **C** the guard tests one key | `workforce/roster/[owner]/notes` is admitted, because the guard only checks whether a pattern matches `workforce/roster/~alice/research`. It still reads every user's private `notes` row |
+
+### Second run: #2091 at `fdca49fd`, after the A/B/C fixes
+
+**11 passed.** The six CLOSED legs still hold. Every probe now comes back closed:
+
+| Probe | Observed on `fdca49fd` |
+|---|---|
+| **A** | Alice's and Bob's `research` seats mint `acme.~alice.research` and `acme.~bob.research`, pinned to each user, and both register |
+| **B** | A flow may still declare the branded writer, but a run only ever sees its own user's rows. bob's list comes back empty |
+| **B2** | bob asking for `~alice/research` by its exact key gets `undefined` |
+| **C** | `workforce/roster/[owner]/notes` is refused when it is defined, by the structural guard |
+| **B4** (note) | With debug endpoints switched on (`debugEndpointsEnabled: true`, off by default), the debug collection listing returns alice's row, instructions included, to bob's session. Debug routes read the store directly and bypass the resource handle. That is an operator-tool property, not an F2 path, but a host must not switch debug endpoints on in a multi-user deployment |
 
 ## Limits
 

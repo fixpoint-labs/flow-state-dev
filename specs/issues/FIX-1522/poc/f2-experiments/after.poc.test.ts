@@ -73,6 +73,28 @@ const peekPrivate = handler({
   },
 });
 
+/** PROBE-B2: read one other user's row by its exact key. */
+const peekAlice = handler({
+  name: "peek-alice",
+  inputSchema: tagInput,
+  outputSchema: z.object({ ok: z.boolean() }),
+  resources: { ...resources, privateRoster },
+  execute: async (input, ctx) => {
+    const ref = ctx.resources.privateRoster as unknown as ResourceCollectionRef;
+    let got: string;
+    try {
+      const row = await ref.getOptional({ owner: "~alice", seat: "research" });
+      got = row === undefined ? "undefined" : JSON.stringify((row as any).state ?? row);
+    } catch (e) {
+      got = `threw: ${(e as Error).message}`;
+    }
+    const seen = ctx.resources.seen as unknown as ResourceCollectionRef;
+    const { userId = "", orgId = "" } = ctx.session.identity;
+    await seen.create(input.tag, { instance: "peek-alice", as: `${userId}@${orgId}`, instructions: got });
+    return { ok: true };
+  },
+});
+
 const verified = {
   resolvePrincipal: (context: { request?: Request }) => {
     const userId = context.request?.headers.get("x-verified-user");
@@ -89,6 +111,7 @@ const appFlow = defineFlow({
     whoami: { inputSchema: tagInput, block: whoami },
     hand: { inputSchema: tagInput, block: handToAcmeSeat },
     peek: { inputSchema: tagInput, block: peekPrivate },
+    peekAlice: { inputSchema: tagInput, block: peekAlice },
   },
   authentication: verified,
 });
@@ -107,8 +130,9 @@ const kinds = { seat: seatKind };
 type Who = { user: string; org: string };
 type Stores = ReturnType<typeof inMemoryStores>;
 
-async function boot(stores: Stores = inMemoryStores()) {
+async function boot(stores: Stores = inMemoryStores(), extra: Record<string, unknown> = {}) {
   const state = createFlowState({
+    ...extra,
     flows: { [APP]: appFlow() },
     resolvePrincipal: verified.resolvePrincipal,
     stores: { default: { primary: stores } },
@@ -241,7 +265,7 @@ describe("after · the fence", () => {
 });
 
 describe("after · probes", () => {
-  it("PROBE-A two users' private hires of the same seat name collide on one address", async () => {
+  it("PROBE-A two users' private hires of the same seat name get distinct addresses", async () => {
     const stores = inMemoryStores();
     const row = (user: string) => ({ seatId: "research", flow: "seat", settings: {}, instructions: `${user}-PRIVATE`, owningOrgId: "acme", ownerUserId: user });
     await storeRow(stores, "acme", "~alice/research", row("alice"));
@@ -255,7 +279,10 @@ describe("after · probes", () => {
       catch (e) { outcomes.push(`refused ${seat.id}: ${(e as Error).message}`); }
     }
     console.log("PROBE-A register", outcomes);
-    expect(seats.map((s) => s.id)).toEqual(["acme.research", "acme.research"]);
+    // 01b29f0d: both minted "acme.research" and the second was refused.
+    // fdca49fd: distinct user-owned addresses, and both register.
+    expect(new Set(seats.map((s) => s.id)).size).toBe(seats.length);
+    expect(outcomes.every((o) => o.startsWith("ok"))).toBe(true);
   });
 
   it("PROBE-B any flow that declares the private writer lists every user's private rows server-side", async () => {
@@ -267,6 +294,28 @@ describe("after · probes", () => {
     const s = await h.open(BOB);
     expect(await h.act(BOB, (s as any).id, "peek", { tag: "peek" })).toEqual({ http: 202, outcome: "completed" });
     console.log("PROBE-B", await h.seenIn("acme"));
+  });
+
+  it("PROBE-B2 bob reading alice's private row by its exact key gets nothing", async () => {
+    const stores = inMemoryStores();
+    await storeRow(stores, "acme", "~alice/research", {
+      seatId: "research", flow: "seat", settings: {}, instructions: "ALICE-PRIVATE", owningOrgId: "acme", ownerUserId: "alice",
+    });
+    const h = await boot(stores);
+    const s = await h.open(BOB);
+    const r = await h.act(BOB, (s as any).id, "peekAlice", { tag: "direct" });
+    console.log("PROBE-B2", r, await h.seenIn("acme"));
+  });
+
+  it("PROBE-B4 debug listing of the private writer, with debug endpoints on", async () => {
+    const stores = inMemoryStores();
+    await storeRow(stores, "acme", "~alice/research", {
+      seatId: "research", flow: "seat", settings: {}, instructions: "ALICE-PRIVATE", owningOrgId: "acme", ownerUserId: "alice",
+    });
+    const h = await boot(stores, { debugEndpointsEnabled: true });
+    const s = await h.open(BOB);
+    const r = await h.call("GET", ["sessions", (s as any).id, "debug", "resources", "privateRoster", "items"], BOB);
+    console.log("PROBE-B4", r.status, JSON.stringify(r.json).slice(0, 300));
   });
 
   it("PROBE-C a deep pattern that misses the guard's one probe key is admitted", async () => {

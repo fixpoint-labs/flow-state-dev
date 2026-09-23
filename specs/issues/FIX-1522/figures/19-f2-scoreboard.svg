@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 530" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Scoreboard of the F2 experiments. Before on main d8d4c26, after on pull request 2091 at 01b29f0d. E1 foreign org opens or posts: 202 and runs, then 404 before the ack. E2 roster peer runs a private seat: runs, then 404. E3 wrong-org restart resumed: runs acme's prompt, then refused at admission. E4 private key versus browser read: not listed before and after; it decided option 1. E5 row naming another org: stripped and reloads, then a named reload problem. E6 pin versus address: no pin exists, then the pin decides. E7 cross-org internal dispatch: runs acme's prompt, then never runs. E8 catalog per caller: everything to all, then per pin with anonymous seeing shared only. E9 rebind after release: the old session runs the new config, then is refused. Probes still open on 2091: A two users' private seats with the same name share one address, the second is refused and the name leaks; B the private writer can be declared by any flow and bob reads alice's private row; C a deep pattern missing the probe key is admitted.">
+<svg viewBox="0 0 940 566" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Scoreboard of the F2 experiments. Before on main d8d4c26, after on pull request 2091 at 01b29f0d. E1 foreign org opens or posts: 202 and runs, then 404 before the ack. E2 roster peer runs a private seat: runs, then 404. E3 wrong-org restart resumed: runs acme's prompt, then refused at admission. E4 private key versus browser read: not listed before and after; it decided option 1. E5 row naming another org: stripped and reloads, then a named reload problem. E6 pin versus address: no pin exists, then the pin decides. E7 cross-org internal dispatch: runs acme's prompt, then never runs. E8 catalog per caller: everything to all, then per pin with anonymous seeing shared only. E9 rebind after release: the old session runs the new config, then is refused. Probes on pull request 2091, first head then second: A two users' private seats with the same name share one address, the second is refused and the name leaks; B the private writer can be declared by any flow and bob reads alice's private row; C a deep pattern missing the probe key is admitted. All three closed on fdca49fd. B4, a note: with debug endpoints on, the debug listing shows alice's row to bob.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -44,11 +44,11 @@
     <marker id="hd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/></marker>
   </defs>
-  <rect class="bg" width="940" height="530"/>
+  <rect class="bg" width="940" height="566"/>
   <text class="t-lbl" x="16" y="26">LEG</text>
   <text class="t-lbl" x="70" y="26">QUESTION</text>
   <text class="t-lbl" x="340" y="26">BEFORE · MAIN d8d4c26</text>
-  <text class="t-lbl" x="640" y="26">AFTER · #2091 01b29f0d</text>
+  <text class="t-lbl" x="640" y="26">AFTER · #2091 fdca49fd</text>
   <text class="t-b" x="16" y="58">E1</text>
   <text class="t-c" x="70" y="58">foreign org opens or posts</text>
   <rect class="no" x="340" y="38" width="280" height="30" rx="4"/>
@@ -104,17 +104,31 @@
   <rect class="ok" x="640" y="326" width="284" height="30" rx="4"/>
   <text class="t-c" x="652" y="346">old session refused</text>
   <text class="t-lbl" x="16" y="380">PROBES · OUTSIDE THE PLAN'S PATHS</text>
+  <text class="t-lbl" x="340" y="380">#2091 01b29f0d</text>
+  <text class="t-lbl" x="640" y="380">#2091 fdca49fd</text>
   <text class="t-b" x="16" y="410">A</text>
   <text class="t-c" x="70" y="410">two users' private seats, same name</text>
-  <rect class="no" x="640" y="390" width="284" height="30" rx="4"/>
-  <text class="t-c" x="652" y="410">one address: second refused, name leaks</text>
+  <rect class="no" x="340" y="390" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="410">one address; second refused</text>
+  <rect class="ok" x="640" y="390" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="410">acme.~alice / acme.~bob, both run</text>
   <text class="t-b" x="16" y="446">B</text>
   <text class="t-c" x="70" y="446">private writer declared by any flow</text>
-  <rect class="no" x="640" y="426" width="284" height="30" rx="4"/>
-  <text class="t-c" x="652" y="446">bob reads ALICE-PRIVATE</text>
+  <rect class="no" x="340" y="426" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="446">bob reads ALICE-PRIVATE</text>
+  <rect class="ok" x="640" y="426" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="446">branded; each run sees own rows</text>
   <text class="t-b" x="16" y="482">C</text>
   <text class="t-c" x="70" y="482">deep pattern missing the probe key</text>
-  <rect class="no" x="640" y="462" width="284" height="30" rx="4"/>
-  <text class="t-c" x="652" y="482">admitted: …/[owner]/notes</text>
-  <text class="t-c" x="16" y="514">Every plan leg flips. The three probes are still open on #2091 and are reported on the mailbox handle.</text>
+  <rect class="no" x="340" y="462" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="482">admitted: …/[owner]/notes</text>
+  <rect class="ok" x="640" y="462" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="482">refused by structural guard</text>
+  <text class="t-b" x="16" y="518">B4</text>
+  <text class="t-c" x="70" y="518">debug listing, debug endpoints on</text>
+  <rect class="box" x="340" y="498" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="518">(not probed)</text>
+  <rect class="warn" x="640" y="498" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="518">bob sees alice's row: keep debug off</text>
+  <text class="t-c" x="16" y="550">Every plan leg flips, and A, B and C closed on the second head. B4 is a debug-mode note, not an F2 path.</text>
 </svg>

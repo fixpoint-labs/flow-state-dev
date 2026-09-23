@@ -11,8 +11,9 @@ experiments that would catch a fix that only looks closed. Leg ids point at the 
 ![A scoreboard of nine experiments, each red on main and green on the FIX-1529 branch, plus three open probes](figures/19-f2-scoreboard.svg)
 
 **What changes, leg by leg.** The left column is today on `main`, and the right is the
-FIX-1529 branch (fixpoint-labs/flow-state-dev#2091). Every plan leg flips. The three probes
-at the bottom sit outside the paths this plan named, and are still open.
+FIX-1529 branch (fixpoint-labs/flow-state-dev#2091). Every plan leg flips. The probes at the
+bottom sat outside the paths this plan named: all three were open on #2091's first head and
+closed on its second. B4 is a debug-mode note.
 
 ## The problem, in one paragraph
 
@@ -108,9 +109,10 @@ server. Nothing should declare one, and the FIX-1529 suite should pin that.
 
 ![Acme's org cell with flat and nested roster keys, and four readers: two that hold and two that don't](figures/17-f2-roster-readers.svg)
 
-**Who can read a private row.** Green readers are the ones option 1 relies on, and they hold
-on #2091. The two red ones are probes B and C from the after suite: a flow that declares the
-private writer reads every user's rows, and the pattern guard only tests one sample key.
+**Who can read a private row.** Every reader holds on #2091's second head. The private writer
+is branded and scoped to the caller's own rows (probes B and B2), and any other deep pattern
+is refused when it's defined (probe C). The amber note is B4: debug endpoints read the store
+directly, so they must stay off in a multi-user deployment.
 
 ## Experiments worth running
 
@@ -159,13 +161,16 @@ caller still gets a `200`, with shared flows only.
 ## Found on the FIX-1529 branch
 
 The after suite ([f2-experiments](poc/f2-experiments/README.md#after-run-against-the-fix-1529-branch))
-ran on #2091 at `01b29f0d`: 9 passed. Every plan leg is closed. Three probes found gaps
-outside the paths above. B and C are shown in the roster figure. A is here:
+ran twice on #2091:
+- **`01b29f0d`, 9 passed.** Every plan leg was closed. Three probes found gaps outside the
+  paths above.
+- **`fdca49fd`, 11 passed.** All three probes are closed. B and C are shown in the roster
+  figure. A is here:
 
 ![Probe A: two users' private seats with the same name share one address on #2091; the proposal gives each user its own address](figures/20-f2-address-collision.svg)
 
-**A user-owned address needs the user in it.** The pin stays the fence. The address only has
-to be unique, and today two users' `research` seats are one address.
+**A user-owned address needs the user in it, and now has it.** The pin stays the fence. The
+address only has to be unique.
 
 ## What would falsify a FIX-1529 implementation
 

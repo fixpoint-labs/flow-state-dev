@@ -76,23 +76,22 @@
   <path class="a-ok" d="M556 121 L 338 133" marker-end="url(#ho)"/>
   <path class="a-ok" d="M556 121 L 338 177" marker-end="url(#ho)"/>
   <path class="a-ok" d="M556 121 L 338 221" marker-end="url(#ho)"/>
-  <rect class="no" x="560" y="152" width="364" height="50" rx="6"/>
-  <text class="t-b" x="572" y="170">private writer</text>
+  <rect class="ok" x="560" y="152" width="364" height="50" rx="6"/>
+  <text class="t-b" x="572" y="170">branded writer</text>
   <text class="t-s" x="912" y="170" text-anchor="end">workforce/roster/[owner]/[seat]</text>
-  <text class="t-x" x="572" y="188">every user's rows (probe B)</text>
-  <text class="t-s" x="912" y="188" text-anchor="end">any flow may declare it</text>
-  <path class="a-x" d="M556 177 L 338 177" marker-end="url(#hx)"/>
-  <path class="a-x" d="M556 177 L 338 221" marker-end="url(#hx)"/>
-  <rect class="no" x="560" y="208" width="364" height="50" rx="6"/>
+  <text class="t-ok" x="572" y="188">the caller's own rows only</text>
+  <text class="t-s" x="912" y="188" text-anchor="end">B, B2 closed on fdca49fd</text>
+  <path class="a-ok" d="M556 177 L 338 177" marker-end="url(#ho)"/>
+  <path class="a-ok" d="M556 177 L 338 221" marker-end="url(#ho)"/>
+  <rect class="ok" x="560" y="208" width="364" height="50" rx="6"/>
   <text class="t-b" x="572" y="226">deep patterns</text>
   <text class="t-s" x="912" y="226" text-anchor="end">e.g. …/[owner]/notes</text>
-  <text class="t-x" x="572" y="244">slips the guard (probe C)</text>
-  <text class="t-s" x="912" y="244" text-anchor="end">guard tests one sample key</text>
-  <path class="a-x" d="M556 233 L 338 221" marker-end="url(#hx)"/>
+  <text class="t-ok" x="572" y="244">refused at define (probe C)</text>
+  <text class="t-s" x="912" y="244" text-anchor="end">structural guard, fdca49fd</text>
   <rect class="ok" x="16" y="272" width="440" height="54" rx="6"/>
-  <text class="t-ok" x="28" y="292">holds on #2091</text>
-  <text class="t-s" x="28" y="310">browser read stays single-segment; reload sees all</text>
-  <rect class="no" x="484" y="272" width="440" height="54" rx="6"/>
-  <text class="t-x" x="496" y="292">open on #2091 · Architect's call</text>
-  <text class="t-s" x="496" y="310">brand the one writer; make the guard structural</text>
+  <text class="t-ok" x="28" y="292">holds on #2091 fdca49fd</text>
+  <text class="t-s" x="28" y="310">browser flat only; reload all; writer caller-scoped</text>
+  <rect class="warn" x="484" y="272" width="440" height="54" rx="6"/>
+  <text class="t-w" x="496" y="292">debug endpoints bypass the handle (B4)</text>
+  <text class="t-s" x="496" y="310">off by default; keep them off with many users</text>
 </svg>
