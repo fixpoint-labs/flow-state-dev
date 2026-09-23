@@ -383,6 +383,11 @@ function stripEphemeralContent(items: OutputItem[]): OutputItem[] {
  * 202. Writes a failed record when createExecutionContext threw before its
  * own write (user/org/tenant binding), or patches the one it did write
  * (model-resolver construction).
+ *
+ * Does not touch a row this run does not own — a create-race loser must
+ * not overwrite the winner with its own `failed` record. The record write
+ * (and item snapshot) lands before `request.failed` so a client that
+ * closes the stream on the terminal event cannot re-read `in_progress`.
  */
 async function settleFreshRequestSetupFailure(options: {
   stores: StoreRegistry;
@@ -396,6 +401,7 @@ async function settleFreshRequestSetupFailure(options: {
   source: string;
   metadata?: Record<string, unknown>;
   input: unknown;
+  emittedItems: readonly OutputItem[];
   response: {
     emitItemAdded: (item: ErrorItem) => Promise<unknown>;
     emitItemDone: (item: ErrorItem) => Promise<unknown>;
@@ -418,52 +424,69 @@ async function settleFreshRequestSetupFailure(options: {
     code: normalized.code
   };
 
-  try {
-    await options.response.emitItemAdded(item);
-    await options.response.emitItemDone(item);
-    await options.response.emitRequestStatus("failed");
-  } catch {
-    // The record write below is what a polling client sees; stream emit is extra.
-  }
-
+  let settled = false;
   try {
     const current = await options.stores.request.get(options.requestId);
-    if (current !== undefined && isTerminalRequestStatus(current.status)) return;
-    const base =
-      current ??
-      createInitialRequestRecord(
-        {
-          requestId: options.requestId,
-          flowKind: options.flow.kind,
-          flowId: options.flow.id,
-          actionName: options.actionName,
-          userId: options.userId,
-          sessionId: options.sessionId,
-          tenantId: options.tenantId,
-          orgId: options.orgId,
-          source: options.source,
-          metadata: options.metadata,
-          input: options.input
-        },
-        now
+    const foreignOrTerminal =
+      current !== undefined &&
+      (isTerminalRequestStatus(current.status) || !ownsRecord(options.flow, current));
+
+    if (!foreignOrTerminal) {
+      const base =
+        current ??
+        createInitialRequestRecord(
+          {
+            requestId: options.requestId,
+            flowKind: options.flow.kind,
+            flowId: options.flow.id,
+            actionName: options.actionName,
+            userId: options.userId,
+            sessionId: options.sessionId,
+            tenantId: options.tenantId,
+            orgId: options.orgId,
+            source: options.source,
+            metadata: options.metadata,
+            input: options.input
+          },
+          now
+        );
+      const items = stripEphemeralContent(
+        mergeItemsById(base.items ?? [], [...options.emittedItems, item]).filter(
+          (entry) => entry.transient !== true
+        )
       );
-    await options.stores.request.set(
-      options.requestId,
-      {
-        ...base,
-        status: "failed",
-        failedAtMs: now,
-        updatedAt: now,
-        items: [...(base.items ?? []), item]
-      },
-      "any"
-    );
-    options.stores.request.persistItems(options.requestId, [item]);
+      const written = await options.stores.request.set(
+        options.requestId,
+        {
+          ...base,
+          status: "failed",
+          failedAtMs: now,
+          updatedAt: now,
+          items
+        },
+        current === undefined ? "absent" : "any"
+      );
+      if (written.ok) {
+        options.stores.request.persistItems(options.requestId, items);
+        await options.stores.request.flushItems(options.requestId);
+        settled = true;
+      }
+    }
   } catch (err) {
     logRuntimeEvent(options.logger, "warn", "[flow-state] failed to settle a setup failure", {
       requestId: options.requestId,
       error: String(err)
     });
+  }
+
+  if (settled) {
+    try {
+      await options.response.emitItemAdded(item);
+      await options.response.emitItemDone(item);
+      await options.response.emitRequestStatus("failed");
+    } catch {
+      // The record write is what a polling client sees; stream emit is extra.
+    }
   }
 
   logRuntimeEvent(options.logger, "error", "[flow-state] action setup failed", {
@@ -1613,6 +1636,7 @@ export async function runActionInternal<
         source,
         metadata: options.metadata,
         input: options.input,
+        emittedItems: itemsToPersist(),
         response,
         error: setupError,
         logger

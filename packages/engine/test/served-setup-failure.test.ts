@@ -9,10 +9,14 @@
  * terminal, a client polling `GET …/requests/:id/status` hangs forever
  * (FIX-1511).
  */
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
+  createFilesystemStores,
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
@@ -22,12 +26,15 @@ import {
 
 const DEFAULT_MODEL_ENV = "FSDEV_DEFAULT_MODEL";
 
-function pingFlow() {
+function pingFlow(options: { userMessage?: () => string } = {}) {
   return defineFlow({
     kind: "ping",
     actions: {
       run: {
         inputSchema: z.object({}),
+        ...(options.userMessage !== undefined
+          ? { userMessage: options.userMessage }
+          : {}),
         block: handler({
           name: "ping-run",
           inputSchema: z.object({}),
@@ -178,5 +185,85 @@ describe("served setup failure (FIX-1511)", () => {
 
     expect(snapshot.httpStatus).toBe(200);
     expect(snapshot.body.status).toBe("completed");
+  });
+
+  it("writes the failed record before publishing request.failed", async () => {
+    process.env[DEFAULT_MODEL_ENV] = "openai/gpt-5-mini";
+
+    const order: string[] = [];
+    const stores = createInMemoryStores();
+    const request = new Proxy(stores.request, {
+      get(target, prop, receiver) {
+        if (prop === "set") {
+          return async (
+            id: string,
+            value: Parameters<StoreRegistry["request"]["set"]>[1],
+            expected: Parameters<StoreRegistry["request"]["set"]>[2]
+          ) => {
+            if (value.status === "failed") order.push("record-failed");
+            return target.set(id, value, expected);
+          };
+        }
+        if (prop === "persistEvents") {
+          return (
+            id: string,
+            events: Parameters<StoreRegistry["request"]["persistEvents"]>[1]
+          ) => {
+            if (events.some((event) => event.type === "request.failed")) {
+              order.push("event-failed");
+            }
+            return target.persistEvents(id, events);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+
+    const registry = createFlowRegistry();
+    registry.register(pingFlow());
+    const router = createFlowApiRouter({ registry, stores: { ...stores, request } });
+
+    const posted = await postRun(router, "sess_order", "user-a");
+    expect(posted.status).toBe(202);
+    const { request: accepted } = (await posted.json()) as { request: { id: string } };
+    await waitForServedStatus(router, accepted.id);
+    await disposeFlowApiRouter(router);
+
+    expect(order).toContain("record-failed");
+    expect(order).toContain("event-failed");
+    expect(order.indexOf("record-failed")).toBeLessThan(order.indexOf("event-failed"));
+  });
+
+  it("keeps earlier items on a filesystem-backed failed record", async () => {
+    process.env[DEFAULT_MODEL_ENV] = "openai/gpt-5-mini";
+
+    const rootDir = await mkdtemp(path.join(tmpdir(), "fsd-setup-fail-"));
+    const stores = createFilesystemStores({ rootDir, developmentOnly: true });
+    const registry = createFlowRegistry();
+    registry.register(pingFlow({ userMessage: () => "hello from the caller" }));
+    const router = createFlowApiRouter({ registry, stores });
+
+    const posted = await postRun(router, "sess_items", "user-a");
+    expect(posted.status).toBe(202);
+    const { request } = (await posted.json()) as { request: { id: string } };
+    await waitForServedStatus(router, request.id);
+    await stores.request.flushItems(request.id);
+    const record = await stores.request.get(request.id);
+    await disposeFlowApiRouter(router);
+
+    expect(record?.status).toBe("failed");
+    expect(record?.items?.some((item) =>
+      item.type === "message" &&
+      Array.isArray(item.content) &&
+      item.content.some((part) =>
+        part.type === "output_text" && part.text === "hello from the caller"
+      )
+    )).toBe(true);
+    expect(record?.items?.some((item) =>
+      item.type === "error" &&
+      typeof item.message === "string" &&
+      item.message.includes("FSDEV_DEFAULT_MODEL was set, but no intents are declared")
+    )).toBe(true);
   });
 });
