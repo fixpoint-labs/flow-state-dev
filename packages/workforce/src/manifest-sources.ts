@@ -196,6 +196,10 @@ function seatsSource(
             const parsed = parseHiredSeatRow(stored.state);
             if ("problem" in parsed) continue;
             const record = hiredSeatManifest(orgId, parsed.row);
+            // A row owned by another org comes back as a reason. Leave it
+            // out of this cell's catalog so one such row does not blank the
+            // domain — the same skip an unreadable row already takes.
+            if ("problem" in record) continue;
             if (!declared.has(record.manifest.id)) {
               declared.set(record.manifest.id, record.manifest);
             }
