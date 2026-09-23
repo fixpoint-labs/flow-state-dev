@@ -1,13 +1,13 @@
 # Kitchen Sink
 
-The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a team, gives that team channels and boards, and shows all of it in a shell whose navigator, roster and board columns are imported from `@flow-state-dev/react` rather than written here. The files it installed from the component registry match their source.
+The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a team, gives that team channels and boards, and shows all of it in a shell whose navigator, roster and board columns are imported from `@flow-state-dev/react`.
 
 Kitchen sink is a reference app, not a minimal example. It hosts every subsystem and is where features get tested end to end. For small, focused, copy-paste-able demos see `examples/`.
 
 ## What to read first
 
 - `workforce/` — the team, its channel kinds and its `CHANNEL.md` instances. This is the authoring path, and the shortest route to understanding the app.
-- `app/page.tsx` — the shell: one navigator on the left, the stream in the middle, boards and the roster on the right. The navigator, the roster and the boards are package imports.
+- `app/page.tsx` — the shell: one navigator on the left, the stream in the middle, boards and the roster on the right.
 - `flows/` — the flows the app serves, including `chat-agent`, the assistant the stream talks to.
 
 The chat agent either answers in the turn or files the work to a durable board, where a child session picks it up and the result comes back on a later turn. For coordination that happens inside a single request, see the [patterns documentation](../docs/docs/patterns/overview.md); each pattern page carries its own runnable example. The one pattern this app still uses is the response auditor, which annotates an answer after it is produced.

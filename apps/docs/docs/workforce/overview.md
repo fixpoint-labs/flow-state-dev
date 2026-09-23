@@ -19,15 +19,13 @@ Reach for [Orchestration](../orchestration/overview) when you want to coordinate
 
 ## What a Workforce app looks like
 
-A Workforce app is a roster, the channels that roster talks in, and the boards its work sits on. You describe the roster in files, hire it, and open sessions against the seats you get back. The seats are flow copies, the channels are flows, and the boards are ledgers.
-
-Three things turn that into an app someone can use:
+A Workforce app is a roster, the channels that roster talks in, and the boards its work sits on. A board is a list of tasks, each one something somebody takes and finishes. You describe the roster in files, hire it, and open sessions against the seats you get back.
 
 - **The roster outlives the process.** A team you hire while the app is running is still there after a restart or a redeploy, because the hire is written to the store your app uses. See [Hiring while the app runs](./durable-hire).
-- **A channel is what a reader opens.** A channel's transcript is its session history, not a second kind of conversation beside sessions. See [Channels](./channels).
+- **A channel is what a reader opens.** A channel is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. See [Channels](./channels).
 - **The screens are importable.** One navigator browses the whole workforce, and the roster and board columns ship beside it, as components from `@flow-state-dev/react`. See [Workforce components](./ui).
 
-Files stay the authoring path throughout. A `WORKER.md` under `teams/` and a `CHANNEL.md` beside it are how a roster is written down. Hiring at runtime adds to that roster; it doesn't replace the tree.
+Files are the authoring path. A `WORKER.md` under `teams/` and a `CHANNEL.md` beside it are how a roster is written down. Hiring at runtime adds to that roster; it doesn't replace the tree.
 
 ## Hire a roster
 
