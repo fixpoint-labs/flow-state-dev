@@ -85,8 +85,10 @@ Holding costs a cycle.
   boards would warn on every hire about boards ada and grace already drain.
 - **Discover's file roster is empty.** Kitchen-sink writes no inventory rows for file-declared
   seats, so they would not be listed either way.
-- **The capability's surface is untouched.** FIX-1500 owns any model-free export it adds. Mara
-  uses the tools.
+- **The capability's surface is untouched.** The model-free export is FIX-1500's
+  `createSeatHireBlocks(options): { hire, fire }`, pinned on
+  [#2111](https://github.com/fixpoint-labs/flow-state-dev/pull/2111), and the capability's tools
+  are built from it. Mara uses the tools, so she goes through the same sequence.
 - **[FIX-1540](https://linear.app/fixpoint-labs/issue/FIX-1540) is not fixed here.** Mara's
   fire leaves the inventory row. `discover` still withholds the seat, because its seat list
   needs the roster row too (`packages/workforce/src/manifest-sources.ts:181-227`).

@@ -59,7 +59,7 @@ Everything else is yours.
 |---|---|
 | One kinds object: `kitchenSinkKinds` **is** the map the capability closed over | Otherwise the file roster, the operator and mara hire different `agent` kinds, and `hire.ts` warns against exactly this (`:64-69`) |
 | Register only through the registrar's roster door | The operator's fire and the reload depend on its provenance mark (D2) |
-| Don't add, rename or reshape any capability export, and don't pass `orgId` | FIX-1525/1526 own the surface, and FIX-1500 owns any model-free export. Org comes from the principal (BP-031) |
+| Don't add, rename or reshape any capability export, and don't pass `orgId` | FIX-1525/1526 own the surface, and FIX-1500 owns `createSeatHireBlocks`. Org comes from the principal (BP-031) |
 | Don't route around BR-2: no dev resolver, no org remap, no catch that turns the refusal into success | It's F1's question, and FIX-1536 lists remapping the placeholder org as an invent-kill |
 | Don't fix FIX-1540 here | Separate bug, and `discover` isn't misled by it |
 
@@ -86,8 +86,12 @@ else held.
 ## At implement time
 
 - Check F1's answer on the issue. *Hold* means stop and report, not build.
-- FIX-1500's amendment may have added a model-free hire export and moved the tools onto it.
-  Nothing in S1 changes, since mara still uses the tools. Re-run V1 to V7.
+- FIX-1500's `createSeatHireBlocks` (pinned on
+  [#2111](https://github.com/fixpoint-labs/flow-state-dev/pull/2111)) may have landed, with the
+  capability's tools built from it. Nothing in S1 changes, since mara still uses the tools.
+  Re-run V1 to V7.
+- Line citations in this set are against origin/main `ffe2b6e26`. The #2094 build fix, ported
+  onto this PR, shifts `seat-hire-capability.ts` lines after `:250` by a few.
 - [FIX-1540](https://linear.app/fixpoint-labs/issue/FIX-1540) may have landed. If so, V1's
   inventory-row-present assertion flips. Follow the shipped behaviour.
 - If kitchen-sink's seats gained a real organization in the meantime, VG takes its success
