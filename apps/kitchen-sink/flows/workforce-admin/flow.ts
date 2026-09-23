@@ -42,7 +42,7 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   defineHiredRosterCollection,
   defineHiredRosterPrivateCollection,
-  hiredRosterStorageKey,
+  encodeUserSegment,
   hiredSeatManifest,
   hireWorkforce,
   seatAddress,
@@ -197,8 +197,7 @@ const hire = handler({
     // and does not list it. `create`, never `upsert`: the already-exists throw
     // IS the duplicate refusal, and it survives a second hire arriving at the
     // same moment.
-    const storageKey = hiredRosterStorageKey(row);
-    const owner = storageKey.slice(0, storageKey.indexOf("/"));
+    const owner = `~${encodeUserSegment(userId)}`;
     await privateRosterOf(ctx).create(
       { owner, seat: input.seatId },
       asStored(row)
@@ -217,7 +216,7 @@ const hire = handler({
       // at the next boot rather than failing it, and the caller still hears
       // about the registration failure rather than about the cleanup.
       try {
-        await privateRosterOf(ctx).delete({ owner: `~${userId}`, seat: input.seatId });
+        await privateRosterOf(ctx).delete({ owner: `~${encodeUserSegment(userId)}`, seat: input.seatId });
       } catch (cleanupError) {
         console.error(
           `[workforce-admin] "${address}" was written and could not be registered, and its row could ` +
@@ -247,7 +246,7 @@ const fire = handler({
     // same refusal reached from the other side — its folder is where it is
     // removed. User-owned rows live on the private collection; a legacy
     // org-visible row is still the flat key.
-    const ownedRow = await owned.getOptional({ owner: `~${userId}`, seat: input.seatId });
+    const ownedRow = await owned.getOptional({ owner: `~${encodeUserSegment(userId)}`, seat: input.seatId });
     const existing = ownedRow ?? (await rows.getOptional(input.seatId));
     // A user-owned row answers on `<org>.~<user>.<seat>`. A legacy flat row,
     // and a file-declared seat, stay on `<org>.<seat>`.
@@ -264,7 +263,7 @@ const fire = handler({
 
     const storedKind = String(existing.state.flow);
     if (ownedRow !== undefined) {
-      await owned.delete({ owner: `~${userId}`, seat: input.seatId });
+      await owned.delete({ owner: `~${encodeUserSegment(userId)}`, seat: input.seatId });
     } else {
       await rows.delete(input.seatId);
     }

@@ -33,6 +33,7 @@ import {
   extractBareTopic,
   isProjectedResourceCollection,
   isHiredRosterPrivateCollection,
+  encodeUserSegment,
   readProjectedRecord,
   searchProjectedRecords,
 } from "@flow-state-dev/core/types";
@@ -704,9 +705,10 @@ export function filterFlowLevelEager(
  * Limit the private roster writer to the session user's own rows.
  *
  * The brand admits the collection onto a flow. It does not let that flow list
- * every user. A key outside `workforce/roster/~<userId>/` is absent for get
- * and refused for write. The message does not say whether another user's row
- * exists.
+ * every user. A key outside `workforce/roster/~<escaped user>/` is absent for
+ * get and refused for write. The user id is escaped the same way the stored
+ * key is, so `bob` is not a prefix of `bob/x`. The message does not say
+ * whether another user's row exists.
  */
 function scopePrivateRosterToCaller(
   handle: ResourceCollectionRef<JsonObject>,
@@ -714,7 +716,9 @@ function scopePrivateRosterToCaller(
 ): ResourceCollectionRef<JsonObject> {
   if (!isHiredRosterPrivateCollection(handle.config)) return handle;
   const prefix =
-    userId !== undefined && userId.length > 0 ? `workforce/roster/~${userId}/` : null;
+    userId !== undefined && userId.length > 0
+      ? `workforce/roster/~${encodeUserSegment(userId)}/`
+      : null;
   const own = (key: string | Record<string, string>): boolean => {
     if (prefix === null) return false;
     return resolveCollectionKey(handle.pattern, key).startsWith(prefix);
@@ -1415,6 +1419,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
         async get(key: string | Record<string, string>): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          // A collection only addresses its own keys. The prefix cache holds
+          // every row under the static prefix, including nested keys a
+          // single-segment pattern does not match. The item route already
+          // refuses those; this is the same check on the server-side read.
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
           const resources = options.readResources();
           if (!(storageKey in resources)) {
             // Record nothing — a throwing get read no cached instance.
@@ -1427,6 +1440,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
         async getOptional(key: string | Record<string, string>): Promise<ResourceRef<JsonObject> | undefined> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          if (!matchesPattern(nsConfig.pattern, storageKey)) return undefined;
           const resources = options.readResources();
           if (!(storageKey in resources)) {
             // Absent instance read nothing from cache — no load record.
@@ -1598,6 +1612,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           initial?: Partial<JsonObject>
         ): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
           const resources = options.readResources();
           if (storageKey in resources) {
             lruAccess.set(storageKey, Date.now());
@@ -1732,6 +1751,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
         async delete(key: string | Record<string, string>): Promise<void> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
           if (nsConfig.writable === false) {
             throw new Error(`Resource "${storageKey}" is read-only`);
           }

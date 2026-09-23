@@ -22,54 +22,12 @@
  * value is that every reader agrees on it.
  */
 
-import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
+import { encodeUserSegment, type InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { validateSegment } from "../loader/segments";
 import type { WorkerManifest } from "../manifest";
 import { hiredSeatRowSchema, type HiredSeatRow } from "./collections";
 
-/**
- * The address a runtime-hired seat answers on: `<org>.<seatId>`.
- *
- * The org is validated as one address segment, so it carries no `.` — which is
- * what makes the join injective and therefore reversible by
- * {@link splitSeatAddress}. Without it, org `acme` + seat `support.ada` and
- * org `acme.support` + seat `ada` would both spell `acme.support.ada`, and the
- * second hire would silently rebind the first's address.
- *
- * The SEAT id is not segment-validated, and that is deliberate rather than an
- * omission: a seat id is already `"<teamId>.<name>"` and is meant to be
- * dotted. Only the leading segment has to be dot-free for the split to be
- * unambiguous.
- *
- * @throws when the org id is not a legal address segment — empty, over-long,
- * or containing a `.`. Thrown rather than returned because an org id reaches
- * this from the request being served right now, so the caller has someone to
- * tell.
- */
-/**
- * A principal's user id as one address segment.
- *
- * User ids are opaque and may carry dots, so they are escaped rather than
- * held to the folder-name rule. `%` is escaped too, so the encoding is
- * injective, and no `.` survives, so the address still splits. The pin is
- * not this segment — registration reads the hire row.
- */
-export function encodeUserSegment(userId: string): string {
-  if (userId.length === 0) {
-    throw new Error("a user id must not be empty — it is part of a seat's address");
-  }
-  let out = "";
-  for (const char of userId) {
-    if (/[a-z0-9-]/.test(char)) {
-      out += char;
-      continue;
-    }
-    for (const byte of new TextEncoder().encode(char)) {
-      out += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
-    }
-  }
-  return out;
-}
+export { encodeUserSegment };
 
 /**
  * The address a runtime-hired seat answers on.
@@ -77,6 +35,11 @@ export function encodeUserSegment(userId: string): string {
  * Org-visible: `<org>.<seatId>`. User-owned: `<org>.~<user>.<seatId>`, with
  * the user escaped. `ownerUserId` comes from the hire row. Nothing here
  * reads a pin out of an address that was already built.
+ *
+ * The org is validated as one address segment, so it carries no `.` — which
+ * is what makes the join injective and therefore reversible by
+ * {@link splitSeatAddress}. The seat id stays dotted on purpose
+ * (`"<teamId>.<name>"`). Only the leading segment has to be dot-free.
  *
  * @throws when the org id is not a legal address segment, the seat id is
  * empty, or the seat id starts with `~` (that marker is the user-owned form).
@@ -173,15 +136,17 @@ export function toHiredSeatRow(input: {
  * The storage key for one row, relative to `workforce/roster/`.
  *
  * Org-visible rows stay one segment (`eng.lead`), which the browser
- * collection lists. User-owned rows nest under `~user/seat`, which that
- * collection does not match. The address is not this key.
+ * collection lists. User-owned rows nest under `~<escaped user>/seat`, which
+ * that collection does not match. The user is escaped with the same encoding
+ * as the address, so a `/` in the id cannot extend another user's prefix.
+ * The address is not this key.
  */
 export function hiredRosterStorageKey(row: {
   seatId: string;
   ownerUserId?: string | null;
 }): string {
   if (row.ownerUserId != null && row.ownerUserId.length > 0) {
-    return `~${row.ownerUserId}/${row.seatId}`;
+    return `~${encodeUserSegment(row.ownerUserId)}/${row.seatId}`;
   }
   return row.seatId;
 }

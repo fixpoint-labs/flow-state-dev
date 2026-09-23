@@ -104,6 +104,31 @@ const privateRoster = markHiredRosterPrivateCollection(
   }),
 );
 
+const peekBrowser = handler({
+  name: "peek-browser",
+  inputSchema: tagInput,
+  outputSchema: z.object({ ok: z.boolean() }),
+  resources,
+  execute: async (input, ctx) => {
+    const ref = ctx.resources.roster as unknown as ResourceCollectionRef;
+    let got: string;
+    try {
+      const row = await ref.getOptional("~alice/research");
+      got = row === undefined ? "undefined" : String(row.state.instructions ?? "");
+    } catch (error) {
+      got = `threw: ${(error as Error).message}`;
+    }
+    const seen = ctx.resources.seen as unknown as ResourceCollectionRef;
+    const { userId = "", orgId = "" } = ctx.session.identity;
+    await seen.create(input.tag, {
+      instance: "peek-browser",
+      as: `${userId}@${orgId}`,
+      instructions: got,
+    });
+    return { ok: true };
+  },
+});
+
 const peekPrivate = handler({
   name: "peek-private",
   inputSchema: tagInput,
@@ -130,6 +155,7 @@ const appFlow = defineFlow({
     whoami: { inputSchema: tagInput, block: whoami },
     hand: { inputSchema: tagInput, block: handToAcmeSeat },
     peek: { inputSchema: tagInput, block: peekPrivate },
+    peekBrowser: { inputSchema: tagInput, block: peekBrowser },
   },
   authentication: verified,
 });
@@ -366,6 +392,58 @@ describe("FIX-1529 hire plane", () => {
     expect(seen).toContainEqual({ instance: "peek", as: "alice@acme", instructions: ALICE_PROMPT });
   });
 
+  it("D the browser roster does not read a nested key that the prefix cache holds", async () => {
+    const stores = inMemoryStores();
+    const primary = await stores.resolve(["primary"]);
+    await primary.resourceState!.set(
+      "org",
+      "acme",
+      "workforce/roster/~alice/research",
+      { seatId: "research", instructions: ALICE_PROMPT },
+      "any",
+    );
+    const h = await boot(stores);
+    const bob = await h.call("POST", ["app", "sessions"], BOB, { userId: "bob" });
+    expect(bob.status).toBe(201);
+    expect(await h.act(BOB, bob.json.session.id as string, "peekBrowser", { tag: "via-browser" })).toEqual({
+      http: 202,
+      outcome: "completed",
+    });
+    expect(await h.seenIn("acme")).toEqual([
+      { instance: "peek-browser", as: "bob@acme", instructions: "undefined" },
+    ]);
+  });
+
+  it("a slash in a user id does not make that user's rows a prefix of a shorter id", async () => {
+    const stores = inMemoryStores();
+    const primary = await stores.resolve(["primary"]);
+    await primary.resourceState!.set(
+      "org",
+      "acme",
+      "workforce/roster/~bob%2Fx/research",
+      { instructions: "SLASH-USER" },
+      "any",
+    );
+    const h = await boot(stores);
+    const bob = await h.call("POST", ["app", "sessions"], BOB, { userId: "bob" });
+    expect(await h.act(BOB, bob.json.session.id as string, "peek", { tag: "bob" })).toEqual({
+      http: 202,
+      outcome: "completed",
+    });
+    expect(await h.seenIn("acme")).toEqual([
+      { instance: "peek", as: "bob@acme", instructions: "" },
+    ]);
+
+    const slash = await h.call("POST", ["app", "sessions"], { user: "bob/x", org: "acme" }, { userId: "bob/x" });
+    expect(slash.status).toBe(201);
+    expect(await h.act({ user: "bob/x", org: "acme" }, slash.json.session.id as string, "peek", { tag: "slash" })).toEqual({
+      http: 202,
+      outcome: "completed",
+    });
+    const seen = await h.seenIn("acme");
+    expect(seen).toContainEqual({ instance: "peek", as: "bob/x@acme", instructions: "SLASH-USER" });
+  });
+
   it("E6 the pin is not the address: acme.x pinned to globex admits globex and refuses acme", async () => {
     const h = await boot();
     h.state.register(seat("acme.x", "GLOBEX-PINNED"), { pin: { orgId: "globex" } });
@@ -539,6 +617,34 @@ describe("FIX-1529 hire plane", () => {
       roster: { pattern: "workforce/roster/[owner]/notes", scope: "org" },
     };
     expect(() => registry.register(notes)).toThrow(/user-owned roster/);
+
+    for (const [index, pattern] of ["workforce/[r]/[owner]/[seat]", "[a]/[b]/[c]/[d]"].entries()) {
+      expect(() =>
+        defineResourceCollection({ pattern, scope: "org", stateSchema: z.object({}).passthrough() })
+      ).not.toThrow();
+      const wide = defineFlow({
+        kind: `wide-${index}`,
+        resources: {
+          wide: defineResourceCollection({
+            pattern,
+            scope: "org",
+            stateSchema: z.object({}).passthrough(),
+          }),
+        },
+        actions: {
+          ping: {
+            inputSchema: z.object({}),
+            block: handler({
+              name: "ping-wide",
+              inputSchema: z.object({}),
+              outputSchema: z.object({ ok: z.boolean() }),
+              execute: () => ({ ok: true }),
+            }),
+          },
+        },
+      })();
+      expect(() => registry.register(wide)).toThrow(/user-owned roster/);
+    }
   });
 
   it("a shared app flow stays open to another org", async () => {

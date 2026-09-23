@@ -1,11 +1,11 @@
 /**
  * Admission for a hired flow instance.
  *
- * The pin is `{ orgId, userId? }`, held by the registry per address and copied
- * from the hire row. It is never read off the address. A shared instance has
- * no pin and is not asked. HTTP entry points answer a mismatch as an unknown
- * flow, before anything is written. {@link refuseInstancePin} is the net
- * under every other door, and it runs before any block.
+ * The pin is `{ orgId, userId? }`, stamped on the instance from the hire row.
+ * It is never read off the address. A shared instance has no pin and is not
+ * asked. HTTP entry points answer a mismatch as an unknown flow, before
+ * anything is written. {@link refuseInstancePin} is the net under every other
+ * door, and it runs before any block.
  */
 import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
 
@@ -38,6 +38,26 @@ export class InstancePinMismatchError extends Error {
   }
 }
 
+/** Which half of a pin the caller missed. Organization is compared first. */
+export type PinMismatchReason = "owning-org" | "roster-owner";
+
+/**
+ * Which half of `pin` `caller` misses, or `undefined` when the caller is inside
+ * the pin or there is no pin.
+ *
+ * Organization is compared first, so a caller who matches the user and misses
+ * the organization is not reported as a user miss.
+ */
+export function pinMismatchReason(
+  pin: InstanceOwnerPin | undefined,
+  caller: InstancePinCaller
+): PinMismatchReason | undefined {
+  if (pin === undefined) return undefined;
+  if (pin.orgId !== caller.orgId) return "owning-org";
+  if (pin.userId !== undefined && pin.userId !== caller.userId) return "roster-owner";
+  return undefined;
+}
+
 /**
  * Whether `caller` is outside `pin`.
  *
@@ -47,10 +67,7 @@ export function pinRejectsCaller(
   pin: InstanceOwnerPin | undefined,
   caller: InstancePinCaller
 ): boolean {
-  if (pin === undefined) return false;
-  if (pin.orgId !== caller.orgId) return true;
-  if (pin.userId !== undefined && pin.userId !== caller.userId) return true;
-  return false;
+  return pinMismatchReason(pin, caller) !== undefined;
 }
 
 /**
@@ -63,6 +80,23 @@ export function unknownFlowMessage(flowId: string): string {
 }
 
 /**
+ * An address this process will not run for this caller.
+ *
+ * Thrown for an address the registry does not hold and for a pin the caller
+ * is outside. The message is {@link unknownFlowMessage}. Callers match on the
+ * class, so a wording change stays a 404.
+ */
+export class UnknownFlowError extends Error {
+  readonly flowId: string;
+
+  constructor(flowId: string) {
+    super(unknownFlowMessage(flowId));
+    this.name = "UnknownFlowError";
+    this.flowId = flowId;
+  }
+}
+
+/**
  * Refuse a run whose session is outside the instance pin.
  *
  * No-op for a shared instance. Call after the session's own org binding, and
@@ -72,12 +106,6 @@ export function refuseInstancePin(
   flow: { id: string; ownerPin?: InstanceOwnerPin },
   caller: InstancePinCaller
 ): void {
-  const pin = flow.ownerPin;
-  if (pin === undefined) return;
-  if (pin.orgId !== caller.orgId) {
-    throw new InstancePinMismatchError(flow.id, "owning-org");
-  }
-  if (pin.userId !== undefined && pin.userId !== caller.userId) {
-    throw new InstancePinMismatchError(flow.id, "roster-owner");
-  }
+  const reason = pinMismatchReason(flow.ownerPin, caller);
+  if (reason !== undefined) throw new InstancePinMismatchError(flow.id, reason);
 }

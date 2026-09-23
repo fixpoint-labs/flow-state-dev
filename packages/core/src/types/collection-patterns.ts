@@ -158,8 +158,8 @@ export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
  * Server-side writer for a user-owned roster row. Two segments, no browser
  * read. Admitted only when the object carries {@link HIRED_ROSTER_PRIVATE_BRAND},
  * which `defineHiredRosterPrivateCollection` sets. Any other declaration of
- * this pattern, and any other two-or-more-segment pattern under
- * `workforce/roster/`, is refused.
+ * this pattern is refused, and so is any other pattern that can resolve onto
+ * a user-owned row, including a parameterised one.
  */
 export const HIRED_ROSTER_PRIVATE_PATTERN = "workforce/roster/[owner]/[seat]";
 
@@ -190,19 +190,75 @@ export function isHiredRosterPrivateCollection(value: object): boolean {
 const ROSTER_ROOT = "workforce/roster";
 
 /**
- * Whether `pattern` has two or more segments under `workforce/roster/`, or is
- * a deep glob whose prefix can reach that tree.
+ * A user id as one path segment.
  *
- * The browser pattern is one segment. The private writer is two, and is not
- * "too deep" here — admission of that one pattern is a separate brand check.
- * A single probe key is not enough: `workforce/roster/[owner]/notes` never
- * matches `workforce/roster/~alice/research` and would still read every user's
- * notes.
+ * Opaque ids may contain `/` or `.`. Those are percent-encoded, and `%` is
+ * encoded too, so the mapping is injective. The roster's caller fence and
+ * the stored key both use this, so one user's prefix cannot be a prefix of
+ * another's.
  */
-export function rosterPatternIsTooDeep(pattern: string): boolean {
+export function encodeUserSegment(userId: string): string {
+  if (userId.length === 0) {
+    throw new Error("a user id must not be empty — it is part of a seat's address");
+  }
+  let out = "";
+  for (const char of userId) {
+    if (/[a-z0-9-]/.test(char)) {
+      out += char;
+      continue;
+    }
+    for (const byte of new TextEncoder().encode(char)) {
+      out += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+    }
+  }
+  return out;
+}
+
+/** A segment that can stand in for `literal`: the literal itself, a parameter, or a wildcard. */
+function segmentOpens(segment: string, literal: string): boolean {
+  return (
+    segment === literal ||
+    segment === "*" ||
+    segment === "**" ||
+    /^\[[a-zA-Z0-9_]+\]$/.test(segment)
+  );
+}
+
+/**
+ * Whether `pattern` can resolve onto a user-owned roster key.
+ *
+ * The browser pattern is one segment under the roster. The private writer is
+ * exactly two, and is excluded here — admission of that one pattern is the
+ * brand check. A parameter or `*` in the first segment can be `workforce`,
+ * and the same in the second can be `roster`, so `workforce/[r]/[owner]/[seat]`
+ * and `[a]/[b]/[c]/[d]` reach `workforce/roster/~user/seat`. Two or more
+ * segments after that pair, or a `**` that consumes the rest, is enough.
+ */
+function rosterPatternOverlapsPrivate(pattern: string): boolean {
   if (pattern === HIRED_ROSTER_BROWSER_PATTERN || pattern === HIRED_ROSTER_PRIVATE_PATTERN) {
     return false;
   }
+  const segments = pattern.split("/").filter((segment) => segment.length > 0);
+  if (segments.length === 0) return false;
+  if (segments[0] === "**") return true;
+  if (!segmentOpens(segments[0]!, "workforce")) return false;
+  if (segments.length === 1) return false;
+  if (segments[1] === "**") return true;
+  if (!segmentOpens(segments[1]!, "roster")) return false;
+  const rest = segments.slice(2);
+  if (rest.some((segment) => segment === "**")) return true;
+  return rest.length >= 2;
+}
+
+/**
+ * Whether `pattern` is literally two or more segments under `workforce/roster/`,
+ * or a deep glob whose static prefix reaches that tree.
+ *
+ * Parameterised overlap is not included. A pattern such as `[a]/[b]/[c]/[d]`
+ * is a legal collection on its own; registration is what refuses to admit it
+ * onto a flow.
+ */
+function rosterPatternIsLiterallyDeep(pattern: string): boolean {
   if (pattern.includes("**")) {
     const star = pattern.indexOf("**");
     const prefix = pattern.slice(0, star).replace(/\/$/, "");
@@ -221,25 +277,15 @@ export function rosterPatternIsTooDeep(pattern: string): boolean {
 }
 
 /**
- * Whether `pattern` can address a user-owned roster row on the server.
- *
- * True for the private writer, for any deeper pattern under the roster, and
- * for a deep glob that reaches it. The browser pattern is one segment and is
- * not included.
- */
-export function patternReadsPrivateRoster(pattern: string): boolean {
-  if (pattern === HIRED_ROSTER_PRIVATE_PATTERN) return true;
-  return rosterPatternIsTooDeep(pattern);
-}
-
-/**
  * Refuse a collection that can read user-owned roster rows on the server.
  *
  * At definition, the private writer pattern is allowed so the workforce
  * factory can build it, and then {@link markHiredRosterPrivateCollection}
- * brands the result. At registration, that pattern is admitted only with the
- * brand, and still never with a browser read. Every other two-segment roster
- * pattern, and every deep glob that reaches the roster, is refused at both.
+ * brands the result. A pattern that is literally deep under the roster is
+ * refused here too. A parameterised pattern that can still resolve onto those
+ * rows is a legal definition and is refused when a flow registers it. At
+ * registration, the private writer is admitted only with the brand, and still
+ * never with a browser read.
  */
 export function assertRosterCollectionIsNotDeep(
   config: {
@@ -265,7 +311,8 @@ export function assertRosterCollectionIsNotDeep(
     }
     return;
   }
-  if (!rosterPatternIsTooDeep(pattern)) return;
+  if (!rosterPatternOverlapsPrivate(pattern)) return;
+  if (stage === "define" && !rosterPatternIsLiterallyDeep(pattern)) return;
   throw new Error(
     `Collection pattern "${pattern}" can read user-owned roster rows on the server. ` +
       `Declare "${HIRED_ROSTER_BROWSER_PATTERN}" for the org roster. ` +

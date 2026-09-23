@@ -136,7 +136,7 @@ export function releaseSeat(id: string): boolean {
 
 ### The organization has to come from the credential
 
-The organization comes from the credential, not from the request body. A hire writes durable state that belongs to an organization, so it has to come from something the framework can trust. Configure [`resolvePrincipal`](../server/authentication.md) on the flow and the action's `orgId` comes from there; an `orgId` in the body is ignored.
+The organization comes from the credential, not from the request body. A hire writes durable state that belongs to an organization, so it has to come from something the framework can trust. Configure [`resolvePrincipal`](../server/authentication.md) on the flow and the action's `orgId` comes from there; an `orgId` in the body is ignored. A hired seat is pinned to that organization, so the host that serves the seat needs the same resolver. The framework default resolver does not name one, and opening the seat answers `404 Unknown flow` even for the person who hired it.
 
 ```ts title="src/flows/workforce-admin/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";

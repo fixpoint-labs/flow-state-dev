@@ -54,6 +54,9 @@ describe("hire row pin", () => {
     expect(row.owningOrgId).toBe("acme");
     expect(row.ownerUserId).toBe("alice");
     expect(hiredRosterStorageKey(row)).toBe("~alice/research");
+    expect(
+      hiredRosterStorageKey({ seatId: "research", ownerUserId: "bob/x" })
+    ).toBe("~bob%2Fx/research");
 
     const bound = hiredSeatManifest("acme", row);
     if (!("manifest" in bound)) throw new Error(bound.problem);

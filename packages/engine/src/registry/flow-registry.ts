@@ -71,8 +71,8 @@ export interface FlowRegistry {
    */
   register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
   /**
-   * The owner pin stored for an address, or `undefined` when the instance is
-   * shared or the address is not held.
+   * The owner pin on the instance at this address, or `undefined` when the
+   * instance is shared or the address is not held. Reads {@link FlowInstance.ownerPin}.
    */
   pinOf(id: string): InstanceOwnerPin | undefined;
   /** `register`, in order. An element that fails leaves the earlier ones admitted. */
@@ -127,9 +127,6 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   /** The global address index — the one map `get`, `list`, and admission read. */
   private readonly flowsById = new Map<string, FlowInstance>();
 
-  /** Owner pin per address. Absent means the instance is shared. */
-  private readonly pinsById = new Map<string, InstanceOwnerPin>();
-
   /**
    * Per-scope list of flows participating in that scope's SHARED storage. A
    * flow appears here once it contributes anything non-isolated — its scope
@@ -153,7 +150,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    */
   register(input: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
     const flow = admitIdentity(input, this.flowsById);
-    const pin = adoptPin(flow, options?.pin);
+    adoptPin(flow, options?.pin);
     assertFlowRosterPatterns(flow);
 
     // Validate both scopes before mutating any state. If the org-scope
@@ -172,7 +169,6 @@ export class InMemoryFlowRegistry implements FlowRegistry {
 
     // All validation passed — commit.
     this.flowsById.set(flow.id, flow);
-    if (pin !== undefined) this.pinsById.set(flow.id, pin);
     this.indexParticipant("user", flow.kind, userDecl);
     this.indexParticipant("org", flow.kind, orgDecl);
   }
@@ -220,13 +216,12 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    * the "known gap" case in `test/registry/runtime-registration.test.ts`.
    */
   unregister(id: string): boolean {
-    this.pinsById.delete(id);
     return this.flowsById.delete(id);
   }
 
-  /** The pin recorded for an address. A shared instance and an unknown address are both `undefined`. */
+  /** The pin on the held instance. Absent for a shared instance and an unknown address. */
   pinOf(id: string): InstanceOwnerPin | undefined {
-    return this.pinsById.get(id);
+    return this.flowsById.get(id)?.ownerPin;
   }
 
   /**

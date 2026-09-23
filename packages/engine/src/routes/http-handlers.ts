@@ -714,7 +714,7 @@ async function flowsForCaller(
   host: InboundTransportHost
 ): Promise<FlowInstance[]> {
   const flows = registry.list();
-  if (!flows.some((flow) => registry.pinOf(flow.id) !== undefined)) return flows;
+  if (!flows.some((flow) => flow.ownerPin !== undefined)) return flows;
 
   let caller: { userId: string; orgId: string } | undefined;
   try {
@@ -733,7 +733,7 @@ async function flowsForCaller(
   }
 
   return flows.filter((flow) => {
-    const pin = registry.pinOf(flow.id);
+    const pin = flow.ownerPin;
     if (pin === undefined) return true;
     if (caller === undefined) return false;
     return !pinRejectsCaller(pin, caller);
