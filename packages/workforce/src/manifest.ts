@@ -11,6 +11,7 @@
  */
 
 import type { InitialSkill } from "@flow-state-dev/core";
+import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
 
 /**
  * One worker, as declared on disk or hand-built. Declared once, in this module; the loader
@@ -65,6 +66,13 @@ export interface WorkerManifest {
    * own charter must be able to have it.
    */
   teamInstructions?: string;
+  /**
+   * Set by a hire row, never by a `WORKER.md`. Absent, the minted instance
+   * stays shared — a file-declared seat and a shared app flow. Present, the
+   * mint copies it onto the instance, and registration stores it as the pin.
+   * Not parsed from {@link WorkerManifest.id}.
+   */
+  ownerPin?: InstanceOwnerPin;
 }
 
 /**

@@ -125,12 +125,14 @@ The switch is exhaustive over `ParsedFlowRoute["kind"]`.
 
 | Subject | Routes | Owner / resolver |
 |---|---|---|
-| `exempt` | `list_flows`, `capabilities`, `execute_action` | No owner check. `execute_action` resolves its own principal in the action handler. |
+| `exempt` | `list_flows`, `capabilities`, `execute_action` | No owner check. `execute_action` resolves its own principal in the action handler. `list_flows` stays exempt: when the registry holds an owner pin it resolves a principal if one is present and omits pinned instances the caller does not match. An anonymous caller sees unpinned flows only. The route does not answer 401. |
 | `session` | session CRUD, state, resources, debug-on-session | Owner is the stored session's `userId`. Flow comes from `session.flowKind`. A missing session is not an auth error — the handler 404s. |
 | `request` | stream, abort, retry, continue, status, resume | Owner is the request record's `userId` (or the in-flight `activeRequests` entry when the record is not persisted yet). |
 | `flow` | `create_session` | No record yet. The authenticated caller becomes the owner. Flow comes from the URL. |
 | `user` | `user_stream`, `check_interrupted_requests` | Owner is the `userId` in the path. |
 | `host` | `list_sessions`, `active_requests`, `transcribe` | No single owner. The handler scopes rows to the caller. |
+
+A hired instance is registered with `register(flow, { pin })`. The pin is `{ orgId, userId? }` from the hire row, not from the address. `create_session` and a session-less `execute_action` compare the caller to that pin before the acknowledgement and answer a mismatch with `404 Unknown flow`, the same sentence an address this process does not hold gets. A later run — resume, retry, internal dispatch — compares the bound session to the pin inside execution and throws `InstancePinMismatchError` before any block. An instance registered without a pin stays shared.
 
 Enforcement is off when the host resolver is the framework default **and**
 no registered flow configures its own resolver. A flow-scoped route whose

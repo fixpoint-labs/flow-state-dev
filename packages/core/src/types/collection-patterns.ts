@@ -149,6 +149,63 @@ function escapeRegex(s: string): string {
 }
 
 /**
+ * The org roster's browser collection. One segment, so a nested
+ * `workforce/roster/~user/seat` key never matches it.
+ */
+export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
+
+/**
+ * Server-side writer for a user-owned roster row. Two segments, no browser
+ * read. The only multi-segment pattern admitted under `workforce/roster/`.
+ */
+export const HIRED_ROSTER_PRIVATE_PATTERN = "workforce/roster/[owner]/[seat]";
+
+/** A key the browser roster must not list, and a deep glob must not be able to. */
+const PRIVATE_ROSTER_PROBE = "workforce/roster/~alice/research";
+
+/**
+ * Whether `pattern` can address a user-owned roster row.
+ *
+ * A bare `**` is included: the single-segment matcher does not treat it as
+ * a deep glob, and it would still be a collection over every key.
+ */
+export function patternReadsPrivateRoster(pattern: string): boolean {
+  if (pattern === "**") return true;
+  return matchesPattern(pattern, PRIVATE_ROSTER_PROBE);
+}
+
+/**
+ * Refuse a collection that can read user-owned roster rows on the server.
+ *
+ * The private sub-prefix hides those rows from the browser collection only.
+ * A `workforce/roster/**` (or any other deep pattern that reaches the same
+ * keys) would hand them back to every flow in the org. The browser pattern
+ * and the one server-side writer, with no browser read, are the exceptions.
+ */
+export function assertRosterCollectionIsNotDeep(config: {
+  pattern: string;
+  client?: { state?: { read?: boolean } };
+}): void {
+  const { pattern } = config;
+  if (pattern === HIRED_ROSTER_BROWSER_PATTERN) return;
+  if (pattern === HIRED_ROSTER_PRIVATE_PATTERN) {
+    if (config.client?.state?.read === true) {
+      throw new Error(
+        `Collection pattern "${pattern}" must not enable a browser read. ` +
+          `User-owned roster rows stay off the browser collection.`
+      );
+    }
+    return;
+  }
+  if (!patternReadsPrivateRoster(pattern)) return;
+  throw new Error(
+    `Collection pattern "${pattern}" can read user-owned roster rows on the server. ` +
+      `Declare "${HIRED_ROSTER_BROWSER_PATTERN}" for the org roster. ` +
+      `A deep pattern such as "workforce/roster/**" is refused.`
+  );
+}
+
+/**
  * Resolve a key (string or param object) into a storage path for a given pattern.
  *
  * - For wildcard patterns (`files/*`, `files/**`): key is a string appended to the prefix.

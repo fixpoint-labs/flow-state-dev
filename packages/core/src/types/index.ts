@@ -83,6 +83,7 @@ export type {
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,
+  InstanceOwnerPin,
   FlowToolContext,
   FlowType,
   FlowCardinality,
@@ -236,6 +237,10 @@ export {
   isParameterizedPattern,
   extractBareTopic,
   extractPatternParams,
+  assertRosterCollectionIsNotDeep,
+  patternReadsPrivateRoster,
+  HIRED_ROSTER_BROWSER_PATTERN,
+  HIRED_ROSTER_PRIVATE_PATTERN,
 } from "./resource-collection";
 
 export type {

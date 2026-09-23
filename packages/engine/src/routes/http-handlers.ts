@@ -7,6 +7,7 @@
  */
 import { toError } from "@flow-state-dev/core/helpers";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
@@ -66,6 +67,8 @@ import type { InboundTransportHost, PrincipalResolver } from "../transports/type
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { createDispatchOperation } from "../context/dispatch-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
+import { PrincipalResolutionError } from "../transports/errors";
+import { pinRejectsCaller } from "../context/hire-plane";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 
@@ -379,8 +382,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "list_flows") {
+        const visible = await flowsForCaller(options.registry, request, host);
         return jsonResponse(200, {
-          flows: options.registry.list().map((flow) => ({
+          flows: visible.map((flow) => ({
             id: flow.id,
             kind: flow.kind,
             cardinality: flow.cardinality,
@@ -693,4 +697,45 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     handle,
     host
   };
+}
+
+/**
+ * Catalog rows for this caller.
+ *
+ * Unpinned flows are always listed. A hired instance is listed only when the
+ * caller matches its pin. Resolution runs only when the registry holds a pin,
+ * so a catalog of shared flows does not start requiring a principal, and the
+ * route stays exempt. A caller who cannot be resolved sees the shared flows
+ * and no hired ones.
+ */
+async function flowsForCaller(
+  registry: FlowRegistry,
+  request: Request,
+  host: InboundTransportHost
+): Promise<FlowInstance[]> {
+  const flows = registry.list();
+  if (!flows.some((flow) => registry.pinOf(flow.id) !== undefined)) return flows;
+
+  let caller: { userId: string; orgId: string } | undefined;
+  try {
+    caller = await host.resolvePrincipal({
+      source: "http",
+      request,
+      envelope: {
+        flowKind: "",
+        action: "list_flows",
+        metadata: {},
+        input: undefined,
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof PrincipalResolutionError)) throw error;
+  }
+
+  return flows.filter((flow) => {
+    const pin = registry.pinOf(flow.id);
+    if (pin === undefined) return true;
+    if (caller === undefined) return false;
+    return !pinRejectsCaller(pin, caller);
+  });
 }

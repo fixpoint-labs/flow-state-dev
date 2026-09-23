@@ -22,6 +22,7 @@
  * value is that every reader agrees on it.
  */
 
+import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { validateSegment } from "../loader/segments";
 import type { WorkerManifest } from "../manifest";
 import { hiredSeatRowSchema, type HiredSeatRow } from "./collections";
@@ -82,6 +83,16 @@ export function toHiredSeatRow(input: {
   flow: string;
   settings?: Record<string, unknown>;
   instructions?: string | null;
+  /**
+   * The organization the row is written for. `null` — the default — is a
+   * legacy row; a reload binds the cell it was read from.
+   */
+  owningOrgId?: string | null;
+  /**
+   * The user the hire belongs to, or `null` when every member of the owning
+   * org may see it. A user-owned row is stored under a nested key.
+   */
+  ownerUserId?: string | null;
 }): HiredSeatRow {
   const instructions =
     typeof input.instructions === "string" && input.instructions.trim().length > 0
@@ -92,7 +103,33 @@ export function toHiredSeatRow(input: {
     flow: input.flow,
     settings: { ...(input.settings ?? {}) },
     instructions,
+    owningOrgId: input.owningOrgId ?? null,
+    ownerUserId: input.ownerUserId ?? null,
   };
+}
+
+/**
+ * The storage key for one row, relative to `workforce/roster/`.
+ *
+ * Org-visible rows stay one segment (`eng.lead`), which the browser
+ * collection lists. User-owned rows nest under `~user/seat`, which that
+ * collection does not match. The address is not this key.
+ */
+export function hiredRosterStorageKey(row: {
+  seatId: string;
+  ownerUserId?: string | null;
+}): string {
+  if (row.ownerUserId != null && row.ownerUserId.length > 0) {
+    return `~${row.ownerUserId}/${row.seatId}`;
+  }
+  return row.seatId;
+}
+
+/** The pin a row registers under. `userId` is omitted when the row is org-visible. */
+export function hiredSeatOwnerPin(orgId: string, row: HiredSeatRow): InstanceOwnerPin {
+  const pin: InstanceOwnerPin = { orgId };
+  if (row.ownerUserId != null && row.ownerUserId.length > 0) pin.userId = row.ownerUserId;
+  return pin;
 }
 
 /** What a row could not be read as, when it could not be read. */
@@ -139,13 +176,22 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  * there are no folders. Setting them to `[]` would tell the kind its seat was
  * read and found empty, which is a different and false claim.
  *
- * @returns the record. There is no reason arm here — nothing about `row`
- * itself can make this fail, since a row that reached this function has
- * already been validated by {@link parseHiredSeatRow}. A bad ORG still
- * throws, via {@link seatAddress} — see this file's header for why the two
- * differ.
+ * @returns the record, or a reason when the row's owning organization is
+ * not `orgId`. A row that predates the stamp binds `orgId` — the cell it
+ * was read from — rather than refusing. A bad ORG still throws, via
+ * {@link seatAddress}.
  */
-export function hiredSeatManifest(orgId: string, row: HiredSeatRow): { manifest: WorkerManifest } {
+export function hiredSeatManifest(
+  orgId: string,
+  row: HiredSeatRow
+): { manifest: WorkerManifest } | RowProblem {
+  if (row.owningOrgId != null && row.owningOrgId !== orgId) {
+    return {
+      problem:
+        `the row is owned by organization "${row.owningOrgId}" and cannot be registered under "${orgId}"`,
+    };
+  }
+  const owningOrgId = row.owningOrgId ?? orgId;
   // `flow` is spread in as a declared key rather than handed over separately,
   // so `hireWorkforce`'s own kind resolution and its own refusals are what
   // decide it. A pre-check here would be a second gatekeeper with a second
@@ -162,9 +208,10 @@ export function hiredSeatManifest(orgId: string, row: HiredSeatRow): { manifest:
   // longer be shadowed by the row's own settings.
   return {
     manifest: {
-      id: seatAddress(orgId, row.seatId),
+      id: seatAddress(owningOrgId, row.seatId),
       declared: { ...row.settings, flow: row.flow },
       body: row.instructions ?? "",
+      ownerPin: hiredSeatOwnerPin(owningOrgId, row),
     },
   };
 }
@@ -193,5 +240,23 @@ export function hiredSeatRowFromManifest(
   if (typeof flow !== "string" || flow.length === 0) {
     return { problem: `"${manifest.id}" declares no flow kind` };
   }
-  return { row: toHiredSeatRow({ seatId, flow, settings, instructions: manifest.body }) };
+  const pin = manifest.ownerPin;
+  if (pin === undefined || pin.orgId !== orgId) {
+    return {
+      problem:
+        pin === undefined
+          ? `"${manifest.id}" declares no owning organization`
+          : `"${manifest.id}" is owned by organization "${pin.orgId}", not "${orgId}"`,
+    };
+  }
+  return {
+    row: toHiredSeatRow({
+      seatId,
+      flow,
+      settings,
+      instructions: manifest.body,
+      owningOrgId: pin.orgId,
+      ownerUserId: pin.userId ?? null,
+    }),
+  };
 }

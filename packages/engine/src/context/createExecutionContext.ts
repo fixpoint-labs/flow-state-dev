@@ -100,6 +100,7 @@ import {
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./binding-errors";
+import { refuseInstancePin } from "./hire-plane";
 import {
   outputItemToSessionItem,
   createSessionItemViews,
@@ -772,6 +773,12 @@ export async function createExecutionContext<
   if (optionsOrgId !== sessionOrgId) {
     throw new OrgBindingMismatchError(sessionId, sessionOrgId, optionsOrgId);
   }
+
+  // Instance pin, after the session's own org is known and before any block.
+  // Resume, retry, internal dispatch, and a child session all come through
+  // here. A shared instance has no pin and is not asked. The address is not
+  // the pin.
+  refuseInstancePin(flow, { userId, orgId: sessionOrgId });
 
   const resolvedOrgId = sessionOrgId;
 

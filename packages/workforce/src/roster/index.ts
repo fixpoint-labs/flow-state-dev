@@ -10,12 +10,15 @@
 export {
   HIRED_ROSTER_PREFIX,
   defineHiredRosterCollection,
+  defineHiredRosterPrivateCollection,
   hiredSeatRowSchema,
   type HiredSeatRow,
 } from "./collections";
 
 export {
+  hiredRosterStorageKey,
   hiredSeatManifest,
+  hiredSeatOwnerPin,
   hiredSeatRowFromManifest,
   parseHiredSeatRow,
   seatAddress,

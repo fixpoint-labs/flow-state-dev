@@ -41,6 +41,8 @@ import type { JsonObject } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   defineHiredRosterCollection,
+  defineHiredRosterPrivateCollection,
+  hiredRosterStorageKey,
   hiredSeatManifest,
   hireWorkforce,
   seatAddress,
@@ -54,6 +56,8 @@ import { adminPrincipalResolver } from "@/lib/workforce-admin-auth";
 import { kitchenSinkKinds } from "@/workforce/hire";
 
 const roster = defineHiredRosterCollection();
+/** User-owned rows. No browser read; the single-segment roster does not list them. */
+const rosterPrivate = defineHiredRosterPrivateCollection();
 
 /** The kinds a hire may name, and the sentence that lists them in a refusal. */
 const KIND_NAMES = Object.keys(kitchenSinkKinds).sort();
@@ -118,6 +122,18 @@ function rosterOf(ctx: { resources: Record<string, unknown> }): ResourceCollecti
   return ctx.resources.roster as unknown as ResourceCollectionRef;
 }
 
+function privateRosterOf(ctx: { resources: Record<string, unknown> }): ResourceCollectionRef {
+  return ctx.resources.rosterPrivate as unknown as ResourceCollectionRef;
+}
+
+function userOf(ctx: { session: { identity: { userId?: string } } }): string {
+  const userId = ctx.session.identity.userId;
+  if (typeof userId !== "string" || userId.length === 0) {
+    throw new Error("This admin credential resolves no user, and a hire is user-owned.");
+  }
+  return userId;
+}
+
 /** A row on its way into storage. See {@link rosterOf} for why this is a cast. */
 function asStored(row: HiredSeatRow): JsonObject {
   return row as unknown as JsonObject;
@@ -151,43 +167,55 @@ const hire = handler({
       );
     }
 
+    const userId = userOf(ctx);
     const row = toHiredSeatRow({
       seatId: input.seatId,
       flow: input.flow,
       settings: input.settings,
       instructions: input.instructions ?? null,
+      owningOrgId: orgId,
+      ownerUserId: userId,
     });
 
     // Minted from exactly what will be stored, not from the request — so a
     // seat that hires is a seat the stored row can rebuild at the next boot.
     // This is also where the kind's own settings schema runs, which is why it
-    // happens before anything is written.
-    // No reason arm to check: `hiredSeatManifest` returns `{ manifest }`
-    // only. The one thing it throws over is a bad org or seat id, via
-    // `seatAddress` — and `address` above already made that call, so it threw
-    // before this line if it was going to.
+    // happens before anything is written. A row whose owning org disagrees
+    // with this cell comes back as a reason and is not written.
     const record = hiredSeatManifest(orgId, row);
+    if ("problem" in record) {
+      throw new Error(record.problem);
+    }
     const [seat] = hireWorkforce([record.manifest], { kinds: kitchenSinkKinds });
     if (seat === undefined) {
       throw new Error(`"${address}" could not be hired, and no reason was given.`);
     }
 
-    // `create`, never `upsert`: the already-exists throw IS the duplicate
-    // refusal, and it survives a second hire arriving at the same moment.
-    await rosterOf(ctx).create(input.seatId, asStored(row));
+    // User-owned, so the key is nested. The browser roster is single-segment
+    // and does not list it. `create`, never `upsert`: the already-exists throw
+    // IS the duplicate refusal, and it survives a second hire arriving at the
+    // same moment.
+    const storageKey = hiredRosterStorageKey(row);
+    const owner = storageKey.slice(0, storageKey.indexOf("/"));
+    await privateRosterOf(ctx).create(
+      { owner, seat: input.seatId },
+      asStored(row)
+    );
 
     try {
       // `registerFromRoster`, not `register`: this records that the address is
       // held by an instance THIS app minted from a roster row, which is what
       // `fire` checks before releasing it (BR-28).
-      workforceRegistrar.registerFromRoster(seat);
+      workforceRegistrar.registerFromRoster(seat, {
+        pin: record.manifest.ownerPin,
+      });
     } catch (error) {
       // The row this call created, removed — a hire that failed leaves nothing
       // behind. If the delete also fails, the stranded row is skipped and named
       // at the next boot rather than failing it, and the caller still hears
       // about the registration failure rather than about the cleanup.
       try {
-        await rosterOf(ctx).delete(input.seatId);
+        await privateRosterOf(ctx).delete({ owner: `~${userId}`, seat: input.seatId });
       } catch (cleanupError) {
         console.error(
           `[workforce-admin] "${address}" was written and could not be registered, and its row could ` +
@@ -208,14 +236,18 @@ const fire = handler({
   outputSchema: fireOutput,
   execute: async (input, ctx) => {
     const orgId = orgOf(ctx);
+    const userId = userOf(ctx);
     const address = seatAddress(orgId, input.seatId);
     const rows = rosterOf(ctx);
+    const owned = privateRosterOf(ctx);
 
     // Org-scoped, so another organization's seat is not reachable by fire even
     // by exact id. A file-declared seat has no row here either, which is the
     // same refusal reached from the other side — its folder is where it is
-    // removed.
-    const existing = await rows.getOptional(input.seatId);
+    // removed. User-owned rows live on the private collection; a legacy
+    // org-visible row is still the flat key.
+    const ownedRow = await owned.getOptional({ owner: `~${userId}`, seat: input.seatId });
+    const existing = ownedRow ?? (await rows.getOptional(input.seatId));
     if (existing === undefined) {
       const held = workforceRegistrar.kindAt(address);
       throw new Error(
@@ -227,7 +259,11 @@ const fire = handler({
     }
 
     const storedKind = String(existing.state.flow);
-    await rows.delete(input.seatId);
+    if (ownedRow !== undefined) {
+      await owned.delete({ owner: `~${userId}`, seat: input.seatId });
+    } else {
+      await rows.delete(input.seatId);
+    }
 
     // Released ONLY when the address is held by the instance this row minted
     // (BR-28). **Two clauses, because neither subsumes the other**, and each
@@ -282,7 +318,7 @@ const workforceAdminFlow = defineFlow({
     resolvePrincipal: adminPrincipalResolver(),
     requireUser: true,
   },
-  resources: { roster },
+  resources: { roster, rosterPrivate },
   actions: {
     hire: { inputSchema: hireInput, block: hire },
     fire: { inputSchema: fireInput, block: fire },

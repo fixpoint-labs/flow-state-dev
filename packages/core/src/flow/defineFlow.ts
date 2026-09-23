@@ -1232,7 +1232,11 @@ function createFlowInstance(
   return {
     id,
     config: normalizeInstanceConfig(definition, options, normalized.kind, id, requiredFlowConfig),
-    ...instanceFields
+    ...instanceFields,
+    // Copied off the mint options rather than the normalized definition: a
+    // blueprint has no plane, and two copies of one kind can be pinned to
+    // different organizations.
+    ...(options?.ownerPin !== undefined ? { ownerPin: options.ownerPin } : {}),
   };
 }
 

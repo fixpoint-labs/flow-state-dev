@@ -284,7 +284,10 @@ export const hiredRosterReload: { seats: string[]; problems: string[] } = {
       // roster rows, and that provenance is what `fire` checks before it
       // releases an address (BR-28). Registering them directly would leave
       // every reloaded seat unfireable after a restart.
-      workforceRegistrar.registerFromRoster(seat);
+      workforceRegistrar.registerFromRoster(
+        seat,
+        seat.ownerPin !== undefined ? { pin: seat.ownerPin } : undefined
+      );
       hiredRosterReload.seats.push(seat.id);
     } catch (error) {
       // One seat the registry refuses is one seat that cannot run, not a

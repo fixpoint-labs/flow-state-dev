@@ -19,6 +19,7 @@
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
+import { HIRED_ROSTER_PRIVATE_PATTERN } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /**
@@ -67,6 +68,19 @@ export const hiredSeatRowSchema = z.object({
    * a seat had instructions still reads.
    */
   instructions: z.string().nullable().default(null),
+  /**
+   * The organization this hire belongs to. `null` — the default — is a row
+   * written before the field existed (BP-023, BP-030). A reload then binds
+   * the cell the row was stored in. A present value that disagrees with that
+   * cell is refused rather than stripped or re-bound.
+   */
+  owningOrgId: z.string().nullable().default(null),
+  /**
+   * The user this hire belongs to. `null` means every member of the owning
+   * org may see it. A user-owned hire sets the caller. Independent of
+   * `owningOrgId`: matching one does not imply the other.
+   */
+  ownerUserId: z.string().nullable().default(null),
 });
 
 /** One stored roster row. @see hiredSeatRowSchema */
@@ -135,5 +149,21 @@ export function defineHiredRosterCollection() {
       state: { read: true },
       expose: ["seatId", "flow", "instructions"],
     },
+  });
+}
+
+/**
+ * The server-side writer for a user-owned roster row.
+ *
+ * Same store, nested key `~user/seat`. The browser collection's single
+ * segment does not match it, and this collection has no browser read. A
+ * deep `workforce/roster/**` is refused at definition time.
+ */
+export function defineHiredRosterPrivateCollection() {
+  return defineResourceCollection({
+    pattern: HIRED_ROSTER_PRIVATE_PATTERN,
+    scope: "org",
+    flowIsolation: SHARED_ACROSS_FLOWS,
+    stateSchema: hiredSeatRowSchema,
   });
 }

@@ -15,7 +15,7 @@ import {
   type CreateModelResolverOptions,
   type FlowStateSettings
 } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
 import { createRuntimeConfig, resolveStaleSweep, type RuntimeConfig } from "../runtime-config";
@@ -338,8 +338,8 @@ class InternalFlowState<TSettings extends object>
     return this.#options.settings ?? ({} as TSettings);
   }
 
-  register(flow: FlowInstance): void {
-    this.#registry.register(flow);
+  register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
+    this.#registry.register(flow, options);
   }
 
   unregister(id: string): boolean {

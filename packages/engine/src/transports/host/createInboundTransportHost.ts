@@ -21,6 +21,7 @@ import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { FlowInstanceBindingMismatchError } from "../../context/binding-errors";
+import { pinRejectsCaller, unknownFlowMessage } from "../../context/hire-plane";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
   DEFAULT_RUNTIME_LOGGER,
@@ -909,8 +910,15 @@ export function createInboundTransportHost(
     // validated at its own seam. What remains is the envelope's own
     // completeness, checked for the same reason it always was — before
     // anything is written.
-    if (!isValidOrgId(envelope.orgId ?? envelope.principal.orgId)) {
+    const orgId = envelope.orgId ?? envelope.principal.orgId;
+    if (!isValidOrgId(orgId)) {
       throw new OrgRequiredError(envelope.flowKind, "dispatch");
+    }
+    // Before the 202. A mismatch is the same answer as an address this
+    // process does not hold, so the caller cannot probe which it was.
+    const pin = registry.pinOf(flow.id) ?? flow.ownerPin;
+    if (pinRejectsCaller(pin, { userId: envelope.principal.userId, orgId })) {
+      throw new Error(unknownFlowMessage(envelope.flowKind));
     }
   };
 

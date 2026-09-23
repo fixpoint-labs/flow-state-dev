@@ -25,6 +25,7 @@ import type {
   DeclaredResourceEntry,
   FlowInstance,
   FlowType,
+  InstanceOwnerPin,
   OrgConfig,
   RequestConfig,
   SessionConfig,
@@ -220,11 +221,17 @@ type AnyFlowType = FlowOf<ZodTypeAny> | FlowOf<undefined>;
  */
 function minter(
   flow: AnyFlowType
-): (options: { id: string; config?: Record<string, unknown>; resources?: DeclaredResources }) => FlowInstance {
+): (options: {
+  id: string;
+  config?: Record<string, unknown>;
+  resources?: DeclaredResources;
+  ownerPin?: InstanceOwnerPin;
+}) => FlowInstance {
   return flow as unknown as (options: {
     id: string;
     config?: Record<string, unknown>;
     resources?: DeclaredResources;
+    ownerPin?: InstanceOwnerPin;
   }) => FlowInstance;
 }
 
@@ -701,6 +708,7 @@ export function hireWorkforce(
       const seat = minter(factory)({
         id: manifest.id,
         config: settings,
+        ...(manifest.ownerPin !== undefined ? { ownerPin: manifest.ownerPin } : {}),
         ...(seatResources !== undefined ? { resources: seatResources } : {})
       });
 

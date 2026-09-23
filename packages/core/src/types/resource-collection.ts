@@ -19,6 +19,10 @@ export {
   normalizeResourcePath,
   resolveCollectionKey,
   validatePattern,
+  assertRosterCollectionIsNotDeep,
+  patternReadsPrivateRoster,
+  HIRED_ROSTER_BROWSER_PATTERN,
+  HIRED_ROSTER_PRIVATE_PATTERN,
 } from "./collection-patterns";
 
 // ---------------------------------------------------------------------------
@@ -281,7 +285,7 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 // ---------------------------------------------------------------------------
 
 import { z } from "zod";
-import { validatePattern } from "./collection-patterns";
+import { assertRosterCollectionIsNotDeep, validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
 import { validateReactTo } from "./resource-change";
 import { edgeListSchema } from "../graph";
@@ -296,6 +300,7 @@ export function defineResourceCollection<
   ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
 > {
   validatePattern(config.pattern);
+  assertRosterCollectionIsNotDeep(config);
 
   if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
     throw new Error(

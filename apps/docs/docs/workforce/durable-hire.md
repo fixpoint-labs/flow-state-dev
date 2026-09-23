@@ -84,8 +84,9 @@ export const hireSeat = handler({
 
     // Minted from exactly what will be stored, so the row can rebuild the seat
     // at the next start. The kind's settings schema runs here, before any write.
-    const { manifest } = hiredSeatManifest(orgId, row);
-    const [seat] = hireWorkforce([manifest], { kinds });
+    const record = hiredSeatManifest(orgId, row);
+    if ("problem" in record) throw new Error(record.problem);
+    const [seat] = hireWorkforce([record.manifest], { kinds });
     if (!seat) throw new Error(`"${address}" could not be hired.`);
 
     const roster = ctx.resources.roster as unknown as ResourceCollectionRef;
@@ -95,7 +96,7 @@ export const hireSeat = handler({
     await roster.create(input.seatId, row as unknown as JsonObject);
 
     try {
-      registerSeat(seat);
+      registerSeat(seat, record.manifest.ownerPin);
     } catch (error) {
       await roster.delete(input.seatId);
       throw error;
@@ -121,9 +122,12 @@ export function useFlowState(next: FlowState): void {
   app = next;
 }
 
-export function registerSeat(seat: FlowInstance): void {
+export function registerSeat(
+  seat: FlowInstance,
+  pin?: { orgId: string; userId?: string }
+): void {
   if (!app) throw new Error("No FlowState to register into.");
-  app.register(seat);
+  app.register(seat, pin !== undefined ? { pin } : undefined);
 }
 
 export function releaseSeat(id: string): boolean {

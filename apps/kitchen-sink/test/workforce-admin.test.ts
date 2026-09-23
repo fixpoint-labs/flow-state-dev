@@ -149,7 +149,8 @@ async function storedRow(
   orgId: string = ORG
 ): Promise<Record<string, unknown> | undefined> {
   const rows = await stores.resourceState.getByPrefix("org", orgId, "workforce/roster/");
-  return rows[`workforce/roster/${seatId}`]?.state as Record<string, unknown> | undefined;
+  const match = Object.values(rows).find((row) => row.state.seatId === seatId);
+  return match?.state as Record<string, unknown> | undefined;
 }
 
 beforeEach(() => {
@@ -466,7 +467,7 @@ describe("V12 · two hires of one seat arriving together", () => {
     expect(refused).toHaveLength(1);
 
     const rows = await stores.resourceState.getByPrefix("org", ORG, "workforce/roster/");
-    expect(Object.keys(rows)).toEqual(["workforce/roster/support.ada"]);
+    expect(Object.keys(rows)).toEqual(["workforce/roster/~admin/support.ada"]);
     expect(registrar.held.size).toBe(1);
   });
 });

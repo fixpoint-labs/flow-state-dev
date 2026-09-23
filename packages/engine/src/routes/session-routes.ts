@@ -9,6 +9,7 @@ import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { purgeStaleResourceState } from "../context/ensure-session-record";
 import { resolveRecordOwner } from "../context/record-owner";
+import { pinRejectsCaller, unknownFlowMessage } from "../context/hire-plane";
 import { isOrgAttributed } from "../context/org-attribution";
 import {
   asObject,
@@ -231,6 +232,20 @@ export async function handleCreateSession(
     return jsonResponse(400, {
       error: "Session creation requires non-empty userId"
     });
+  }
+
+  // The hire's pin, before any session is written. `body.userId` is not an
+  // owner: only the resolved principal counts, and a missing one fails a
+  // user-owned hire closed. A mismatch is the same 404 an unknown address
+  // gets, so nothing is written and the address cannot be probed.
+  const pin = ctx.registry.pinOf(flow.id) ?? flow.ownerPin;
+  if (
+    pinRejectsCaller(pin, {
+      userId: ctx.principal?.userId ?? "",
+      orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID,
+    })
+  ) {
+    return jsonResponse(404, { error: unknownFlowMessage(route.flowKind) });
   }
 
   const now = Date.now();

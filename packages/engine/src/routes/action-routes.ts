@@ -168,6 +168,10 @@ export async function handleExecuteAction(
         message: e.message
       });
     }
+    const refusal = e instanceof Error ? e.message : String(e);
+    if (refusal.startsWith("Unknown flow")) {
+      return jsonResponse(404, { error: refusal });
+    }
     throw e;
   }
 
