@@ -112,3 +112,9 @@ Two open Linear issues sit on the same boundary. I didn't re-test either:
 
 The catalog leak (F1, C8) is the listing half of
 [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486).
+
+## What closes it
+
+[F2-PLAN.md](F2-PLAN.md) shapes the fix now filed as
+[FIX-1529](https://linear.app/fixpoint-labs/issue/FIX-1529): an owner pin on every hired
+instance, read at open-session, admission and the catalog.

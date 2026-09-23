@@ -8,6 +8,9 @@ at `d8d4c26`). Linear: [FIX-1522](https://linear.app/fixpoint-labs/issue/FIX-152
 > **See also: [the multitenancy model](SECURITY-MODEL.md).** How users, orgs, sessions and flow
 > instances relate, in five figures. It found one cross-org gap: any org can run another org's
 > hired seat with that org's instructions (F2).
+>
+> **Next: [the F2 plan shape](F2-PLAN.md)** for FIX-1529 — surfaces, smallest fail-closed
+> changes, and the experiments that would falsify a fix.
 
 ## The short version
 
