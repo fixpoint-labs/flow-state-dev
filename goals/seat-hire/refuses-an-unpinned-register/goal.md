@@ -14,6 +14,6 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-09-23 | this PR (`goals/seat-hire/refuses-an-unpinned-register`) | n/a | **PASS** | Unpinned `acme.eng.stray` stayed empty. Hire of `acme.eng.ada` through the manager's `hire` tool pinned `{"orgId":"acme"}` from the roster cell. `globex.eng.lead` carried `{"orgId":"acme"}`, so the address's first segment did not win. |
-| 2026-09-23 | same | n/a | **FAIL (expected)** | `GOAL_CONTROL=unpinned-ok` — admitted with no pin. Red on leg (a) only: *registerHiredSeat admitted a hired seat with no pin*; *acme.eng.stray is live after an unpinned register*. Hire of `eng.ada` stayed green. |
-| 2026-09-23 | same | n/a | **FAIL (expected)** | `GOAL_CONTROL=pin-from-address` — foreign seat pinned from its id. Red on leg (c) only: *globex.eng.lead recorded pin {"orgId":"globex"}, wanted { orgId: "acme" }*. |
+| 2026-09-23 | 68985d67c | n/a | **PASS** | Unpinned `acme.eng.stray` stayed empty. Hire of `acme.eng.ada` through the manager's `hire` tool pinned `{"orgId":"acme"}` from the roster cell. `globex.eng.lead` carried `{"orgId":"acme"}`, so the address's first segment did not win. |
+| 2026-09-23 | 68985d67c | n/a | **FAIL (expected)** | `GOAL_CONTROL=unpinned-ok` — admitted with no pin. Red on leg (a) only: *registerHiredSeat admitted a hired seat with no pin*; *acme.eng.stray is live after an unpinned register*. Hire of `eng.ada` stayed green. |
+| 2026-09-23 | 68985d67c | n/a | **FAIL (expected)** | `GOAL_CONTROL=pin-from-address` — foreign seat pinned from its id. Red on leg (c) only: *globex.eng.lead recorded pin {"orgId":"globex"}, wanted { orgId: "acme" }*. |
