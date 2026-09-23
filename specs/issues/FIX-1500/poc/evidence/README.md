@@ -26,8 +26,9 @@ directions, so a table row naming something the tree does not define fails too. 
 only verifies the collections it already knows about cannot report the one nobody listed.
 
 **C2 · one durable-hire site.** Exactly one file pairs a hired-roster `create()` with a
-`registerFromRoster()` within 40 lines of it. This is [D1](../../DECISIONS.md#d1)'s premise:
-extracting the sequence is a *move*, not a reconciliation of two copies that have already drifted.
+`registerFromRoster()` within 40 lines of it. At authoring this was the premise of the plan's
+extraction — a *move*, not a reconciliation of two copies that had already drifted. It no longer
+holds; see [the re-run](#re-run-at-the-amendment--two-of-three-no-longer-pass).
 
 **What C2's predicate supports, and what it does not.** It is source-level and proximity-based,
 not semantic. It requires a file to reference the hired roster, a `create()` on a roster-shaped
@@ -76,4 +77,22 @@ against a server. This is a claim about what is in the tree.
 
 Its C1 classification is also only as good as the spec's table: it proves the table and the tree
 agree, not that the table's *reasons* are right. Whether the live inventory should be
-browser-readable at all is [D3](../../DECISIONS.md#d3), and that is a judgement, not a count.
+browser-readable at all is a judgement, not a count, and it moved to FIX-1539 with
+[D3](../../DECISIONS.md#d3).
+
+## Re-run at the amendment — two of three no longer pass
+
+Run again against `origin/main` `ffe2b6e26`, unmodified:
+
+- **C1 fails**: `defineHiredRosterPrivateCollection`, added since, is in neither column. Its
+  subject moved to FIX-1539, so the spec does not re-classify it here.
+- **C2 fails, and in the misleading direction**: it reports **zero** sites, while the tree has
+  **two** — `workforce-admin`'s handler, now writing through a private roster ref, and the
+  seat-hire capability's `hire`, which registers through `registerHiredSeat` rather than
+  `registerFromRoster`. The predicate matches neither spelling. The claim it guarded, *exactly
+  one site*, is false for the opposite reason from the one the check reports.
+- **C3 passes.**
+
+The script is left as it was: it is authoring-time evidence, and a record of what it checked is
+worth more than a quietly updated one. What replaced C2's premise is
+[DECISIONS.md → Settled](../../DECISIONS.md#settled).
