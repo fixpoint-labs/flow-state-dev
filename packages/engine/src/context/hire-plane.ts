@@ -8,6 +8,7 @@
  * door, and it runs before any block.
  */
 import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
+import { encodeUserSegment, isHiredRosterPrivateCollection } from "@flow-state-dev/core/types";
 
 /** Who is asking to see or run the instance. Both fields come from a resolved principal or a bound session. */
 export interface InstancePinCaller {
@@ -108,4 +109,24 @@ export function refuseInstancePin(
 ): void {
   const reason = pinMismatchReason(flow.ownerPin, caller);
   if (reason !== undefined) throw new InstancePinMismatchError(flow.id, reason);
+}
+
+/**
+ * Whether `userId` may see the row at `storageKey` of `collection`.
+ *
+ * Only the branded private roster writer is fenced: a row there is visible to
+ * the user it belongs to and nobody else. A missing user sees none. Every
+ * other collection admits every key. The resource handle and the debug
+ * endpoints both ask this, so the store-direct debug reads keep the plane the
+ * handle keeps. The user id is escaped the same way the stored key is, so
+ * `bob` is not a prefix of `bob/x`.
+ */
+export function privateRosterAdmits(
+  collection: object,
+  storageKey: string,
+  userId: string | undefined
+): boolean {
+  if (!isHiredRosterPrivateCollection(collection)) return true;
+  if (userId === undefined || userId.length === 0) return false;
+  return storageKey.startsWith(`workforce/roster/~${encodeUserSegment(userId)}/`);
 }

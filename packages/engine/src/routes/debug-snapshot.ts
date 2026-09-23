@@ -11,6 +11,11 @@
  * Bypasses `buildResourceSnapshot` and its `client.*` shaping by design —
  * production client semantics live elsewhere. Off-by-default at the route
  * gate (`debugEndpointsEnabled` / `FSDEV_DEBUG_ENDPOINTS=1`).
+ *
+ * It does not bypass the hire plane. These reads go to the store, not the
+ * resource handle, so every collection key they surface is checked against
+ * the collection's pattern and against {@link privateRosterAdmits} for the
+ * session's user: the same fence the handle applies to a run in that session.
  */
 import type {
   JsonObject,
@@ -31,6 +36,7 @@ import {
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { resolveRecordOwner } from "../context/record-owner";
+import { privateRosterAdmits } from "../context/hire-plane";
 import { isJsonObject } from "../utils/json-helpers";
 import { extractBareTopic, isResourceConfig } from "./route-utils";
 
@@ -270,18 +276,35 @@ function groupResources(flow: ResourceFlowLike): ResourceGroup[] {
 }
 
 /**
- * Count keys in the persisted map that match a collection pattern, up to
- * `limit + 1` so the caller can detect truncation without enumerating the
- * full set on org/flow-scope collections.
+ * Whether the session's user may see `storageKey` as an item of `config`: the
+ * key matches the collection's pattern and the hire plane admits it. A run in
+ * the same session sees exactly these keys through the resource handle.
+ */
+function collectionKeyVisible(
+  config: ResourceCollectionConfig,
+  storageKey: string,
+  userId: string
+): boolean {
+  return (
+    matchesPattern(config.pattern, storageKey) &&
+    privateRosterAdmits(config, storageKey, userId)
+  );
+}
+
+/**
+ * Count keys in the persisted map the session's user can see in a collection,
+ * up to `limit + 1` so the caller can detect truncation without enumerating
+ * the full set on org/flow-scope collections.
  */
 function countMatchingKeys(
   persisted: Record<string, JsonObject>,
-  pattern: string,
+  config: ResourceCollectionConfig,
+  userId: string,
   limit: number
 ): { count: number; truncated: boolean } {
   let count = 0;
   for (const key of Object.keys(persisted)) {
-    if (!matchesPattern(pattern, key)) continue;
+    if (!collectionKeyVisible(config, key, userId)) continue;
     count++;
     if (count > limit) {
       return { count: limit, truncated: true };
@@ -387,7 +410,8 @@ export async function buildDebugResourceTree(opts: {
       }
       const { count, truncated } = countMatchingKeys(
         persisted.resources,
-        pattern,
+        group.config,
+        session.userId,
         countLimit
       );
       entries.push({
@@ -533,7 +557,7 @@ export async function buildDebugCollectionItems(opts: {
   }
 
   const allKeys = Object.keys(persisted.resources)
-    .filter((k) => matchesPattern(pattern, k))
+    .filter((k) => collectionKeyVisible(config, k, session.userId))
     .sort();
   const startIdx =
     after === null ? 0 : findCursorIndex(allKeys, after);
@@ -666,10 +690,13 @@ export async function lookupDebugContent(opts: {
   // dual-registered aliases share one slot at the group's canonical storage
   // key (FIX-591).
   if (topic !== null) {
-    const storageKey = joinPatternTopic(
-      (group.config as ResourceCollectionConfig).pattern,
-      topic
-    );
+    const config = group.config as ResourceCollectionConfig;
+    const storageKey = joinPatternTopic(config.pattern, topic);
+    // A topic outside what the session can list is absent, whether it misses
+    // the pattern or belongs to another user's private hire row.
+    if (!collectionKeyVisible(config, storageKey, session.userId)) {
+      return { ok: false, kind: "content_not_found" };
+    }
     const body = persisted.content[storageKey];
     if (typeof body !== "string") return { ok: false, kind: "content_not_found" };
     return { ok: true, body, contentType: deriveContentType(group.config) };

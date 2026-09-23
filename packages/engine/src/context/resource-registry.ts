@@ -33,11 +33,11 @@ import {
   extractBareTopic,
   isProjectedResourceCollection,
   isHiredRosterPrivateCollection,
-  encodeUserSegment,
   readProjectedRecord,
   searchProjectedRecords,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
+import { privateRosterAdmits } from "./hire-plane";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
@@ -715,14 +715,10 @@ function scopePrivateRosterToCaller(
   userId: string | undefined,
 ): ResourceCollectionRef<JsonObject> {
   if (!isHiredRosterPrivateCollection(handle.config)) return handle;
-  const prefix =
-    userId !== undefined && userId.length > 0
-      ? `workforce/roster/~${encodeUserSegment(userId)}/`
-      : null;
-  const own = (key: string | Record<string, string>): boolean => {
-    if (prefix === null) return false;
-    return resolveCollectionKey(handle.pattern, key).startsWith(prefix);
-  };
+  const admits = (storageKey: string): boolean =>
+    privateRosterAdmits(handle.config, storageKey, userId);
+  const own = (key: string | Record<string, string>): boolean =>
+    admits(resolveCollectionKey(handle.pattern, key));
   const refuse = (): never => {
     throw new Error("A hired-seat row is readable only by the user it belongs to.");
   };
@@ -754,13 +750,11 @@ function scopePrivateRosterToCaller(
     },
     async list(listPrefix) {
       const rows = await handle.list(listPrefix);
-      if (prefix === null) return [];
-      return rows.filter((row) => row.path.startsWith(prefix));
+      return rows.filter((row) => admits(row.path));
     },
     async count() {
       const rows = await handle.list();
-      if (prefix === null) return 0;
-      return rows.filter((row) => row.path.startsWith(prefix)).length;
+      return rows.filter((row) => admits(row.path)).length;
     },
   };
 }
