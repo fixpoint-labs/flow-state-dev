@@ -58,14 +58,17 @@ The fence holds on every path the plan named. Three probes found gaps outside it
 
 | Probe | Observed on `01b29f0d` |
 |---|---|
-| **A** address collision | Alice's `~alice/research` and Bob's `~bob/research` both mint `acme.research`, because a user-owned seat's address is `<org>.<seatId>` with no user in it. The reload returns both; the second is refused as "already registered". At hire time, kitchen-sink's refusal names the holder's kind, which tells Bob that a private seat by that name exists |
+| **A** address collision | Alice's `~alice/research` and Bob's `~bob/research` both mint `acme.research`, because a user-owned seat's address is `<org>.<seatId>` with no user in it. The reload returns both; the second is refused as "already registered". At hire time, kitchen-sink's refusal names the holder's kind (read, not run), which tells Bob that a private seat by that name exists |
 | **B** private writer is readable | Any flow may declare `defineHiredRosterPrivateCollection()`, whose pattern the guard exempts. An app action in bob@acme's session listed it and read `ALICE-PRIVATE` |
 | **C** the guard tests one key | `workforce/roster/[owner]/notes` is admitted, because the guard only checks whether a pattern matches `workforce/roster/~alice/research`. It still reads every user's private `notes` row |
 
 ## Limits
 
-- **Not run:** E6 (pin, not address) and the anonymous half of E8. Both need a pin to exist
-  before they mean anything, so they belong in the FIX-1529 suite.
+- **In the before half, not run:** E6 (pin, not address) and the anonymous half of E8. Both
+  need a pin to exist, so they run only in the after suite.
+- **Probe A's hire-time leak is read, not run.** The kitchen-sink admin flow's "already
+  served by a flow of kind …" refusal was read from `apps/kitchen-sink/flows/workforce-admin/flow.ts`.
+  The address collision itself was run through the shipped reload.
 - **E7 uses `internal` dispatch, not a task board's drain.** Both go through the same seam
   and child-session creation, and a board's `task` dispatch additionally needs a claimed row.
   The board form is worth a leg in FIX-1529, but it doesn't test a different door.
