@@ -1,0 +1,44 @@
+# POC · the F2 experiments, before the fix
+
+The "before" half of the experiments in [F2-PLAN.md](../../F2-PLAN.md), run on today's code.
+It is experimental evidence for FIX-1529, not production code: nothing imports it, it has no
+package manifest, and it is outside default build, test, lint and knip discovery.
+
+Every leg goes through the real `/api/flows` router under a verified principal
+(`x-verified-user` / `x-verified-org`). A **HOLE** leg asserts a path that works today and
+must be refused once FIX-1529 lands, so the fix turns it red. A **DECIDES** leg settles a
+design question.
+
+## How to run it
+
+```bash
+pnpm install          # once per checkout
+bash specs/issues/FIX-1522/poc/f2-experiments/run.sh
+```
+
+## What was observed
+
+Run on this branch (based on `d8d4c26`): **8 passed**.
+
+| Leg | Question | Observed today |
+|---|---|---|
+| **E3** HOLE | Wrong-org restart: does a session opened through the F2 hole survive a restart? | Yes. mallory@globex opens a session on `acme.eng.lead`. The process restarts over the same stores, and the seat comes back through the shipped `reloadHiredSeats`. Her resumed action completes as `mallory@globex` with acme's instructions. **Control:** bob@acme resuming her session is refused, so the resume path does run admission. What it lacks is an instance ↔ owner check |
+| **E7** HOLE | Soft-mix through dispatch: can a globex session hand work to acme's seat without opening a session on it? | Yes. An app action in mallory's globex session sends an `internal` dispatch to `flowKind: "acme.eng.lead"`. The child runs as `mallory@globex` with acme's instructions. Nothing on this path touches `create_session` |
+| **E4** DECIDES | Does the roster's browser read honour its pattern, so a nested private key stays out? | Yes. Three rows sit in acme's org cell. bob@acme's collection read returns `eng.lead` and a flat-keyed private row, but not `~alice/research`. The per-org reload's one prefix read still returns all three. **This also pins hole (g):** any row at a flat key, instructions included, is listed to every member of the org |
+| E1 HOLE | Is a foreign instance acked before it's refused? | It isn't refused at all. A session-less action from mallory@globex to `acme.eng.lead` is acked `202` and completes |
+| E2 HOLE | Can a same-org member run another member's seat? | Yes. bob@acme opens and runs `acme.~alice.research`. Today a user-owned seat exists in name only |
+| E5 HOLE | Does a row that names another org reload? | Yes, under the cell's org. The row's `owningOrgId: "globex"` is stripped by the schema with no problem reported |
+| E8 HOLE | Does the catalog show other planes' seats? | Yes. mallory@globex sees `acme.eng.lead`, and bob@acme sees `acme.~alice.research` |
+| E9 HOLDS | Can a held address be re-registered under a different config? | No. A duplicate address is refused already. Once released, though, the address takes any config, and alice's open session on it runs the new one |
+
+## Limits
+
+- **Not run:** E6 (pin, not address) and the anonymous half of E8. Both need a pin to exist
+  before they mean anything, so they belong in the FIX-1529 suite.
+- **E7 uses `internal` dispatch, not a task board's drain.** Both go through the same seam
+  and child-session creation, and a board's `task` dispatch additionally needs a claimed row.
+  The board form is worth a leg in FIX-1529, but it doesn't test a different door.
+- **E9's "after release" case is covered by admission (e) in the plan,** not by
+  registration. Once a pin exists, a session opened under the old owner won't match the new
+  one.
+- In-memory store only.

@@ -70,14 +70,32 @@ The two honest options:
    - Against: the reload has to enumerate users. Alice's rows from one org also show up in
      her own browser read in another org (C7).
 
-**Recommendation: option 1, if E4 passes.** It keeps "one hire store" literal, keeps the
-reload per-org, and never places another org's rows anywhere a session can list them. If
-E4 fails, drop the browser read for user-owned rows rather than moving cells.
+**Recommendation: option 1. E4 has now run and passed.** The collection read honours its
+single-segment pattern, so a nested `~alice/research` key never reaches bob's read, while the
+reload's one prefix read still returns it
+([f2-experiments](poc/f2-experiments/README.md)). Option 1 keeps "one hire store" literal,
+keeps the reload per-org, and never places another org's rows anywhere a session can list
+them. The Architect's stamp on #2070 leans the same way: if E4 had failed, the fallback
+would have been dropping the browser read, not a second store.
+
+One caution for the build: the sub-prefix hides a row from the *browser read* only. Any flow
+in the org that declares a collection over `workforce/roster/**` can still read it on the
+server. Nothing should declare one, and the FIX-1529 suite should pin that.
 
 ## Experiments worth running
 
 Each has concrete steps and an expected refusal. "Before" means run it before the fix lands,
 to show the hole. "Alongside" means make it a leg of the FIX-1529 suite.
+
+**The before legs have run** ([f2-experiments](poc/f2-experiments/README.md), 8 green on
+today's code):
+- E3 and E7 confirm the fix can't stop at `create_session`. A session opened through the
+  hole survives a restart and resumes as `mallory@globex` with acme's instructions. A globex
+  session reaches acme's seat through `internal` dispatch without ever opening a session on
+  it.
+- E4 passed, and settles the open wall above.
+- E1, E2, E5 and E8 pin today's holes.
+- E9 shows a held address already refuses a second registration.
 
 | Id | When | Steps | Expected |
 |---|---|---|---|
