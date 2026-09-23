@@ -20,8 +20,6 @@ export {
   resolveCollectionKey,
   validatePattern,
   assertRosterCollectionIsNotDeep,
-  patternReadsPrivateRoster,
-  rosterPatternIsTooDeep,
   isHiredRosterPrivateCollection,
   markHiredRosterPrivateCollection,
   HIRED_ROSTER_BROWSER_PATTERN,

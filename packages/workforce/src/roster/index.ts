@@ -28,10 +28,7 @@ export {
   type RowProblem,
 } from "./rows";
 
-export {
-  hiredSeatOwnerPinFromRosterOwner,
-  registerHiredSeat,
-} from "./register-hired-seat";
+export { registerHiredSeat } from "./register-hired-seat";
 
 export {
   DEFAULT_MAX_RELOAD_ORGS,

@@ -238,9 +238,8 @@ export async function handleCreateSession(
   // owner: only the resolved principal counts, and a missing one fails a
   // user-owned hire closed. A mismatch is the same 404 an unknown address
   // gets, so nothing is written and the address cannot be probed.
-  const pin = ctx.registry.pinOf(flow.id) ?? flow.ownerPin;
   if (
-    pinRejectsCaller(pin, {
+    pinRejectsCaller(flow.ownerPin, {
       userId: ctx.principal?.userId ?? "",
       orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID,
     })

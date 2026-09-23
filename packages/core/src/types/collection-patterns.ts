@@ -199,7 +199,7 @@ const ROSTER_ROOT = "workforce/roster";
  * matches `workforce/roster/~alice/research` and would still read every user's
  * notes.
  */
-export function rosterPatternIsTooDeep(pattern: string): boolean {
+function rosterPatternIsTooDeep(pattern: string): boolean {
   if (pattern === HIRED_ROSTER_BROWSER_PATTERN || pattern === HIRED_ROSTER_PRIVATE_PATTERN) {
     return false;
   }
@@ -218,18 +218,6 @@ export function rosterPatternIsTooDeep(pattern: string): boolean {
     : "";
   const segments = rest.split("/").filter((segment) => segment.length > 0);
   return segments.length >= 2;
-}
-
-/**
- * Whether `pattern` can address a user-owned roster row on the server.
- *
- * True for the private writer, for any deeper pattern under the roster, and
- * for a deep glob that reaches it. The browser pattern is one segment and is
- * not included.
- */
-export function patternReadsPrivateRoster(pattern: string): boolean {
-  if (pattern === HIRED_ROSTER_PRIVATE_PATTERN) return true;
-  return rosterPatternIsTooDeep(pattern);
 }
 
 /**

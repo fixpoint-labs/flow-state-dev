@@ -916,8 +916,7 @@ export function createInboundTransportHost(
     }
     // Before the 202. A mismatch is the same answer as an address this
     // process does not hold, so the caller cannot probe which it was.
-    const pin = registry.pinOf(flow.id) ?? flow.ownerPin;
-    if (pinRejectsCaller(pin, { userId: envelope.principal.userId, orgId })) {
+    if (pinRejectsCaller(flow.ownerPin, { userId: envelope.principal.userId, orgId })) {
       throw new Error(unknownFlowMessage(envelope.flowKind));
     }
   };

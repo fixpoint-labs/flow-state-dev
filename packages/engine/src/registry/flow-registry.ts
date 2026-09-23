@@ -70,11 +70,6 @@ export interface FlowRegistry {
    * that disagrees with the one on the instance is refused.
    */
   register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
-  /**
-   * The owner pin stored for an address, or `undefined` when the instance is
-   * shared or the address is not held.
-   */
-  pinOf(id: string): InstanceOwnerPin | undefined;
   /** `register`, in order. An element that fails leaves the earlier ones admitted. */
   registerMany(flows: FlowInstance[]): void;
   /**
@@ -127,9 +122,6 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   /** The global address index — the one map `get`, `list`, and admission read. */
   private readonly flowsById = new Map<string, FlowInstance>();
 
-  /** Owner pin per address. Absent means the instance is shared. */
-  private readonly pinsById = new Map<string, InstanceOwnerPin>();
-
   /**
    * Per-scope list of flows participating in that scope's SHARED storage. A
    * flow appears here once it contributes anything non-isolated — its scope
@@ -153,7 +145,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    */
   register(input: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
     const flow = admitIdentity(input, this.flowsById);
-    const pin = adoptPin(flow, options?.pin);
+    adoptPin(flow, options?.pin);
     assertFlowRosterPatterns(flow);
 
     // Validate both scopes before mutating any state. If the org-scope
@@ -172,7 +164,6 @@ export class InMemoryFlowRegistry implements FlowRegistry {
 
     // All validation passed — commit.
     this.flowsById.set(flow.id, flow);
-    if (pin !== undefined) this.pinsById.set(flow.id, pin);
     this.indexParticipant("user", flow.kind, userDecl);
     this.indexParticipant("org", flow.kind, orgDecl);
   }
@@ -220,13 +211,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    * the "known gap" case in `test/registry/runtime-registration.test.ts`.
    */
   unregister(id: string): boolean {
-    this.pinsById.delete(id);
     return this.flowsById.delete(id);
-  }
-
-  /** The pin recorded for an address. A shared instance and an unknown address are both `undefined`. */
-  pinOf(id: string): InstanceOwnerPin | undefined {
-    return this.pinsById.get(id);
   }
 
   /**
@@ -601,25 +586,13 @@ function checkPair(
 const EMPTY_INSTANCE_CONFIG: Readonly<Record<string, unknown>> = Object.freeze({});
 
 /**
- * Validate an instance's identity against what is already registered and
- * return the instance the registry will hold — the input itself, or a copy
- * carrying the normalized cardinality when a legacy structural instance
- * omitted it.
+ * Stamp `options.pin` onto the instance the registry will hold.
  *
- * Runs before the schema checks and mutates nothing: every refusal here
- * leaves the earlier registration reachable exactly as it was.
+ * A disagreement throws before any map is touched. The address is not
+ * consulted: `acme.x` with pin `globex` is a legal registration. The
+ * instance field is the stored pin — there is no second map.
  */
-/**
- * The pin this registration stores, stamped onto the instance when the call
- * supplied one the instance did not already carry.
- *
- * A disagreement refuses before any map is touched. The address is not
- * consulted: `acme.x` with pin `globex` is a legal registration.
- */
-function adoptPin(
-  flow: FlowInstance,
-  explicit: InstanceOwnerPin | undefined
-): InstanceOwnerPin | undefined {
+function adoptPin(flow: FlowInstance, explicit: InstanceOwnerPin | undefined): void {
   if (
     explicit !== undefined &&
     flow.ownerPin !== undefined &&
@@ -632,11 +605,9 @@ function adoptPin(
         `${flow.ownerPin.userId !== undefined ? ` user "${flow.ownerPin.userId}"` : ""}.`
     );
   }
-  const pin = explicit ?? flow.ownerPin;
-  if (pin !== undefined && flow.ownerPin === undefined) {
-    flow.ownerPin = pin;
+  if (explicit !== undefined && flow.ownerPin === undefined) {
+    flow.ownerPin = explicit;
   }
-  return pin;
 }
 
 function samePin(left: InstanceOwnerPin, right: InstanceOwnerPin): boolean {
@@ -657,6 +628,15 @@ function assertFlowRosterPatterns(flow: FlowInstance): void {
   }
 }
 
+/**
+ * Validate an instance's identity against what is already registered and
+ * return the instance the registry will hold — the input itself, or a copy
+ * carrying the normalized cardinality when a legacy structural instance
+ * omitted it.
+ *
+ * Runs before the schema checks and mutates nothing: every refusal here
+ * leaves the earlier registration reachable exactly as it was.
+ */
 function admitIdentity(
   input: FlowInstance,
   flowsById: ReadonlyMap<string, FlowInstance>

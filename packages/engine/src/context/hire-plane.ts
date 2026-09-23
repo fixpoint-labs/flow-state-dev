@@ -39,18 +39,27 @@ export class InstancePinMismatchError extends Error {
 }
 
 /**
- * Whether `caller` is outside `pin`.
+ * Which axis refuses `caller`, or `undefined` when the pin admits them.
  *
- * @returns `false` when there is no pin. Organization is compared first.
+ * No pin admits everyone. Organization is compared first, so a caller who
+ * matches the user and misses the organization is an org miss.
  */
+function pinMiss(
+  pin: InstanceOwnerPin | undefined,
+  caller: InstancePinCaller
+): "owning-org" | "roster-owner" | undefined {
+  if (pin === undefined) return undefined;
+  if (pin.orgId !== caller.orgId) return "owning-org";
+  if (pin.userId !== undefined && pin.userId !== caller.userId) return "roster-owner";
+  return undefined;
+}
+
+/** Whether `caller` is outside `pin`. `false` when there is no pin. */
 export function pinRejectsCaller(
   pin: InstanceOwnerPin | undefined,
   caller: InstancePinCaller
 ): boolean {
-  if (pin === undefined) return false;
-  if (pin.orgId !== caller.orgId) return true;
-  if (pin.userId !== undefined && pin.userId !== caller.userId) return true;
-  return false;
+  return pinMiss(pin, caller) !== undefined;
 }
 
 /**
@@ -72,12 +81,6 @@ export function refuseInstancePin(
   flow: { id: string; ownerPin?: InstanceOwnerPin },
   caller: InstancePinCaller
 ): void {
-  const pin = flow.ownerPin;
-  if (pin === undefined) return;
-  if (pin.orgId !== caller.orgId) {
-    throw new InstancePinMismatchError(flow.id, "owning-org");
-  }
-  if (pin.userId !== undefined && pin.userId !== caller.userId) {
-    throw new InstancePinMismatchError(flow.id, "roster-owner");
-  }
+  const reason = pinMiss(flow.ownerPin, caller);
+  if (reason !== undefined) throw new InstancePinMismatchError(flow.id, reason);
 }

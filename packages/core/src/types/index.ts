@@ -238,8 +238,6 @@ export {
   extractBareTopic,
   extractPatternParams,
   assertRosterCollectionIsNotDeep,
-  patternReadsPrivateRoster,
-  rosterPatternIsTooDeep,
   isHiredRosterPrivateCollection,
   markHiredRosterPrivateCollection,
   HIRED_ROSTER_BROWSER_PATTERN,

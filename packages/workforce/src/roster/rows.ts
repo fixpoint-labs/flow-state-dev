@@ -102,14 +102,6 @@ export function seatAddress(
 }
 
 /**
- * The inverse of {@link seatAddress}: recover the org and the seat id from an
- * address, or `undefined` when the address does not belong to this org.
- *
- * One split at the FIRST dot, which is correct only because the org is a
- * validated segment. Splitting at the last dot, or splitting on every dot,
- * would mangle every ordinary `"<teamId>.<name>"` seat id.
- */
-/**
  * The seat id inside an address this org owns, or `undefined`.
  *
  * One split at the first dot, which is correct only because the org is a
@@ -187,7 +179,10 @@ export function hiredRosterStorageKey(row: {
 }
 
 /** The pin a row registers under. `userId` is omitted when the row is org-visible. */
-export function hiredSeatOwnerPin(orgId: string, row: HiredSeatRow): InstanceOwnerPin {
+export function hiredSeatOwnerPin(
+  orgId: string,
+  row: { ownerUserId?: string | null },
+): InstanceOwnerPin {
   const pin: InstanceOwnerPin = { orgId };
   if (row.ownerUserId != null && row.ownerUserId.length > 0) pin.userId = row.ownerUserId;
   return pin;
