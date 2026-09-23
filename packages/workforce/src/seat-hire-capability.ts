@@ -36,6 +36,51 @@ export const HIRED_ROSTER_RESOURCE = "hiredRoster";
 /** Registry key the capability installs the seat inventory under. */
 export const SEAT_INVENTORY_RESOURCE = "seatInventory";
 
+/**
+ * The owner pin a hired-seat register must carry (FIX-1529 / F2-PLAN).
+ *
+ * Derived from the hire row's roster owner, never from the address. `orgId`
+ * is the owning org. `userId` is present only when that row is user-owned.
+ */
+export interface HiredSeatOwnerPin {
+  orgId: string;
+  userId?: string;
+}
+
+/**
+ * Project a hire row's roster owner into the pin registration requires.
+ *
+ * @throws when `orgId` is missing — an unpinned hired-seat register is
+ * refused rather than admitted as shared.
+ */
+export function hiredSeatOwnerPinFromRosterOwner(
+  owner: { orgId?: string | null; userId?: string | null },
+): HiredSeatOwnerPin {
+  if (typeof owner.orgId !== "string" || owner.orgId.length === 0) {
+    throw new Error(
+      "A hired seat cannot be registered without an owner pin { orgId, userId? } derived from the hire row's roster owner.",
+    );
+  }
+  return typeof owner.userId === "string" && owner.userId.length > 0
+    ? { orgId: owner.orgId, userId: owner.userId }
+    : { orgId: owner.orgId };
+}
+
+/**
+ * Admit a hired seat only with a pin from its hire row's roster owner.
+ *
+ * This is the hire writer's register path. Omitting the pin refuses. Engine
+ * `register(flow, { pin })` is FIX-1529; this gate exists so seat-hire cannot
+ * leave an unpinned path in the meantime.
+ */
+export function registerHiredSeat(
+  register: (seat: FlowInstance, pin: HiredSeatOwnerPin) => void,
+  seat: FlowInstance,
+  pin: HiredSeatOwnerPin | undefined,
+): void {
+  register(seat, hiredSeatOwnerPinFromRosterOwner(pin ?? {}));
+}
+
 export interface SeatHireCapabilityOptions {
   /**
    * The flows a hire may name — the same map `hireWorkforce` takes.
@@ -46,11 +91,13 @@ export interface SeatHireCapabilityOptions {
    */
   kinds?: HireOptions["kinds"];
   /**
-   * Admit a minted seat at its address. A hire that answers is a hire that
-   * was written down, so the roster row is created first; if this throws the
-   * row is deleted.
+   * Admit a minted seat at its address, with the owner pin from the hire
+   * row's roster owner. Hire refuses rather than call this without a pin
+   * (FIX-1529 / F2-PLAN). A hire that answers is a hire that was written
+   * down, so the roster row is created first; if this throws the row is
+   * deleted.
    */
-  register: (seat: FlowInstance) => void;
+  register: (seat: FlowInstance, pin: HiredSeatOwnerPin) => void;
   /**
    * Release an address in this process. Fire deletes the roster row first;
    * this is what makes the address stop resolving here.
@@ -213,7 +260,10 @@ export function createSeatHireCapability(
       await roster.create(input.seatId, asStored(row));
 
       try {
-        options.register(seat);
+        // Pin from the roster owner of the row just written — the org cell
+        // of this hire — not from `seat.id`. Address is a name the caller
+        // can type; it is not evidence of ownership (FIX-1529 / F2-PLAN).
+        registerHiredSeat(options.register, seat, { orgId });
       } catch (error) {
         try {
           await roster.delete(input.seatId);

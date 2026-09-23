@@ -11,6 +11,8 @@ import {
   createSeatHireCapability,
   HIRED_ROSTER_RESOURCE,
   SEAT_INVENTORY_RESOURCE,
+  registerHiredSeat,
+  type HiredSeatOwnerPin,
 } from "../src/seat-hire-capability";
 import { createWorkforceCapability } from "../src/workforce-capability";
 import { workforceManifestSources } from "../src/manifest-sources";
@@ -371,6 +373,41 @@ describe("Discover sees a runtime hire", () => {
     expect(await listedIds(ctx, HIRED_ROSTER_RESOURCE, "seatId")).toEqual([]);
     expect(await listedIds(ctx, SEAT_INVENTORY_RESOURCE, "id")).toEqual(["acme.eng.ada"]);
     expect(await discoverSeatIds(ctx as never)).toEqual([]);
+  });
+});
+
+describe("FIX-1529 owner pin", () => {
+  it("refuses registering a hired seat without an owner pin from the hire row", async () => {
+    const calls: Array<{ id: string; pin: HiredSeatOwnerPin }> = [];
+    const seat = { id: "acme.eng.ada", kind: "agent" } as FlowInstance;
+
+    expect(() =>
+      registerHiredSeat((registered, pin) => {
+        calls.push({ id: registered.id, pin });
+      }, seat, undefined),
+    ).toThrow(/owner pin/);
+    expect(calls).toEqual([]);
+
+    const pins: HiredSeatOwnerPin[] = [];
+    const live = liveRoster();
+    const { kinds } = kindWithHire(live, {
+      register: (hired, pin) => {
+        pins.push(pin);
+        live.register(hired);
+      },
+    });
+    const [manager] = hireWorkforce(
+      [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],
+      { kinds },
+    );
+    const { result } = await runSeat(manager!, [
+      { toolCalls: [callTool("hire", { seatId: "eng.ada", flow: "agent" })] },
+      { text: "done" },
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(pins).toEqual([{ orgId: "acme" }]);
+    expect(pins[0]?.orgId).not.toBe("eng");
   });
 });
 

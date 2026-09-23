@@ -1335,6 +1335,8 @@ the inventory row remains and `discover` withholds the seat.
 An empty `tools:` list means the seat cannot call them.
 
 The seat is hired in the caller's organization. A body `orgId` is ignored.
+Hire will not register a seat without an owner pin `{ orgId, userId? }` taken
+from the hire row's roster owner — not from the address.
 
 ```ts
 import {
@@ -1352,7 +1354,7 @@ const kinds: NonNullable<HireOptions["kinds"]> = {};
 const roster = { workers: [], channels: [] };
 const held = new Map<string, FlowInstance>();
 const live = {
-  register: (seat: FlowInstance) => {
+  register: (seat: FlowInstance, _pin: { orgId: string; userId?: string }) => {
     held.set(seat.id, seat);
   },
   unregister: (id: string) => held.delete(id),
@@ -1386,7 +1388,7 @@ the factory runs is hireable.
 | Option | Role |
 |--------|------|
 | `kinds` | The same map `hireWorkforce` takes. Omit it and only built-in `agent` is hireable, unless `allowKinds` excludes it. |
-| `register(seat)` | Admit the minted flow at its address. |
+| `register(seat, pin)` | Admit the minted flow at its address. `pin` is `{ orgId, userId? }` from the hire row's roster owner. Hire refuses rather than omit it. |
 | `unregister(id)` | Release the address in this process. Returns whether it was held. |
 | `kindAt?(id)` | Kind serving an address right now. Hire uses it to refuse a second hire of a live seat. Fire uses it to refuse a file-declared seat. Omit it and a duplicate seat is still refused. |
 | `allowKinds?` | Subset of kinds this tool may mint. |
@@ -1632,7 +1634,9 @@ membershipPrefix("");
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
 | `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and channel sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
-| `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat names those tools in `tools:` or cannot call them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. |
+| `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat names those tools in `tools:` or cannot call them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
+| `registerHiredSeat(register, seat, pin)` | The hire writer's register path. Refuses when `pin` has no `orgId`. The pin is the hire row's roster owner, not the address. |
+| `HiredSeatOwnerPin` | `{ orgId, userId? }`. `userId` is present only for a user-owned hire row. |
 | `SEAT_HIRE_CAPABILITY` | The capability name, `"seat-hire"`. |
 | `HIRED_ROSTER_RESOURCE` | Registry key the seat-hire capability installs the hired roster under, `"hiredRoster"`. Pass it as `hiredRoster` on `createWorkforceCapability` so `discover` reads the same collection. |
 | `SEAT_INVENTORY_RESOURCE` | Registry key the seat-hire capability installs the seat inventory under, `"seatInventory"`. Pass it as `inventory.seats` on `createWorkforceCapability`. |
