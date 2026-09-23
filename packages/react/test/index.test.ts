@@ -3,6 +3,7 @@ import {
   ApprovalRenderer,
   FlowProvider,
   ItemRenderer,
+  SessionItemsProvider,
   coreItemImportProof,
   deriveSuspensions,
   reactPackageMarker,
@@ -13,6 +14,7 @@ import {
   useClientData,
   useRequestStream,
   useSession,
+  useSessionItems,
   useSuspensions
 } from "../src";
 
@@ -36,6 +38,8 @@ describe("@flow-state-dev/react", () => {
   it("exports FlowProvider and context helpers", () => {
     expect(typeof FlowProvider).toBe("function");
     expect(typeof useFlowContext).toBe("function");
+    expect(typeof SessionItemsProvider).toBe("function");
+    expect(typeof useSessionItems).toBe("function");
   });
 
   it("exports render helpers", () => {

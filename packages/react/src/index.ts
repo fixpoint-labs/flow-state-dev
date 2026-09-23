@@ -178,6 +178,12 @@ export {
 } from "./context/FlowContext";
 
 export {
+  SessionItemsProvider,
+  useSessionItems,
+  type SessionItemsProviderProps
+} from "./context/SessionItemsContext";
+
+export {
   SuspensionResolverProvider,
   useSuspensionResolver,
   type SuspensionResolver,
