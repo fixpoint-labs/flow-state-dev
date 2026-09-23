@@ -74,6 +74,17 @@ The fence holds on every path the plan named. Three probes found gaps outside it
 | **C** | `workforce/roster/[owner]/notes` is refused when it is defined, by the structural guard |
 | **B4** (note) | With debug endpoints switched on (`debugEndpointsEnabled: true`, off by default), the debug collection listing returns alice's row, instructions included, to bob's session. Debug routes read the store directly and bypass the resource handle. That is an operator-tool property, not an F2 path, but a host must not switch debug endpoints on in a multi-user deployment |
 
+### Resource planes: R1–R3 on `fdca49fd`
+
+Three legs give one person, alice, a hire in each of two orgs, and write one resource per
+plane. **14 passed** with the suite.
+
+| Leg | Observed |
+|---|---|
+| **R1** plane 1 | A user-scoped preference set under `acme.~alice.helper` reads back under `globex.~alice.helper` |
+| **R2** plane 2 | An org-scoped doc written from Acme reads empty under Globex. **Control:** Acme re-reads it |
+| **R3** plane 3 | A user-scoped resource with `flowIsolation: true`, written under the Acme hire, reads empty under the Globex hire and back under Acme. **Red state:** with the flag removed, the Globex hire reads the Acme note |
+
 ## Limits
 
 - **In the before half, not run:** E6 (pin, not address) and the anonymous half of E8. Both

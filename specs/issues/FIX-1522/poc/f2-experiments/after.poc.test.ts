@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResource, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
 import type { InstanceOwnerPin, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -102,6 +102,52 @@ const verified = {
     return userId && orgId ? { userId, orgId } : null;
   },
 };
+
+
+// ─── resource planes: one person, two orgs ────────────────────────────────
+
+/** A seat kind with one resource per plane, so a leg can ask where each one landed. */
+const planeResources = {
+  prefs: defineResource({ ref: "prefs", scope: "user", stateSchema: z.object({ theme: z.string().default("") }) }),
+  hireNotes: defineResource({
+    ref: "hire-notes",
+    scope: "user",
+    flowIsolation: true,
+    stateSchema: z.object({ note: z.string().default("") }),
+  }),
+  orgDoc: defineResource({ ref: "org-doc", scope: "org", stateSchema: z.object({ body: z.string().default("") }) }),
+  seen: resources.seen,
+};
+const planeInput = z.object({ tag: z.string(), theme: z.string().optional(), note: z.string().optional(), body: z.string().optional() });
+const planeWrite = handler({
+  name: "plane-write",
+  inputSchema: planeInput,
+  outputSchema: z.object({ ok: z.boolean() }),
+  resources: planeResources,
+  execute: async (input, ctx) => {
+    const r = ctx.resources as any;
+    if (input.theme !== undefined) await r.prefs.patchState({ theme: input.theme });
+    if (input.note !== undefined) await r.hireNotes.patchState({ note: input.note });
+    if (input.body !== undefined) await r.orgDoc.patchState({ body: input.body });
+    const seen = r.seen as ResourceCollectionRef;
+    const instance = (ctx.flow as unknown as { id: string }).id;
+    const { userId = "", orgId = "" } = ctx.session.identity;
+    await seen.create(input.tag, {
+      instance,
+      as: `${userId}@${orgId}`,
+      instructions: JSON.stringify({ theme: r.prefs.state.theme, note: r.hireNotes.state.note, body: r.orgDoc.state.body }),
+    });
+    return { ok: true };
+  },
+});
+const planeSeat = defineFlow({
+  kind: "plane-seat",
+  cardinality: "collection",
+  configSchema: workerConfigSchema(),
+  resources: planeResources,
+  actions: { act: { inputSchema: planeInput, block: planeWrite } },
+  authentication: verified,
+});
 
 const APP = "app";
 const appFlow = defineFlow({
@@ -326,5 +372,59 @@ describe("after · probes", () => {
       refused = (e as Error).message;
     }
     console.log("PROBE-C refused?", refused ?? "no — admitted");
+  });
+});
+
+describe("after · resource planes for one person in two orgs", () => {
+  const ALICE_GLOBEX: Who = { user: "alice", org: "globex" };
+  const hirePlane = (h: Awaited<ReturnType<typeof boot>>, address: string, pin: InstanceOwnerPin) =>
+    h.state.register(
+      hireWorkforce([{ id: address, declared: { flow: "plane-seat" }, body: `${address} prompt` }], { kinds: { "plane-seat": planeSeat } })[0]!,
+      { pin }
+    );
+  const run = async (h: Awaited<ReturnType<typeof boot>>, who: Who, address: string, tag: string, input: object) => {
+    const s = await h.open(who, address);
+    expect(s.status).toBe(201);
+    const done = await h.act(who, (s as any).id, "act", { tag, ...input }, address);
+    if (done.outcome !== "completed") {
+      const reqs = await h.runtime.stores.request.list();
+      const errs = reqs.flatMap((q: any) => (q.items ?? []).map((i: any) => i.error?.message).filter(Boolean));
+      console.log("PLANE-ERR", errs);
+    }
+    expect(done).toEqual({ http: 202, outcome: "completed" });
+    const rows = await h.seenIn(who.org);
+    const mine = (await h.runtime.stores.resourceState.get("org", who.org, `seen/${tag}`)) as any;
+    return JSON.parse(mine.state.instructions);
+  };
+
+  it("R1 plane 1 · a user-scoped preference written under Alice's Acme hire is read under her Globex hire", async () => {
+    const h = await boot();
+    hirePlane(h, "acme.~alice.helper", { orgId: "acme", userId: "alice" });
+    hirePlane(h, "globex.~alice.helper", { orgId: "globex", userId: "alice" });
+    await run(h, ALICE, "acme.~alice.helper", "w", { theme: "dark" });
+    const read = await run(h, ALICE_GLOBEX, "globex.~alice.helper", "r", {});
+    expect(read.theme).toBe("dark");
+  });
+
+  it("R2 plane 2 · an org-scoped doc written from Acme is absent under Globex", async () => {
+    const h = await boot();
+    hirePlane(h, "acme.~alice.helper", { orgId: "acme", userId: "alice" });
+    hirePlane(h, "globex.~alice.helper", { orgId: "globex", userId: "alice" });
+    await run(h, ALICE, "acme.~alice.helper", "w", { body: "ACME-ROADMAP" });
+    const read = await run(h, ALICE_GLOBEX, "globex.~alice.helper", "r", {});
+    expect(read.body).toBe("");
+    // Control: Acme still reads it, so the empty read above is the org boundary, not a lost write.
+    expect((await run(h, ALICE, "acme.~alice.helper", "r2", {})).body).toBe("ACME-ROADMAP");
+  });
+
+  it("R3 plane 3 · a user-scoped resource with flowIsolation stays with one hire", async () => {
+    const h = await boot();
+    hirePlane(h, "acme.~alice.helper", { orgId: "acme", userId: "alice" });
+    hirePlane(h, "globex.~alice.helper", { orgId: "globex", userId: "alice" });
+    await run(h, ALICE, "acme.~alice.helper", "w", { note: "ACME-HIRE-ONLY" });
+    const globex = await run(h, ALICE_GLOBEX, "globex.~alice.helper", "r", {});
+    expect(globex.note).toBe("");
+    const acme = await run(h, ALICE, "acme.~alice.helper", "r2", {});
+    expect(acme.note).toBe("ACME-HIRE-ONLY");
   });
 });

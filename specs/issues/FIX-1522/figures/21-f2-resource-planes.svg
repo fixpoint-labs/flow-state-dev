@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 504" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Three resource planes for Alice, who belongs to acme and globex. Plane 1, Alice's own: one user cell keyed by alice, for preferences, memory and identity; a dark theme set from acme is read from globex, and nothing opts a resource out yet. Plane 2, org-bound: each org has its own cell keyed by the session's org; acme's roadmap doc is in acme's cell and globex's cell stays empty. Plane 3, hire-private: acme.~alice.helper pinned to acme and alice, with its row in acme's cell under the tilde-alice sub-prefix, its own instructions and custom tool, and state keyed alice colon acme.~alice.helper when the resource is flow-isolated; globex.~alice.helper is a separate hire with its own pin, config and key. Warning: Workforce's seat kind defaults isolateUserState to false, so a hire's user-scoped state lands in plane 1 and is shared by both hires unless the kind isolates it.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .box   { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .acme  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .usr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .no    { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .warn  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .pin   { fill:var(--code); }
+    .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .gap   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .div   { stroke:var(--rule); stroke-width:1.2; }
+    .a     { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .a-x   { fill:none; stroke:var(--gone); stroke-width:1.8; }
+    .a-ok  { fill:none; stroke:var(--code); stroke-width:1.6; }
+    .a-d   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-w   { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-pin { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; font-weight:700; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/></marker>
+    <marker id="hx" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/></marker>
+    <marker id="ho" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/></marker>
+    <marker id="hd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="504"/>
+  <text class="t-lbl" x="16" y="26">ONE PERSON, TWO ORGS, THREE PLANES</text>
+  <rect class="usr" x="150" y="40" width="250" height="44" rx="6"/>
+  <text class="t-b" x="162" y="59">alice @ acme</text>
+  <text class="t-s" x="162" y="75">session bound to acme</text>
+  <rect class="usr" x="540" y="40" width="250" height="44" rx="6"/>
+  <text class="t-b" x="552" y="59">alice @ globex</text>
+  <text class="t-s" x="552" y="75">session bound to globex</text>
+  <text class="t-lbl" x="16" y="118">1 · ALICE'S OWN</text>
+  <rect class="ok" x="16" y="126" width="908" height="58" rx="6"/>
+  <text class="t-b" x="28" y="146">user cell · alice</text>
+  <text class="t-s" x="28" y="162">scope: user, shared · key: alice</text>
+  <text class="t-s" x="28" y="176">prefs, memory, identity bag</text>
+  <text class="t-ok" x="420" y="146">theme: dark</text>
+  <text class="t-s" x="420" y="162">set from acme, read from globex (R1)</text>
+  <text class="t-s" x="420" y="176">follows her everywhere: no per-resource opt-out yet</text>
+  <path class="a-ok" d="M275 84 V 122" marker-end="url(#ho)"/>
+  <path class="a-ok" d="M665 84 V 122" marker-end="url(#ho)"/>
+  <text class="t-lbl" x="16" y="214">2 · ORG-BOUND</text>
+  <rect class="acme" x="16" y="222" width="440" height="74" rx="6"/>
+  <text class="t-b" x="28" y="242">acme's org cell</text>
+  <text class="t-s" x="28" y="258">scope: org · key: the session's org</text>
+  <text class="t-ok" x="28" y="280">org-doc: ACME-ROADMAP (R2)</text>
+  <rect class="box" x="484" y="222" width="440" height="74" rx="6"/>
+  <text class="t-b" x="496" y="242">globex's org cell</text>
+  <text class="t-s" x="496" y="258">scope: org · key: the session's org</text>
+  <text class="t-ok" x="496" y="280">org-doc: empty, acme's never appears</text>
+  <text class="t-lbl" x="16" y="326">3 · HIRE-PRIVATE</text>
+  <rect class="usr" x="16" y="334" width="440" height="104" rx="6"/>
+  <text class="t-b" x="28" y="354">acme.~alice.helper</text>
+  <rect class="pin" x="176" y="343" width="85.39999999999999" height="15" rx="7"/>
+  <text class="t-pin" x="181" y="354">pin acme/alice</text>
+  <text class="t-s" x="28" y="374">row: acme cell · workforce/roster/~alice/helper</text>
+  <text class="t-s" x="28" y="390">config: instructions, tools (custom tool here)</text>
+  <text class="t-s" x="28" y="406">state: user scope + flowIsolation</text>
+  <text class="t-s" x="28" y="420">  key alice:acme.~alice.helper (R3)</text>
+  <rect class="usr" x="484" y="334" width="440" height="104" rx="6"/>
+  <text class="t-b" x="496" y="354">globex.~alice.helper</text>
+  <rect class="pin" x="652" y="343" width="96.6" height="15" rx="7"/>
+  <text class="t-pin" x="657" y="354">pin globex/alice</text>
+  <text class="t-s" x="496" y="374">row: globex cell · …/~alice/helper</text>
+  <text class="t-s" x="496" y="390">its own config: no acme tool</text>
+  <text class="t-s" x="496" y="406">state key alice:globex.~alice.helper</text>
+  <text class="t-s" x="496" y="420">acme hire's notes never show here</text>
+  <rect class="warn" x="16" y="452" width="908" height="40" rx="6"/>
+  <text class="t-w" x="28" y="470">Workforce's seat kind defaults isolateUserState: false</text>
+  <text class="t-s" x="28" y="485">so a hire's user-scoped state lands in plane 1 and is shared by both hires unless the kind isolates it</text>
+</svg>

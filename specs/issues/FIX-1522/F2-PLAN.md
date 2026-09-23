@@ -172,6 +172,73 @@ ran twice on #2091:
 **A user-owned address needs the user in it, and now has it.** The pin stays the fence. The
 address only has to be unique.
 
+## Resource planes for one person in two orgs
+
+Alice belongs to Acme and Globex. Her private hires are already separate instances, one per
+`{ orgId, userId }` pin. This section is about her **resources**. There are three planes, and
+each is a different storage cell. The legs are R1–R3 in the
+[after suite](poc/f2-experiments/README.md), run on #2091 at `fdca49fd`.
+
+![Alice's user cell shared by both sessions, Acme's and Globex's separate org cells, and two separate hires with their own pins and state keys](figures/21-f2-resource-planes.svg)
+
+| Plane | What it's for | Where it lives | Follows Alice across orgs? | F2's part |
+|---|---|---|---|---|
+| **1 · Alice's own** | preferences, memory, the identity bag | the user cell, keyed by her user id. Any resource declared `scope: "user"` and not flow-isolated | **Yes, always** (S2, R1) | None. This is the engine's existing user scope, unchanged |
+| **2 · Org-bound** | org data, anything an org's work produces, shared rooms and boards | the org cell, keyed by the **session's** org, which comes from the verified principal and never changes | **No** (S1, R2) | The data path was already fenced. F2 stops another org running Acme's config against it |
+| **3 · Hire-private** | one hire's row, config and working state | Row: the hiring org's cell at `workforce/roster/~alice/<seat>`. Address `acme.~alice.<seat>`, pin `{acme, alice}`. Config: instructions and tools on the row. State: `scope: "user"` with `flowIsolation: true`, keyed `alice:acme.~alice.<seat>` | **No.** Acme-Alice and Globex-Alice are two hires, two pins, two keys (R3) | The row (B, B2, C) and the instance (E1–E9) |
+
+**Plane 1 is a real plane, not a leftover.** It's the engine's `user` scope, and it already
+exists. What it lacks is a choice. Every shared user-scoped resource follows Alice into every
+org. Nothing lets one resource say "Acme only". That choice is the user-within-org cell in
+[README ask 1](README.md#need-your-sign-off), and it stays soft-later.
+
+**On the rule of thumb for plane 2.** It's close, but the deciding fact is not who creates the
+resource. It's the **scope the resource declares**, together with the session's org:
+- An org-scoped resource written from Alice's Acme session lands in Acme's cell, whoever wrote it.
+- A user-scoped resource written by an org flow still lands in Alice's user cell, and follows her to Globex.
+
+So "an org flow creates it" gives an org-bound resource only when that flow declares
+`scope: "org"`. Org-shared resources are the same cell: every member's session in Acme reads
+and writes Acme's one org cell (M1).
+
+**Plane 3 needs the kind to isolate, and Workforce's doesn't by default.**
+- R3 passes because its resource declares `flowIsolation: true`. With the flag removed, R3 goes
+  red: the Acme hire's note shows up under the Globex hire.
+- Workforce's shipped seat kind defaults `isolateUserState: false`. Only its skill catalog is
+  isolated per seat. So a hire's user-scoped state, such as memory, is plane 1 today, and it is
+  shared by Alice's hires in both orgs.
+- It's still Alice's own data, so this isn't a cross-tenant leak and isn't a Critical on #2091.
+  Per-resource isolation for seat kinds is soft-after
+  [FIX-1396](https://linear.app/fixpoint-labs/issue/FIX-1396).
+
+### Alice's day, in three resources
+
+- **A preference.** She picks a dark theme while working in Acme. When she opens Globex, it's
+  dark there too. Plane 1, by design (R1).
+- **An artifact.** Her Acme session writes the roadmap doc into an org-scoped resource. It's in
+  Acme's cell. Her Globex session reads an empty doc, and an Acme re-read still sees it (R2).
+- **A custom tool.** She gives her Acme hire, `acme.~alice.helper`, a custom tool. The tool is
+  part of the hire's config on its row, so it runs only through that pinned instance.
+  - A Globex session can't reach it (E1, E6).
+  - Her Globex hire is a different hire with its own config, and doesn't have the tool.
+  - Notes the Acme hire keeps in an isolated resource stay with it (R3).
+
+### Invent-kills and soft-later
+
+**Invent-kills:**
+- Soft-mixing a Globex session into the Acme hire's private prefix. The pin refuses it at admission, and the branded writer only reaches the caller's own rows (E1, B2).
+- An ambient "user mega-roster" across orgs. Roster rows live in each org's cell and reload per org. Nothing lists all of Alice's hires from one session, and nothing should.
+- Folding plane 3 into plane 1. Hire-private state must not rely on the shared user cell.
+- Reading org membership out of the user bag. Membership is the verifier's (M2).
+
+**Soft-later, named here and not filed:**
+- The user-within-org cell, so one resource can stay in one org.
+- Org ACLs and roles.
+- Tenant and auth rework (FIX-1503).
+- A full user-bag product.
+- Per-resource isolation for seat kinds (FIX-1396).
+- Caller-scoping on the debug listing (B4).
+
 ## What would falsify a FIX-1529 implementation
 
 A fix that passes the acceptance tests can still be open. It is not closed if any of these
