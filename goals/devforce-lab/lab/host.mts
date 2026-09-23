@@ -42,6 +42,7 @@ import {
   createFlowState,
   PrincipalResolutionError,
   runAction,
+  type PrincipalResolver,
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
@@ -102,10 +103,8 @@ const verifyLabBearer = createBearerSecretPrincipalResolver({
   principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
 });
 
-function resolveLabPrincipal(
-  context: Parameters<typeof verifyLabBearer>[0],
-): NonNullable<Awaited<ReturnType<typeof verifyLabBearer>>> {
-  const principal = verifyLabBearer(context);
+const resolveLabPrincipal: PrincipalResolver = async (context) => {
+  const principal = await verifyLabBearer(context);
   if (principal === null) {
     throw new PrincipalResolutionError(
       "Request requires a verified organization: no verified principal was presented.",
@@ -113,7 +112,7 @@ function resolveLabPrincipal(
     );
   }
   return principal;
-}
+};
 
 /**
  * Read a workforce tree into records, refusing a tree that did not load
