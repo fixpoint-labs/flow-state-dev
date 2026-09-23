@@ -1,0 +1,84 @@
+<svg viewBox="0 0 940 350" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. Inside: one pin from the hire row, and seven doors fenced by it. Catalog, open and run, restart, and the browser roster read are shipped; board drain, debug listing and stored data are this epic's remaining work. Composed in by the app: the principal resolver that says who the user and org are. Replaced in one line: the framework default resolver, which FIX-1503 makes verified. Not built: user planes, portability between orgs, org-owned hire cells, bridge seats, notify and always-on doors, per-tier memory isolation.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .out   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .fence { stroke:var(--code); stroke-width:2; }
+    .door  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .left  { fill:var(--surface); stroke:var(--code); stroke-width:1; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-d   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="350"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="600" height="236" rx="6"/>
+    <text class="t-lbl" x="32" y="38">IN THE BOX &#183; EVERY DOOR INTO A HIRED SEAT</text>
+    <text class="t-b" x="32" y="62">One pin { orgId, userId? }, taken from the hire row</text>
+    <path class="fence" d="M32 74 L600 74"/>
+    <text class="t-s" x="32" y="90">each door compares the caller to the pin &#183; org first &#183; a miss is 404 Unknown flow</text>
+
+    <rect class="door" x="32" y="102" width="184" height="40" rx="4"/>
+    <text class="t-d" x="44" y="120">Catalog listing</text>
+    <text class="t-ok" x="44" y="134">shipped &#183; FIX-1529</text>
+    <rect class="door" x="224" y="102" width="184" height="40" rx="4"/>
+    <text class="t-d" x="236" y="120">Open and run</text>
+    <text class="t-ok" x="236" y="134">shipped &#183; FIX-1529</text>
+    <rect class="door" x="416" y="102" width="184" height="40" rx="4"/>
+    <text class="t-d" x="428" y="120">Restart and resume</text>
+    <text class="t-ok" x="428" y="134">shipped &#183; FIX-1529</text>
+
+    <rect class="door" x="32" y="152" width="184" height="40" rx="4"/>
+    <text class="t-d" x="44" y="170">Browser roster read</text>
+    <text class="t-ok" x="44" y="184">shipped &#183; FIX-1529</text>
+    <rect class="left" x="224" y="152" width="184" height="40" rx="4"/>
+    <text class="t-d" x="236" y="170">Board drain</text>
+    <text class="t-go" x="236" y="184">to prove &#183; FIX-1534</text>
+    <rect class="left" x="416" y="152" width="184" height="40" rx="4"/>
+    <text class="t-d" x="428" y="170">Debug listing</text>
+    <text class="t-go" x="428" y="184">to fix &#183; FIX-1535</text>
+
+    <rect class="left" x="32" y="202" width="568" height="40" rx="4"/>
+    <text class="t-d" x="44" y="220">Stored data: a private seat's cell keyed per (org, user), not per person</text>
+    <text class="t-go" x="44" y="234">to build &#183; FIX-1538 &#183; and the assembled proof</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="636" y="16" width="288" height="112" rx="6"/>
+    <text class="t-lbl" x="652" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="652" y="62">The principal resolver</text>
+    <text class="t-s" x="652" y="82">who the user is, and which org</text>
+    <text class="t-s" x="652" y="98">the fence is only as strong as this</text>
+    <text class="t-s" x="652" y="114">install it on the host that serves seats</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="app" x="636" y="140" width="288" height="112" rx="6"/>
+    <text class="t-lbl" x="652" y="162">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="652" y="186">The default resolver</text>
+    <text class="t-s" x="652" y="206">today a caller names itself</text>
+    <text class="t-s" x="652" y="222">FIX-1503 makes a verified one</text>
+    <text class="t-s" x="652" y="238">the default &#183; input, not a child</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="out" x="16" y="268" width="908" height="66" rx="6"/>
+    <text class="t-lbl" x="32" y="290">NOT BUILT HERE</text>
+    <text class="t-s" x="32" y="310">user planes: own boards, inventory, listings (wait for FIX-1486) &#183; portability between orgs &#183; org-owned hire cells</text>
+    <text class="t-s" x="32" y="326">bridge seats &#183; notify, always-on, assign-to-userIds doors &#183; per-tier memory isolation (FIX-1396)</text>
+  </g>
+</svg>
