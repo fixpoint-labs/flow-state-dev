@@ -16,6 +16,7 @@ import {
 } from "../transports/errors";
 import { generateId } from "../utils/generate-id";
 import { FlowInstanceBindingMismatchError } from "../context/binding-errors";
+import { UnknownFlowError } from "../context/hire-plane";
 import {
   asObject,
   extractTenantId,
@@ -168,6 +169,9 @@ export async function handleExecuteAction(
         message: e.message
       });
     }
+    if (e instanceof UnknownFlowError) {
+      return jsonResponse(404, { error: e.message });
+    }
     throw e;
   }
 
@@ -190,8 +194,8 @@ export async function handleExecuteAction(
     if (message.includes("active stream capacity")) {
       return jsonResponse(503, { error: message });
     }
-    if (message.startsWith("Unknown flow")) {
-      return jsonResponse(404, { error: message });
+    if (error instanceof UnknownFlowError) {
+      return jsonResponse(404, { error: error.message });
     }
     throw error;
   }

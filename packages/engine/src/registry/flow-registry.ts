@@ -34,8 +34,16 @@
  * scope, so its `stateSchema` drops out under the flow-level flag, while each
  * resource carries its own `flowIsolation` override and drops out on that.
  */
-import type { DeclaredResourceEntry, FlowCardinality, FlowInstance } from "@flow-state-dev/core/types";
-import { isProjectedResourceCollection } from "@flow-state-dev/core/types";
+import type {
+  DeclaredResourceEntry,
+  FlowCardinality,
+  FlowInstance,
+  InstanceOwnerPin
+} from "@flow-state-dev/core/types";
+import {
+  assertRosterCollectionIsNotDeep,
+  isProjectedResourceCollection
+} from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -56,8 +64,17 @@ export interface FlowRegistry {
    * duplicate id, a singleton under a custom id, or a mixed-cardinality kind,
    * and {@link CrossFlowSchemaConflictError} for a schema conflict — in every
    * case before any registry state is touched.
+   *
+   * `options.pin` is the owner pin for a hired instance. Omitted, a pin already
+   * on the instance is kept; otherwise the instance is shared. A second pin
+   * that disagrees with the one on the instance is refused.
    */
-  register(flow: FlowInstance): void;
+  register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
+  /**
+   * The owner pin on the instance at this address, or `undefined` when the
+   * instance is shared or the address is not held. Reads {@link FlowInstance.ownerPin}.
+   */
+  pinOf(id: string): InstanceOwnerPin | undefined;
   /** `register`, in order. An element that fails leaves the earlier ones admitted. */
   registerMany(flows: FlowInstance[]): void;
   /**
@@ -131,8 +148,10 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    * file header), then cross-flow schemas; a failure of either leaves every
    * internal map untouched.
    */
-  register(input: FlowInstance): void {
+  register(input: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
     const flow = admitIdentity(input, this.flowsById);
+    adoptPin(flow, options?.pin);
+    assertFlowRosterPatterns(flow);
 
     // Validate both scopes before mutating any state. If the org-scope
     // check throws after the user-scope check passes, no participant entry
@@ -198,6 +217,11 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    */
   unregister(id: string): boolean {
     return this.flowsById.delete(id);
+  }
+
+  /** The pin on the held instance. Absent for a shared instance and an unknown address. */
+  pinOf(id: string): InstanceOwnerPin | undefined {
+    return this.flowsById.get(id)?.ownerPin;
   }
 
   /**
@@ -580,6 +604,54 @@ const EMPTY_INSTANCE_CONFIG: Readonly<Record<string, unknown>> = Object.freeze({
  * Runs before the schema checks and mutates nothing: every refusal here
  * leaves the earlier registration reachable exactly as it was.
  */
+/**
+ * The pin this registration stores, stamped onto the instance when the call
+ * supplied one the instance did not already carry.
+ *
+ * A disagreement refuses before any map is touched. The address is not
+ * consulted: `acme.x` with pin `globex` is a legal registration.
+ */
+function adoptPin(
+  flow: FlowInstance,
+  explicit: InstanceOwnerPin | undefined
+): InstanceOwnerPin | undefined {
+  if (
+    explicit !== undefined &&
+    flow.ownerPin !== undefined &&
+    !samePin(explicit, flow.ownerPin)
+  ) {
+    throw new Error(
+      `Cannot register "${flow.id}" with pin org "${explicit.orgId}"` +
+        `${explicit.userId !== undefined ? ` user "${explicit.userId}"` : ""}: ` +
+        `the instance is already pinned to org "${flow.ownerPin.orgId}"` +
+        `${flow.ownerPin.userId !== undefined ? ` user "${flow.ownerPin.userId}"` : ""}.`
+    );
+  }
+  const pin = explicit ?? flow.ownerPin;
+  if (pin !== undefined && flow.ownerPin === undefined) {
+    flow.ownerPin = pin;
+  }
+  return pin;
+}
+
+function samePin(left: InstanceOwnerPin, right: InstanceOwnerPin): boolean {
+  return left.orgId === right.orgId && left.userId === right.userId;
+}
+
+/**
+ * No admitted flow may declare a collection that reads user-owned roster rows.
+ * The browser pattern and the private writer are the only roster patterns.
+ */
+function assertFlowRosterPatterns(flow: FlowInstance): void {
+  const resources = flow.resources;
+  if (resources === undefined) return;
+  for (const entry of Object.values(resources)) {
+    const pattern = (entry as { pattern?: unknown }).pattern;
+    if (typeof pattern !== "string") continue;
+    assertRosterCollectionIsNotDeep(entry as { pattern: string; client?: { state?: { read?: boolean } } }, "register");
+  }
+}
+
 function admitIdentity(
   input: FlowInstance,
   flowsById: ReadonlyMap<string, FlowInstance>

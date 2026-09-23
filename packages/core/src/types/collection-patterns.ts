@@ -149,6 +149,178 @@ function escapeRegex(s: string): string {
 }
 
 /**
+ * The org roster's browser collection. One segment, so a nested
+ * `workforce/roster/~user/seat` key never matches it.
+ */
+export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
+
+/**
+ * Server-side writer for a user-owned roster row. Two segments, no browser
+ * read. Admitted only when the object carries {@link HIRED_ROSTER_PRIVATE_BRAND},
+ * which `defineHiredRosterPrivateCollection` sets. Any other declaration of
+ * this pattern is refused, and so is any other pattern that can resolve onto
+ * a user-owned row, including a parameterised one.
+ */
+export const HIRED_ROSTER_PRIVATE_PATTERN = "workforce/roster/[owner]/[seat]";
+
+/**
+ * Brand on the workforce-owned private roster writer.
+ *
+ * Non-enumerable, so copying the config with a spread drops it. Registration
+ * admits {@link HIRED_ROSTER_PRIVATE_PATTERN} only while this is set.
+ */
+export const HIRED_ROSTER_PRIVATE_BRAND: symbol = Symbol.for(
+  "@flow-state-dev/hired-roster-private",
+);
+
+/** Stamp `collection` as the workforce-owned private roster writer. */
+export function markHiredRosterPrivateCollection<T extends object>(collection: T): T {
+  Object.defineProperty(collection, HIRED_ROSTER_PRIVATE_BRAND, {
+    value: true,
+    enumerable: false,
+  });
+  return collection;
+}
+
+/** Whether `value` is the workforce-owned private roster writer. */
+export function isHiredRosterPrivateCollection(value: object): boolean {
+  return Reflect.get(value, HIRED_ROSTER_PRIVATE_BRAND) === true;
+}
+
+const ROSTER_ROOT = "workforce/roster";
+
+/**
+ * A user id as one path segment.
+ *
+ * Opaque ids may contain `/` or `.`. Those are percent-encoded, and `%` is
+ * encoded too, so the mapping is injective. The roster's caller fence and
+ * the stored key both use this, so one user's prefix cannot be a prefix of
+ * another's.
+ */
+export function encodeUserSegment(userId: string): string {
+  if (userId.length === 0) {
+    throw new Error("a user id must not be empty — it is part of a seat's address");
+  }
+  let out = "";
+  for (const char of userId) {
+    if (/[a-z0-9-]/.test(char)) {
+      out += char;
+      continue;
+    }
+    for (const byte of new TextEncoder().encode(char)) {
+      out += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+    }
+  }
+  return out;
+}
+
+/** A segment that can stand in for `literal`: the literal itself, a parameter, or a wildcard. */
+function segmentOpens(segment: string, literal: string): boolean {
+  return (
+    segment === literal ||
+    segment === "*" ||
+    segment === "**" ||
+    /^\[[a-zA-Z0-9_]+\]$/.test(segment)
+  );
+}
+
+/**
+ * Whether `pattern` can resolve onto a user-owned roster key.
+ *
+ * The browser pattern is one segment under the roster. The private writer is
+ * exactly two, and is excluded here — admission of that one pattern is the
+ * brand check. A parameter or `*` in the first segment can be `workforce`,
+ * and the same in the second can be `roster`, so `workforce/[r]/[owner]/[seat]`
+ * and `[a]/[b]/[c]/[d]` reach `workforce/roster/~user/seat`. Two or more
+ * segments after that pair, or a `**` that consumes the rest, is enough.
+ */
+function rosterPatternOverlapsPrivate(pattern: string): boolean {
+  if (pattern === HIRED_ROSTER_BROWSER_PATTERN || pattern === HIRED_ROSTER_PRIVATE_PATTERN) {
+    return false;
+  }
+  const segments = pattern.split("/").filter((segment) => segment.length > 0);
+  if (segments.length === 0) return false;
+  if (segments[0] === "**") return true;
+  if (!segmentOpens(segments[0]!, "workforce")) return false;
+  if (segments.length === 1) return false;
+  if (segments[1] === "**") return true;
+  if (!segmentOpens(segments[1]!, "roster")) return false;
+  const rest = segments.slice(2);
+  if (rest.some((segment) => segment === "**")) return true;
+  return rest.length >= 2;
+}
+
+/**
+ * Whether `pattern` is literally two or more segments under `workforce/roster/`,
+ * or a deep glob whose static prefix reaches that tree.
+ *
+ * Parameterised overlap is not included. A pattern such as `[a]/[b]/[c]/[d]`
+ * is a legal collection on its own; registration is what refuses to admit it
+ * onto a flow.
+ */
+function rosterPatternIsLiterallyDeep(pattern: string): boolean {
+  if (pattern.includes("**")) {
+    const star = pattern.indexOf("**");
+    const prefix = pattern.slice(0, star).replace(/\/$/, "");
+    return (
+      prefix.length === 0 ||
+      ROSTER_ROOT.startsWith(prefix) ||
+      prefix.startsWith(ROSTER_ROOT)
+    );
+  }
+  if (pattern !== ROSTER_ROOT && !pattern.startsWith(`${ROSTER_ROOT}/`)) return false;
+  const rest = pattern.startsWith(`${ROSTER_ROOT}/`)
+    ? pattern.slice(ROSTER_ROOT.length + 1)
+    : "";
+  const segments = rest.split("/").filter((segment) => segment.length > 0);
+  return segments.length >= 2;
+}
+
+/**
+ * Refuse a collection that can read user-owned roster rows on the server.
+ *
+ * At definition, the private writer pattern is allowed so the workforce
+ * factory can build it, and then {@link markHiredRosterPrivateCollection}
+ * brands the result. A pattern that is literally deep under the roster is
+ * refused here too. A parameterised pattern that can still resolve onto those
+ * rows is a legal definition and is refused when a flow registers it. At
+ * registration, the private writer is admitted only with the brand, and still
+ * never with a browser read.
+ */
+export function assertRosterCollectionIsNotDeep(
+  config: {
+    pattern: string;
+    client?: { state?: { read?: boolean } };
+  },
+  stage: "define" | "register" = "define",
+): void {
+  const { pattern } = config;
+  if (pattern === HIRED_ROSTER_BROWSER_PATTERN) return;
+  if (pattern === HIRED_ROSTER_PRIVATE_PATTERN) {
+    if (config.client?.state?.read === true) {
+      throw new Error(
+        `Collection pattern "${pattern}" must not enable a browser read. ` +
+          `User-owned roster rows stay off the browser collection.`
+      );
+    }
+    if (stage === "register" && !isHiredRosterPrivateCollection(config)) {
+      throw new Error(
+        `Collection pattern "${pattern}" is the workforce roster writer and cannot be redeclared. ` +
+          `User-owned roster rows are read through the hire and fire helpers, for the caller only.`
+      );
+    }
+    return;
+  }
+  if (!rosterPatternOverlapsPrivate(pattern)) return;
+  if (stage === "define" && !rosterPatternIsLiterallyDeep(pattern)) return;
+  throw new Error(
+    `Collection pattern "${pattern}" can read user-owned roster rows on the server. ` +
+      `Declare "${HIRED_ROSTER_BROWSER_PATTERN}" for the org roster. ` +
+      `A deep pattern such as "workforce/roster/**" is refused.`
+  );
+}
+
+/**
  * Resolve a key (string or param object) into a storage path for a given pattern.
  *
  * - For wildcard patterns (`files/*`, `files/**`): key is a string appended to the prefix.

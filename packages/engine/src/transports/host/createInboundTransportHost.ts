@@ -21,6 +21,7 @@ import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { FlowInstanceBindingMismatchError } from "../../context/binding-errors";
+import { pinRejectsCaller, UnknownFlowError } from "../../context/hire-plane";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
   DEFAULT_RUNTIME_LOGGER,
@@ -370,7 +371,7 @@ export function createInboundTransportHost(
     // written below carry the resolved instance's actual kind and its id.
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
-      throw new Error(`Unknown flow "${envelope.flowKind}"`);
+      throw new UnknownFlowError(envelope.flowKind);
     }
 
     const requestId = envelope.requestId ?? generateId("req");
@@ -901,7 +902,7 @@ export function createInboundTransportHost(
   ): Promise<void> => {
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
-      throw new Error(`Unknown flow "${envelope.flowKind}"`);
+      throw new UnknownFlowError(envelope.flowKind);
     }
     // Organization identity is no longer a per-flow opt-in to check here
     // (FIX-1442). Every envelope reaching dispatch carries one: `resolve`
@@ -909,8 +910,14 @@ export function createInboundTransportHost(
     // validated at its own seam. What remains is the envelope's own
     // completeness, checked for the same reason it always was — before
     // anything is written.
-    if (!isValidOrgId(envelope.orgId ?? envelope.principal.orgId)) {
+    const orgId = envelope.orgId ?? envelope.principal.orgId;
+    if (!isValidOrgId(orgId)) {
       throw new OrgRequiredError(envelope.flowKind, "dispatch");
+    }
+    // Before the 202. A mismatch is the same answer as an address this
+    // process does not hold, so the caller cannot probe which it was.
+    if (pinRejectsCaller(flow.ownerPin, { userId: envelope.principal.userId, orgId })) {
+      throw new UnknownFlowError(envelope.flowKind);
     }
   };
 

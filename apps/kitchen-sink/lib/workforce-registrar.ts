@@ -17,7 +17,8 @@
  * named cause, and the compensating delete then removes the row it wrote.
  */
 
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
+import { registerHiredSeat } from "@flow-state-dev/workforce";
 
 /**
  * **Provenance lives here, not in the installed door.** `fire` may release only
@@ -38,7 +39,7 @@ const fromRoster = new Set<string>();
 /** What the app installs: the FlowState's admission door, plus one read. */
 export interface WorkforceRegistrar {
   /** Admit one instance. Throws exactly as `FlowState.register` does. */
-  register(flow: FlowInstance): void;
+  register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
   /** Release one address. `false` when nothing held it. */
   unregister(id: string): boolean;
   /**
@@ -69,7 +70,7 @@ export interface WorkforceRosterRegistrar extends WorkforceRegistrar {
    * address produces at boot) left nothing registered, so claiming provenance
    * for it would hand `fire` someone else's instance.
    */
-  registerFromRoster(flow: FlowInstance): void;
+  registerFromRoster(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
   /**
    * Whether this app registered the address from a roster row — what BR-28
    * actually asks, rather than the kind-equality proxy that answers `true` for
@@ -104,7 +105,7 @@ export function setWorkforceRegistrarImpl(next: WorkforceRegistrar): void {
  * Safe to import from anywhere at module-init time.
  */
 export const workforceRegistrar: WorkforceRosterRegistrar = {
-  register: (flow: FlowInstance) => impl.register(flow),
+  register: (flow, options) => impl.register(flow, options),
   unregister: (id: string) => {
     // The mark goes whether or not anything was holding the address: once an
     // address is released, this app is no longer the reason something is
@@ -114,8 +115,15 @@ export const workforceRegistrar: WorkforceRosterRegistrar = {
     return impl.unregister(id);
   },
   kindAt: (id: string) => impl.kindAt(id),
-  registerFromRoster: (flow: FlowInstance) => {
-    impl.register(flow);
+  registerFromRoster: (flow, options) => {
+    // A roster hire with no pin — neither the argument nor the pin the row
+    // stamped onto the instance — refuses here, before the address is marked.
+    // App and kind flows do not come through this door, so they stay shared.
+    registerHiredSeat(
+      (seat, pin) => impl.register(seat, { pin }),
+      flow,
+      options?.pin ?? flow.ownerPin,
+    );
     fromRoster.add(flow.id);
   },
   isFromRoster: (id: string) => fromRoster.has(id),

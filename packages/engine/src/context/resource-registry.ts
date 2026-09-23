@@ -32,6 +32,8 @@ import {
   getPatternPrefix,
   extractBareTopic,
   isProjectedResourceCollection,
+  isHiredRosterPrivateCollection,
+  encodeUserSegment,
   readProjectedRecord,
   searchProjectedRecords,
 } from "@flow-state-dev/core/types";
@@ -699,6 +701,70 @@ export function filterFlowLevelEager(
   return out;
 }
 
+/**
+ * Limit the private roster writer to the session user's own rows.
+ *
+ * The brand admits the collection onto a flow. It does not let that flow list
+ * every user. A key outside `workforce/roster/~<escaped user>/` is absent for
+ * get and refused for write. The user id is escaped the same way the stored
+ * key is, so `bob` is not a prefix of `bob/x`. The message does not say
+ * whether another user's row exists.
+ */
+function scopePrivateRosterToCaller(
+  handle: ResourceCollectionRef<JsonObject>,
+  userId: string | undefined,
+): ResourceCollectionRef<JsonObject> {
+  if (!isHiredRosterPrivateCollection(handle.config)) return handle;
+  const prefix =
+    userId !== undefined && userId.length > 0
+      ? `workforce/roster/~${encodeUserSegment(userId)}/`
+      : null;
+  const own = (key: string | Record<string, string>): boolean => {
+    if (prefix === null) return false;
+    return resolveCollectionKey(handle.pattern, key).startsWith(prefix);
+  };
+  const refuse = (): never => {
+    throw new Error("A hired-seat row is readable only by the user it belongs to.");
+  };
+  return {
+    ...handle,
+    async get(key) {
+      if (!own(key)) refuse();
+      return handle.get(key);
+    },
+    async getOptional(key) {
+      if (!own(key)) return undefined;
+      return handle.getOptional(key);
+    },
+    async create(key, initial, createOptions) {
+      if (!own(key)) refuse();
+      return handle.create(key, initial, createOptions);
+    },
+    async getOrCreate(key, initial) {
+      if (!own(key)) refuse();
+      return handle.getOrCreate(key, initial);
+    },
+    async upsert(key, update, createOnly) {
+      if (!own(key)) refuse();
+      return handle.upsert(key, update, createOnly);
+    },
+    async delete(key) {
+      if (!own(key)) refuse();
+      return handle.delete(key);
+    },
+    async list(listPrefix) {
+      const rows = await handle.list(listPrefix);
+      if (prefix === null) return [];
+      return rows.filter((row) => row.path.startsWith(prefix));
+    },
+    async count() {
+      const rows = await handle.list();
+      if (prefix === null) return 0;
+      return rows.filter((row) => row.path.startsWith(prefix)).length;
+    },
+  };
+}
+
 export function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
@@ -819,6 +885,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
      * lifecycle hooks as `CollectionHookContext.orgId` (FIX-1442). Server-derived.
      */
     orgId: string;
+    /**
+     * The session's user, when this registry is built for a run. The private
+     * roster writer uses it to keep each caller on their own rows.
+     */
+    actorUserId?: string;
   }
 ): ResourceRegistry<TResources> {
   // Null-prototype: keyed by author-supplied accessor names, and this is the
@@ -1348,6 +1419,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
         async get(key: string | Record<string, string>): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          // A collection only addresses its own keys. The prefix cache holds
+          // every row under the static prefix, including nested keys a
+          // single-segment pattern does not match. The item route already
+          // refuses those; this is the same check on the server-side read.
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
           const resources = options.readResources();
           if (!(storageKey in resources)) {
             // Record nothing — a throwing get read no cached instance.
@@ -1360,6 +1440,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
         async getOptional(key: string | Record<string, string>): Promise<ResourceRef<JsonObject> | undefined> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          if (!matchesPattern(nsConfig.pattern, storageKey)) return undefined;
           const resources = options.readResources();
           if (!(storageKey in resources)) {
             // Absent instance read nothing from cache — no load record.
@@ -1531,6 +1612,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           initial?: Partial<JsonObject>
         ): Promise<ResourceRef<JsonObject>> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
           const resources = options.readResources();
           if (storageKey in resources) {
             lruAccess.set(storageKey, Date.now());
@@ -1665,6 +1751,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
         async delete(key: string | Record<string, string>): Promise<void> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
           if (nsConfig.writable === false) {
             throw new Error(`Resource "${storageKey}" is read-only`);
           }
@@ -1796,11 +1887,17 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           }
         };
 
-        handles[resourceName] = lazyHandle as unknown as ResourceRef<JsonObject>;
+        handles[resourceName] = scopePrivateRosterToCaller(
+          lazyHandle,
+          options.actorUserId,
+        ) as unknown as ResourceRef<JsonObject>;
         continue;
       }
 
-      handles[resourceName] = nsHandle as unknown as ResourceRef<JsonObject>;
+      handles[resourceName] = scopePrivateRosterToCaller(
+        nsHandle,
+        options.actorUserId,
+      ) as unknown as ResourceRef<JsonObject>;
       continue;
     }
 

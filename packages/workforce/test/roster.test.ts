@@ -124,7 +124,11 @@ describe("V3 · a row round-trips to a record and back", () => {
     const back = hiredSeatRowFromManifest("acme", record.manifest);
     expect("row" in back).toBe(true);
     if (!("row" in back)) return;
-    expect(back.row).toEqual(parsed.row);
+    expect(back.row).toEqual({
+      ...parsed.row,
+      owningOrgId: "acme",
+      ownerUserId: null,
+    });
   });
 
   it("returns a reason for a row missing a required field, and never throws", () => {
@@ -171,6 +175,7 @@ describe("V3 · a row round-trips to a record and back", () => {
     if (!("row" in parsed)) throw new Error("expected a row");
 
     const record = hiredSeatManifest("acme", parsed.row);
+    if (!("manifest" in record)) throw new Error("expected a manifest");
     expect(record.manifest.declared.flow).toBe("desk-clerk");
 
     // …and the seat that actually mints is the row's kind, not the bag's.
@@ -193,6 +198,7 @@ describe("V3 · a row round-trips to a record and back", () => {
       settings: { flow: "agent", desk: "back" },
     });
     const record = hiredSeatManifest("acme", row);
+    if (!("manifest" in record)) throw new Error("expected a manifest");
     const back = hiredSeatRowFromManifest("acme", record.manifest);
     if (!("row" in back)) throw new Error("expected a row");
 
@@ -207,6 +213,9 @@ describe("V4 · the org segment is what makes the address unambiguous", () => {
     // and it is refused at the segment check rather than discovered later by
     // whichever hire happened to land second.
     expect(seatAddress("acme", "support.ada")).toBe("acme.support.ada");
+    expect(seatAddress("acme", "research", "alice")).toBe("acme.~alice.research");
+    expect(seatAddress("acme", "research", "alice@acme.com")).toBe("acme.~alice%40acme%2Ecom.research");
+    expect(() => seatAddress("acme", "~research", "alice")).toThrow(/starts with "~"/);
     expect(() => seatAddress("acme.support", "ada")).toThrow(/Organization id/);
     expect(() => seatAddress("acme.support", "ada")).toThrow(/"\."/);
   });

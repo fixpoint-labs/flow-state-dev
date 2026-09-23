@@ -10,6 +10,7 @@ import type {
   CreateModelResolverOptions,
   FlowInstance,
   FlowStateSettings,
+  InstanceOwnerPin,
   VoiceProvider
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
@@ -370,8 +371,10 @@ export interface FlowState<TSettings extends object = FlowStateSettings> {
    * one.
    *
    * @throws `FlowIdentityConflictError` or `CrossFlowSchemaConflictError`.
+   * Also throws when `options.pin` disagrees with a pin already on the instance,
+   * or when the instance declares a collection that can read user-owned roster rows.
    */
-  register(flow: FlowInstance): void;
+  register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
 
   /**
    * Release one address, so a request to it is answered the way a process that
