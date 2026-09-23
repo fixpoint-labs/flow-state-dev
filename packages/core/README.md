@@ -691,7 +691,7 @@ At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-r
 | `refused` | Meaning |
 |---|---|
 | `no-entry` | The addressed flow declares no entry at `(type, action)`. |
-| `flow-not-found` | A `flowKind` names a flow instance this process has not registered, or a hired seat the sending session may not open (one pinned to another organization, or another user's own seat). Both read the same, so the refusal does not reveal that the seat exists. |
+| `flow-not-found` | A `flowKind` names a flow instance this process has not registered, or a [seat hired at runtime](https://flow-state.dev/docs/workforce/durable-hire) that the sending session may not open (one pinned to another organization, or a user-owned seat that belongs to another user). The refusal is the same in both cases, so `flow-not-found` doesn't tell you which one you hit. |
 | `session-not-found` | An `id` names a session that does not exist, or that belongs to another principal or another tenant. |
 | `session-not-addressable` | An `id` (or `{ from: true }`) names a session on a flow other than the one addressed, or one bound to a different org. |
 | `key-occupied` | A `key` derived a child id already held by a record that is not this request's child. |
