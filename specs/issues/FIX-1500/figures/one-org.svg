@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 366" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Left, today: the human rail reads a roster and a board from the organization its own session binds to, a seat row opens into nothing, and the durable hire door sits apart behind an admin credential writing into a different organization — two organization boxes that never meet. Right, after: the seat row opens into a seat detail showing kind, skills, channels and boards, and the hire door has moved onto the rail's own flow, so the hire arrow and the read arrows land in one organization box.">
+     aria-label="Left, today: the human rail reads a roster and a board from the organization its own session binds to, a seat row opens into nothing, and the durable hire door sits apart behind an admin credential writing into a different organization — two organization boxes that never meet. Right, after: a hired seat's row opens into a seat detail showing its kind and instructions, and the hire door is on the rail's own flow, so the hire arrow and the read arrow land in one organization box.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -96,20 +96,21 @@
     <text class="t-lbl" x="504" y="52">HUMAN RAIL</text>
     <text class="t-b"   x="504" y="72">Channels</text>
     <text class="t-b"   x="504" y="92">Seats</text>
-    <text class="t-s"   x="504" y="110">support.ada</text>
+    <text class="t-s"   x="504" y="110">support.bruno</text>
     <rect class="n-new" x="500" y="120" width="116" height="52" rx="4"/>
     <text class="t-b" x="510" y="140">Seat detail</text>
-    <text class="t-s" x="510" y="157">kind · skills</text>
+    <text class="t-s" x="510" y="155">kind ·</text>
+    <text class="t-s" x="510" y="167">instructions</text>
   </g>
 
   <g id="after-detail">
     <rect class="n-new" x="652" y="34" width="132" height="150" rx="5"/>
     <text class="t-lbl" x="664" y="52">ONE SEAT</text>
     <text class="t-s"   x="664" y="74">kind</text>
-    <text class="t-s"   x="664" y="92">skills</text>
-    <text class="t-s"   x="664" y="110">channels</text>
-    <text class="t-s"   x="664" y="128">boards</text>
-    <text class="t-s"   x="664" y="154">one read each,</text>
+    <text class="t-s"   x="664" y="88">from the host's row</text>
+    <text class="t-s"   x="664" y="110">instructions</text>
+    <text class="t-s"   x="664" y="124">from its roster row</text>
+    <text class="t-s"   x="664" y="154">one item read,</text>
     <text class="t-s"   x="664" y="168">no client join</text>
   </g>
 
@@ -119,9 +120,6 @@
     <text class="t-b"   x="824" y="72">the session's</text>
     <text class="t-s"   x="824" y="94">roster rows</text>
     <text class="t-s"   x="824" y="110">board rows</text>
-    <text class="t-s"   x="824" y="126">seat rows</text>
-    <text class="t-s"   x="824" y="142">channel rows</text>
-    <text class="t-s"   x="824" y="158">memberships</text>
     <text class="t-b"   x="824" y="186">the new seat,</text>
     <text class="t-b"   x="824" y="202">written here</text>
     <text class="t-s"   x="824" y="224">still here after</text>
@@ -130,9 +128,9 @@
 
   <g id="after-hire">
     <rect class="n-new" x="492" y="212" width="292" height="62" rx="5"/>
-    <text class="t-lbl" x="504" y="230">DURABLE HIRE · THE SAME STORED CONTRACT</text>
+    <text class="t-lbl" x="504" y="230">DURABLE HIRE · THE PACKAGE'S OWN SEQUENCE</text>
     <text class="t-b"   x="504" y="249">an action on the rail's own flow</text>
-    <text class="t-s"   x="504" y="265">organization from the principal, never the body</text>
+    <text class="t-s"   x="504" y="265">organization from the session, never the body</text>
   </g>
 
   <g id="after-arrows">
