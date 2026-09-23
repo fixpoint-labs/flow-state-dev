@@ -16,9 +16,11 @@ import {
   hiredRosterStorageKey,
   hiredSeatManifest,
   hiredSeatRowFromManifest,
+  registerHiredSeat,
   reloadHiredSeats,
   toHiredSeatRow,
 } from "../src/roster";
+import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { hireWorkforce } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -141,5 +143,34 @@ describe("hire row pin", () => {
     expect(defineHiredRosterCollection().pattern).toBe("workforce/roster/*");
     expect(defineHiredRosterPrivateCollection().pattern).toBe("workforce/roster/[owner]/[seat]");
     expect(defineHiredRosterPrivateCollection().client?.state?.read).not.toBe(true);
+  });
+});
+
+describe("registerHiredSeat", () => {
+  const seat = { id: "acme.x" } as FlowInstance;
+
+  it("refuses a hired seat with no pin, and does not call register", () => {
+    const seen: InstanceOwnerPin[] = [];
+    const register = (_seat: FlowInstance, pin: InstanceOwnerPin) => {
+      seen.push(pin);
+    };
+    expect(() => registerHiredSeat(register, seat, undefined)).toThrow(/owner pin/);
+    expect(() => registerHiredSeat(register, seat, { orgId: "" })).toThrow(/owner pin/);
+    expect(seen).toEqual([]);
+  });
+
+  it("registers with the pin from the row, and drops a blank user", () => {
+    const seen: InstanceOwnerPin[] = [];
+    const register = (_seat: FlowInstance, pin: InstanceOwnerPin) => {
+      seen.push(pin);
+    };
+    registerHiredSeat(register, seat, { orgId: "globex" });
+    registerHiredSeat(register, seat, { orgId: "globex", userId: "" });
+    registerHiredSeat(register, seat, { orgId: "globex", userId: "alice" });
+    expect(seen).toEqual([
+      { orgId: "globex" },
+      { orgId: "globex" },
+      { orgId: "globex", userId: "alice" },
+    ]);
   });
 });

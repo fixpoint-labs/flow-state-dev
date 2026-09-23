@@ -610,3 +610,32 @@ describe("fire", () => {
     expect(registrar.held.get("acme.support.ada")?.kind).toBe("some-other-kind");
   });
 });
+
+describe("roster registration", () => {
+  it("refuses a hired seat that arrives with no pin, and does not mark it", () => {
+    const registrar = stubRegistrar();
+    const seat = { id: "acme.research", kind: "desk-clerk" } as FlowInstance;
+    expect(() => workforceRegistrar.registerFromRoster(seat)).toThrow(/owner pin/);
+    expect(registrar.held.has(seat.id)).toBe(false);
+    expect(workforceRegistrar.isFromRoster(seat.id)).toBe(false);
+  });
+
+  it("admits a hired seat whose row already stamped a pin", () => {
+    const seen: Array<{ orgId: string; userId?: string } | undefined> = [];
+    setWorkforceRegistrarImpl({
+      register: (_flow, options) => {
+        seen.push(options?.pin);
+      },
+      unregister: () => false,
+      kindAt: () => undefined,
+    });
+    const seat = {
+      id: "acme.x",
+      kind: "desk-clerk",
+      ownerPin: { orgId: "acme", userId: "alice" },
+    } as FlowInstance;
+    workforceRegistrar.registerFromRoster(seat);
+    expect(seen).toEqual([{ orgId: "acme", userId: "alice" }]);
+    expect(workforceRegistrar.isFromRoster("acme.x")).toBe(true);
+  });
+});

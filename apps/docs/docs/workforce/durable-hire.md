@@ -112,8 +112,9 @@ A row holds the seat's id within its organization, the flow kind, the settings b
 `registerSeat` exists because the flow needs the `FlowState` it is itself registered on, and importing that directly is a cycle. Install it instead:
 
 ```ts title="src/flows/workforce-admin/registry-access.ts"
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import type { FlowState } from "@flow-state-dev/engine";
+import { registerHiredSeat } from "@flow-state-dev/workforce";
 
 let app: FlowState | undefined;
 
@@ -122,12 +123,10 @@ export function useFlowState(next: FlowState): void {
   app = next;
 }
 
-export function registerSeat(
-  seat: FlowInstance,
-  pin?: { orgId: string; userId?: string }
-): void {
-  if (!app) throw new Error("No FlowState to register into.");
-  app.register(seat, pin !== undefined ? { pin } : undefined);
+export function registerSeat(seat: FlowInstance, pin?: InstanceOwnerPin): void {
+  const state = app;
+  if (!state) throw new Error("No FlowState to register into.");
+  registerHiredSeat((instance, owner) => state.register(instance, { pin: owner }), seat, pin);
 }
 
 export function releaseSeat(id: string): boolean {
@@ -239,7 +238,7 @@ const { seats, problems } = await reloadHiredSeats({
 
 for (const seat of seats) {
   try {
-    registerSeat(seat);
+    registerSeat(seat, seat.ownerPin);
   } catch (error) {
     problems.push(`${seat.id} — ${String(error)}`);
   }

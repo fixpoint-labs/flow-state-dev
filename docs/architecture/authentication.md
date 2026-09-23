@@ -132,7 +132,7 @@ The switch is exhaustive over `ParsedFlowRoute["kind"]`.
 | `user` | `user_stream`, `check_interrupted_requests` | Owner is the `userId` in the path. |
 | `host` | `list_sessions`, `active_requests`, `transcribe` | No single owner. The handler scopes rows to the caller. |
 
-A hired instance is registered with `register(flow, { pin })`. The pin is `{ orgId, userId? }` from the hire row, not from the address. `create_session` and a session-less `execute_action` compare the caller to that pin before the acknowledgement and answer a mismatch with `404 Unknown flow`, the same sentence an address this process does not hold gets. A later run — resume, retry, internal dispatch — compares the bound session to the pin inside execution and throws `InstancePinMismatchError` before any block. An instance registered without a pin stays shared.
+A hired instance is registered with `register(flow, { pin })`. The pin is `{ orgId, userId? }` from the hire row, not from the address. `create_session` and a session-less `execute_action` compare the caller to that pin before the acknowledgement and answer a mismatch with `404 Unknown flow`, the same sentence an address this process does not hold gets. A later run — resume, retry, internal dispatch — compares the bound session to the pin inside execution and throws `InstancePinMismatchError` before any block. An instance registered without a pin stays shared. A hire writer does not get that path: `registerHiredSeat` refuses a hired seat that arrives with no pin.
 
 Enforcement is off when the host resolver is the framework default **and**
 no registered flow configures its own resolver. A flow-scoped route whose

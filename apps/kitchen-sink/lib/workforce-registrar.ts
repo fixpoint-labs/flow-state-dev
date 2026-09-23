@@ -18,6 +18,7 @@
  */
 
 import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
+import { registerHiredSeat } from "@flow-state-dev/workforce";
 
 /**
  * **Provenance lives here, not in the installed door.** `fire` may release only
@@ -115,8 +116,14 @@ export const workforceRegistrar: WorkforceRosterRegistrar = {
   },
   kindAt: (id: string) => impl.kindAt(id),
   registerFromRoster: (flow, options) => {
-    const pin = options?.pin ?? flow.ownerPin;
-    impl.register(flow, pin !== undefined ? { pin } : undefined);
+    // A roster hire with no pin — neither the argument nor the pin the row
+    // stamped onto the instance — refuses here, before the address is marked.
+    // App and kind flows do not come through this door, so they stay shared.
+    registerHiredSeat(
+      (seat, pin) => impl.register(seat, { pin }),
+      flow,
+      options?.pin ?? flow.ownerPin,
+    );
     fromRoster.add(flow.id);
   },
   isFromRoster: (id: string) => fromRoster.has(id),
