@@ -22,8 +22,9 @@
  *     it were the whole one is the failure being avoided, and a cap that
  *     quietly truncated would be that failure with extra steps.
  *   - A row that disagrees with the code — a kind that is gone, settings the
- *     kind now refuses, a shape nothing can parse — is **skipped, named, and
- *     returned in `problems`**. No retry fixes any of those, so failing the
+ *     kind now refuses, a shape nothing can parse, an org or seat id that
+ *     cannot be an address — is **skipped, named, and returned in
+ *     `problems`**. No retry fixes any of those, so failing the
  *     boot over one would mean an app that can never start until somebody
  *     reaches the database, and the hostage is every other org's team.
  *
@@ -225,12 +226,6 @@ export async function reloadHiredSeats(
         continue;
       }
 
-      const record = hiredSeatManifest(orgId, parsed.row);
-      if ("problem" in record) {
-        org.problems.push(`${where} — ${record.problem}`);
-        continue;
-      }
-
       // **One manifest per call, not one call for the roster.** `hireWorkforce`
       // refuses the WHOLE roster when any record is bad — it throws and hires
       // nothing — so a batch call would turn one stale row into a boot with no
@@ -241,6 +236,11 @@ export async function reloadHiredSeats(
       // three; this covers all of them, and reuses the refusal wording that is
       // already the careful one.
       try {
+        const record = hiredSeatManifest(orgId, parsed.row);
+        if ("problem" in record) {
+          problems.push(`${where} — ${record.problem}`);
+          continue;
+        }
         const hired = hireWorkforce([record.manifest], { kinds: options.kinds });
         org.seats.push(...hired);
       } catch (error) {
