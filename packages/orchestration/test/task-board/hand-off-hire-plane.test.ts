@@ -153,14 +153,19 @@ describe("a board drain onto a hired seat", () => {
       await h.drain(MALLORY);
       const lead = await expectRefused(h, MALLORY, "t-lead", LEAD);
       const research = await expectRefused(h, MALLORY, "t-research", RESEARCH);
-      // The same answer an address this process does not hold gets.
+      // The same answer an address this process does not hold gets: the same
+      // refusal code and the same sentence, differing only in the address.
       const ghost = await h.row(MALLORY, "t-ghost");
-      expect(ghost?.error).toContain(`no flow instance "${GHOST}" is registered`);
-      expect(lead?.error).toContain(`no flow instance "${LEAD}" is registered`);
-      expect(research?.error).toContain(`no flow instance "${RESEARCH}" is registered`);
-      expect(lead?.error?.replaceAll(LEAD, "X").replaceAll("lead", "S")).toBe(
-        ghost?.error?.replaceAll(GHOST, "X").replaceAll("ghost", "S"),
-      );
+      const unregistered = (id: string) =>
+        `no flow instance "${id}" is registered in this process, so the task entry "work" cannot be resolved`;
+      for (const [error, id] of [
+        [ghost?.error, GHOST],
+        [lead?.error, LEAD],
+        [research?.error, RESEARCH],
+      ] as const) {
+        expect(error).toContain("flow-not-found");
+        expect(error?.slice(-unregistered(id).length)).toBe(unregistered(id));
+      }
     } finally {
       await h.state.dispose();
     }
