@@ -46,7 +46,7 @@ Don't mix these — the CLI is faster than the browser for everything below the 
 - `components/flow-state/` — shared item-renderer UI (installed from `@flow-state-dev/ui`).
 - `components/background-work-panel.tsx` — the child-session panel (see "Background work" below).
 - `components/chat-agent/` — chat-agent-specific renderers (e.g. `ChatAgentMessage`).
-- `components/` (top level) — shared app UI (sidebar, mode selector, etc.).
+- `components/` (top level) — shared app UI (team panel, mode selector, etc.). The rail is `FlowNavigator` from `@flow-state-dev/react`, mounted in `app/page.tsx`; the names it and the team panel share with the flow live in `lib/workforce-shell.ts`.
 - `app/page.tsx` — landing page that mounts chat-agent for now. When a second flow lands, this becomes a flow index.
 - `lib/flowstate.ts` — re-exports the FlowState from `fsdev.config.ts` (which holds the `createFlowState` runtime assembly: flows, model intents, voice, store profiles, error sink). The reference setup for the FlowState API, now shared with the `fsdev` CLI via the root config.
 

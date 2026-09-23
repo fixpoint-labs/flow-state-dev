@@ -32,6 +32,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core/types";
 import {
   DEFAULT_ROSTER_READ_TIMEOUT_MS,
   HIRED_ROSTER_PREFIX,
@@ -313,6 +314,68 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
     expect(seats[1]!.config).toMatchObject({ desk: "bravo-front" });
   });
 
+  it("skips a row it cannot address, and still serves every other org", async () => {
+    // An app with no principal resolver runs as DEFAULT_ORG_ID, so a runtime
+    // hire there leaves a row in a cell whose id is not a legal address
+    // segment. That row can never become a seat, but it must cost only
+    // itself: the boot still has to hand back acme's team, and the row has to
+    // be named rather than dropped. A seat id carrying the user-owned `~`
+    // marker is the same failure one segment later.
+    const stores = storeHolding({
+      acme: {
+        "support.ada": { seatId: "support.ada", flow: "desk-clerk", settings: {} },
+        "~support.bo": { seatId: "~support.bo", flow: "desk-clerk", settings: {} },
+      },
+      [DEFAULT_ORG_ID]: {
+        lead: {
+          seatId: "lead",
+          flow: "desk-clerk",
+          settings: {},
+          owningOrgId: DEFAULT_ORG_ID,
+        },
+      },
+    });
+
+    const { seats, problems } = await reloadHiredSeats({
+      stores,
+      orgIds: [DEFAULT_ORG_ID, "acme"],
+      kinds,
+    });
+
+    expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
+    expect(problems).toHaveLength(2);
+    const tilde = problems.find((problem) => problem.includes('organization "acme"'));
+    const defaultOrg = problems.find((problem) => problem.includes(DEFAULT_ORG_ID));
+    expect(tilde).toContain('organization "acme", row "workforce/roster/~support.bo"');
+    expect(tilde).toContain('starts with "~"');
+    expect(defaultOrg).toContain(`organization "${DEFAULT_ORG_ID}", row "workforce/roster/lead"`);
+    expect(defaultOrg).toContain("Organization id");
+  });
+
+  it("still refuses a row stamped for another org, even when that org is not addressable", async () => {
+    // The owning-org fence runs before the address is built, so a row that
+    // claims a different org is refused as a mismatch — never minted under
+    // the cell it was read from, and never re-bound to make it addressable.
+    const stores = storeHolding({
+      acme: {
+        lead: { seatId: "lead", flow: "desk-clerk", settings: {}, owningOrgId: DEFAULT_ORG_ID },
+      },
+      [DEFAULT_ORG_ID]: {
+        lead: { seatId: "lead", flow: "desk-clerk", settings: {}, owningOrgId: "acme" },
+      },
+    });
+
+    const { seats, problems } = await reloadHiredSeats({
+      stores,
+      orgIds: ["acme", DEFAULT_ORG_ID],
+      kinds,
+    });
+
+    expect(seats).toEqual([]);
+    expect(problems).toHaveLength(2);
+    for (const problem of problems) expect(problem).toContain("cannot be registered under");
+  });
+
   it("reads the pinned storage prefix", async () => {
     // The prefix is a public surface: moving it strands every roster already
     // written. Asserted so a rename has to be a deliberate edit here too.
@@ -328,6 +391,55 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
     await reloadHiredSeats({ stores, orgIds: ["acme"], kinds });
     expect(seen).toEqual(["workforce/roster/"]);
     expect(HIRED_ROSTER_PREFIX).toBe("workforce/roster/");
+  });
+});
+
+describe("the reload, partitioned by organization", () => {
+  // A caller that publishes the report per organization needs each org's slice
+  // from the reload itself. The flat `problems` names the org only inside its
+  // prose, and re-deriving structure from prose is the wrong way round.
+  const good = { seatId: "support.ada", flow: "desk-clerk", settings: {} };
+  const stores = () =>
+    storeHolding({
+      acme: {
+        "support.ada": good,
+        "support.bo": { seatId: "support.bo", flow: "kind-that-is-gone", settings: {} },
+      },
+      beta: { "support.ada": good },
+      quiet: {},
+    });
+
+  it("returns one entry per organization it was given, in that order, empty ones included", async () => {
+    const { byOrg } = await reloadHiredSeats({
+      stores: stores(),
+      orgIds: ["acme", "beta", "quiet"],
+      kinds,
+    });
+
+    // An org with nothing to report still gets an entry. Leaving it out is how
+    // a report written on the last boot stays standing when nobody rewrites it.
+    expect(byOrg.map((org) => org.orgId)).toEqual(["acme", "beta", "quiet"]);
+    expect(byOrg[2]).toEqual({ orgId: "quiet", seats: [], problems: [] });
+  });
+
+  it("files each seat and each problem under its own organization only", async () => {
+    const { byOrg, seats, problems } = await reloadHiredSeats({
+      stores: stores(),
+      orgIds: ["acme", "beta", "quiet"],
+      kinds,
+    });
+    const [acme, beta] = byOrg;
+
+    expect(acme!.seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
+    expect(acme!.problems).toHaveLength(1);
+    expect(acme!.problems[0]).toContain("support.bo");
+
+    expect(beta!.seats.map((seat) => seat.id)).toEqual(["beta.support.ada"]);
+    expect(beta!.problems).toEqual([]);
+
+    // The flat fields are unchanged: the union of the slices.
+    expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada", "beta.support.ada"]);
+    expect(problems).toEqual(acme!.problems);
   });
 });
 
