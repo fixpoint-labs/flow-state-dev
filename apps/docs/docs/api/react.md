@@ -175,7 +175,7 @@ See the [Voice guide](/docs/advanced/voice) for full usage details.
 
 ### `ItemRenderer`
 
-Render a single item using the registered renderer.
+Render a single item using the registered renderer. Does not put a list in scope for `useSessionItems()`.
 
 ```tsx
 import { ItemRenderer } from "@flow-state-dev/react";
@@ -185,7 +185,7 @@ import { ItemRenderer } from "@flow-state-dev/react";
 
 ### `ItemsRenderer`
 
-Render a list of items. By default, conversational items with `history: false` visibility (sub-agent output) are filtered out — they're available in `session.items` but hidden from the default conversation view so orchestrator chatter doesn't crowd the UI. Pass `showSubAgents` to surface them inline, or render a per-agent view via `session.getItemsByAgent(name)`.
+Render a list of items. Nested `useSessionItems()` consumers receive the same `items` array you pass. By default, conversational items with `history: false` visibility (sub-agent output) are filtered out of the rendered stream — they're available in `session.items` but hidden from the default conversation view so orchestrator chatter doesn't crowd the UI. Pass `showSubAgents` to surface them inline, or render a per-agent view via `session.getItemsByAgent(name)`.
 
 ```tsx
 import { ItemsRenderer } from "@flow-state-dev/react";
@@ -196,6 +196,21 @@ import { ItemsRenderer } from "@flow-state-dev/react";
 // Opt in — show sub-agent items inline
 <ItemsRenderer items={session.items} showSubAgents />
 ```
+
+### `SessionItemsProvider` / `useSessionItems`
+
+`ItemsRenderer` mounts this for its subtree. Use it when you render a stream-aware card outside that helper.
+
+```tsx
+import { SessionItemsProvider } from "@flow-state-dev/react";
+import { TaskPlan } from "@/components/flow-state/task-plan";
+
+<SessionItemsProvider value={session.items}>
+  <TaskPlan collectionId="research-board" />
+</SessionItemsProvider>
+```
+
+`useSessionItems()` returns `[]` when no provider is mounted, including under `ItemRenderer` alone.
 
 ### Custom Renderers
 

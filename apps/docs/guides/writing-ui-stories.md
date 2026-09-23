@@ -77,7 +77,7 @@ Compose those instead of hand-rolling item shapes in each story. If your compone
 
 Components that read `useFlowContext().renderers` (currently `RequestGroup` and `ChatAssistant`) need a `FlowProvider` in the tree. The global `preview.tsx` already wraps every story in `<FlowProvider renderers={chatAssistantRenderers}>`, so most of the time you don't need to think about it. Override it per-story by wrapping with your own `FlowProvider` if you want a different renderer registry.
 
-`<TaskPlan />` reads from `<SessionItemsProvider />` rather than `FlowProvider`. Wrap it manually in the story when you want to drive it from a fixture session — see `task-plan.stories.tsx` for the pattern.
+`<TaskPlan />` reads session items from `useSessionItems()`, or from an `items` prop. `FlowProvider` does not supply that list. In a story, pass `items` or wrap the card in `<SessionItemsProvider value={fixtureItems}>`. See `task-plan.stories.tsx`.
 
 ## Common variants worth writing
 
