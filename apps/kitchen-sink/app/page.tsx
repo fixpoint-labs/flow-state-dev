@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, Suspense, useState, useCallback, useEffect, useMemo, type CSSProperties } from "react";
+import { memo, Suspense, useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -70,6 +70,17 @@ const chatAgentRenderers: RendererRegistry = {
 type MobilePanel = "chat" | "artifacts";
 
 /**
+ * Whether the rail lists hired seats.
+ *
+ * The seat rows come from the server's flow list, which carries no
+ * organization and is answered without a credential, so every organization's
+ * hired seats are listed to anyone who can load this page. Set this to
+ * `false` to ship the rail with channels only; the roster panel on the right
+ * is organization-scoped either way.
+ */
+const SHOW_SEATS_IN_RAIL = true;
+
+/**
  * The rail's sections. How deep each kind goes is read off the flow's declared
  * cardinality, never written here: a channel kind opens straight into its
  * conversations, a seat kind opens into seats and then one seat's.
@@ -79,7 +90,7 @@ type MobilePanel = "chat" | "artifacts";
  */
 const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
   { label: "Channels", kinds: CHANNEL_KINDS },
-  { label: "Seats", kinds: SEAT_KINDS },
+  ...(SHOW_SEATS_IN_RAIL ? [{ label: "Seats", kinds: SEAT_KINDS }] : []),
   { label: "Assistant", kinds: [SHELL_FLOW_KIND] },
 ];
 
@@ -91,10 +102,14 @@ const RAIL_THEME = {
   "--fsd-nav-selected-fg": "var(--color-accent-foreground)",
 } as CSSProperties;
 
-/** A session picked in the rail that is not one of the assistant's own. */
-type PickedSession = { sessionId: string; kind: string };
+/**
+ * A session picked in the rail that is not one of the assistant's own.
+ * `address` is the flow it belongs to: the kind for a channel, the seat's own
+ * id for a seat. Continuing or retrying a request is routed by it.
+ */
+type PickedSession = { sessionId: string; kind: string; address: string };
 
-const SIDEBAR_DEFAULT_WIDTH = 480;
+const SIDEBAR_DEFAULT_WIDTH = 360;
 const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 700;
 const SIDEBAR_STORAGE_KEY = "ks-sidebar-width";
@@ -180,7 +195,7 @@ function KitchenSinkApp() {
   // A channel's or a seat's session, when one is picked in the rail. Read
   // only: the composer below talks to the assistant's flow and no other.
   const pickedSession = useSession(picked?.sessionId, {
-    flowKind: picked?.kind,
+    flowKind: picked?.address,
     items: true,
     autoResume: true,
   });
@@ -294,7 +309,7 @@ function KitchenSinkApp() {
         flow.selectSession(id);
         setPicked(null);
       } else {
-        setPicked({ sessionId: id, kind: leaf.kind });
+        setPicked({ sessionId: id, kind: leaf.kind, address: leaf.address });
       }
       setIsRailDrawerOpen(false);
       setMobilePanel("chat");
@@ -302,22 +317,26 @@ function KitchenSinkApp() {
     [flow]
   );
 
+  // The assistant's leaf, while it is open, so a session that gets its title
+  // after the first turn can be re-read into the rail.
+  const assistantLeafRefresh = useRef<(() => void) | null>(null);
+  const sessionTitle = session.detail?.title;
+  useEffect(() => {
+    if (sessionTitle !== undefined) assistantLeafRefresh.current?.();
+  }, [sessionTitle]);
+
   const railSlots = useMemo(
     () => ({
       // "New session" sits inside the assistant's own leaf, the one place a
       // new conversation can be started from this page.
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW_KIND ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-full justify-start gap-2 text-xs"
-            onClick={() => void handleNewSession(leaf)}
+          <AssistantLeafToolbar
+            leaf={leaf}
+            refreshRef={assistantLeafRefresh}
             disabled={flow.isLoading}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New session
-          </Button>
+            onNewSession={handleNewSession}
+          />
         ) : null,
     }),
     [handleNewSession, flow.isLoading]
@@ -550,6 +569,42 @@ function KitchenSinkApp() {
         onClose={() => setSelectedArtifactId(null)}
       />
     </div>
+  );
+}
+
+/**
+ * The strip inside the assistant's open leaf: "New session", plus a handle on
+ * the leaf's re-read for as long as the leaf is open.
+ */
+function AssistantLeafToolbar({
+  leaf,
+  refreshRef,
+  disabled,
+  onNewSession,
+}: {
+  leaf: FlowNavigatorLeafState;
+  refreshRef: React.MutableRefObject<(() => void) | null>;
+  disabled: boolean;
+  onNewSession: (leaf: FlowNavigatorLeafState) => Promise<void>;
+}) {
+  const { refresh } = leaf;
+  useEffect(() => {
+    refreshRef.current = refresh;
+    return () => {
+      if (refreshRef.current === refresh) refreshRef.current = null;
+    };
+  }, [refresh, refreshRef]);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-7 w-full justify-start gap-2 text-xs"
+      onClick={() => void onNewSession(leaf)}
+      disabled={disabled}
+    >
+      <Plus className="h-3.5 w-3.5" />
+      New session
+    </Button>
   );
 }
 

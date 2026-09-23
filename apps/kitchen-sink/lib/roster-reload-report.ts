@@ -18,6 +18,10 @@
  * Every organization the reload covered is written, including the clean ones.
  * A clean organization gets an empty list, so last boot's problems do not stay
  * on screen after they are fixed.
+ *
+ * A report that cannot be written does not stop the boot. It is returned as a
+ * problem for the boot's log, and the remaining organizations are admitted and
+ * written as usual.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { HiredRosterReload } from "@flow-state-dev/workforce";
@@ -50,8 +54,11 @@ export interface AdmitReloadedSeatsOptions {
 export interface AdmittedSeats {
   /** Ids of the seats that were admitted. */
   seats: string[];
-  /** One entry per seat the registry refused, as `<seat id> — <reason>`. */
-  refusals: string[];
+  /**
+   * One entry per seat the registry refused, as `<seat id> — <reason>`, and one
+   * per organization whose report could not be written.
+   */
+  problems: string[];
 }
 
 /**
@@ -64,7 +71,7 @@ export interface AdmittedSeats {
 export async function admitReloadedSeats(
   options: AdmitReloadedSeatsOptions,
 ): Promise<AdmittedSeats> {
-  const admitted: AdmittedSeats = { seats: [], refusals: [] };
+  const admitted: AdmittedSeats = { seats: [], problems: [] };
 
   for (const org of options.reload.byOrg) {
     const problems = [...org.problems];
@@ -77,16 +84,24 @@ export async function admitReloadedSeats(
         // reason for the app to fail to start.
         const refusal = `${seat.id} — ${error instanceof Error ? error.message : String(error)}`;
         problems.push(refusal);
-        admitted.refusals.push(refusal);
+        admitted.problems.push(refusal);
       }
     }
-    await options.stores.resourceState.set(
-      "org",
-      org.orgId,
-      ROSTER_BOOT_REPORT_KEY,
-      { problems },
-      "any",
-    );
+    try {
+      await options.stores.resourceState.set(
+        "org",
+        org.orgId,
+        ROSTER_BOOT_REPORT_KEY,
+        { problems },
+        "any",
+      );
+    } catch (error) {
+      admitted.problems.push(
+        `organization "${org.orgId}" — its boot report could not be written: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   return admitted;

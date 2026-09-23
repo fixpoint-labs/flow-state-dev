@@ -38,16 +38,24 @@ export interface TeamPanelProps {
 }
 
 export function TeamPanel({ sessionId, resourceClient, top }: TeamPanelProps) {
-  const rosterProblems = useRosterBootProblems(resourceClient, sessionId);
+  const report = useRosterBootReport(resourceClient, sessionId);
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto bg-muted/30" style={PANEL_THEME}>
       {top}
       <section className="border-b px-2 py-3" data-testid="roster-panel">
         <h2 className="px-2 pb-1 text-sm font-semibold">Roster</h2>
+        {report.error !== null && (
+          <p className="px-2 pb-1 text-xs text-destructive" role="alert">
+            {report.error}{" "}
+            <button type="button" className="underline" onClick={report.retry}>
+              Retry
+            </button>
+          </p>
+        )}
         {sessionId === undefined ? (
           <p className="px-2 text-xs text-muted-foreground">Loading…</p>
         ) : (
-          <Roster sessionId={sessionId} resourceClient={resourceClient} problems={rosterProblems} />
+          <Roster sessionId={sessionId} resourceClient={resourceClient} problems={report.problems} />
         )}
       </section>
       {SHELL_BOARDS.map((board) => (
@@ -71,16 +79,20 @@ export function TeamPanel({ sessionId, resourceClient, top }: TeamPanelProps) {
  * What the last boot could not bring back into this organization's roster.
  *
  * Read through the same client the roster reads through. A read that fails is
- * shown as a problem of its own, because a roster shown without its skipped
- * seats looks complete when it is not.
+ * reported beside the roster with a retry, and not as a skipped seat: a roster
+ * shown without its skipped seats looks complete when it is not, and one with
+ * an invented skipped seat miscounts.
  */
-function useRosterBootProblems(
+function useRosterBootReport(
   source: PanelRowSource,
   sessionId: string | undefined,
-): readonly string[] {
+): { problems: readonly string[]; error: string | null; retry: () => void } {
   const [problems, setProblems] = useState<readonly string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     setProblems([]);
+    setError(null);
     if (sessionId === undefined) return;
     let current = true;
     source
@@ -88,15 +100,17 @@ function useRosterBootProblems(
       .then((page) => {
         if (current) setProblems(problemsFromBootReport(page.items));
       })
-      .catch((error: unknown) => {
+      .catch((reason: unknown) => {
         if (!current) return;
-        setProblems([
-          `The boot report could not be read: ${error instanceof Error ? error.message : String(error)}`,
-        ]);
+        setError(
+          `The list of seats the last start skipped could not be read: ${
+            reason instanceof Error ? reason.message : String(reason)
+          }`,
+        );
       });
     return () => {
       current = false;
     };
-  }, [source, sessionId]);
-  return problems;
+  }, [source, sessionId, attempt]);
+  return { problems, error, retry: () => setAttempt((n) => n + 1) };
 }

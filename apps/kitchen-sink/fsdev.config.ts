@@ -296,7 +296,7 @@ export const hiredRosterReload: { seats: string[]; problems: string[] } = {
       ),
   });
   hiredRosterReload.seats.push(...admitted.seats);
-  hiredRosterReload.problems.push(...admitted.refusals);
+  hiredRosterReload.problems.push(...admitted.problems);
 
   if (hiredRosterReload.seats.length > 0) {
     console.log(

@@ -83,7 +83,7 @@ async function harness() {
   >;
 
   /** A browser's fetch, pointed at the router, carrying one org's credential. */
-  const fetcherFor = (org: string, reportReads: string[]) =>
+  const fetcherFor = (org: string, reportReads: string[], failReport = false) =>
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(String(input), "http://test");
       const path = url.pathname
@@ -92,6 +92,10 @@ async function harness() {
         .filter((segment) => segment.length > 0)
         .map(decodeURIComponent);
       const method = (init?.method ?? "GET").toUpperCase();
+      if (failReport && path.at(-1) === ROSTER_BOOT_REPORT_REF) {
+        reportReads.push(org);
+        return new Response(JSON.stringify({ error: "store unavailable" }), { status: 503 });
+      }
       const headers = new Headers(init?.headers);
       headers.set("x-verified-org", org);
       const response = await router[method]!(new Request(url, { ...init, headers }), {
@@ -133,19 +137,19 @@ async function harness() {
   }
 
   /** The panel as the given org's member sees it, once the report has been read. */
-  async function panelFor(org: string): Promise<HTMLElement> {
+  async function panelFor(org: string, options: { failReport?: boolean } = {}): Promise<HTMLElement> {
     const sessionId = await openSession(org);
     const reportReads: string[] = [];
     const client = createResourceClient({
       baseUrl: "http://test",
-      fetcher: fetcherFor(org, reportReads),
+      fetcher: fetcherFor(org, reportReads, options.failReport),
     });
     const { container } = render(
       <FlowProvider flowKind={FLOW_KIND} userId={`user-of-${org}`} baseUrl="http://test">
         <TeamPanel sessionId={sessionId} resourceClient={client} />
       </FlowProvider>,
     );
-    const panel = within(container).getByTestId("roster-panel");
+    const panel = within(container).getByTestId("roster-panel").parentElement!;
     // Not settled until BOTH reads are back: the seats, and the report. An
     // assertion that the problems are absent means nothing before the report
     // has been read.
@@ -215,5 +219,20 @@ describe("V15 · two organizations, two boots, one report each", () => {
     const acmeAgain = await h.panelFor("acme");
     expect(acmeAgain.querySelector("[data-seat-id='support.bo']")).not.toBeNull();
     expect.soft(acmeAgain.querySelector("[data-roster-problems]"), "(d)").toBeNull();
+  });
+});
+
+describe("a boot report that cannot be read", () => {
+  it("says so on its own line, and does not count as a skipped seat", async () => {
+    const h = await harness();
+    await h.stores.resourceState.set("org", "acme", "workforce/roster/support.ada", seatRow("support.ada", "agent"), "any");
+    await h.boot(new Set());
+
+    const panel = await h.panelFor("acme", { failReport: true });
+    expect(panel.textContent).toContain("could not be read");
+    // Counting the failure as a seat would report one skipped seat that does
+    // not exist.
+    expect(panel.querySelector("[data-roster-problems]")).toBeNull();
+    expect(panel.querySelector("[data-seat-id='support.ada']")).not.toBeNull();
   });
 });
