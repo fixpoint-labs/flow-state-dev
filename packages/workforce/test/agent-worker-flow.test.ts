@@ -15,8 +15,10 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
+import { formatAllowedToolsIntentNote } from "@flow-state-dev/orchestration";
 import { hireWorkforce, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
+import { workerConfigSchema } from "../src/worker-config";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 
 function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest {
@@ -343,13 +345,66 @@ describe("the built-in agent kind's tools — a skill's `allowed-tools` validate
     expect(result.error).toBeUndefined();
     expect(calls()).toBe(0);
   });
+
+  // The honesty half of the fence (FIX-1451). The test above pins that the
+  // seat CANNOT call `board`; this one pins what its prompt says about that.
+  // Both halves have to be in one run, because either alone passes vacuously:
+  // a prompt assertion with no seat proves nothing about a grant, and a fence
+  // assertion with no prompt is the check that has been green all along while
+  // the seat was being told the opposite.
+  function systemPromptOf(gen: ReturnType<typeof mockGenerator>): string {
+    const messages = gen.calls[0]?.input as
+      | Array<{ role: string; content: string }>
+      | undefined;
+    return messages?.find((m) => m.role === "system")?.content ?? "";
+  }
+
+  it("does not tell a seat a tool is available when the seat's `tools:` cannot reach it", async () => {
+    const { tool: board, calls } = countedBoard();
+    const kind = defineAgentWorkerFlow({ catalog: { board }, skills: usesBoard });
+    const [seat] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
+      [AGENT_KIND]: kind
+    });
+
+    const answer = mockGenerator({
+      name: "agent-answer",
+      script: [callTool("board"), { text: "done" }]
+    });
+    const runtime = await contextFor(seat!, { "agent-answer": answer });
+
+    // `/uses-board` activates the skill, so its body — and the note about its
+    // `allowed-tools` — renders into this turn's system prompt.
+    const result = await executeBlock({
+      block: seat!.actions.run.block,
+      input: { message: "/uses-board check the board" },
+      ctx: runtime.ctx
+    });
+    expect(result.error).toBeUndefined();
+
+    // Premise: this seat declares no `tools:`, so `board` is genuinely
+    // out of reach — the model asking for it never reaches the tool.
+    expect(calls()).toBe(0);
+
+    const system = systemPromptOf(answer);
+
+    // What the seat is told about `board` is exactly the intent note, and
+    // nothing else. Asserting the note verbatim — rather than a list of
+    // phrasings it must avoid — is the point: patterns like
+    // `not.toMatch(/tools are available/)` are satisfied by "only these tools
+    // are usable", so they cannot fail in the way they claim to. The wording
+    // is the deliverable, so the wording is what gets asserted, from the one
+    // place that defines it.
+    expect(system).toContain(formatAllowedToolsIntentNote(["board"]));
+  });
 });
 
 describe("replacing the built-in agent kind", () => {
   const replacement = defineFlow({
     kind: AGENT_KIND,
     cardinality: "collection",
-    configSchema: z.object({ instructions: z.string().optional(), desk: z.string().default("front") }),
+    // A caller's own `agent` is a hireable kind like any other, so it composes
+    // the contract too — replacing the built-in does not exempt it.
+    configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
     actions: {
       run: {
         inputSchema: z.object({ message: z.string() }),

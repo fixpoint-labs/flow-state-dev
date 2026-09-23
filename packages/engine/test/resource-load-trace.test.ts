@@ -10,6 +10,7 @@
  * `prefetch-waves.test.ts` / `prefetch-lazy-collection.test.ts`.
  */
 import { describe, expect, it, afterEach } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineFlow,
@@ -40,6 +41,7 @@ type Stores = ReturnType<typeof createInMemoryStores>;
 async function run(flow: ReturnType<ReturnType<typeof defineFlow>>, stores: Stores, input: unknown = {}) {
   const response = createResponseEmitter({ requestId: `req_${Math.random().toString(16).slice(2)}`, now: () => Date.now() });
   const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     input,
@@ -147,6 +149,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
 
     const response = createResponseEmitter({ requestId: "req_boom", now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -369,6 +372,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
 
     const response = createResponseEmitter({ requestId: "req_off", now: () => Date.now() });
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

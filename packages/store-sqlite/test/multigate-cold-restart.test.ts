@@ -14,6 +14,7 @@
  * only as a regression guard on the common case.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import {
   continueRequest,
@@ -111,6 +112,7 @@ describe("multi-gate sequencer resume across a cold restart", () => {
     const storesA = createSQLiteStores({ filename });
     const providerA = providerFor(storesA);
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

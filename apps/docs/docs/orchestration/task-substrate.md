@@ -243,7 +243,7 @@ type TaskWriteOutcome =
 
 `recorded` means a field changed and a `task-change` item went out. `unchanged` means the task already held the state you asked for, so nothing was written and no item was emitted. `declined` means the write was refused: `status` is the status the task was in when it was refused, and `reason` says which condition stopped it.
 
-- `immutable-assignee` — the board hands work off to a child session, where a task's assignee is fixed once it is admitted. Reassigning it is refused whatever status the task is in.
+- `immutable-assignee` — the board hands work off to a dispatch run, where a task's assignee is fixed once it is admitted. Reassigning it is refused whatever status the task is in.
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
 - `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
@@ -331,11 +331,13 @@ Mint the token **before** the write. A token minted afterwards can't answer.
 
 Surface `undefined` as its own condition instead of guessing. It means the task carries no provenance, your receipt has aged out, or the token names a different incarnation of the task — deleted and recreated under the same id between the mint and the read, whether by an explicit delete or by capacity eviction on a resource-backed collection. A task keeps its four most recent receipts, so a caller asking after several later writes can find its own gone. The answer withholds itself rather than inventing one.
 
-A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above, and the two are worth reading together.
+A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above: a refusal is a value, not a throw. The two are worth reading together.
 
 **Which writes you can correlate.** The seven methods that take the options argument: `complete`, `fail`, `block`, `unblock`, `awaitReview`, `unpark`, and `cancel`. `addTask`, `addTasks`, `claim`, `reclaim` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
 
 **A collection ref you wrote yourself** maintains none of this. Absence of a record reads as `undefined`, never as "your write did not land".
+
+The task board uses this on its own result writes: a write that landed but could not be announced is reported rather than passed over. See [When the board cannot record a result](./task-board#when-the-board-cannot-record-a-result).
 
 ## The three backings
 

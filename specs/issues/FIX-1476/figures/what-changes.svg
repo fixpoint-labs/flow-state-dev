@@ -1,0 +1,67 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two trees side by side. Today: the kitchen-sink workforce folder holds flows/workers with one kind file, blocks, and a support team of four worker folders; there is no channels folder anywhere, the generated channelKinds map is empty, and a separate hand-registered channel instance sits outside the workforce tree holding no board. After: flows/channels gains one kind file which the generated channelKinds map now names, the support team gains a channels folder with three channel folders each holding a CHANNEL.md, one of which declares two board names, flows/workers gains a second kind that declares one of those boards as a resource, the team gains a fifth worker folder running it, and the hand-registered instance outside the tree is gone because the binder builds the kind from the roster instead.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-in   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-out  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-f    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-new  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-weight:600; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-n    { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+  </style>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="18">TODAY · ORIGIN/MAIN</text>
+    <rect class="n-box" x="16" y="28" width="440" height="232" rx="5"/>
+    <text class="t-b"  x="32" y="50">workforce/</text>
+    <text class="t-f"  x="44" y="72">flows/workers/desk-clerk.ts</text>
+    <text class="t-f"  x="44" y="90">blocks/desk-note.ts</text>
+    <text class="t-n"  x="44" y="110">no flows/channels/ folder</text>
+    <text class="t-f"  x="44" y="132">teams/support/workers/</text>
+    <text class="t-f"  x="56" y="150">ada · grace · iris · otto</text>
+    <text class="t-n"  x="44" y="170">no channels/ folder under the team</text>
+    <rect class="n-box" x="32" y="186" width="408" height="30" rx="4"/>
+    <text class="t-f"  x="44" y="206">workforce.gen.ts · channelKinds = {}</text>
+    <rect class="n-box" x="32" y="222" width="408" height="26" rx="4"/>
+    <text class="t-f"  x="44" y="239">hire.ts · hireWorkforce(workers) only</text>
+
+    <rect class="n-out" x="16" y="280" width="440" height="60" rx="5"/>
+    <text class="t-lbl" x="32" y="300">OUTSIDE THE TREE</text>
+    <text class="t-f"   x="32" y="320">flows/channel/flow.ts · defineChannelFlow()()</text>
+    <text class="t-n"   x="32" y="334">one instance, no roster, no board, no consumer</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="484" y="18">AFTER</text>
+    <rect class="n-box" x="484" y="28" width="440" height="312" rx="5"/>
+    <text class="t-b"  x="500" y="50">workforce/</text>
+    <text class="t-f"  x="512" y="72">flows/workers/desk-clerk.ts</text>
+    <text class="t-new" x="512" y="90">flows/workers/followup-runner.ts</text>
+    <text class="t-n"  x="524" y="104">resources: { [followups.id]: followups }</text>
+    <rect class="n-in" x="500" y="114" width="408" height="30" rx="4"/>
+    <text class="t-new" x="512" y="134">flows/channels/digest.ts</text>
+    <text class="t-f"  x="512" y="164">teams/support/workers/</text>
+    <text class="t-f"  x="524" y="182">ada · grace · iris · otto</text>
+    <text class="t-new" x="524" y="198">wren · flow: followup-runner</text>
+    <rect class="n-in" x="500" y="208" width="408" height="62" rx="4"/>
+    <text class="t-new" x="512" y="226">teams/support/channels/</text>
+    <text class="t-f"  x="524" y="242">desk/CHANNEL.md · boards: [followups, escalations]</text>
+    <text class="t-f"  x="524" y="258">ada-dm/CHANNEL.md · noticeboard/CHANNEL.md</text>
+    <rect class="n-box" x="500" y="276" width="408" height="26" rx="4"/>
+    <text class="t-f"  x="512" y="293">workforce.gen.ts · channelKinds = { digest }</text>
+    <rect class="n-box" x="500" y="306" width="408" height="26" rx="4"/>
+    <text class="t-f"  x="512" y="323">hire.ts · channelInstances + channelBoardIds</text>
+
+    <text class="t-gone" x="484" y="360">flows/channel/flow.ts — deleted: the binder builds the kind from the roster</text>
+  </g>
+</svg>

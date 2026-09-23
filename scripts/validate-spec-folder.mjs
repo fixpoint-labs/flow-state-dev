@@ -1,19 +1,16 @@
 #!/usr/bin/env node
 /**
- * Guards the two ways a point-in-time spec leaks into `main`.
+ * Guards legacy spec artifacts and dangling local citations.
  *
- * 1. `spec/` carries the in-flight spec on a spec branch, and `spec-poc/` the
- *    throwaway POC backing it. Neither ever lands on `main` — the spec PR closes
- *    unmerged at approval and its branch is kept as a frozen record — so both
- *    must be empty (README only) everywhere else. Spec and epic PRs carry them,
- *    so CI skips this script for them by BRANCH name (`spec/*`, `epic/*` — see
- *    `.github/workflows/ci.yml`, which explains why the `spec` label can't be
- *    the key); every other PR and `main` itself is checked.
- * 2. Source and docs must not cite a spec by repo path. No spec file exists on
- *    `main`, so a `spec/FIX-123/SPEC.md`, a `spec/FIX-123/figures/x.svg` or a
- *    `spec/_epics/<name>/PLAN.md` reference is dangling the moment it is
- *    written — a comment states its reason, it does not link to one. (The
- *    pre-directory shape, `spec/FIX-123.md`, is caught for the same reason.)
+ * Issue and epic specs are retained under `specs/issues/` and `specs/epics/`,
+ * including their authored assets and isolated POCs. Those paths may be cited.
+ * The legacy `spec/` and `spec-poc/` directories must remain README-only on
+ * mergeable branches. Project specs still live at `spec/_projects/` on their
+ * never-merged branches; CI exempts only `project/*` PRs from this guard.
+ *
+ * Maintained source, docs and retained specs must not cite obsolete local
+ * `docs/specs/` or never-merged `spec/` files. External historical URLs are
+ * provenance, not local citations, and remain valid.
  *
  * Exits non-zero with the offending paths and the fix. No dependencies, so CI
  * runs it without an install.
@@ -26,13 +23,12 @@ import { pathToFileURL } from "node:url";
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
 /**
- * The never-merged directories, per `spec/README.md`: the spec itself, and the
- * throwaway POC that backs it. Both are point-in-time artifacts confined to the
- * spec branch, so both leak onto `main` the same way and are checked together.
+ * Legacy directories stay empty on mergeable branches. Project specs retain
+ * their never-merged lifecycle under `spec/_projects/`.
  */
 const EPHEMERAL_DIRS = ["spec", "spec-poc"];
 
-/** The only file allowed to live in those directories on a non-spec branch. */
+/** The only file allowed in legacy directories outside a project branch. */
 const ALLOWED = new Set(["README.md"]);
 
 /** Trees worth scanning for dangling spec citations. */
@@ -43,6 +39,7 @@ const SCAN_ROOTS = [
   "examples",
   "scripts",
   "docs",
+  "specs",
   ".agents",
   ".changeset",
   ".github",
@@ -67,19 +64,10 @@ const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".next", ".turbo", "
  * script and its test (both of which must name a pattern to match it) and the
  * historical record under `docs/internal/` are exempt.
  *
- * A `spec/FIX-123/SPEC.md` citation is a dangling pointer in code, and so is a
- * figure inside that directory (`spec/FIX-123/figures/drawers.svg`). The docs
- * that define the convention need no exemption for it — they write the
- * *placeholder*, which neither pattern matches, so the distinction does the work
- * an exempt list would otherwise have to. Only the two files that must quote a
- * concrete path to match it (this script and its test) are exempt.
- *
- * Both spec shapes are dangling for the same reason — an epic PR (`epic/<name>`,
- * carrying `spec/_epics/<name>/`) is never merged either, so a link to it dies
- * with the PR exactly like an issue spec's. Neither arm matches an angle-bracket
- * placeholder: `[A-Z]{2,6}-\d+` can't match `<ISSUE-ID>`, and the epic arm
- * excludes `<>` for the same reason. Docs describing the convention write the
- * placeholder; only a concrete path is a citation.
+ * Concrete legacy `spec/` citations still dangle: retained issue/epic artifacts
+ * use `specs/`, and projects never merge. Placeholders remain useful in process
+ * docs and do not match. External URLs may preserve historical artifacts, so
+ * remove those tokens before checking local paths; never skip the entire line.
  */
 const RETIRED_PATH = /docs\/specs\/[^\s`"')]*/g;
 const RETIRED_EXEMPT = [
@@ -88,16 +76,15 @@ const RETIRED_EXEMPT = [
   "docs/internal/",
 ];
 
-// Bounded to `.md` and `.svg` on purpose: those are the two file kinds a spec set
-// holds (spec-figures.md admits no other asset into `figures/`), and a path with
-// no extension names a directory, which is a location, not a link that dangles.
+// Preserve the legacy guard's scope: spec prose and figures, not a general link checker.
 const SPEC_CITATION =
-  /(?<!docs\/)\bspec\/(?:[A-Z]{2,6}-\d+(?:[^\s`"')]*)?|_epics\/[^\s<>`"')]+)\.(?:md|svg)/g;
+  /(?<!docs\/)\bspec\/(?:[A-Z]{2,6}-\d+(?:[^\s`"')]*)?|_(?:epics|projects)\/[^\s<>`"')]+)\.(?:md|svg)/g;
 const CITATION_EXEMPT = [
   "docs/internal/",
   "scripts/validate-spec-folder.mjs",
   "packages/core/test/spec-folder-check.test.ts",
 ];
+const EXTERNAL_URL = /\bhttps?:\/\/[^\s<>"'`)\]]+/g;
 
 function walk(dir, out = []) {
   let entries;
@@ -132,9 +119,8 @@ function checkEphemeralDirsEmpty() {
 }
 
 /**
- * Scan in-memory sources. Exported so the two patterns and both exempt lists can
- * be tested against fixtures — placeholder vs concrete path, issue spec vs epic
- * spec, exempt tree vs scanned tree — without touching the repo's real files.
+ * Scan in-memory sources for obsolete local paths, preserving historical URL
+ * provenance and the narrow exemptions for guard fixtures and internal records.
  *
  * @param {Array<{ path: string, text: string }>} sources — `path` repo-relative.
  */
@@ -145,13 +131,14 @@ export function scanSources(sources) {
     const skipRetired = RETIRED_EXEMPT.some((prefix) => rel.startsWith(prefix));
     const skipCitation = CITATION_EXEMPT.some((prefix) => rel.startsWith(prefix));
     text.split("\n").forEach((line, i) => {
+      const localText = line.replace(EXTERNAL_URL, "");
       if (!skipRetired) {
-        for (const match of line.matchAll(RETIRED_PATH)) {
+        for (const match of localText.matchAll(RETIRED_PATH)) {
           retired.push({ file: rel, line: i + 1, text: match[0] });
         }
       }
       if (!skipCitation) {
-        for (const match of line.matchAll(SPEC_CITATION)) {
+        for (const match of localText.matchAll(SPEC_CITATION)) {
           hits.push({ file: rel, line: i + 1, text: match[0] });
         }
       }
@@ -181,7 +168,7 @@ function main() {
   const { hits: citations, retired } = checkDanglingCitations();
 
   if (stray.length === 0 && citations.length === 0 && retired.length === 0) {
-    console.log("✓ spec/ and spec-poc/ are clear and no spec paths are cited");
+    console.log("✓ legacy spec folders are clear and no dangling legacy spec paths are cited");
     process.exit(0);
   }
 
@@ -189,8 +176,8 @@ function main() {
     console.error(`\n✗ ${retired.length} reference(s) to the retired docs/specs/ tree:\n`);
     for (const hit of retired) console.error(`    ${hit.file}:${hit.line}  →  ${hit.text}`);
     console.error(
-      `\n  That directory no longer exists. Specs live at spec/<ISSUE-ID>/ on their` +
-        `\n  spec branch, and in Linear after it closes. Update the path.\n`,
+      `\n  That directory no longer exists. Retained issue and epic specs live under` +
+        `\n  specs/issues/ and specs/epics/. Cite an existing retained artifact or historical URL.\n`,
     );
   }
 
@@ -200,35 +187,24 @@ function main() {
     );
     for (const name of stray) console.error(`    ${name}`);
     console.error(
-      `\n  A spec and its POC live on the spec PR and in Linear — never on main.` +
-        `\n  CI skips this check on a spec branch (spec/*) or an epic branch (epic/*).` +
-        `\n  Adding the "spec" label will NOT skip it — the exemption is the branch name.` +
-        `\n  Otherwise remove the file; the Linear document is the durable copy.\n`,
+      `\n  Retain issue and epic specs, assets and POCs under specs/issues/ or specs/epics/.` +
+        `\n  Only project specs remain on never-merged project/* branches.` +
+        `\n  CI checks issue/epic PRs and main; only project/* PRs are exempt.\n`,
     );
   }
 
   if (citations.length > 0) {
-    console.error(`\n✗ ${citations.length} reference(s) to a spec by repo path:\n`);
+    console.error(`\n✗ ${citations.length} dangling legacy spec citation(s):\n`);
     for (const hit of citations) console.error(`    ${hit.file}:${hit.line}  →  ${hit.text}`);
     console.error(
-      `\n  Spec files do not exist on main, so these are dangling.` +
-        `\n  State the reason at the call site instead of linking to a document,` +
-        `\n  or move the durable part into docs/architecture/ and cite that.\n`,
+      `\n  These legacy spec files do not exist on main.` +
+        `\n  Cite an existing retained artifact under specs/, use a historical URL,` +
+        `\n  or state the reason at the call site.\n`,
     );
   }
 
   process.exit(1);
 }
-
-/** The scanned surface, exported so a test can assert it still reaches the root docs. */
-export const scanRoots = SCAN_ROOTS;
-export const scanFiles = SCAN_FILES;
-
-/** The never-merged directories, exported so a test can assert both are covered. */
-export const ephemeralDirs = EPHEMERAL_DIRS;
-
-/** The extension filter, exported so a test can assert the module variants are read. */
-export const scanExtensions = SCAN_EXTENSIONS;
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();

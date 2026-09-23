@@ -12,7 +12,7 @@ It's static per `flowKind`. Two sessions on the same flow share the same manifes
 
 - **Capability-aware UIs.** Render a "Create" button only for collections that declare `client.content.create: true`. Hide an editor for resources without `client.content.update`.
 - **DevTools.** Enumerate every public resource the session offers, including collections that have no items yet.
-- **Runtime introspection.** Discover what's available at session bootstrap without reading the flow definition.
+- **Session bootstrap.** Find out what's available when a session starts, without reading the flow definition.
 
 ## When NOT to use it
 
@@ -110,3 +110,7 @@ Returns a `ResourceManifest`. The endpoint requires session existence (404 if un
 ## What's NOT in the manifest
 
 The manifest is intentionally small. It declares capabilities; it doesn't serialize schemas for `clientData` or content bodies. If apps grow a concrete need for typed schema discovery, that addition composes — the manifest shape is forward-compatible.
+
+## Not the same as agent discovery
+
+This manifest is for a client: it is fixed for a flow, describes permissions, and is read by DevTool and React UIs at session bootstrap. An agent asking what it can work with at runtime uses [discovery](../orchestration/discovery.md) instead, which is read at call time and carries purpose rather than permissions.

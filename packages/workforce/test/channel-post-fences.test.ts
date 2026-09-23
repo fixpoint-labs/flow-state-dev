@@ -15,6 +15,7 @@
  * detected.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowDispatcher, StoreRegistry } from "@flow-state-dev/engine";
@@ -73,6 +74,7 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
       flowKind: CHANNEL_KIND,
       flowId: CHANNEL_KIND,
       userId: USER_ID,
+      orgId: DEFAULT_ORG_ID,
       state: { members, instructions: "Charter.", transcript: [] },
       lineageId: `lin_${sessionId}`,
       version: 0,
@@ -111,6 +113,7 @@ function sessionApi(stores: StoreRegistry) {
           flowKind: options.flowKind,
           flowId: options.flowKind,
           userId: options.userId,
+          orgId: DEFAULT_ORG_ID,
           description: options.description,
           state: options.state ?? {},
           lineageId: `lin_${id}`,
@@ -165,6 +168,7 @@ describe("the post path's fences", () => {
       const runtime = await state.getRuntime();
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: channel,
         actionName: "post",
         input: { body: "who is listening?" },
@@ -208,6 +212,7 @@ describe("the post path's fences", () => {
       //    is create-or-get, so the channel's id is now taken by an empty
       //    session that no `CHANNEL.md` ever asked for.
       const premature = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: channel,
         actionName: "post",
         input: { body: "anyone home?" },
@@ -225,6 +230,7 @@ describe("the post path's fences", () => {
       //    `channel-not-bound` forever: every later run 409s too, so there is
       //    no way back through the public API.
       const after = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: channel,
         actionName: "post",
         input: { body: "anyone home?", author: "engineering.lead" },
@@ -259,6 +265,7 @@ describe("the post path's fences", () => {
           flowKind: CHANNEL_KIND,
           flowId: CHANNEL_KIND,
           userId: USER_ID,
+          orgId: DEFAULT_ORG_ID,
           state: { members: [42], instructions: "x" },
           lineageId: "lin_engineering.standup",
           version: 0,
@@ -270,6 +277,7 @@ describe("the post path's fences", () => {
       );
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: channel,
         actionName: "post",
         input: { body: "into a channel that is not one" },
@@ -292,6 +300,7 @@ describe("the post path's fences", () => {
     try {
       const runtime = await state.getRuntime();
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: channel,
         actionName: "read",
         input: {},
@@ -314,6 +323,7 @@ describe("the post path's fences", () => {
       await bind(runtime.stores, "engineering.standup", ["engineering.lead"]);
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: poster,
         actionName: "say",
         input: { channelId: "engineering.standup", body: "from another flow" },
@@ -340,6 +350,7 @@ describe("the post path's fences", () => {
       await bind(runtime.stores, "engineering.standup", ["engineering.lead"]);
 
       const dispatched = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: poster,
         actionName: "say",
         input: { channelId: "engineering.standup", body: "from another flow" },
@@ -355,6 +366,7 @@ describe("the post path's fences", () => {
 
       // The public action door is unaffected: only the dispatch door closes.
       const direct = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: channel,
         actionName: "post",
         input: { body: "a client post" },

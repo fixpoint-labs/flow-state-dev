@@ -28,9 +28,10 @@ import {
 export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex {
   const warnBadCron = createBadCronWarner("[flow-state/store-sqlite]");
   const upsertStmt = db.prepare(
-    `INSERT INTO schedule_index (user_id, key, cron, timezone, next_fire_at)
-     VALUES (@userId, @key, @cron, @timezone, @nextFireAt)
+    `INSERT INTO schedule_index (user_id, key, org_id, cron, timezone, next_fire_at)
+     VALUES (@userId, @key, @orgId, @cron, @timezone, @nextFireAt)
      ON CONFLICT (user_id, key) DO UPDATE SET
+       org_id = excluded.org_id,
        cron = excluded.cron,
        timezone = excluded.timezone,
        next_fire_at = excluded.next_fire_at`
@@ -41,7 +42,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
   );
 
   const selectDueStmt = db.prepare(
-    `SELECT user_id, key, cron, timezone, next_fire_at
+    `SELECT user_id, key, org_id, cron, timezone, next_fire_at
        FROM schedule_index
       WHERE next_fire_at <= ?
       ORDER BY next_fire_at
@@ -62,6 +63,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
     const rows = selectDueStmt.all(now, limit) as Array<{
       user_id: string;
       key: string;
+      org_id: string | null;
       cron: string;
       timezone: string | null;
       next_fire_at: number;
@@ -78,6 +80,9 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
       claimed.push({
         userId: row.user_id,
         key: row.key,
+        // A row written before schedules carried one reads back NULL, which the
+        // resolver quarantines rather than dispatching (BP-030).
+        orgId: row.org_id ?? undefined,
         cron: row.cron,
         timezone,
         nextFireAt: row.next_fire_at
@@ -92,6 +97,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
       upsertStmt.run({
         userId: row.userId,
         key: row.key,
+        orgId: row.orgId ?? null,
         cron: row.cron,
         timezone: row.timezone ?? null,
         nextFireAt: row.nextFireAt

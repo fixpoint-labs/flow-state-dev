@@ -253,7 +253,7 @@ Config options:
 - `stateSchema: ZodTypeAny` — schema for each instance's state
 - `maxInstances?: number` — cap on simultaneous instances (must be >= 1)
 - `eviction?: "none" | "lru" | "oldest"` — what to do when cap is reached (default: `"none"` = throw)
-- `writable?: boolean` — whether blocks can modify instance state (`patchState` / `setState` / `updateState` / `incState` / `pushState` / `upsert` on an existing key) and instance content (`writeContent`). Default `true`. Independent of `llmWritable`. `create` / `getOrCreate` / `delete` are not gated
+- `writable?: boolean` — whether blocks can modify instance state (`patchState` / `setState` / `updateState` / `incState` / `pushState` / `upsert` on an existing key), overwrite an existing instance with `create(..., { replace: true })`, delete an instance (`delete`, including when the key is absent), and write instance content (`writeContent`). Default `true`. Independent of `llmWritable`. `create` and `getOrCreate` of a missing key succeed; `getOrCreate` of an existing key returns the instance and does not write
 - `llmReadable?: boolean` — exposes every instance's content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`). Default `false`
 - `llmWritable?: boolean` — lets `writeResourceContentTool()` overwrite an instance body. Default `false`; independent of `llmReadable` and of `writable`
 - `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
@@ -267,7 +267,7 @@ Runtime `ResourceCollectionRef` methods:
 - `getOptional(key)` — get existing instance or `undefined`
 - `getOrCreate(key, initial?)` — returns existing if present, creates if not
 - `list(prefix?)` — list all instances, optionally filtered by prefix
-- `delete(key)` — delete an instance (no-op if not found)
+- `delete(key)` — delete an instance. No-op if not found on a writable collection. Throws the read-only error when the collection is `writable: false`, including when the key is already absent.
 - `count()` — current instance count
 
 Use in blocks the same way as `defineResource`:

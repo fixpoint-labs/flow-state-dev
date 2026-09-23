@@ -15,6 +15,7 @@
  * apps/kitchen-sink, not against goals/. See goals/README.md → "Harnesses".
  */
 import { runAction } from "@flow-state-dev/engine";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { flowstate } from "./lib/flowstate";
 
 const request = process.env.KS_GOAL_REQUEST;
@@ -34,6 +35,7 @@ async function main(): Promise<void> {
 
   // 1. dispatch → suspends
   const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "requestApproval",
     input: { request },
@@ -63,6 +65,7 @@ async function main(): Promise<void> {
 
   // 3. resume the same request → runs past the gate, completes
   const resumed = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "requestApproval",
     input: { request },

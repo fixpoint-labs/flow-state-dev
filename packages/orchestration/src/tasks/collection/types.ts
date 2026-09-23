@@ -356,9 +356,10 @@ export interface TaskTransitionOptions {
  *
  * Window: `[first claimed event ts, terminal event ts]` for this taskId
  * under this collection. Retries do NOT reset the start; all attempts
- * append to the same window. Bookend `task-change` events and
- * `task-board-meta` items are excluded — they are substrate scaffolding,
- * not worker emissions.
+ * append to the same window. Items the substrate emitted about itself are
+ * excluded — `task-change`, `task-board-meta` and
+ * `task-board-recorder-failure` — because they are the board's events, not
+ * the worker's.
  *
  * Mutators (`claim`, `addTask`, ...) still return raw `Task`. The
  * just-claimed task has no items in its window yet, so a handle would be

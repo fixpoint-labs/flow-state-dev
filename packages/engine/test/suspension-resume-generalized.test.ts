@@ -12,6 +12,7 @@
  *    persisted `resumeSchema` is a 400 with path-keyed errors.
  */
 import { defineFlow, handler, sequencer, SUSPENSION_SKIPPED } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
@@ -441,6 +442,7 @@ describe("resume route — allow enforcement & payload validation", () => {
 /** Shared first-run helper: drive the flow to its first suspension. */
 function runActionFor(flow: FlowInstance, stores: StoreRegistry, provider: DurabilityProvider) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     input: {},

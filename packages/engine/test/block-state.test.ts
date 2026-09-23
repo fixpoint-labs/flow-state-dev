@@ -7,6 +7,7 @@
  * container, when the child declares `parentStateSchema`).
  */
 import { defineCapability, defineFlow, generator, handler, router, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions, GeneratorModelResult } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -53,6 +54,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: "hello",
@@ -78,6 +80,7 @@ describe("FIX-914: block-level state", () => {
       actions: { run: { inputSchema: z.string(), block: plain } }
     })();
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: "x",
@@ -122,6 +125,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 0,
@@ -159,6 +163,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 0,
@@ -209,6 +214,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 0,
@@ -245,6 +251,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: [10, 20, 30],
@@ -298,6 +305,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -344,6 +352,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 1,
@@ -397,6 +406,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 42,
@@ -432,6 +442,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 1,
@@ -486,6 +497,7 @@ describe("FIX-914: block-level state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: 1,
@@ -549,6 +561,7 @@ describe("FIX-914 PR2: capability-contributed own state", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

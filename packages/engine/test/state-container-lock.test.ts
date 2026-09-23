@@ -1,4 +1,5 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { StateContainer } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -420,6 +421,7 @@ describe("scope write-path wiring — createExecutionContext", () => {
     };
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_fanout",
@@ -488,6 +490,7 @@ describe("scope write-path wiring — createExecutionContext", () => {
 
     const requestId = "req_slow_store";
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId,
@@ -550,6 +553,7 @@ describe("scope write-path wiring — createExecutionContext", () => {
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_session_fanout",
@@ -658,6 +662,7 @@ describe("request-scope writes under a recovery continuation", () => {
     // Worker 1: the original run. Deliberately not awaited — it must still be
     // parked (and still holding a live container) when recovery fires.
     const original = runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId,

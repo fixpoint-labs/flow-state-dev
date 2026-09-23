@@ -181,6 +181,65 @@ Stop the cutover, restore the backup, and change nothing when:
 
 None of these is a case for guessing. Leave the original data intact and resolve the attribution first.
 
+## Which organization a record belongs to
+
+Every session and request also records an organization, as `orgId`. It is the boundary the server checks on reads, dispatch and execution. [Authentication](/docs/server/authentication) covers where the value comes from. An app that configures no `resolvePrincipal` runs under one reserved organization, `DEFAULT_ORG_ID`, exported from `@flow-state-dev/core`.
+
+**Records with no organization.** A session or request can carry no `orgId` at all. As with a record that has no owner, a missing field says nothing about which organization it belongs to, so the server does not guess:
+
+- On an addressed route, a resume, a retry or an execution, an **authenticated** caller gets `409 { "error": "migration-required" }`.
+- A caller your resolver could not identify gets the ordinary `401`, exactly as they would for a record that does carry an `orgId`.
+- Ordinary listings omit the record rather than failing the whole listing for one row, whether or not the caller authenticated.
+- Startup and periodic recovery sweeps skip it, and a scheduler will not dispatch it.
+- The record is preserved exactly as it is. Nothing is rewritten, and nothing is backfilled on read.
+
+If your whole history was written by one development deployment, map it to `DEFAULT_ORG_ID`. Make that call from your own records of what ran where.
+
+**Before you start: check the reserved id.** The default organization's id is reserved, so a real organization must not already be using it:
+
+```sql
+SELECT COUNT(*) FROM sessions WHERE org_id = '__fsd_default_org__';
+```
+
+A non-zero count on an installation that has ever authenticated its callers is a stop. Rename that organization, completely and offline, to an id of your own before you go further: its sessions, requests, child sessions, schedule rows, org records, resource addresses and its mapping in your identity provider, preserving versions and deletion markers exactly as the per-adapter recipes above describe. Do not merge it into development data, and do not serve traffic in between. A configured resolver that returns the reserved id is refused at runtime, so leaving the collision in place fails closed rather than quietly sharing a boundary.
+
+**Attributing organizations, once.** The same four steps, in the same order, against `org_id`:
+
+1. **Quiesce.** Stop the writers, and this time stop the schedulers and **drain the external queues** too. A job already enqueued carries the identity it was written with, and a job carrying no organization is refused when its worker picks it up. Let the queues empty rather than leaving work that cannot run. A job you cannot attribute stays stopped, or you retire it explicitly. Back up, and work on the copy.
+2. **Inventory.** `SELECT flow_kind, COUNT(*) FROM sessions WHERE org_id IS NULL GROUP BY flow_kind;` and the same over `requests`. Include child sessions, and include your **dynamic schedule rows**. A schedule stores the organization of the execution that created it, and dispatches from that stored value rather than from whoever's schedule gateway fires it, so an unattributed schedule cannot fire at all. Every row needs a destination organization you can defend from your own records.
+3. **Backfill.** Both places, in one statement, for the reason the owner backfill gives: a column updated on its own reverts the next time the record is written. SQLite:
+
+   ```sql
+   UPDATE sessions
+   SET org_id = 'acme',
+       data = json_set(data, '$.orgId', 'acme')
+   WHERE org_id IS NULL AND <your predicate>;
+   ```
+
+   Postgres:
+
+   ```sql
+   UPDATE sessions
+   SET org_id = 'acme',
+       data = jsonb_set(data, '{orgId}', '"acme"')
+   WHERE org_id IS NULL AND <your predicate>;
+   ```
+
+   Run the same predicate over `requests` and over your schedule rows, so a request never lands in a different organization than its session and a schedule never fires into one.
+
+   Then **rebuild the schedule indexes one organization at a time.** A rebuild writes each schedule again, and a schedule whose stored state names no organization takes the organization doing the rebuild. Rebuild the whole table in one pass and every unattributed schedule silently becomes that organization's. Attribute the schedule state in the backfill above first, then rebuild per organization from the rows that name it.
+
+   A schedule whose stored organization disagrees with the execution writing it is kept out of the index rather than corrected, so it stops firing until it is written from the organization it names. A row sitting in the index with no organization at all is quarantined: it stays in the table and never dispatches.
+
+   The `schedule_index` table carries an `org_id` column, added for you on the next schema init. There is no DDL of your own to write here.
+
+   User-scope storage does not move. A user id is keyed globally, across all organizations.
+4. **Read back.** Re-run the inventory and check the blob agrees with the column, as above with `$.orgId` / `data->>'orgId'`. Every count should be zero, or be a row you deliberately left quarantined. Confirm the reserved-id check is still clean. Then restart the schedulers, bring the writers back, and read a session and an org-scoped resource through each organization before you admit traffic.
+
+Rollback is the backup, and only before the converted store has taken new writes.
+
+**When to stop.** The list under [When to stop](#when-to-stop) applies here unchanged, plus: a record whose organization you cannot defend from your own records stays quarantined. A partially applied mapping is worse than none: it puts one organization's history where another organization can read it.
+
 ## Tenant isolation
 
 If you send a tenant id (the `x-tenant-id` header by default), session storage is namespaced by tenant automatically. Two tenants using the same session id get separate records. The isolation is per scope:
@@ -287,7 +346,7 @@ The filesystem store gives you that among writes through one store instance. Poi
 
 The tradeoff against the metadata approach is that the id becomes part of your data model. Session ids are namespaced per tenant, so two tenants using the same derived id stay separate, and you cannot change an id later without creating a new session.
 
-The trading-desk example uses this pattern end-to-end — see the [walkthrough](/guides/trading-desk-walkthrough#session-lifecycle-and-persistence).
+Trading Desk demonstrates this pattern end-to-end in its [standalone repository](https://github.com/fixpoint-labs/trading-desk).
 
 ## Choosing a store
 
@@ -301,4 +360,4 @@ Pick by where you run — there's no single "recommended stack":
 
 ### Resource vs. app-owned tables
 
-Resources are the right home for agent-facing, streaming, and per-scope state. For a real relational **system of record** — a ledger, normalized domain entities, cross-row integrity — don't force it into resources: give the app its own typed tables and migrations, sharing the same database and pool as the store. The trading-desk example does exactly this.
+Resources are the right home for agent-facing, streaming, and per-scope state. For a real relational **system of record** — a ledger, normalized domain entities, cross-row integrity — don't force it into resources: give the app its own typed tables and migrations, sharing the same database and pool as the store. Trading Desk demonstrates this in its [standalone repository](https://github.com/fixpoint-labs/trading-desk).

@@ -240,6 +240,49 @@ Output is a JSON object with execution results, schema validation status, and ti
 }
 ```
 
+### `fsdev gen` — Register an app's kinds, blocks and resource modules from its files
+
+Walks `workforce/flows/workers/`, `workforce/flows/channels/` and `workforce/blocks/`, and writes
+`workforce/workforce.gen.ts` beside them. The generated module exports `kinds`, `channelKinds` and
+`blocks`: the maps `hireWorkforce`, `channelInstances` and a task board already take. Each discovered
+file registers under its basename.
+
+It also walks every `resources/` folder the workforce convention reads — the organisation's, each
+team's, and each worker's own — and exports a fourth map, `resourceModules`. A `resources/` folder
+takes Markdown documents and TypeScript modules side by side: the `.md` files are documents, and a
+`.ts` file there is a capability or a resource. Each module registers under the same ref a document
+of that name in that folder would get, so a document and a module cannot share one — the command
+refuses the pair by name rather than letting one quietly win.
+
+```bash
+# Write the module from the tree
+fsdev gen
+
+# Fail instead of writing when the committed file is out of date
+fsdev gen --check
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | The workforce directory (default: `workforce`) |
+| `--check` | Compare against the committed file and exit non-zero on a difference |
+
+Loads no app code — not your `fsdev.config.ts`, and not one file it walked. It reads the tree, so the
+names it can refuse are the ones a walker can see: an illegal basename, a directory inside one of the
+three folders, one basename claimed by both flow folders, one ref claimed by both a document and a
+module, and a folder that is present and unreadable. Every refusal is collected, so one run names all
+of them and nothing is written.
+
+What a discovered file *exports* is checked by your own `tsc` against the generated maps, not by the
+command. A module exporting neither a capability nor a resource fails there, naming its file — as
+does a capability written inside a single worker's own `resources/` folder, which is not allowed
+because every seat of a worker kind shares that kind's capabilities.
+
+Commit the generated file and run `fsdev gen` in front of your build. Give `--check` its own CI step:
+inside a build script it would regenerate the file first and always pass.
+
 ### `fsdev benchmark` — Compare coordination patterns
 
 Loads a `defineBenchmark(...)` file, runs each pattern (plus a single-generator baseline) against the same task suite on the same model, and prints a comparative scorecard. One independent variable: the coordination shape. A blinded judge (a distinct model) scores every output against each task's locked rubric.

@@ -12,14 +12,15 @@
  * `unstable_` prefix — they are deliberately not part of the long-term
  * public API surface.
  */
+import { requireAttributedOrg } from "../context/org-attribution";
 import type {
-  ExternalResourceCollectionConfig,
-  ExternalResourceContext,
+  ProjectedResourceCollectionConfig,
+  ProjectedResourceContext,
   JsonObject,
   ResourceCollectionConfig,
   ResourceConfig
 } from "@flow-state-dev/core/types";
-import { isExternalResourceCollection, readExternalRecord } from "@flow-state-dev/core/types";
+import { isProjectedResourceCollection, readProjectedRecord } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import { toBareStates } from "../stores/resource-state-views";
@@ -79,24 +80,33 @@ export { isCollectionConfig } from "./is-collection-config";
 
 // Re-export so older callers keep working.
 export { resourceStorageKeys } from "./storage-keys";
-export { isExternalResourceCollection } from "@flow-state-dev/core/types";
+export { isProjectedResourceCollection } from "@flow-state-dev/core/types";
 
 /**
- * Build the trusted {@link ExternalResourceContext} (FIX-858) for a client-route
- * read of an external collection. Every field is derived from the loaded session
+ * Build the trusted {@link ProjectedResourceContext} (FIX-858) for a client-route
+ * read of a projected collection. Every field is derived from the loaded session
  * record — never from caller input (BP-031): `userId`/`orgId`/`tenantId`/
  * `flowKind` come off the session, and `scopeId` is the resolved
  * sessionId / userId / orgId for the collection's scope (the raw sessionId, not
  * the tenant-namespaced storage key).
  */
-export function buildExternalResourceContextFromSession(
+export function buildProjectedResourceContextFromSession(
   session: { userId: string; orgId?: string; tenantId?: string; flowKind: string },
   scope: ResolvedResourceScope,
   sessionId: string,
   signal?: AbortSignal
-): ExternalResourceContext {
+): ProjectedResourceContext {
+  // An org-scoped read against a session with no organization used to fall back
+  // to the empty string as its scope id — which is a real, writable bucket that
+  // EVERY unattributed session shared, so one org's projected resource content
+  // was visible to the next (FIX-1442). There is no correct id to substitute
+  // here, so there is no fallback: the read is refused. The management routes
+  // refuse such a session before reaching this, and this is the invariant that
+  // keeps a future caller from reintroducing the shared bucket.
+  const orgId =
+    scope === "org" ? requireAttributedOrg(session, "reading an org-scoped resource") : session.orgId;
   const scopeId =
-    scope === "session" ? sessionId : scope === "user" ? session.userId : session.orgId ?? "";
+    scope === "session" ? sessionId : scope === "user" ? session.userId : (orgId as string);
   return {
     scope,
     scopeId,
@@ -109,7 +119,7 @@ export function buildExternalResourceContextFromSession(
 }
 
 /**
- * Resolve one external-collection instance's state through its `read` backing
+ * Resolve one projected-collection instance's state through its `read` backing
  * for a client route, validated through `stateSchema`. Returns `undefined` when
  * the app has no such record (route surfaces 200 + null). `key` is the within-
  * scope row key (bare topic or full storage key — the app resolves it).
@@ -117,14 +127,14 @@ export function buildExternalResourceContextFromSession(
 export async function readExternalCollectionState(
   config: ResourceCollectionConfig,
   key: string,
-  ctx: ExternalResourceContext
+  ctx: ProjectedResourceContext
 ): Promise<JsonObject | undefined> {
-  if (!isExternalResourceCollection(config)) return undefined;
-  // The org-binding trust guard (BP-031) lives in `readExternalRecord`, so every
+  if (!isProjectedResourceCollection(config)) return undefined;
+  // The org-binding trust guard (BP-031) lives in `readProjectedRecord`, so every
   // read path — this route helper, the registry handle, the scope `client.data`
   // handle — gets it without a per-caller check.
-  const record = await readExternalRecord(
-    config as unknown as ExternalResourceCollectionConfig,
+  const record = await readProjectedRecord(
+    config as unknown as ProjectedResourceCollectionConfig,
     key,
     ctx
   );

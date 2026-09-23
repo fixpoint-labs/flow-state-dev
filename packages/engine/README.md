@@ -40,9 +40,29 @@ That's a full API with action execution, session management, SSE streaming with 
 - `getRouter(): Promise<FlowApiRouter>` — resolve the route handlers (first call triggers store init).
 - `ready(): Promise<void>` — eager warmup, idempotent.
 - `dispose(): Promise<void>` — drain in-process background work, close the worker, release pooled resources.
+- `register(flow)` / `unregister(id)` — add or remove one flow after startup.
 - `activeProfile`, `settings`, `meta` — read-only diagnostics.
 
 Construction is synchronous; stores initialize lazily and memoized on the first `getRouter()` / `ready()`. There's no top-level await, so the same instance works in a Next.js Route Handler.
+
+### Registering a flow after startup
+
+`createFlowState({ flows })` takes the flows an app knows about when it starts. To add one later, register it:
+
+```ts
+flowstate.register(seat);      // one instance at a time
+flowstate.unregister(seat.id); // returns false if nothing was registered under that id
+```
+
+Registration runs the same checks construction does: a duplicate id is refused, and so is a flow whose user- or org-scoped schemas conflict with one already registered. A refused registration changes nothing.
+
+`register` takes one flow rather than a list on purpose. Admitting a batch would have to either roll the whole batch back on a refusal or leave the earlier entries admitted, and a caller registering several flows almost always wants to know which one was refused and keep the rest. Loop, and handle each refusal where it happens.
+
+The registry is read once per request, so a flow registered here is served from the next request onward, in this process. A request already running is unaffected either way: it holds the flow instance it resolved, so unregistering does not cancel it, shorten its stream, or discard what it wrote. A request that arrives after an `unregister` gets the same answer it would in a process that never had the flow.
+
+Two things go stale, and both are worth knowing. Anything that reads the flow list and caches it will miss later registrations, so read per request. And an adapter that validates flows when it starts — the webhook adapter checks that every declared provider is configured — has already run, so a flow registered afterwards is not checked until the next start.
+
+`meta.flowKeys` reads the registry, so it lists the ids that are actually being served — including one registered after startup, and not one that has been unregistered.
 
 ### Shutdown
 
@@ -114,7 +134,7 @@ It's a `createFlowState` option, not a handler option, because the router is bui
 
 ### Error capture
 
-`errorCapture` is an opt-in, block-aware sink for routing runtime block failures to an external observability service (Sentry, Datadog, Bugsnag). It's distinct from `onError`, which is an HTTP-level sink. The callback receives a provider-neutral `ErrorCaptureEvent` (the normalized `FlowError` plus the failing block's identity and the flow/request/session/user IDs), fires once per failing block, and is fire-and-forget — a throw or rejection is swallowed and logged, never affecting the request.
+`errorCapture` is an opt-in, block-aware sink for routing runtime block failures to a projected observability service (Sentry, Datadog, Bugsnag). It's distinct from `onError`, which is an HTTP-level sink. The callback receives a provider-neutral `ErrorCaptureEvent` (the normalized `FlowError` plus the failing block's identity and the flow/request/session/user IDs), fires once per failing block, and is fire-and-forget — a throw or rejection is swallowed and logged, never affecting the request.
 
 ```ts
 import * as Sentry from "@sentry/node";
@@ -137,7 +157,7 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 It also forwards `publicReentrySources` — the sources your own inbound transports stamp that `retry` / `continue` / `resume` may re-enter. See [Inbound transports](https://flow-state.dev/docs/advanced/inbound-transports).
 
-`maxChildSessionListLimit` sets the largest `limit` the child-session listing route accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raise it deliberately — each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn.
+`maxChildSessionListLimit` sets the largest `limit` the `/children` listing route accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raise it deliberately — each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn.
 
 ### DevTool connection (dev-only)
 
@@ -360,26 +380,37 @@ const stores = createFilesystemStores({
 });
 ```
 
-## Child sessions of a session
+## Dispatched runs
 
-`GET /api/flows/sessions/:sessionId/children` lists the sessions started under
-one session. Each row carries the child's id, its parent, `topic` and
-`coordinate` labels, timestamps, and a `status` of `active` (not finished) or a
-terminal outcome (`completed`, `failed`, `aborted`, `incomplete`). A child with
-no runs has no `status`. Those seven fields are the whole row — the route sends
-a named field set, not a session record.
+Work a dispatcher starts runs in a session of its own on the same flow.
 
-`topic` and `coordinate` are stamped when the child session is created, from the
-values the child's id was derived from: `topic` is the session key, `coordinate`
-is the entry the dispatch was addressed to (`internal:<action>` or
-`task:<action>`). Both are display only — nothing routes, authorizes or adopts
-on them — and both are optional, so guard with `== null`.
+`GET /api/flows/sessions?include=dispatch-runs` lists a flow's sessions with
+those included. Rows are whole session records, and one a dispatcher started
+carries `parentSessionId` — the session it was started from — beside its `topic`
+and `coordinate` labels. Without the parameter the listing returns the sessions
+a person started; any other value answers `400`. The owner, tenant and
+organization filters apply as they always do.
+
+`GET /api/flows/sessions/:sessionId/children` is the provenance index for one
+session: which runs were started from it. The route is `/children` and one row is
+one dispatch run. Each row carries the run's id, the session it came from,
+`topic` and `coordinate` labels, timestamps, and a `status`
+of `active` (not finished) or a terminal outcome (`completed`, `failed`,
+`aborted`, `incomplete`). A run with no requests has no `status`. Those seven
+fields are the whole row — the route sends a named field set, not a session
+record.
+
+`topic` and `coordinate` are stamped when the run's session is created, from the
+values its id was derived from: `topic` is the session key, `coordinate` is the
+entry the dispatch was addressed to (`internal:<action>` or `task:<action>`).
+Both are display only — nothing routes, authorizes or adopts on them — and both
+are optional, so guard with `== null`.
 
 The route is session-addressed: the parent is loaded and ownership-checked
 before the handler runs, and the answer is scoped to the stored parent's owner,
 tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
 0–10000; anything outside returns `400`. Use each row's `id` with the existing
-`/sessions/:id/requests` endpoint to read that child's history.
+`/sessions/:id/requests` endpoint to read that run's history.
 
 Those runs carry a `metadata.dispatch` bag on the request record: `type` and
 `action` for the entry, `from` naming the block and session that dispatched,
@@ -562,7 +593,7 @@ See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and th
 - `createInProcessDispatcher` — Default dispatcher that calls `runAction` in the current process
 - `StreamBridge` / `StreamPublisher` / `StreamSubscriber` — Bridges live SSE events between a remote worker and the web process. The worker writes events to the bridge; the web process reads them and forwards to SSE
 - `StreamEvent` — Single event published through the bridge, matching the SSE event shape
-- Pass `dispatcher` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through an external queue. Most deployments should prefer the `worker` option — the adapter wires the dispatcher and the worker together; `dispatcher` is the low-level escape hatch (mutually exclusive with `worker`)
+- Pass `dispatcher` to `createFlowState` or `createFlowApiRouter` to route all action dispatches through a projected queue. Most deployments should prefer the `worker` option — the adapter wires the dispatcher and the worker together; `dispatcher` is the low-level escape hatch (mutually exclusive with `worker`)
 
 **Errors:**
 - `FlowError` and canonical subclasses
@@ -861,7 +892,7 @@ createFlowApiRouter({
   // Heartbeat-age threshold the sweeper uses to mark a request `interrupted`.
   // Should be ≥ 2× the executor's registry heartbeat. Default 60_000 ms.
   staleSweepThresholdMs: 60_000,
-  // How long a request queued with an external dispatcher may wait, unclaimed,
+  // How long a request queued with a projected dispatcher may wait, unclaimed,
   // before a sweep treats it as lost. Default 600_000 ms (10 minutes).
   queuedGraceMs: 600_000,
   // Sources from your own inbound transports that `retry` / `continue` /
@@ -887,7 +918,7 @@ Clients consume the wire heartbeat through `useSession`'s watchdog: it surfaces 
 
 ## Debug endpoints
 
-The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/resources` and `/api/flows/sessions/:id/debug/resources/:ref`. Each response carries the full server-side state for the matching storage keys alongside the projected client view, so a debugger can show you exactly what `client.data` is dropping. There are no write paths here; the endpoint cannot mutate state.
+The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/resources` and `/api/flows/sessions/:id/debug/resources/:ref`. Each response carries the full server-side state for the matching storage keys alongside the projected client view, so a debugger can show you exactly what `client.data` is dropping. There are no write paths here; the endpoint cannot mutate state. A response lists one entry per resource. Each entry reports the resource's `writable` and `llmWritable` settings where the config declares them. A setting the config does not declare is left out of the entry rather than reported as `false`. A [projected collection](https://flow-state.dev/docs/resources/projected-collections) has no `writable` field. Its debug entry still reports `writable: false`, unlike a resource that simply omits the setting.
 
 The endpoint is off by default. Opt in with `debugEndpointsEnabled: true` on `createFlowApiRouter`, or set `FSDEV_DEBUG_ENDPOINTS=1` in the environment. By default the route accepts only loopback origins; widen with `debugAllowedOrigins` for non-loopback DevTool hosts.
 

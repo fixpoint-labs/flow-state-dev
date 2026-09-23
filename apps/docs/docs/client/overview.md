@@ -129,24 +129,34 @@ const list = await sessions.listSessions({ flowKind: "my-app" });
 // Each entry includes id, flowId, title, description, tags, createdAt, updatedAt.
 // `flowId` is the instance that owns the session; pass `flowId` instead of
 // `flowKind` to list one copy of a multi-copy flow.
+
+// Sessions dispatchers ran work in come back too when you ask for them.
+const withRuns = await sessions.listSessions({
+  flowKind: "my-app",
+  include: "dispatch-runs",
+});
 ```
+
+A row a dispatcher started carries `parentSessionId`, the conversation it was
+started from, along with its `topic` and `coordinate` labels. Rows belonging to
+another principal, organization or tenant are absent either way.
 
 The typed client includes a session client when created with a flow. Use it for creating sessions, listing requests, and fetching state.
 
-### Child sessions
+### Dispatched runs
 
-Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in a session of its own hanging off the one the user is in, so it never shows up in the parent session's own requests. `listChildSessions` asks a session what ran under it.
+Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in a session of its own — a *dispatch run* — so it never shows up in the requests of the session the user is in. `listSessions` with `include: "dispatch-runs"` finds those runs across the flow; `listChildSessions` asks one session which runs were started from it, returning one `ChildSessionSummary` per run.
 
 [Work that outlives the turn](/guides/background-work) covers where these sessions come from and how they differ from the other things the docs call background work; [Dispatched work](/docs/server/background-work) is the HTTP surface underneath the two calls below.
 
 ```ts
-const children = await sessions.listChildSessions("sess_1");
+const runs = await sessions.listChildSessions("sess_1");
 
-for (const child of children) {
+for (const run of runs) {
   console.log(
-    child.id,
-    child.topic ?? child.id,
-    child.status ?? "not started",
+    run.id,
+    run.topic ?? run.id,
+    run.status ?? "not started",
   );
 }
 ```
@@ -155,47 +165,47 @@ Each row is a `ChildSessionSummary`:
 
 ```ts
 type ChildSessionSummary = {
-  id: string;               // the child's own session id
-  parentSessionId: string;
+  id: string;               // the run's own session id
+  parentSessionId: string;  // the session it was started from
   createdAt: number;
   updatedAt: number;
-  flowId?: string;          // the instance that owns the child; absent on a row that records no owner
+  flowId?: string;          // the instance that owns the run; absent on a row that records no owner
   topic?: string;
   coordinate?: string;
   status?: "active" | "completed" | "failed" | "incomplete" | "aborted";
 };
 ```
 
-That is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it. `flowId` is the address to read the child through when it was dispatched into another instance.
+That is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it. `flowId` is the address to read the run through when it was dispatched into another instance.
 
 Paging is `{ limit, offset }`: `limit` runs 1–100 and defaults to 25, `offset` runs 0–10000.
 
-A child's `id` is a session id, so hand it to any session read to drill in:
+A run's `id` is a session id, so hand it to any session read:
 
 ```ts
-const [child] = await sessions.listChildSessions("sess_1");
+const [run] = await sessions.listChildSessions("sess_1");
 
-if (child) {
-  const requests = await sessions.listSessionRequests(child.id);
+if (run) {
+  const requests = await sessions.listSessionRequests(run.id);
 }
 ```
 
-**What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a child whose worker died, until the server records otherwise. The terminal values are `completed`, `failed`, `aborted`, and `incomplete`.
+**What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a run whose worker died, until the server records otherwise. The [server reference](/docs/server/background-work#what-status-tells-you) covers each terminal value and what a task board does to it.
 
-A child that has never run anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
+A run that has never executed anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
 
-`topic` and `coordinate` are optional too. `topic` is the key the child session was derived from, `coordinate` the entry it was dispatched to. Both are display labels — nothing identifies or authorizes from them. Whether `topic` reads well depends on what the flow keyed on: a document id or an issue key is legible, a task-board seat's composed key is not. The session id is the one field always there, so fall back to it rather than to a made-up name:
+`topic` and `coordinate` are optional too. `topic` is the key the run's session was derived from, `coordinate` the entry it was dispatched to. Both are display labels — nothing identifies or authorizes from them. Whether `topic` reads well depends on what the flow keyed on: a document id or an issue key is legible, a task-board seat's composed key is not. The session id is the one field always there, so fall back to it rather than to a made-up name:
 
 ```tsx
 <li>
-  <span>{child.topic ?? child.id}</span>
-  <span>{child.status == null ? "Not started" : child.status}</span>
+  <span>{run.topic ?? run.id}</span>
+  <span>{run.status == null ? "Not started" : run.status}</span>
 </li>
 ```
 
 **An empty list and an error mean different things.** A session that started nothing resolves to `[]`. A session id that doesn't exist, or one the caller isn't allowed to read, rejects with [`ClientHttpError`](/docs/api/client#clienthttperror). So `[]` means there is none, not that the lookup failed.
 
-**There is no call that starts one.** Whether work runs in a child session is the flow author's decision, declared on the server when the flow is wired up. From the client you read what exists.
+**There is no call that starts one.** Whether work is dispatched at all is the flow author's decision, declared on the server when the flow is wired up. From the client you read what exists.
 
 ## State snapshots and clientData
 

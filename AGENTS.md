@@ -49,9 +49,11 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 - Do not reference wave labels in runtime code or tests.
 - Keep exported API surfaces documented with concise, high-signal comments.
 - Preserve canonical package boundaries (`core`, `engine`, `client`, `react`, `testing`, `fsdev`).
-- **Working memory is session-only — never commit it.** Orchestration state (the epic board, per-issue handle caches, any coordination scratch) lives in the **gitignored `.orchestration/`** directory. Never `git add`, commit, or open a PR for these files — commit only the actual issue work, in the issue's own worktree/branch. A PR whose diff is a board / status / scratch file is a bug; don't open it, and if one exists, close it. The one status that does live on a PR is the epic-spec's own set table and path figure on the never-merged epic PR — that is the spec's index, refreshed by design as its issues move ([`epic-spec-template.md`](docs/contributing/epic-spec-template.md) → "What refreshes, and when"), not the board.
+- **Working memory is session-only — never commit it.** Orchestration state (the epic board, per-issue handle caches, coordination scratch) lives in gitignored `.orchestration/`. Do not open status-only PRs. Retained issue/epic specs are reviewed intent, not live status boards; derive current state from Linear and implementation PRs. See [the canonical retention policy](docs/contributing/orchestration.md#spec-retention-and-authority).
 
-> **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (`spec approved`, `epic approved`), the epic-spec, and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Three rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`); **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds; and **a coordinator dispatches, it never does the work** — including work the user asks it for directly mid-run, which is the case that gets through (a request says *what* should happen, not *who* does it).
+> **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (`spec approved`, `epic approved`), the epic-spec, the **project-spec** (one altitude up: a Linear project's standing set on a never-merged `project/<slug>` PR, with no lifecycle and no gate), and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Three rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`); **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds; and **a coordinator dispatches, it never does the work** — including work the user asks it for directly mid-run, which is the case that gets through (a request says *what* should happen, not *who* does it).
+
+> **Retained specs.** Issue and epic spec PRs merge after human direction approval for the reviewed head and required repository checks; implementation waits for confirmed merge. Their original PRs remain historical, with later amendments in follow-up PRs from `main`. See [Gates](docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge) and [Merging and amending a spec](docs/contributing/orchestration.md#merging-and-amending-a-spec). Project specs keep the separate never-merged lifecycle; this does not authorize implementation PR merges.
 
 ## Asking the user for a decision
 
@@ -69,7 +71,7 @@ We front-load architectural judgment (spec authoring, the coherence / Philosophy
 
 | Tier | Model | Roles |
 |---|---|---|
-| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`) + **alternatives** (`adhd`, both its diverge and focus passes — idea quality is the whole product there, so it is not tiered down), the **challenger**, ambiguous debugging, necessity/refinement calls |
+| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), project-spec authoring (`project-agent`), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`) + **alternatives** (`adhd`, both its diverge and focus passes — idea quality is the whole product there, so it is not tiered down), the **challenger**, ambiguous debugging, necessity/refinement calls |
 | Decided execution | **Sonnet** | implementing a task from an approved spec (`spec-implementer`), the **completeness** + **correctness** review lenses, straightforward PR-feedback fixes, tests for a named behaviour, settling one already-framed factual claim with a throwaway POC (`poc-agent`) |
 | Mechanical | **Haiku** | read-only orientation (`scout` / `zoom-out`), status/handle fetches (coordinator & lifecycle refreshes), simple lookups, boilerplate/formatting |
 
@@ -141,7 +143,7 @@ pnpm fsdev run hello-chat chat -i '{"message":"hi"}' --quiet
   pnpm fsdev run ... 2>/dev/null | jq -r 'select(.type=="content_delta") | .delta' | tr -d '\n'
   ```
 
-**When the result lives in a resource, not the stream.** `fsdev run`'s NDJSON records items and events, not resource VALUES (only change notifications). When an app's outcome is a stored resource — e.g. the trading-desk's decision-of-record, which also lives in a PGlite store rather than a readable file — a single `fsdev run` shows you the stream but not the decision. Pair it with a zero-model **read action** that projects the resource back out, captured to a file: `fsdev run <flow> analyze --capture … --quiet` then `fsdev run <flow> <readAction> --capture … --quiet`, then read the second capture's `result.output`. The trading-desk's headless verification is the worked example — reach for the **`verify-trading-desk`** skill, which encodes the two-step, the record→replay cost ladder, and the result-field reference.
+**When the result lives in a resource, not the stream.** `fsdev run`'s NDJSON records items and events, not resource VALUES (only change notifications). When an app's outcome lives in a stored resource rather than the stream, pair `fsdev run` with a zero-model **read action** that projects the resource back out, captured to a file: run the action, then the read action, then inspect the second capture's `result.output`.
 
 **When something breaks**, switch into the `debug-flow` skill — it has the failure-pattern matrix and the `fsdev block` isolation workflow. This section is for confirming a change works; `debug-flow` is for diagnosing why one doesn't.
 
@@ -240,3 +242,45 @@ This is a pnpm monorepo (pnpm@10.4.1, Node 22). No Docker, databases, or externa
 **Running reference/example apps** (`apps/kitchen-sink`, `examples/hello-chat`) requires a provider key for the model the flow uses. `hello-chat` is wired to `openai/gpt-5-mini`, so `pnpm fsdev run hello-chat chat -i '{"message":"hi"}'` needs `OPENAI_API_KEY` (or an `AI_GATEWAY_API_KEY` that resolves OpenAI). There is no mock fallback in `createModelResolver` — without a configured provider, generator blocks fail with `No provider available for "<provider>"`. For provider-free smoke tests, use `pnpm test` (mocks every generator) or write a flow that uses no generator blocks and run it through `fsdev run`.
 
 **Docs site**: `cd apps/docs && npx docusaurus start --port 3000` (do not use `pnpm docs:dev` with extra `--` flags — argument forwarding breaks).
+
+<!-- graft:start -->
+## Graft — repo context graph
+
+This repo is indexed in `graft/`: small linked markdown nodes that explain each
+system and carry exact file:line spans, kept in sync with the code through git.
+
+For ANY task here — understanding how something works, finding where code lives,
+or scoping a change — get context from the graph before grepping or opening
+source files. Re-ask freely (it's cheap) and reuse literal identifiers you
+already have (symbol, error string, file name) as the query. New to this repo?
+Run `graft map` first — a token-budgeted orientation (dir clusters, hubs,
+hotspots), no LLM, no key.
+
+- Run `graft ask "<your question>" --source` → ranked nodes with the relevant
+  code spans inlined (each hit's ≤8-line crux by default; `--full` for whole
+  definitions when the crux isn't enough). Match the tool to the task shape:
+  for understanding or editing, the top node IS the answer — cite its
+  `covers:` file:line spans and edit straight from `--source`. For
+  exhaustive tasks ("every occurrence / every caller of this pattern"), ranked
+  results are top-N, not complete — run `graft grep "<literal>"` instead
+  (exhaustive over indexed files, grouped by enclosing symbol), falling back
+  to raw `grep -rn` only for unindexed files.
+- `graft skeleton <file>` → every definition's signature + span, ~10× cheaper
+  than reading the file; use it to skim an API surface.
+- `graft callers <symbol>` gives precomputed, exact edges — who calls this.
+  Add `--direction out` for what it calls, or `--depth N` to walk
+  transitively for the full blast radius. For structural questions, skip
+  ranking and use this directly.
+- Or browse: `graft/INDEX.md` lists every node; follow the links.
+- Monorepos and folders of multiple repos rank fairly across sub-projects —
+  hits carry `[scope/]` labels naming which one they're from. Narrow with
+  `graft ask "<task>" --in <scope>/` once you know where you're working.
+
+If a returned span is truncated ("+N more lines"), open the file at that exact
+range before finalizing. Only open source files when a node genuinely lacks a
+needed detail, and then at the exact file:line the node points to — never
+re-read whole files.
+
+After big code changes, refresh the graph with `graft build` (deterministic,
+no API key, $0).
+<!-- graft:end -->

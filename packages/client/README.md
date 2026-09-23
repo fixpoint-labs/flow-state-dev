@@ -109,45 +109,83 @@ const requests = await sessions.listSessionRequests("sess_1", {
 });
 ```
 
-### Child sessions
+### Listing one flow's sessions
 
-`listChildSessions` lists the sessions started under a session. Work that outlives
-the turn that started it runs in a session of its own hanging off the parent, so it
-never appears in the parent's requests.
+Where a flow's sessions are filed depends on how the flow was declared, so `sessionQueryFor` reads the flow list and builds the right filter:
+
+```ts
+import { createClient, sessionQueryFor } from "@flow-state-dev/client";
+
+const userId = "user_42";
+const flows = await createClient({ flowKind: "chat", userId, baseUrl: "/api" }).listFlows();
+
+// `sessions` is the session client created above.
+const rows = await sessions.listSessions({
+  ...sessionQueryFor("engineer-a", flows),
+  userId,
+});
+```
+
+A `cardinality: "collection"` flow has many addressable copies, so a copy's sessions are filed under its exact id. A `cardinality: "singleton"` flow is one instance whose address is its kind, so its sessions are filed under the kind. An address the flow list does not carry reads as a singleton.
+
+You get back exactly one key: `{ flowId: address }` for a copy of a collection flow, `{ flowKind: address }` otherwise. Spread it into `listSessions` alongside whatever else you are filtering by.
+
+### Dispatched runs
+
+Work that outlives the turn that started it runs in a session of its own, so it
+never appears in the requests of the session that started it.
+
+`listSessions` with `include: "dispatch-runs"` returns those sessions beside the
+flow's conversations:
+
+```ts
+const rows = await sessions.listSessions({
+  flowKind: "research",
+  include: "dispatch-runs",
+});
+
+// A row a dispatcher started names the session it was started from.
+const runs = rows.filter((row) => row.parentSessionId != null);
+```
+
+Leave the option off and you get the sessions a person started. Rows belonging to
+another principal, organization or tenant are absent either way.
+
+`listChildSessions` asks one session which dispatch runs were started from it.
 
 ```ts
 // Paging only: `limit` is 1–100 (25 by default), `offset` is 0–10000.
-const children = await sessions.listChildSessions("sess_1", { limit: 25 });
+const started = await sessions.listChildSessions("sess_1", { limit: 25 });
 
-for (const child of children) {
+for (const run of started) {
   // A row's `id` is a session id, so the reads you already use work on it.
-  const requests = await sessions.listSessionRequests(child.id);
+  const requests = await sessions.listSessionRequests(run.id);
 }
 ```
 
 Each row is a `ChildSessionSummary`: `id`, `parentSessionId`, `createdAt`,
 `updatedAt`, and the optional `flowId`, `topic`, `coordinate`, and `status`. That is
 the whole row — the server sends this named field set rather than a session record.
-`flowId` is the instance that owns the child, the address to read it through when it
-was dispatched into another instance; absent on a child written before owners were
-recorded. `topic`
-is the key the child was derived from and `coordinate` the entry it was dispatched
-to; both are display labels, nothing identifies or authorizes from them, and a row
-can arrive without either. How legible `topic` is depends on what the flow keyed on,
-so fall back to `id` rather than to a made-up name. Guard all three with `== null`.
+`flowId` is the instance that owns the run, the address to read it through when it
+was dispatched into another instance. Absent on a row that records no owner.
+`topic` is the key the run's session was derived from and `coordinate` the entry
+it was dispatched to; both are display labels, nothing identifies or authorizes
+from them, and a row can arrive without either. How legible `topic` is depends on
+what the flow keyed on, so fall back to `id` rather than to a made-up name. Guard
+all three with `== null`.
 
 `status` is the last state the server recorded for the work, not a check on what is
 happening right now. `"active"` asserts only that the work hasn't finished: queued,
 mid-run, and paused waiting for a person all read `"active"`, and so does work whose
 worker died, until the server records otherwise. The terminal values are
-`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A child that has never
-run anything carries no `status` at all. Don't fold that absence into one of the five
+`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A run that has never
+executed anything carries no `status` at all. Don't fold that absence into one of the five
 values. Your own label for it, like `"Not started"`, is fine; mapping it to
 `"active"` claims work is under way before it started.
 
 A session that started nothing resolves to `[]`; an unknown session, or one the
 caller isn't allowed to read, rejects with `ClientHttpError`. There is no counterpart
-that starts one: whether work runs in a child session is declared on the server when
+that starts one: whether work is dispatched at all is declared on the server when
 the flow is wired up.
 
 ## `createClient` vs `createTypedClient`
@@ -244,6 +282,7 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 - `createRecoveryClient(options)` — Sweep stale requests and retry interrupted/failed ones
 - `createResourceClient(options)` — Resource content fetch, CRUD, paginated state reads, and manifest
 - `client.abortRequest(requestId)` — Signal the server to abort an in-progress request
+- `sessionQueryFor(address, flows)` — Build the `listSessions` filter (`flowId` or `flowKind`) for one flow address
 - `ClientHttpError` — Typed HTTP error class
 
 ### Resource client methods (collections)

@@ -1,4 +1,5 @@
 import type { StateRef } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
@@ -140,7 +141,6 @@ function createTestFlow(options: {
     kind: "testing-flow",
     cardinality: "singleton",
     requireUser: true,
-    requiresOrg: false,
     // Frozen, like a minted instance's: production promises a block reads a
     // value here, never `undefined`, and a harness that disagreed with the
     // runtime it stands in for would hide exactly that.
@@ -440,7 +440,11 @@ export async function createTestContext<TInput = unknown>(
   const requestId = options.requestId ?? generateId("test_req");
   const sessionId = options.sessionId ?? generateId("test_session");
   const userId = options.userId ?? "test-user";
-  const orgId = options.orgId;
+  // A harness is a trusted caller, so it names the organization rather than
+  // running without one (FIX-1442). Unless a test is exercising the
+  // organization boundary itself, that is the development default — the same
+  // identity an app with no configured resolver runs under.
+  const orgId = options.orgId ?? DEFAULT_ORG_ID;
 
   const stores = createInMemoryStores();
   const response = createResponseEmitter({ requestId });

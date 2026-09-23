@@ -31,6 +31,8 @@ type Occupant = {
   flowKind: string;
   flowId?: string;
   userId: string;
+  /** What the session was opened under; absent is a session bound to no org. */
+  orgId?: string;
   state: Record<string, unknown>;
 };
 
@@ -210,6 +212,7 @@ describe("openChannels", () => {
         flowKind: String(options.flowKind),
         flowId: String(options.flowKind),
         userId: String(options.userId),
+        ...(options.orgId === undefined ? {} : { orgId: String(options.orgId) }),
         state: (options.state ?? {}) as Record<string, unknown>
       });
       created.push(options);
@@ -285,6 +288,20 @@ describe("openChannels", () => {
         transcript: []
       }
     });
+  });
+
+  it("sends no org key at all — the organization is the server's to decide", async () => {
+    // The binder used to take an `orgId` and hand it to `createSession`, which
+    // is browser-side organization selection wearing a server-side coat: the
+    // value came from whoever called `openChannels`. FIX-1442 removes it. What
+    // the channel is opened under is now decided where every other identity
+    // is — at principal resolution — and `channel-org-identity.test.ts` drives
+    // the real route to show the session still comes out bound to one.
+    const { client, created } = sessionClient();
+
+    await openChannels([record("engineering.standup")], { client, userId: OWNER });
+
+    expect(created[0]).not.toHaveProperty("orgId");
   });
 
   it("opens a custom kind's channel on that kind's own instance", async () => {
@@ -369,6 +386,42 @@ describe("openChannels", () => {
     // The whole point: the other flow's session is still there.
     expect(deleted).toEqual([]);
     expect(stateOf("engineering.standup")).toEqual({ thread: ["a customer's message"] });
+  });
+
+  /**
+   * The upgrade case, and the reason the org is not just left behind quietly.
+   *
+   * An app that hits the org gap already has its channels open, bound to no
+   * org. Passing an `orgId` afterwards cannot move them — a session's org is
+   * fixed at creation — so reporting success here would send the app away
+   * believing it had fixed the thing it just upgraded to fix, to find out at
+   * its first post when the delivery is refused for crossing an org boundary.
+   */
+
+
+  it("stays a no-op when the open channel is already in the org asked for", async () => {
+    const { client, created, deleted } = sessionClient();
+    const roster = [record("engineering.standup", { members: ["a"] })];
+
+    await openChannels(roster, { client, userId: OWNER, orgId: "org_acme" });
+    await openChannels(roster, { client, userId: OWNER, orgId: "org_acme" });
+
+    expect(created).toHaveLength(1);
+    expect(deleted).toEqual([]);
+  });
+
+  // A run that names no org states no opinion about one, so it is not the
+  // mismatch above: this is the ordinary idempotent re-run, from a caller that
+  // simply does not pass the option.
+  it("leaves an org-bound channel alone for a run that asks for no org", async () => {
+    const { client, created, deleted } = sessionClient();
+    const roster = [record("engineering.standup", { members: ["a"] })];
+
+    await openChannels(roster, { client, userId: OWNER, orgId: "org_acme" });
+    await openChannels(roster, { client, userId: OWNER });
+
+    expect(created).toHaveLength(1);
+    expect(deleted).toEqual([]);
   });
 
   it("refuses an id held by another principal's session instead of deleting it", async () => {

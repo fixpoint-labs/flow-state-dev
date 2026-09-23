@@ -11,10 +11,16 @@
  * `<TaskPlan />` renderer is what apps embed in their chat UI; this panel is
  * for debugging the substrate itself.
  *
- * A task whose seat hands its rows off to a `task` entry is run by a ChildSession
+ * A task whose seat hands its rows off to a `task` entry is run by a dispatch run
  * rather than by the request you are looking at, so its row carries a link into that
- * ChildSession (FIX-1071). The link is derived, absent for most tasks, and never
- * something the row is gated on — see `lib/child-session-links`.
+ * dispatch run (FIX-1071). The link is derived, absent for most tasks, and never
+ * something the row is gated on — see `lib/dispatch-run-links`.
+ *
+ * A task also carries a short note about itself on `feedback`, and the Reason
+ * column renders it so a parked row says why without the expander (FIX-1481).
+ * The column is keyed on the field being present, never on the `parked`
+ * status, and the note is rendered exactly as stored — see `showReason` in
+ * `CollectionCard` for why both of those are load-bearing.
  */
 import { useMemo } from "react";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
@@ -27,11 +33,11 @@ import {
   type TaskStreamItem,
 } from "../../lib/task-collection-state";
 import {
-  decodeChildSessionEntry,
-  linkChildSessionsToTasks,
+  decodeDispatchRunEntry,
+  linkDispatchRunsToTasks,
   taskLinkKey,
-} from "../../lib/child-session-links";
-import type { Truncation } from "../../hooks/use-child-sessions";
+} from "../../lib/dispatch-run-links";
+import type { Truncation } from "../../hooks/use-dispatch-runs";
 import { EmptyState } from "../shared/empty-state";
 import { Badge } from "../ui/badge";
 import { JsonViewer } from "../shared/json-viewer";
@@ -46,21 +52,21 @@ type Props = {
    * The open session's background work, so a task run by one can say so.
    * Omitted (or empty) leaves every row exactly as it was.
    */
-  childSessions?: readonly ChildSessionSummary[];
+  dispatchRuns?: readonly ChildSessionSummary[];
   /**
-   * What is known about child sessions beyond the page that was read. An
+   * What is known about dispatch runs beyond the page that was read. An
    * unmatched task is only definitely unmatched when this is `complete`.
    */
   truncation: Truncation;
-  /** Open the ChildSession running a task. */
-  onOpenChildSession: (childSession: ChildSessionSummary) => void;
+  /** Open the dispatch run running a task. */
+  onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
 };
 
-export function TaskCollectionsView({ items, childSessions, truncation, onOpenChildSession }: Props) {
+export function TaskCollectionsView({ items, dispatchRuns, truncation, onOpenDispatchRun }: Props) {
   const collections = useMemo(() => groupCollections(items), [items]);
   const byTask = useMemo(
-    () => linkChildSessionsToTasks(childSessions ?? [], collections).byTask,
-    [childSessions, collections]
+    () => linkDispatchRunsToTasks(dispatchRuns ?? [], collections).byTask,
+    [dispatchRuns, collections]
   );
 
   if (collections.length === 0) {
@@ -80,7 +86,7 @@ export function TaskCollectionsView({ items, childSessions, truncation, onOpenCh
           collection={collection}
           byTask={byTask}
           truncation={truncation}
-          onOpenChildSession={onOpenChildSession}
+          onOpenDispatchRun={onOpenDispatchRun}
         />
       ))}
     </div>
@@ -91,15 +97,30 @@ function CollectionCard({
   collection,
   byTask,
   truncation,
-  onOpenChildSession,
+  onOpenDispatchRun,
 }: {
   collection: CollectionView;
   byTask: ReadonlyMap<string, ChildSessionSummary>;
   truncation: Truncation;
-  onOpenChildSession: (childSession: ChildSessionSummary) => void;
+  onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
 }) {
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
+  // THE PREDICATE IS THE PRESENCE OF THE FIELD, and status is out of it
+  // entirely. Three verbs write `feedback` — parking for review, a failed
+  // attempt heading for a retry, and resuming — and the retry one leaves it on
+  // a row that has gone back to `pending`, so keying this on `parked` would
+  // suppress a true explanation of what the reader is looking at.
+  //
+  // Presence, not truthiness: a stored empty or whitespace note is a note
+  // something wrote, and this panel reports what is stored rather than
+  // deciding which stored values are worth a reader's attention.
+  //
+  // Per board, so a board where nothing carries a note reads exactly as it did
+  // before — no empty column apologising for itself.
+  const showReason = collection.tasks.some(
+    (entry) => entry.task.feedback !== undefined
+  );
 
   return (
     <div className="rounded-md border border-slate-800 bg-slate-900/40">
@@ -134,8 +155,9 @@ function CollectionCard({
               <th className="px-3 py-1.5 font-medium">Id</th>
               <th className="py-1.5 font-medium">Goal</th>
               <th className="py-1.5 font-medium">Status</th>
+              {showReason && <th className="py-1.5 font-medium">Reason</th>}
               <th className="py-1.5 font-medium">Assignee</th>
-              <th className="py-1.5 font-medium">ChildSession</th>
+              <th className="py-1.5 font-medium">Dispatch run</th>
               <th className="py-1.5 font-medium">Latest kind</th>
               <th className="px-3 py-1.5 font-medium text-right">Details</th>
             </tr>
@@ -145,9 +167,10 @@ function CollectionCard({
               <TaskRow
                 key={entry.task.id}
                 entry={entry}
-                childSession={byTask.get(taskLinkKey(collection.id, entry.task.id))}
+                showReason={showReason}
+                dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
                 truncation={truncation}
-                onOpenChildSession={onOpenChildSession}
+                onOpenDispatchRun={onOpenDispatchRun}
               />
             ))}
           </tbody>
@@ -159,14 +182,17 @@ function CollectionCard({
 
 function TaskRow({
   entry,
-  childSession,
+  showReason,
+  dispatchRun,
   truncation,
-  onOpenChildSession,
+  onOpenDispatchRun,
 }: {
   entry: ResolvedTask;
-  childSession?: ChildSessionSummary;
+  /** Decided by the board, so every row in one table has the same columns. */
+  showReason: boolean;
+  dispatchRun?: ChildSessionSummary;
   truncation: Truncation;
-  onOpenChildSession: (childSession: ChildSessionSummary) => void;
+  onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
 }) {
   const { task } = entry;
   return (
@@ -180,12 +206,27 @@ function TaskRow({
       <td className="py-1.5 pr-2">
         <StatusPill status={task.status} />
       </td>
+      {showReason && (
+        // Rendered exactly as the row carries it — not trimmed, not
+        // normalized. This panel's job is to report what is stored, and a
+        // stored note of spaces is a fact about the row worth seeing.
+        //
+        // Clamped like the Goal cell beside it, because a note can be an
+        // unbroken stack trace and the table has to stay a table. The whole
+        // string is on the title, and the expander below is still complete.
+        <td
+          className="max-w-[18rem] truncate py-1.5 pr-2 text-slate-300"
+          title={task.feedback}
+        >
+          {task.feedback ?? <span className="text-slate-600">—</span>}
+        </td>
+      )}
       <td className="py-1.5 pr-2 text-slate-400">{task.assignee ?? "—"}</td>
       <td className="py-1.5 pr-2">
-        <ChildSessionLink
-          childSession={childSession}
+        <DispatchRunLink
+          dispatchRun={dispatchRun}
           truncation={truncation}
-          onOpen={onOpenChildSession}
+          onOpen={onOpenDispatchRun}
         />
       </td>
       <td className="py-1.5 pr-2 text-slate-400">
@@ -219,23 +260,23 @@ function TaskRow({
 }
 
 /**
- * The ChildSession running this task, if one is.
+ * The dispatch run running this task, if one is.
  *
  * Renders `—` rather than nothing when there is none, which is the majority
  * case: an inline worker runs inside the request you are already looking at, so
- * "no ChildSession" is the normal answer and not a gap in the data.
+ * "no dispatch run" is the normal answer and not a gap in the data.
  */
-function ChildSessionLink({
-  childSession,
+function DispatchRunLink({
+  dispatchRun,
   truncation,
   onOpen,
 }: {
-  childSession?: ChildSessionSummary;
+  dispatchRun?: ChildSessionSummary;
   truncation: Truncation;
-  onOpen: (childSession: ChildSessionSummary) => void;
+  onOpen: (dispatchRun: ChildSessionSummary) => void;
 }) {
-  if (childSession === undefined) {
-    // "No ChildSession" is only a fact when the whole listing was read. Past that
+  if (dispatchRun === undefined) {
+    // "No dispatch run" is only a fact when the whole listing was read. Past that
     // page, or when the check for more failed, the honest statement is "none
     // among the ones I have" — and a bare dash makes the stronger claim.
     //
@@ -247,7 +288,7 @@ function ChildSessionLink({
       return (
         <span
           className="text-amber-500/70"
-          title="No childSession among those listed. This session has more background work than the panel reads, so an older one may be running this task."
+          title="No dispatch run among those listed. This session has more background work than the panel reads, so an older one may be running this task."
         >
           —?
         </span>
@@ -257,7 +298,7 @@ function ChildSessionLink({
       return (
         <span
           className="text-amber-500/70"
-          title="No childSession among those listed, and checking whether there are more didn't come back — so one may be missing from the list."
+          title="No dispatch run among those listed, and checking whether there are more didn't come back — so one may be missing from the list."
         >
           —?
         </span>
@@ -266,13 +307,13 @@ function ChildSessionLink({
     return <span className="text-slate-600">—</span>;
   }
 
-  // The entry the child runs (`implement`, from a `task:implement` coordinate).
-  // A linked child's key names this very row or its seat, so repeating it here
+  // The entry the run runs (`implement`, from a `task:implement` coordinate).
+  // A linked run's key names this very row or its seat, so repeating it here
   // says nothing the row does not; the entry is the part that is new. The id
   // stands in when no entry was stamped.
-  const label = decodeChildSessionEntry(childSession.coordinate)?.action ?? childSession.id;
-  // A match is page-local. `linkChildSessionsToTasks` establishes that the
-  // pairing is unambiguous IN THE LOADED PAGE; an older unlisted ChildSession
+  const label = decodeDispatchRunEntry(dispatchRun.coordinate)?.action ?? dispatchRun.id;
+  // A match is page-local. `linkDispatchRunsToTasks` establishes that the
+  // pairing is unambiguous IN THE LOADED PAGE; an older unlisted dispatch run
   // whose key names the same task id or seat would fit too, and it would belong
   // to a different board — the FIX-1088 class, where task events carry no board
   // identity to settle it.
@@ -285,11 +326,11 @@ function ChildSessionLink({
   return (
     <button
       type="button"
-      onClick={() => onOpen(childSession)}
+      onClick={() => onOpen(dispatchRun)}
       title={
         unverified
-          ? `Open childSession ${childSession.id}. Matched against the childSessions listed; others were not read, so this may not be the one running the task.`
-          : `Open childSession ${childSession.id}`
+          ? `Open dispatch run ${dispatchRun.id}. Matched against the dispatch runs listed; others were not read, so this may not be the one running the task.`
+          : `Open dispatch run ${dispatchRun.id}`
       }
       className={`inline-flex items-center gap-1 rounded border bg-slate-900/60 px-1.5 py-0.5 text-[10px] hover:bg-slate-800 ${
         unverified

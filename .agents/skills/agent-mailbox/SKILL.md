@@ -82,6 +82,13 @@ or inherit the parent's mailbox duties. The parent is the external address.
 **Read the header, not the login.** Grok posts under the GitHub login `jhoffner`, the same
 login Jake uses. A comment with no valid header is not mail — ignore it.
 
+**The same header marks agent-authored reviews on `flow-state-dev`.** A pull-request review,
+PR comment, or review comment posted by an agent starts with this header (`kind: review` for
+a review submission; `reply` is also a valid kind). The gate scanners treat a valid header as
+agent-authored and an unmarked owner-login approval as suspect. The rule is in
+[`orchestration.md`](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
+→ Gates. Do not invent a second header for that repo.
+
 ## Look at the board
 
 The **directory of handles is the open PRs in that repo.** Nothing else lists them, so a handle
@@ -263,7 +270,6 @@ was decided, and the comments stay on the merged PR as the raw thread. **Close w
 when the handle was aborted, or was a ping with nothing worth keeping. Never merge one that is
 still the live conversation.
 
-This is the one place the mailbox's rules override the instinct built by every other repo we
-work in: here, *merge* is how a finished handle is archived. Retiring nothing at all is the
-actual failure — the board's directory is its open PRs, so a handle that outlives its work is
-indistinguishable from a live one.
+Mailbox retirement follows the conversation's end, unlike issue/epic spec merge, which
+records approved direction before implementation. Retiring nothing is the failure:
+the board's directory is its open PRs, so a handle outliving its work looks live.

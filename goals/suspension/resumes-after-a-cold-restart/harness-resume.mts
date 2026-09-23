@@ -17,6 +17,7 @@ import {
   runAction,
 } from "@flow-state-dev/engine";
 import flow from "./flows/chat-agent/flow";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 
 const out = (r: unknown) => console.log("__GOAL__" + JSON.stringify(r));
 const stores = createFilesystemStores({
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
   }
 
   const resumed = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "requestApproval",
     input: { request: process.env.KS_GOAL_REQUEST },

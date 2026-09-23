@@ -80,7 +80,6 @@ export type ExecuteActionRequestBody = {
   userId: string;
   sessionId?: string;
   requestId?: string;
-  orgId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -144,13 +143,36 @@ export type SessionSummary = {
   metadata?: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
+  /**
+   * The session a dispatcher was running in when it started this one — the
+   * provenance edge, and the only thing that makes this row a dispatch run
+   * rather than a conversation someone opened.
+   *
+   * Only ever populated when the listing was asked for dispatch runs
+   * (`include: "dispatch-runs"`); without that the listing returns top-level
+   * sessions only, and every row's is absent. A store that nulls absent keys
+   * hands back `null`, so guard with `== null` rather than a truthiness check.
+   */
+  parentSessionId?: string;
+  /**
+   * The key the dispatcher derived this run's session id from. Display only:
+   * it names the body of work, never who may read it.
+   */
+  topic?: string;
+  /** The entry the run was dispatched for, as `<type>:<target>`. Display only. */
+  coordinate?: string;
 };
 
 /**
  * Session detail shape returned from session read/create endpoints.
  */
 export type SessionDetail = SessionSummary & {
-  orgId?: string;
+  /**
+   * The organization this session is bound to. Always present on a session the
+   * server admitted (FIX-1442) — the server decides it from the verified
+   * principal, and a client never sends one.
+   */
+  orgId: string;
   state?: Record<string, unknown>;
   version?: number;
   latestRequestId?: string;
@@ -222,6 +244,7 @@ export type SessionRequestSummary = {
   actionName: string;
   userId: string;
   sessionId?: string;
+  /** The organization the request ran in. Absent only on a legacy record. */
   orgId?: string;
   /**
    * Inbound transport provenance — see server `RequestRecord.source`.
@@ -306,7 +329,7 @@ export type CollectionSnapshotEntry = {
  * One page of collection state returned by `GET /sessions/:id/resources/:ref`.
  * Cursor-paged: `nextCursor` is an opaque token present only when more rows
  * remain (its absence means the last page). Pass it back as `cursor` to fetch
- * the next page. Store-backed collections page by keyset; external collections
+ * the next page. Store-backed collections page by keyset; projected collections
  * (FIX-858) return the app store's own cursor.
  */
 export type CollectionListPage = {
@@ -430,7 +453,6 @@ export type FlowLike = {
 export type SendActionOptions = {
   sessionId?: string;
   requestId?: string;
-  orgId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -580,6 +602,25 @@ export type DebugResourceEntry = {
   itemCountTruncated?: boolean;
   storagePrefix?: string;
   clientConfig: DebugResourceClientConfig;
+  /**
+   * Whether the store will accept a write to this resource's state or content.
+   * **Absent when nothing makes it unwritable, and absent means writable** —
+   * the framework's default. A server that predates this sends neither this
+   * nor `llmWritable`, so treat absence as "not reported" rather than as
+   * `false`.
+   *
+   * **`false` is narrower than "immutable".** It refuses state and content
+   * writes through this definition. A collection still permits `create` and
+   * `delete`, and another flow holding its own definition of a shared org or
+   * user resource can still write the same underlying cell.
+   */
+  writable?: boolean;
+  /**
+   * Whether a model is offered a write tool for the resource. A different
+   * question from `writable`, and **opt-in** — most mutable resources leave it
+   * unset — so it never stands in for it. Absent when undeclared.
+   */
+  llmWritable?: boolean;
 };
 
 export type DebugResourcesResponse = {

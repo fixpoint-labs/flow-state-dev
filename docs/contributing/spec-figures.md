@@ -30,9 +30,18 @@ the **position** of an element means. If the thing is a graph, mermaid wins on e
 | Issue | **A rule's picture** — a fence with the paths that cross it | SVG, with a mermaid companion listing the same paths by name | `BUSINESS-RULES.md` | No |
 | Issue | **The build DAG** — surfaces in build order | mermaid `flowchart TD` | `PLAN.md` | No |
 | Epic | **What's in the box** — in the box · composed in by the app · replaced in one line · not built | SVG (containment and a fence) | `SPEC.md` | **Yes** |
-| Epic | **How the issues flow into each other** — the dependency graph, with what each hands the next | mermaid `flowchart LR`, edited in place as issues are filed and finish | `SPEC.md` beside the set table | No (linked) |
+| Epic | **How the issues flow into each other** — the dependency graph, with what each hands the next | mermaid `flowchart LR`, amended when scope or dependencies change | `SPEC.md` beside the dated set table | No (linked) |
 | Epic | **Who owns what** — rule × issue, each rule with exactly one owner | SVG (a matrix) | `DECISIONS.md` | **Yes** |
-| Epic | **The path** — one lane per issue against time, done and in-flight bars, a now line, the critical path | SVG (lanes against time), **redrawn as the set moves** | `PLAN.md` | **Yes** |
+| Epic | **The path** — one lane per issue against time, dated bars, a now line, the critical path | SVG (lanes against time), amended when the plan changes, not per status tick | `PLAN.md` | **Yes** |
+| Project | **The territory** — owned here · the substrate assembled but owned elsewhere · outside the project, with the fence that separates them | SVG (containment and a fence) | `SPEC.md` | **Yes** |
+| Project | **How the epics flow into each other** — the dependency graph, edited in place as epics are filed and wrap | mermaid `flowchart LR` | `SPEC.md` beside the epics table | No (linked) |
+| Project | **The arc** — one lane per epic against time, a now line, **redrawn as the project moves** | SVG (lanes against time) | `PLAN.md` | **Yes** |
+| Project | **Who owns what** — rule × epic | SVG (a matrix) | `DECISIONS.md` | Only once `BUSINESS-RULES.md` carries **three or more** rules |
+
+**The arc is the path one altitude up**, and it is drawn the same way for the same reason: lanes
+against time, redrawn every refresh. A project whose epics have no bars yet gets lane labels and no
+rectangles — an epic that has not started is not a zero-width bar, and a dashed placeholder box
+reads as duration to everyone who is not its author.
 
 **The plan carries no figures at issue altitude.** It is written for the implementing agent, which
 reads tables and a DAG faster than a picture. At epic altitude the plan's one figure is the path,
@@ -176,7 +185,10 @@ A figure nobody rendered is how a wrong one ships. Headless Chromium is on every
 renders both themes in a second:
 
 ```bash
-S=spec/<ISSUE-ID>/figures/<name>.svg; H=$(grep -oE 'viewBox="0 0 940 [0-9]+' "$S" | grep -oE '[0-9]+$')
+# S is the figure: specs/issues/<ISSUE-ID>/figures/…, specs/epics/<EPIC-ISSUE-ID>/figures/…, or
+# spec/_projects/<slug>/figures/… — the rest of the block is altitude-independent.
+S=specs/issues/<ISSUE-ID>/figures/<name>.svg
+H=$(grep -oE 'viewBox="0 0 940 [0-9]+' "$S" | grep -oE '[0-9]+$')
 CH=/opt/pw-browsers/chromium-*/chrome-linux/chrome
 printf '<html><body style="margin:0;background:#FCFCFA"><img src="%s" width="940"></body></html>' "$(realpath "$S")" > /tmp/light.html
 sed 's/@media (prefers-color-scheme: dark) {/@media all {/' "$S" > /tmp/dark.svg
@@ -198,16 +210,16 @@ A spec or epic PR body carries the figures the table above marks — one at issu
 epic altitude — as raw-content images pinned to a commit:
 
 ```html
-<img src="https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/spec/<ISSUE-ID>/figures/<name>.svg"
+<img src="https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/specs/issues/<ISSUE-ID>/figures/<name>.svg"
      width="940" alt="What the picture shows, in a sentence" />
 ```
 
 Three facts decide that form:
 
 - **Pin to the commit SHA, never the branch.** GitHub's image proxy caches by URL, so a branch
-  URL shows the first version it ever fetched. When a figure changes, the body is re-pinned to
-  the commit that holds the new one — at epic altitude that happens every time the path is
-  redrawn, and it is part of the refresh, not an afterthought.
+  URL shows the first version it ever fetched. Re-pin changed figures on an open review PR;
+  after merge, pin them on the follow-up amendment, not by rewriting the original PR.
+  The project-spec's standing refresh lifecycle is unchanged.
 - **The blob URL doesn't render; the raw URL does.** `…/blob/<branch>/<path>` is a link to a page.
 - **A relative path resolves against the repo root and 404s.** Absolute, always.
 
@@ -215,21 +227,44 @@ Three facts decide that form:
 `#gh-light-mode-only` / `#gh-dark-mode-only` suffixes follows GitHub's theme instead, and is the
 one reason to render PNGs for a body. Default to the SVG.
 
-**Some tooling refuses to write an image into a body.** The GitHub tool this repo's cloud agents
-write PR bodies with wraps every absolute image URL in backticks on write — SVG or PNG, markdown or
-`<img>`, reference-style or bare — so the body arrives with the image defanged into code. Two
-rules follow. **If the image line comes back as code, don't fight it**: leave a link to the spec's
-blob view (which renders every figure) where the image would have been, and hand the person the
-exact `<img>` line to paste — a person pasting it into the description works. **A body a person
-has pasted an image into is never rewritten by that tool again**: the rewrite would defang what
-they pasted. Re-pinning on such a PR is a line the person changes, and the refresh says so.
+**Read the stored body after you write it.** The line above renders when the stored `src` is
+the URL you sent. The failure that drops a figure does not delete the tag. It wraps the
+`raw.githubusercontent.com` URL in backticks and takes the attribute's closing quote with it:
+
+```html
+<img src="``https://raw.githubusercontent.com/…/figure.svg"`` width="940" alt="…" />
+```
+
+That `src` does not load. It is the body #1905 stored at create, on 2026-09-18. It is not what
+an update does to a clean line. #1944 stored three clean `<img>` lines at create and still had
+them after every later edit. A remeasure on 2026-09-23 stored the same clean line on a
+description create, a description update, and a comment, including the line inside a code
+fence (#2082, #2083). GitHub's rendered HTML for that create contained the `<img>`.
+
+There is no create-versus-update rule, and a comment is not a different rule. An earlier
+note that tied the backticks to update, or to the comment channel, does not match those
+bodies. Write the line, then GET the stored body.
+
+- **No backtick in the `src`, and it starts with `https://`.** It renders. Leave it. A later
+  edit keeps it. That is how a refreshed epic body still shows the figure. Do not drop the
+  figure because an update is assumed to kill it.
+- **A backtick in the `src`.** It will not render, and sending the same write again will not
+  clear the backticks. Put a link to the blob view, which renders the figure, where the image
+  would have been, and hand a person the clean line — the line you sent, not the line that
+  came back. A person pasting the clean line into the description works.
+- **A body a person has repaired is not rewritten.** A refresh returns the new pins for them
+  to change. Rewriting that body is how a repaired figure gets lost.
+
+GET is the check. The Cloud session's own token cannot create or update a pull request — the
+pulls API returns 403 — so a curl PATCH from that token is not a write, and a 403 is not a
+stripped body.
 
 ## Verify (BP-003)
 
 Run against every document you are about to commit, and report the numbers:
 
 ```bash
-D=spec/<ISSUE-ID>            # or spec/_epics/<name>
+D=specs/issues/<ISSUE-ID>    # or specs/epics/<EPIC-ISSUE-ID>; projects stay spec/_projects/<slug>
 
 # 1. Fences balanced, per document — every count must be even
 for f in "$D"/*.md; do echo "$f $(grep -c '^```' "$f")"; done
@@ -249,7 +284,7 @@ done   # want ext=0 themes≥1 aria=1 lines<~150
 # 5. Prose words per document, fences excluded — against the budgets in the template
 for f in "$D"/*.md; do echo "$f $(awk '/^```/{f=!f; next} !f' "$f" | wc -w)"; done
 
-# 6. The nav line — line 3 of every document names all four, the current one bold; must print nothing
+# 6. The nav line — line 3 names the required set (Evolution when present), the current one bold; must print nothing
 for f in "$D"/*.md; do sed -n 3p "$f" | grep -qE 'Spec.*Decisions.*Rules.*Plan' || echo "$f: no nav line"; done
 ```
 

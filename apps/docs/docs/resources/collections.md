@@ -8,7 +8,7 @@ Static resources have a fixed name you declare up front: `plan`, `artifacts`, `p
 
 A collection defines a shared schema and a key pattern. Instances are created and destroyed at runtime. The **property name** you assign in `resources` is how you access it at runtime — not the pattern string.
 
-For a set your app already owns — rows in your own database or behind your API — see [external collections](./external-collections.md): a read-through, read-only variant that keeps the app as the source of truth instead of copying data into the framework.
+When the app already owns the set, use a [projected collection](./projected-collections.md). That is a read-only view: each read asks the app again, and the framework does not store a copy.
 
 ```ts
 import { defineResourceCollection } from "@flow-state-dev/core";
@@ -70,7 +70,9 @@ execute: async (input, ctx) => {
   const allFiles = await files.list();
   const srcFiles = await files.list("src/");
 
-  // Delete an instance (no-op if not found)
+  // Delete an instance. No-op if not found on a writable collection.
+  // Throws the read-only error when writable: false, including when
+  // the key is already absent.
   await files.delete("old-file.ts");
 
   // Current instance count
@@ -289,7 +291,7 @@ Collections can declare a `client` config to make their items visible to the fro
 
 ## Writable
 
-`writable` controls whether blocks can change an instance's state or content. Default `true`. Instance `patchState` / `setState` / `updateState` / `incState` / `pushState`, collection `upsert` on an existing key, and instance `writeContent` all honor it.
+`writable` controls whether blocks can change an instance's state or content. Default `true`. Instance `patchState` / `setState` / `updateState` / `incState` / `pushState`, collection `upsert` on an existing key, `create(key, initial, { replace: true })` when that key already exists, `delete(key)` (including when the key is already absent), and instance `writeContent` all honor it.
 
 Set `writable: false` and those writes throw. The flag is collection-wide: every instance is covered.
 
@@ -321,9 +323,11 @@ const updateNotes = handler({
 
 State writes throw `Error` with message `Resource "<storageKey>" is read-only`. Content writes throw `Resource "<storageKey>" content is read-only`. `storageKey` is the resolved instance key, for example `notes/onboarding`.
 
-`create` (including `{ replace: true }`), `getOrCreate`, and `delete` on the collection handle are not gated by `writable`. `llmWritable` only gates the generic LLM content tools.
+`create` of a key that does not exist succeeds, including `create(key, initial, { replace: true })` when the key is missing. `getOrCreate` of a missing key creates; of an existing key it returns the instance and does not write. `upsert` of a missing key creates.
 
-External collections do not take `writable`. See [external collections](./external-collections.md).
+`llmWritable` controls whether the generic content write tool is offered. `writable: false` refuses the write.
+
+Projected collections have no `writable` field. They are read-only on every surface. See [projected collections](./projected-collections.md).
 
 ## LLM access
 
@@ -332,7 +336,9 @@ A content-bearing collection can opt into the generic content tools, the same wa
 - `llmReadable: true` — a generator can read instance content with `readResourceContentTool()`, and find it with `grepResourceContent` / `searchResources`.
 - `llmWritable: true` — a generator can overwrite an instance body with `writeResourceContentTool()`.
 
-Both default to `false`: a collection that doesn't opt in stays invisible to those tools. The write tool requires `llmWritable`, not `llmReadable`. A `writable: false` collection still refuses the write. See [Writable](#writable).
+Both default to `false`: a collection that doesn't opt in stays invisible to those tools. The write tool requires `llmWritable`, not `llmReadable`. A `writable: false` collection refuses the write. See [Writable](#writable).
+
+On a [projected collection](./projected-collections.md), `searchResources` calls the collection's `search` hook. `globResources` and `grepResourceContent` skip it.
 
 ```ts
 import { generator, readResourceContentTool, writeResourceContentTool } from "@flow-state-dev/core";
@@ -358,7 +364,7 @@ The tools address an instance by its scope-qualified uri (`session/notes/onboard
 
 ## Lazy state by default
 
-Collection state is fetched on demand. For each client-visible collection, the snapshot includes `count`. If you set `prefetchWindow`, it also includes an inline window of items. Clients fetch a page when they need one.
+Collection state is fetched on demand. For each client-visible `defineResourceCollection` collection, the snapshot includes `count`. If you set `prefetchWindow`, it also includes an inline window of items. Clients fetch a page when they need one. A [projected collection](./projected-collections.md) appears as `{ prefetched: [] }` with no `count`; list and search discover instances.
 
 What the snapshot carries for each client-visible collection:
 
@@ -448,6 +454,8 @@ The default is `0` (no prefetched window).
 Scope-level `client.derived` functions that call `collection.list()` load the full persisted map. The snapshot is what the client sees; the projection function is not limited to it.
 
 ## See also
+
+For a read-only view of data the app already owns, see [projected collections](./projected-collections.md).
 
 For relationships between resources or entities rather than many instances of one shape, see [Edges](./edges).
 

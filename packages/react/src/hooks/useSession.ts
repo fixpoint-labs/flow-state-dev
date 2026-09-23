@@ -110,13 +110,6 @@ export type SessionChildSessionsOptions = {
 export type UseSessionHookOptions = {
   flowKind?: string;
   userId?: string;
-  /**
-   * Org binding to forward on every action request. Servers validate this
-   * against the session's stored `orgId` (set at session creation) and reject
-   * mismatches with a 400. Pass it when the app's routing or auth context
-   * carries an org identity that should accompany every request.
-   */
-  orgId?: string;
   baseUrl?: string;
   items?: SessionItemsOptions;
   childSessions?: SessionChildSessionsOptions;
@@ -378,7 +371,6 @@ export function useSession(
   const context = useFlowContext();
   const resolvedFlowKind = normalizeFlowKind(options?.flowKind ?? context.flowKind ?? "");
   const userId = options?.userId ?? context.userId ?? "devuser";
-  const orgId = options?.orgId;
   const baseUrl = options?.baseUrl ?? context.baseUrl;
   const autoResume = options?.autoResume === true;
   const stuckThresholdMs = options?.stuckThresholdMs ?? 30_000;
@@ -1440,7 +1432,6 @@ export function useSession(
         const postResponse = await client.sendActionStream(action, input, {
           sessionId,
           requestId,
-          orgId,
           metadata: actionOptions?.metadata
         });
 
@@ -1492,8 +1483,7 @@ export function useSession(
       attachToStream,
       refreshSnapshot,
       refreshChildSessions,
-      dismissRequest,
-      orgId
+      dismissRequest
     ]
   );
 
@@ -1718,7 +1708,7 @@ export function useSession(
     flowKind: resolvedFlowKind,
     sessionId,
     userId,
-    orgId: detail?.orgId ?? orgId,
+    orgId: detail?.orgId,
     isLoading,
     isStreaming,
     isFinishing,

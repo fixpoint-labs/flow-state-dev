@@ -12,7 +12,7 @@ The run is confined to its workspace by default (`contain`, on unless you turn i
 
 **What auto-discovery mounts, and what it now leaves alone.**
 
-- **External collections are skipped.** They answer the same duck-type an ordinary collection does — a `pattern` and a `list` — and are projectable through neither. Their `list` is paged, so hydrate iterating it threw before the run started, and they carry no mutators for a writable mount to flush through. Skipped by their brand, with a warning naming the collection.
+- **Projected collections are skipped.** They answer the same duck-type an ordinary collection does — a `pattern` and a `list` — and are projectable through neither. Their `list` is paged, so hydrate iterating it threw before the run started, and they carry no mutators for a writable mount to flush through. Skipped by their brand, with a warning naming the collection.
 - **Parameterized patterns are skipped.** A pattern's prefix stops at its first parameter, so `data/[topic]/observations` mounted at `data` and its entries came back addressed as `react/observations`. Those patterns need an object key, so the flush threw on the string and the run finished having saved nothing. Skipped with a warning, until a mount can carry the parameters it would need.
 
 **A collection that cannot be written fails the run.** A flush rejects for two opposite reasons, and both were being reported as "the workspace could not be read". One is: the projection refused to decide anything because the directory was unreadable, so the run's files are still where the run left them. The other is a collection read, write or delete that failed — the run's work never leaving a directory that is about to be thrown away. Only the first is swallowed now.

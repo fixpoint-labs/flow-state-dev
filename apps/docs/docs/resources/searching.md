@@ -27,7 +27,9 @@ const librarian = generator({
 });
 ```
 
-All three span both static resources and collection instances — a collection instance is itself a resource, so you don't choose between them. A collection's instances are searchable once the collection opts in with `llmReadable` (see [Collections — LLM access](/docs/resources/collections#llm-access)).
+All three span both static resources and `defineResourceCollection` instances — a collection instance is itself a resource, so you don't choose between them. A collection's instances are searchable once the collection opts in with `llmReadable` (see [Collections — LLM access](/docs/resources/collections#llm-access)).
+
+On a [projected collection](/docs/resources/projected-collections), `searchResources` sends the query to the collection's `search` hook. `globResources` and `grepResourceContent` skip them.
 
 Each result is the resource's scope-qualified uri (for example `session/concepts/react`) — the same handle [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns) accepts, so a search result feeds straight into a read. Glob patterns and the grep/search `prefix` match the within-scope path (you write `concepts/**`, not `session/concepts/**`); only the results carry the scope.
 
@@ -41,9 +43,9 @@ concepts/*         →  concepts/react                             (one level, n
 concepts/*hooks*   →  concepts/react-hooks                       (within-segment substring; a prefix can't express this)
 ```
 
-With no pattern (`null`), `globResources` returns every resource uri, sorted. It's a superset of a prefix listing: `globResources("concepts/**")` covers what a prefix list of `concepts` would, plus the patterns prefixes can't reach. Results are bounded by `limit` (default 100).
+With no pattern (`null`), `globResources` returns every resource uri the agent can read, sorted. It's a superset of a prefix listing: `globResources("concepts/**")` covers what a prefix list of `concepts` would, plus the patterns prefixes can't reach. Results are bounded by `limit` (default 100).
 
-Glob is discovery, so it does not filter on `llmReadable` — it surfaces uris the same way listing does.
+Glob reads no content, but a path is still something you may not want an agent to see, so it applies the same `llmReadable` gate as the other two. A collection that hasn't opted in is skipped before it is read, so nothing is loaded to work out that it was off limits.
 
 ## Grep content — `grepResourceContent`
 
@@ -75,7 +77,7 @@ Resources that don't match at all are dropped. Scope with `prefix` and cap with 
 
 ## Limits and readability
 
-`grepResourceContent` and `searchResources` read content, so they only see resources marked `llmReadable` — the same gate as [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns). The gate covers collection instances too: a collection's instances are searchable once the collection sets `llmReadable`. A resource the LLM can't read won't appear in their results. `globResources` lists uris regardless. They match the *rendered* content — the same text `readResourceContentTool` returns — so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
+All three tools see only resources marked `llmReadable` — the same gate as [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns). The gate covers collection instances too: a collection's instances are searchable once the collection sets `llmReadable`. A resource the LLM can't read won't appear in any of their results. Grep and search match the *rendered* content — the same text `readResourceContentTool` returns — so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
 
 All three identify each match by its scope-qualified uri (for example `session/concepts/react`) — the same handle `readResourceContentTool` accepts, so a uri from a search result feeds straight into a read or write with no translation.
 

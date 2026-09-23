@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/engine",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Execution runtime, stores, SSE streaming, and HTTP routes for flow-state-dev.",
   "keywords": [
     "ai",
@@ -98,7 +98,7 @@
     "zod": "^3.25.76"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",

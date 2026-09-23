@@ -27,7 +27,7 @@ import {
 } from "./activation-store";
 import { skillManifestKey } from "./collection";
 import { resolveResourceCollection } from "../tasks";
-import { listEnabledSkills } from "./internal/list-enabled-skills";
+import { listLoadableInlineSkills } from "./internal/list-loadable-inline-skills";
 import {
   resolveInitialSkills,
   type InitialSkillsSource,
@@ -71,6 +71,27 @@ export interface LoadSkillToolOptions {
    * generator, so it sees the same flow config the binding reader does.
    */
   initialSkills?: InitialSkillsSource;
+  /**
+   * Whether the ambient catalog listing reaches this generator's prompt —
+   * the binding's `catalogContext` preset (FIX-817), which ships on.
+   *
+   * It changes one sentence of the tool's description, and that sentence is
+   * the only thing telling the model where the names come from. With the
+   * listing off they are behind the discovery door instead, and a tool that
+   * still said "provided in the system context" would point at something that
+   * is no longer there.
+   *
+   * Defaults to `true`, so a caller that does not pass it gets today's
+   * wording unchanged.
+   */
+  catalogInContext?: boolean;
+}
+
+/** Where the model is told to find the names it may pass. */
+function whereTheNamesAre(catalogInContext: boolean): string {
+  return catalogInContext
+    ? "The list of loadable skills is provided in the system context — call this with one of those names."
+    : "Call `discover` with domain \"skills\" to see which skills you can load, then call this with one of those names.";
 }
 
 /**
@@ -87,7 +108,7 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
     name: "loadSkill",
     description:
       "Load a named skill's instructions into your context for the rest of this turn. " +
-      "The list of loadable skills is provided in the system context — call this with one of those names.",
+      whereTheNamesAre(opts.catalogInContext !== false),
     inputSchema,
     outputSchema,
     parentStateSchema: z.object({ [BLOCK_STATE_FIELD]: activeSkillsArraySchema }),
@@ -112,8 +133,11 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
 
       const manifest = await collection.getOptional(skillManifestKey(input.name));
       if (!manifest) {
-        const enabled = await listEnabledSkills(collection);
-        const available = enabled.map((s) => s.name).join(", ") || "(none)";
+        // The loadable set, not every enabled skill: this line tells the
+        // model what to ask for next, so listing a fork/pattern skill or one
+        // outside `allowed` would send it straight into the next refusal.
+        const loadable = await listLoadableInlineSkills(collection, { allowed: allowedSet });
+        const available = loadable.map((s) => s.name).join(", ") || "(none)";
         throw new Error(`Unknown skill "${input.name}". Available: ${available}`);
       }
 
@@ -156,9 +180,10 @@ export interface LoadCatalogContextOptions {
 
 /**
  * Build the catalog-listing context entry the model reads to discover which
- * skills it can load. Filtered to the binding's `allowed` set (if any) and to
- * `inline`-mode skills — the load tool rejects fork/pattern skills, so listing
- * them would only invite a call that can't succeed.
+ * skills it can load. Filtered through `listLoadableInlineSkills` — the one
+ * definition of loadability, shared with the discovery door and with this
+ * module's own "Available:" line, so none of the three can advertise a skill
+ * the tool would then refuse.
  */
 export function buildLoadCatalogContext(
   opts: LoadCatalogContextOptions,
@@ -172,10 +197,7 @@ export function buildLoadCatalogContext(
     } catch {
       // Seeding failure already logged.
     }
-    const enabled = await listEnabledSkills(collection);
-    const loadable = enabled.filter(
-      (s) => s.mode === "inline" && (!allowedSet || allowedSet.has(s.name)),
-    );
+    const loadable = await listLoadableInlineSkills(collection, { allowed: allowedSet });
     if (loadable.length === 0) return null;
     const lines = [
       "You can load any of these skills with the `loadSkill` tool to pull its instructions into context:",

@@ -1,0 +1,14 @@
+{
+  "userId": "goal-durable-hire",
+  "note": "is the printer fixed?",
+  "port": 3991,
+  "org": "acme",
+  "otherOrg": "bravo",
+  "controlSeat": "support.ada",
+  "controlDesk": "front",
+  "goodSeat": "support.bo",
+  "missingKindSeat": "support.cy",
+  "tokenSeat": "support.di",
+  "kind": "desk-clerk",
+  "missingKind": "kind-this-app-does-not-carry"
+}

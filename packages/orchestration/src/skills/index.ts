@@ -39,6 +39,13 @@ export {
 
 export type { ExplicitActivationScope } from "./activation-store";
 
+// The skills domain's projection into the discovery door (FIX-817). Registered
+// on a scope's manifest registry beside the other domains' sources.
+export {
+  skillsManifestSource,
+  type SkillsManifestSourceOptions,
+} from "./manifest-source";
+
 export {
   defineSkillsCollection,
   skillStateSchema,
@@ -77,6 +84,8 @@ export {
   type SkillsContextOptions,
 } from "./context-fn";
 
+export { formatAllowedToolsIntentNote } from "./render-skill-body";
+
 export {
   activeSkillStateSchema,
   activeSkillsArraySchema,
@@ -103,6 +112,10 @@ export {
 
 export {
   createTaskToolsCapability,
+  // The eight handlers on their own, for a consumer that composes its own
+  // capability around them — one that also has to declare the ledger the
+  // resolver reaches, which `createTaskToolsCapability` has no slot for.
+  buildTaskToolsList,
   taskTools,
   defaultOwnStateResolver,
   DELEGATION_BOARD_FIELD,

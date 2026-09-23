@@ -43,6 +43,7 @@ export type {
   SchemaOutput
 } from "./schema/common";
 
+export { DEFAULT_ORG_ID, isValidOrgId } from "./types/auth";
 export { applyGetOrPatchState, defineResource, resource } from "./types/resource";
 export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export {
@@ -58,23 +59,23 @@ export type {
 } from "./blocks/tool-cache";
 export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
 export {
-  defineExternalResourceCollection,
-  isExternalResourceCollection,
-  readExternalRecord,
-  searchExternalRecords,
-} from "./types/external-resource-collection";
+  defineProjectedResourceCollection,
+  isProjectedResourceCollection,
+  readProjectedRecord,
+  searchProjectedRecords,
+} from "./types/projected-resource-collection";
 export type {
-  DefinedExternalResourceCollection,
-  ExternalRecordHit,
-  ExternalReactiveBindings,
-  ExternalResourceCollectionConfig,
-  ExternalResourceCollectionRef,
-  ExternalResourceContext,
-  ExternalResourceRef,
+  DefinedProjectedResourceCollection,
+  ProjectedRecordHit,
+  ProjectedReactiveBindings,
+  ProjectedResourceCollectionConfig,
+  ProjectedResourceCollectionRef,
+  ProjectedResourceContext,
+  ProjectedResourceRef,
   ResourceQuery,
   ResourceSearchResult,
-  ValidatedExternalHit,
-} from "./types/external-resource-collection";
+  ValidatedProjectedHit,
+} from "./types/projected-resource-collection";
 export {
   normalizeReactiveBinding,
   resourceChangeSchema,
@@ -242,6 +243,14 @@ export { readResourceContentTool, writeResourceContentTool } from "./tools/resou
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";
 export { resourceSearchTools } from "./tools/resource-search-tools";
+// Agent discovery (FIX-817): the manifest-entry shape, the per-scope source
+// registry, the door over it, and the resources domain's projection.
+export { MANIFEST_DOMAINS, isManifestDomain } from "@flow-state-dev/contracts";
+export type { ManifestDomain, ManifestEntry, ManifestSource } from "@flow-state-dev/contracts";
+export { createManifestRegistry } from "./manifest/registry";
+export type { BlockManifestSource, ManifestRegistry } from "./manifest/registry";
+export { discoveryTools } from "./manifest/discovery-tools";
+export { resourcesManifestSource } from "./manifest/resources-source";
 export {
   DEFAULT_MODEL_LOOKUP,
   findModelEntry,
@@ -298,6 +307,7 @@ export type {
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,
+  InstanceOwnerPin,
   FlowType,
   FlowCardinality,
   McpConfig,

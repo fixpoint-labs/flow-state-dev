@@ -34,12 +34,15 @@ import { hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
 // `errors` is a worker that failed to load; `skillErrors` is one that loaded
-// without a skill it should have had. Both are collected, never thrown.
-const { workers, errors, skillErrors } = await readWorkforce("./workforce");
-if (errors.length || skillErrors.length) {
+// without a skill it should have had; `teamErrors` is a team file that failed.
+// Each is collected rather than thrown, so an array you forget to check is
+// one that reports nowhere.
+const { workers, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
+if (errors.length || skillErrors.length || teamErrors.length) {
   throw new Error(
     `workforce: ${errors.length} worker(s) failed to load, ` +
-      `${skillErrors.length} loaded short`,
+      `${skillErrors.length} loaded short, ` +
+      `${teamErrors.length} team file(s) failed`,
   );
 }
 
@@ -50,7 +53,7 @@ flowRegistry.registerMany(seats);
 
 That worker file names no `flow:`, so it runs on the built-in worker kind. Its body becomes its instructions, and it talks.
 
-It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. Those skills are stored at org scope, so a request to one of these workers has to resolve to an org. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
+It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. Each organization keeps its own copy of a seat's skills. On the action call, send `userId` beside `input`. The skills read are the ones stored for the organization that caller already belongs to. The call does not name the organization. Every request runs in one. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 
 To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
 
@@ -89,6 +92,9 @@ Workforce does not staff a task board. It does not replace flows, sessions, or r
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
 - [The built-in worker](./built-in-worker) — the `agent` kind a record with no `flow:` runs on: its settings, tools, skills, and memory.
 - [Channels](./channels) — several agents on one topic, with one durable transcript and nobody owning a row.
+- [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
+- [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
+- [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.
 - [Flows](../fundamentals/flows.md) — how a flow copy is configured and addressed.

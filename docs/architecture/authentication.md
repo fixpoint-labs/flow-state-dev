@@ -26,11 +26,14 @@ is the reason the hook exists: identity has to come from something the
 caller cannot set.
 
 The framework's own default is the deliberate exception.
-`defaultBodyUserIdPrincipalResolver` reads `body.userId` (and
-`body.orgId`) and returns them as the principal. It is there for early
-development and the framework's tests, not as a security boundary — an
-app still on it is unauthenticated, and the guarantee above does not
-apply to it. `@flow-state-dev/node` refuses to bind such an app to a
+`defaultBodyUserIdPrincipalResolver` reads `body.userId` and returns it as
+the principal. It does **not** read `body.orgId` — the body is
+caller-controlled, so it is not a source an organization may come from
+(BP-031). An app on this resolver runs under the reserved `DEFAULT_ORG_ID`
+instead, and a body still carrying `orgId` is ignored with a once-per-host
+warning. It is there for early development and the framework's tests, not as
+a security boundary — an app still on it is unauthenticated, and the
+guarantee above does not apply to it. `@flow-state-dev/node` refuses to bind such an app to a
 network interface for exactly that reason. Everything below that speaks
 of a "configured" or "custom" resolver means one that is not this
 default.
@@ -67,12 +70,13 @@ two copies of one collection definition isolate from each other too. The
 identity above is still what that bucket is derived from, and an instance id
 is a storage coordinate, never an authorization.
 
-A custom resolver therefore owns the org boundary as well as the user one.
-Return no `orgId` and the runtime builds no org resource registry for the
-request at all — org-scoped resources are absent, not empty. Org binding is
-fixed at session creation and immutable after: a later request claiming a
-different `orgId` is rejected with `OrgBindingMismatchError` rather than
-rebinding the session. Derive `orgId` from the same trusted source as
+A custom resolver therefore owns the org boundary as well as the user one,
+and it may not decline it. Returning no `orgId`, a blank one, or the reserved
+`DEFAULT_ORG_ID` is refused with `401` — organization is unconditional, so
+there is no configuration under which a configured resolver may omit it. Org
+binding is fixed at session creation and immutable after: a later request
+claiming a different `orgId` is rejected with `OrgBindingMismatchError` rather
+than rebinding the session. Derive `orgId` from the same trusted source as
 `userId` — BP-031 covers it identically.
 
 ---
@@ -121,12 +125,14 @@ The switch is exhaustive over `ParsedFlowRoute["kind"]`.
 
 | Subject | Routes | Owner / resolver |
 |---|---|---|
-| `exempt` | `list_flows`, `capabilities`, `execute_action` | No owner check. `execute_action` resolves its own principal in the action handler. |
+| `exempt` | `list_flows`, `capabilities`, `execute_action` | No owner check. `execute_action` resolves its own principal in the action handler. `list_flows` stays exempt: when the registry holds an owner pin it resolves a principal if one is present and omits pinned instances the caller does not match. An anonymous caller sees unpinned flows only. The route does not answer 401. |
 | `session` | session CRUD, state, resources, debug-on-session | Owner is the stored session's `userId`. Flow comes from `session.flowKind`. A missing session is not an auth error — the handler 404s. |
 | `request` | stream, abort, retry, continue, status, resume | Owner is the request record's `userId` (or the in-flight `activeRequests` entry when the record is not persisted yet). |
 | `flow` | `create_session` | No record yet. The authenticated caller becomes the owner. Flow comes from the URL. |
 | `user` | `user_stream`, `check_interrupted_requests` | Owner is the `userId` in the path. |
 | `host` | `list_sessions`, `active_requests`, `transcribe` | No single owner. The handler scopes rows to the caller. |
+
+A hired instance is registered with `register(flow, { pin })`. The pin is `{ orgId, userId? }` from the hire row, not from the address. `create_session` and a session-less `execute_action` compare the caller to that pin before the acknowledgement and answer a mismatch with `404 Unknown flow`, the same sentence an address this process does not hold gets. A later run — resume, retry, internal dispatch — compares the bound session to the pin inside execution and throws `InstancePinMismatchError` before any block. An instance registered without a pin stays shared. A hire writer does not get that path: `registerHiredSeat` refuses a hired seat that arrives with no pin. The comparison uses the principal the host resolved. On the framework default resolver that principal does not name an organization, so opening a pinned seat — including for the user who hired it — answers `404 Unknown flow`. Install the same resolver the hire flow uses at the host.
 
 Enforcement is off when the host resolver is the framework default **and**
 no registered flow configures its own resolver. A flow-scoped route whose

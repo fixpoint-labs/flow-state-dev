@@ -16,6 +16,7 @@ import {
 } from "../transports/errors";
 import { generateId } from "../utils/generate-id";
 import { FlowInstanceBindingMismatchError } from "../context/binding-errors";
+import { UnknownFlowError } from "../context/hire-plane";
 import {
   asObject,
   extractTenantId,
@@ -34,7 +35,8 @@ type ActionRunInput = {
   userId: string;
   sessionId?: string;
   requestId: string;
-  orgId?: string;
+  /** Always set — it comes from the resolved principal, which requires one. */
+  orgId: string;
   tenantId?: string;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
@@ -109,10 +111,11 @@ export async function handleExecuteAction(
     userId: principal.userId,
     sessionId,
     requestId: getString(body.requestId) ?? generateId("req"),
-    // Org identity comes from the resolved principal only — never re-read
-    // `body.orgId` here, which would let a caller override a verified org
-    // (BP-031). Unauthenticated apps are unaffected: the default resolver
-    // reads `body.orgId` itself. See `docs/architecture/authentication.md`.
+    // Org identity comes from the resolved principal only — never from
+    // `body.orgId`, which a caller controls (BP-031). Principal resolution
+    // requires one, so this is always present: a verified organization, or
+    // `DEFAULT_ORG_ID` for an app that configures no resolver.
+    // See `docs/architecture/authentication.md`.
     orgId: principal.orgId,
     tenantId,
     metadata: {
@@ -166,6 +169,9 @@ export async function handleExecuteAction(
         message: e.message
       });
     }
+    if (e instanceof UnknownFlowError) {
+      return jsonResponse(404, { error: e.message });
+    }
     throw e;
   }
 
@@ -188,8 +194,8 @@ export async function handleExecuteAction(
     if (message.includes("active stream capacity")) {
       return jsonResponse(503, { error: message });
     }
-    if (message.startsWith("Unknown flow")) {
-      return jsonResponse(404, { error: message });
+    if (error instanceof UnknownFlowError) {
+      return jsonResponse(404, { error: error.message });
     }
     throw error;
   }

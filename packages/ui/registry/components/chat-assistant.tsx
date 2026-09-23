@@ -35,8 +35,10 @@ function TaskBoardMeta({ item }: { item: ComponentItem }) {
  * Sources are excluded (source: false) — render them grouped via
  * <SourcesGroup items={session.items} /> alongside <ItemsRenderer>.
  *
- * Component renderers (routedSpecialists, audit-annotation, task-board-meta) receive
- * a single ComponentItem with the full snapshot data.
+ * Component renderers (audit-annotation, task-board-meta) receive a single
+ * ComponentItem with the full snapshot data. Container renderers
+ * (evented-actors, debate, routedSpecialists) receive a ContainerItem and
+ * read their nested keyed component snapshot via useContainerItems.
  */
 export const chatAssistantRenderers: RendererRegistry = {
   message: Message,
@@ -52,12 +54,18 @@ export const chatAssistantRenderers: RendererRegistry = {
   container: {
     "evented-actors": EventedActors,
     debate: Debate,
+    routedSpecialists: RoutedSpecialists,
   },
   component: {
-    routedSpecialists: RoutedSpecialists,
     "audit-annotation": AuditAnnotation,
     "task-board-meta": TaskBoardMeta,
     "task-change": false,
+    // The board could not record a result it had saved. It has no card to be:
+    // the caller-visible signal is the run's own failure, and the entry exists
+    // so that failure survives the run. Named here because a component type the
+    // registry does not name falls through to the raw-JSON dev fallback —
+    // `itemVisibility` cannot suppress it, since structural items ignore it.
+    "task-board-recorder-failure": false,
     // Debate's per-round, per-decision, and verdict items are collected
     // and rendered by the <Debate /> container renderer above.
     "debate-turn": false,

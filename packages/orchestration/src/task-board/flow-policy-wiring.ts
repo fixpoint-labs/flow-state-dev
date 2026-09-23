@@ -28,6 +28,7 @@ import {
 } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { generateId } from "../tasks/generate-id";
 import {
   createObservationLedger,
   flowPolicy as builtinFlowPolicy,
@@ -110,6 +111,21 @@ export interface BoardRunFlowState {
   ledger?: ObservationLedger;
   policy?: TaskFlowPolicy;
   collectionId: string;
+  /**
+   * Identifies THIS drain, minted fresh on every install (FIX-963).
+   *
+   * Recorder-failure reports land on the per-REQUEST item buffer, which
+   * outlives a single drain — a request can run the same board twice. Stamping
+   * each report with this and filtering the tail on it is what keeps a second
+   * batch from inheriting the first one's failure.
+   *
+   * Two batches of one board OVERLAPPING in a request still interfere, because
+   * they share this slot: the second install overwrites the first's stamp. That
+   * is the pre-existing interference tracked as FIX-1236 and is not narrowed
+   * here — sequential re-entry, which is what the board actually does, is
+   * correct.
+   */
+  runId: string;
 }
 
 /**
@@ -199,7 +215,10 @@ export function createInstallBoardFlowState(
       // avoid `ctx.request.state` because that gets structured-cloned
       // for state snapshots, and functions can't be cloned.
       const state = getRequestResolverBag(ctx);
-      const runState: BoardRunFlowState = { collectionId };
+      const runState: BoardRunFlowState = {
+        collectionId,
+        runId: generateId("boardrun"),
+      };
       state[boardRunStateSlot(name)] = runState;
 
       if (cacheEnabled) {
@@ -345,5 +364,24 @@ export function stampCurrentClaim(ticket: TaskClaimTicket): void {
  */
 export function currentWorkerClaim(): TaskClaimTicket | undefined {
   return workerClaimStore.getStore();
+}
+
+/**
+ * Read the stamp identifying the drain currently installed for `name`
+ * (FIX-963), or `undefined` when nothing has installed one.
+ *
+ * Both the recorders and the drain's tail read through this: the recorders
+ * stamp a failure report with it, and the tail keeps only the reports carrying
+ * it. `undefined` reaches a settlement that ran outside any drain, which
+ * reports without deferring and so needs no stamp.
+ */
+export function currentBoardRunId(
+  name: string,
+  ctx: BlockContext
+): string | undefined {
+  const runState = getRequestResolverBag(ctx)[boardRunStateSlot(name)] as
+    | BoardRunFlowState
+    | undefined;
+  return runState?.runId;
 }
 

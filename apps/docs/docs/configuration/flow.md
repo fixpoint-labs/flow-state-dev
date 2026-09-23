@@ -139,10 +139,9 @@ Each key in `actions` is a public name. Clients call it with `sendAction("chat",
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
-| `resolvePrincipal` | `(ctx) => principal \| null` | — | Map the inbound request to `{ userId, orgId? }`. Throw a `PrincipalResolutionError` to pick the HTTP status (401/403). |
+| `resolvePrincipal` | `(ctx) => principal \| null` | — | Map the inbound request to `{ userId?, orgId }`. The `orgId` is required — returning none, a blank one, or `DEFAULT_ORG_ID` is refused with 401. Throw a `PrincipalResolutionError` to pick the HTTP status (401/403). |
 | `defaultUserId` | `string` | — | Used when the resolver returns no `userId`. Typical for schedules and webhooks. |
 | `requireUser` | `boolean` | `true` | Reject requests that still have no `userId` after the fallback. `false` forbids user-scoped state, client projections, and resources at registration. |
-| `requireOrg` | `boolean` | — | Reserved. No runtime effect today. |
 
 The host verifies credentials. The framework applies `defaultUserId` and `requireUser` after your resolver returns. See [Authentication](/docs/server/authentication).
 
@@ -161,7 +160,7 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 | `historyWindow` | `{ turns: number }` | `50` | Caps cross-turn history loaded per request. `0` or a negative number disables it. Per-call `history({ limit })` can only shrink this window. |
 | `cas` | `CASOptions` | — | Optimistic-concurrency options for this scope. |
 
-`clientData` on a scope was removed. `defineFlow` throws if it is still set — use `client.derived` (or `expose` for verbatim passthrough).
+`clientData` is not a scope config key. `defineFlow` throws if a scope sets it: compute functions go under `client.derived`, verbatim passthrough under `client.expose`.
 
 ### `request`
 

@@ -1,6 +1,7 @@
 /**
  * Interrupted request detection and recovery utilities.
  */
+import { isOrgAttributed, requireAttributedOrg } from "../context/org-attribution";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
   ActiveRequestEntry,
@@ -77,6 +78,17 @@ export async function detectInterruptedRequests(options: {
 
   for (const entry of stale) {
     const requestRecord = await stores.request.get(entry.requestId);
+
+    // A record stored before organizations were required is preserved and
+    // refused everywhere a caller can reach it (BR-14). This sweep has no
+    // caller: it runs on a timer and at startup, and it WRITES — it is the one
+    // path that would quietly rewrite such a record with nobody to refuse and
+    // nothing in a log tying the write to a request. So it skips them, and an
+    // operator's `in_progress` row stays exactly as it was until the offline
+    // attribution runs.
+    // The RECORD, not the entry: the record is the thing this sweep writes,
+    // and the entry is a framework-managed index that is discarded either way.
+    if (requestRecord !== undefined && !isOrgAttributed(requestRecord)) continue;
 
     if (requestRecord !== undefined && requestRecord.status === "in_progress") {
       await stores.request.set(
@@ -159,7 +171,20 @@ export async function retryRequest(
   const actionName = entry?.actionName ?? originalRecord?.actionName;
   const sessionId = entry?.sessionId ?? originalRecord?.sessionId;
   const userId = entry?.userId ?? originalRecord?.userId;
-  const orgId = entry?.orgId ?? originalRecord?.orgId;
+  // The organization axis, held to the same rule as `flowId` above and for the
+  // same reason: the durable record is authoritative, and an active entry
+  // naming a different organization is an inconsistent identity rather than a
+  // newer answer. Letting the entry win would re-EXECUTE stored work in an
+  // organization that work does not belong to.
+  const recordOrgId = originalRecord?.orgId;
+  const entryOrgId = entry?.orgId;
+  if (recordOrgId !== undefined && entryOrgId !== undefined && recordOrgId !== entryOrgId) {
+    throw new Error(
+      `Cannot retry request ${options.originalRequestId}: its record is attributed to organization ` +
+        `"${recordOrgId}" but its active entry names "${entryOrgId}"`
+    );
+  }
+  const orgId = recordOrgId ?? entryOrgId;
   // Re-dispatch in the same tenant so the retry resolves to the same
   // tenant-namespaced session key (FIX-682). Bare sessionId + tenantId
   // re-derive the key cleanly — no double-namespacing.
@@ -172,6 +197,13 @@ export async function retryRequest(
       `Cannot retry request ${options.originalRequestId}: missing flow/action/user info`
     );
   }
+
+  // A retry is an addressed re-execution of stored work, so it is held to the
+  // same admission as the original: a request stored before organizations were
+  // required is refused rather than retried under a guess (BR-14). Checked
+  // before the flow is resolved and before any new request id is minted, so a
+  // refused retry leaves nothing behind.
+  const attributedOrgId = requireAttributedOrg({ orgId }, "retrying this request");
 
   const owner = resolveRecordOwner(flowRegistry, { flowKind, flowId });
   if (!owner.ok) {
@@ -204,7 +236,7 @@ export async function retryRequest(
     userId,
     sessionId,
     requestId: newRequestId,
-    orgId,
+    orgId: attributedOrgId,
     tenantId,
     source: retrySource,
     metadata: {

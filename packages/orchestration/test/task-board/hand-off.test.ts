@@ -27,6 +27,7 @@
  * to be rejected BY NAME or the gate is decorative.
  */
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, defineResource, dispatcher, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -80,6 +81,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
     })({ id: "hand-off-routing-table" });
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

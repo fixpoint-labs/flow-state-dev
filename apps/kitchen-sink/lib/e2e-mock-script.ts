@@ -2,10 +2,10 @@
  * Deterministic mock generators for kitchen-sink E2E tests. Loaded only
  * when `KITCHEN_SINK_TEST_MODE=1`.
  *
- * The chat-agent flow runs four generators per turn (skill-classifier,
- * thinking-style-classifier, assistant-generator, auto-title). Each gets
- * its own mock instance below. `policy: "allow"` (set in
- * `test/mock-flowstate.ts`) catches anything else with a no-op model.
+ * The chat-agent flow runs three generators per turn (skill-classifier,
+ * assistant-generator, auto-title). Each gets its own mock instance below.
+ * `policy: "allow"` (set in `test/mock-flowstate.ts`) catches anything else
+ * with a no-op model.
  *
  * `assistantMock` uses a hand-rolled scenario dispatcher because the
  * built-in `mockGenerator` only supports either plain sequential steps
@@ -97,14 +97,6 @@ export const assistantMock = buildAssistantMock();
 
 const alwaysTrue = (_input: unknown) => true;
 
-/** Low-confidence "default" → router falls through to assistant-generator. */
-const thinkingStyleClassifierScript: MockGeneratorScriptEntry[] = [
-  {
-    when: alwaysTrue,
-    then: { structuredOutput: { category: "default", confidence: 0 } },
-  },
-];
-
 /** Empty active-skills → no skill activation in test mode. */
 const skillClassifierScript: MockGeneratorScriptEntry[] = [
   {
@@ -127,11 +119,6 @@ const titleScript: MockGeneratorScriptEntry[] = [
 const sideChainBriefScript: MockGeneratorScriptEntry[] = [
   { when: alwaysTrue, then: { text: "Background brief complete." } },
 ];
-
-export const thinkingStyleClassifierMock = mockGenerator({
-  name: "thinking-style-classifier",
-  script: thinkingStyleClassifierScript,
-});
 
 export const skillClassifierMock = mockGenerator({
   name: "skill-classifier",

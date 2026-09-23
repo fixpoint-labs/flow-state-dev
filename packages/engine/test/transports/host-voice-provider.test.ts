@@ -68,7 +68,7 @@ function dispatch(host: ReturnType<typeof buildHost>) {
     flowKind: "voice-flow",
     action: "run",
     input: { value: "hi" },
-    principal: { userId: "u1" }
+    principal: { userId: "u1", orgId: "org_test" }
   });
 }
 

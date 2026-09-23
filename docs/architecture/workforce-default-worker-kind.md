@@ -23,9 +23,11 @@ The two facts it was written against, and where each landed:
   The kind now declares `flowIsolation`, and each seat is seeded from its own resolved union (C3).
 
 One property of that second fix is worth carrying forward, because it reaches callers: the
-collection is still **org-scoped**, so a request to a built-in worker must be bound to an org.
-A request carrying only a `userId` fails with `Resource "skills" is not registered` before the
-model is reached. Tracked as FIX-1403.
+collection is still **org-scoped**. The organization is the one already on the principal. A
+request to a built-in worker sends `userId` and does not carry an organization id; the seat's
+skills resolve in that organization. An app that configures no resolver runs in the framework
+development organization. The kind does not invent an organization, and it does not read one
+off the request.
 
 Related, and deliberately not restated here:
 
@@ -46,7 +48,7 @@ flowchart TD
   K["kinds map<br/>built-in merged underneath"] --> H
   H -->|absent flow:| A[built-in worker kind]
   H -->|unregistered name| X[refuse, by name]
-  A --> P["prompt: [default, instructions]"]
+  A --> P["prompt: [default, teamInstructions, instructions]"]
   A --> S["skills: org ∪ team ∪ seat<br/>stored per seat"]
   A --> M["memory: existing scopes<br/>composed in by the app"]
   A --> T[model + tools from configSchema]
@@ -56,43 +58,136 @@ flowchart TD
 
 ## C1 — Composition, not a type
 
-The worker kind is a flow like any other. Its settings bag (`configSchema`) declares
-`instructions`, `model`, `tools`, and the skills switches. It declares **no memory switch** — per
-C5 memory is composed into a kind at definition time, not turned on here. `instructions` is the worker
-file's body arriving as one setting — the hire step already imposes that key
-(`packages/workforce/src/manifest.ts`, `INSTRUCTIONS_KEY`) and already refuses `persona` by
-name (`REFUSED_PERSONA_KEY`, same file).
+The worker kind is a flow like any other, and its settings bag (`configSchema`) is
+`workerConfigSchema().extend({ model, tools, skills })` — two sets, named here rather than counted,
+because a custom-kind author hand-rolling the wrong half gets a kind that refuses the whole roster
+at boot:
+
+| | Keys | Whose |
+|---|---|---|
+| **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
+| **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. `tools` is the one of the three that is **reserved** — see below. |
+| **The hire step's** | `flow`, `description`, `resources` | Never a kind's. Read and removed before admission, so no `configSchema` sees them — see `resources` below. |
+
+**`resources` is taken outright, and is not a setting at all (FIX-1381).** Where `tools` is a key a
+kind declares and the hire step reads, `resources` is a key the hire step *consumes*: it names the
+documents that seat may touch, it is removed from the bag before admission, and it never reaches a
+kind's `configSchema`. So a kind may not declare a `resources` setting of its own — one that did
+would simply stop receiving an authored value. The narrowed map it produces replaces the kind's
+flow-level resource map for that seat; `packages/workforce/src/seat-resources.ts` is canonical for
+the grant shapes and the refusals.
+
+**`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then the kind's catalog), and the ones that resolved to the seat's own folders are moved onto `seatTools` as live blocks. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
+
+The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` kind re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each kind to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed kind-probing after a probe produced a false accusation (`admissionHint`, `packages/workforce/src/hire.ts`).
+
+It declares **no memory switch** — per C5 memory is composed into a kind at definition time, not
+turned on here. `instructions` is the worker file's body arriving as one setting — the hire step
+imposes that key (`packages/workforce/src/manifest.ts`, `INSTRUCTIONS_KEY`) and refuses `persona`
+by name (`REFUSED_PERSONA_KEY`, same file).
+
+There is no nested bag for a kind's own settings; open-ended data gets one declared key whose schema
+is a record.
+
+The contract is what makes a kind hireable, and the hire step hands its bag to **every** kind
+rather than probing which ones declared a matching key. A kind whose schema cannot take that bag
+refuses at the mint, for the whole roster, at boot.
+
+**Admission is structural, not nominal, and that is D1 rather than an oversight.** Nothing checks
+that a kind called `workerConfigSchema()`; what is checked is whether its closed schema accepts
+what hire imposes, which is the single enforcement point D1 settled on. A kind hand-declaring the
+same keys is therefore admitted identically — verified, not assumed. The cost is that such a kind
+does not track the contract: when a key is added, a composed kind receives it and a hand-rolled one
+refuses at boot naming the unrecognised key. That failure is loud and collected with the rest of
+the roster's problems, never silent, which is why the trade is acceptable and a second nominal gate
+is not worth the second authority it would create. That replaces a branch whose other arm was silence: a seat
+whose folders declared skills used to mint, run, and hold none, with nothing said anywhere.
+
+**Imposed and never-authored are two different properties, and the contract's keys do not line up
+on them.** All four are what hire puts in the bag — `instructions` when the body is non-empty,
+`teamInstructions` when the seat's team wrote a `TEAM.md`, and `seatSkills` and `seatTools` on
+every record. `seatSkills`, `seatTools` and `teamInstructions` are the ones no file may author,
+refused by name at the worker loader and at the hire, from the shared constants in `manifest.ts`
+that every door references rather than re-spelling. Those three are both; `instructions` is the
+one key that is imposed and authored all the same — as the file's body.
+
+`teamInstructions` is imposed the same way and refused at **three** doors rather than two — a
+`TEAM.md`, a `WORKER.md`, and the hire — all reading one exported constant
+(`TEAM_INSTRUCTIONS_KEY`) rather than a literal, so a rename moves every refusal with it instead
+of leaving one door open with nothing said.
+
+`teamInstructions` carries the instructions a seat's TEAM wrote — read from that team's
+`TEAM.md` by the loader (`packages/workforce/src/loader/read-teams-directory.ts`), joined onto
+each of that team's worker records, and imposed by the hire step **only when the record carries
+one**. A team that wrote none, and a team with no file at all, both leave the key ABSENT rather
+than empty: an empty layer would be a value every kind's schema could see, and a different bag
+for every team in every tree that has no file.
 
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
-`prompt: [default, instructions]`.
+`prompt: [default, teamInstructions, instructions]` — the framework's default first, then the
+seat's team, then the seat's own, with absent layers dropped rather than joined as blanks. (The
+default is still unshipped; the slot is two entries today and gains the third at the front when
+it lands.)
+
+**What that order buys, and what it does not.** The position is fixed and checkable: a seat's own
+text is always last. That is the whole promise. It is **not** a precedence rule. Assembly on this
+path is plain concatenation, with no override, precedence or conflict-resolution mechanism
+anywhere in it — so if a team says *never touch production* and a seat says *restart the
+production queue*, what happens is whatever the **model** does with two contradictory sentences.
+The framework does not adjudicate that, and no check on the composed prompt can show otherwise: a
+check there proves order, which is a neighbour of precedence rather than precedence itself. Making
+a seat's line genuinely win would mean resolving contradictions before the prompt is sent, which
+is a different and much larger feature.
 
 `tools` is a hard runtime fence over the app's catalog, not a hint: a seat may call exactly the
 catalog keys it names, and an empty list means no catalog tools, regardless of what the app's
-catalog carries or what a bound skill's `allowed-tools` declares (see C5). The delegation surface
+catalog carries, what a bound skill's `allowed-tools` declares (see C5), or what a capability
+attached through `uses` would otherwise contribute. The delegation surface
 is fenced to the same list (FIX-1362's `toolSeatFence`), so a seat with `tools: []` reaches no
 catalog tool through a skill's `agents:` either.
 
-**The hole is capability tools, and it is enforced by convention rather than by mechanism.** The
-framework's resolver ends in `[...base, ...staticTools, ...dynTools]` — a union, not an
-intersection — so a capability mounted through `uses` reaches a seat whose `tools:` is empty.
-Two consequences, and the first ships in the default kind:
+**Capability tools are fenced by mechanism (FIX-1393).** The core resolver drops a capability's
+catalog-granted tools when the consuming block declares `tools:`, so an app's `uses` can no longer
+hand a seat with `tools: []` something it never named. The union this document once described is
+gone; `docs/architecture/capabilities.md` → *The tools fence* is canonical for the rule.
 
-- **The skills binding is such a capability.** A seat that sets `skills.activateTool: true` is
-  bound with `dynamicActivation`, which installs the skill-loader tool. That tool reaches the
-  model without appearing in `tools:`. It is the one tool the shipped kind adds, it is opt-in per
-  seat, and it is not a catalog tool — so the sentence above still holds for everything the app
-  registered.
-- **An app's own `uses` (FIX-1364) is the general case.** Every consumer turns tool-bearing
-  presets off itself, which is what FIX-1364's memory recipe does with `recall` and `connect`,
-  and what its fence test covers: that recipe, not the general case.
+**The carve-out is controls, and it is deliberate.** A capability contributes through two slots:
+`tools` (a grant from the app's catalog, fenced) and `controlTools` (a framework control, never
+fenced). A control is built inside its capability and never exported — so no `tools:` list could
+name it back in, and fencing it would leave the seat advertising a tool in its prompt it cannot
+call. Three ship in this kind. The first two are held only because the seat's own configuration
+asked for them; the third is held by every seat in the kind, and a seat's configuration narrows it
+rather than requesting it:
 
-**This is a gap in the enforcement, not a softening of the rule.** The sentence above is still the
-contract, and FIX-1393 makes it true by mechanism by moving the intersection into
-`@flow-state-dev/core` (declared `tools:` ∩ capability tools, empty stays empty). Until it lands,
-consumer opt-outs are necessary and are **not** a second fence story. Do not add a per-consumer
-fence in the meantime: FIX-1362's `resolveBuild` catalog is the one structural enforcement point
-for the delegation surface, and a third would be another door to forget. Tracked in
-[Known gaps](#known-gaps-flagged-not-built).
+- **The skill loader.** A seat that sets `skills.activateTool: true` is bound with
+  `dynamicActivation`, which installs the loader as a control. It reaches the model without
+  appearing in `tools:` — by design, because the seat's own setting is the declaration.
+- **The delegation surface.** A skill the seat holds that declares `agents:` brings the task
+  board's eight tools, also as controls, so `tools: []` does not cut a worker off from the board
+  it was given. FIX-1362's `toolSeatFence` still scopes which *catalog* tools reach a skill's
+  agents; the board itself is not a catalog grant.
+- **The discovery door (FIX-817).** `createWorkforceCapability` contributes `discover` as a
+  control, and it ships **on**. This is the one control a seat does not ask for: composing the
+  capability is itself the declaration that a seat may ask what is around it, so a second per-seat
+  switch would have nothing to add, and defaulting it off would leave an upgraded app's seats
+  unable to see the domains their kind already installed. A worker file's `discover:` key only
+  **narrows** it — the key lists the domains that seat sees, an empty list sees nothing, and
+  omitting the key sees every domain the scope carries. It can never widen past what the app
+  installed: naming a domain the scope does not carry does not reach it, and neither does asking
+  the tool for that domain directly, because the narrowing is applied to the registry rather than
+  filtered in the tool. An app that wants the sources installed but the tool withheld turns off
+  the capability's `door` preset. The domains themselves, and what each entry promises, are in
+  [the discovery guide](../../apps/docs/docs/orchestration/discovery.md).
+
+Note what this leaves standing: the skills library registers the app's catalog through `tools`, so
+that half is fenced normally. The exemption is per-contribution, not per-capability — which is why
+one capability can be on both sides of the fence at once.
+
+**The consumer-level opt-outs are no longer load-bearing as a fence.** FIX-1364's memory recipe
+(`mem.presets({ recall: false, connect: false })`) and `registerCatalogTools: false` still work and
+can still be reasonable defaults on cost or behaviour grounds, but a seat's `tools:` no longer
+depends on them for safety. Do not add a per-consumer fence: core is the one structural
+enforcement point, and a second would be another door to forget.
 
 The shared `default` prompt is owned and shipped elsewhere (FIX-1344 part 2, not yet landed).
 Until it does, the kind ships against `instructions` alone with an explicit seam for `default`
@@ -412,14 +507,6 @@ BP-037 neither the spec nor its POC lands on `main`.
   a real multiplier and nobody has measured it. FIX-1362 cut the obvious part — a skill-less seat
   does no storage work at all — but the roster × catalog case is still unrun. Not a reason to
   change C3, which trades it for a privacy promise the storage actually keeps.
-- **Capability tools union onto a seat's `tools:` instead of intersecting it** — C1 says a
-  seat may call exactly the keys it names, and the framework's tools resolver ends in
-  `[...base, ...staticTools, ...dynTools]`. So today the rule is upheld at each consumer:
-  the `uses` door FIX-1364 opened carries the same residue, and its documented memory recipe
-  turns the tool-bearing presets off rather than relying on a fence. **FIX-1393 moves the
-  intersection into `@flow-state-dev/core`** (declared `tools:` ∩ capability tools, empty
-  stays empty). Until it lands the consumer opt-outs are necessary, and FIX-1364's fence test
-  covers that recipe, not the general case.
 - **Memory isolation is per kind, not per tier** — C4's residual, and all that is left of it:
   FIX-1364 corrected C4 itself, since "member" there means *seat* and `isolateUserState`
   already isolates on the instance id. What remains is that the flag lives on the flow

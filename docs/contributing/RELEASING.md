@@ -1,13 +1,13 @@
 # Releasing
 
-How we publish `@flow-state-dev` and `@thought-fabric` packages to npm. For how to write changeset fragments, see [release-notes-workflow.md](./release-notes-workflow.md).
+How we publish the `@flow-state-dev` packages to npm. For how to write changeset fragments, see [release-notes-workflow.md](./release-notes-workflow.md).
 
 ## Versioning policy
 
 - All packages start at 0.x (currently 0.1.0 baseline).
 - Pre-1.0 discipline: `patch` for compatible changes, `minor` for breaking changes. Never file a `major` changeset while pre-1.0. Changesets will jump the package straight to 1.0.0. [release-notes-workflow.md](./release-notes-workflow.md#pre-10-discipline-current-state) is the authoritative wording.
 - Graduate to 1.0 only by explicit decision, not by accident.
-- Only publishable packages are versioned. `.changeset/config.json` sets `privatePackages: { version: false }`, so every `private: true` package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `plugins/*`, `goals` — is skipped by both `pnpm changeset` and `pnpm version-packages`.
+- Only publishable packages are versioned. `.changeset/config.json` sets `privatePackages: { version: false }`, so every `private: true` package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `packages/thought-fabric-core`, `plugins/*`, `goals` — is skipped by both `pnpm changeset` and `pnpm version-packages`.
 
 ## Tag scheme
 
@@ -17,9 +17,38 @@ How we publish `@flow-state-dev` and `@thought-fabric` packages to npm. For how 
 
 ## Provenance and access
 
-- All packages use npm provenance attestation (`--provenance` flag + `id-token: write` in CI).
+- All packages use npm provenance attestation (`--provenance` flag + `id-token: write` in CI). Under Trusted Publishing the flag becomes unnecessary — npm generates provenance automatically.
 - Scoped packages require `publishConfig.access: "public"` (already set in every `package.json`).
-- `@thought-fabric/core` publishes under the `@thought-fabric` npm scope.
+- `@thought-fabric/core` is **not published**. It is marked `private` in its `package.json`, which is the only flag `changeset publish` filters on — `.changeset/config.json`'s `ignore` list affects versioning, not publishing. Only the private `kitchen-sink` app consumes it, over a workspace link. `scripts/validate-publish-set.mjs` (CI: **Process guards**) fails if that flag is ever removed, since an npm name is given away permanently.
+
+## Built output must carry file extensions
+
+Packages are ESM (`"type": "module"`), so every relative import in `dist` needs an explicit `.js` — Node's resolver rejects `./items/predicates` with `ERR_MODULE_NOT_FOUND`. The workspace compiles with `moduleResolution: "Bundler"`, which lets source omit the extension and lets `tsc` emit it verbatim, and nothing in the repo notices because every package resolves through `src/*.ts`. **Only a consumer installing from npm runs that path**, which is how 0.1.1 shipped unimportable.
+
+Each publishable package's `build` runs `scripts/add-esm-extensions.mjs` after `tsc`, and CI re-checks the output with `--check`. The script rewrites only specifiers that already start with `./` or `../`; a bare specifier is left exactly as written, because rewriting one into a relative path is how `tsc-alias --resolve-full-paths` silently turned a cross-package re-export into a self-reference.
+
+The check that catches this class is not a dry run, a tarball listing, or `publint` — all three pass on broken output. It is installing the tarballs into an empty directory and importing each one.
+
+## The publish must go through pnpm
+
+Every package sets `main` / `types` / `exports` to `src/*.ts` for local development and overrides them to `dist/*` under `publishConfig`. Substituting those fields at pack time is a **pnpm** feature; `npm publish` ignores them and would ship a tarball whose `main` points at a `src/` path that `files: ["dist"]` excludes — a broken package, silently.
+
+`changeset publish` detects the workspace's package manager and spawns `pnpm publish` here, so the normal path is already correct. Do not reach for `npm publish` as a workaround.
+
+## `release:build`, not `packages:build`
+
+Every release path builds through `release:build`, which is `packages:build` plus `build:assets`. The extra step copies the DevTool app's output into `packages/devtool/dist-client/`, which `@flow-state-dev/devtool` lists in `files` and resolves at runtime to serve `fsdev dev`. `packages:build` alone does not produce it: `build:assets` is not a turbo task, and it cannot become one — `apps/devtool` depends on the `@flow-state-dev/devtool` package, so folding the asset build into that package's own `build` would close a cycle.
+
+The two stay separate because `packages:build` is also the editor/typecheck input and the Vercel build step for `packages/ui` and `apps/kitchen-sink`, none of which want an app build. Publishing is the only caller that needs the assets, so publishing is what pays for them.
+
+The devtool package refuses to publish without them. Its `prepublishOnly` runs `scripts/check-assets.mjs`, which fails when `dist-client/index.html` is missing, so a release path that loses `build:assets` aborts rather than shipping a package whose `fsdev dev` throws. `pnpm publish` runs that hook before packing, and `changeset publish` calls `pnpm publish`.
+
+```bash
+# What the tarball actually contains. `pnpm pack` takes no filter — `--filter` puts pnpm
+# in recursive mode, which pack rejects with "Unknown option: 'recursive'". Use --dir.
+pnpm --dir packages/core pack --pack-destination /tmp
+tar xzOf /tmp/flow-state-dev-core-*.tgz package/package.json | grep '"main"'   # ./dist/index.js
+```
 
 ## Sourcemaps
 
@@ -65,34 +94,85 @@ Note: `changeset publish` does not guarantee topological order. For strict order
 Run before any publish (automated or manual):
 
 ```bash
-# Verify tarball contents per package
-pnpm -r exec npm pack --dry-run
+# Walk the real publish set — exactly the 27 publishable packages, private ones skipped
+pnpm publish -r --dry-run --no-git-checks
 
 # Check exports and types resolution
 npx publint ./packages/<name>
 npx @arethetypeswrong/cli --pack ./packages/<name>
 
+# The one that catches an unimportable package: install and import for real.
+# publint and the dry run both pass on output Node cannot load.
+# Import the package you packed — importing a different one proves nothing
+# about it, and it may well load as somebody else's dependency.
+PKG=<name>                      # workspace directory under packages/
+NAME=$(node -p "require('./packages/$PKG/package.json').name")
+OUT=$(mktemp -d)
+pnpm --dir "packages/$PKG" pack --pack-destination "$OUT"
+cd "$(mktemp -d)" && npm init -y >/dev/null && npm install "$OUT"/*.tgz
+node --input-type=module -e "import '$NAME'"
+
+# npm supplies the workspace dependencies of whatever you pack, so this reads
+# the LAST PUBLISHED version of them, not your branch. To prove a fix before it
+# is released, pack the package together with the dependencies it needs and
+# install them in one npm install.
+
 # Ensure no stray debug code in dist
 grep -r 'console\.log\|debugger' packages/*/dist/ --include='*.js'
 ```
 
-## First-publish ceremony (one-time)
+## First publish (one-time — not done yet)
 
-This checklist runs once for the initial npm publish:
+Nothing has been published under the `@flow-state-dev` scope. All 27 packages are new, and that is what makes the first publish different from every release after it: **npm will not let you configure a trusted publisher for a package that does not exist.** `npm trust` says so outright — "The package you're configuring must already exist on the npm registry." There is no pre-registration. So the first publish is token-authenticated, and Trusted Publishing is configured afterwards, against packages that by then exist.
 
-1. Confirm npm orgs exist: `flow-state-dev`, `thought-fabric`.
-2. Configure trusted publisher (OIDC) or set the `NPM_TOKEN` secret in GitHub. Set `CHANGESETS_TOKEN` for release PR automation.
-3. Set the launch baseline version (0.1.0) across all publishable packages.
-4. Run `pnpm version-packages` to consume accumulated changesets. Review the diff.
-5. Per-package `npm pack --dry-run` for a final sanity check.
-6. Merge to main so `release.yml` publishes, or run `pnpm release` locally.
-7. Post-publish smoke test from a fresh directory:
+### Already in place
+
+- `CHANGESETS_TOKEN` is configured. `release.yml` runs on every push to `main` and keeps the **Version Packages** PR current — it has been open and refreshing since 2026-09-09.
+- All 27 publishable packages carry `files`, `license`, `repository.directory`, a README, and the `publishConfig` dist-path override.
+- `changesets/action@v1` resolves to v1.9.0, which writes the `.npmrc` auth line only when `NPM_TOKEN` is defined and omits it otherwise. The same pin works for both the token publish and the OIDC publish later, so the action version does not need to change. Do **not** jump to `@v2` while still on a token: v2 dropped `NPM_TOKEN` handling entirely.
+
+### The token
+
+`release:ci` publishes only when `NPM_TOKEN` is set; without it the step prints `Skipping npm publish in CI: NPM_TOKEN is not set` and publishes nothing. A secret's value and scope are not readable from CI, so the only proof the scope is right is the publish itself.
+
+The token must be a **granular access token scoped to all packages in the `flow-state-dev` organization**, read and write. A token scoped to _selected packages_ cannot work — there are no packages to select yet. No second org is involved: everything published lives under `@flow-state-dev`.
+
+### Steps
+
+1. Confirm the `flow-state-dev` npm org exists and the publishing account has publish rights on it.
+2. Add the `NPM_TOKEN` repository secret.
+3. Review the open **Version Packages** PR. Note that the accumulated changesets have already moved past the 0.1.0 launch baseline — most packages publish as `0.1.1`, `orchestration` and `workforce` as `0.2.0`, `codex` and `cursor` as `0.0.2`. That is legal and harmless; fighting changesets to force a clean 0.1.0 means hand-editing 76 generated files.
+4. Merge it. `release.yml` runs `release:ci` → `release:build` → `changeset publish --provenance`.
+5. Smoke test from a fresh directory:
    ```bash
    mkdir /tmp/fsd-smoke && cd /tmp/fsd-smoke
    pnpm init && pnpm add @flow-state-dev/core @flow-state-dev/engine
    # verify types resolve and a basic import works
    ```
-8. Verify each npmjs.com listing renders the README and shows the provenance badge.
+6. Check that `fsdev dev` serves the DevTool from the published `@flow-state-dev/devtool` — that package ships `dist-client`, which only `build:assets` produces.
+7. Verify each npmjs.com listing renders its README and shows the provenance badge.
+
+## Switching to Trusted Publishing (after the first publish)
+
+Blocked on the runner's npm version. A pnpm upgrade is one way to clear it, not a prerequisite.
+
+`changeset publish` spawns **`pnpm publish`**, but on pnpm 10 that command does not itself publish. It packs the tarball and then spawns `npm publish` on the `npm` it finds on `PATH`, with the parent environment spread into the child — so the Actions OIDC variables reach npm, and **npm** is the CLI that performs the exchange. In pnpm 10.4.1's bundled `dist/pnpm.cjs` the publish command ends in `runNpm(opts.npmPath, ["publish", "--ignore-scripts", <tarball>, ...args])`, and the helper that spawns it builds the child env as `{ ...process.env, ... }`. [pnpm#11513](https://github.com/pnpm/pnpm/issues/11513) reads the same way round: the reporter's OIDC publishes worked on pnpm 10 and broke on 11.0.8, when pnpm took publishing in-house.
+
+So the floor that matters is npm ≥ 11.5.1, and `actions/setup-node` with `node-version: 22` installs npm 10.9.8. Adding a `npm install -g npm@latest` step to the release workflow clears it. Upgrading to pnpm 11, which implements OIDC natively, is the other route and is a larger change with its own risk.
+
+Either way the canary proof in step 2 is what settles it, since this rests on reading pnpm's source rather than on a publish anyone has watched.
+
+Then:
+
+1. Configure a trusted publisher for each of the 27 packages. `npm trust` (npm ≥ 11.15.0, 2FA required) does this from the CLI, so it can be a loop rather than 27 trips through the website:
+   ```bash
+   npm trust github <package> --repo fixpoint-labs/flow-state-dev --file release.yml --allow-publish -y
+   ```
+   Snapshot Release publishes from a second workflow, so `snapshot-release.yml` needs its own trusted-publisher entry per package if snapshots are to stay tokenless.
+2. Prove it on `canary` before trusting it for `latest`. Run **Snapshot Release** and confirm it publishes with no token present. [pnpm#11513](https://github.com/pnpm/pnpm/issues/11513) reports OIDC publishes failing with a 404 on pnpm 11.0.8, so this is a real check, not a formality.
+3. Edit `release.yml`: add `npm install -g npm@latest` before the publish step (unless the pnpm upgrade route was taken instead), and drop `NPM_TOKEN` from the `changesets/action` env block. Keep `id-token: write`. Keep the action at `@v1`.
+4. Drop `--provenance` from `release`, `release:ci`, and `release:snapshot`, and drop the `NPM_TOKEN` guard from `release:ci`. Trusted Publishing generates provenance on its own.
+5. Revoke the npm token and delete the secret.
 
 ## Post-publish
 
@@ -102,10 +182,10 @@ This checklist runs once for the initial npm publish:
 
 ## Required repository secrets
 
-| Secret | Purpose |
-|--------|---------|
-| `CHANGESETS_TOKEN` | GitHub token with `contents: write` and `pull-requests: write` for release PR automation |
-| `NPM_TOKEN` | npm automation token with publish access to `@flow-state-dev` and `@thought-fabric` scopes |
+| Secret             | Purpose                                                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CHANGESETS_TOKEN` | GitHub token with `contents: write` and `pull-requests: write` for release PR automation                                                                          |
+| `NPM_TOKEN`        | npm granular access token, read+write on all packages in the `flow-state-dev` org. Needed for the first publish only; removed once Trusted Publishing is in place |
 
 ## Node.js version requirement
 

@@ -54,6 +54,8 @@ For collections, two additional permissions control mutations:
 | `update` | Client can modify item content via `PATCH` |
 | `delete` | Client can remove items via `DELETE` |
 
+On a [projected collection](./projected-collections.md), `content.create`, `content.update`, and `content.delete` are a build-time error. Those collections are read-only on the client too.
+
 #### Grant `update` alongside `create`
 
 Creating an item is two writes, state then content, and the second one can fail
@@ -185,6 +187,25 @@ What `client.state.read: true` enables:
 Without it, those endpoints return 403 and `prefetched` carries just the `topic` for each item. The collection's `count` is always emitted regardless — counts are a cardinality affordance, not state.
 
 For capability-driven UIs, the [resource manifest](/docs/resources/manifest) reports declared permissions per resource so clients can render conditional affordances without hard-coding flow knowledge.
+
+### Pair `state.read` with a projection
+
+`state.read: true` opens the endpoint. It does not decide what comes back. With no `expose`, `exclude` or `data`, each item's `clientData` is the stored row unchanged, which is rarely what you want for a row the server also writes to.
+
+Name the fields instead:
+
+```ts
+client: {
+  state: { read: true },
+  expose: ["id", "title", "status", "assignee"],
+}
+```
+
+An allowlist and an omit-list behave differently as the row grows. A field added to the schema later is published by default under `exclude`, and stays private under `expose` until someone adds it. For a row carrying anything the server set for itself, such as a lease, a claim, a retry count or an audit trail, prefer `expose`.
+
+### How a read is scoped
+
+An org-scoped collection resolves against the organization the session is bound to, and a session takes that binding from the authenticated principal when it is created. Opening `state.read` on one makes it readable by that organization's members. A user-scoped collection resolves the same way, against the session's user. Pick the scope a collection lives in before you open the read, because that scope is the boundary the read enforces.
 
 ## Snapshot shape
 

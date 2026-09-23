@@ -28,6 +28,7 @@
  *      tables), pre-resolve the gate suspension, continue WITH a `resumeContext`.
  */
 import { PGlite } from "@electric-sql/pglite";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { buildItemLookup, resolveBlockValue } from "@flow-state-dev/core/items";
@@ -135,6 +136,7 @@ describe("completed background `.sideChain()` trace replays across a cold restar
     const storesA = await createPostgresStores({ executor });
     const providerA = providerFor(storesA);
     const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

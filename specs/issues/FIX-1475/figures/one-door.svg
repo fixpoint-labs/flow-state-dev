@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels. Today: files read at boot reach the flow registry through the boot door, and a runtime hire dead-ends in process memory that dies with the deploy. After: the same boot door is unchanged, a second door admits seats after construction, and both the durable org-scoped roster in Postgres and a runtime hire come through that same second door, so the roster survives a redeploy.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface);   stroke:var(--rule); stroke-width:1.2; }
+    .n-old  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-new  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-dead { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .arrow  { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .arrow-dead { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .divider { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+  </style>
+
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/>
+    </marker>
+    <marker id="hd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/>
+    </marker>
+  </defs>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="20">TODAY</text>
+    <rect class="n-old" x="16" y="30" width="200" height="52" rx="5"/>
+    <text class="t-b" x="30" y="52">the team's files</text>
+    <text class="t-s" x="30" y="68">read at boot · FIX-1429</text>
+
+    <path class="arrow" d="M216 56 H300" marker-end="url(#h)"/>
+    <text class="t-lbl" x="228" y="48">BOOT DOOR</text>
+
+    <rect class="n-box" x="306" y="24" width="190" height="64" rx="5"/>
+    <text class="t-b" x="320" y="48">the flow registry</text>
+    <text class="t-s" x="320" y="64">what the app serves</text>
+
+    <rect class="n-dead" x="596" y="30" width="216" height="52" rx="5"/>
+    <text class="t-b" x="610" y="52">a hire while it runs</text>
+    <text class="t-gone" x="610" y="68">process memory · dies on redeploy</text>
+    <path class="arrow-dead" d="M596 56 H502" marker-end="url(#hd)"/>
+    <text class="t-gone" x="512" y="48">no door</text>
+
+    <rect class="n-dead" x="596" y="100" width="216" height="34" rx="5"/>
+    <text class="t-gone" x="610" y="121">no durable roster</text>
+  </g>
+
+  <line class="divider" x1="16" y1="156" x2="924" y2="156"/>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="182">AFTER</text>
+    <rect class="n-old" x="16" y="192" width="200" height="52" rx="5"/>
+    <text class="t-b" x="30" y="214">the team's files</text>
+    <text class="t-s" x="30" y="230">read at boot · unchanged</text>
+
+    <path class="arrow" d="M216 218 H300" marker-end="url(#h)"/>
+    <text class="t-lbl" x="228" y="210">BOOT DOOR</text>
+
+    <rect class="n-box" x="306" y="186" width="190" height="64" rx="5"/>
+    <text class="t-b" x="320" y="210">the flow registry</text>
+    <text class="t-s" x="320" y="226">what the app serves</text>
+
+    <rect class="n-new" x="596" y="186" width="216" height="52" rx="5"/>
+    <text class="t-b" x="610" y="208">a hire while it runs</text>
+    <text class="t-s" x="610" y="224">register · unregister</text>
+    <path class="arrow" d="M596 216 H502" marker-end="url(#h)"/>
+    <text class="t-lbl" x="508" y="205">SECOND DOOR</text>
+
+    <rect class="n-new" x="596" y="264" width="216" height="52" rx="5"/>
+    <text class="t-b" x="610" y="286">the durable roster · per org</text>
+    <text class="t-s" x="610" y="302">Postgres · one row per seat</text>
+
+    <path class="arrow" d="M704 238 V264" marker-end="url(#h)"/>
+    <text class="t-s" x="712" y="256">hire writes the row</text>
+
+    <path class="arrow" d="M596 290 H400 V256" marker-end="url(#h)"/>
+    <text class="t-s" x="408" y="284">the next boot reads it back</text>
+  </g>
+</svg>

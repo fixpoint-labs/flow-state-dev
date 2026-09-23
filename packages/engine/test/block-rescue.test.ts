@@ -5,6 +5,7 @@
  * there (after retries are exhausted) and recovers the action instead of failing.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores, runAction } from "../src";
@@ -41,6 +42,7 @@ describe("FIX-742: action-root block rescue", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { n: 1 },
@@ -88,6 +90,7 @@ describe("FIX-742: action-root block rescue", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { n: 1 },
@@ -141,6 +144,7 @@ describe("FIX-742: action-root block rescue", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { n: 1 },
@@ -205,6 +209,7 @@ describe("FIX-742: action-root block rescue", () => {
       actionName: "run",
       input: { n: 1 },
       userId: "user_inflow",
+      orgId: DEFAULT_ORG_ID,
       sessionId: "sess_inflow",
       stores: createInMemoryStores(),
       runtimeConfig: {}

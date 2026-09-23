@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
 title: "DevTool"
+sidebar_label: Overview
 ---
 
 # DevTool
@@ -58,17 +59,20 @@ fsdev dev --flow-dir ./my-flows
 
 Choose a flow instance by its exact ID. Its kind describes the flow; its ID identifies the copy you inspect.
 
-The navigator lists every registered instance, one row each. For most flows there is a single copy and the two are the same string, so a row just reads `reports`. A flow declared with `cardinality: "collection"` is registered once per copy, each under its own ID, and every copy gets its own row:
+The navigator groups flows by kind, and how far a kind opens comes from how it was declared. A flow declared with `cardinality: "singleton"` has one copy, so its kind row opens straight into sessions. A flow declared with `cardinality: "collection"` is registered once per copy, each under its own ID, and its kind row opens into those copies first:
 
 ```text
-> engineer-a  (engineer)
-> engineer-b  (engineer)
 > reports
+> engineer
+    engineer-a
+    engineer-b
 ```
 
-The ID is the label; the kind sits beside it, muted, when the two differ. A long ID is shortened to fit — hover the row for the full value, or use the copy button beside Sessions to put it on your clipboard. That is the string you address the instance by, so copy it rather than retyping what the row shows.
+Expanding a kind costs no request. Sessions are read when you open the row you are going to work in — a singleton's kind row, or one copy under a collection kind.
 
-Expand a row to see that copy's sessions and the actions it declares. Two copies of a kind declare the same action names but can run entirely different blocks, so the actions shown are the selected copy's.
+A long ID is shortened to fit, so each copy's row carries a copy button at its end. That is the string you address the instance by, so copy it rather than retyping what the row shows. A singleton's ID is its kind and is already shown whole.
+
+Open a copy to see its sessions, re-read them, or start a new one. An open copy also shows how many actions it declares — click that count to list them. Two copies of a kind declare the same action names but can run entirely different blocks, so what you see there belongs to the copy you opened.
 
 ## Session management
 
@@ -104,23 +108,41 @@ For generator blocks, the panel also shows what the model actually saw on that t
 
 When a block fails, the detail panel surfaces enough context to diagnose without re-running. The error message renders at the top with the `code` as a small mono-text label. When the runtime captures `details` on the failure — generator output-validation errors carry the raw model text and the Zod issues, author-thrown `FlowError`s carry whatever was attached — the panel renders them as dedicated sections: a "Raw output" pane for the model's text, a typed "Validation issues" list for Zod issues, and a "Details" JSON panel for the rest. For tool-invoked blocks that fail, the panel also surfaces the originating tool call's arguments and the block's resolved input, so the failure stops requiring a hunt through sibling rows for the missing context. See [Error handling](/docs/advanced/error-handling).
 
-## Child sessions
+## Dispatched runs
 
-Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs work in a child session — a session of its own that keeps going after the request which started it has returned — and none of that work shows up in the conversation's own stream or trace.
+Some work leaves the session you are watching. A dispatcher block, or a task board seat that hands its rows off, runs it in a **dispatch run**: a session of its own that keeps going after the request which started it has returned. None of that work shows up in the starting conversation's stream or trace. See [Dispatched work](/docs/server/background-work) for what the server records about one.
 
-The Children tab lists it. One row per child session, with the labels it carries, the state its runs reached, and its session id.
+The rail lists those sessions with the rest of the flow's, indented one level under the session that started each one. Each carries a label saying the dispatcher started it and a link that opens the session it came from. A run started by another run indents once, beside its own parent.
 
-Click a row and the workspace opens that session. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it, and a child that dispatched work of its own has a Children tab too. A breadcrumb above the tabs shows how deep you are and takes you back.
+Click a row and the workspace opens that session. It is a session like any other, so Stream, Trace, Tasks and Suspensions all read it.
 
-Work dispatched into another flow instance produces a child that instance owns, so opening a row can move you to a different copy as well as a different session. The breadcrumb remembers which copy each step was under, and going back returns you to that copy, not to whichever one you ended up in.
+The Trace tab also lists the runs a session started, under the blocks that ran in it. Each is a collapsed node naming a separate session; expand one and that run's own block tree loads in place, without moving the workspace off the session you are on. Nothing about a run loads until you open it.
+
+The section says so when it does not have the whole picture. A read that fails says so rather than rendering as a session that dispatched nothing, and if a refresh fails under rows you already have, those rows stay on screen marked as possibly out of date. When the list holds only the newest page, it says that older runs are not shown instead of looking complete.
+
+Work dispatched into another flow instance produces a session that instance owns, so opening a row can move you to a different copy as well as a different session. The rail still lists every copy, and each remembers the session you last had open under it, so going back is picking it again.
 
 A few things worth knowing about a row:
 
-- **Status is coarse on purpose.** `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A row with no status has not run anything yet.
-- **Labels can be missing.** The topic and the entry label are stamped when the child is created, and either can be absent. The row still renders — the session id is the address.
-- **The task link is a match, not a foreign key.** Where a row lines up with a task on a board in this session, the Tasks tab shows a link on that task's row and the Children tab names the tasks. Where a task cannot be matched to exactly one child, no link is shown rather than a guessed one.
+- **Status is coarse on purpose.** Each node in the Trace tab carries the run's status. `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A run that has made no requests reads as `not started`.
+- **Labels can be missing.** The topic and the entry label are stamped when the session is created, and either can be absent. The row still renders — the session id is the address.
+- **The task link is a match, not a foreign key.** Where a run lines up with a task on a board in this session, the Tasks tab shows a link on that task's row. Where a task cannot be matched to exactly one run, no link is shown rather than a guessed one.
 
-The list is read when you open a session and when you refresh; it does not update on its own while you watch. See [Work that outlives the turn](/guides/background-work).
+The lists are read when you open a session and when you refresh; they do not update on their own while you watch. See [Work that outlives the turn](/guides/background-work).
+
+## Task boards
+
+The Tasks tab lists the task boards the open session emitted, each as its own table with one row per task. A task board is the queue a flow files work into for workers to claim. Each row shows the task's id, goal, status and assignee.
+
+A row can also carry a short note about itself, in a Reason column. The note is the task's `feedback` field. Parking a task for review records why it is waiting. A failure with retries left records the error and sends the row back to `pending`. Resuming a parked task writes the answer you hand it, or clears the note when you hand it none. The row shows whichever wrote last.
+
+The column appears on boards where at least one task carries a note, and not otherwise.
+
+A note sticks until something overwrites or clears it. A task that failed, retried, then parked with no reason given shows the failure text: the park wrote nothing, so the earlier note stands.
+
+A note is not an error. A failure with no retries left writes the task's `error` field instead, and a row can hold both. Long text is clipped to keep the table readable, so hover the cell for the whole string, or open the row's Details for the full task record.
+
+See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onreview) for parking and resuming.
 
 ## Session state
 

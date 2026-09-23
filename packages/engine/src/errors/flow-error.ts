@@ -345,8 +345,10 @@ export class ResourceAlreadyExistsError extends FlowError {
  * version check, but against "no live row" rather than the version this
  * context holds — which a tombstone satisfies, because recreating a deleted
  * resource is what the verb is for. And `replace`, reached by
- * `create(key, state, { replace: true })`, sends `"any"` and so is not
- * version-checked at all.
+ * `create(key, state, { replace: true })` on a writable collection, sends
+ * `"any"` and so is not version-checked at all. A `writable: false`
+ * collection does not select `replace`: that call uses `create` intent, and
+ * a live-row conflict is reported as read-only rather than as an overwrite.
  *
  * Read the hint routing before restating any of this narrower than it is.
  */

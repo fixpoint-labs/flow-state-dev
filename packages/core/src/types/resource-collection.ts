@@ -19,6 +19,13 @@ export {
   normalizeResourcePath,
   resolveCollectionKey,
   validatePattern,
+  assertRosterCollectionIsNotDeep,
+  encodeUserSegment,
+  isHiredRosterPrivateCollection,
+  markHiredRosterPrivateCollection,
+  HIRED_ROSTER_BROWSER_PATTERN,
+  HIRED_ROSTER_PRIVATE_PATTERN,
+  HIRED_ROSTER_PRIVATE_BRAND,
 } from "./collection-patterns";
 
 // ---------------------------------------------------------------------------
@@ -41,6 +48,14 @@ export type CollectionHookContext = {
    * into a per-user schedule index).
    */
   scopeId: string;
+  /**
+   * The organization the execution that fired this hook was admitted under
+   * (FIX-1442). Server-derived, never the caller's — a hook that persists a
+   * binding for later trusted use (a dynamic schedule's target organization)
+   * takes it from here rather than from the state it was handed, which the
+   * caller wrote.
+   */
+  orgId: string;
 };
 
 export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
@@ -103,9 +118,11 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   llmWritable?: boolean;
   /**
    * Allow blocks to mutate instance state (`patchState` / `setState` /
-   * `updateState` / `upsert` patch) and instance content (`writeContent`).
-   * Collection-wide. Default `true` when omitted — same as a single resource.
-   * Set `false` to refuse those writes.
+   * `updateState` / `upsert` patch) and instance content (`writeContent`),
+   * and to overwrite or remove an existing instance (`create` with
+   * `{ replace: true }`, `delete`). Collection-wide. Default `true` when
+   * omitted — same as a single resource. Set `false` to refuse those writes.
+   * `create` / `getOrCreate` of a key that does not exist stay open.
    */
   writable?: boolean;
 
@@ -214,7 +231,9 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
    * (`setState` semantics — Zod `.default(null)` fills nullable fields the
    * caller doesn't supply); creates it if missing. Use for setup/reset
    * paths that want a known initial state regardless of whether the
-   * instance was present before.
+   * instance was present before. On a `writable: false` collection,
+   * replacing an existing instance throws the same read-only error as
+   * `setState`; a missing key still creates.
    */
   create(
     key: string | Record<string, string>,
@@ -250,7 +269,11 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
   /** List all instances, optionally filtered by prefix. */
   list(prefix?: string): Promise<ResourceRef<TState>[]>;
 
-  /** Delete an instance. No-op if the instance does not exist. */
+  /**
+   * Delete an instance. No-op if the instance does not exist.
+   * Throws the same read-only error as `setState` when the collection
+   * is `writable: false`.
+   */
   delete(key: string | Record<string, string>): Promise<void>;
 
   /** Current instance count. */
@@ -265,7 +288,7 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 // ---------------------------------------------------------------------------
 
 import { z } from "zod";
-import { validatePattern } from "./collection-patterns";
+import { assertRosterCollectionIsNotDeep, validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
 import { validateReactTo } from "./resource-change";
 import { edgeListSchema } from "../graph";
@@ -280,6 +303,7 @@ export function defineResourceCollection<
   ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
 > {
   validatePattern(config.pattern);
+  assertRosterCollectionIsNotDeep(config);
 
   if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
     throw new Error(

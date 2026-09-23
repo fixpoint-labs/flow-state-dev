@@ -83,6 +83,7 @@ export type {
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,
+  InstanceOwnerPin,
   FlowToolContext,
   FlowType,
   FlowCardinality,
@@ -109,6 +110,8 @@ export type {
   ResolvePrincipalFn,
   ResolvedPrincipal
 } from "./auth";
+
+export { DEFAULT_ORG_ID, isValidOrgId } from "./auth";
 
 export type {
   ScheduleConfig,
@@ -234,27 +237,34 @@ export {
   isParameterizedPattern,
   extractBareTopic,
   extractPatternParams,
+  assertRosterCollectionIsNotDeep,
+  encodeUserSegment,
+  isHiredRosterPrivateCollection,
+  markHiredRosterPrivateCollection,
+  HIRED_ROSTER_BROWSER_PATTERN,
+  HIRED_ROSTER_PRIVATE_PATTERN,
+  HIRED_ROSTER_PRIVATE_BRAND,
 } from "./resource-collection";
 
 export type {
-  DefinedExternalResourceCollection,
-  ExternalRecordHit,
-  ExternalReactiveBindings,
-  ExternalResourceCollectionConfig,
-  ExternalResourceCollectionRef,
-  ExternalResourceContext,
-  ExternalResourceRef,
+  DefinedProjectedResourceCollection,
+  ProjectedRecordHit,
+  ProjectedReactiveBindings,
+  ProjectedResourceCollectionConfig,
+  ProjectedResourceCollectionRef,
+  ProjectedResourceContext,
+  ProjectedResourceRef,
   ResourceQuery,
   ResourceSearchResult,
-  ValidatedExternalHit,
-} from "./external-resource-collection";
+  ValidatedProjectedHit,
+} from "./projected-resource-collection";
 
 export {
-  defineExternalResourceCollection,
-  isExternalResourceCollection,
-  readExternalRecord,
-  searchExternalRecords,
-} from "./external-resource-collection";
+  defineProjectedResourceCollection,
+  isProjectedResourceCollection,
+  readProjectedRecord,
+  searchProjectedRecords,
+} from "./projected-resource-collection";
 
 export type {
   JournalEntry,

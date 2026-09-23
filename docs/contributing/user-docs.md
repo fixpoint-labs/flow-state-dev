@@ -19,10 +19,10 @@ rationale, and rationale reads as generosity: it feels like giving the reader mo
 reader is trying to call an API, and every sentence defending a design decision is a sentence they
 have to skip to get there.
 
-So the fix is structural, not stylistic. **User-facing prose is written by an agent that never had
-the implementation context** — see [Who writes them](#who-writes-them) below. If you're holding a
-spec and a diff and you write the docs yourself, you will leak, no matter how well you know these
-rules.
+So the fix is structural, not stylistic. **Published user-facing prose is reconciled by
+an agent without the implementation rationale** — see [Who writes them](#who-writes-them).
+The spec's required `DOCS.md` proposes reader-facing prose for direction review; it is
+input to that publication pass, not permission to copy unverified promises into live docs.
 
 ### Two tests for every sentence
 
@@ -38,6 +38,9 @@ If it only makes the design look considered, cut it. "Here's what happens" earns
 why we chose that, and here's the alternative that would have been worse" does not.
 
 A limit is allowed and often necessary. State it flat and move on. Don't argue for it.
+
+A clearly labelled migration section may explain the old and new caller behavior when
+the reader must act. Keep it to the migration action and consequences, not design history.
 
 ## What a section contains
 
@@ -91,9 +94,13 @@ The reference example for this voice is `apps/docs/blog/2026-03-06-philosophy.md
 
 Writing and checking need different blind spots, so they're separate agents.
 
-**[`docs-writer`](../../.agents/subagents/docs-writer.md)** writes and updates the pages. It runs in
-a fresh context and is given only a surface brief, never a spec, PR, issue, or diff. It derives
-behavior by reading the public API and the tests that exercise it.
+**[`docs-writer`](../../.agents/subagents/docs-writer.md)** writes and updates the pages. It runs
+in a fresh context with a surface brief. For a spec-backed change, it may additionally
+receive **only `DOCS.md`'s reader-facing draft and destination operations**, not the other
+spec documents, design rationale, PR, issue or diff. It checks the draft against the public
+API and behavioral evidence, corrects unsupported promises, and publishes reconciled prose
+to the named destinations. A spec merge alone is not evidence the behavior ships.
+The [retention policy](orchestration.md#spec-retention-and-authority) defines draft ownership.
 
 **[`docs-editor`](../../.agents/subagents/docs-editor.md)** reviews the prose against this document
 and returns findings. It is kept as ignorant of the implementation as the reader is, which is what

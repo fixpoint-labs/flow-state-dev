@@ -1,5 +1,65 @@
 # @flow-state-dev/orchestration
 
+## 0.3.0
+
+### Minor Changes
+
+- 0f812c9: Skills, seats and channels now answer the agent discovery door and a seat narrows what it sees with its worker file's `discover:` key (FIX-817) — **breaking:** `createWorkforceCapability` no longer accepts `agents` (pass `roster` and `inventory`) or `catalog` (pass it to `defineAgentWorkerFlow({ catalog })` instead), each now a type error naming its replacement.
+- e4c443e: A task board now reports when it saves a task's result and then cannot announce
+  it, instead of finishing the run as though nothing went wrong. The failure lands
+  on a persisted `task-board-recorder-failure` item and fails the run once every
+  other task has drained; on a handed-off task it fails that child run. `onError`
+  does not suppress it. Where the board cannot tell whether the write landed —
+  permanently so on a task store you supplied, and on rows that predate write
+  provenance — it says `undetermined` rather than assuming the write was lost, and
+  hands the row back rather than leaving it claimed. `createRecordSuccess` and
+  `createRecordError` composed outside a board raise the failure where it happens,
+  since nothing downstream would read the report (FIX-963).
+- bff5e06: FIX-1393: a generator's declared `tools:` is now a runtime fence over capability-contributed tools, not just a documented one.
+
+  A capability's tools used to be unioned onto whatever the block declared, so a block with `tools: []` could still be handed tools it never named. Declaring the slot now drops a capability's catalog-granted tools — `tools: []` reaches the model with none. Omitting `tools:` entirely is unchanged: it declares no fence, so capability tools still flow.
+
+  Capabilities declare tools through two slots. `tools` is a grant from the app's catalog and is fenced. The new `controlTools` is a framework control the consuming block's own configuration asked for, and the fence never touches it — a control is built inside its capability and never exported, so no `tools:` list could name it back in. One capability may use both: the skills library registers the app catalog through `tools` and its own skill loader through `controlTools`, and `taskTools` contributes the delegation board entirely as controls.
+
+  **Migration.** If you relied on a capability's tools arriving past a narrower `tools:` declaration, name them in `tools:` or drop the declaration. Pattern factories (`planAndExecute`, `supervisor`, `routedSpecialists`) forward both slots, so a call site passing `tools` and `uses` together now gets the fence inside the pattern. Capability authors whose tools are framework controls rather than catalog grants should move them to `controlTools`.
+
+### Patch Changes
+
+- 8faf08e: A `CHANNEL.md` can declare `boards:`, durable task ledgers the channel holds, with `fileTask` and `readBoard` actions on the channel and a `channelBoard()` helper for the worker that drains them (FIX-1385).
+- 218de72: An active skill's `allowed-tools` now renders into the generator's context as the skill's intent rather than as a grant of tool access (FIX-1451).
+- Updated dependencies [b597600]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [b48158a]
+- Updated dependencies [f25f03c]
+- Updated dependencies [e4c443e]
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/core@0.2.0
+
+## 0.2.1
+
+### Patch Changes
+
+- b56e7d1: Every package can be imported again: 0.1.1 shipped JavaScript whose relative imports were missing the file extensions Node's ESM resolver requires, so importing any 0.1.1 package failed with `ERR_MODULE_NOT_FOUND` (FIX-1431).
+- Updated dependencies [b56e7d1]
+  - @flow-state-dev/core@0.1.2
+
+## 0.2.0
+
+### Minor Changes
+
+- 64b323e: A skill `agents:` `prompt-ref` entry is the seat name only — `tools`, `model`, `visibility`, and `context-supply` now live in the prompt file's YAML frontmatter, and leftover skill-entry tuning is rejected at parse (FIX-1370).
+- c25ad3e: `createSkillActivator` takes a new `enableKeywordMatch` option (default `true`, preserving today's pipeline). Set it `false` to drop tier 2 (keyword scan) from the activator pipeline entirely, leaving only the slash tier and, if enabled, the classifier — useful for a caller whose activation contract has no keyword tier (FIX-1363).
+- 23ac6de: `createSkillsLibrary({ catalog })` takes a new `registerCatalogTools` option (default `true`, preserving today's behaviour). Set it `false` to keep validating a bound skill's declared `allowed-tools` against `catalog` without the library registering any of `catalog` on the generator itself — useful when a caller already owns tool registration through its own means (FIX-1363).
+
+### Patch Changes
+
+- 23bc757: Each worker on a roster now holds its own skills, seeded from its own org, team and worker folders instead of one shared bucket — a catalog already seeded under the shared key is re-seeded under the worker's own and its old rows are left behind (FIX-1362).
+- 119936d: New `@flow-state-dev/workforce/loader` subpath: `readWorkforceDirectory(root)` scans `teams/<id>/workers/<name>/` and returns one neutral manifest per worker, so a workforce can be declared in files instead of wired by hand (FIX-1335). `orchestration` gains `splitFrontmatter` and `parseFrontmatterYaml`, the frontmatter dialect `SKILL.md` and `WORKER.md` share; parsed frontmatter records now have no prototype, so a `__proto__:` key in a hand-written file is carried as an ordinary key instead of silently replacing the record's prototype.
+- 8a1173a: `readSkillsDirectory` now reports a `SKILL.md` that exists and cannot be read as a read failure, with the underlying reason, instead of reporting it as missing. A genuinely absent `SKILL.md` still reports missing (FIX-1356).
+- Updated dependencies [7c52923]
+- Updated dependencies [a8e22c4]
+  - @flow-state-dev/core@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

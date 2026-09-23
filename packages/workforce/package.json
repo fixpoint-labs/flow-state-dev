@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/workforce",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "The seat factory for flow-state-dev: worker records become configured flow instances.",
   "keywords": [
     "ai",
@@ -33,6 +33,10 @@
     "./loader": {
       "types": "./dist/loader/index.d.ts",
       "default": "./src/loader/index.ts"
+    },
+    "./codegen": {
+      "types": "./dist/codegen/index.d.ts",
+      "default": "./src/codegen/index.ts"
     }
   },
   "license": "MIT",
@@ -52,6 +56,10 @@
       "./loader": {
         "types": "./dist/loader/index.d.ts",
         "default": "./dist/loader/index.js"
+      },
+      "./codegen": {
+        "types": "./dist/codegen/index.d.ts",
+        "default": "./dist/codegen/index.js"
       }
     }
   },
@@ -73,7 +81,7 @@
     "vitest": "^3.2.4"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs && tsc -p tsconfig.test-d.json",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",

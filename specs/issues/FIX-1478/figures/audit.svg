@@ -1,0 +1,77 @@
+<svg viewBox="0 0 940 352" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The five kitchen-sink source files that import the patterns package, placed either side of a fence that separates work a team does from work one request does. Left of the fence, under the heading work a team does with seats, boards and channels, sit four files, all shaded as shed, carrying five pattern-backed routes between them. The supervisor pipeline, importing supervisor, has a team path: a coordinator seat files rows and a per-seat drain runs them, demonstrated by the manager-queue lab on main. The routed-specialists pipeline, importing routedSpecialists and createWorkspace, has a team path: named seats complete rows on one shared board, the same lab. The evented-actors pipeline, importing createEventActorsWorkspace, actor and eventActors, has NO team path, because nothing in Workforce or orchestration watches topics, re-emits or cascades. The thinking-style router, importing planAndExecute, debate, createModerator and createDebateTranscript, carries two routes and splits: plan-and-execute has a team path in rows on a board, and moderated debate has none, because a channel has members, a charter and a transcript but no moderator, no rounds and no verdict. Right of the fence, under the heading work one request does with blocks in one sequencer, sits one file shaded as kept: the bias check, importing responseAuditor and AnalyzerResultSchema, whose note reads no seat, board or channel audits a response, so this one stays. A caption beneath the fence records the arithmetic: three of the five pattern-backed routes have an honest team path, which is three or more, so the epic's collapse trigger does not fire, but by one rather than by two. A second caption records that the two routes without a team path are shed anyway, on the vocabulary collision rather than on a team path, and that one keep-note remains, so the package dependency stays in the app's package file and the issue's headline outcome is deliberately not reached.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F2DEDC; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .frame { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .shed  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.5; }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.5; }
+    .fence { stroke:var(--ink-2); stroke-width:1.6; stroke-dasharray:6 4; }
+    .t-h   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:11px; letter-spacing:.06em; }
+    .t-zone{ fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.09em; }
+    .t-f   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-i   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-p   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-shed{ fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9px; letter-spacing:.1em; }
+    .t-keep{ fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9px; letter-spacing:.1em; }
+    .t-cap { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect x="0" y="0" width="940" height="352" fill="var(--surface)"/>
+
+  <text class="t-h" x="16" y="20">FIVE IMPORTS, ONE FENCE</text>
+  <rect class="frame" x="16" y="30" width="908" height="258" rx="4"/>
+
+  <line class="fence" x1="646" y1="38" x2="646" y2="280"/>
+
+  <text class="t-zone" x="30" y="52">WORK A TEAM DOES &#8212; seats &#183; boards &#183; channels</text>
+  <text class="t-zone" x="660" y="52">WORK ONE REQUEST DOES &#8212; blocks in one sequencer</text>
+
+  <rect class="shed" x="30" y="62" width="600" height="46" rx="3"/>
+  <text class="t-f" x="42" y="79">pipelines/supervisor.ts</text>
+  <text class="t-i" x="42" y="92">supervisor</text>
+  <text class="t-p" x="42" y="103">team path: coordinator seat files rows, per-seat drain runs them &#8212; manager-queue lab</text>
+  <text class="t-shed" x="586" y="79" text-anchor="end">SHED</text>
+
+  <rect class="shed" x="30" y="116" width="600" height="46" rx="3"/>
+  <text class="t-f" x="42" y="133">pipelines/routed-specialists.ts</text>
+  <text class="t-i" x="42" y="146">routedSpecialists &#183; createWorkspace</text>
+  <text class="t-p" x="42" y="157">team path: named seats complete rows on one shared board &#8212; manager-queue lab</text>
+  <text class="t-shed" x="586" y="133" text-anchor="end">SHED</text>
+
+  <rect class="shed" x="30" y="170" width="600" height="46" rx="3"/>
+  <text class="t-f" x="42" y="187">pipelines/evented-actors.ts</text>
+  <text class="t-i" x="42" y="200">createEventActorsWorkspace &#183; actor &#183; eventActors</text>
+  <text class="t-shed" x="42" y="211">NO team path &#8212; nothing in Workforce watches topics, re-emits or cascades</text>
+  <text class="t-shed" x="586" y="187" text-anchor="end">SHED</text>
+
+  <rect class="shed" x="30" y="224" width="600" height="46" rx="3"/>
+  <text class="t-f" x="42" y="241">thinking-styles/create-router.ts</text>
+  <text class="t-i" x="42" y="254">planAndExecute &#183; debate &#183; createModerator &#183; createDebateTranscript</text>
+  <text class="t-p" x="42" y="265">planAndExecute &#8212; team path: rows on a board. debate &#8212; NO team path: a channel has no moderator</text>
+  <text class="t-shed" x="586" y="241" text-anchor="end">SHED</text>
+
+  <rect class="keep" x="662" y="62" width="248" height="100" rx="3"/>
+  <text class="t-f" x="674" y="79">run/bias-check.ts</text>
+  <text class="t-i" x="674" y="92">responseAuditor</text>
+  <text class="t-i" x="674" y="104">AnalyzerResultSchema</text>
+  <text class="t-p" x="674" y="122">no seat, board or channel</text>
+  <text class="t-p" x="674" y="134">audits a response</text>
+  <text class="t-keep" x="674" y="152">KEEP</text>
+
+  <text class="t-cap" x="662" y="182">The fence is the whole audit. A surface</text>
+  <text class="t-cap" x="662" y="195">crosses it only when a team already does</text>
+  <text class="t-cap" x="662" y="208">that job &#8212; never by wrapping a seat in a</text>
+  <text class="t-cap" x="662" y="221">pattern factory to make it fit.</text>
+
+  <text class="t-cap" x="16" y="308">3 of the 5 pattern-backed routes have an honest team path. Three or more, so the collapse trigger does not fire &#8212; by one, not by two.</text>
+  <text class="t-cap" x="16" y="326">The other two are shed anyway, on the vocabulary collision, not on a team path. 1 keep-note remains, so the dependency stays.</text>
+</svg>

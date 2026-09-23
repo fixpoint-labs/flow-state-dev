@@ -82,12 +82,11 @@ Agent tool (Plan) — keep on the default (Opus) judgment tier; the challenger i
   fork stated as what the code turned out to do.
   `AskUserQuestion` for the crisp choice. Do not proceed on a changed direction without
   the call.
-- **Autonomous / AFK:** take the **best-judgment path**, fold the correction into the
-  spec (the live Linear document), and **flag it loudly** — in the PR body and the
-  Linear comment — as a *spec deviation the challenger made*, with the assumed-vs-real
-  mismatch and the correction, so the human reviews the call after the fact. This is
-  the "best-judgment + loud flag" contract: momentum now, human review of the
-  judgment later. Never bury a direction change in a diff.
+- **Autonomous / AFK:** report the evidence and proposed correction. A local correction
+  within the approved direction may proceed within scope; a material direction change
+  waits for renewed human approval. Amend the retained spec through a new PR from `main`,
+  never through a Linear mirror or push to the original merged PR. Flag the proposed
+  deviation and its actual approval state visibly in the implementation PR and Linear.
 - Either way: update the spec so it stays coherent (anti-addenda — rewrite the
   affected reasoning, don't append a contradiction), and record the blind spot as a
   candidate lesson for `distill-lessons` (a spec that missed something is prime

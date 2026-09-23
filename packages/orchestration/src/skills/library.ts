@@ -189,7 +189,14 @@ export interface SkillsBindingConfig {
   active?: string[];
   /**
    * Skill names the load tool (`dynamicActivation`) may pull from. Omit for the
-   * whole catalog. Contributes these skills' declared `allowed-tools` too.
+   * whole catalog.
+   *
+   * It does NOT contribute these skills' declared `allowed-tools` — nothing
+   * does; `allowed-tools` renders as an intent note and grants nothing. What it
+   * does contribute is the catalog registration on the `activeState` path:
+   * `activeState` + `allowed` sets `contributesRuntimeTools` below, and an
+   * `activeState` binding with neither `allowed` nor `dynamicActivation`
+   * registers no catalog tools at all.
    */
   allowed?: string[];
   /**
@@ -378,9 +385,12 @@ export function createSkillsLibrary(
   // registration is a safe superset (the whole catalog), like the legacy
   // capability: the reader renders the LIVE manifest, which an admin can edit
   // after seeding, so freezing a per-skill tool subset at build time would let
-  // the rendered `allowed-tools` restriction note reference a tool the
-  // generator never registered. The per-skill restriction stays a soft,
-  // prompt-level scope via the rendered note.
+  // the rendered `allowed-tools` note name a tool the generator never
+  // registered. On THIS path the declared list never becomes a restriction —
+  // nothing here narrows the generator to it, so the rendered note states it
+  // as the skill's intent and disclaims any read as a grant (FIX-1451). It is
+  // a restriction on the delegation path (`resolveToolSeats` seats exactly
+  // these keys); that is a separate question from what this generator calls.
   const validateDeclaredTools = (name: string): void => {
     const declared = index.get(name)?.allowedTools;
     if (!declared) return;
@@ -414,7 +424,12 @@ export function createSkillsLibrary(
       : { kind: "block" };
 
     const contributions: Partial<PresetDef> = {};
+    // Two buckets (FIX-1393): `tools` is the app-catalog grant, which a
+    // consuming block's `tools:` fences. `controlTools` are the framework
+    // controls a block only holds because its own config asked for them — the
+    // loader and the delegation surface — which the fence never touches.
     const tools: GeneratorTool[] = [];
+    const controlTools: GeneratorTool[] = [];
     const contextEntries: PresetDef["context"] = [];
 
     // Reader — always contributed (renders static `active` + dynamic activeState).
@@ -455,10 +470,11 @@ export function createSkillsLibrary(
 
     // Whenever a skill body can render — statically preloaded (`active`) or
     // activated at runtime (load tool / upstream matcher / code) — register the
-    // whole catalog as a safe superset. The skill's own `allowed-tools` scopes
-    // the model softly via the rendered restriction note; registering the
-    // superset keeps a live post-seeding edit to that list from pointing the
-    // model at an unregistered tool.
+    // whole catalog as a safe superset. The skill's own `allowed-tools` does
+    // not scope this registration — it renders as an intent note (FIX-1451),
+    // not a fence; registering the superset keeps a live post-seeding edit to
+    // that list from pointing the model at an unregistered tool. (It DOES
+    // scope delegation seats, built separately below.)
     //
     // `registerCatalogTools: false` opts out of this registration only —
     // `validateDeclaredTools` above still runs unconditionally, so a caller
@@ -470,21 +486,46 @@ export function createSkillsLibrary(
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
     if (dynamic) {
-      tools.push(
+      // The loader is a CONTROL, not a catalog grant (FIX-1393): a seat gets it
+      // by setting `skills.activateTool` in its own config, which is the
+      // declaration. It is built here and never exported, so a `tools:` fence
+      // could not name it back in — fencing it would leave the seat advertising
+      // a tool in its prompt that it cannot call. The catalog registered above
+      // stays in `tools`, where the fence can see it.
+      // The loader's own description names where the skill names come from,
+      // so it has to know which of the two places that is (FIX-817).
+      const catalogInContext = resolveCtx.presets.has("catalogContext");
+      controlTools.push(
         createLoadSkillTool({
           collectionKey,
           location,
+          catalogInContext,
           ...(cfg.allowed ? { allowed: cfg.allowed } : {}),
           ...(initialSkills ? { initialSkills } : {}),
         }),
       );
-      contextEntries.push(
-        buildLoadCatalogContext({
-          collectionKey,
-          ...(cfg.allowed ? { allowed: cfg.allowed } : {}),
-          ...(initialSkills ? { initialSkills } : {}),
-        }),
-      );
+      // The ambient catalog listing, behind a preset that ships ON (FIX-817).
+      //
+      // Default-on is the whole point rather than a convenience: an app that
+      // upgrades and finds its model no longer knows its skills exist has been
+      // broken by a refactor it did not ask for. Turning it off is what an app
+      // with a long catalog does once it has installed the discovery door, so
+      // the names are fetched when the model goes looking instead of being
+      // paid for on every step of every turn.
+      //
+      // Gated inside `dynamic` because the listing only ever made sense beside
+      // the load tool: it names `loadSkill` and lists what that tool accepts.
+      // A binding with no loader contributes no listing with the preset on or
+      // off, exactly as before.
+      if (catalogInContext) {
+        contextEntries.push(
+          buildLoadCatalogContext({
+            collectionKey,
+            ...(cfg.allowed ? { allowed: cfg.allowed } : {}),
+            ...(initialSkills ? { initialSkills } : {}),
+          }),
+        );
+      }
     }
 
     // Block-state default: contribute the generator's own `activeSkills` field
@@ -665,22 +706,26 @@ export function createSkillsLibrary(
         dynamicEligible: dynamicAgentEligible,
         allowEmptyRoster,
       };
-      // Static tools (catalog superset + load tool) are known now; the
-      // taskTools and runBoard resolve per execution.
-      const staticTools = [...new Set(tools)];
-      contributions.tools = (async (blockCtx) => [
-        ...staticTools,
+      // The catalog superset is known now and stays fenceable. The loader plus
+      // the delegation surface (taskTools + runBoard, resolved per execution)
+      // are controls — a skill that declared `agents:` is why they are here,
+      // and `tools:` must not cut a worker off from the board it was given.
+      if (tools.length > 0) contributions.tools = [...new Set(tools)];
+      const staticControls = [...new Set(controlTools)];
+      contributions.controlTools = (async (blockCtx) => [
+        ...staticControls,
         ...(await buildDelegationTools(blockCtx as never, surfaceDeps)),
-      ]) as PresetDef["tools"];
+      ]) as PresetDef["controlTools"];
       // Guidance context — the "how to delegate" playbook + live roster,
       // resolved at render time so runtime activations appear too.
       if (cfg.guidance !== false) {
         contextEntries.push(buildDelegationGuidance(surfaceDeps) as never);
       }
-    } else if (tools.length > 0) {
+    } else {
       // De-dupe by identity so a tool declared by both `active` and `allowed`
       // is contributed once.
-      contributions.tools = [...new Set(tools)];
+      if (tools.length > 0) contributions.tools = [...new Set(tools)];
+      if (controlTools.length > 0) contributions.controlTools = [...new Set(controlTools)];
     }
 
     // Group the reader + catalog under a single `<skills>` tag.
@@ -695,7 +740,16 @@ export function createSkillsLibrary(
     presets: {
       // Flag-only preset; the resolver reads `ctx.presets` to install the tool.
       dynamicActivation: {},
-      default: [],
+      /**
+       * The ambient catalog listing in the prompt (FIX-817). Flag-only, and
+       * **on by default** — an app that upgrades sees turn 1 unchanged.
+       *
+       * Turn it off (`library.presets({ catalogContext: false })`) once the
+       * discovery door is installed, and the model finds skills by asking
+       * rather than by being told on every step.
+       */
+      catalogContext: {},
+      default: ["catalogContext"],
     },
     config: {
       schema: bindingConfigSchema,
@@ -713,7 +767,7 @@ export function createSkillsLibrary(
  * activation of a bundled skill materializes without a manifest read.
  *
  * `allowedTools` rides along because it is the skill's **tool seats**
- * (FIX-925), not only the rendered restriction note — a bundled activation must
+ * (FIX-925), not only the rendered intent note — a bundled activation must
  * carry the same seat scope a manifest read would give it.
  */
 function buildBundledAgentIndex(

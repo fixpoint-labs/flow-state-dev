@@ -132,7 +132,28 @@ export interface SkillState {
   /** Optional spec `metadata`: a string → string map for client-defined properties. */
   metadata?: Record<string, string>;
 
-  /** From `allowed-tools`. Both additive (introduces) and restrictive (gates). */
+  /**
+   * From `allowed-tools`. The tools the skill is written around. **It never
+   * widens access** — but what it narrows depends on the path, so the two
+   * have to be kept apart (FIX-1451).
+   *
+   * **Direct model tool access — decides nothing.** It registers nothing:
+   * `createSkillsLibrary` validates these names against the catalog and then
+   * contributes the *whole* catalog, or, under `registerCatalogTools: false`,
+   * contributes none of it. Either way this subset is not the unit. What the
+   * generator may call is its own `tools:` when it declares one (declaring it
+   * at all raises the fence) and otherwise whatever its capabilities
+   * contribute.
+   *
+   * **Delegation tool seats — does gate.** When the skill declares `agents:`,
+   * `resolveToolSeats` seats exactly the catalog keys listed here; a skill
+   * that declares none seats the whole catalog. So this list restricts which
+   * tools can be a task assignee. It still never widens: seats are drawn from
+   * the catalog the holder already reached, and narrowed again by
+   * `toolSeatFence`.
+   *
+   * Authoring metadata for the first path, a real restriction for the second.
+   */
   allowedTools?: string[];
 
   /** From `context:` frontmatter. Defaults to `inline` when omitted. */

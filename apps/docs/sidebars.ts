@@ -78,7 +78,7 @@ const sidebars: SidebarsConfig = {
             "resources/overview",
             "resources/storage",
             "resources/collections",
-            "resources/external-collections",
+            "resources/projected-collections",
             "resources/reactive-blocks",
             "resources/edges",
             "resources/client-access",
@@ -197,6 +197,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "orchestration/overview",
         "orchestration/task-substrate",
+        "orchestration/discovery",
         "orchestration/task-board",
         "orchestration/configuration",
         "orchestration/agents",
@@ -232,7 +233,11 @@ const sidebars: SidebarsConfig = {
         "workforce/workers-on-disk",
         "workforce/built-in-worker",
         "workforce/channels",
+        "workforce/inventory",
         "workforce/documents-on-disk",
+        "workforce/code-on-disk",
+        "workforce/capabilities-on-disk",
+        "workforce/durable-hire",
       ],
     },
     {

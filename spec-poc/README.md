@@ -1,29 +1,21 @@
-# spec-poc/
+# `spec-poc/` — legacy experiments
 
-Throwaway proof-of-concept code for a **never-merged** spec or epic PR, one directory per
-question: `spec-poc/<ISSUE-ID>-<slug>/`, or `spec-poc/epic-<name>/` at epic altitude.
+New issue/epic experiments live with their owning retained spec:
 
-**On `main` this directory contains only this file.** A POC lives on the `spec/<ISSUE-ID>` or
-`epic/<name>` branch that carries it — those branches are never deleted, so the code stays
-reachable after the PR closes unmerged, but it never reaches `main`. The
-implementation branch is cut from fresh `origin/main`, so a POC cannot ride along into the
-codebase — and whatever else an implementation PR carries over from the spec branch, the POC
-beside it is never part of that. If you want to keep something a POC produced, **graduate it**
-(a real CI spec, or a `goals/` entry written under `tdd`) rather than copying it.
+- `specs/issues/<ISSUE-ID>/poc/<experiment>/`
+- `specs/epics/<EPIC-ISSUE-ID>/poc/<experiment>/`
 
-Why here and not inside a package: `spec-poc/` is not a pnpm workspace package, so the
-`turbo`-driven `pnpm typecheck` and `pnpm test` never see it, and `spec-poc/**` is in `knip.json`'s
-root ignore. That's what lets POC code be quick and dirty without turning a spec PR's CI red —
-which matters, because CI runs on every PR into `main`, spec PRs included, and the
-orchestrators read that signal. So: no `package.json` here, and never add `spec-poc/` to
-`pnpm-workspace.yaml`.
+See [`specs/README.md`](../specs/README.md) for navigation and
+[Spec-branch POCs](../docs/contributing/orchestration.md#spec-branch-pocs-learn-before-implementing)
+for the canonical experiment contract. Retained evidence is not production code:
+keep it outside production imports, workspace packages, default builds and test/lint/knip
+discovery. Keep authored artifacts, not installed dependencies, generated output or secrets.
 
-The practice — when a POC is worth building, the four kinds (characterization / shape / visual
-/ end-state), how competing variants work, and how a reviewer is told to run it — is
-[`spec-poc`](../.agents/skills/spec-poc/SKILL.md). Its place in the lifecycle is
-[`orchestration.md`](../docs/contributing/orchestration.md) → "Spec-branch POCs".
+A POC added after the owning spec merges uses a follow-up PR from fresh `main`.
+Never reopen or push to the original merged review PR. Materially changed direction
+needs renewed human approval under the [amendment rule](../docs/contributing/orchestration.md#merging-and-amending-a-spec).
 
-Not to be confused with the two other kinds of throwaway code we write: `_prototypes/` inside a
-host app is a *private* exploration ([`prototype`](../.agents/skills/prototype/SKILL.md)), and a
-POC settlement ([`settle-claim`](../.agents/skills/settle-claim/SKILL.md)) runs in a worktree
-that gets deleted. The difference is who reads the result.
+Do not migrate or delete unrelated historical POCs in this directory or on old branches.
+This guide changes where new work goes, not the historical archive. A claim settlement
+in a disposable worktree and an app's private `_prototypes/` exploration remain distinct
+from retained spec evidence.

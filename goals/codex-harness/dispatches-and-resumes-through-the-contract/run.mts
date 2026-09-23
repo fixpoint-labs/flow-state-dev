@@ -28,6 +28,7 @@
  * Run: CODEX_API_KEY=… pnpm tsx goals/codex-harness/dispatches-and-resumes-through-the-contract/run.mts
  */
 import { execFileSync } from "node:child_process";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -122,6 +123,7 @@ await runGoal(async () => {
     try {
       const runtime = await state.getRuntime();
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow: flow as never,
         actionName: "run",
         input: { prompt },

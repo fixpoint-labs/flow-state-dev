@@ -8,6 +8,15 @@
  * kinds, and an exact id always wins a lookup, even when the string happens to
  * be another kind's name. There is no second resolver and no fallback.
  *
+ * **The registry is mutable after construction.** `register` admits one
+ * instance at any time and `unregister` releases one address; both are reached
+ * from a `FlowState` (see `flowstate/types.ts`), which is how an app hires a
+ * seat while it is running. Two consequences for anything reading this
+ * registry: read it per request rather than caching `list()`, and expect a
+ * `get` to start or stop answering between two requests. Anything that ran a
+ * sweep over `list()` at init — the webhook adapter's provider-coverage check
+ * is the one in this repo — has already run and does not see a later arrival.
+ *
  * `register` is the one admission point: it refuses a duplicate id, a
  * singleton under a custom id (the caller meant a collection and did not say
  * so), and a kind registered under both policies. Direct structural
@@ -25,8 +34,16 @@
  * scope, so its `stateSchema` drops out under the flow-level flag, while each
  * resource carries its own `flowIsolation` override and drops out on that.
  */
-import type { DeclaredResourceEntry, FlowCardinality, FlowInstance } from "@flow-state-dev/core/types";
-import { isExternalResourceCollection } from "@flow-state-dev/core/types";
+import type {
+  DeclaredResourceEntry,
+  FlowCardinality,
+  FlowInstance,
+  InstanceOwnerPin
+} from "@flow-state-dev/core/types";
+import {
+  assertRosterCollectionIsNotDeep,
+  isProjectedResourceCollection
+} from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -47,10 +64,29 @@ export interface FlowRegistry {
    * duplicate id, a singleton under a custom id, or a mixed-cardinality kind,
    * and {@link CrossFlowSchemaConflictError} for a schema conflict — in every
    * case before any registry state is touched.
+   *
+   * `options.pin` is the owner pin for a hired instance. Omitted, a pin already
+   * on the instance is kept; otherwise the instance is shared. A second pin
+   * that disagrees with the one on the instance is refused.
    */
-  register(flow: FlowInstance): void;
+  register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
+  /**
+   * The owner pin on the instance at this address, or `undefined` when the
+   * instance is shared or the address is not held. Reads {@link FlowInstance.ownerPin}.
+   */
+  pinOf(id: string): InstanceOwnerPin | undefined;
   /** `register`, in order. An element that fails leaves the earlier ones admitted. */
   registerMany(flows: FlowInstance[]): void;
+  /**
+   * Release one address. `true` when an instance was holding it, `false` when
+   * nothing was — an unknown id is an ordinary answer, not an error, because
+   * the caller's question is "is this address free now" and both answers are
+   * yes.
+   *
+   * **The kind keeps its seat in the cross-flow schema view**, even when this
+   * removes its last instance — see {@link InMemoryFlowRegistry.unregister}.
+   */
+  unregister(id: string): boolean;
   /**
    * Resolve an instance by its exact global id, or `undefined`. A singleton
    * answers to its kind (that is its id); a collection member answers to its
@@ -112,8 +148,10 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    * file header), then cross-flow schemas; a failure of either leaves every
    * internal map untouched.
    */
-  register(input: FlowInstance): void {
+  register(input: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
     const flow = admitIdentity(input, this.flowsById);
+    adoptPin(flow, options?.pin);
+    assertFlowRosterPatterns(flow);
 
     // Validate both scopes before mutating any state. If the org-scope
     // check throws after the user-scope check passes, no participant entry
@@ -142,6 +180,48 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     for (const flow of flows) {
       this.register(flow);
     }
+  }
+
+  /**
+   * Releases one address, and **deliberately leaves the participant entry for
+   * that kind in place** — including when this was the kind's last instance.
+   *
+   * A kind's declared schemas are a property of the KIND, not of whichever
+   * copies happen to be registered right now. Dropping the participant on the
+   * last unregister would make the cross-flow check answer differently
+   * depending on registration history: a schema that conflicts with this kind
+   * would be refused while an instance existed and admitted a moment later,
+   * and the two schemas would then share one durable cell. The data outlives
+   * the registration, so the constraint has to as well.
+   *
+   * The cost is stated rather than hidden, and it is NOT that the replacement
+   * is refused. A kind registered, unregistered, then replaced by a genuinely
+   * different definition under the same name is **admitted**, because
+   * same-kind pairs are never compared — exclusion 2 in {@link
+   * InMemoryFlowRegistry.validateScope}'s own doc, which is where all three of
+   * these come from. What the retained entry costs is:
+   *
+   *   1. the replacement goes in **silently**, however far its schemas have
+   *      moved from the ones on file;
+   *   2. the entry is never updated (`indexParticipant` returns early on a
+   *      kind it already holds), so every OTHER kind registered afterwards is
+   *      compared against the STALE schema — a kind agreeing with what is
+   *      actually running can be refused, and one contradicting it admitted;
+   *   3. `describeSharedSchemas()` reports that stale schema too, so the
+   *      diagnostic view names a definition no longer registered anywhere.
+   *
+   * All three are a process restart away from fixed, and they are the side of
+   * the trade that loses no data. Closing them means changing what identity
+   * the check keys on, which is FIX-1207's — see `validateScope`. Pinned by
+   * the "known gap" case in `test/registry/runtime-registration.test.ts`.
+   */
+  unregister(id: string): boolean {
+    return this.flowsById.delete(id);
+  }
+
+  /** The pin on the held instance. Absent for a shared instance and an unknown address. */
+  pinOf(id: string): InstanceOwnerPin | undefined {
+    return this.flowsById.get(id)?.ownerPin;
   }
 
   /**
@@ -425,12 +505,12 @@ function collectScopeDeclaration(
   const storageKeys = resourceStorageKeys(flow.resources);
   for (const [accessor, entry] of Object.entries(flow.resources ?? {})) {
     if (entry === undefined || entry.scope !== scope) continue;
-    // External collections are read-through views over the app's own store —
+    // Projected collections are read-through views over the app's own store —
     // they never occupy a framework-owned `ResourceStateStore` cell, so two
     // flows exposing the same pattern over separate backings share nothing.
     // Their config admits neither `ref` nor `flowIsolation`, so treating them
     // as shared storage would reject a valid app with no way to opt out.
-    if (isExternalResourceCollection(entry)) continue;
+    if (isProjectedResourceCollection(entry)) continue;
     const schema = entry.stateSchema;
     if (schema === undefined) continue;
 
@@ -524,6 +604,54 @@ const EMPTY_INSTANCE_CONFIG: Readonly<Record<string, unknown>> = Object.freeze({
  * Runs before the schema checks and mutates nothing: every refusal here
  * leaves the earlier registration reachable exactly as it was.
  */
+/**
+ * The pin this registration stores, stamped onto the instance when the call
+ * supplied one the instance did not already carry.
+ *
+ * A disagreement refuses before any map is touched. The address is not
+ * consulted: `acme.x` with pin `globex` is a legal registration.
+ */
+function adoptPin(
+  flow: FlowInstance,
+  explicit: InstanceOwnerPin | undefined
+): InstanceOwnerPin | undefined {
+  if (
+    explicit !== undefined &&
+    flow.ownerPin !== undefined &&
+    !samePin(explicit, flow.ownerPin)
+  ) {
+    throw new Error(
+      `Cannot register "${flow.id}" with pin org "${explicit.orgId}"` +
+        `${explicit.userId !== undefined ? ` user "${explicit.userId}"` : ""}: ` +
+        `the instance is already pinned to org "${flow.ownerPin.orgId}"` +
+        `${flow.ownerPin.userId !== undefined ? ` user "${flow.ownerPin.userId}"` : ""}.`
+    );
+  }
+  const pin = explicit ?? flow.ownerPin;
+  if (pin !== undefined && flow.ownerPin === undefined) {
+    flow.ownerPin = pin;
+  }
+  return pin;
+}
+
+function samePin(left: InstanceOwnerPin, right: InstanceOwnerPin): boolean {
+  return left.orgId === right.orgId && left.userId === right.userId;
+}
+
+/**
+ * No admitted flow may declare a collection that reads user-owned roster rows.
+ * The browser pattern and the private writer are the only roster patterns.
+ */
+function assertFlowRosterPatterns(flow: FlowInstance): void {
+  const resources = flow.resources;
+  if (resources === undefined) return;
+  for (const entry of Object.values(resources)) {
+    const pattern = (entry as { pattern?: unknown }).pattern;
+    if (typeof pattern !== "string") continue;
+    assertRosterCollectionIsNotDeep(entry as { pattern: string; client?: { state?: { read?: boolean } } }, "register");
+  }
+}
+
 function admitIdentity(
   input: FlowInstance,
   flowsById: ReadonlyMap<string, FlowInstance>

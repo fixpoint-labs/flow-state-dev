@@ -11,21 +11,21 @@ type CollectionEntry = {
 };
 
 /**
- * True for an external resource collection ref (FIX-858) — carries the
- * `external: true` brand. Both `pattern`-bearing collection kinds (store-backed
- * and external) are classified by this brand: store-backed CRUD/glob/grep paths
- * take `collectCollections` (external excluded), while the search-pushdown and
- * URI-read paths take `collectExternalCollections`.
+ * True for a projected resource collection ref (FIX-858) — carries the
+ * `projected: true` brand. Both `pattern`-bearing collection kinds (store-backed
+ * and projected) are classified by this brand: store-backed CRUD/glob/grep paths
+ * take `collectCollections` (projected excluded), while the search-pushdown and
+ * URI-read paths take `collectProjectedCollections`.
  */
-function isExternalRef(entry: unknown): boolean {
-  return typeof entry === "object" && entry !== null && (entry as { external?: unknown }).external === true;
+function isProjectedRef(entry: unknown): boolean {
+  return typeof entry === "object" && entry !== null && (entry as { projected?: unknown }).projected === true;
 }
 
 /**
- * Store-backed collections only (mutable, `getByPrefix`-enumerable). External
- * collections carry `pattern` too, so they're classified out by the `external`
+ * Store-backed collections only (mutable, `getByPrefix`-enumerable). Projected
+ * collections carry `pattern` too, so they're classified out by the `projected`
  * brand — CRUD, glob, grep, and full-enumeration paths must never treat a
- * read-through external collection as a store-backed one.
+ * read-through projected collection as a store-backed one.
  */
 function collectCollections(ctx: BlockContext): CollectionEntry[] {
   const entries: CollectionEntry[] = [];
@@ -34,7 +34,7 @@ function collectCollections(ctx: BlockContext): CollectionEntry[] {
 
   for (const entry of registry.list()) {
     // ResourceCollectionRef has a `pattern` property that ResourceRef does not.
-    if ("pattern" in entry && !isExternalRef(entry)) {
+    if ("pattern" in entry && !isProjectedRef(entry)) {
       const nsRef = entry as unknown as ResourceCollectionRef<any>;
       entries.push({ name: nsRef.pattern, scope: nsRef.scope, ref: nsRef });
     }
@@ -44,18 +44,18 @@ function collectCollections(ctx: BlockContext): CollectionEntry[] {
 }
 
 /**
- * External (read-through) collections only — the search/list-pushdown and
- * URI-read surface. Classified by the `external` brand; the `ref` here is a
- * read-only `ExternalResourceCollectionRef` (`get`/`getOptional`/`list`, no
+ * Projected (read-through) collections only — the search/list-pushdown and
+ * URI-read surface. Classified by the `projected` brand; the `ref` here is a
+ * read-only `ProjectedResourceCollectionRef` (`get`/`getOptional`/`list`, no
  * mutators), so callers must only use the read subset.
  */
-export function collectExternalCollections(ctx: BlockContext): CollectionEntry[] {
+export function collectProjectedCollections(ctx: BlockContext): CollectionEntry[] {
   const entries: CollectionEntry[] = [];
   const registry = ctx.resources;
   if (registry === undefined) return entries;
 
   for (const entry of registry.list()) {
-    if ("pattern" in entry && isExternalRef(entry)) {
+    if ("pattern" in entry && isProjectedRef(entry)) {
       const nsRef = entry as unknown as ResourceCollectionRef<any>;
       entries.push({ name: nsRef.pattern, scope: nsRef.scope, ref: nsRef });
     }
@@ -71,7 +71,7 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
     .list()
     .filter(
       (entry: any): entry is ResourceRef<any> =>
-        !("pattern" in entry && "create" in entry) && !isExternalRef(entry)
+        !("pattern" in entry && "create" in entry) && !isProjectedRef(entry)
     );
 }
 
@@ -79,12 +79,18 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
  * Generic resource CRUD tool blocks for LLM tool surface.
  * Returns handler blocks that work across all registered collections.
  *
- * Provides 5 tools:
+ * Provides 4 tools, each acting on a path the caller already names:
  * - `createResource({ path, state? })` — Create a new resource instance
  * - `readResource({ path })` — Read a resource instance
  * - `updateResource({ path, state? })` — Update a resource instance
  * - `deleteResource({ path })` — Delete a resource instance
- * - `listResources({ prefix? })` — List all resource instances
+ *
+ * **`listResources` was removed (FIX-817).** It enumerated every collection's
+ * full stored state through `collectCollections`, ignoring the `llmReadable`
+ * gate this module defines two functions below — so a collection nobody marked
+ * readable was dumped to the model anyway. Enumeration is now the discovery
+ * door's job (`discoveryTools`), which answers from `collectReadableResources`
+ * and returns a planning contract rather than raw state.
  */
 export function resourceTools() {
   const createResource = handler({
@@ -158,42 +164,11 @@ export function resourceTools() {
     },
   });
 
-  const listResourcesTool = handler({
-    name: "listResources",
-    description: "List resource instances, optionally filtered by prefix.",
-    inputSchema: z.object({
-      prefix: z.string().optional().describe("Optional prefix to filter results"),
-    }),
-    outputSchema: z.object({
-      resources: z.array(z.object({
-        path: z.string(),
-        state: z.record(z.unknown()),
-      })),
-    }),
-    execute: async (input, ctx) => {
-      const collections = collectCollections(ctx);
-      const resources: Array<{ path: string; state: Record<string, unknown> }> = [];
-
-      for (const ns of collections) {
-        const instances = await ns.ref.list(input.prefix);
-        for (const instance of instances) {
-          resources.push({
-            path: instance.path,
-            state: instance.state as Record<string, unknown>,
-          });
-        }
-      }
-
-      return { resources };
-    },
-  });
-
   return {
     createResource,
     readResource,
     updateResource,
     deleteResource,
-    listResources: listResourcesTool,
   };
 }
 
@@ -212,7 +187,7 @@ export async function resolveResourceByPath(
   if (registry === undefined) return undefined;
 
   for (const entry of registry.list()) {
-    if (!("pattern" in entry && "create" in entry) && !isExternalRef(entry)) {
+    if (!("pattern" in entry && "create" in entry) && !isProjectedRef(entry)) {
       const ref = entry as ResourceRef<any>;
       if (ref.path === path) return ref;
     }
@@ -233,20 +208,6 @@ export async function resolveResourceByPath(
   }
 
   return undefined;
-}
-
-/**
- * Static resources plus every instance of every collection, as one flat
- * `ResourceRef` list. Collection instances are themselves `ResourceRef`s, so
- * callers treat the two uniformly. Lists each collection in full — suited to
- * the bounded, curated collections the navigation and content tools target.
- */
-export async function collectAllResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
-  const out: ResourceRef<any>[] = [...collectStaticResources(ctx)];
-  for (const ns of collectCollections(ctx)) {
-    for (const instance of await ns.ref.list()) out.push(instance);
-  }
-  return out;
 }
 
 /**
@@ -282,6 +243,21 @@ export async function collectReadableResources(ctx: BlockContext): Promise<Resou
 }
 
 /**
+ * The readable projected collections — the same opt-in gate
+ * `collectReadableResources` applies to store-backed collections, applied to
+ * the read-through ones. One expression in one place: search and the discovery
+ * door both answer from projected collections, and a gate written twice is a
+ * gate that can drift so one of them leaks.
+ *
+ * Synchronous and collection-level, like the store-backed gate: it reads
+ * `config` off refs the registry already holds and never calls `list()`, so a
+ * collection that did not opt in is filtered out before anything reaches it.
+ */
+export function collectReadableProjectedCollections(ctx: BlockContext): CollectionEntry[] {
+  return collectProjectedCollections(ctx).filter((ns) => ns.ref.config?.llmReadable === true);
+}
+
+/**
  * Resolve a scope-qualified resource `uri` (`${scope}/${path}`) to its
  * `ResourceRef` — static resource or collection instance, uniformly. Unlike
  * `resolveResourceByPath`, the uri is unique across scopes (FIX-842), so
@@ -313,10 +289,10 @@ export async function resolveResourceByUri(
     if (ref !== undefined && ref.uri === uri) return ref;
   }
 
-  // External collections (FIX-858): the agent reaches these by a URI it already
+  // Projected collections (FIX-858): the agent reaches these by a URI it already
   // learned from a search hit. Resolve directly through the read-through
   // `getOptional` — the ref already renders content — no list/enumeration.
-  for (const ns of collectExternalCollections(ctx)) {
+  for (const ns of collectProjectedCollections(ctx)) {
     if (ns.scope !== scope) continue;
     const { key } = tryMatchPath(ns, path);
     if (key === undefined) continue;

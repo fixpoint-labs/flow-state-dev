@@ -14,8 +14,10 @@ Agent tool (general-purpose):
 
     ## Spec Context
 
-    [Relevant sections from the spec that inform this task: Technical Design, Edge Cases, Testing Strategy.
-     Include the spec's directional design — modules/layers, data flow, any diagram, and the Decisions that bind this task. The spec doesn't fix exact signatures and types; the implementer settles those.]
+    [Approved merged retained spec revision and relevant rules/decisions/plan for this task.
+     Include applicable DOCS.md operations and EVOLUTION.md predecessor anchors, retained
+     versus superseded portions, and compatibility obligations. Include pinned shapes;
+     otherwise exact implementation signatures remain the implementer's to settle.]
 
     ## Codebase Context
 
@@ -71,6 +73,9 @@ Agent tool (general-purpose):
     - Follow existing codebase patterns. Don't invent new conventions.
     - Don't refactor code outside your task's scope.
     - If a file is growing beyond what the spec intended, report it as DONE_WITH_CONCERNS.
+    - Do not import retained spec POCs into production or default discovery.
+    - Report material direction changes for a new amendment PR from main and renewed
+      human approval; never silently edit a Linear mirror or original merged spec PR.
 
     ## Self-Review
 
@@ -98,7 +103,7 @@ Agent tool (general-purpose):
     - What you implemented
     - What you tested and results
     - **Key decisions you made (with ramifications):** any choice the spec left open that you resolved, any deviation, any tradeoff under a constraint — the decision, the alternative you rejected, and what it locks in or rules out. The orchestrator compiles these across tasks into the PR's top-5. If the task was mechanical with no real decisions, say so.
-    - **Red/green evidence:** for every new behavioural test or regression test you wrote, the actual failing output you captured before the fix/implementation existed, and the passing output after. "Tests pass" alone does not satisfy this — a test never observed to fail proves nothing. If this task is one of the documented exceptions (pure characterization/parity refactor holding pre-existing tests green, or a trivial mechanical edit with no behavioural surface), say so instead of fabricating evidence.
+    - **Red/green evidence:** for every new behavioural test or regression test you wrote, the actual failing output you captured before the fix/implementation existed, and the passing output after. "Tests pass" alone does not satisfy this — a test never observed to fail proves nothing. If a check has no before-state — it grades a claim the change itself makes (an equivalence, a count, an identity, an absence, a verdict) rather than behaviour you are about to write — report its **blast radius** instead: break the property the check claims, then say what you broke, which checks went red, and **that nothing else did**. The last part carries the weight: a fixture too clean to contain the failure shows up as a perturbation that fails nothing. If this task is one of the documented exceptions (pure characterization/parity refactor holding pre-existing tests green, or a trivial mechanical edit with no behavioural surface), say so instead of fabricating evidence.
     - **Goal verdict:** for a TDD task, if the spec named a slice-level goal check runnable after this task, the real-model command/path and its PASS/FAIL verdict; if the goal proof is end-to-end, say it's deferred to the orchestrator (don't run it early or invent a PASS). For a Bug task, the real-path confirmation (`fsdev run`) that the user-visible symptom is gone, or "N/A — type/unit-only regression." Mocked specs don't prove the goal.
     - Files changed
     - Self-review findings (if any)

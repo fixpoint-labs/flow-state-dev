@@ -107,7 +107,7 @@ function buildHost(options?: {
       action: "run",
       input: { value: "a" },
       sessionId: "s_accept",
-      principal: { userId: "u_1" }
+      principal: { userId: "u_1", orgId: "org_test" }
     }
   };
 }

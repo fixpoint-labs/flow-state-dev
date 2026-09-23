@@ -5,6 +5,7 @@
  * tenant id containing `:` is rejected with 400.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -157,6 +158,7 @@ describe("tenant route isolation (FIX-682)", () => {
       await stores.request.set(
         "req_1",
         {
+    orgId: DEFAULT_ORG_ID,
           id: "req_1",
           flowKind: "demo",
           actionName: "run",

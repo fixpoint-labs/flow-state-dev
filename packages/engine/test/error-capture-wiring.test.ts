@@ -1,4 +1,5 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -30,6 +31,7 @@ async function createCtx(
   const response = createResponseEmitter({ requestId, now: () => 1 });
 
   return createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId,
@@ -173,6 +175,7 @@ describe("errorCapture wiring", () => {
     });
 
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

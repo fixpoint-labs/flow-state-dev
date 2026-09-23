@@ -1,5 +1,36 @@
 # @flow-state-dev/claude-code
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [b597600]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [b48158a]
+- Updated dependencies [f25f03c]
+- Updated dependencies [e4c443e]
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/core@0.2.0
+  - @flow-state-dev/workspace@0.1.3
+
+## 0.1.2
+
+### Patch Changes
+
+- b56e7d1: Every package can be imported again: 0.1.1 shipped JavaScript whose relative imports were missing the file extensions Node's ESM resolver requires, so importing any 0.1.1 package failed with `ERR_MODULE_NOT_FOUND` (FIX-1431).
+- Updated dependencies [b56e7d1]
+  - @flow-state-dev/core@0.1.2
+  - @flow-state-dev/workspace@0.1.2
+
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [7c52923]
+- Updated dependencies [a8e22c4]
+  - @flow-state-dev/core@0.1.1
+  - @flow-state-dev/workspace@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

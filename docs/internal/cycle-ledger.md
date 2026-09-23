@@ -9,8 +9,25 @@ don't, and a ledger that samples only children reports zero for it.
 top recurring class, both trending **down** across cycles. Flat or rising means the
 upstream fixes landed at the wrong altitude — move them, don't add more.
 
-**Feedback classes:** `design-off` · `missed-edge-case` · `over-engineered` ·
-`spec-ambiguity` · `philosophy-drift` · `docs-miss` · `stale-restatement` · `nit`.
+**A cycle may declare a different primary axis**, and several have. When it does, the
+axis and its definition are declared in that cycle's own **Method** block, which is
+authoritative for that entry — check it before reading any column against another
+cycle's. The definition of a *round* has changed four times across this file; every
+change is fenced where it happens.
+
+**Feedback classes** — the closed set. Every finding gets exactly one:
+`design-off` · `missed-edge-case` · `over-engineered` · `spec-ambiguity` ·
+`philosophy-drift` · `docs-miss` · `stale-restatement` · `nit`.
+
+**Reading labels** — non-exclusive, and **never** summed into a class distribution:
+`overclaim` (prose, a comment or a test asserting more than the code does) and
+`vacuous-assertion` (an assertion that passes for a reason unrelated to what it claims
+to check). A reading label names a *shape* that cuts across the closed set; each
+observation carrying one is also counted under exactly one official class, so a reading
+total and a class total describe the same findings twice and must never be added
+together. Introduced cycle 11, which is also where the distinction is argued.
+`vacuous-assertion` is proposed for promotion to the closed set (cycle 11, fix B) and is
+a reading label until the owner rules on it.
 
 `stale-restatement` (added cycle 2) is the document-surface sibling of
 `missed-edge-case`: a decision was corrected where it is *owned* and the surfaces
@@ -1551,8 +1568,9 @@ fence. One red test proves a check catches the bug; the pair proves it catches t
 
 ### Claims to test next cycle
 
-1. **Land fixes at the gate, not after it.** The single change most likely to make cycle 11
+1. **Land fixes at the gate, not after it.** The single change most likely to make cycle 12
    scoreable is writing an approved fix *immediately*, before the next epic's branches fork.
+   (Renumbered: this named *cycle 11* before the back-dated FIX-980 entry took that number.)
    Baseline: three cycles, zero scoreable corrections.
 2. **Does an enforcement-point clause cut overclaim once it actually exists?** Cycle 9's
    baseline stands unchallenged at ~30% of non-`nit` findings; cycle 10's share is ~35%
@@ -1561,3 +1579,2054 @@ fence. One red test proves a check catches the bug; the pair proves it catches t
    false Dones this cycle (FIX-1370, FIX-1344), four days undetected, one rescue PR.
 4. **Exclude footer-bearing `jhoffner` comments from reviewer passes** in every future row, and
    re-read cycle 9's counts with that filter before comparing them to anything.
+
+---
+
+## Cycle 11 — honest-task-substrate epic wrap (FIX-980) (2026-09-10)
+
+**Numbered 11 although it was collected when the ledger ended at cycle 7.** It was written
+as cycle 8; cycles 8, 9 and 10 landed while it sat unmerged, so it is renumbered rather than
+reordered — cycle 8's own note sets that precedent. Everything below was computed against
+**cycles 1–7**: the samples for cycles 8, 9 and 10 are three different epics and none of their
+PRs are in this one. That is why this entry scores cycle 7's fixes rather than cycle 10's, and
+why its *Claims to test next cycle* are for **cycle 12** — the next cycle collected after this
+lands. Cycle 10's claim 1 pointed at "cycle 11" for the same forward cycle; taking that number
+broke the pointer, so it is repaired in place and marked, rather than left to this note.
+
+The epic's whole life, six weeks: **28 PRs** under epic
+[#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983), across two tracks — Track 1
+(write path / drain report) and Track 2 (human-wait board) — plus **three specs that were
+reviewed and never built**, which are rows, not absences. Reviewers:
+`chatgpt-codex-connector[bot]`, `cursor[bot]` (three automations), `greptile-apps[bot]`,
+`github-code-quality[bot]`, plus the owner's `fsd-architect`, `second-look` and
+`FSD Review Moderator` seats.
+
+**Per-instance evidence, the round reconstruction, the reproduced instrument failure and the
+per-row enumerations:** [`epic-wraps/honest-task-substrate-980.md`](epic-wraps/honest-task-substrate-980.md).
+This entry carries the counts, the scoring, the proposed fixes and what was dropped.
+
+**Method — three numbers per row, and the fourth definition of a round in this file, declared as
+such.**
+
+- **Passes** — automated review submissions from `cursor[bot]` + `chatgpt-codex-connector[bot]`,
+  counted from `GET /pulls/N/reviews`. This is **cycles 4 and 5's pass metric, unchanged**, and is
+  comparable to them directly. **It is not cycle 7's**, which counts `github-code-quality[bot]` as
+  a third reviewer — cycle 7's own Method says so, and says cycles 4–5 did not count it.
+- **Rounds** — **spent review rounds**: a maximal group of consecutive passes with no non-merge
+  commit between them, followed by at least one non-merge commit. It is the unit BP-040's budget is
+  written in — a review, then a response. Every budget comparison in this entry uses this column.
+  **It applies cycle 7's *spent review wave* rule over a narrower reviewer set, so it is not the
+  same measurement.** Cycle 7 counts waves over three reviewers (`cursor[bot]`,
+  `chatgpt-codex-connector[bot]` and `github-code-quality[bot]`); this entry counts them over the
+  two-bot `Passes` set above. A third reviewer can open a wave the two-bot set does not see, so
+  these rounds run **at or below** cycle 7's on the same PR and a cross-cycle round comparison
+  needs the third reviewer added back first. #1513's row shows the size of the effect: 3 passes on
+  the two-bot set, 14 once `greptile`, `github-code-quality` and the owner are counted.
+- **Folds** — non-merge commits pushed after the first automated pass. This is a **new
+  measurement, introduced here, comparable to nothing before it.** It answers a different
+  question: how many times an artifact was *rewritten* under review. **Never set a fold count
+  against any budget or any earlier cycle's rounds** — `folds ≥ rounds` on every row in this
+  entry, because a batch of correction-only commits answering one review costs one round and
+  several folds. Cycle 4 warned that two baselines had been invalidated by a definition change and
+  to check for a third; cycle 7 was the third. This is a fourth, added deliberately and fenced.
+
+`nit` is excluded from the rework signal. Direction artifacts (spec and epic PRs) take the
+spent-round rules. Endpoints: epic PR → epic close (**reached**, so #983 is a complete row, not a
+partial); spec PR → its approval; implementation PR → merge or close. **Three rows fall back to
+the wrap and are partials:** #992 and #994 (specs never approved, still open) and #1677 (open,
+unmerged).
+
+**Author round numbers are not instrumented and are not used as measurements here.** #1461's
+author wrote "round 25"; the reconstructed figure is 24 spent rounds, against 29 bot passes and 73
+review submissions of all kinds. Four numbers for one PR, none wrong for its own definition.
+
+### The epic PR
+
+| PR | Kind | Passes | Rounds | Folds | Feedback classes | Honesty reading | Claims (looped / settled / verdict) | Design felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|---|---|---|
+| [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) FIX-980 epic-spec | epic | **12** | **7** | **8** | design-off ×5 · **stale-restatement ×7** · over-engineered ×6 · docs-miss ×1 · nit ×2 | — | 1 / 1 / **CONFIRMED** (with two gaps; POC [#1001](https://github.com/fixpoint-labs/flow-state-dev/pull/1001)) | **yes** — Decision 1's Option A survived, but its cost was wrong by 4× and two of its three named methods were the wrong ones | The correction re-derives every surface that restates the decision — cycle 2's finding, unchanged |
+
+### Track 2 — the human-wait board
+
+| PR | Kind | Passes | Rounds | Folds | Feedback classes | Honesty reading | Claims (looped / settled / verdict) | Design felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|---|---|---|
+| [#1419](https://github.com/fixpoint-labs/flow-state-dev/pull/1419) FIX-1234 spec | spec | **12** | **8** | **8** | design-off ×4 · missed-edge-case ×3 · docs-miss ×3 · stale-restatement ×2 · nit ×4 | overclaim ×2 | 1 / 1 / **REFUTED** (the detached-recapture premise, settled by reading the code) | no | Budget 2 rounds. Spent 8 — see *the fold loop* |
+| [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) FIX-1234 | impl | **11** | **9** | **13** | missed-edge-case ×7 (**5 convergence**) · docs-miss ×3 · over-engineered ×2 · stale-restatement ×1 · nit ×5 | overclaim ×3 | 2 / 2 (settled by **running** the example, not by POC) | no | Same convergence arithmetic tenet 5 has named since cycle 1 |
+| [#1461](https://github.com/fixpoint-labs/flow-state-dev/pull/1461) FIX-1244 spec | spec | **29** | **24** | **30** | **The worst overrun in this epic.** design-off ×5 · over-engineered ×4 · docs-miss ×3 · stale-restatement ×3 · spec-ambiguity ×3 · nit ×43 | overclaim ×6 | 2 / 0 (both settled by **re-measurement**; the author's round-21 refutation of a reviewer was itself wrong) | **yes** — but the owner found it, not the review: *"resumeFromReview and unparkAndDrain. Why do we need both? … Is the wall of text in the spec really necessary?"* | **A hard stop after round 2.** BP-040 was in force and did not bind — see *scoring* |
+| [#1571](https://github.com/fixpoint-labs/flow-state-dev/pull/1571) FIX-1244 | impl | **3** | **2** | **2** | missed-edge-case ×2 | — | 0 / 0 | no | — a clean implementation off a 30-fold spec |
+| [#1513](https://github.com/fixpoint-labs/flow-state-dev/pull/1513) FIX-1245 | impl | **3** (14 with `greptile`, `github-code-quality` and the owner) | **1** | **3** (see note) | missed-edge-case ×4 — **all convergence, and the dual-read shipped missing three of its four readers** · docs-miss ×2 · stale-restatement ×1 · nit ×2 | overclaim ×1 | 0 / 0 | no | BP-030's dual-read is only as strong as its least-guarded **reader** — the enforcement/verification split of cycle 1's class, on the read side |
+| [#1673](https://github.com/fixpoint-labs/flow-state-dev/pull/1673) FIX-1238 spec | spec | **2** | **1** | **2** | **2 findings, both above the bar, both from one reviewer.** docs-miss ×1 · missed-edge-case ×1 | overclaim ×1 · vacuous-assertion ×1 | 1 / 1 / **REFUTED** (the reviewer re-ran the spec's own POC with `unknownOut` and got silence where the spec predicted an error) | **yes** — the guarantee narrowed from "conditional inserts" to "conditional inserts that declare an output", and §3.4 got stronger | **Inside the two-round budget** — one of two spec PRs in the epic that were |
+| [#1675](https://github.com/fixpoint-labs/flow-state-dev/pull/1675) FIX-1238 | impl | **2** | **1** | **1** | **The same two shapes again, in the redesign the first pair produced.** docs-miss ×1 · missed-edge-case ×1 | overclaim ×1 · vacuous-assertion ×1 | 0 / 0 | no | Both were caught. See *the four seats that missed them* in the sidecar |
+| [#1677](https://github.com/fixpoint-labs/flow-state-dev/pull/1677) FIX-1032 | impl | **1 (in flight)** | **1 (in flight)** | **1 (in flight)** | missed-edge-case ×2 · nit ×1 | — | 0 / 0 | no | — the fix for the lying instrument, still open |
+
+**Note on #1513's folds.** An earlier draft recorded 5, counting from the first
+`github-code-quality[bot]` pass while the same row's pass count used only
+`cursor[bot]` + `chatgpt-codex-connector[bot]` — a different reviewer set for the numerator and the
+denominator of one row. Under the Method's stated set the figure is **3** (the first counted pass
+is `cursor[bot]` on 2026-09-04; three non-merge commits follow it). The wider set gives 5. The
+substantive fact the row rests on is unchanged either way: the fourth read path was closed on the
+last commit, **eight days** after the first.
+
+### Track 1 — write path and drain report
+
+Same schema as Track 2, now that the per-row enumeration lives in the sidecar. The `Claims`
+column is **structurally empty** rather than measured zero: no claim on a Track 1 row was argued
+twice, so none entered the `settle-claim` path. The epic's one settled claim sits on #983.
+
+| PR | Kind | Passes | Rounds | Folds | Feedback classes | Honesty reading | Claims (looped / settled / verdict) | Design felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|---|---|---|
+| [#941](https://github.com/fixpoint-labs/flow-state-dev/pull/941) FIX-951 spec | spec | 7 | **5** | 5 | design-off ×2 · missed-edge-case ×3 · stale-restatement ×2 · over-engineered ×2 · nit ×7 | overclaim ×2 | — | no | Budget 2 rounds, spent 5 |
+| [#953](https://github.com/fixpoint-labs/flow-state-dev/pull/953) FIX-951 | impl | 3 | **3** | 3 | missed-edge-case ×2 · docs-miss ×1 | — | — | no | — |
+| [#995](https://github.com/fixpoint-labs/flow-state-dev/pull/995) FIX-976 spec | spec | **4** | **2** | **2** | over-engineered ×3 · spec-ambiguity ×2 · stale-restatement ×1 · nit ×4 | — | — | no | **inside budget** |
+| [#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004) FIX-976 | impl | **1** | **1** | **1** | nit ×5 — **no finding above the bar** | — | — | no | — the cheapest implementation in the epic |
+| [#1005](https://github.com/fixpoint-labs/flow-state-dev/pull/1005) FIX-989 spec | spec | 5 | **5** | 5 | design-off ×3 · missed-edge-case ×4 · docs-miss ×2 · nit ×2 | — | — | no | Budget 2 rounds, spent 5 |
+| [#1128](https://github.com/fixpoint-labs/flow-state-dev/pull/1128) FIX-989 | impl | 7 | **6** | 8 | missed-edge-case ×6 — **convergence** · docs-miss ×2 | — | — | no | Cycle 1's class |
+| [#1010](https://github.com/fixpoint-labs/flow-state-dev/pull/1010) FIX-992 spec | spec | 9 | **8** | 9 | design-off ×6 · missed-edge-case ×8 · over-engineered ×2 · nit ×3 | — | — | **yes** — split into three PRs after review | Budget 2 rounds, spent 8 |
+| [#1035](https://github.com/fixpoint-labs/flow-state-dev/pull/1035) FIX-992a | impl | 8 | **6** | 9 | missed-edge-case ×12 — **convergence across every backing** · docs-miss ×2 · nit ×4 | overclaim ×2 | — | no | **The sharpest convergence instance in Track 1: eight findings are the same rule missing from its second adapter.** |
+| [#1036](https://github.com/fixpoint-labs/flow-state-dev/pull/1036) FIX-992c | impl | 8 | **6** | 6 | missed-edge-case ×5 · docs-miss ×3 · stale-restatement ×1 · nit ×4 | overclaim ×3 | — | no | Same |
+| [#1039](https://github.com/fixpoint-labs/flow-state-dev/pull/1039) FIX-992b | impl | 8 | **3** | 3 | missed-edge-case ×7 · docs-miss ×2 · nit ×4 | vacuous-assertion ×1 | — | no | Same |
+| [#1011](https://github.com/fixpoint-labs/flow-state-dev/pull/1011) FIX-948 spec | spec | 6 | **6** | 6 | design-off ×2 · missed-edge-case ×3 · docs-miss ×2 · nit ×6 | — | — | no | Budget 2 rounds, spent 6 |
+| [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031) FIX-948 | impl | 2 | **2** | 2 | missed-edge-case ×2 · nit ×3 | — | — | no | — |
+| [#1022](https://github.com/fixpoint-labs/flow-state-dev/pull/1022) FIX-995 spec | spec | 5 | **3** | 3 | missed-edge-case ×3 · over-engineered ×2 · nit ×5 | — | — | no | Budget 2 rounds, spent 3 |
+| [#1023](https://github.com/fixpoint-labs/flow-state-dev/pull/1023) FIX-995 | impl | 4 | **3** | 3 | missed-edge-case ×4 · docs-miss ×1 · stale-restatement ×1 · nit ×3 | overclaim ×2 | — | no | Cycle 1's class |
+| [#1048](https://github.com/fixpoint-labs/flow-state-dev/pull/1048) FIX-1001 spec | spec | 10 | **8** | 8 | design-off ×5 · missed-edge-case ×7 · over-engineered ×2 · nit ×4 | — | — | no | Budget 2 rounds, spent 8 |
+| [#1292](https://github.com/fixpoint-labs/flow-state-dev/pull/1292) FIX-1001 | impl | 4 | **2** | 5 | missed-edge-case ×3 · docs-miss ×1 · nit ×2 | — | — | no | — |
+
+### The three specs that were reviewed and never built
+
+| PR | Kind | Passes | Rounds | Folds | Spec lines | Findings | Outcome |
+|---|---|---|---|---|---|---|---|
+| [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) FIX-978 spec | spec | **17** | **16** | **16** | **1,884** | **30 P1 · 12 P2** | Linear **Canceled** 2026-08-25 — every claim already closed by sibling work |
+| [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) FIX-963 spec | spec | **6 (partial)** | **4 (partial)** | **6 (partial)** | 873 | 7 P1 · 6 P2 | Converged, never approved, **still open**, mildly decayed |
+| [#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994) FIX-964 spec | spec | **5 (partial)** | **3 (partial)** | **8 (partial)** | 365 | 6 P1 · 5 P2 | Descoped by the owner 2026-08-24/25. Issue **On Hold**, PR **still open** |
+
+**Total idled: 28 passes, 23 spent rounds, 30 folds, 3,122 spec lines, 43 P1 findings, 0 lines
+shipped.** Three instances in one epic is a trend, not an anecdote, and the cost is concentrated —
+#990 alone is 1,884 lines and 30 P1s, more review than any *implementation* PR in this epic
+received.
+
+### Reconciling the counts — one denominator, derived from the rows
+
+Every aggregate in this entry sums the `Feedback classes` column of the tables above. **198
+classified findings**, nits excluded (113 nits).
+
+| Official class | Count | Share of 198 |
+|---|---|---|
+| `missed-edge-case` | **89** | 45% |
+| `design-off` | 32 | 16% |
+| `docs-miss` | 30 | 15% |
+| `over-engineered` | 23 | 12% |
+| `stale-restatement` | 19 | 10% |
+| `spec-ambiguity` | 5 | 3% |
+| `philosophy-drift` | 0 | — |
+| **total** | **198** | 100% |
+
+**The honesty reading, stated separately so it cannot be added in.** 26 of those 198 observations
+carry a reading label — `overclaim` 23 and `vacuous-assertion` 3, **13% of the corpus**. They are
+not a seventh class and are already inside the table above, assigned like this:
+
+- `overclaim` ×23 → `docs-miss` ×17 (prose, a comment or a doc asserting what the code does not) +
+  `stale-restatement` ×6 (a decision corrected where it is owned, a restating surface left
+  asserting the old answer).
+- `vacuous-assertion` ×3 → `missed-edge-case` ×3, which is where cycle 7 folded the same shape.
+
+**Where the honesty family ranks depends on how wide you draw it, so both readings are given.**
+Strictly — a claim that is false, or an assertion that cannot fail — it is **26, the third-largest
+family**, behind `missed-edge-case` (89) and `design-off` (32). Read wider, with
+`stale-restatement`'s 19 included on the grounds that a superseded claim still standing is also a
+claim that is not true, it is **39 and the second-largest** — 26 + (19 − 6), because six of
+`overclaim`'s 23 *are* `stale-restatement` observations, as the decomposition above says, and a
+union counts them once. The thesis holds on either reading; the entry no longer depends on which.
+
+**Corrections to this entry's own arithmetic, recorded rather than quietly fixed.** Earlier drafts
+reported two different denominators for one corpus — "~195 classified findings" in one place and
+"~145" in another — and read `overclaim`'s 23 as a share of a closed taxonomy that did not contain
+it. Both figures were wrong; the rows total 198. An eight-fold spec row (#994) was also missing
+from the overrun count. **The wide honesty reading was 45**, adding all 19 `stale-restatement`
+observations to the 26 when six of them are the same observations — the exact double-count this
+file's header forbids, committed by the entry that argued for the fence, and caught on review of
+the re-cut. **The `Passes` and `Rounds` columns were both declared comparable to cycle 7's and are
+not** — cycle 7 counts a third reviewer, `github-code-quality[bot]`, in both. This is the same
+error cycle 7 records its own first draft making, in the opposite direction; the Method block now
+fences it. **The round/fold gap was called zero on nine of thirteen spec rows and concentrated in
+four**; #1673's gap of 1 was missed, so it is eight and five, corrected here and in the sidecar
+table it is read from. **#1461's 24 rounds were also called the worst overrun "in this ledger"**,
+true of the file this entry was collected against, which ended at cycle 7. Cycle 8 has since landed
+carrying #1445 at **35** rounds against the same budget — under a unit this entry's Method block
+does not reconcile with its own, so neither row can be ranked against the other without
+reconstructing #1445. Both claims are now qualified to this epic; the argument they serve does not
+rest on the superlative, only on BP-040 permitting a 24-round spec on a branch that carried it.
+Every figure above now traces to a table in this entry, which is the standard the entry sets for
+everything else.
+
+### The dominant class: the fold loop feeds itself, and what it feeds on is false claims
+
+**Eleven of thirteen spec PRs exceeded BP-040's two-round budget.** Only #995 (2 rounds) and #1673
+(1) held. Spent rounds across the thirteen: 1, 2, 3, 3, 4, 5, 5, 6, 8, 8, 8, 16 and **24**.
+
+**Measured in rounds, because BP-040's budget is written in rounds.** An earlier draft of this
+entry set fold counts against that budget, which is the comparison this entry's own Method block
+forbids — and folds systematically overcount rounds, since a batch of correction-only commits
+answering one review costs one round and several folds. The reconstruction is in the sidecar. It
+did not rescue the finding: on rounds the overrun is marginally *larger* (eleven of thirteen over
+two rounds, against eleven of thirteen over two folds, and twelve of thirteen over two passes).
+
+The mechanism is visible in the data rather than inferred. On #1461: **29 automated passes across
+30 folds, a 1:1 ratio** — every push drew a fresh review, the review found something, and the
+finding drew another push. The author diagnosed it correctly at fold 5, quoted the convergence
+rule, said *"I'm stopping now"* — and folded twenty-five more times. The quote and the fold-by-fold
+narrative are in the sidecar.
+
+**What each fold was spending itself on is why this is one finding and not two.** A direction
+document states one decision in many sections. Folding it into the section that owns it leaves the
+siblings asserting the old answer; the reviewer finds that on the next push; the fix creates the
+next one. **That is not review converging on a document — it is a document and a reviewer taking
+turns.** #1461's own worst fold is the exemplar: a §12 rename promise added, then a wholesale
+revert left §7–§11 asserting the opposite, *"the same one-site-left-standing class as six earlier
+rounds"*, in the author's words.
+
+**So the epic named "Honest task substrate" produced 26 findings of the form *a claim that is not
+true*, in its own artifacts, at every altitude** — and that family is the loop's fuel, not a
+separate result:
+
+- **Epic altitude (#983):** counts drifting across four surfaces; §1 and §3 contradicting each
+  other; *"Stop claiming Decision 1 resolves S3"*; a load-bearing cost figure wrong by ~4×; the
+  whole document still describing a `main` that five merges had moved past.
+- **Spec altitude (#1673):** the spec's central guarantee was false, and the test it proposed to
+  protect that guarantee could not fail.
+- **Implementation altitude (#1675):** the *same two shapes*, in the redesign the first pair
+  produced — a comment drawing the guard's boundary in the wrong place, and an erosion test whose
+  only assertion was "is an array."
+- **Across the write path:** *"Don't describe failed content writes as silent"*; two README CAS
+  guarantees wider than the code; a comment claiming a value was "decoded from a stored row" when
+  durable reads bypass that schema; *"add a real no-op path before asserting notification
+  silence."*
+
+**The tell that the loop was not tracking value.** On #1461 the two findings that actually changed
+the design came from **outside** it — the owner asking in two sentences why two verbs existed and
+whether the wall of text was necessary, a restraint question 20 automated passes had not asked.
+And when a genuinely direction-level P1 did land at ~round 22, the implementation that followed it
+took **3 passes, 1 round and 2 folds**.
+
+### The sharper shape: a summary is a claim, and checking its inputs is not checking it
+
+Kept as its own finding rather than merged into the fold loop above, because the mechanism is
+different. The loop's mechanism is *restatement drift* — a decision fixed in one section, left
+standing in its siblings. This one survives even when nothing drifted: the artifact is derived
+correctly from inputs that were each verified, and the derivation itself was never checked. The
+entry's concession that the fold loop and the honesty count are "one finding and not two" is about
+those two; it does not reach this one.
+
+**The anchor is the instance that happened during this wrap**, in the artifact announcing it. The
+epic's retirement post on `agent-mailbox#7` published *"The objective's first clause is met."*
+Verified against the epic-spec on `0cc231c25` and live Linear: **it is not.** The spec's §1 lists
+seven criteria; criterion 2 is FIX-963 verbatim, FIX-963 is Backlog with its spec PR still open,
+and that criterion is not adjacent to the objective's first clause — **it is that clause.**
+Criterion 3 is partial at best after FIX-964's descope. **Two of seven NOT MET.** The
+criterion-by-criterion derivation, and the same post's wrong claim that the surviving issues
+*"stand alone now"*, are in the sidecar.
+
+**Why this instance and not the others carries the finding.** Every input to the false sentence was
+verified. The author checked each issue's Linear state and never re-derived the sentence about what
+those states added up to. So the class is not "update the other artifacts after a fold" — it is:
+**a summarizing artifact inherits the verification burden of a claim, and verifying its inputs is
+not verifying it.**
+
+**Does BP-003 already cover it? Substantially, yes — and that is the finding.** BP-003 requires
+every claimed deliverable to have an evidence path and pass criteria, and the epic-spec *had* seven
+of them. `CLAUDE.md` separately forbids writing user-facing prose while holding a spec or a diff,
+*"because context leaks even when you know the rules."* Both applied; neither was reached for,
+because neither names **prose about completion** as the thing under verification. An application
+gap with a nine-word cure, not a new rule.
+
+### The honesty-defect register
+
+One register, so the two totals below cannot disagree again. `In corpus?` means the defect is
+inside the PR review record this entry counts; a `no` is excluded from all 198.
+
+| # | Instance | Artifact kind | In corpus? | Found by | Official class |
+|---|---|---|---|---|---|
+| 1 | Spec's central guarantee false (#1673) | spec body | yes | `chatgpt-codex-connector[bot]` | `docs-miss` |
+| 2 | Proposed regression test could not fail (#1673) | spec's proposed test | yes | `chatgpt-codex-connector[bot]` | `missed-edge-case` |
+| 3 | Wiring comment's boundary wrong (#1675) | code comment | yes | `chatgpt-codex-connector[bot]` | `docs-miss` |
+| 4 | Erosion test asserted only "is an array" (#1675) | test | yes | `chatgpt-codex-connector[bot]` | `missed-edge-case` |
+| 5 | Status block describing a two-week-old `main` (#983) | epic-spec status block | yes | a re-derivation pass against live Linear | `stale-restatement` |
+| 6 | §12 rename promise left standing against §7–§11 (#1461) | spec body | yes | `chatgpt-codex-connector[bot]` | `stale-restatement` |
+| 7 | Uncitable "settled" (#1461) | review reply | yes | the `fsd-architect` seat challenging it | `docs-miss` |
+| 8 | *"The objective's first clause is met"* (`agent-mailbox#7`) | wrap post | **no** — outside the PR corpus | an isolated epic-spec sub-agent pass | — |
+| 9 | *"The PR description says 'six rounds.' Two more landed after it."* (#1461) | PR description | **no** — not a review finding | **the record does not name a finder** | — |
+| 10 | The wiring overclaim left standing in the PR body (#1675) | PR description | **no** — testimony only | the author, self-reported | — |
+
+Row 10 is author self-report and **not verifiable from the review record**: GitHub's body-edit
+history is not reachable from this session and no comment on the PR documents the sweep.
+
+**Both totals, derived from the register.**
+
+- **Summary-overclaim instances — the class fix C(b) targets — are rows 5, 7, 8, 9, 10: five
+  instances across *four* artifact kinds**, not five. `PR description` appears twice (rows 9 and
+  10), which the earlier "five artifact kinds" phrasing double-counted. Four of the five are
+  in-corpus or on the record; row 10 is testimony.
+- **Independently found, and never by the writer in the act of writing — rows 1–8: six defect
+  groups (eight underlying defects; rows 1–2 and 3–4 are pairs), six found by an automated or
+  isolated check, zero by the writer.** That is the "six for six" figure. It does not contradict
+  the five above: it counts a different set — every honesty defect with a named finder, not only
+  the summarizing ones. Rows 9 and 10 are outside it, one for having no named finder and one for
+  being found by the author after the fact.
+
+**Six for six by an automated or isolated check** is the strongest argument in this entry for
+keeping the fix at the level of *what gets independently re-derived* rather than *what the writer
+should remember* — and it is why fix A is a freeze and fix C is a sharpening of an existing burden
+rather than a new discipline to hold.
+
+**The confound, stated plainly.** Every PR in this corpus has the same non-bot author, so it
+**cannot** separate "this author's habit" from "this process's gap"; there is no second author to
+compare against. What the register does establish is narrower and still useful: the shape is not
+FIX-1238-specific and not wrap-post-specific. Whether it generalizes across authors is
+**unanswered**, and fix C is scoped accordingly — a sharpening of a rule that already exists.
+
+### The instruments that lied
+
+`scripts/typecheck.mjs` runs `tsc` only when `node_modules/.bin/tsc` exists at the repo root.
+Otherwise it walks `src/**.ts`, regex-scans import specifiers, and prints
+`static typecheck passed (<pkg>): N source file(s) validated` with **exit 0**. Reproduced for this
+entry rather than quoted — a one-file package with three unambiguous type errors passes with exit
+0; the probe and its output are in the sidecar.
+
+**The trap was live in this repository at the wrap (2026-09-10)** — see the note below — and it has
+an inverse face: deps installed but
+`core`'s `dist` stale reports ~22 type errors in untouched files, which nearly got a correct fix
+rejected. Cost this epic, from the author's record on #1675: **four fabricated measurements**, and
+a worker came close to reporting an approved spec's central mechanism as broken. Filed as
+**FIX-1032** (High, *Ready to Spec*), fixed at
+[#1677](https://github.com/fixpoint-labs/flow-state-dev/pull/1677), **which merged 2026-09-10,
+two minutes before this entry's first PR opened.** `scripts/typecheck.mjs` on `main` now exits 1
+when `tsc` is absent, so the probe above is a dated observation of the trap, not current guidance.
+It is kept because it is the evidence proposal C rests on. A sibling instrument,
+`packages/orchestration/test/types.type-test.ts`, states that vitest typecheck covers it; nothing
+does (**FIX-1239**, High, Backlog).
+
+**This is one step past what BP-003 currently covers.** Its third bullet warns about *"a green
+result from a command aimed at a **neighbour** of the claim."* Here the command was aimed at
+exactly the right claim and reported success **without performing the check at all.** Same false
+green, different mechanism, and the existing sentence does not reach it.
+
+### Scoring previous cycles' fixes
+
+- **BP-040** (*spec review is a direction check — fold only what changes the approach, converge in
+  two rounds*), landed `1c69f65fe` 2026-08-08. **Carried/not-carried split, by ancestry, not
+  timestamps:** three spec PRs carry it from their first commit — #1419 (`959ec8e1e`), #1461
+  (`d37dc8bcd`), #1673 (`bc07d3a44`); the other ten forked before it (verified: `1c69f65fe` is not
+  an ancestor of #1048's head `954a293c6`). **The rule was in force and did not bind on two of the
+  three.** Post-BP-040 spent rounds are **8, 24 and 1** against a pre-BP-040 median of **5**. The
+  worst spec overrun **in this epic** happened **17 days after** BP-040 landed, on a branch
+  carrying it, by an author who quoted the convergence rule at fold 5 and folded 25 more times.
+  **n=3 is not a trend**, and one of the three (#1673) held at a single round — so the carriage
+  evidence on its own is two overruns and one success. What it does establish is that the rule was
+  present, was read, was quoted, and still permitted a 24-round spec. That is the cleanest
+  available evidence that this class needs a stop rather than a sentence, and it is weaker than a
+  trend.
+- **Cycle 7's fixes A and B** (`epic-lifecycle` *Blind by design*, `write-block-tests` *parameterize
+  over carriers*) landed 2026-09-08 in `a85a17da9` / `c667f344a`. **Unscoreable against this epic —
+  the entire corpus is out of the sample.** Every branch forked before those commits and none
+  merged `main` afterwards; verified by ancestry on the branch heads, not by date (`git merge-base
+  --is-ancestor a85a17da9 5b99b1550` → exit 1, and the same for `c667f344a`). Per this file's own
+  rule that is *not a zero and not a pass*. Recorded so the next cycle does not read this entry's
+  silence as a failed fix.
+- **Cycle 1, fix A** (tenet 5's convergence clause): in force throughout. `missed-edge-case` is
+  **89 of 198** classified findings — 45%, the largest share in the file — and convergence is most
+  of it: #1035's eight findings are one rule missing from its second adapter; #1513 shipped a
+  dual-read missing three of its four readers. **Eight cycles of sample, still the dominant class.**
+  Consistent with cycles 4–7; nothing new to add, and the fourth consecutive conclusion that the
+  remaining work here is mechanism, not wording.
+
+### Upstream fixes — proposed, not written
+
+Per this skill's Step 6, nothing below is applied. `docs/philosophy.md`,
+`docs/contributing/best-practices.md` and the skills are **untouched** in this change; the entry
+records the proposal and the ledger rows land regardless of what the owner does with it.
+
+| # | Proposed fix | Altitude | Targets | How it gets scored |
+|---|---|---|---|---|
+| A | **A hard stop, not a budget: after spent round 2 the spec branch is frozen.** Remaining findings go into **one** comment as implementer notes, and the approval gate is raised with them attached. No further push to `spec/*` during review. **Implement it as a refusal, not a paragraph** — an `epic-wake` hook or branch protection that declines the push, rather than another `issue-spec` sentence. The diagnosis rules out the prose altitude: BP-040 already says this, was in the tree, was quoted by the author mid-loop, and did not bind, so a rule the coordinator must remember is the one altitude the evidence excludes. | tooling, spec-time — **mechanism** | the fold loop: 11 of 13 spec PRs over two rounds, #1461 at 24 | spent rounds per spec PR next cycle. A freeze either shows up as a hard ceiling of 2 or it was not spent |
+| B | **Mint `vacuous-assertion` as an official feedback class** — an assertion that passes for a reason unrelated to what it claims to check. It is already in use as a *reading label* (this cycle and, narratively, cycle 7); promotion makes it countable in the closed set, with the mutual-exclusion rule that it takes precedence over `missed-edge-case` for the same observation. | ledger instrument only | the pre-registered watch, now in its **third** cycle | it becomes countable; if it does not recur, retire it |
+| C | **Sharpen BP-003's third bullet — one list, two more neighbours.** It already warns about *"a green result from a command aimed at a **neighbour** of the claim."* Add the two seen this epic: **(a) a command that never ran the check** — a missing toolchain taking a fallback path, a skipped suite, a type assertion in a file nothing typechecks; read what the command reports it *did*, not only its exit code. **(b) the claim's inputs instead of the claim** — a summary is a claim and carries a claim's burden; verifying every input and not re-deriving the sentence about what they add up to is checking a neighbour. | sharpen existing BP | (a) FIX-1032 + FIX-1239, four fabricated measurements · (b) five summary-overclaim instances across four artifact kinds | a false green reaching a report again; a completion summary contradicted by its own pass criteria |
+
+**Why A is a freeze and not a reminder.** The rule already exists, was in the tree, was quoted by
+the author mid-loop, and did not bind. Cycles 4, 5, 6 and 7 each concluded that prose naming a
+class does not deter the class. A freeze is refusable in a way a budget is not — which is also why
+it belongs in tooling.
+
+**What A costs, stated honestly.** On #1461 a real direction-level P1 arrived around round 22;
+under a freeze it would have reached the implementer as a note instead. That is what BP-040
+prescribes, and the implementation off that spec took 3 passes and 2 folds — but the loss is real
+and A should be withdrawn if a frozen spec produces an implementation that has to be re-specced.
+
+**What the evidence for A does and does not carry.** The overrun is measured on BP-040's own unit
+and is systematic: 11 of 13. The attribution to *BP-040 having failed* rests on three carrier
+branches, two of which overran — enough to rule out "nobody had the rule yet," not enough to be a
+trend. A is proposed on the systematic overrun; the carriage split is corroboration, not the case.
+
+### Dropped, and follow-ups recorded
+
+- **A tenet or BP clause for the convergence class.** Fifth cycle of the same answer, and the
+  reasoning has not changed: tenets 5 and 7 already name it in the always-loaded layer, tenet 5
+  already carries three parallel paragraphs of the arithmetic, and a fourth is the checklist growth
+  tenet 3 forbids. Cycle 7's fix B is the standing mechanism attempt and **could not be scored
+  here** — it deserves a cycle where the branches carry it before anything is added.
+- **A standalone rule about artifact drift after a fold** — *"a fold is not done when the diff is
+  right, it is done when every artifact repeating the claim is right."* Dropped **as a rule of its
+  own**, and folded into fix C(b) instead. Two reasons. The rework-hygiene framing does not fit the
+  register's row 8, where every input *was* verified and only the derived sentence was not — so the
+  rule would have been aimed at the wrong step. And the residue is `stale-restatement`, which cycle
+  2 minted and tenet 5's third paragraph owns; sharpening that a fifth time is the instrument
+  justifying itself. What survives is the narrower, uncovered half: a summary carries a claim's
+  verification burden.
+- **A new BP for the summary-overclaim class.** Rejected on the coordinator's own test: BP-003
+  already requires pass criteria on every claimed deliverable and the epic-spec had seven of them;
+  `CLAUDE.md` already forbids writing prose while holding the diff. Two existing rules covered it
+  and neither was reached for. That is an application gap, and the cure is a scope clause on the
+  rule that exists — not a third rule to not reach for.
+- **A fix for the idling cost.** Three specs, 3,122 lines, 43 P1s, nothing shipped — and no cheap
+  cure survives contact. FIX-978's defect was real when specced and closed by sibling work weeks
+  later; FIX-964 and FIX-963 were owner scope calls, which is the owner's chair working correctly.
+  The one mechanically checkable half — *re-verify a converged spec against `main` before it enters
+  implementation* — is worth doing, but it belongs to fix A's frozen-spec gate rather than a rule
+  of its own. Recorded so a later cycle can see the cost was counted and deliberately not acted on.
+- **A rule that reviewers should disagree, or that one reviewer is worth more than another.** Codex
+  found four defects four other seats missed on FIX-1238, and produced every P1 on five other PRs.
+  Tempting and wrong: weighting a reviewer is a configuration change, not a discipline, and the
+  #1673 data cuts the other way — Cursor's approval *endorsed* the defect in writing, which a
+  weight would not have caught. The `review` skill already composes parallel lenses.
+- **`overclaim` as an official feedback class.** It is the union of `docs-miss`,
+  `stale-restatement` and the proposed `vacuous-assertion`, so minting it would double-count.
+  Declared in this file's header as a **reading label** instead — named, non-exclusive, and barred
+  from class distributions. That is the honest version of what earlier drafts did implicitly by
+  using it as a table classifier while refusing to declare it.
+- **Follow-up recorded, not built: a `collect-ledger-rows` collector.** The `distill-lessons` skill
+  says the ledger is auto-derived from GitHub and Linear; this cycle was largely manual adjudication
+  at 28× scale, and the round reconstruction in the sidecar had to be scripted by hand. A thin
+  collector that emits passes, spent rounds, folds and finding titles per PR would make the
+  mechanical half reproducible and leave adjudication to the coordinator. **Non-blocking and not
+  proposed as an upstream fix this cycle** — it is tooling for the instrument, not a fix for a
+  rework class. Filed here so the next cycle can pick it up or decline it deliberately.
+
+### Claims to test next cycle
+
+1. **Does a freeze hold?** Fix A's only job. **Spent rounds** per spec PR should show a ceiling of
+   2, with the overflow visible as one implementer-notes comment. If rounds stay above 2, the
+   freeze was not spent and the next move is a refusal the tooling makes, not a rule the
+   coordinator remembers.
+2. **Does a small direction artifact get read?** Two specs held the budget this cycle (#995 at 2
+   rounds, #1673 at 1). #1673 is the interesting one: it is both the only spec where every
+   above-the-bar finding was found *and* the only one where four seats read the same thing and all
+   agreed it was fine while two defects sat in it. Both readings are available from n=1. Score it
+   by whether rounds-under-2 correlates with findings-per-pass **rising**, which is the good
+   direction, or with findings falling, which would mean short specs are simply reviewed less.
+3. **Score cycle 7's fixes A and B for real.** Unscoreable here because the whole corpus forked
+   before them. Next cycle's branches will carry them; check whether a live worker is duplicated
+   again, and whether a carrier-shaped defect reaches `main` on a chain whose tests were written
+   after fix B.
+4. **Does `vacuous-assertion` recur?** Three instances this cycle, in the epic whose subject was
+   honesty. If the class does not appear next cycle, retire the label rather than keeping it.
+5. **Does the round/fold gap stay small?** `folds ≥ rounds` everywhere this cycle, with the gap
+   zero on eight of thirteen spec PRs and concentrated in five. If the gap widens, folds stop being
+   a usable proxy for anything and the fold column should be retired rather than reinterpreted.
+
+---
+
+## Cycle 12 — W3 file-convention epic wrap (FIX-1351) (2026-09-17)
+
+**Second collection on the same epic.** Cycle 10 sampled FIX-1351 mid-flight (#1718, #1711,
+#1715, #1735, #1737, #1738, #1747, #1793, #1797). **None of those rows are repeated here.**
+This entry covers the twelve artifacts produced after that collection: six spec PRs, six
+implementation PRs. The epic PR #1718 is still open and FIX-1351 is still `In Development`
+(wrap pending), so its endpoint falls back to **collection time** and it stays a **partial** —
+it is not re-scored here.
+
+**Method — rounds.** `Rounds` = **spent waves**: distinct commits drawing at least one
+automated pass, followed by a push — **plus a terminal clean pass, which this entry counts and
+prior cycles did not.** Definition change, fenced here: a pass that finds nothing still costs a
+review cycle, and excluding it makes a converging PR look cheaper than one that stopped while
+still red. It affects exactly one row (#1834, `a97cdead8f`). **The figure comparable to cycles
+1–11 is 23 implementation rounds, not 24.** Counted from `/pulls/N/reviews` **and**
+`/issues/N/comments`,
+because **a zero-finding Codex pass posts as an issue comment, not a review** (#1834's
+converging round, `a97cdead8f`, 18:06Z). A reviews-only collector cannot see a clean round, so
+it systematically reports the last *finding* as the last look. Checked against cycle 9's three
+"bots absent from the merge head" PRs (#1790, #1754, #1785): no clean-pass comment exists on any
+of them, so **cycle 9's finding stands** — but every future row must read both endpoints.
+
+**Agent replies still post under `jhoffner`** (cycle 10's instrument hole). All `jhoffner`
+reviews in this sample are the implementing agents' thread replies and are excluded from waves.
+
+**Method — classes.** Per the file header, `vacuous-assertion` is a **reading label**, not a
+class, and must never be summed into a class distribution. Every observation carrying it is
+counted under exactly one closed-set class in the column below; the reading label is named in
+parentheses beside it. **Fold rule used:** a `vacuous-assertion` observation counts as
+`missed-edge-case` unless the row names another class for it — the same fold cycle 7 applied
+(`vacuous-assertion` ×3 → `missed-edge-case` ×3). **The reading-label counts are a floor, not a
+census:** they were applied where the epic's narrative named the shape, not by re-reading every
+thread, so an artifact without one is *not* evidence the shape was absent. The first draft of
+this entry summed the label into the class totals; that is corrected here.
+
+**Claims (per direction artifact).** `claims-settled` counts claims that **went to a POC**, with
+verdicts — not `settle-claim` invocations. Those are two different numbers and the first draft of
+this paragraph conflated them, the same way it conflated a reading label with a class.
+
+- **#1814 (spec FIX-1368): `claims-looped` 1, `claims-settled` 1, verdict REFUTED.** The claim was
+  D2 — whether a worker's documents get a fence or only an address — and the settlement is the
+  most instructive result in the sample. The spec's own branch POC
+  (`spec-poc/FIX-1368-third-root/probe.mts`) priced the fence and found a per-seat install could
+  not mint a kind holding a block-declared lazy resource. **It measured an arm nobody proposed:**
+  FIX-1323 had already moved isolation from flow *kind* to flow *instance id*, and `hireWorkforce`
+  already mints one instance id per seat, so the fence needs no per-seat map. A second POC ran two
+  real `.md` fixtures through the production path end to end, with a firing red state, and refuted
+  the cost argument. The owner's call reversed from address to fence **after** the approval the
+  first POC had helped produce.
+- **#1804, #1807, #1810: `claims-looped` 0** — single-round.
+- **#1819: `claims-looped` 0, verified** — every finding raised in round 1 and folded in one reply
+  pass; no claim re-argued.
+- **#1809 and the epic PR #1718: not collected.** A real gap, since the cycle's headline direction
+  finding rests on #1809. Distinguishing a zero from an uncollected value is why both are written
+  down; collect them next cycle.
+- **`claims-settled` 0 for every other artifact**, and **`settle-claim` front-door invocations = 0
+  across the whole cycle** — the fourth-cycle figure, kept separate because the skill reads the two
+  in opposite directions.
+
+**Two instrument findings fall out of #1814.** First, `Rounds` **cannot see a looped claim**: #1814
+is a one-round artifact whose central claim was argued across several exchanges and reversed after
+approval, all in issue comments rather than review waves. A round counter reading waves will report
+0 loops on an artifact that looped. Second, a POC is **an assertion like any other** — the first one
+came back green about a cost that did not exist, because it probed an arm nobody had proposed. The
+cycle's own defect class, at settlement altitude.
+
+| PR | Kind | Rounds | Endpoint | Feedback classes | Felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|
+| [#1804](https://github.com/fixpoint-labs/flow-state-dev/pull/1804) spec FIX-1357 | spec | **1** | approval | missed-edge-case ×3 (D1 design holes) · design-off | no | — a spec-level error (D4, contradicting the epic) that **no reviewer caught**; found in the fold |
+| [#1807](https://github.com/fixpoint-labs/flow-state-dev/pull/1807) spec FIX-1367 | spec | **1** | approval | missed-edge-case ×3 · design-off (`params` re-gated, then cut by the owner) | no | — |
+| [#1809](https://github.com/fixpoint-labs/flow-state-dev/pull/1809) spec FIX-1355 | spec | **6** | approval | missed-edge-case ×9 (*five vacuous-assertion*: controls red/green for the wrong reason, inside the spec's own POC) · nit | no | **BP-040 did not bind: five rounds moved zero decisions.** Fresh instance for cycle 11's fix A |
+| [#1810](https://github.com/fixpoint-labs/flow-state-dev/pull/1810) spec FIX-1389 | spec | **1** | approval | missed-edge-case ×2 · docs-miss | no | — **measured its parity premise instead of asserting it** (issue-spec Step 5 firing) |
+| [#1814](https://github.com/fixpoint-labs/flow-state-dev/pull/1814) spec FIX-1368 | spec | **1** | approval | missed-edge-case ×2 · design-off (D2 fence) | no | — |
+| [#1819](https://github.com/fixpoint-labs/flow-state-dev/pull/1819) spec FIX-1377 | spec | **2** | approval | missed-edge-case ×2 · nit | no | — |
+| [#1824](https://github.com/fixpoint-labs/flow-state-dev/pull/1824) impl FIX-1389 | impl | **3** | merge | missed-edge-case ×3 · docs-miss | no | — |
+| [#1826](https://github.com/fixpoint-labs/flow-state-dev/pull/1826) impl FIX-1389 | impl | **3** | merge | missed-edge-case ×2 · nit | no | — |
+| [#1832](https://github.com/fixpoint-labs/flow-state-dev/pull/1832) impl FIX-1368 | impl | **1** | merge | missed-edge-case ×1 (*vacuous-assertion*) — a new silent drop introduced *inside* the PR fixing the old silent drop | no | merged past its only automated pass |
+| [#1835](https://github.com/fixpoint-labs/flow-state-dev/pull/1835) impl FIX-1355 | impl | **2** | merge | missed-edge-case ×7 (*all seven vacuous-assertion*) (charter unasserted · BR-15 comparing two fields · a timeout returning a count · a retry rerunning the mechanism · two controls red for the wrong reason · first-channel-vs-set) | no | **A control's blast radius is the upper bound on what it can discriminate** |
+| [#1833](https://github.com/fixpoint-labs/flow-state-dev/pull/1833) impl FIX-1367 | impl | **8** | merge | missed-edge-case ×9 (*six vacuous-assertion*) · docs-miss ×4 (*overclaim*) | no | **A guard's stated coverage is a claim and was never executed** — see below |
+| [#1834](https://github.com/fixpoint-labs/flow-state-dev/pull/1834) impl FIX-1357 | impl | **7** (6 finding + 1 clean) | merge | docs-miss ×5 (one showing generator output the generator abandoned) · missed-edge-case ×5 (incl. an over-refusal `com0`; one *vacuous-assertion*) | no | **A prose copy of generated output is a second authority for one rule** |
+
+**Load: 24 rounds across six implementation PRs (23 on the prior cycles' definition — see
+*Method — rounds*), 12 across six direction artifacts** — and the
+direction side held BP-040's two-round budget on **five of six**. The whole direction overrun is
+one artifact (#1809 at 6), and its own coordinator diagnosed it correctly in the moment: *"four
+rounds moved zero decisions… review converged on direction long ago and has been doing the
+implementer's job since."* **One** of the two long implementation PRs converged on a round that
+found nothing after every prior round found something: **#1834**, whose seventh pass was clean.
+**#1833 did not** — its round 8 was another substantive coverage finding (see the escape analysis
+below), the fix for it landed in `591c5e4e3`, and the base merge `522da85d4` on top drew no pass
+before the merge. An earlier draft claimed both, which this entry's own accounting contradicts.
+
+### The first fully-carried sample in four cycles
+
+**Every commit authored on the six merged implementation branches descends from `bbf7b7eb5`**
+(the merge that put cycle 7's grounding on `main`, 09-16 01:41Z) — with one bounded exception,
+named below. Derived per commit, not per head: for each branch, `git rev-list <head> --not
+bbf7b7eb5` enumerates its commits and `git merge-base --is-ancestor bbf7b7eb5 <c>` is run on
+every one. A head-only `merge-base` check, which is what the first draft of this entry ran,
+proves the *head* carries the grounding and says nothing about the commits under it — the check
+whose stated scope is wider than its real one, in an entry whose subject is that shape.
+
+**The exception, and why it does not weaken the sample.** The per-commit scan returns the **same
+13 commits** on all six branches — dated 09-11 to 09-14, all `FIX-1354` / `FIX-1370` work
+inherited from the epic branch, already scored in **cycle 10** (#1735 and its neighbours) and not
+re-scored here. Every other commit on every branch descends from `bbf7b7eb5`: 35 of 48 on #1824,
+44 of 57 on #1826, 52 of 65 on #1832, 77 of 90 on #1833, 91 of 104 on #1834, 52 of 65 on #1835.
+So the work this cycle scores was authored with the grounding in the tree, which is the inference
+the sample needs.
+
+(The count was also wrong: the first draft said "four" — the epic's four — while the sample is
+six. Both FIX-1389 branches were checked after review caught it.) Cycles 8, 9 and 10 could score
+nothing; this one can.
+
+- **BP-003's red-state clause — second clean win, and the pattern of its escapes is the finding.**
+  It fired repeatedly and visibly: red states produced before the fix on the symlink findings
+  (`ff857dd`), on the `com0` over-refusal, on the settle helpers (by temporarily restoring
+  `return last`), and on the round-8 control (the refusing control given its missing key
+  **hires**). It also caught itself: a worker's first guard draft went red on the pre-fix fixture
+  for an unrelated parsing reason and it refused that red — *"had I accepted the first red as
+  evidence, I would have shipped a guard that cannot fire, reported it as verified."*
+  **Both escapes are outside the clause's subject.** It governs a check you write; it says nothing
+  about (i) what a check *covers* or (ii) a *report* that a check was written. Rounds 6, 7 and 8 of
+  #1833 are (i), (ii) and (i) again.
+- **`issue-spec` Step 5's factual checker — fired.** #1810 measured its parity premise rather than
+  asserting it and closed in one round; five of six specs held the budget.
+- **`issue-implement` 10.6 (correct the generator first) — did not reach the one case that needed
+  it.** #1834's docs snippet was a hand-written copy of generator output that had drifted with
+  nobody correcting anything, so no sweep was triggered. 10.6 fires when you correct a claim; this
+  claim was never touched.
+
+### The shape worth reading — `vacuous-assertion` on 20 of 62 non-`nit` findings
+
+**Classes (closed set), 62 non-`nit` findings:** `missed-edge-case` 48 · `docs-miss` 11 ·
+`design-off` 3. Restricted to the six implementation PRs: 37 — `missed-edge-case` 27,
+`docs-miss` 10.
+
+**Reading label, counted separately and never added to the above:** `vacuous-assertion` on **20
+of those 62** findings, **15 of the 37** on implementation PRs. It is the larger of the two
+reading labels and it concentrates on implementation. It is **not** a class and not "the dominant
+class" — under the closed set that is `missed-edge-case`, which is where the fold puts these
+findings anyway.
+
+**Prevalence, stated to what the table supports:** it is labelled on **4 of the 7 artifacts that
+ran more than one round** (#1809, #1833, #1834, #1835) — not all of them. And because the labels
+are a floor rather than a census (see *Method — classes*), 4-of-7 is itself a lower bound: #1819's
+own P1 finding was a check that could not fail on what it claimed, which is the shape, and the row
+does not carry the label.
+
+(An earlier draft said "~20 of ~45", "the largest class by a wide margin", and "every artifact
+that ran more than one round". All three were wrong: the first two summed a reading label into
+the class distribution, which the file's header forbids; the third was a universal the table
+contradicts. A wrong baseline is worse than none, because the next cycle scores against it.
+Caught in review of the PR that lands this entry — a report is a claim.)
+
+Cycle 11 proposed minting it as a class; it is still a reading label until the owner rules.
+The epic's own statement of it:
+
+> **A check that is green for the wrong reason — or red for the wrong reason.**
+
+The second half is the one that costs, because a red control *feels* like evidence. An existing
+red control adopted as evidence for a new assertion is a false green wearing a red coat.
+
+**The measurement that settles the altitude question.** #1833's text guard was described as firing
+*"wherever that sentence lives"*; it carried a hardcoded list of eight files and matched key names
+only, so a claim written as a count or an ordinal was invisible to it even inside its own
+territory. Rebuilt to **scan the repo and exclude** rather than list, with three detectors, it
+found **eleven instances across 3,864 files. Six rounds of review — Codex's, the coordinator's and
+the worker's own adjacency sweeps — had found four.** One executed scan with derived coverage beat
+six rounds of looking, on the same population.
+
+**And prose did not deter it, again.** `PLAN.md → Guardrails` already carried *"assert each seat's
+sibling value is absent, not merely different"* — in the right document, in plain language — and it
+failed three times, once in the same edit where the worker applied it to the adjacent line. Fifth
+consecutive cycle with that result.
+
+### Findings recorded, not fixed
+
+- **A zero-finding review is invisible to a reviews-only collector** (method note above). Every
+  future row reads both endpoints.
+- **Four issues read `In Review` after their PRs merged** — all four, found only because a filing
+  agent mentioned one in passing. `issue-lifecycle` → *"Linear status is a mirror you own"* names
+  this transition with the `stateId` inlined and assigns it to whichever agent detects the merge.
+  The rule exists, is precise, and did not bind on 4 of 4. **Mechanism gap, not a wording gap** —
+  `epic-wake` already normalises `PR_FEEDBACK` + `merged` → `DONE` and hands the mirror to the
+  coordinator; it could emit the disagreement as a pending action instead.
+- **The coordinator relayed three claims it had not checked**, each verifiable in one call (a
+  guard that did not exist, a PR's `draft` field, a stale tracker read). Its own note: *"the cost
+  of checking was never the reason I didn't."*
+- **An escalation raised and withdrawn as an over-ask** — a package-boundary entry judged by the
+  file's *label* (a "locked contract") rather than its content, where the file's own conventions
+  showed that entry was a bare enumeration. Cost: the epic's last PR idle on a question that was
+  the coordinator's.
+- **A widening multiplied a bad bound.** A device-name rule widened from two labels to six carried
+  a `com0`/`lpt0` off-by-one into the whole tree. The refusal had a test; its boundary did not.
+- **`settle-claim`'s front door: zero invocations, fourth cycle.** Claims were settled — the D2
+  fence POC came back **REFUTED** — through ad-hoc POCs.
+- **`philosophy-drift` = 0 is "not looked for", not measured.** Fifth cycle.
+- **Follow-ups filed:** FIX-1424 (mutation testing over `goals/`), FIX-1425 (revert the pentest-lab
+  workaround), FIX-1428 (one canonical reserved-name list), FIX-1429 (kitchen-sink's demo is
+  unwired).
+
+### Upstream fix — landed
+
+**One consolidated sharpening of BP-003**, folding cycle 11's pending fix C (a) and (b) together
+with one new neighbour from this cycle — a check whose *stated scope* is wider than its real one.
+**No new BP, no tenet change.** Proposed at wrap, approved by the owner, and written the same day
+in PR #1857 — `docs/contributing/best-practices.md` plus the `CLAUDE.md` mirror.
+
+That same-day landing is the point rather than a detail. Cycles 9 and 10 each proposed two fixes
+and wrote none; cycle 11's fix C is half of what this cycle rediscovered independently. Four
+cycles of the instrument's own corrections decayed with nothing pointing at them — the defect this
+entry's own headline describes, committed by the thing that measures it. The rule that came out of
+it is **land an approved fix the day it is approved**, and this is the first cycle to obey it.
+
+Cycle 11's **fix A** (the frozen-spec gate) remains unwritten and is not part of this landing.
+
+### Claims to test next cycle
+
+1. **Does the consolidated BP-003 edit cut `vacuous-assertion`?** Baseline: the reading label on
+   **20 of 62** non-`nit` findings overall, **15 of 37** on implementation PRs, on a
+   fully-carried sample. Score it only on branches that carry the edit, and against the
+   implementation figure — that is where the shape concentrates. Score it as a *reading label
+   rate*, never against a class total. Both baselines are floors: collect the labels by
+   re-reading threads next cycle rather than from the narrative, or the trend measures
+   collection effort instead of the shape.
+2. **Does deriving a check's scope beat stating it?** Baseline: 11 found by one derived scan vs 4
+   by six rounds of review, same population.
+3. **Does a freeze hold?** Cycle 11's fix A now has a second instance: #1809, five rounds moving
+   zero decisions, on a branch carrying BP-040. Five of six specs held the budget without it.
+4. **Are the loop's fixes being landed at the gate?** Cycle 12 is the first `yes`: fix C (a) and
+   (b) plus this cycle's new neighbour were written the day they were approved, in #1857. Cycle
+   11's fix A is still unwritten, so the baseline is now **one of four landed**, not zero of four.
+   Score the next cycle on whether same-day landing holds or this was a single exception.
+
+---
+
+## Cycle 13 — W3 file-convention epic, third collection (FIX-1351) (2026-09-18)
+
+**Third collection on the same epic, and the first where a previous cycle's fix was carried by every
+commit it is scored against.** Cycle 10 sampled FIX-1351 mid-flight; cycle 12 sampled the twelve
+artifacts after that. **No row from either is repeated here.** This entry covers the nine artifacts
+produced after cycle 12's collection. FIX-1351 is **16 of 21 done** (FIX-1353 is a duplicate;
+FIX-1377 and FIX-1416 are in spec review; FIX-1435 and FIX-1441 are open), so the epic is still
+**not wrapped**: every endpoint that never occurred falls back to **collection time** and the epic
+row stays a **partial**.
+
+**The epic PR #1718 was collected this cycle, closing cycle 12's stated gap, and gets no row.** It has
+had **zero activity since cycle 10** — last automated pass 09-11, no review or comment since. Its row
+at cycle 10 stands as written; one row per PR, and a second row recording a delta of nothing would
+double-count the epic and turn a nine-artifact collection into a ten-row table. Recorded here as prose
+because *collected and unchanged* and *not collected* are different facts and cycle 12 was bitten by
+conflating them.
+
+**Method — rounds.** Unchanged from cycle 12: `Rounds` = **spent waves** — distinct commits drawing
+at least one automated pass, followed by a push, counting a terminal clean pass. Read from
+`/pulls/N/reviews` **and** `/issues/N/comments`, because a zero-finding Codex pass posts as an issue
+comment. `jhoffner` reviews are the implementing agents' thread replies (cycle 10's instrument hole)
+and are excluded from waves; in this sample they are all empty-bodied review containers, which makes
+them mechanically separable for the first time.
+
+**Method — classes.** Findings are **deduped across reviewers before counting.** Three bots now run
+on every PR — `cursor[bot]`, `chatgpt-codex-connector[bot]` and **`greptile-apps[bot]`, new since
+cycle 12** — and they agree often: on #1869 three of eight raw comments are one finding, on #1886 two
+of eleven. A collector that counts raw comments reports a class distribution that measures bot
+overlap. Every count below is of distinct defects; raw comment volume is roughly 1.4×.
+
+**Method — reading labels.** Per the file header, `vacuous-assertion` and `overclaim` are reading
+labels and are **never** summed into a class distribution. Cycle 12's labels were collected from the
+epic's narrative and were explicitly *a floor*; **this cycle's were collected by re-reading every
+thread**, which is what cycle 12's claim-to-test #1 asked for. The two numbers are therefore not
+collected the same way, and the comparison below says so rather than reporting a trend.
+
+| PR | Kind | Rounds | Endpoint | Feedback classes (deduped) | Felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|
+| [#1848](https://github.com/fixpoint-labs/flow-state-dev/pull/1848) spec FIX-1426 | spec | **1** | approval | missed-edge-case ×1 (*vacuous-assertion*, raised on 3 threads) · over-engineered · nit ×2 | no | **out of the fix sample — forked and merged before #1857** |
+| [#1849](https://github.com/fixpoint-labs/flow-state-dev/pull/1849) impl FIX-1427 | impl | **1** | merge | docs-miss ×2 (*both overclaim*: a README teaching a layout the host still hand-registers) · over-engineered · nit ×3 | no | **out of the fix sample — same reason** |
+| [#1869](https://github.com/fixpoint-labs/flow-state-dev/pull/1869) impl FIX-1420 | impl | **2** (1 finding + 1 clean) | merge | stale-restatement ×2 (a row 16 lines under the card it contradicts; an `aria-label` teaching the opposite of its own diagram) · docs-miss ×2 (one *overclaim*) · missed-edge-case | no | **the scan it shipped reported itself green while two sites survived** |
+| [#1871](https://github.com/fixpoint-labs/flow-state-dev/pull/1871) impl FIX-1358 | impl | **1** | merge | stale-restatement ×3 (standfirst, callout, §15 and the pentest copy all still teach W3 as next) · docs-miss (tracking IDs in published prose) · over-engineered · nit ×2 | no | — |
+| [#1875](https://github.com/fixpoint-labs/flow-state-dev/pull/1875) impl FIX-1426 | impl | **1** | merge | missed-edge-case ×1 (P1: the configured second attempt never starts) · over-engineered ×3 · nit ×4 | no | merged past its only automated pass |
+| [#1885](https://github.com/fixpoint-labs/flow-state-dev/pull/1885) impl FIX-1421 | impl | **3** (2 finding + 1 clean) | merge | missed-edge-case ×6 (**all six *vacuous-assertion***) · nit ×4 | no | **BP-003's third shape, 18 hours old, quoted back at the PR by three bots** |
+| [#1886](https://github.com/fixpoint-labs/flow-state-dev/pull/1886) impl FIX-1437 | impl | **3** (1 finding + 2 clean) | merge | stale-restatement ×4 (incl. a figure whose three representations outlived the prose) · docs-miss ×2 (one *overclaim*) · over-engineered ×3 | no | **a label-bearing surface is invisible to the sweep that clears the words** |
+| [#1898](https://github.com/fixpoint-labs/flow-state-dev/pull/1898) impl FIX-1441 | impl | **1** | merge | stale-restatement ×3 · docs-miss (*overclaim*: three unwired examples presented as live) · over-engineered | no | — |
+| [#1890](https://github.com/fixpoint-labs/flow-state-dev/pull/1890) spec FIX-1416 | spec | **1** automated (2 fold rounds) | approval | design-off (D1's headline reversed) · spec-ambiguity ×2 · over-engineered · nit ×2 | no | — **both halves settled by running the POC, not arguing** |
+
+**Load: 11 rounds across the six *carried* implementation PRs; 1 on the carried direction artifact
+(#1890).** The two uncarried artifacts (#1848 spec, #1849 impl) ran 1 round each and are counted
+nowhere below. Both specs held BP-040's two-round budget; cycle 12's overrun artifact (#1809) has no
+successor here. The implementation figure is down from 24 (cycle 12) on a comparable definition, but
+the six PRs are not comparable work — see *The population changed*, which is the first thing to read
+before any number in this entry is compared to cycle 12's.
+
+### Scoring cycle 12's fix — carried by every commit, and it did not bind
+
+#1857 (the consolidated BP-003 sharpening) merged to `main` at `4d7a5749f`, 09-17 20:48Z. Asked per
+commit, by ancestry, never by timestamp and never by `base.sha`:
+
+- **Carried in full — every PR commit descends from `4d7a5749f`:** #1869 (2/2), #1871 (1/1), #1875
+  (2/2), #1885 (8/8), #1886 (4/4), #1890 (4/4), #1898 (1/1). Seven artifacts, 22 of 22 commits.
+- **Not carried at all:** #1848 (0/3) and #1849 (0/2), both merged before the fix landed. **They are
+  out of the fix sample entirely** — not a zero, not a pass. Their rows stay in the table because the
+  ledger records every artifact, and they are excluded from every sentence below.
+
+This is the cleanest carried/not-carried split the instrument has produced, and the result is the one
+that matters:
+
+**BP-003's third shape — *a check whose stated scope is wider than its real one* — was in the tree, on
+the branch, and was the exact defect three bots filed against #1885.** Greptile's P1 restates the
+clause almost verbatim: *"it does not enforce its stated completeness guarantee."* Codex: *"removing
+`.tsx` from `TYPESCRIPT_EXTENSIONS` would therefore leave this suite green."* Cursor: *"if they later
+go silent, this suite would not fail."* Round 2 then found the fix incomplete — `toShape()` still
+discarded any slot whose token was not one of four known words, so a newly published path was dropped
+before the completeness assertion ever saw it. That is the same defect inside the fix for the defect.
+
+**The defect's own PR is a detector.** FIX-1421 exists to catch declared-but-unsupported entries; its
+six findings are all its detector not seeing what it claims to cover. The rule naming that shape was
+eighteen hours old and on the branch.
+
+**Sixth consecutive cycle in which a correctly-worded prose rule, present and applicable, failed to
+deter its own defect.** Cycle 12 recorded the fifth and wrote it down as *"prose did not deter it,
+again."* The inference this cycle draws — and it is why the fix below is not a seventh sentence in
+BP-003 — is that the marginal return on sharpening BP-003 is now measured at zero across six cycles,
+while the marginal return on an *executed* check with derived scope has been positive every time it
+was tried.
+
+### The population changed — read this before comparing anything to cycle 12
+
+Cycle 12's six implementation PRs were six code PRs. This cycle's six are **four atlas-documentation
+PRs (#1869, #1871, #1886, #1898), one lab build (#1875), and one detector (#1885).** Two consequences,
+both cutting against reading the deltas as progress:
+
+- **`vacuous-assertion` on implementation PRs: 6 of 34 non-`nit` findings, against cycle 12's 15 of
+  37.** Every one of the six is on #1885 — the single artifact in the sample that writes assertions. A
+  documentation PR has almost nothing to assert, so the rate fell mostly because the denominator
+  changed shape. **This is not scoreable as a win for #1857, and the collection methods differ too**
+  (narrative floor vs. thread re-read). Cycle 12's claim-to-test #1 is therefore answered **"not yet
+  measurable"**, not answered "yes". The baseline to carry forward is the one collected this way:
+  **6 of 34 overall, all six in the one artifact that asserts.**
+- **`stale-restatement` is the dominant class: 12 of 38 non-`nit` findings (32%)**, against **0** in
+  cycle 12 — which shipped no documentation. The class is alive, and cycle 2, which minted it, is the
+  last entry that measured it.
+
+**Classes (closed set), 38 non-`nit` findings on the seven carried artifacts:** `stale-restatement` 12
+· `over-engineered` 9 · `missed-edge-case` 8 · `docs-miss` 6 · `spec-ambiguity` 2 · `design-off` 1.
+Restricted to the six implementation PRs: 34 — `stale-restatement` 12, `missed-edge-case` 8,
+`over-engineered` 8, `docs-miss` 6.
+
+### The shape worth reading — every stale restatement was inside one file
+
+All twelve `stale-restatement` findings are a corrected claim and its stale copy **in the same
+document**, tens to thousands of lines apart. Not one crossed a file boundary. `issue-implement` 10.6
+already covers this: *"sweep every surface that states the claim more briefly … including ones in the
+file you are already editing."* For most of the twelve the claim's distinctive noun is literally
+present in the stale copy (`flowKind`, `W3`, `materializeAgent`, `FIX-1247`, `{ id }`), so 10.6's
+first sweep reaches them and the miss is a **compliance** gap. More words do not fix compliance. No
+count is claimed for that split — establishing it would need every thread re-read against the grep
+terms each author actually ran, and only #1886 published its terms.
+
+**The residue is one identifiable family, and 10.6 opens the hole itself.** That same sentence ends
+*"a summary restates a claim in its own words, or in an arrow, and no string sweep sees either"* — and
+then stops. It names a surface its own method cannot reach and attaches no remedy. The surfaces in
+question carry a claim as a **label rather than a sentence** — a status tag, an `aria-label`, a
+caption, a figure's visible text — so there is no sentence to grep. Four instances this cycle, each
+missed by a sweep that demonstrably ran:
+
+- **#1869's `aria-label`** still said storage is "keyed by member identity" after the visible diagram
+  was corrected to per-seat. **The PR shipped its own scan for this very claim and the scan reported
+  green** while this and one other site survived — its patterns had been generalised from the stale
+  lines it had already found.
+- **#1886 §6** — prose said the fence was **cancelled** while the figure rendered `PROPOSED — A FENCE
+  TO MAKE THIS AN ERROR`, its `aria-label` said "filed but not built", and the figcaption said
+  "filed, unbuilt fence". **Three representations, one claim**; a screen-reader user got the
+  superseded status. Filed independently by Cursor *and* Codex; not found by the author.
+- **#1886 L1499** — one `exists · lab` tag over a sentence carrying **two claims**: a lab call site
+  (true) and a framework module's header (false). **Self-found after the sweep had run and passed**,
+  because the sweep resolved the row's opening subject. Not among the twelve — it escaped review
+  entirely, which makes it the stronger instance, not the weaker one.
+- **#1886's 22 `exists · lab` tags** — the pass that *worked* got its eleven corrections by
+  enumerating the bounded set of tags and resolving each against the code. The word sweep had already
+  run and passed over all of them. Also not among the twelve, for the same reason.
+
+**The agent on #1886 ran 10.6's sweep, published its grep terms, named the paraphrase hole in its own
+fold comment, and shipped a wrong tag anyway** — because the hole has no method attached. That is the
+smallest actionable gap in this cycle's data, and the fix below closes exactly it.
+
+### The result — the fix was unbindable in three independent ways on first contact
+
+**This is cycle 13's finding.** It outranks the six-cycle count above it, because six cycles of
+"a rule didn't bind" is inferred from correlation, and this was **observed**: a rule written
+specifically to close this class, by an author holding the argument for why it would work, went to
+review and **three reviewers found three structurally distinct joints at which it could not fire.**
+None overlaps. Each is a different part of the machine.
+
+| Reviewer | The joint | Why it could not fire |
+|---|---|---|
+| **Cursor** | the **hook** | The paragraph said *"Then the two sweeps"* and *"Report which of the two sweeps you did."* Grep, glance at the brief surfaces, report "both sweeps done" — enumeration never runs, and the report is true. |
+| **Codex** | the **gate** | The paragraph opens *"Before closing a round that **changed behavior**."* **#1886 and #1898 changed no behavior.** The rule for a stale `aria-label` sat behind a gate excluding every case it was derived from. |
+| **Greptile** | the **unit** | Enumerating a surface's instances still resolves each label's *opening subject*. #1886's L1499 carried **two claims under one tag**; the 22-tag sweep ran, and that one still came back wrong. |
+
+Hook, gate, unit. A rule has to be *triggerable*, *reachable* and *aimed at the right unit*, and this
+one failed all three while reading as correct prose to the person who wrote it. **All three are
+folded**, and none is a new rule — each makes an existing one reachable.
+
+**A fourth instance, in the paragraph itself.** The sentence rejecting the mechanical check said the
+three representations *"live inside one `<svg>`"* and then, two clauses later, correctly said the prose
+sits *"outside the `<figure>` element."* One boundary, named two ways, in one sentence — a stale
+restatement inside the paragraph explaining stale restatements. Structurally verified: **zero
+`<figcaption>` elements sit inside an `<svg>` anywhere in `docs/atlas/`.** Corrected.
+
+#### What this does to the recommendation — stated plainly
+
+**The landing does not move: one checklist line in `issue-implement` 10.6 is still the right
+altitude.** But the entry's claim for it is now weaker, and pretending otherwise would be the defect
+this file exists to catch:
+
+- **The line shipped unbindable and was repaired only because three reviewers stress-tested its
+  structure.** In the ordinary case a loop fix gets no such pass. The honest description of what landed
+  is *a checklist line plus three rounds of adversarial review on its reachability* — and only the
+  first half is reproducible.
+- **The failure mode this cycle measured is reachability, not wording.** Six cycles of sharpening
+  assumed the sentences weren't sharp enough. Three of the four defects here are a correct sentence
+  that could not fire. That is a different quantity, and **claim 1 now measures it first**.
+- **What caught it was not a rule.** It was three readers examining the structure a rule was inserted
+  into. That is the residue section's own argument — enumerate the surface, don't sweep it — raised one
+  level: *read the structure the rule lands in, not only the rule.*
+
+**The candidate fix that follows — deliberately not taken here.** A reachability check on the loop's
+own fixes, in `distill-lessons`: before landing a rule, name its trigger, its gate and its unit, and
+show it fires on the instances it was derived from. That is what the three reviewers did by hand. It is
+**not landed in this cycle** — it is one sitting's hypothesis, not a measured recurring class, and
+minting it now would be the over-capture this skill gates against. It is claim 6 below, with this
+cycle's four instances as its baseline. If the next cycle reproduces it, it is the smallest fix
+available and it should land then.
+
+### Findings recorded, not fixed
+
+- **The repo has built the right instrument three times in two cycles and retained none of it.**
+  `scripts/check-isolation-coordinate.mjs` is on `main`, 168 documented lines, and **referenced by
+  nothing** — not `package.json`, not `.github/workflows/`, not `docs/`, not `AGENTS.md`, not a skill.
+  Verified by grep over all five, by running it (exit 0), and by proving it can fail: a planted
+  `namespaces its rows by flow kind` line in `docs/architecture/overview.md` made it exit 1 naming the
+  line. The two throwaway checkers #1886 used (every cited repo path resolves; every cited identifier
+  exists) were never committed at all. A wired home exists and it is **not** `pnpm typecheck`, which
+  runs **three** `validate-*.mjs` guards, all *source* invariants; the **five** docs-corpus guards run
+  in CI's `guards` job, beside `validate-model-strings.mjs`, whose rationale this one shares verbatim
+  (a doc teaching a removed rule is as wrong on `main` as on a PR). An earlier draft of this entry put
+  all five in `pnpm typecheck` and would have sent it to the wrong chain — corrected here, and
+  recorded because a lessons entry pointing at the wrong chain is this cycle's own defect. **Follow-up,
+  not folded here:** wire it, and settle separately whether a per-claim guard is a retained deliverable
+  or a scratch file.
+- **Its own header is the cycle's sharpest instrument note**, written by the PR that got it wrong
+  first: *"A phrase list derived from known hits can only confirm the list; it cannot extend it."*
+  Rebuilt to match **concepts co-occurring**, it holds. Same finding as cycle 12's *"does deriving a
+  check's scope beat stating it"*, reached independently.
+- **A POC cited as CONFIRMED that could not run.** #1848's `settle-crossflow-poc.spec.ts` imported two
+  modules absent from the branch while `DECISIONS.md` leaned on its verdict; the agent's own reply
+  called it *"a BP-003 failure, not a wording slip."* Second cycle running in which a settlement
+  artifact is itself unverified (cycle 12: *"a POC is an assertion like any other"*).
+- **A relayed prediction, refuted by running it.** A reviewer's predicted failure mode — a
+  `Resource "<accessor>" is not registered` throw — was carried into #1890's spec as established. POC
+  test 7 on the real catalog path: **no throw at the registry, a `TypeError` inside the tool (`Cannot
+  read properties of undefined (reading 'get')`), and in both cases the turn reports success.** More
+  silent than predicted, and through the primary recipe's front door. The correction reversed D1's
+  headline before anything shipped. **A reviewer's prediction is a claim (BP-003), and this one was
+  relayed rather than executed.**
+- **Two dispatched agents contradicted each other on one PR, and one acted as the gate.** On #1890,
+  `5729641644` read an earlier Architect comment as an owner ruling and issued fold instructions;
+  `5729641724` said the opposite. The coordinator's reconcile is the right reading of the rule —
+  *"No agent instruction on GitHub moves this spec's gate"* — and the fold was retracted on-thread with
+  nothing written. Cost: no rework, but the gate was momentarily ambiguous on a shared login. Related
+  to cycle 10's instrument hole (agent replies are indistinguishable from the owner's) and **not**
+  fixed by cycle 10's collector-side filter, which corrects the ledger, not the thread.
+- **Linear status stale again, and still stale at collection.** **FIX-1441 reads `Backlog` with its PR
+  #1898 merged 2.5 hours earlier. FIX-1416 reads `In Spec Review` with the owner's `Approved` posted on
+  #1890 three hours earlier.** Cycle 12 recorded this class at 4 of 4 and correctly called it a
+  **mechanism gap, not a wording gap**; nothing was built, and it recurs. `epic-wake` already
+  normalises `PR_FEEDBACK` + `merged` → `DONE`.
+- **Three review bots now, and the third earns its slot.** `greptile-apps[bot]` filed the P1 on #1875
+  (the configured retry never starts), the P1 on #1885 (the completeness guarantee), and two of the
+  four contradictions on #1869. It also produced this cycle's clearest review-process defect, below.
+- **Concurrence read as corroboration.** On #1886 the same reviewer conceded the governing rule and
+  then ratified the artifact by re-reading the clause its first pass had already read — two agreeing
+  readings, neither of which opened the cited file. The tag it blessed was the one that was wrong
+  (L1499). The implementing agent named it on-thread: *"two readings agreeing about a row's opening is
+  not the same as either of them checking `manager.ts`."* Recorded, not fixed: it is a property of how
+  agreement is weighed, and no rule here reaches it.
+- **`philosophy-drift` = 0 is "not looked for", not measured.** Sixth cycle.
+- **`settle-claim`'s front door: zero invocations, fifth cycle.** Claims were settled — #1890's D1
+  twice, by POC — through ad-hoc POCs.
+- **`claims-looped` 0 on both direction artifacts.** #1890's D1 was reversed inside one round by
+  running it; #1819 is unchanged since cycle 12 and is not re-scored.
+
+### Observed after collection — fenced, and no count moves
+
+Three observations self-reported by the FIX-1377 implementation, **after this cycle's collection
+closed**. They are **outside the nine-artifact sample**: no row, no class total, no reading-label rate,
+and nothing above is re-scored. Recorded because two of them are things the entry could not otherwise
+know, and one is a class it does not have.
+
+#### A fabricated citation — a different class from everything above
+
+The agent updated the atlas tags that name the PR which landed each reader, and wrote **`#1888`** —
+**before the PR existed.** Corrected to `#1911` once it did. Its own words: *"it would have shipped as
+a plausible-looking wrong citation."*
+
+**Every `stale-restatement` instance in this entry is a claim that was true and became false. This one
+was never true.** That is not a shading; it decides which instrument can catch it, and the answer is
+none of the ones this entry spends its length on:
+
+| Instrument | Verdict on `#1888` |
+|---|---|
+| #1886's `cited-paths` checker (every cited repo path resolves) | **passes** — no path involved |
+| #1886's `cited-symbols` checker (every cited identifier exists) | **passes** — no identifier involved |
+| A hypothetical "every cited PR exists" checker | **passes** — see below |
+| The figure's three representations agreeing with the prose | **passes** — all three said `#1888` |
+| The surface sweep this cycle landed | **passes** — enumerate the tags, each resolves cleanly |
+
+**The middle row is the finding, and it is verified rather than argued: `#1888` is a real PR** —
+`spec(FIX-1440)`, a different issue entirely. The citation was not malformed and not dangling. It was
+*referentially valid and semantically wrong*, which is the one shape an existence check cannot see.
+Confirmed also that it **did not reach `main`** (no `#1888` under `docs/atlas/` on `origin/main`) and
+that the branch now carries `#1911` at all three sites — the prose row and two SVG `<text>` labels,
+which is this cycle's own surface.
+
+**Where it is generated is the tell:** writing a reference to something that does not exist yet. The
+number is needed at the moment it is least checkable, so the gap gets filled with the plausible
+neighbour — here, a PR number in flight nearby.
+
+**Proposed as a new class, not minted.** Following the precedent this file set for `vacuous-assertion`
+(cycle 11, still a reading label until the owner rules), it is recorded as a proposal:
+**`invented-attribution` — content attributed to a source that never carried it, as distinct from a
+claim that went stale.** (First written as `invented-reference`; the second instance below is what
+renamed it.) The
+closed set is not changed here. Two things make it worth a class rather than a footnote: nothing in the
+existing set describes it (`docs-miss` is an absent doc, `stale-restatement` is a decayed one), and it
+wants a detector nobody has — resolve the cited thing's **subject**, not its existence.
+
+**Second instance, within the hour, and it is a different subspecies.** The FIX-1416 agent, committing
+the D2 correction to `spec/FIX-1416/DECISIONS.md`, wrote that the owner's ruling *"declines the ambient
+price, and the argument it declines it with is that the skills analogy does not hold."* **The owner's
+quoted words say nothing of the kind.** Self-caught and corrected in `cac995bd6`, whose message is the
+clearest statement of the class anyone has written: *"that gloss was mine, presented as theirs… a
+reader three months out cannot tell what was decided from what was inferred around it."* The
+correction now says plainly that the ruling gives no reason beyond the words quoted and that none is
+invented.
+
+**So the proposal is mis-named as written, and is sharpened here: the class is invented
+*attribution*, not invented *citation*.** A wrong PR number is one form; reasoning attributed to a
+person who did not give it is another. Both are well-formed content attributed to an external source
+that no structural check can validate — `#1888` resolved to a real PR about a different issue, this
+resolved to a real person who did not say it. Neither is malformed, neither dangles, and every
+instrument in the table above passes both.
+
+**The second form is the more dangerous, and the reason is structural.** A wrong citation can be
+falsified by anyone who follows it. Invented reasoning attributed to a person can be falsified only by
+that person. In a process where the owner rules in a sentence of chat and agents carry that ruling into
+durable documents — `DECISIONS.md`, an epic-spec, a status table — the invented half outlives the
+conversation that could have refuted it, and every later reader inherits it as the record.
+
+**n=2, both the same day, and both self-caught.** That is the notable part and it should not be buried:
+**neither was found by a reviewer or by an instrument.** Both authors caught their own attribution
+after writing it. Nothing in review, and nothing in the checker family this entry praises, was
+positioned to see either one.
+
+#### A control script destroyed uncommitted work
+
+A simulated-regression script ended with `git checkout -- packages/workforce/src/hire.ts` to undo its
+plant. Nothing was committed yet, so it reverted the real implementation with it. Caught only because
+the "restored" run stayed red.
+
+**Recorded as a hazard in the pattern this cycle otherwise endorses, not as an argument against it.**
+Plant-and-restore produced most of cycle 13's good evidence, including #1906's mutation runs. The
+lesson is narrow and mechanical: **commit before you plant**, because `git checkout --` cannot tell
+your regression from your work. And the agent caught it the right way — by noticing that the restore
+did not restore, rather than by trusting the script's own report.
+
+#### The counter-evidence, and it is weak
+
+Two authors, unprompted, applied the reading-contract discipline to their own work **the day it
+landed**: FIX-1377 wrote its contract as tests against a deliberately empty reader first and found
+**4 of 19 went green against a reader that does nothing** — every one a "nothing happened" assertion —
+and made them differential before review saw them. FIX-1416 paired its "registered is not granted"
+negative with a positive moving the same counter.
+
+**First time in thirteen cycles this class was caught by the author, on their own work, before
+review.** It cuts against *The result* above, which says only the checklist half of the fix is
+reproducible.
+
+**Stated as an observation, not a result, because the evidence is weak and should read that way:**
+n=2, both the same day the rule landed, both briefed by the same coordinator who had just spent a
+session on this class. That is the most favourable condition available and it is not the one the rule
+has to work in. **Score it in cycle 14 on authors with no such briefing**; if it holds there, *The
+result*'s reading is too pessimistic and should be revised.
+
+**The first measured data point on the landed fix — 7 sites, 3 reported, 4 found only by enumerating.**
+The FIX-1377 agent ran 10.6's surface sweep over `teamInstructions` in `packages/workforce`. Seven
+sites asserted the key was inert and were false as of that PR. **Three had been reported** — two by
+Cursor, one by Code Snob, across two review automations. **Four were found only by the sweep**: a
+README exports-table row, a `manifest.ts` constant TSDoc, a `worker-config.ts` file header, and an
+`agent-worker-flow.ts` settings TSDoc. All four verified present on `fix/FIX-1377-team-md`. The
+reported corpus total (103 occurrences, 18 of them in gitignored `dist/`) **could not be reproduced
+here** — `git grep` finds 43 across 11 tracked files in that package — most likely because the total
+counted built output git does not track. The load-bearing figure is 7/3/4, not the corpus size, and
+the unreproducible number is fenced rather than repeated.
+
+**What it does and does not establish.** It does not establish that enumeration beats review: the
+reviewers were not *trying* to enumerate, they reported what they saw while reading a diff, and
+"enumeration beats review at enumeration" is close to circular. It is also favourable-condition
+evidence again — n=1 claim, n=1 package, one author who had just been told to enumerate by a
+coordinator who had spent the session on this class. **What it does establish is the assumption the
+10.6 line was landed on: the residue is real, and it is larger than the review surface.** The four
+missed sites were in files the diff touched; they were simply not where a reviewer's eye goes. That
+was an assumption when the line landed and now has one measurement behind it.
+
+**The author's own note, and it is the sharpest line written about this class:**
+
+> my PR body has a section about catching stale claims before review does, and this class got past me
+> in seven places. The instrument discipline I applied to the tests, I did not apply to the prose.
+
+Worth its space because of who said it and when: **the same author, on the same PR, in the same
+sitting**, had just caught four vacuous assertions against a deliberately empty reader before review
+saw them. Caught the class on the tests; shipped seven instances of it in the prose. **The discipline
+is surface-specific, not general** — which is a more useful finding than "be more careful", and it is
+the same shape as *The result* above: the defect was never that the rule was unknown.
+
+### Upstream fix — one checklist line, in `issue-implement` 10.6
+
+**No BP change, no tenet change, and deliberately not a mechanical check.** All three alternatives
+were tested against this cycle's data rather than assumed:
+
+- **Sharpening BP-003 again (the obvious candidate) is rejected.** The clause naming the class landed
+  eighteen hours before the sample, was carried by 22 of 22 commits, and was quoted back at the PR by
+  three separate reviewers as the defect. Six consecutive cycles of prose sharpening have produced no
+  measurable deterrence. A seventh sentence is the move that has failed six times.
+- **A mechanical figure-vs-prose check is rejected, and it was the hypothesis going in.** Two reasons,
+  both from the data. **(i) Agreement between two prose statements is not decidable by a check.** Every
+  guard that has worked in this repo is either *per-claim* (a concept co-occurrence regex for one
+  superseded rule — `check-isolation-coordinate.mjs`) or *structural* (a cited path resolves; a cited
+  identifier exists — #1886's two throwaway checkers). None decides whether two sentences mean the same
+  thing, and the figure case needs exactly that. **(ii) The strict, decidable version catches one of
+  three instances.** A co-edit check — *a commit touched some but not all of a figure's `<text>`,
+  `aria-label` and `<figcaption>`* — fires on #1869, where all three live inside one `<figure>`. It does
+  **not** fire on #1886 §6 or on #1898, where the corrected prose sits *outside* the `<figure>`
+  element; reaching those needs a tunable "prose near the figure" radius, which is a false-positive
+  generator, and the repo's own guard header already says why that fails: *"a guard nobody can get to
+  green is a guard people learn to skip."* Not smaller, and less reliable.
+- **The class is also not figure-shaped.** Three of twelve `stale-restatement` findings involve a
+  figure. Scoping the fix to figures would aim it at a quarter of the class.
+
+**What landed instead** — inside 10.6's existing sweep paragraph, closing the hole that paragraph
+opens. Quoted **as landed in this PR**; `issue-implement` 10.6 is the live source and will drift from
+this snapshot, which is the point of an audit record:
+
+> **For a surface that paraphrases, enumerate the surface instead of the words** — a figure is three
+> representations that move together (its visible text, its `aria-label`, its caption sentence), a
+> tagged table is its N tags, a status column is its N rows — and resolve each instance against the
+> corrected claim. An empty grep over a paraphrasing surface is not coverage of it. **One label can
+> cover more than one claim, so resolve every claim under it, not the opening subject** — and where
+> those claims differ in status or layer, **split the label** rather than picking the reading that
+> makes it true. **Report both sweeps by name, and say whether enumeration ran and over what** — a
+> surface sweep reported without it is a word sweep twice.
+
+…together with three changes review forced on the surrounding paragraph, recorded in *The result*
+above: the sweeps are now **named** (word sweep / surface sweep), the paragraph's gate was broadened
+from *a round that changed behavior* to any **corrected claim or documentation change**, and a label
+covering more than one claim must have **every** claim resolved and the label **split** where they
+differ.
+
+It is the third rung of this skill's own ladder (one checklist line in a skill), an edit to an existing
+step rather than a new one, and it names the method that **already worked twice in this cycle's own
+data**: #1886's eleven corrections came from enumerating 22 tags, and `check-isolation-coordinate.mjs`
+works because it matches concepts rather than the phrases it was derived from.
+
+Written the day it was derived, per cycle 12's rule. Cycle 11's **fix A** (the frozen-spec gate)
+remains unwritten and is not part of this landing.
+
+### Claims to test next cycle
+
+1. **Does enumerating the surface cut `stale-restatement`?** Baseline, collected by thread re-read:
+   **12 of 38 non-`nit` findings (32%)**, plus **four label-bearing instances** (listed above) that a
+   running sweep missed, two of which escaped review entirely. Score the second group — the first is
+   mostly reachable by 10.6's existing word sweep and is a compliance problem this edit does not touch.
+   Score it only on a sample that contains documentation.
+   **And score reachability first, because it is now the measured failure mode:** for each instance,
+   ask whether the rule *could have fired* — was its gate open, was its obligation named in the hook —
+   before asking whether anyone applied it. Two of this cycle's own folds were reachability defects
+   found by review, not wording defects. A cycle that scores only application will keep reporting
+   "the rule didn't bind" for a rule that was never reachable.
+2. **Is `vacuous-assertion` measurable yet?** Not this cycle: the population had one artifact that
+   asserts. Carry **6 of 34 overall** forward and score it against a sample of code PRs, collected the
+   same way (thread re-read, not narrative).
+3. **Does a per-claim guard survive its own PR?** Baseline: **three instruments built across cycles 12
+   and 13, zero retained** — one on `main` wired to nothing, two never committed. The first is wired
+   in a separate change, which makes it the precedent case; the retention policy is filed, not decided.
+4. **Does the Linear mirror ever bind?** Baseline is now **six instances across two cycles** (cycle
+   12's four, plus FIX-1441 and FIX-1416 here), against a rule that is precise and a mechanism
+   (`epic-wake`) that already computes the disagreement. Second cycle recorded, nothing built.
+5. **Are the loop's fixes landed at the gate?** Cycle 12 was the first `yes`. This cycle is the second.
+   The baseline is **two of five landed same-day**; score whether it holds.
+6. **Is a loop fix's *reachability* the thing that fails?** Baseline: **four defects in one sitting, on
+   one rule** — hook (satisfiable without the obligation), gate (excluded its own motivating cases),
+   unit (resolved a label's opening subject, not its claims), plus a stale restatement inside the
+   paragraph explaining stale restatements. Each found by a different reviewer, none overlapping.
+
+   **Candidate fix, held for cycle 14 and deliberately not landed here — a reachability step in
+   `distill-lessons` itself.** Before a cycle lands a rule as its upstream fix: take the instances the
+   rule was derived from and, for each, walk **trigger → obligation → report** and say which link it
+   falls out of. Name the gate the rule sits under, the hook that reports it, and the unit it operates
+   on. If an instance escapes, the rule is not the fix yet.
+
+   **It clears the Step-3 gate.** *Generalizable* — every cycle proposes a rule. *Grounded* — four
+   named instances on this PR, all verifiable. *Not already covered* — BP-003 demands a red state for a
+   **check in code**, and this is the one artifact class the project exempts from its own evidence
+   standard; Step 3 asks generalizable / grounded / duplicate / altitude and never asks *would it
+   fire*. *Altitude* — a step in one skill's own output, not another line agents read mid-implementation,
+   so it does not grow `issue-implement` 10.6 a fourth time.
+
+   **The serious objection, tested: is "would it fire here" decidable for prose?** The mechanical
+   figure check was rejected two sections above for exactly this, so the candidate has to clear the
+   same bar or it is that idea in a hat. It clears it, and the reason is the distinction the whole
+   cycle turns on. The figure check had to decide **semantic agreement between two statements over an
+   unbounded corpus** — not decidable. This walks **a bounded, already-enumerated instance set** and
+   asks a concrete question of each. All three of this round's findings answer cleanly: *is the new
+   obligation named in the reporting line?* (no — the hook said "two sweeps"); *does instance #1886
+   satisfy the enclosing trigger?* (no — it changed no behavior); *did enumerating catch L1499?* (no,
+   and that is measured, not predicted — the 22-tag sweep ran and it still came back wrong). **It is
+   the cycle's own landed method — enumerate the bounded set instead of reasoning about the words —
+   turned on the cycle's own output.**
+
+   **The failure mode to watch**, because it is how this becomes ceremony: if a cycle's instance set is
+   large, "show it fires on each" gets expensive and gets faked. The mitigation is already in Step 3 —
+   the instances are the ones the entry must name as evidence anyway, and a cycle that cannot name them
+   does not have a grounded fix to land. **Score it in cycle 14 on whether it catches a reachability
+   defect *before* review does, on a rule that would otherwise have shipped.**
+7. **Is `invented-attribution` a real class?** Proposed, not minted — see *Observed after collection*.
+   Renamed from `invented-reference` once the second instance showed the class is about attribution, not
+   citation. Baseline: **two instances, both outside the sample, both the same day, both self-caught** —
+   a PR number that resolved to a different issue, and reasoning attributed to the owner who never gave
+   it. It defeats every instrument this entry discusses, including both checkers it praises, because in
+   each case the cited thing *existed* and was about something else.
+   **The survival condition has changed: it no longer needs a second instance.** What it needs is
+   whether it appears when **nobody is looking for it**. Both instances were caught by authors who had
+   just spent a session on adjacent classes, which is the same favourable-condition problem as the
+   counter-evidence above. Collect it deliberately next cycle rather than waiting for a self-report:
+   take a sample of atlas and spec citations and resolve each one's **subject**, not its existence — and
+   for any reasoning attributed to a person, check it against what they actually wrote. Watch the
+   attributed-reasoning form first: a wrong citation is falsifiable by any reader, invented reasoning
+   only by the person quoted.
+8. **Does enumeration find what review does not, on a claim nobody chose for it?** Now has a concrete
+   shape to score, from the `teamInstructions` measurement above: **pick a claim, count its sites,
+   compare what review reported against what enumeration finds.** Baseline **7 / 3 / 4** on one claim in
+   one package, by an author who had been told to enumerate. Run it next cycle on a claim picked
+   *before* anyone sweeps, by an author who was not briefed, and on a package nobody chose — otherwise
+   it measures the briefing.
+9. **Candidate, not acted on: a shipped record is not a stale claim.** The FIX-1377 author declined to
+   rewrite `CHANGELOG.md`'s entry for the release that reserved the key, on the grounds that it was true
+   of that release and rewriting it falsifies history. That is the same distinction drawn independently
+   about cycle 4's ledger row earlier in this cycle — **two agents reaching it separately in one day
+   suggests it wants stating once rather than rediscovering.** Where it belongs (10.6's sweep, which
+   already carries an `EXCLUDE` instinct, or the changelog workflow) is not settled here.
+
+---
+
+## Cycle 14 — W4 work-routing & package-cohesion epic wrap (FIX-1407) (2026-09-20)
+
+**The first wrap-time collection where the dominant class is a single recognisable defect shape with a
+name the repo already uses: a check written so it could only pass.** Twenty-one instances across seven
+of the nine implementation artifacts. It is also the cycle in which reviewers began **citing BP-003 by
+number** while filing it — four times on one PR — which retires the question cycle 13 left open about
+whether the rule was reaching its readers. It reaches them. It does not deter them.
+
+**Method — scope, declared first because it is narrower than the epic.** The nine implementation and
+POC artifacts below were **thread re-read** in full (every review thread, both bot and human, with the
+author's replies). The **five child spec PRs** (#1915, #1916, #1917, #1919, #1935) were **not**
+thread-collected this cycle: they are recorded with endpoint and approval time only, carry no class
+distribution, and are **excluded from every count in this entry**. The epic PR #1905 was collected. A
+class distribution that quietly included five artifacts nobody read would be this entry's own dominant
+defect, so the denominator is stated rather than implied.
+
+**Method — rounds.** `Rounds` = **spent waves**, per cycle 12's definition: a commit drawing at least
+one automated pass, followed by a push. Read from `/pulls/N/reviews` for #1905, #1920, #1921, #1929,
+#1936, #1940 and #1943. For **#1922, #1923 and #1928 the count is derived** from the branch's
+review-round commits against automated-pass timestamps rather than read from the reviews endpoint —
+a weaker derivation, marked `~`, and not to be compared against an exactly-read count.
+
+**Method — endpoints.** Per the endpoint table: implementation PRs end at merge; the epic PR ends at
+**epic close**, which is this wrap (#1905 closed 2026-09-20T01:02Z). **#1921 and #1940 are open**, so
+they fall back to collection time and are **partials**, labelled as such and never compared to a total.
+
+| PR | Kind | Rounds | Endpoint | Feedback classes (deduped) | Felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|
+| [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905) epic-spec FIX-1407 | epic | **1** | epic close | over-engineered ×2 (all four docs 50–80% over the word ceiling) · stale-restatement (sign-off says "Open: two", DECISIONS has three) · spec-ambiguity | no | — |
+| [#1920](https://github.com/fixpoint-labs/flow-state-dev/pull/1920) impl FIX-1405 (PR-A) | impl | ~2 | merge | **missed-edge-case ×6 (all six *vacuous-assertion*)** · docs-miss ×2 · nit | no | **2 filed; the author's own mutation sweep of the same file found 4 more** |
+| [#1921](https://github.com/fixpoint-labs/flow-state-dev/pull/1921) impl FIX-1394 (ratify + POC) | impl | **2 (in flight)** | collection time | **missed-edge-case ×5 (all five *vacuous-assertion*)** · over-engineered · nit | no | **four of the five cite BP-003 by number; the equivalence was circular** |
+| [#1922](https://github.com/fixpoint-labs/flow-state-dev/pull/1922) impl FIX-1385 | impl | ~2 | merge | missed-edge-case ×4 (cross-runtime policy leak, org-less writes, `claimedBy` leak, capability-name collision) · docs-miss ×2 · nit ×3 | no | — **zero instances of the dominant class** |
+| [#1923](https://github.com/fixpoint-labs/flow-state-dev/pull/1923) impl FIX-1405 (collections) | impl | ~2 | merge | missed-edge-case ×1 (*vacuous-assertion*) · over-engineered ×2 · docs-miss ×2 · nit ×2 | no | a case asserting two of the three things its own seed wrote |
+| [#1928](https://github.com/fixpoint-labs/flow-state-dev/pull/1928) impl FIX-1405 (binder) | impl | ~3 | merge | missed-edge-case ×3 (public action forges seats; partial commit ×2) · docs-miss ×3 · over-engineered ×2 | no | — **zero instances of the dominant class** |
+| [#1929](https://github.com/fixpoint-labs/flow-state-dev/pull/1929) impl FIX-1430 | impl | **3** | merge | **missed-edge-case ×4 (all four *vacuous-assertion*)** · over-engineered ×2 · nit ×2 | no | **a lab whose purpose is grading routing, four of whose own graders could not fail** |
+| [#1936](https://github.com/fixpoint-labs/flow-state-dev/pull/1936) impl FIX-1451 | impl | **2** | merge | **missed-edge-case ×2 (both *vacuous-assertion*)** · docs-miss ×3 · over-engineered · nit | no | **the fixture never produced the input the negative assertion was about** |
+| [#1940](https://github.com/fixpoint-labs/flow-state-dev/pull/1940) impl FIX-1430 (verdict) | impl | **2 (in flight)** | collection time | **missed-edge-case ×1 (*vacuous-assertion*)** · over-engineered ×2 | no | **the control graded *which* leg went red, never *how many times*** |
+| [#1943](https://github.com/fixpoint-labs/flow-state-dev/pull/1943) impl FIX-1381 | impl | **3** | merge | **missed-edge-case ×4 (2 *vacuous-assertion*)** · docs-miss ×2 · over-engineered ×3 · nit | no | **`hired ?? []` — the 404 was going to arrive whatever happened** |
+| #1915 · #1916 · #1917 · #1919 · #1935 | spec ×5 | — | approval | **not collected this cycle** | — | — |
+
+**Load: 21 rounds across the nine implementation artifacts**, two of them partial. Both specs and the
+epic PR held their two-round budget; no direction artifact reached a third round, so by BP-040's rule
+there was no direction-level finding anywhere in the set.
+
+### The dominant class — 21 instances, and it has a shape
+
+**Classes (closed set), 61 non-`nit` findings on the ten collected artifacts:** `missed-edge-case` 30
+· `docs-miss` 14 · `over-engineered` 15 · `stale-restatement` 1 · `spec-ambiguity` 1 · `design-off` 0.
+
+**Of the 30 `missed-edge-case` findings, 17 carry the `vacuous-assertion` reading label** — an
+assertion that passes for a reason unrelated to what it claims to check. Adding the four the #1920
+author found by sweeping rather than by review gives **21 distinct instances of the class**. The
+distribution across artifacts is the thing to read, not the total:
+
+| Artifact | Instances | What the artifact is |
+|---|---|---|
+| #1920 | **6** (2 filed + 4 swept) | a reader's unit suite |
+| #1921 | **5** | a POC matrix asserting two formats are equivalent |
+| #1929 | **4** | a lab that exists to grade routing |
+| #1936 | **2** | tests pinning a prompt's exact wording |
+| #1943 | **2** | a goal check over a permission boundary |
+| #1923 | **1** | a collections suite |
+| #1940 | **1** | a verdict log's control |
+| **#1922, #1928** | **0** | ordinary feature code with ordinary tests |
+
+**The two artifacts with zero are the tell.** #1922 and #1928 are substantial feature PRs — a channel
+board surface and a boot binder — and between them they drew seven `missed-edge-case` findings, none
+of them vacuous. What separates them from the other seven is not size or care. It is that **their
+checks do not grade a claim the change itself is making.** The class lives wherever a check is
+standing in for an argument: an equivalence, a count, an identity, an absence, a verdict.
+
+**The five shapes, with the instance that fixes each one's meaning:**
+
+1. **Never ran the check.** #1921's matrix command printed its cells and exited zero regardless of
+   their verdicts, so V2 rested on someone transcribing correctly.
+2. **Aimed at a neighbour.** #1921's P5 ran the *bystander* seat, which holds nothing, and so proved
+   only that an unattached seat has no tools — while claiming to prove that a package-holding seat
+   without `tools:` gets none.
+3. **Scope wider than the real one.** #1921's `C3-skill-files` read a TypeScript source regex and
+   reported it as proof that an opt-in unit can ship a document, a claim the same PR disproves.
+4. **Fixture too clean to contain the failure.** #1936's `seed()` parsed `allowed-tools` with a
+   bracket-only regex, so the spec's *primary* space-separated form seeded as though no tools were
+   declared; the note never rendered, and `not.toMatch(/tools are available/i)` passed against an
+   empty string.
+5. **Graded the kind, never the cardinality.** #1940's `repointed-map` control asserted the run went
+   red at leg (c) and at no other leg, but never how many times — so one identity mismatch graded
+   green beneath a verdict row saying three. #1929's filing check is the same shape: four rows exist
+   and each input is a substring of some row, which a model satisfies by combining two inputs in one
+   row and duplicating another.
+
+Shapes 1–3 are BP-003's own three bullets, written out in the rule, in the tree, on the branch.
+
+### The finding — the rule was quoted at the defect and did not deter it
+
+**Cycle 13 inferred that a correctly-worded prose rule was failing to bind, from six cycles of
+correlation. This cycle observed it directly.** On #1921, Greptile and Codex filed five findings and
+**four of them name BP-003 explicitly**:
+
+> *"This violates BP-003's requirement that verification exercise the actual claim rather than a
+> neighboring condition."* — on the compiler that never opened either manifest
+>
+> *"...violates BP-003's requirement to test the behavior being claimed."* — on P5's bystander
+>
+> *"BP-003 requires behavioral evidence for this claim."* — on `C3-skill-files`
+>
+> *"BP-003 requires verification with explicit pass criteria."* — on the matrix exiting zero
+
+That is a rule whose text is correct, whose scope covers the case, which the reviewer can quote by
+number, and which the author had read — failing to prevent four defects in one artifact. **The
+seventh consecutive cycle in which this happens, and the first where the citation is on the record.**
+The marginal return on sharpening BP-003 is not merely unmeasured; it is now measured against a
+condition where the rule was maximally available.
+
+**So this cycle does not sharpen BP-003, and that is the recommendation's whole point.** A seventh
+sentence added to a rule that was being quoted verbatim at the defect would be the class itself,
+applied to the grounding: an intervention with no state in which it could fail.
+
+### What actually worked — and it is already in the repo, unwritten
+
+Every successful fold in this cycle did the same thing, and none of the failures did. The author
+**named a perturbation and reported its blast radius.** Verbatim, from four different artifacts:
+
+- #1943: *"Proved falsifiable by making the refusal per-worker instead of whole-roster — leg (f)
+  fails, and nothing else does."*
+- #1940: *"Red: with leg (c) temporarily short-circuited after its first note, the new assertion fires
+  — 'went red 1 time(s), but the swap moved 3 row(s) … Never named: …'."*
+- #1936: *"Red evidence: perturbing the note back to 'seat' fails exactly the two wording tests and
+  nothing else."*
+- #1923: *"removing the membership `upsert` from the seed entirely used to leave this case **green**;
+  it now goes red here too, on `expected length 3, got 0`."*
+- #1921: *"Watched it fail before trusting it: planting an error on the sibling's turn turns both
+  modes red — then restored and re-confirmed green."*
+
+**And #1920 is the measurement, not the anecdote.** Review filed two vacuous assertions in
+`read-declared-roster.test.ts`. The author then applied the same operation to the rest of that one
+file and reported: *"That prompted a sweep of the rest of the file for the same shape. It found **four
+assertions that could not fail**, all now fixed, **each proved red under its own mutation**."*
+
+**Two filed by three bots; four more found by the author mutating deliberately, in the same file.**
+That is the same result cycle 13 landed at document altitude — enumerate the bounded set rather than
+reason about the words — reproduced here at assertion altitude, and it is the only intervention in
+two cycles with a positive measured yield.
+
+### Why red-before-green does not already cover this
+
+`issue-implement`'s **"Red is a gate, not a suggestion"** paragraph is the obvious candidate for
+already owning this class. It does not, and the reason is precise enough to act on.
+
+Its **unit** is *"write ONE behavioural test → run it → observe it fail → write the minimal code →
+observe it pass."* That perturbs **the code you are about to write**, and it needs a before-state.
+The class recurring here lives in checks that have no before-state:
+
+- a **negative** assertion (`not.toMatch`, "no other leg failed", "nothing was hired") is green before
+  the change and green after — there is no red phase to observe;
+- a **cardinality** claim ("exactly three", "one row per piece") is not a behaviour being added;
+- a **control leg** or **goal-check leg** grades a run rather than introducing a behaviour;
+- an **equivalence** (#1921's whole matrix) is a property of two artifacts, not of a new code path.
+
+Red-before-green is satisfiable in full by every one of the 21 instances. #1921's probes *did* have
+fixtures and *did* go red on them and green after — while remaining circular, because the compiler and
+the assertion drew the expected text from the same constants. The two operations are orthogonal:
+red-before-green perturbs the implementation; this class needs perturbing **the property the check
+claims**, which may be a fixture, a count, an identity, or an input the check was never given.
+
+Worse, the paragraph's **exception (a)** — parity work, "no red-green cycle by design" — reads as
+covering exactly these cases to an author who has just written a check over existing behaviour.
+
+### The recommended upstream fix — one sharpening, in `issue-implement`
+
+**Add the blast radius to the existing "Red is a gate" rule, and extend its unit to checks with no
+before-state.** One new paragraph under Core Principles, wired into Step 6 and the PR evidence
+bullet — not a new BP, and not a seventh BP-003 bullet. The rule already
+demands red. What is absent — everywhere in the grounding, despite being the repo's own consistent
+successful practice — is **"and nothing else went red."**
+
+The blast-radius half is what catches shapes 4 and 5, and it is the half that cannot be satisfied by
+reading:
+
+- On #1936's broken fixture, perturbing the note fails **nothing**, because no note ever rendered.
+  "Tests pass" hides that; "perturbing X fails exactly these two tests" cannot.
+- On #1940's control, perturbing leg (c) to fail once leaves the control green while the log says
+  three — visible the moment you are obliged to say which checks moved and how far.
+- On #1920's `.message` assertions, the mutation `new Error(e.error.message)` leaves **both** green,
+  which is a report you cannot write down without noticing.
+
+**Reachability walk — trigger → obligation → report, on the bounded instance set.** This is cycle 13's
+claim-6 method, applied here to this cycle's own proposed rule rather than landed as a step (see the
+scoring below for why it is applied and not minted).
+
+- **Trigger:** a check offered as evidence for a claim the change is making. Already BP-003's scope;
+  no new gate, and in particular not gated on "changed behaviour", which is the gate that excluded
+  cycle 13's motivating cases.
+- **Obligation:** break the claimed property — not the implementation — and run.
+- **Report:** name what was broken, which checks went red, and that nothing else did.
+
+Walked against all 21 instances: **20 fall out cleanly.** Each has a concrete perturbation that turns
+the defect visible — delete `PACKAGE.md` (#1921, matrix stays green); construct a package-holding
+seat (#1921 P5, which cannot be done without discovering the probe never had one); flip a cell's
+verdict (#1921 matrix, exit stays zero); plant an error on the sibling (#1921 VG, stays green);
+perturb the host map (#1929 recovery, comparison cannot move because both sides come from the tree);
+make leg (c) fail once (#1940, control stays green); remove the membership `upsert` (#1923, case stays
+green); rebuild the error from its text (#1920, both `.message` assertions stay green); reword the
+note to "only these tools are usable" (#1936, assertion stays green). **One does not:** #1929's
+control race is a flake rather than a vacuity, and the blast-radius report only surfaces it as "leg
+(c) sometimes does not fire" — partial credit, recorded as partial.
+
+**It clears the Step-3 gate.** *Generalizable* — every change that offers a check as evidence.
+*Grounded* — 21 named instances on nine artifacts, every one linkable. *Not already covered* — BP-003
+demands the red state and does not mention the blast radius; `issue-implement`'s rule owns the
+before-state case and demonstrably not the others. *Altitude* — a sharpening of one paragraph in the
+skill that already owns verification discipline, which is where cycle 13 landed for the same reason
+and by the same measurement.
+
+### Scoring the previous cycles' open claims
+
+- **Claim 3 — "does a per-claim guard survive its own PR?" — first `yes` in three cycles.** Cycle 13's
+  baseline was three instruments built, zero retained, with `scripts/check-isolation-coordinate.mjs`
+  sitting on `main` referenced by nothing. It is now **wired into CI** (`.github/workflows/ci.yml:143`)
+  by [#1906](https://github.com/fixpoint-labs/flow-state-dev/pull/1906), *"ci(guards): run the
+  isolation-coordinate check, with a negative control"* — and the negative control is the point.
+  Separately, `goals/scripts/validate-control-shape.mts` (rules C1–C4) runs from the **root**
+  `pnpm typecheck`. Retention is 1 of 3 and rising; score again next cycle.
+- **Claim 6 — "is a loop fix's reachability the thing that fails?" — not measurable this cycle.**
+  Claim 6's population is *the loop's own fixes*, and this sample contains none: all 21 instances are
+  product checks. Scoring it against them would be the neighbour defect. **The method was applied
+  rather than minted** — the reachability walk above is claim 6's procedure run on this cycle's
+  proposed rule, and it changed the recommendation (it is what demoted "gate on changed behaviour" and
+  surfaced the #1929 partial). Carry claim 6 forward unminted; a cycle that applies a step and finds
+  it useful has not yet shown the step is needed by anyone who was not already going to do it.
+- **Claim 1 / `vacuous-assertion` measurability — answered, and the answer is large.** Cycle 13 carried
+  **6 of 34** forward and asked for a sample containing code PRs. This sample is nine of them:
+  **21 of 61** non-`nit` findings carry the label, **34%**, against cycle 12's 15 of 37 (41%) and cycle
+  13's 6 of 34 (18%). The 21 counts the four an author swept rather than a reviewer filing them, and
+  the 61 counts only review findings, so 34% is a ceiling; review-filed alone is 17 of 61, **28%**.
+  The populations differ — cycle 13's was four documentation PRs — so the honest
+  reading is that the class is **flat in the 30–40% band wherever the artifacts assert**, and that cycle
+  13's dip measured its denominator. This also settles the promotion question the file header leaves
+  open: `vacuous-assertion` has now been the dominant shape in every cycle that sampled asserting code.
+- **Claim 5 — "are the loop's fixes landed at the gate?"** This cycle's fix is proposed at wrap, on a
+  draft PR, unmerged. Third consecutive cycle landing at the gate; baseline holds.
+- **`stale-restatement` — collapsed to 1 of 61**, against cycle 13's 12 of 38. Same caveat in the other
+  direction: this set is nine code PRs and one epic-spec, and cycle 13's was mostly documentation. Not
+  scoreable as progress on 10.6's checklist line. The one instance is #1905's *"Open: two"* against
+  three items in DECISIONS — an epic-spec sign-off disagreeing with its own decision list.
+
+### Candidates considered and dropped
+
+- **A new BP for the cardinality shape ("grade the count, not only the kind").** Dropped. It is one of
+  five shapes of one class; minting a BP per shape is the bloat this skill exists to prevent, and the
+  blast-radius report catches it without a new number.
+- **A seventh bullet in BP-003.** Dropped, and the reason is this cycle's headline: the rule was
+  quoted by number at four defects on one PR and deterred none of them.
+- **A mechanical "vacuous assertion" linter** (flag `not.toMatch` without a positive counterpart, flag
+  sort-before-compare). Dropped as undecidable in general and trivially gamed — but noted as the
+  *narrow* case worth revisiting, since #1920's sort-before-compare and #1929's
+  compare-two-values-from-the-same-source are both syntactically recognisable. Filed here, not built.
+- **Requiring a control beside every goal verdict** (generalising #1940's argument). Dropped as
+  already owned by `validate-control-shape.mts` C1–C4 for the goals corpus; widening it repo-wide
+  before that guard has a second cycle of evidence would be premature.
+- **A `docs-miss` fix for the changeset-format finding that appeared on five of nine PRs.** Deliberately
+  not escalated: it is a compliance gap against a rule whose text is already unambiguous, the author
+  identified it as recurring on #1923 unprompted (*"the third consecutive PR in this epic to fail the
+  same rule"*), and it is one sentence. More words would not fix compliance — the same conclusion
+  cycle 13 reached about 10.6's first sweep.
+
+### Claims to test next cycle
+
+1. **Does the blast-radius report catch a vacuous assertion before review does?** Baseline: **21
+   instances, 17 filed by review, 4 found by one author sweeping one file.** Score whether an author
+   obliged to report the blast radius finds them at authoring time, on a sample containing at least
+   one artifact that grades its own claim (a lab, a goal check, a POC matrix, a wording pin).
+2. **Does the class stay in the 30–40% band wherever code asserts?** Three data points now — 41%,
+   18%, 34% — with the dip explained by a documentation denominator. A fourth code-heavy sample
+   settles whether that band is the resting rate or whether cycle 12–14 are flat because nothing has
+   yet acted on it.
+3. **Does the retained guard stay retained?** `check-isolation-coordinate.mjs` and
+   `validate-control-shape.mts` are both wired now. The failure mode is not deletion, it is going
+   green forever: check next cycle that each has fired at least once, or that its negative control
+   still fails when the guard is disabled.
+4. **Is the zero on non-grading artifacts real?** #1922 and #1928 drew seven `missed-edge-case`
+   findings and no vacuous ones. If that holds on a second sample, the class is scoped to
+   claim-grading checks and any future instrument should be scoped there too rather than to all tests.
+
+---
+
+## Cycle 15 — remove-superseded-leftovers epic wrap (FIX-1208) (2026-09-22)
+
+**The epic whose whole product is a promise to consumers, and the surface that carries that promise
+is where the defects concentrated.** Sixteen of the 61 non-`nit` findings on the nine implementation
+PRs are defects in a `.changeset/*.md` fragment — **about a quarter of the implementation PRs' review
+load on one file type**. The epic-spec on #1376 took about nine automated waves and 46 review threads,
+and **seven of its findings are defects that an earlier round's own correction created or left
+behind**, each self-attributed by the author in the thread that closed it.
+
+**This entry was recounted after review, and the recount changed its numbers.** A Codex pass on #2059
+found the class column declared "(deduped)" while one row counted a single defect four times.
+Re-reading every thread showed it was not one row: the first draft counted threads, collapsing some
+duplicates and not others, under no written rule. Every row below is now derived under the rule in
+*Method — findings*, and the **finding map** at the end of this entry lists the threads behind every
+count, so each number can be rebuilt. Where the recount moved a figure, the entry says so where the
+figure lands.
+
+**Method — scope, declared first.** Thirteen artifacts: the epic PR #1376, the nine implementation PRs
+its running index names, both FIX-1440 artifacts (spec #1888, implementation #2028), and the wrap's
+docs-polish PR #2058, which merged after the first twelve were collected (2026-09-22T21:40Z,
+`8d1a25370`, final head `4a0afc5`) and was first recorded here as an open partial. All thirteen were
+**thread re-read** in full, bot and human, with the author's replies; #1888's conversation comments
+were read as well, because its direction amendments live there. Two satellites — #1388 (FIX-1155) and
+#1393 (FIX-1214) — are **out of the sample** and are not zeros. Every artifact reached its own
+endpoint; **there are no partials in this entry.**
+
+**Method — findings.** One finding is one distinct defect — a false claim, a missing case, a surplus
+surface or a stale restatement — identified by what had to change. **Threads naming the same defect
+collapse to one:** across reviewers, an umbrella and its instances, or a re-filing on a later head.
+On an implementation or docs PR a finding is `nit` when it affirms the diff, was refuted on evidence,
+or every thread naming it carries its reviewer's own low-severity marker (*nit, minor, optional,
+cosmetic, soft, heads-up, taste, unsure, should-discuss, not blocking, no change needed,
+acceptable*); a Codex P1 or P2 badge, "definite", or no marker at all is not low. On the epic PR, a
+direction artifact, BP-040's bar applies instead: a finding the author declined, or that a later head
+had already fixed, is `nit`, and everything held or folded counts. Every other finding takes exactly
+one class from the closed set, by substance. `T`-numbers in the finding map are positions in each PR's
+review-thread list, oldest first, as the reviews API returns them.
+
+**Method — rounds.** `Rounds` = **spent waves**, per cycle 12's definition: a commit drawing at least
+one automated pass, followed by a push. **Read** from the complete `/pulls/N/reviews` list for #1390,
+#2028 and #2058. **Derived**, and marked `~`, for the other ten: #1376's reviews list was read only
+to its first page (30 entries, ending 20:16Z, on a review that ran to 22:09Z), so its waves come from
+review-thread timestamps, like the nine cleanup PRs'; #1888's come from the author's own
+round-labelled comments plus the owner's two amendments. A derived count is weaker and is not to be
+compared against a read one. *An earlier draft of this block listed #1376 as read and left #1888
+unmarked; both were wrong.*
+
+**Method — endpoints.** Per the endpoint table: implementation and docs PRs end at merge; the epic PR
+ends at **epic-PR close** (#1376 closed unmerged 2026-08-23T02:08Z); the spec PR ends at
+**revision-bound direction approval** (#1888, "Approved", 2026-09-18T17:17Z, closed unmerged the same
+minute).
+
+| PR | Kind | Rounds | Endpoint | Feedback classes (deduped) | Felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|
+| [#1376](https://github.com/fixpoint-labs/flow-state-dev/pull/1376) epic-spec FIX-1208 | epic | **~9** | epic-PR close | **missed-edge-case ×11** · spec-ambiguity ×6 · design-off ×4 · stale-restatement ×4 · docs-miss ×4 · nit ×8 — *37 findings from 46 threads* | **yes** — **seven findings are defects an earlier round's own correction created or left behind**, author-attributed | four were echoes, which a restatement sweep after each correction finds; three were defects in the new text itself, which only verifying the replacement as hard as the original finds |
+| [#1390](https://github.com/fixpoint-labs/flow-state-dev/pull/1390) impl FIX-1209 | impl | **4** | merge | **docs-miss ×7** (six *overclaim*) · missed-edge-case ×2 · nit ×2 — *11 from 13* | no | **the release note was derived from the `@deprecated` comments, one of which was wrong at the source** |
+| [#1387](https://github.com/fixpoint-labs/flow-state-dev/pull/1387) impl FIX-1210 | impl | ~3 | merge | missed-edge-case ×3 (1 *vacuous-assertion*) · stale-restatement ×1 · docs-miss ×1 · nit ×4 — *9 from 11* | no | **the new `@ts-expect-error` assertion was in no compiled project — it could not fail** |
+| [#1392](https://github.com/fixpoint-labs/flow-state-dev/pull/1392) impl FIX-1211 | impl | ~2 | merge | **over-engineered ×6** (two BP-030 dual-reads dropped inside a PR whose stated contract is "behaviour-preserving") · docs-miss ×2 · nit ×4 — *12 from 14* | no | a cut whose evidence is real still needs its own review question |
+| [#1389](https://github.com/fixpoint-labs/flow-state-dev/pull/1389) impl FIX-1212 | impl | ~1 | merge | docs-miss ×2 · nit ×1 — *3 from 3* | no | — **the quietest artifact in the epic** |
+| [#1394](https://github.com/fixpoint-labs/flow-state-dev/pull/1394) impl FIX-1213 (docs) | impl | ~6 | merge | **missed-edge-case ×16** (all *overclaim*) · stale-restatement ×3 · docs-miss ×1 · nit ×4 — *24 from 25* | no | **a docs rewrite asserted framework behaviour it had not run** |
+| [#1391](https://github.com/fixpoint-labs/flow-state-dev/pull/1391) impl FIX-1215 | impl | ~3 | merge | missed-edge-case ×3 · docs-miss ×2 · stale-restatement ×2 · over-engineered ×2 · nit ×2 — *11 from 16; the wrong issue ref is **one** finding across four threads* | no | **one P1 thread was still open at merge** |
+| [#1395](https://github.com/fixpoint-labs/flow-state-dev/pull/1395) impl FIX-1216 | impl | ~2 | merge | **docs-miss ×2** (six packages bumped that publish nothing, one defect across three threads; `core` *under*-bumped) · nit ×5 — *7 from 10* | no | **the bump was classified from the PR's own description, not from the emitted `.d.ts`** |
+| [#1396](https://github.com/fixpoint-labs/flow-state-dev/pull/1396) impl FIX-1217 | impl | ~3 | merge | docs-miss ×4 · missed-edge-case ×1 · nit ×2 — *7 from 8* | no | the note said "error responses"; the helper it changed serves every JSON response |
+| [#1406](https://github.com/fixpoint-labs/flow-state-dev/pull/1406) impl FIX-1220 | impl | ~2 | merge | docs-miss ×1 · nit ×5 — *6 from 6* | no | — |
+| [#1888](https://github.com/fixpoint-labs/flow-state-dev/pull/1888) spec FIX-1440 | spec | **~4** | direction approval | missed-edge-case ×3 · docs-miss ×2 · stale-restatement ×1 · nit ×2 — *8: six threads and two from the conversation* | **yes** — **an approved direction was superseded by the owner 21 minutes later**, then amended again on presentation | not a review-rework row; see below |
+| [#2028](https://github.com/fixpoint-labs/flow-state-dev/pull/2028) impl FIX-1440 | impl | **2** | merge | **missed-edge-case ×7** · docs-miss ×2 · over-engineered ×2 · nit ×5 — *16 from 18* | no | **round 1's own fix opened round 2's race; round 1's own org fix was inert in production** |
+| [#2058](https://github.com/fixpoint-labs/flow-state-dev/pull/2058) docs-polish (wrap) | docs | **1** — *plus 4 self-driven revision rounds before it left draft; not comparable to this column* | merge | **stale-restatement ×4** (three factual, one vocabulary — every fixed review finding was a surface still saying what the PR had corrected elsewhere) · nit ×3 — *7 from 7*. The owner merged the vocabulary call as drawn | no | **it fact-checked its new claims and never swept for the old ones** |
+
+**Load: ~28 spent waves across the ten implementation artifacts (4+3+2+1+6+3+2+3+2 on the nine
+cleanup PRs, 2 on #2028), plus ~9 on the epic PR, ~4 on the spec PR and 1 on the docs-polish PR.** Both
+direction artifacts blew the two-round budget, and **for opposite reasons** — which is the distinction
+the rest of this entry turns on.
+
+**Claims (looped / settled / verdicts): 0 / 0 / —, on every direction artifact.** No POC settlement
+fired anywhere in this epic, and none should have. Two claims that had the shape of a loop were closed
+in a single exchange by an author who **built the artifact and read it** rather than arguing: on #1390
+the `FSDEV_DEBUG_ITEMS` provenance ("landed 13 days ago in #1110") was REFUTED against
+`git log -S` — it landed four months earlier in `01a2897`, and #1110 never touched `packages/core`;
+on #1395 two reviewers argued from the `@internal` + underscore convention that the removal was a
+`patch`, and the author settled it by building `core` and grepping the output
+(`dist/types/block.d.ts:557: _outputTracker?: {`). That is `issue-spec` 6.5.3's first cheap out —
+*the answer is in the repo* — working exactly as written, twice, before a loop could form.
+
+### The largest class — and why it gets no proposal
+
+**16 of the 61 non-`nit` findings on the nine implementation PRs are defects in a `.changeset/*.md`
+fragment — 26%.** "In the fragment" means the defect is in the release note itself, wherever its
+thread happened to be anchored: #1390's false successor rows were filed partly on the fragment and
+partly on the source lines they described, and each counts once. *The first draft said 20 of 61, 33%.
+It counted threads by file path, so it counted #1391's one wrong issue ref four times and #1395's
+over-bump three times, included two threads that are `nit` under the rule (#1390's no-change
+affirmation, #1395's knip note), and counted #1390's umbrella thread once where it names four distinct
+false rows.* The finding map marks the sixteen. Six shapes, and one root under most of them:
+
+| Shape | Findings | The root |
+|---|---|---|
+| **Claimed an equivalence the code does not support** | #1390 ×6 (`AgentType`→`ItemVisibility`, `reviewOutputSchema`→`reviewerVerdictSchema`, `PRE_RANK_CAP`→`PRE_RANK_EPISODIC_CAP`, the `BasePlan*` set, `CollectionItem` as a rename when it is a package move, a `scores` field that has never existed) · #1396 ×1 (the note said error responses; every JSON response changed) | the fragment was written from the **old `@deprecated` comments and the PR's own narrative** |
+| **Classified the release from the change's self-description** | #1395 ×2 (six packages bumped that publish nothing; `core` under-bumped because `@internal` was read as a filter when `stripInternal` is set in no tsconfig) · #1396 ×1 (`orchestration` bumped for an internal extraction) · #1406 ×1 (a non-empty fragment for an unreachable cleanup) | the fragment asked *what did I do?* instead of *what does the consumer get?* |
+| Understated what a consumer loses | #1390 ×1 (`ContextItem` also left `@flow-state-dev/core/items`) | the blast radius was read off the package the name lived in, not every entry that re-exports it |
+| Internal inventory copied into the published changelog | #1396 ×1 (P1) · #1391 ×1 (P1, **still open at merge**) | the body was written for the reviewer |
+| A second fragment for one change | #1392 ×1 | two fragments describing one `toError` move |
+| One wrong issue ref | #1391 ×1 (four threads: three reviewers and the author) | `validate-changeset-refs.mjs` asserts a `TEAM-123`-shaped id is *present*, never that it is the right one |
+
+Every fold was the same operation, and it worked every time: the author **resolved the artifact the
+consumer actually receives**. Export-map resolution through ts-morph with a known-public control per
+package. Building the package and grepping `dist/`. Compiling a probe per removed option. On #1395
+the control earned its keep out loud — *"My first pass had `thought-fabric` and `orchestration`
+reporting everything as unreachable because I'd listed their entry files wrong; the controls caught
+that, which is why they're there."*
+
+**No proposal, and the reason is cycle 14's.** BP-022 and `release-notes-workflow.md` already say
+this, unambiguously, and reviewers **quoted them correctly at the defect** — Codex cited `AGENTS.md`'s
+release-note lines on five separate fragments (#1390, #1391, #1395, #1396, #1406), and the author's
+own replies quote `release-notes-workflow.md` back verbatim. A seventh sentence on a rule that was
+being recited at the defect is the intervention cycle 14 measured and rejected. Two further reasons to
+hold: this is a **removal epic**, where the release note *is* the deliverable, so the concentration is
+partly a property of the sample; and the one mechanical gap here is not a rule at all — the
+changeset-ref validator cannot fail on a well-formed wrong id, which is a **guard**, filed below, not a
+lesson.
+
+### The class that earns the proposal — the second-order defect of a correction
+
+Across the epic, **seventeen findings are defects that an earlier correction in the same artifact
+created or left behind** — counted only where the author's reply or the fixing commit says so, so the
+set can be rebuilt from the text alone. *The first draft said thirteen. It missed #1376's T41, #1394's
+T22, #1387's T10 and #1390's T11, and its reachability walk used #1376's T44, which the author never
+attributed to an earlier fix, in place of T33, which he did.*
+
+| Artifact | Findings | Which, in the author's own words |
+|---|---|---|
+| **#1376 epic-spec** | **7** | T33 *"The fix you asked for produced the defect you're now reporting"* · T38 *"this is a hole my own fix opened"* · T39 *"I put it there by fixing §5's label and leaving the summary that quotes it"* · T40 *"You identified the root the last three rounds were patching around"* · T41 *"An earlier draft of this line said 'successor or migration evidence', and that `or` was the same shape of bug §1 had already fixed two rounds earlier"* · T42 *"The previous round's fix — mine — reached for a criterion above all six cut kinds"* · T43 *"The fault was scoping the exception to a label"* |
+| #1394 docs | 2 | T18 *"my own fix last round introduced it… I verified two of the three and generalised to the third"* · T22 *"my previous wording was wrong"* |
+| #2028 impl | 1 | T15 *"you are right that this PR introduced it… the earlier cross-flow fix traded one defect for a narrower one"* |
+| #1888 spec | 1 | D3 *"Both cancellations were decided by asking 'does this describe the surface we are deleting?' rather than 'is this defect real in the code we will ship'"* |
+| #1387 impl | 1 | T10 *"I under-called this when I flagged it myself — 'matches the existing convention' was not a good enough answer for an assertion this PR adds"* |
+| #1390 impl | 1 | T11 *"This also supersedes my reply on the (now resolved) changeset thread above, which listed `CollectionItem` among 'exact aliases, change the import and move on.' That was the same error, and it was mine."* |
+| #2058 docs-polish | **4** | `c6d6e54` *"the cross-flow case biting a third time, in the definition itself"* · T4 / `da770b3` *"the claim task-board.md already corrected"* · T6 / `4a0afc5` *"its example took only an id and the conversation's flowKind, so copying it dropped the owner address"* · T7 / `4a0afc5` *"still promised shared rows serialise with no such limit"* |
+
+**#2058's review row and its fix-induced count are both four, and they are different sets.** The row
+counts review findings {T4 guide, T5 DevTool page, T6 React example, T7 concurrency}. The fix-induced
+count is {`c6d6e54`, T4, T6, T7}: T5 is a *vocabulary* echo and the population here is factual, and
+`c6d6e54` is fix-induced but was found by the author's own fact-check before review, so it is not a
+review finding. The first head's half-carried term (`8f07918`) is the same shape, also vocabulary,
+also uncounted. #2028's inert org fix is **not** counted either: it was plainly a round-1 fix that did
+not work, but the round-2 reply attributes the miss to fixture asymmetry rather than to the fix, and
+the rule counts only what the author says. That makes seventeen a floor.
+
+**Two mechanisms, and only one of them is reconciliation.**
+
+- **Echoes — 8.** A correction landed, and a surface that restated the old claim went on saying it:
+  #1376 T33, T38, T39, T40; #1888's inherited dispositions; #2058 T4, T6, T7.
+- **Defects in the fix itself — 9.** The new text or code was wrong on its own: #1376 T41, T42, T43;
+  #1394 T18, T22; #2028 T15; #1387 T10; #1390 T11; #2058 `c6d6e54`.
+
+No reconciliation rule reaches the second group. It is BP-003's population — verify the replacement as
+hard as the claim it replaced — and cycle 14 measured what one more sentence there buys. The proposal
+below is about the first group.
+
+**The tell is that the author named the class himself, mid-epic, and self-remedied — and it kept
+happening.** On #1376 thread 39: *"I swept rather than fixing the one line, because every round lately
+has been a fix creating the next finding."* T40 and T41 were filed the same minute that reply went up,
+and T42 and T43 eleven minutes later. A class that survives the person in it noticing it is a class
+that needs a structural obligation, not more attention.
+
+#### Where the echoes come in — three doors, and the rule already exists
+
+The obvious diagnosis is that the epic-spec cannot reach the rule that owns this. **That diagnosis is
+wrong, and this entry's first draft made it** — on a case-sensitive grep that missed `Redraft`. The
+re-draft obligation *is* reachable from the epic-spec path:
+
+- `orchestration.md:445`, the canonical spec-review triage table, **Fold in — spec-level**:
+  *"Re-draft the affected repository document and figures, reply on the thread."* This governs epic
+  specs as well as issue specs.
+- `epic-spec-template.md:627`: *"Direction changes or a POC refutes a premise | Redraft and obtain
+  fresh human approval."*
+
+Both are about a **fold**, and neither names a sweep or a report. The sentence immediately under the
+triage table, and the identical one in `issue-spec` 6.5.1, exempts the other kind of change:
+
+> **Genuine factual corrections and broken references are the one cheap exception: fix them inline
+> without ceremony (they don't move the design, so they don't cost a round).**
+
+The eight echoes came through three doors:
+
+| Door | Echoes | What governs it today |
+|---|---|---|
+| An inline factual correction on a spec — the cheap exception | **3** — #1376 T33, T38, T39 | exempted from the re-draft |
+| A fold or a direction change on a spec | **2** — #1376 T40; #1888's dispositions | *"re-draft the affected document"*, and for an issue spec `issue-spec` 6.5.2 — reachable, and the echo happened anyway |
+| A docs-polish pass | **3** — #2058 T4, T6, T7 | nothing: `polish-docs` has no sweep and, by case-insensitive grep, no pointer to one |
+
+The three through the exemption each followed a correct factual fix that moved no design: the
+remainder enumerated by name instead of counted (T33), the seed flags reclassified against what they
+actually do (T38), the "evidenced" label withdrawn (T39). Each left a restating surface — the
+objective, the gate's category list, the summary that quoted the label — and none was re-derived,
+because the exemption that spared the correction a round also spared it the re-draft. T40 is an echo
+of folds: the gate gained categories over several rounds, and the criteria written for one bar were
+never re-derived, under a re-draft instruction that was reachable the whole time. *The first draft
+said five of #1376's six came through the exemption. It counted T43 and T44 as echoes — T43 is a
+defect in the fix and T44 is not author-attributed — and it left out T33.*
+
+**And the obligation all three doors need is already written, word for word.** `issue-implement`
+10.6's **word sweep** and **surface sweep**, with its instruction to report both by name, is the
+canonical rule for a correction whose echoes survive it. It is heavier and more precise than anything
+this entry would write fresh.
+
+### The recommended upstream fix — revised by the recount
+
+**What was first proposed.** Scope the cheap exception to the round count, not to the
+reconciliation: one clause in `orchestration.md`'s spec-review section, mirrored in `issue-spec`
+6.5.1.
+
+> …fix them inline without ceremony — they don't move the design, so they don't cost a round. **They
+> do owe the reconciliation: before the push, re-derive every surface that restates what you
+> corrected — the criteria, the index, the sign-off, the category and route lists, the summary that
+> quotes it — and say which moved.**
+
+**What the recount does to it.** It reaches three of the eight echoes and three of the class's
+seventeen. And it is, in effect, a paraphrase of 10.6 — a new restatement of a canonical rule, which is
+the exact thing this entry spends its length showing goes stale.
+
+**Two options, and the choice is the owner's.**
+
+- **A — the clause as first proposed.** New words on the cheap exception. Reaches **3 of 8** echoes.
+- **B — point, don't paraphrase.** Two pointers and no new rule text. The spec-review triage section,
+  covering both the Fold-in row and the cheap exception beneath it, and `polish-docs`' Verify step each
+  say: *before the push, run `issue-implement` 10.6's word and surface sweeps over every claim you
+  corrected, and report both.* Reaches **7 of 8**; the eighth, #1888's, sits on an issue-spec direction
+  change that 6.5.2 already governs.
+
+**Recommendation: B.** It is the lighter rung — a pointer to the canonical rule rather than a second
+copy of it — and its evidence is one mechanism across three artifacts, not one evening on one.
+**What would change my mind:** if 10.6's sweeps, written for implementation-PR feedback, prove too
+heavy for a spec correction that moves one sentence. Then A is the right weight for the cheap
+exception, and B should keep only the fold row and `polish-docs`. **What being wrong costs:** a
+pointer that leads a spec author into a heavier procedure than the correction needed — reversible in a
+commit. **The caveat B does not escape:** two of the eight echoes happened where a re-draft instruction
+was already reachable. That is cycle 14's pattern, a rule available and not applied. A pointer adds
+reach, not compliance. What B carries that A does not is 10.6's requirement to **report both sweeps by
+name** — the visible output that cycles 13 and 14 found to be the part with measured yield.
+
+**This reverses a call this entry made twice before the recount.** A `polish-docs` pointer was
+declined, in the widening bullet and in claim 4, as "one artifact". That reasoning was about the door. The recount shows one mechanism across three
+artifacts, and the pointer is the same pointer either way.
+
+**Reachability walk — trigger → obligation → report**, cycle 13's method, on the seven B reaches.
+
+- **Trigger:** a correction on a spec, inline or folded, or a correction made by a docs-polish pass.
+  Observable, and not gated on whether the direction moved.
+- **Obligation:** 10.6's word sweep (the superseded claim's distinctive noun, repo-wide) and surface
+  sweep (every surface that states the claim more briefly than where it was corrected).
+- **Report:** both sweeps by name, and what each found.
+
+Walked: T33 — the surface sweep reaches §1's objective, which states the scope the new list
+contradicted. T38 — it reaches the gate's category list. T39 — the word sweep on "evidenced" finds the
+summary. T40 — the surface sweep reaches the success criteria, which paraphrase the gate. #2058 T4 —
+the word sweep on "session of its own" finds the guide. T6 — the surface sweep reaches the React
+example, which states in code the usage the advice had just corrected. T7 — the word sweep on
+serialisation finds the architecture doc and both READMEs. **Seven of seven.** Under A, the trigger
+fires on T33, T38 and T39 only. Neither option reaches any of the nine defects in the fix itself — which
+is stated, not stretched.
+
+**It clears the Step-3 gate.** *Generalizable* — every correction on a spec and every docs-polish
+pass. *Grounded* — seven named, author-attributed echoes across three artifacts, every one linkable.
+*Not already covered* — the Fold-in row says "re-draft" without naming a sweep or a report, the cheap
+exception is exempt, and `polish-docs` has no pointer. *Altitude* — two pointers to an existing
+canonical rule, no new rule text: the lightest rung on the ladder that fits.
+
+**The docs-polish PR is the clearest evidence for the mechanism.** #2058 ran a code fact-check that
+confirmed its new claims true, and still left their predecessors standing on five surfaces — the
+guide, the React example, the architecture doc and two READMEs, with
+`advanced/concurrency-policies.md:132` alone already right. **Verifying the new claim and reconciling
+the old one are separate obligations**; #2058 did the first unprompted, and nothing asked it for the
+second. One detail points the same way. Cursor's Best-Approach pass saw the guide's stale sentence and
+filed it as a vocabulary nit, and the author, who had made the correction, knew it was factual. A
+reviewer sees words; the corrector knows what moved. That is why the obligation belongs to the
+corrector.
+
+**So the proposal closes doors, not the class** — seven of seventeen under B, three under A. The other
+ten are the nine defects in the fix, and one echo on a path that already has a rule.
+
+### Scoring cycle 14's fix — first measurement, and it is mixed
+
+Cycle 14's fix (*"a check with no before-state owes a blast radius"*) **landed on `main`** in
+`fa21574d` and `4e03bde0`, both 2026-09-20, and is live in `issue-implement` at lines 22, 24, 336 and
+367.
+
+**Carried / not carried, asked of the branch heads.** The nine cleanup PRs (2026-08-22) and the spec
+#1888 (2026-09-18) **predate the fix and are out of the sample entirely** — not zeros, not a pass.
+**#2028 is the only artifact in this epic authored against it**, and both of its reviewed heads carry it:
+
+```
+$ git merge-base --is-ancestor 4e03bde0 4de4e367   # round-1 head → CARRIES
+$ git merge-base --is-ancestor 4e03bde0 5f63dd5f   # round-2 head → CARRIES
+```
+
+**The practice is visibly present.** Five verbatim blast-radius reports on #2028, in the shape the rule
+asks for: *"Removing the record-level check turns that one test red and nothing else"* · *"Red
+observed first: with an intervening selection the test failed `expected 'sess_absent' to be
+'sess_talk'`"* · *"Two tests, so the warning cannot be satisfied by always rendering it"* · *"Tests
+assert the **warning**, not merely that rows draw, since a version that rendered rows and swallowed the
+warning passes a row-only assertion"* · *"Red first — `shows the run's own status…` and `says a run has
+not started…` both failed before the change."*
+
+**And the class it was written for shipped anyway, in its fourth shape.** Round 1 folded Codex's
+missing-`orgId` finding, observed red (`{ req_other_org: true }`), and reported it. The feature was
+still **inert in production**: `principal.orgId` was never forwarded at the call site, and
+`matchesOrgFilter` treats the key as *present* whenever the literal carries it — so
+`{ orgId: undefined }` did not disable the filter, it compared every entry against `undefined` and
+passed only for an entry carrying **no org at all**. Registration requires one. So the D4 liveness arm
+**refused every genuine dispatch run**, and eight tests were green over it. The author's own
+diagnosis: *"the `register` fixture omitted `orgId` while the `seedSession` fixture already defaulted
+it — the tests were exercising a shape production never produces."* Caught in round 2 by a reviewer's
+follow-up, not by the blast-radius report. The fixture asymmetry is now written into the test itself
+(`packages/engine/test/context/liveness-dispatch-run-arm.test.ts:133-141`).
+
+**The reading, and it is a real limit rather than a failure.** Breaking *the property the check claims*
+went red — correctly — **on a fixture that was itself the wrong shape**. The blast radius proves the
+check moves with its claim; it does not prove the fixture reaches the shape production produces. That
+is shape 4 ("fixture too clean to contain the failure") surviving the rule written to catch it, by one
+step. **One instance. Recorded as a claim to test, not minted** — a second sentence on a fix whose
+first measurement is two days old would be exactly the reflex cycle 14 identified.
+
+**The one place in this cycle where the operation was applied to a *guard*, and it paid.** Everything
+above scores the blast radius against tests. The docs-polish agent ran it against a **check** instead:
+it planted a broken anchor, watched the build warn and **exit 0**, and reverted. Two results from one
+perturbation — the guard cannot fail, *and* the guard reaches the edited pages. That second half is
+cycle 14's parity clause ("where none exists, show the check reaches the code it covers") satisfied
+cleanly, and it is the only instance of it in this sample.
+
+**Read it beside #2028 rather than added to it.** Both produced a red state on purpose; they came out
+opposite ways, and the difference is *what was perturbed*. The anchor experiment perturbed **the guard
+itself** and learned the guard was toothless. #2028's round 1 perturbed **the property the check
+claims** and learned nothing, because the fixture it perturbed was the wrong shape. So the sample
+carries one defect instance and one success instance of the same operation, and the discriminator is
+whether the perturbation reaches the thing that would actually differ in production.
+
+**It is not evidence for this entry's proposal, and filing it there would be this entry's own
+subject.** The proposal is about a corrected claim's stale echoes in a document; this is about whether
+a check fails when the thing it checks is broken. That is BP-003 and the blast radius, a different
+population. Counting it toward the proposal would be "aimed at a neighbour" in the entry that spends a
+section on neighbours. Recorded here, and as a guard below.
+
+**The thirteenth artifact says the same thing about instruments, and it is the sharper statement of it.**
+Three of #2058's four factual corrections were found by a **code** check; the fourth was surfaced by
+the editorial passes as a contradiction between two pages, which they then resolved the wrong way round
+until a code read inverted it. On the prose, the blind reads were right throughout. The docs agent's own generalisation is worth keeping verbatim: *"a
+corpus pass which reconciles vocabulary will surface factual defects as a side effect, because making
+two pages agree forces someone to decide which one is right — and a `docs-editor` is structurally the
+wrong instrument for the half it uncovers."* Same discriminator as the two instances above: the
+perturbation has to reach the thing that would actually differ. Making two pages agree perturbs the
+**corpus** and reveals a disagreement; only a code read perturbs the **claim** and decides it.
+
+**And `polish-docs` does not ask for the code check.** Grepped: the skill's only instrument line is
+*"Run `docs-editor` over the pages you rewrote before opening the PR"* (`polish-docs/SKILL.md:86`).
+There is no fact-check step. **No proposal, and the reason is cycle 14's, again** — this pass ran the
+code check anyway, unprompted, and cycle 14 declined to mint claim 6's method on exactly that ground:
+*"a cycle that applies a step and finds it useful has not yet shown the step is needed by anyone who
+was not already going to do it."* What would carry a proposal is a docs-polish pass that **skipped**
+the check and shipped a factual defect. That sample does not exist yet, so this is a claim below, not
+a rule.
+
+**One correction to how this was reported to me.** The brief said every round found a defect in the
+round before it. Read against the commits, **two** are confirmed fix-induced — `c6d6e54` explicitly
+fixes `9a5c148`'s replacement definition (*"the cross-flow case biting a third time, in the definition
+itself"*), and `8f07918` fixes the first head's own half-carried term (*"the term introduced and
+abandoned inside one page"*). Round 1 (`dc7a75b`) corrected a **pre-existing corpus defect the
+reconciliation surfaced**, which is a different and better thing. The fourth I could not attribute
+from the commit messages and have not counted. The part that survives intact is the part hardest to
+dismiss: **one fact — cross-flow ownership — wrong in three files, by three authors, across two
+rounds.**
+
+**Claim 2 — the 30–40% band — is not comparable on this sample.** Three `vacuous-assertion` instances
+across thirteen artifacts (#1387's uncompiled `.test-d.ts`; #1395's first export-graph pass, caught by
+its own control; #2028's org fixture) against a denominator dominated by deletions and prose. A
+removal epic asserts very little. Not a dip; a different population.
+
+**Claim 4 — the zero on non-grading artifacts — weakly supported.** #1389, #1396 and #1406 are ordinary
+code changes and carry zero vacuous findings between them.
+
+**Claim 3 — retained guards — not measured here.** Out of this sample's reach; carry forward.
+
+**Cycle 13's claim 6 — "is a loop fix's reachability the thing that fails?" — gets a population and the
+answer is no.** This entry's first draft diagnosed the class as unreachable grounding, on a
+case-sensitive grep. The rule was reachable; the defect arrived through an exemption written beside it.
+That is worth more than a confirmation: reachability is the *attractive* diagnosis, it was wrong here,
+and the only thing that caught it was re-running the command case-insensitively. Carry claim 6 forward
+with that caveat attached.
+
+### The coordinator's observations, checked against the artifacts
+
+The wrap brief supplied eight field observations. Treating them as claims rather than findings, per
+BP-003:
+
+| # | Verdict |
+|---|---|
+| 2 — a coordinator instruction nearly shipped a dead feature | **CONFIRMED, and sharper than reported.** The behaviour the instruction forbade changing *was* the defect: the org filter was refusing every genuine run. A literal-compliant worker documents the layering and ships nothing. The worker deviated, flagged it, and fixed both layers. |
+| 3 — fixture asymmetry | **CONFIRMED**, mechanism and count. Eight tests; the suite is ten now. BP-003's three bullets do **not** name it — the nearest is "aimed at a neighbour," and this is not a neighbour, it is the right target in the wrong shape. Recorded, not minted. |
+| 6 — second-order defects of a fix round | **CONFIRMED and widened.** Seventeen instances, not three, across four artifact kinds (by the Kind column: epic, impl, spec, docs). This is the entry's proposal — though the mechanism is not the one the observation guessed: they are not under-reviewed. Eight are echoes of a correction, under-*reconciled*; nine are defects in the fix itself, under-*verified*. Only three of the echoes came through the spec cheap exception. |
+| 7 — two reviewers said "already tight" | **CONFIRMED with one correction.** Cursor's Code Snob returned *"outcome 3: already tight. No POC"* on **both** rounds and Cursor's Simplify pass **APPROVED** on round 2, while Codex filed four P2s on that same head. But the four are not four capability regressions: **three** are (read-failure surfacing, truncation disclosure, run status — all capability the removed Children tab had, and all three made the new surface state something false), and the fourth is the fence race that round 1's own fix introduced. The org-filter bug was found by **Cursor's** follow-up, not Codex. Different lens, different blind spot — in both directions. **Recurred in shape on #2058:** Code Snob *"too small to rewrite"*, Best-Approach approved, Codex filed both P2s — and Best-Approach saw the third echo but filed it as a vocabulary nit. Two PRs now; still one composition, and still a row. |
+| 8 — spec-review rounds are ledger signal | **CONFIRMED, and it inverts.** #1888's four rounds were **not** review rework: round 1 was six findings folded in one pass, and rounds 2–4 were the **owner** superseding his own D1 sign-off 21 minutes after giving it, then specifying DevTool presentation, then asking for wireframes. Scoring that as spec-authoring cost would blame the author for direction that arrived late. #1376's roughly nine waves *are* rework, and seven of its findings are self-inflicted. **The two direction artifacts overran the same budget for opposite reasons, and a rounds column alone cannot tell them apart.** |
+| 5 — `onBrokenAnchors` | **CONFIRMED by experiment — run by the docs-polish agent, not re-run here.** The config half is read off the file: `apps/docs/docusaurus.config.ts` sets `onBrokenLinks: "throw"` (line 16) and `onBrokenMarkdownLinks: "warn"` (line 20) and **does not set `onBrokenAnchors` at all**. The behavioural half was *produced* rather than inferred: a bogus anchor inserted into an edited page made the build print `[WARNING] Docusaurus found broken anchors!` naming it and **exit 0**; reverting it went clean. That also shows the check reached the edited pages, which is the other half — a green result from a check that never opened your files proves nothing either. Docusaurus's own upstream default is still unverified and is now beside the point. `@docusaurus/core` is not installed in this worktree (there is no `node_modules` at all), so this entry records another agent's observation with its negative control, not a re-run. Filed as a one-line config change, like cycle 1's C0/NUL gate — not a lesson. |
+| 4 — blind review's bounded competence | **DERIVABLE after all — from the thirteenth artifact, not the twelve.** This row first read *not derivable*, correctly scoped to the twelve I had sampled and wrong about the useful claim. #2058's own PR body records the measurement: two cold `docs-editor` reads *"caught the term being introduced and abandoned, and surfaced the run-versus-session contradiction"* — then **"That contradiction was settled against the code, which inverted four of the second read's findings — they were not applied."** Both halves of your observation, on the record: the blind read found a real class no code-holder would have seen, and got the factual resolution wrong. **Isolation buys prose judgement, not factual arbitration** — which is close to your wording, now with a countable four behind it. |
+| 1 — four CI completion signals pointing at stale state | **NOT DERIVABLE from these artifacts.** Webhook-delivery timing against a workflow run's `head_sha` leaves no trace in PR review data. Recorded as coordinator-reported; it is a harness shape, not a code-review rework class, and would need its own instrument. **Read the scoping literally** — observation 4 carried this same verdict and a sibling artifact overturned it, so "not derivable from what I sampled" is all this says, and it is not a claim that no artifact carries it. |
+
+### Candidates considered and dropped
+
+- **A BP, or a BP-022 sentence, for the release-note derivation class.** Dropped — 16 findings in the
+  fragment itself and still the wrong move. The rules are correct, were cited by line at eight
+  separate defects across five fragments, and cycle 14 measured what that is worth.
+- **Sharpening BP-003 to name fixture asymmetry.** Dropped at one instance. It is a genuinely
+  uncovered sub-shape and it is a **claim to test**, not a rule. If a second cycle produces it, the
+  home is `issue-implement`'s blast-radius paragraph — "and the fixture reaches the shape production
+  produces" — not a fourth BP-003 bullet.
+- **"Give the epic-spec a pointer to `issue-spec` 6.5.2."** Dropped, and it was this entry's own first
+  proposal. The grep it rested on was case-sensitive; `orchestration.md:445` and
+  `epic-spec-template.md:627` both carry a re-draft instruction that reaches the epic-spec. Kept in the
+  record rather than deleted, because a loop-measuring instrument that quietly corrects its own
+  diagnosis is the least trustworthy thing in this file.
+- **"Every fold re-derives its blast radius," code included.** Dropped as bloat. Nine of the
+  seventeen are defects in the fix itself, which no reconciliation rule reaches, and implementation PRs
+  already have 10.6. An earlier draft of this bullet also declined a `polish-docs` pointer as "one
+  artifact"; the recount reversed that part — see the revised fix — because the echo mechanism turned
+  out to span three artifacts, and the pointer is the same pointer either way.
+- **A rule about reviewers filing the same finding three times** (#1391's issue ref, #1376's T7/T11
+  convergence). Dropped — independent convergence is *corroboration*, and the author read it that way
+  in both places (*"you and the parallel reviewer converged on this independently, which is fair
+  evidence it was the real problem"*). Deduping it away would cost more than the repeated reply does. The ledger counts such a defect
+  once regardless: corroboration is a property of the review, not a second finding.
+- **A rule about merge-order-dependent doc claims** (#1394's three findings shared with #1387, and
+  #1376's retracted hard constraint). Dropped as a property of ten PRs open at once against one tree —
+  which the epic PR itself already names as its open question (*"whether ten PRs open at once was the
+  right call"*). A coordination question for `epic-lifecycle`, not a lesson.
+
+### Filed, not proposed
+
+- **`scripts/validate-changeset-refs.mjs` cannot fail on a well-formed wrong id.** #1391 carried
+  `(FIX-1209)` on a FIX-1215 changeset **past a green guard** — three reviewers caught it by eye and it
+  was corrected in `4da4feb` before merge, so nothing shipped wrong; the guard simply cannot be the
+  thing that catches it. The
+  validator asserts a `TEAM-123`-shaped id is *present*; checking it against the PR's own issue is a
+  small, decidable change. A guard, not a lesson.
+- **This repo's docs build exits 0 on a broken anchor, so a green docs build does not prove renamed
+  headings safe.** Observed, not inferred: a planted anchor produced
+  `[WARNING] Docusaurus found broken anchors!` and a **zero exit**, and reverting it went clean.
+  `onBrokenAnchors` is unset in `apps/docs/docusaurus.config.ts`; setting it to `"throw"` is one line.
+  `polish-docs`' own Verify step warns that a zero exit does not prove **markdown links** safe and says
+  nothing about anchors — a partial restatement of the same gap, which #2058's agent closed by planting
+  an anchor rather than by following the skill.
+  Stated as the build's behaviour rather than as Docusaurus's default, because the default is
+  version-dependent and unverified while the behaviour is what a future reader has to act on.
+- **#1391 merged with an open P1 review thread** (changeset length, filed 2026-08-23T01:37Z, never
+  answered; the PR merged at 02:04Z). `issue-implement` 10.6 forbids exactly this. One instance, and
+  the rule that owns it is already correct and already on that path — recorded so a second instance has
+  something to be a second of.
+
+### Claims to test next cycle
+
+1. **Do the sweeps, once pointed at, close the echoes?** Baseline: **eight echoes across three
+   doors** — three through the spec cheap exception, two where a re-draft rule was already reachable,
+   three on a docs-polish pass. Score the next two direction artifacts and the next docs-polish pass for
+   echoes, and check the sweep report actually appears — an obligation with no visible output is the
+   one that quietly stops happening. The nine defects in the fix itself are not this claim's
+   population, and neither option in the revised fix reaches them.
+2. **Does the blast radius catch a fixture that never reaches production's shape?** One instance says
+   no: on #2028 the report was written, the red state observed, and the D4 arm was still inert. A
+   second code-heavy sample decides whether that is a limit of the rule or an accident of one PR.
+3. **Are direction-artifact rounds separable by cause?** #1888 (~4 rounds, owner-initiated) and #1376
+   (~9 waves, self-inflicted) are opposite phenomena in the same column. Record the split on the next
+   two direction artifacts and decide whether the ledger needs the distinction as a column rather than
+   as prose.
+4. **Does a docs-polish pass that skips the code fact-check ship a factual defect?** #2058 ran one
+   unprompted and it found three of the four corrections, including a fact two editorial rounds had
+   already walked past; `polish-docs` asks only for `docs-editor`. **The measurement this needs is a
+   pass that did not run it** — until one exists, a fact-check step would be minted on a sample where
+   it was never absent, which is the shape cycle 14 declined.
+   **The sweep half is no longer a claim to wait on.** It moved into the revised fix once the recount
+   found the same echo mechanism on two other artifacts. What stays here is the fact-check half.
+5. **Does a vocabulary reconciliation keep surfacing factual defects?** #2058's claim is that it does
+   so *structurally* — agreeing two pages forces someone to pick which is right. One artifact, four
+   corrections. If a second corpus pass reproduces the ratio, the finding is about corpus passes, not
+   about this corpus.
+6. **Does the release-note class fall on a non-removal epic?** 16 of 61 (26%) sat in one file type,
+   on an epic whose deliverable *is* the release note. If it stays above
+   20% on an epic that ships features, the "property of the sample" reading is wrong and the class
+   needs an instrument rather than another sentence.
+
+### Finding map — every count above, rebuildable
+
+`T`-numbers are positions in each PR's review-thread list, oldest first. `+` joins threads collapsed
+into one finding. **F** marks a finding counted in the changeset figure. Rules: *Method — findings*.
+
+**#1376** — 37 findings from 46 threads, under BP-040's bar.
+- missed-edge-case ×11: T3 · T17 · T34 · T35 · T38 · T40 · T41 · T42 · T43 · T44 · T46
+- spec-ambiguity ×6: T4 · T6+T13+T19 (the split's rationale) · T10 · T23 · T31 · T36
+- design-off ×4: T2+T5+T8+T9+T12 (an open-ended hunt inside a bounded set) · T7+T11 (tap fixes in the
+  dedupe slice) · T8+T18+T21+T24 (behaviour-changing members in the completion set) · T27
+- stale-restatement ×4: T28 · T33 · T39 · T45
+- docs-miss ×4: T1 · T14 · T20 · T32
+- nit ×8: T15 · T16 · T22 · T25 · T26 · T29 · T30 · T37
+- T8 names two defects and appears in two groups. T45 and T46 were unanswered when the PR closed.
+- Fix-induced 7: T33 · T38 · T39 · T40 · T41 · T42 · T43.
+
+**#1390** — 11 from 13. docs-miss ×7: T2+T3 `AgentType` **F** · T2+T4+T9 `reviewOutputSchema` **F** ·
+T2+T5 `PRE_RANK_CAP` **F** · T2+T9 `BasePlan*` **F** · T5+T8 stage-1 comment · T11 `CollectionItem`
+**F** · T13 `scores` **F**. missed-edge-case ×2: T1+T6 `FSDEV_DEBUG_ITEMS` · T12 `ContextItem` **F**.
+nit ×2: T7 · T10. **F = 7.** Fix-induced: T11.
+
+**#1387** — 9 from 11. missed-edge-case ×3: T1+T3 · T9 · T10 (*vacuous-assertion*).
+stale-restatement ×1: T2. docs-miss ×1: T11. nit ×4: T4+T7 · T5 · T6 · T8. **F = 0.** Fix-induced: T10.
+
+**#1392** — 12 from 14. over-engineered ×6: T1+T10 · T2+T10 · T3+T9 · T4 · T5 · T7 **F**.
+docs-miss ×2: T8 · T14. nit ×4: T6 · T11 · T12 · T13. **F = 1.**
+
+**#1389** — 3 from 3. docs-miss ×2: T1 · T3. nit ×1: T2. **F = 0.**
+
+**#1394** — 24 from 25. missed-edge-case ×16: T1 · T2 · T3 · T4 · T5 · T14 · T15 · T16 · T18 · T19 ·
+T20 · T21 · T22 · T23 · T24 · T25. stale-restatement ×3: T6+T10 · T7 · T8. docs-miss ×1: T11.
+nit ×4: T9 · T12 · T13 · T17. **F = 0.** Fix-induced: T18, T22.
+
+**#1391** — 11 from 16. docs-miss ×2: T5+T7+T8+T13 (the issue ref) **F** · T16 **F**.
+missed-edge-case ×3: T6+T10 · T9 · T14. stale-restatement ×2: T11 · T15. over-engineered ×2: T1+T12 ·
+T2. nit ×2: T3 · T4. **F = 2.**
+
+**#1395** — 7 from 10. docs-miss ×2: T1 **F** · T2+T7+T10 **F**. nit ×5: T3 · T4 · T5+T8 · T6 · T9.
+**F = 2.** The internal inventory left this fragment after #1396's P1; no thread on #1395 flagged it,
+so it is not a #1395 finding.
+
+**#1396** — 7 from 8. docs-miss ×4: T3 · T6 **F** · T7 **F** · T8 **F**. missed-edge-case ×1: T4.
+nit ×2: T1+T5 · T2. **F = 3.**
+
+**#1406** — 6 from 6. docs-miss ×1: T6 **F**. nit ×5: T1 · T2 · T3 · T4 · T5. **F = 1.**
+
+**The nine implementation PRs:** non-`nit` 9 + 5 + 8 + 2 + 20 + 9 + 2 + 5 + 1 = **61**; in the fragment
+7 + 0 + 1 + 0 + 0 + 2 + 2 + 3 + 1 = **16**.
+
+**#1888** — 8: six threads and two from the conversation. missed-edge-case ×3: T3 · T6 · FIX-1097's
+cancellation reason (conversation). docs-miss ×2: T1 · T5. stale-restatement ×1: T2. nit ×2: T4 ·
+FIX-1045's cancellation reason, whose verdict stood (conversation). Fix-induced: FIX-1097's.
+
+**#2028** — 16 from 18. missed-edge-case ×7: T7 · T8 · T10 · T15 · T16 · T17 · T18. docs-miss ×2: T2 ·
+T5+T9. over-engineered ×2: T6 · T12. nit ×5: T1 · T3+T14 · T4 · T11 · T13. Fix-induced: T15.
+
+**#2058** — 7 from 7. stale-restatement ×4: T4 guide · T5 DevTool page (vocabulary) · T6 React example ·
+T7 concurrency. nit ×3: T1 · T2 · T3. Fix-induced 4, a different set: `c6d6e54` · T4 · T6 · T7.
+
+**The seventeen:** #1376 7 + #1394 2 + #2028 1 + #1888 1 + #1387 1 + #1390 1 + #2058 4. **Echoes, 8:**
+#1376 T33, T38, T39, T40 · #1888 FIX-1097 · #2058 T4, T6, T7. **Defects in the fix, 9:** #1376 T41,
+T42, T43 · #1394 T18, T22 · #2028 T15 · #1387 T10 · #1390 T11 · #2058 `c6d6e54`.

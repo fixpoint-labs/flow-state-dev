@@ -8,17 +8,18 @@ sidebar_label: Dispatched work
 Some work outlives the turn that asked for it: a long research pass, a document
 being drafted, an implementation running for an hour. That work runs in its own
 *session*, the record the framework keeps for one conversation, holding its
-state, its resources, and the history of every request that ran in it. The
-session hangs off the conversation that started it, as a child of it.
+state, its resources, and the history of every request that ran in it. A session
+a dispatcher started is called a *dispatch run*. It is a session of its flow like
+any other, and it records the conversation it was started from.
 
 This page covers how a flow starts that work, and the HTTP surface for reading
-it afterwards. Ask a conversation for its children, then ask any one child for
-its history.
+it afterwards. List a flow's sessions with its dispatch runs included to find
+one, or ask a conversation which runs it started.
 
 Starting one is server-side only. There is no endpoint for it. A job begins
 inside a running request, either from a `dispatcher()` block or from a task
-board handing a claimed row to a child session. See [Work that outlives the
-turn](/guides/background-work#dispatch-work-in-a-child-session) for how the two
+board handing a claimed row off, which starts one. See [Work that outlives the
+turn](/guides/background-work#dispatch-work-in-its-own-session) for how the two
 relate to the other kinds of background work.
 
 ## Starting a job from a flow
@@ -95,15 +96,14 @@ the dispatcher's input as-is.
 
 | `session` | Runs in | When it does not exist |
 |---|---|---|
-| `{ key: (input) => string }` | a child of the running session, derived from the key | created; the next call with the same key from the same conversation adopts it |
+| `{ key: (input) => string }` | a session derived from the key, recorded against the running one | created; the next call with the same key from the same conversation adopts it |
 | `{ id: (input) => string }` | the session with that id | refused. Nothing is created |
 
-A `key` child is a job in every sense on this page: it hangs off the session
-that started it, runs the same flow as the same user, keeps its own state and
-history, and shows up in the parent's listing below. The key is scoped to the
-conversation, so the same key from a different conversation is a different
-child. An `id` target has to be a session of this flow kind that belongs to
-this user.
+A `key` run is a job in every sense on this page: it runs the same flow as the
+same user, keeps its own state and history, records the session it was started
+from, and appears in both listings below. The key is scoped to the conversation,
+so the same key from a different conversation is a different run. An `id` target
+has to be a session of this flow kind that belongs to this user.
 
 `defineFlow` checks every dispatcher it can reach and throws at definition time
 when `action` names an entry the flow does not declare. An action named
@@ -119,19 +119,19 @@ A refusal at run time throws `DispatchRefusedError`, with `code:
 | `flow-not-found` | A `flowKind` names a flow this server has not registered |
 | `session-not-found` | An `id` names a session that does not exist, or one that belongs to another user |
 | `session-not-addressable` | An `id` names a session on a flow other than the one addressed |
-| `key-occupied` | The `key` derived a session id already held by something that is not this conversation's child |
+| `key-occupied` | The `key` derived a session id already held by a record that is not this conversation's run |
 | `no-dispatch-operation` | This process runs requests but was not set up to dispatch one |
 | `dispatch-rejected` | The entry's `concurrency` policy is `reject` and its key is held |
-| `external-dispatcher` | An `id` delivery on a deployment that hands work to an external queue. A `key` child is unaffected |
+| `external-dispatcher` | An `id` delivery on a deployment that hands work to an external queue. A `key` dispatch is unaffected |
 
 Every refusal is decided before anything starts, so a `.rescue()` on the
-dispatcher can branch on `refused` knowing no child is running. A `key` or
+dispatcher can branch on `refused` knowing no run has started. A `key` or
 `id` function that returns an empty string throws a plain `Error` naming the
 block.
 
 A task board seat can start a job the same way: a `dispatcher({ action, session
 })` under `workers` sends each claimed row to one of the flow's `task.actions`
-entries, and the child session lands in the same listing. See [Task board →
+entries, and that run lands in the same listings. See [Task board →
 Seats that hand off](../orchestration/task-board.md#seats-that-hand-off).
 
 ### Starting a job on another flow
@@ -152,14 +152,14 @@ const notifyBilling = dispatcher({
 });
 ```
 
-The job still starts and returns immediately, and the child session still hangs
-off the conversation that started it — but it belongs to the instance it was sent
-to. It runs that instance's entry, starts with that instance's session-state
-defaults, and its `flowId` in the listing is that instance's. Whatever the job
-needs travels in the payload; the two flows share no state. Two copies of one
-definition count as two instances here: a child sent to `review-east` is
+The job starts and returns immediately. Its session records the conversation that
+started it, but it belongs to the instance it was sent to. It runs that
+instance's entry, starts with that instance's session-state defaults, and its
+`flowId` in the listing is that instance's. Whatever the job needs travels in the
+payload; the two flows share no state. Two copies of one
+definition count as two instances here: a run sent to `review-east` is
 `review-east`'s, and the same conversation dispatching to `review-west` gets a
-second child rather than adopting the first.
+second run rather than adopting the first.
 
 `defineFlow` can't check this address the way it checks a same-flow one. It sees
 one flow at a time, and the flow you named is defined somewhere else. So the
@@ -192,11 +192,54 @@ instance you named — the reply is refused `session-not-addressable` rather tha
 delivered somewhere else. Naming a sibling copy of the sender's definition is
 still a disagreement: ownership is by instance, not by kind. A `task` dispatcher may take `flowKind` the same way.
 
-## Listing a session's children
+## Finding dispatched runs on a flow
+
+`GET /sessions` returns the sessions a person started. Pass
+`include=dispatch-runs` for the sessions dispatchers ran work in as well:
+
+```
+GET /api/flows/sessions?flowKind=reports&include=dispatch-runs
+```
+
+Rows are whole session records. One a dispatcher started carries
+`parentSessionId` — the bare id of the conversation it was started from — beside
+the `topic` and `coordinate` labels described below. Sort a listing on
+`parentSessionId` to group each conversation's runs under it.
+
+```ts
+const sessions = await sessionClient.listSessions({
+  flowKind: "reports",
+  include: "dispatch-runs",
+});
+```
+
+The listing is scoped to the caller before the parameter is read. An
+authenticated caller sees their own sessions, in their own organization and
+tenant; the `userId` query filter can narrow that and never widen it, and there
+is no `orgId` query parameter at all, because an organization is never a
+caller's to name. The parameter adds the dispatcher-started rows inside that
+scope and changes nothing about it, so a run belonging to another principal,
+another organization or another tenant is absent from the response either way. A
+value the route does not recognise is a `400` naming what it accepts.
+
+With no `resolvePrincipal` configured there is no principal to scope to, and the
+query filters are the only ones there are — the same caveat that governs every
+management endpoint. See [Without a
+resolver](./authentication.md#without-a-resolver).
+
+Leave the parameter off and the response holds the sessions a person started.
+
+## Which runs a conversation started
 
 ```
 GET /api/flows/sessions/sess_abc/children
 ```
+
+The `/children` route is the provenance index for one conversation: which runs
+were started from it, and what state each one's work reached. A row is a
+`ChildSessionSummary`, one per dispatch run. Reach for it when you have a
+conversation in hand and want its work; reach for the listing above when you want
+a flow's runs without naming a conversation first.
 
 ```json
 {
@@ -226,19 +269,19 @@ GET /api/flows/sessions/sess_abc/children
 
 Those eight fields are the whole row. The route sends this named set rather than
 a session record, so there is no `flowKind`, `userId`, `title` or `metadata` on
-it. `flowId` is the instance that owns the child, the one a cross-flow dispatch
-was sent to; it is the address to read or re-enter the child through, and is
-absent on a child that records no owner.
+it. `flowId` is the instance that owns the run, the one a cross-flow dispatch
+was sent to; it is the address to read or re-enter the run through, and is
+absent on a row that records no owner.
 
-`topic` and `coordinate` are display labels. `coordinate` is the entry the child
+`topic` and `coordinate` are display labels. `coordinate` is the entry the run
 was dispatched to, `<type>:<target>`: `internal:summarize` for an internal entry,
 `task:implement` for a task-board seat that hands off. `topic` is the key the
-child session was derived from — what a `dispatcher()`'s `session: { key }`
+run's session was derived from — what a `dispatcher()`'s `session: { key }`
 function returned, or the composed key a task seat's `session` policy produced.
 
 Nothing routes, authorizes or identifies from either label, and both are
 optional, as are `status` and `flowId`. Guard all four with `== null`. A row with no labels is
-a child session, same as any other; it just carries nothing to display.
+a dispatch run, same as any other; it just carries nothing to display.
 
 ### What `status` tells you
 
@@ -335,7 +378,7 @@ abandonment allowance, see [the
 lease](../orchestration/task-substrate.md#the-lease) and [when a job keeps being
 abandoned](../orchestration/task-substrate.md#when-a-job-keeps-being-abandoned).
 
-## Reading one child's history
+## Reading one run's history
 
 Each row's `id` addresses a session, so every session endpoint works on it:
 
@@ -343,8 +386,8 @@ Each row's `id` addresses a session, so every session endpoint works on it:
 GET /api/flows/sessions/dsx_9f2c1a/requests
 ```
 
-That returns the child's runs, with the item log for each when you ask for it
-(`?include_items=true`).
+That returns the run's own requests, with the item log for each when you ask for
+it (`?include_items=true`).
 
 A run a `dispatcher()` started reads `source: "internal"`, or `source: "task"`
 when a task-board seat handed the work off, and carries a `metadata.dispatch`
@@ -367,7 +410,7 @@ bag:
 ```
 
 `type` and `action` are the entry the run executes, `from` names the block that
-sent it and the session it was running in, `key` is the session key the child
+sent it and the session it was running in, `key` is the session key the run
 was derived from, and `taskId` the board row on a task hand-off. `key` is absent
 when the dispatcher delivered into an existing session by `id`, and `taskId` is
 absent on an internal dispatch.
@@ -384,43 +427,44 @@ A run with either source cannot be re-entered from outside. `retry`,
 `continue`, and `resume` on its request id answer `404`, the same as for a
 request that does not exist.
 
-Children can nest. If a child dispatches work of its own, calling `/children` on
-its id returns it.
+A run can dispatch work of its own. Those runs are sessions of the flow like any
+other: they appear in the flow's listing with `include=dispatch-runs`, and
+calling `/children` on the run that started them returns them.
 
-## Paging
+## Paging a conversation's runs
 
 Pass `limit` (1–100, default 25) and `offset` (0–10000). Values outside those
 ranges get a `400` naming the accepted range rather than a silently clamped
 page. A host can lower the ceiling with
 [`maxChildSessionListLimit`](../configuration/runtime.md).
 
-Rows come back newest-created first. A child that starts a run while you are
-paging will not shuffle the pages under you. A child *created* while you are
+Rows come back newest-created first. A run that starts a request while you are
+paging will not shuffle the pages under you. A run *created* while you are
 paging can be missed, or can shift a later page by one — if you need exactness
 there, fetch a single page large enough to hold the whole set.
 
-## What this endpoint won't do
+## What the runs endpoint won't do
 
 **It won't apply access rules of its own.** The same rules that govern reading
-the conversation named in the path govern reading its children. That is how
+the conversation named in the path govern reading its runs. That is how
 every session-addressed route works: session detail, state, resource content,
 the debug endpoints. A conversation in another tenant answers `404`. One with no
-children answers `200` with an empty list. Whether one belonging to another user
+runs answers `200` with an empty list. Whether one belonging to another user
 answers `403` depends on your `resolvePrincipal`. With none configured the
 management endpoints stay open, so a caller holding a conversation id can read
-its children. See [Without a resolver](./authentication.md#without-a-resolver).
+its runs. See [Without a resolver](./authentication.md#without-a-resolver).
 
-**It won't list background work across conversations.** There is no
-"everything I have running" endpoint. You reach a child through the conversation
-that started it.
+**It won't list background work across conversations.** It answers for the one
+conversation in its path. For a flow's runs without naming a conversation, list
+the flow's sessions with `include=dispatch-runs`.
 
 **It won't tell you whether a worker process is alive.** See the note on
 `status` above.
 
-**It won't start anything.** Whether work runs in a child session is declared in
-the flow. A caller can list children, never create one.
+**It won't start anything.** Whether work is dispatched at all is declared in
+the flow. A caller can list runs, never create one.
 
-**It won't return the child's state, resources, or journal.** Rows carry
+**It won't return a run's state, resources, or journal.** Rows carry
 identity, labels, timestamps and status. Fetch the session itself if you need
 more.
 
@@ -428,11 +472,12 @@ more.
 
 - [Work that outlives the turn](/guides/background-work) — how this relates to the other
   things this framework calls background work
-- [Client overview](../client/overview.md#child-sessions) — the same two calls from an app
+- [Client overview](../client/overview.md#dispatched-runs) — the same calls from an app
 - [Claude Code SDK agent](../tools/claude-code-sdk.md#turning-it-off-for-background-work) — running
-  a coding agent in a child session, and what it records there
+  a coding agent in a dispatch run, and what it records there
 - [Codex SDK agent](../tools/codex.md#continuing-a-thread) — the other coding agent, and how a run
-  in a child session stays resumable when it is cancelled
+  in a dispatch run stays resumable when it is cancelled
+- [DevTool](../devtool/overview.md#dispatched-runs) — reading a run's stream and trace while you develop
 - [Engine setup](./setup.md) — the full HTTP route table
 - [Authentication](./authentication.md) — how addressed routes scope by owner
 - [Persistence](../persistence/overview.md) — where sessions and requests are stored

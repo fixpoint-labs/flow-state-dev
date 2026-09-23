@@ -25,7 +25,7 @@ createInboundTransportConformanceTests({
           flowKind: "demo",
           action: "run",
           input: {},
-          metadata: { body: { userId: "u_conform" } }
+          metadata: { body: { userId: "u_conform", orgId: "org_test" } }
         }
       });
       return {

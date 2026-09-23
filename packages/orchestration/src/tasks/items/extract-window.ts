@@ -8,9 +8,11 @@
  * Attribution is by the `taskId` stamped on each item at emit time (the
  * worker body marks its scope via `ctx._markTaskScope`), not by timestamp
  * windows. Timestamps could not separate a sibling worker running concurrently
- * inside a still-open window; the emit-time stamp can. Bookend `task-change`
- * and `task-board-meta` items are excluded — they're substrate scaffolding,
- * not worker emissions.
+ * inside a still-open window; the emit-time stamp can. Items the SUBSTRATE
+ * emitted about itself are excluded — `task-change`, `task-board-meta` and
+ * `task-board-recorder-failure`. They carry a `taskId` and are not the
+ * worker's output; the canonical list and the rule behind it live with the
+ * algorithm, in `@flow-state-dev/core/items`.
  *
  * These wrappers keep their original names and signatures (consumed by
  * `collection/internal.ts`, the supervisor synthesizer, and the UI); only the
@@ -32,8 +34,9 @@ export function extractTaskItems(
 }
 
 /**
- * Per-task buckets for `collectionId`. Each non-bookend item is attributed to
- * exactly one task by its emit-time `taskId` — never duplicated across tasks.
+ * Per-task buckets for `collectionId`. Each item that is not a substrate
+ * component is attributed to exactly one task by its emit-time `taskId` —
+ * never duplicated across tasks.
  */
 export function extractTaskItemWindows(
   items: readonly OutputItem[],

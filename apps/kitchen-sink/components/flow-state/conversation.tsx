@@ -58,17 +58,31 @@ export const Conversation = ({
     );
   }, []);
 
-  // Re-check when content resizes (e.g. streaming adds text beyond viewport).
+  // Re-check on any layout or content change, so a message that grows
+  // while the user is scrolled up (e.g. streaming text, or a new item
+  // appended anywhere in the tree) always updates the scroll-to-bottom
+  // affordance. A ResizeObserver on only the children present at mount
+  // misses a node added as a later sibling; watching all mutations under
+  // the container catches every case without assuming which child is
+  // "the" content wrapper.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const observer = new ResizeObserver(checkIsAtBottom);
-    for (const child of el.children) {
-      observer.observe(child);
-    }
-    // Also observe the container itself for size changes.
-    observer.observe(el);
-    return () => observer.disconnect();
+    // Catches size changes on the container itself (e.g. viewport resize).
+    const resizeObserver = new ResizeObserver(checkIsAtBottom);
+    resizeObserver.observe(el);
+    // Catches content growth anywhere inside — new items, and text that
+    // grows in place as it streams in.
+    const mutationObserver = new MutationObserver(checkIsAtBottom);
+    mutationObserver.observe(el, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
   }, [checkIsAtBottom]);
 
   const scrollToBottom = useCallback(() => {

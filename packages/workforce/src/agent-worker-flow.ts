@@ -25,7 +25,15 @@
  *
  * **A worker's `tools:` is a hard runtime fence**, not a hint: a seat may call
  * exactly the catalog keys it names, and an empty list means none, regardless
- * of what else the app's catalog carries. The skills library is handed the
+ * of what else the app's catalog carries — and, since FIX-1393, regardless of
+ * what a capability attached through `uses` would otherwise contribute. Core
+ * enforces that half; see `docs/architecture/capabilities.md` → *The tools
+ * fence*. What the fence deliberately does NOT hold back is a framework
+ * **control** a capability declares through `controlTools` — the skill loader
+ * this seat switched on, the delegation board a skill it holds asked for. A
+ * seat only holds those because its own config asked, and they are built
+ * inside their capability and never exported, so no `tools:` list could name
+ * one back in. The skills library is handed the
  * app's catalog with registration turned off (`registerCatalogTools: false`),
  * so a bound skill's `allowed-tools` are still validated against it — a typo
  * or a tool the app never registered still fails loud at build time — but the
@@ -43,19 +51,22 @@
  * is the seat's, not the skill's: a seat with `tools: []` reaches nothing,
  * including through a worker it delegated to.
  *
- * The one place that fence is upheld by convention rather than by the
- * framework is {@link AgentWorkerFlowOptions.uses}: the resolver unions a
- * capability's tools onto the generator's list instead of intersecting it
- * with the seat's, so an app passing a capability with default-on tools must
- * turn them off at the preset. FIX-1393 moves the intersection into
- * `@flow-state-dev/core`, at which point the convention stops mattering. The
- * rule itself does not change either way.
+ * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too
+ * (FIX-1393): core drops a capability's catalog-granted tools when the block
+ * declares `tools:`, and this kind declares it on every seat. Catalog tools a
+ * capability contributes are therefore copied onto this kind's catalog at
+ * construction, so a seat can name them in `tools:` the same way it names an
+ * app-passed tool. An empty list still means none. What the fence does not
+ * touch is a capability's `controlTools` — see the paragraph above.
  */
 
-import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer, MANIFEST_DOMAINS } from "@flow-state-dev/core";
+import { flattenCapabilities, getBaseCapability, resolveActivePresets } from "@flow-state-dev/core/capability";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   BlockDefinition,
+  CapabilityRef,
+  DeclaredResources,
   GeneratorTool,
   InitialSkill,
   ToolCatalog,
@@ -69,7 +80,16 @@ import {
   pushActiveSkill
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
-import { SEAT_SKILLS_KEY } from "./manifest";
+import { SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
+import {
+  catalogSeatCapabilities,
+  resolveSeatCapabilities,
+  seatCapabilityProblems,
+  type SeatCapabilityCatalog,
+  type SeatCapabilitySelection
+} from "./seat-capabilities";
+import { SEAT_DISCOVER_KEY } from "./seat-discovery";
+import { seatSkillSchema, workerConfigSchema } from "./worker-config";
 
 /**
  * The kind name the hire step resolves a record to when it names none, and the
@@ -99,16 +119,6 @@ const DEFAULT_MODEL = "intent/chat";
 const ACTIVE_SKILLS_STATE = { scope: "session", field: "activeSkills" } as const;
 
 /**
- * The prompt seam, named so it is greppable when FIX-1344 part 2 lands.
- *
- * Today it is the worker's own instructions and nothing else. It is one
- * binding, not a helper — see the note at the generator's `prompt` slot.
- */
-function composeWorkerPrompt(config: { instructions?: string }): string {
-  return config.instructions ?? "";
-}
-
-/**
  * The parts of a seat's settings bag this file reads off a running block's
  * context, where the bag's type is erased.
  *
@@ -120,6 +130,17 @@ interface SeatConfig {
   tools: string[];
   seatSkills: InitialSkill[];
   skills: { active: string[]; activateTool: boolean; enableLlmClassifier: boolean };
+  capabilities: SeatCapabilitySelection;
+  /**
+   * The seat's own instructions — its file's body. Optional: a bodyless worker
+   * is a weak seat, not a failed hire, so the key is absent rather than empty.
+   */
+  instructions?: string;
+  /**
+   * The seat's TEAM-level instructions, imposed by the hire when its team wrote
+   * any. Absent — never `""` — when the team wrote none or has no file at all.
+   */
+  teamInstructions?: string;
 }
 
 /**
@@ -191,13 +212,19 @@ export interface AgentWorkerFlowOptions {
    * somewhere (see `UsesEntry` in `@flow-state-dev/core`). Pass a capability
    * dynamically and its stores are *not* installed by that entry alone.
    *
-   * **Tool-carrying presets are not fenced here.** The framework's resolver
-   * unions a capability's tools onto the generator's own list rather than
-   * intersecting it, so a preset that ships a tool reaches a worker whose
-   * `tools:` is empty. FIX-1393 lands that intersection in
-   * `@flow-state-dev/core`; until it does, an app passing a capability with
-   * default-on tools turns them off at the preset, as the README's memory
-   * recipe does with `recall` and `connect`.
+   * **A seat picks presets from what this option installs.** A worker file's
+   * `capabilities:` key names a capability listed here and the presets that
+   * seat wants; a name that is not a top-level static entry of this array is
+   * refused at the mint. Selecting only ever ADDS to what the entry already
+   * carries — see `./seat-capabilities`.
+   *
+   * **Tool-carrying presets ARE fenced** (FIX-1393). Core drops a capability's
+   * catalog-granted tools when the consuming block declares `tools:`, and this
+   * kind declares it on every seat — so a preset that ships a tool does not
+   * reach a worker whose `tools:` is empty. Turning such presets off at the
+   * preset (as the README's memory recipe does with `recall` and `connect`) is
+   * still reasonable on cost grounds, but it is no longer what keeps the seat's
+   * list honest. A capability's `controlTools` are exempt by design.
    */
   uses?: UsesSlot;
   /**
@@ -238,34 +265,29 @@ export interface AgentWorkerFlowOptions {
 }
 
 /**
- * One skill as it rides into the bag. Structural, not a second parser: the
- * loader has already parsed every `SKILL.md` that reaches here, so this checks
- * the SHAPE arrived intact (a hand-built roster is the case it catches) and
- * leaves the contents to the seeder, which parses them again where a parse
- * failure can be reported per skill.
+ * What one worker of this kind configures, in its file.
+ *
+ * **Composed from the admission contract rather than written beside it.** The
+ * four settings a seat's bag may carry — a worker's own instructions, its
+ * team's, the skills its folders resolved, and the blocks those folders
+ * registered that its `tools:` named — come from
+ * `workerConfigSchema()`, and this kind's own settings are extended on at the
+ * top level. That is the move every hireable kind makes, so the one kind that
+ * ships with the framework teaches the rule rather than standing outside it.
+ *
+ * `seatSkills` is re-declared below rather than inherited untouched: the SHAPE
+ * stays the contract's (`seatSkillSchema`), and the refinement on top of it is
+ * this kind's, because only this kind holds the app's own skill names to
+ * collide a seat's against.
  */
-const seatSkillSchema = z
-  .object({
-    name: z.string().min(1),
-    skillMd: z.string(),
-    files: z
-      .array(z.object({ path: z.string().min(1), content: z.string() }).strict())
-      .optional()
-  })
-  .strict();
-
-/** What one worker of this kind configures, in its file. */
-function settingsSchema(options: AgentWorkerFlowOptions) {
+function settingsSchema(
+  options: AgentWorkerFlowOptions,
+  seatCapabilities: SeatCapabilityCatalog
+) {
   const catalog = options.catalog ?? {};
   const appSkillNames = new Set((options.skills ?? []).map((skill) => skill.name));
 
-  return z.object({
-    /**
-     * The worker's instructions — its file body, or the frontmatter key.
-     * Optional: a bodyless worker is a weak seat, not a failed hire.
-     */
-    instructions: z.string().optional(),
-
+  return workerConfigSchema().extend({
     model: z.string().default(options.model ?? DEFAULT_MODEL),
 
     /**
@@ -286,23 +308,25 @@ function settingsSchema(options: AgentWorkerFlowOptions) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:
-              `names tool "${name}", which the app's tool catalog does not carry. ` +
-              `Known tools: ${known.length > 0 ? known.map((k) => `"${k}"`).join(", ") : "(none — no catalog was passed to defineAgentWorkerFlow)"}. ` +
-              `Pass it as \`defineAgentWorkerFlow({ catalog: { "${name}": <tool> } })\`, or drop it from this worker.`
+              `names tool "${name}", which nothing registers for this seat — neither its own ` +
+              `\`blocks/\` folder nor the app's tool catalog. ` +
+              `Known catalog tools: ${known.length > 0 ? known.map((k) => `"${k}"`).join(", ") : "(none — no catalog was passed to defineAgentWorkerFlow)"}. ` +
+              `Put the block in this worker's own \`blocks/\` folder and re-run \`fsdev gen\`, ` +
+              `pass it as \`defineAgentWorkerFlow({ catalog: { "${name}": <tool> } })\`, or drop ` +
+              `it from this worker.`
           });
         }
       }),
 
     /**
-     * The seat's own skills — **imposed by the hire step, never authored.**
+     * The seat's own skills — the contract's key, re-declared here to add ONE
+     * refinement this kind alone can make.
      *
-     * The loader resolves the org ∪ team ∪ own-folder union per seat and hands
-     * it over on the worker's record, exactly as a worker's body is handed over
-     * as `instructions`. A `seatSkills:` in a worker file is refused by name at
-     * both doors; see `manifest.ts`.
-     *
-     * Spelled `seatSkills` rather than `skills` because the bag already carries
-     * an author-written `skills` object below.
+     * The shape and the story are `workerConfigSchema()`'s: imposed by the hire
+     * step, never authored, present even when empty. What is added below is the
+     * collision check against `defineAgentWorkerFlow({ skills })`, which needs
+     * the app's own skill names and so cannot live on a contract every kind
+     * shares.
      */
     [SEAT_SKILLS_KEY]: z
       .array(seatSkillSchema)
@@ -366,7 +390,62 @@ function settingsSchema(options: AgentWorkerFlowOptions) {
          */
         enableLlmClassifier: z.boolean().default(false)
       })
+      .default({}),
+
+    /**
+     * The capabilities this seat picks up from what its kind carries, and the
+     * presets it wants from each.
+     *
+     * ```yaml
+     * capabilities:
+     *   research: [briefing]
+     * ```
+     *
+     * **Default empty**, which carries every installed capability's own
+     * defaults — what every seat gets today. Naming presets ADDS to that; a
+     * seat has no way to switch one off, because what a workforce may do is
+     * the app's call and a worker file is not where it is reversed.
+     *
+     * Refused **at the mint**, by name: an unknown capability, an undeclared
+     * preset, and the three presets that cannot travel the per-seat path (one
+     * the app turned off, one on a capability with open config, and one whose
+     * surface has to exist before a request runs). The whole selection is
+     * validated before a seat answers anything, because a typo surfacing as a
+     * failed turn in front of a user is worse than the silence this key
+     * closes.
+     */
+    capabilities: z
+      .record(z.string(), z.array(z.string()))
       .default({})
+      .superRefine((selection, ctx) => {
+        for (const message of seatCapabilityProblems(seatCapabilities, selection)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+        }
+      }),
+
+    /**
+     * Which discovery domains this seat sees (FIX-817).
+     *
+     * ```yaml
+     * discover: [seats, channels]
+     * ```
+     *
+     * **Omit the key to see every domain the seat's scope carries** — today's
+     * reach, unchanged. Naming domains NARROWS to those; an empty list asks to
+     * see none. There is no spelling that widens: a domain the app did not
+     * install is not reached by a file naming it, because the narrowing is an
+     * intersection over the registry the app built.
+     *
+     * A misspelled domain is refused **at the mint**, by name, listing the four
+     * — a typo that silently narrowed a seat to nothing would surface as a
+     * planner that quietly stopped finding anybody. A correctly spelled domain
+     * the scope does not carry is NOT a refusal: it is the add-never-widen rule
+     * doing its job, and the seat simply sees nothing for it.
+     *
+     * Read per turn by `createWorkforceCapability`'s door — see
+     * `./seat-discovery`.
+     */
+    [SEAT_DISCOVER_KEY]: z.array(z.enum(MANIFEST_DOMAINS)).optional()
   });
 }
 
@@ -405,6 +484,147 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
 }
 
 /**
+ * The one-name rule over the app's catalog, at the kind's construction door.
+ *
+ * Checked here and not at the scan because the catalog is a **kind-construction
+ * argument**: it covers a hand-built map exactly as it covers a generated one,
+ * and it leaves a block used only as a flow action alone. Thrown rather than
+ * collected — a kind is built once, at module scope, so there is no roster to
+ * report against and nothing else this call could usefully go on to do.
+ *
+ * Every mismatch is named in one message, for the reason `hireWorkforce`
+ * collects: an author fixing a catalog should see the whole list in one run.
+ */
+/**
+ * Catalog tools a kind's `uses` already grants — capability tools fill the
+ * kind catalog so a seat can name them in `tools:`.
+ *
+ * Core drops a capability's catalog tools when the consuming block declares
+ * `tools:` (FIX-1393). This kind always declares that slot, so a grant that
+ * stayed only on the capability would be a name no seat could call. Filling
+ * the catalog is what makes "kind installs via `uses`, seat names the tool"
+ * one path rather than two.
+ *
+ * Static arrays only. A preset whose `tools` is a function cannot be named
+ * at kind construction, and is left for the capability merge to contribute
+ * when the fence is down.
+ */
+function catalogToolsFromUses(uses: UsesSlot | undefined): ToolCatalog {
+  const filled: ToolCatalog = {};
+  if (!uses) return filled;
+
+  const topLevel = uses.filter((entry): entry is CapabilityRef => typeof entry !== "function");
+  for (const entry of flattenCapabilities(topLevel)) {
+    for (const { preset } of resolveActivePresets(entry)) {
+      if (!Array.isArray(preset.tools)) continue;
+      for (const tool of preset.tools) {
+        const toolName = (tool as { name?: unknown }).name;
+        if (typeof toolName !== "string" || toolName.length === 0) continue;
+        const existing = filled[toolName];
+        if (existing !== undefined && existing !== tool) {
+          throw new Error(
+            `defineAgentWorkerFlow refused catalog key "${toolName}": two capabilities in ` +
+              `\`uses\` contribute different tools under that name (${getBaseCapability(entry).name} ` +
+              `and another). One name is one tool.`
+          );
+        }
+        filled[toolName] = tool as GeneratorTool;
+      }
+    }
+  }
+  return filled;
+}
+
+/**
+ * The kind's catalog: capability grants first, the app's map on top only when
+ * the two agree. A collision of different instances is a construction error
+ * rather than a silent overlay — the seat's `tools:` would otherwise name
+ * one tool and call the other.
+ */
+function mergeKindCatalog(
+  uses: UsesSlot | undefined,
+  catalog: ToolCatalog | undefined
+): ToolCatalog {
+  const fromUses = catalogToolsFromUses(uses);
+  const fromApp = catalog ?? {};
+  for (const [name, tool] of Object.entries(fromApp)) {
+    const granted = fromUses[name];
+    if (granted !== undefined && granted !== tool) {
+      throw new Error(
+        `defineAgentWorkerFlow refused catalog key "${name}": the app's catalog and a ` +
+          `capability in \`uses\` both contribute that name, as different tools. ` +
+          `Drop one, or pass the capability's own tool under that key.`
+      );
+    }
+  }
+  return { ...fromUses, ...fromApp };
+}
+
+function assertOneNamePerCatalogEntry(catalog: ToolCatalog): void {
+  const problems: string[] = [];
+  for (const [key, tool] of Object.entries(catalog)) {
+    const blockName = (tool as { name?: unknown }).name;
+    if (typeof blockName !== "string" || blockName === key) continue;
+    problems.push(oneNameMessage(key, blockName, "The app's tool catalog"));
+  }
+  if (problems.length === 0) return;
+  throw new Error(
+    `defineAgentWorkerFlow refused ${problems.length} catalog ` +
+      `entr${problems.length === 1 ? "y" : "ies"}:\n  - ${problems.join("\n  - ")}`
+  );
+}
+
+/**
+ * What the app's catalog declares, merged into one set for the answer
+ * generators to declare as their own.
+ *
+ * **The gap this closes, and why it is not obvious.** A seat reaches its tools
+ * through the `tools:` slot below, which is a resolver that runs per turn off
+ * `ctx.flow.config`. `defineFlow` collects `declaredResources` by a STATIC walk
+ * over the flow's action blocks (`defineFlow.ts`), and nothing a runtime
+ * resolver returns was ever an action block — so a catalog tool that declares a
+ * store was hired, advertised to the model, called, and found no handle, while
+ * the turn reported success. Declaring them on the generator puts them back
+ * inside the walk that installs them, as BLOCK-level declarations on the very
+ * block that calls the tools, which keeps each one's own prefetch mode intact.
+ *
+ * Kind-wide by construction, and deliberately: the catalog is the kind's, so
+ * its stores belong to every seat of it — including seats whose `tools:` never
+ * name the tool. That is the same bill `uses` already presents, and it is why
+ * this is safe where collecting a SEAT's declarations would not be.
+ */
+function catalogDeclaredResources(catalog: ToolCatalog): DeclaredResources | undefined {
+  const merged: DeclaredResources = {};
+  /** Accessor key → the catalog key that claimed it, so a clash can name both. */
+  const claimedBy: Record<string, string> = {};
+
+  for (const [key, tool] of Object.entries(catalog)) {
+    const declared = (tool as { declaredResources?: DeclaredResources }).declaredResources;
+    if (declared === undefined) continue;
+    for (const [accessor, resource] of Object.entries(declared)) {
+      const held = merged[accessor];
+      // Same accessor, same `defineResource()` reference is one resource two
+      // tools share. A DIFFERENT reference is two resources one accessor —
+      // refused here, by both catalog keys, rather than silently taking the
+      // last: core refuses the same pair at the same level, and a last-wins
+      // merge is exactly the silent wrong answer this registration exists to
+      // remove.
+      if (held !== undefined && held !== resource) {
+        throw new Error(
+          `defineAgentWorkerFlow: catalog tools "${claimedBy[accessor]}" and "${key}" both ` +
+            `declare resource "${accessor}" with different defineResource() references. Use the ` +
+            `same reference across blocks, or pick distinct accessor keys.`
+        );
+      }
+      merged[accessor] = resource;
+      claimedBy[accessor] ??= key;
+    }
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+/**
  * Build a worker kind.
  *
  * Called with no arguments this returns the built-in — the kind a worker file
@@ -419,8 +639,20 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
  * @returns A `defineFlow` result of kind `agent`, cardinality `collection`.
  */
 export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
-  const catalog = options.catalog ?? {};
-  const settings = settingsSchema(options);
+  const catalog = mergeKindCatalog(options.uses, options.catalog);
+  // Before anything is built from it. A catalog key that disagrees with its
+  // block's own name would hand the model a tool no seat's `tools:` can
+  // authorize, and the kind is the door that holds the map.
+  assertOneNamePerCatalogEntry(catalog);
+  // What the catalog's own blocks need, so the flow installs it. See the
+  // function's note: without this a catalog tool that declares a store is
+  // advertised with nothing behind it.
+  const catalogResources = catalogDeclaredResources(catalog);
+  // Read once, here: it is what a seat's `capabilities:` is validated against
+  // at the mint AND what the per-seat entry below resolves through, and two
+  // readings of one `uses` array is how the two halves drift apart.
+  const seatCapabilityCatalog = catalogSeatCapabilities(options.uses);
+  const settings = settingsSchema({ ...options, catalog }, seatCapabilityCatalog);
   const inputSchema = z.object({ message: z.string() });
 
   const appSkills = options.skills ?? [];
@@ -449,6 +681,8 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // `tools:` setting. That registration path stays off; the generator's own
   // `tools:` slot below, fenced at the mint by the `tools` schema, is the
   // only stock tool-registration path.
+  // Organization scope, the library default. The organization is the
+  // principal's. A request sends `userId` and does not carry an org id.
   const skills = createSkillsLibrary({
     catalog,
     registerCatalogTools: false,
@@ -518,31 +752,96 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   } as never);
 
   /**
-   * The answering generator. Identity is all that varies between the two copies
-   * — the binding and the name — so this is a factory, not a helper (BP-024).
+   * What THIS seat's own file added on top of the kind's capabilities — the
+   * presets it named that the kind does not already carry.
+   *
+   * A dynamic entry because it is the only `uses` slot that can see a seat: a
+   * kind is built once and hired many times, so a static entry is resolved
+   * before any seat exists. It carries the DELTA only; every capability stays
+   * on its own static entry, which is what keeps a preset from being resolved
+   * on both paths (the framework merges the two independently and dedupes
+   * across neither).
+   *
+   * Appended only when the kind installs something selectable, so a kind that
+   * passes no `uses` builds exactly the block it built before this key existed
+   * rather than one carrying an inert dynamic resolver.
    */
+  const seatCapabilities = (ctx: BlockContext) =>
+    resolveSeatCapabilities(
+      seatCapabilityCatalog,
+      (ctx.flow.config as Partial<SeatConfig> | undefined)?.capabilities
+    );
+  const usesEntries = [
+    ...(options.uses ?? []),
+    ...(seatCapabilityCatalog.size > 0 ? [seatCapabilities] : [])
+  ];
+
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
     generator({
       name,
       inputSchema,
       flowConfigSchema: settings,
       itemVisibility: { client: true, history: true },
+      // What the app's catalog tools declare, declared here so `defineFlow`'s
+      // static walk installs it — see `catalogDeclaredResources`. Omitted
+      // entirely when the catalog declares nothing, so a kind built without one
+      // is byte-for-byte the block it was before this existed.
+      ...(catalogResources !== undefined ? { resources: catalogResources } : {}),
       // The skills binding stays FIRST and is never displaced: an app's own
       // capabilities compose beside it. That is what the `uses` option is for.
-      uses: [binding, ...(options.uses ?? [])],
-      // The prompt seam — a MARKED INSERTION POINT, NOT AN ABSTRACTION.
+      uses: [binding, ...usesEntries],
+      // The prompt seam — A MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
-      // The shared default worker system prompt (FIX-1344 part 2) is not shipped.
-      // Per contract C1 this kind consumes it and defines no second one, so today
-      // the slot resolves to the worker's own instructions alone. When part 2
-      // lands this becomes `[defaultWorkerPrompt, composeWorkerPrompt(...)]` and
-      // nothing else moves. Do not grow it into a compose helper, a registry or a
-      // type — if it ever needs more than this one binding, the seam should be
-      // re-decided rather than widened.
-      prompt: (_input, ctx) => composeWorkerPrompt(ctx.flow.config),
+      // Two layers, in this order every time: the seat's TEAM speaks first,
+      // the seat's own file last. The array is the framework's own prompt
+      // slot, which resolves each entry, drops the absent ones and joins the
+      // rest — so the filter and the join stay the framework's single rule
+      // instead of a second copy of it living here.
+      //
+      // Each resolver returns `undefined` rather than `""` for an absent
+      // layer, and that is load-bearing rather than stylistic: the slot drops
+      // `null`/`undefined` but keeps `""`, so an empty string would survive
+      // the filter and show up as a leading blank line in the prompt of every
+      // seat whose team wrote nothing.
+      //
+      // WHAT THE ORDER BUYS, AND WHAT IT DOES NOT. The position is fixed and
+      // checkable, and that is the whole promise. It is NOT a precedence rule.
+      // Assembly on this path is plain concatenation with no override,
+      // precedence or conflict-resolution mechanism anywhere in it, so if a
+      // team says *never touch production* and a seat says *restart the
+      // production queue*, what happens is whatever the MODEL does with two
+      // contradictory sentences. No doc line, test or PR sentence here should
+      // claim the seat's text "wins": a check on the composed string proves
+      // order, which is a neighbour of precedence and not precedence. Making
+      // the seat's line genuinely win would mean resolving contradictions
+      // before the prompt is sent — a different and much larger feature.
+      //
+      // The shared default worker system prompt is still unshipped and still
+      // owned elsewhere; per contract C1 this kind consumes it and defines no
+      // second one. When it lands it goes at the FRONT of this array — the
+      // framework, then the team, then the seat — and nothing else moves. Do
+      // not grow this into a compose helper, a registry or a type: an org-wide
+      // fourth layer is the point at which the seam should be re-decided
+      // rather than widened a second time.
+      prompt: [
+        (_input, ctx) => ctx.flow.config.teamInstructions,
+        (_input, ctx) => ctx.flow.config.instructions
+      ],
       model: (_input, ctx) => ctx.flow.config.model,
-      tools: (_input, ctx): GeneratorTool[] =>
-        ctx.flow.config.tools.map((toolName) => catalog[toolName] as GeneratorTool),
+      // The seat's declared tools, both halves. `tools` holds the names that
+      // resolved to the app's CATALOG; `seatTools` holds the blocks that
+      // resolved to this seat's own folders, already resolved at the hire step
+      // so this slot stays an O(1) read — it runs before every step of every
+      // turn. The generator's fence sees ONE declared list and cannot tell
+      // which half a tool came from, which is the point: a colocated block is
+      // not an exemption from the fence, it joins the declaration.
+      tools: (_input, ctx): GeneratorTool[] => {
+        const named = ctx.flow.config.tools.map((toolName) => catalog[toolName] as GeneratorTool);
+        const own = ctx.flow.config[SEAT_TOOLS_KEY] as GeneratorTool[] | undefined;
+        // Materialized only when the seat has both, which is the uncommon case.
+        if (own === undefined || own.length === 0) return named;
+        return named.length === 0 ? own : [...named, ...own];
+      },
       user: (input) => input.message
     });
 

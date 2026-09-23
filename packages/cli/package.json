@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/fsdev",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The fsdev command-line interface for flow-state-dev.",
   "keywords": [
     "ai",
@@ -60,6 +60,7 @@
     "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
+    "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "commander": "^13.1.0"
   },
@@ -78,7 +79,7 @@
     "zod": "^4.3.6"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",

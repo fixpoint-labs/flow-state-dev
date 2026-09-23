@@ -13,6 +13,10 @@ discipline, architectural-decision guardrail, scope/pattern boundaries, and comp
 report. Read the assigned `diagnose`, `debug-flow`, or `tdd` skill when applicable.
 The native execution modes below replace its run-before-report boundary and assign
 the discipline's execution steps to separate leaves; they do not waive evidence gates.
+For spec-backed slices, the supplied context names the approved merged retained revision,
+applicable `DOCS.md` obligations, and `EVOLUTION.md` predecessor decisions. Report missing
+context or material direction forks; the coordinator owns amendment PRs and renewed
+approval. Never import retained experimental POCs into production.
 
 You are a leaf worker, not an issue-lifecycle owner. Never spawn agents, run a review
 loop, create or subscribe to a mailbox, publish tickets/PRs, commit, push, or merge.

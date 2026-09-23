@@ -10,6 +10,7 @@ import type {
   CreateModelResolverOptions,
   FlowInstance,
   FlowStateSettings,
+  InstanceOwnerPin,
   VoiceProvider
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
@@ -345,6 +346,57 @@ export interface FlowState<TSettings extends object = FlowStateSettings> {
 
   /** Eager warmup. Idempotent. Useful in `instrumentation.ts` / tests. */
   ready(): Promise<void>;
+
+  /**
+   * Admit one flow instance after construction — the door an app hires a seat
+   * through while it is running, and the same door a boot-time reload of a
+   * stored roster comes through.
+   *
+   * Runs exactly the checks construction runs: a duplicate id is refused, so
+   * is a singleton under a custom id, and so is a flow whose user- or
+   * org-scoped schemas conflict with an already-registered kind's. **A refused
+   * registration changes nothing** — it throws before any registry state is
+   * touched.
+   *
+   * **One instance, never a batch.** Admitting a list would have to either
+   * roll the whole list back on a refusal or leave the earlier entries
+   * admitted, and a caller registering several almost always wants to know
+   * which one was refused and keep the rest. Loop, and handle each refusal
+   * where it happens.
+   *
+   * **What is served, and when.** The registry is read once per request, so
+   * the flow answers from the next request onward — **in this process only**.
+   * A sibling process picks it up when it next starts. If your app runs on
+   * more than one instance, plan for a short window rather than an instant
+   * one.
+   *
+   * @throws `FlowIdentityConflictError` or `CrossFlowSchemaConflictError`.
+   * Also throws when `options.pin` disagrees with a pin already on the instance,
+   * or when the instance declares a collection that can read user-owned roster rows.
+   */
+  register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
+
+  /**
+   * Release one address, so a request to it is answered the way a process that
+   * never had the flow would answer it.
+   *
+   * @returns `true` when an instance was holding the address, `false` when
+   * nothing was. An unknown id is an ordinary answer, not an error.
+   *
+   * **It cancels nothing.** A request already running holds the flow instance
+   * it resolved, so unregistering does not abort it, truncate its stream, or
+   * discard what it wrote — that run finishes and its items are persisted.
+   * Only the next request is affected.
+   *
+   * **Nothing else is touched.** Sessions, scope state and resources the flow
+   * wrote stay exactly as they are; removing those is a separate and
+   * irreversible operation.
+   *
+   * The per-process window is the same one `register` has, and it is sharper
+   * here: a sibling process serving this address keeps serving it until it
+   * next starts.
+   */
+  unregister(id: string): boolean;
 
   /** Dispose pooled resources across every declared adapter. */
   dispose(): Promise<void>;

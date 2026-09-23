@@ -21,6 +21,7 @@ import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { FlowInstanceBindingMismatchError } from "../../context/binding-errors";
+import { pinRejectsCaller, UnknownFlowError } from "../../context/hire-plane";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
   DEFAULT_RUNTIME_LOGGER,
@@ -42,6 +43,11 @@ import {
   type ConcurrencyArbiter
 } from "../concurrency/arbiter";
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
+import {
+  hasLegacyBodyOrgId,
+  isDefaultBodyUserIdPrincipalResolver
+} from "../auth/defaultBodyUserIdPrincipalResolver";
+import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import { INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
@@ -365,7 +371,7 @@ export function createInboundTransportHost(
     // written below carry the resolved instance's actual kind and its id.
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
-      throw new Error(`Unknown flow "${envelope.flowKind}"`);
+      throw new UnknownFlowError(envelope.flowKind);
     }
 
     const requestId = envelope.requestId ?? generateId("req");
@@ -896,25 +902,96 @@ export function createInboundTransportHost(
   ): Promise<void> => {
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
-      throw new Error(`Unknown flow "${envelope.flowKind}"`);
+      throw new UnknownFlowError(envelope.flowKind);
     }
-    if (!flow.requiresOrg) return;
-    if ((envelope.orgId ?? envelope.principal.orgId) !== undefined) return;
-    if (envelope.sessionId !== undefined) {
-      const existing = await stores.session.get(
-        resolveSessionStorageKey(envelope.sessionId, envelope.tenantId)
-      );
-      // Only honor the loaded session's org binding when its stored tenant
-      // matches this request's — guards the `:`-delimited key collision so a
-      // crafted sessionId can't borrow another tenant's org (FIX-682).
-      if (
-        existing?.orgId !== undefined &&
-        tenantMatches(existing.tenantId, envelope.tenantId)
-      ) {
-        return;
+    // Organization identity is no longer a per-flow opt-in to check here
+    // (FIX-1442). Every envelope reaching dispatch carries one: `resolve`
+    // validated it for inbound callers, and a trusted direct submitter is
+    // validated at its own seam. What remains is the envelope's own
+    // completeness, checked for the same reason it always was — before
+    // anything is written.
+    const orgId = envelope.orgId ?? envelope.principal.orgId;
+    if (!isValidOrgId(orgId)) {
+      throw new OrgRequiredError(envelope.flowKind, "dispatch");
+    }
+    // Before the 202. A mismatch is the same answer as an address this
+    // process does not hold, so the caller cannot probe which it was.
+    if (pinRejectsCaller(flow.ownerPin, { userId: envelope.principal.userId, orgId })) {
+      throw new UnknownFlowError(envelope.flowKind);
+    }
+  };
+
+  // Both warnings below are once per host, not once per request. They report a
+  // deployment's configuration — "this app has no authentication", "this app's
+  // clients still send an org" — which is the same fact on every request, and a
+  // per-request line would bury it in the very logs an operator reads to find it.
+  let warnedDevelopmentDefault = false;
+  let warnedLegacyBodyOrg = false;
+
+  /**
+   * The organization this request runs under, or a refusal.
+   *
+   * The single place the framework decides an organization, for every inbound
+   * transport (FIX-1442). Two sources and no third: a configured resolver's
+   * verified value, or — only when the app configures no authentication at all
+   * — the reserved development default.
+   *
+   * A configured resolver is held to the full contract. It cannot decline to
+   * name an organization and have the framework guess one, and it cannot claim
+   * {@link DEFAULT_ORG_ID}: that identity means "nobody authenticated here", so
+   * an authenticated principal holding it would put verified callers into the
+   * same boundary as unauthenticated ones.
+   */
+  const resolveOrgIdentity = (
+    context: PrincipalResolutionContext,
+    isDevelopmentDefault: boolean,
+    resolvedOrgId: string | undefined
+  ): string => {
+    if (isDevelopmentDefault) {
+      if (hasLegacyBodyOrgId(context)) {
+        if (!warnedLegacyBodyOrg) {
+          warnedLegacyBodyOrg = true;
+          // Presence, never the value — it names somebody's organization.
+          logSafely(
+            runtimeConfig.logger,
+            "warn",
+            "[flow-state] a request body still carries an `orgId` field; it is ignored. " +
+              "The organization comes from authentication.resolvePrincipal, or from " +
+              "DEFAULT_ORG_ID when no resolver is configured. Remove it from your client.",
+            { source: context.source }
+          );
+        }
       }
+      if (!warnedDevelopmentDefault) {
+        warnedDevelopmentDefault = true;
+        logSafely(
+          runtimeConfig.logger,
+          "warn",
+          `[flow-state] no authentication.resolvePrincipal is configured; running under the ` +
+            `development organization "${DEFAULT_ORG_ID}". Configure a resolver that returns a ` +
+            `verified orgId before serving more than one organization.`,
+          { source: context.source }
+        );
+      }
+      return DEFAULT_ORG_ID;
     }
-    throw new OrgRequiredError(envelope.flowKind);
+
+    if (resolvedOrgId === undefined) {
+      throw new PrincipalResolutionError(
+        "Request requires a verified organization: authentication.resolvePrincipal " +
+          "returned no usable orgId. Return a nonempty orgId from the resolver.",
+        { status: 401 }
+      );
+    }
+    if (resolvedOrgId === DEFAULT_ORG_ID) {
+      throw new PrincipalResolutionError(
+        `Request requires a verified organization: "${DEFAULT_ORG_ID}" is reserved for ` +
+          `unauthenticated single-organization development and cannot be claimed by a ` +
+          `configured resolver. Return this deployment's own organization id.`,
+        { status: 401 }
+      );
+    }
+    return resolvedOrgId;
   };
 
   const resolve = async (
@@ -936,6 +1013,15 @@ export function createInboundTransportHost(
     const requireUser = flow?.requireUser ?? true;
     const defaultUserId = flowAuth?.defaultUserId;
 
+    // Whether the resolver that actually ran is the framework default — i.e.
+    // this flow authenticates nobody. That is the ONE case where the framework
+    // supplies the organization instead of reading a verified one, so it is
+    // decided from the resolver that ran rather than from the shape of what it
+    // returned. A configured resolver that happens to return nothing is an
+    // authentication failure, not an invitation to fall back to development
+    // identity (BR-2).
+    const isDevelopmentDefault = isDefaultBodyUserIdPrincipalResolver(resolver);
+
     const result = await Promise.resolve(resolver(context));
     let userId: string | undefined;
     let orgId: string | undefined;
@@ -944,10 +1030,7 @@ export function createInboundTransportHost(
         typeof result.userId === "string" && result.userId.length > 0
           ? result.userId
           : undefined;
-      orgId =
-        typeof result.orgId === "string" && result.orgId.length > 0
-          ? result.orgId
-          : undefined;
+      orgId = isValidOrgId(result.orgId) ? result.orgId : undefined;
     }
 
     if (userId === undefined && defaultUserId !== undefined && defaultUserId.length > 0) {
@@ -973,7 +1056,7 @@ export function createInboundTransportHost(
       );
     }
 
-    return orgId === undefined ? { userId } : { userId, orgId };
+    return { userId, orgId: resolveOrgIdentity(context, isDevelopmentDefault, orgId) };
   };
 
   return {

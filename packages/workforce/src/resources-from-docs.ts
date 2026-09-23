@@ -16,6 +16,7 @@
 
 import { defineResource, type DeclaredResources } from "@flow-state-dev/core";
 import { z } from "zod";
+import { emptyMap } from "./empty-map";
 import {
   DERIVED_RESOURCE_KEYS,
   refusedDeclarationMessage,
@@ -37,33 +38,15 @@ const DOCUMENT_STATE_SCHEMA = z.object({}).passthrough();
 const DERIVED_KEYS = new Set<string>(DERIVED_RESOURCE_KEYS);
 
 /**
- * An empty map with no prototype, for the two places a key here is a name
- * somebody else chose — a document's ref, and a frontmatter key.
- *
- * On an ordinary object, `map["__proto__"] = value` reaches the legacy
- * prototype setter instead of creating a property: with an object value it
- * REPLACES the map's prototype, so the entry never appears in `Object.keys`,
- * never survives a spread, and the document disappears without a word. The
- * engine's own resource registries are null-prototype for exactly this reason
- * (`createExecutionContext`), and nothing built here needs `Object.prototype`.
- */
-function emptyMap<T>(): Record<string, T> {
-  return Object.create(null) as Record<string, T>;
-}
-
-/**
  * Build the resource map from document records, keyed by each document's ref.
  *
  * The accessor key is the ref, so a team's handbook reaches a block as
  * `ctx.resources["teams/engineering/handbook"]`.
  *
- * **The installing flow has to require an org.** Every document here is
- * org-scoped, and `defineFlow` collects `requiresOrg` from its blocks, not from
- * its resource map — so a flow that installs documents and declares nothing
- * accepts a user-only request, builds no org resource registry, and every
- * document resolves as unregistered. Declare `requireOrg: true` on the blocks
- * that read one. Nothing here can enforce that: this function is pure and runs
- * at definition time, long before a principal exists.
+ * Every document here is org-scoped. Nothing needs declaring for that to work:
+ * organization identity is unconditional, so every admitted request carries one
+ * and the org resource registry is always built (FIX-1442). The `requireOrg`
+ * declaration this used to depend on no longer exists.
  *
  * Throws, rather than collecting, when a record cannot become a resource — a
  * declaration the convention derives, or frontmatter `defineResource` itself

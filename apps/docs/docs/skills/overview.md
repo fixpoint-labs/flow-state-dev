@@ -42,6 +42,8 @@ Skills are not always-on. Something has to decide a skill applies before its bod
 
 Both paths can coexist. See [Activation paths](./activation) for the full breakdown — when to use which, the tier behavior, the preset toggles, and how to compose them.
 
+By default, the names and descriptions of the skills an agent can load are supplied to it as context, so it knows they exist from its first step. In an app with many skills you can turn that off and let the agent look them up through [discovery](../orchestration/discovery.md) instead, which it pays for only when it asks.
+
 ## What a matched skill does
 
 A matched skill is inline instructions. Its substituted body is injected into the parent generator's system prompt on the next step, and the conversation continues in the parent context with the parent's tools. That's the whole model.
@@ -99,6 +101,8 @@ export const assistant = generator({
   uses: [skillsCap],
 });
 ```
+
+Notice the generator declares no `tools:`. A declared `tools:` is the complete set of tools the model may call, so a generator that has one gets neither the skills catalog's tools nor `runSkill` from the capability. When a generator needs its own `tools:` for other reasons, list the catalog's tools there too. See [Tools a capability contributes](../fundamentals/capabilities#capability-tools).
 
 The first time the collection is read (whether by `skillActivator` or by the catalog context formatter), the initial skills are seeded. Later edits to skill bodies — via DevTool, a CLI, or an admin UI — take effect on the next turn. There's no redeploy.
 

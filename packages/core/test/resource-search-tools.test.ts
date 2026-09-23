@@ -96,12 +96,32 @@ describe("globResources", () => {
     expect(uris).toEqual(["org/concepts/a", "org/concepts/b", "org/soul"]);
   });
 
-  it("does not gate on llmReadable (discovery, like listResources)", async () => {
-    const ctx = makeCtx([], [
-      { pattern: "concepts/**", instances: [{ path: "concepts/secret", llmReadable: false }] },
-    ]);
-    const { uris } = await runForTest(globResources,{ pattern: "concepts/**", limit: 100 }, ctx);
-    expect(uris).toEqual(["org/concepts/secret"]);
+  // FIX-817 / BR-18. A null pattern used to list every collection in the scope
+  // regardless of `llmReadable` — the second ungated enumerator, beside the
+  // removed `listResources`. A path is a disclosure even when no body is read.
+  it("omits a non-readable collection, and never enumerates it to find that out", async () => {
+    const secret = vi.fn(async () => [refOf({ path: "concepts/secret" })]);
+    const open = vi.fn(async () => [refOf({ path: "notes/standup" })]);
+    const entries: any[] = [
+      { pattern: "concepts/**", scope: "org", config: { llmReadable: false }, create: async () => {}, list: secret },
+      { pattern: "notes/**", scope: "org", config: { llmReadable: true }, create: async () => {}, list: open },
+    ];
+    const ctx = createMockContext({ resources: { list: () => entries, get: (() => undefined) as any } as any });
+
+    const { uris } = await runForTest(globResources, { pattern: null, limit: 100 }, ctx);
+
+    expect(uris).toEqual(["org/notes/standup"]);
+    // Not merely absent from the result: the collection is skipped BEFORE it is
+    // listed, so a lazy or broken one is never bulk-loaded to discover it was
+    // never allowed.
+    expect(secret).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalled();
+  });
+
+  it("omits a static resource that did not opt into llmReadable", async () => {
+    const ctx = makeCtx([{ path: "soul", llmReadable: false }, { path: "public" }], []);
+    const { uris } = await runForTest(globResources, { pattern: null, limit: 100 }, ctx);
+    expect(uris).toEqual(["org/public"]);
   });
 
   it("bounds results by limit", async () => {
@@ -425,9 +445,9 @@ describe("searchResources", () => {
   });
 });
 
-// FIX-858: external collections push the query down to their `search` hook
+// FIX-858: projected collections push the query down to their `search` hook
 // instead of being enumerated + scored in memory. glob/grep skip them entirely.
-describe("searchResources — external collection pushdown (FIX-858)", () => {
+describe("searchResources — projected collection pushdown (FIX-858)", () => {
   function externalCtx(opts: {
     llmReadable?: boolean;
     list: (q: unknown) => Promise<{ items: any[]; nextCursor?: string }>;
@@ -435,7 +455,7 @@ describe("searchResources — external collection pushdown (FIX-858)", () => {
     const entry = {
       pattern: "positions/*",
       scope: "org",
-      external: true,
+      projected: true,
       config: { llmReadable: opts.llmReadable ?? true },
       list: opts.list,
       get: async () => {
@@ -448,7 +468,7 @@ describe("searchResources — external collection pushdown (FIX-858)", () => {
     });
   }
 
-  it("pushes the query to the external search hook and returns its hits + nextCursor", async () => {
+  it("pushes the query to the projected search hook and returns its hits + nextCursor", async () => {
     const list = vi.fn(async () => ({
       items: [
         refOf({ path: "positions/AAPL", content: "AAPL 10 shares" }),
@@ -469,7 +489,7 @@ describe("searchResources — external collection pushdown (FIX-858)", () => {
     expect(nextCursor).toBe("p2");
   });
 
-  it("skips non-llmReadable external collections", async () => {
+  it("skips non-llmReadable projected collections", async () => {
     const list = vi.fn(async () => ({ items: [] }));
     const ctx = externalCtx({ llmReadable: false, list });
     await runForTest(searchResources, { query: "x", prefix: null, limit: 10, cursor: null }, ctx);
@@ -506,7 +526,7 @@ describe("searchResources — external multi-collection & limit contract (FIX-85
       entries.push({
         pattern: e.pattern,
         scope: "org",
-        external: true,
+        projected: true,
         config: { llmReadable: e.llmReadable ?? true },
         list: e.list,
         getOptional: async () => undefined,
@@ -544,7 +564,7 @@ describe("searchResources — external multi-collection & limit contract (FIX-85
 
   it("mixed external + store-backed: single page, store-backed never stranded, no cursor", async () => {
     // A full external page + store-backed matches. Because store-backed can't be
-    // paginated under the external cursor without stranding, mixed mode returns
+    // paginated under the projected cursor without stranding, mixed mode returns
     // one page with both represented and NO cursor (rather than hiding store-backed).
     const list = vi.fn(async () => ({
       items: [refOf({ path: "positions/AAPL", content: "shares" })],
@@ -563,11 +583,11 @@ describe("searchResources — external multi-collection & limit contract (FIX-85
     expect(results.some((r) => r.uri === "org/notes/a")).toBe(true);
     expect(results.some((r) => r.uri === "org/positions/AAPL")).toBe(true);
     expect(nextCursor).toBeUndefined();
-    // The external hook is NOT paged (no cursor forwarded) in mixed mode.
+    // The projected hook is NOT paged (no cursor forwarded) in mixed mode.
     expect(list).toHaveBeenCalledWith(expect.not.objectContaining({ cursor: expect.anything() }));
   });
 
-  it("does not forward one cursor to multiple external collections and emits no cursor", async () => {
+  it("does not forward one cursor to multiple projected collections and emits no cursor", async () => {
     const listA = vi.fn(async () => ({ items: [refOf({ path: "a/1", content: "x" })], nextCursor: "a-2" }));
     const listB = vi.fn(async () => ({ items: [refOf({ path: "b/1", content: "x" })], nextCursor: "b-2" }));
     const ctx = multiCtx([

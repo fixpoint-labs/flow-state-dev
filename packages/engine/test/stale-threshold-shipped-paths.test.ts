@@ -27,6 +27,7 @@
  * would pass just as well if startup detection stopped reaping at all.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import {
@@ -78,6 +79,7 @@ async function seedBeatingRequest(
 ): Promise<void> {
   const at = Date.now() - heartbeatAgoMs;
   await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
     requestId: REQUEST_ID,
     flowKind: FLOW_KIND,
     actionName: "run",
@@ -90,6 +92,7 @@ async function seedBeatingRequest(
   await stores.request.set(
     REQUEST_ID,
     {
+    orgId: DEFAULT_ORG_ID,
       id: REQUEST_ID,
       flowKind: FLOW_KIND,
       actionName: "run",

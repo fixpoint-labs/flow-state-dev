@@ -37,26 +37,20 @@ export const featuresSchema = z.object({
 // ---------------------------------------------------------------------------
 // Thinking styles
 //
-// `thinkingStyleSchema` is the set of resolved styles — what eventually runs in
-// the router and what's stored on session state after Tier-1 / Tier-2
-// classification.
+// One set, not two. `thinkingStyleSchema` is what a caller may request, what
+// the router dispatches on, and what's stored on session state.
 //
-// `thinkingStyleInputSchema` is the set of values a caller can request on the
-// action input. It's a superset: the same resolved styles plus `"auto"`, which
-// triggers the keyword + LLM classifier pipeline before the router dispatches.
+// It used to be two sets: an input superset carrying `"auto"`, which ran a
+// keyword + LLM classifier to pick one of five in-request coordination
+// routes. Those routes and the classifier were removed (FIX-1478) — with one
+// answering style left besides the durable hand-off, `"auto"` could only ever
+// resolve to `"default"`, after paying for a model call to get there.
 // ---------------------------------------------------------------------------
 
-/** Concrete, resolved thinking styles the router can dispatch. */
+/** The thinking styles the router can dispatch. */
 export const RESOLVED_THINKING_STYLES = [
-  "plan-and-execute",
-  "supervisor",
-  "routed-specialists",
-  "evented-actors",
-  "moderated-debate",
   // Files the turn's message as background work and returns without answering
-  // it. Deliberately absent from the `auto` classifier's categories: handing a
-  // question to a child session instead of answering it is the caller's call, not
-  // a classification.
+  // it: the work outlives the reply, and the result arrives on a later turn.
   "background-work",
   "default",
 ] as const;
@@ -65,17 +59,41 @@ export const thinkingStyleSchema = z.enum(RESOLVED_THINKING_STYLES);
 
 export type ThinkingStyle = z.infer<typeof thinkingStyleSchema>;
 
-/** Caller-requested styles on action input. Superset of resolved styles + `"auto"`. */
-export const THINKING_STYLE_INPUTS = [
-  "auto",
-  ...RESOLVED_THINKING_STYLES,
-] as const;
+/**
+ * Caller-requested style on action input. The same set as the resolved
+ * styles, defaulted — a caller that names a style this app no longer has is
+ * refused here rather than coalesced, because an input is a live claim
+ * (BP-031). A *stored* style is the other case; see
+ * {@link coalesceThinkingStyle}.
+ */
+export const thinkingStyleInputSchema = thinkingStyleSchema.default("default");
 
-export const thinkingStyleInputSchema = z
-  .enum(THINKING_STYLE_INPUTS)
-  .default("default");
+export type ThinkingStyleInput = ThinkingStyle;
 
-export type ThinkingStyleInput = z.infer<typeof thinkingStyleInputSchema>;
+/**
+ * Fold a persisted thinking style to one this app still has an option for.
+ *
+ * The mirror image of {@link thinkingStyleInputSchema}: history is tolerated
+ * where a live claim is refused (BP-030). A session written before FIX-1478
+ * holds a style name that no longer exists, and nothing parses session state
+ * on load — the engine adopts the stored record with a bare cast — so the one
+ * place that value is read raw is the `modeStatus` client-data projection in
+ * `flow.ts`. It is folded there, before it leaves the server, so the browser
+ * never sees a style it has no entry for.
+ *
+ * Unlike {@link persistedSelectedModelSchema} this coalesces rather than
+ * throws on a non-string: it runs on every session read, and a corrupt value
+ * should not make an old conversation unopenable.
+ *
+ * Returns `null` for an absent value, which is what a session that has never
+ * run a turn holds.
+ */
+export function coalesceThinkingStyle(value: unknown): ThinkingStyle | null {
+  if (value == null) return null;
+  return thinkingStyleSchema.safeParse(value).success
+    ? (value as ThinkingStyle)
+    : "default";
+}
 
 export const thinkingStyleSessionStateSchema = z.object({
   thinkingStyle: thinkingStyleSchema.optional(),

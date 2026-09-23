@@ -52,6 +52,27 @@ jobs:
       - name: Build packages
         run: pnpm packages:build
 
+      # Published packages are ESM, so every relative import in `dist` needs a
+      # file extension or Node refuses it at import time. `moduleResolution:
+      # "Bundler"` lets source omit it and `tsc` emits it verbatim, and nothing
+      # in the repo notices because everything here resolves through `src`. That
+      # is how 0.1.1 shipped unimportable. Each package's build adds the
+      # extensions; this fails if one stops doing so.
+      # `--all` rather than a `packages/*/dist` glob: a glob cannot report what
+      # is missing. A package that stops emitting `dist` drops out of the
+      # expansion and the check passes without ever looking at it, which is the
+      # same silence that let 0.1.1 ship. `--all` asks the workspace which
+      # packages publish and demands output from each.
+      - name: Built output is importable by Node
+        run: node scripts/add-esm-extensions.mjs --check --all
+
+      # Its OWN step, deliberately not folded into a build script: a script that
+      # ran `fsdev gen` before building would regenerate the file and pass,
+      # which is the one thing a staleness gate must not do. This fails when an
+      # author adds a kind or a block and does not commit the regenerated module.
+      - name: Generated workforce module is current
+        run: pnpm --filter @flow-state-dev/kitchen-sink run fsdev gen --check
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -75,24 +96,25 @@ jobs:
         with:
           node-version: 22
 
-      # A spec PR (branch `spec/<ISSUE-ID>`), an epic PR (branch `epic/<name>`,
-      # carrying `spec/_epics/<name>/`) and a project PR (branch
-      # `project/<slug>`, carrying `spec/_projects/<slug>/`) hold the in-flight
-      # spec by design and are never merged, so they are exempt. Keyed on the BRANCH,
-      # not the `spec` label: the label is applied after the PR is created, and
-      # `labeled` is not a default `pull_request` event type — a label-keyed
-      # exemption would fail on the opening run and never re-run.
-      # Every other PR — and main itself — is checked.
-      - name: Spec folder is clear
+      # Issue and epic specs merge into specs/ after approval and required checks,
+      # so their PRs run this guard too. Only standing project specs retain the
+      # never-merged spec/_projects/ lifecycle. Key that exception on the branch,
+      # not a label that may be applied after the opening CI run. Main is always checked.
+      - name: Spec retention and legacy paths
         if: >-
           github.event_name == 'push' ||
-          !(startsWith(github.head_ref, 'spec/') || startsWith(github.head_ref, 'epic/') ||
-            startsWith(github.head_ref, 'project/'))
+          !startsWith(github.head_ref, 'project/')
         run: node scripts/validate-spec-folder.mjs
 
       - name: Changesets name their Linear issue
         if: github.event_name == 'pull_request'
         run: node scripts/validate-changeset-refs.mjs
+
+      # `private` is the only field `changeset publish` filters on, and an npm
+      # name is given away permanently, so the packages we hold back are checked
+      # on every PR and push rather than at release time.
+      - name: Packages held out of the publish set
+        run: node scripts/validate-publish-set.mjs
 
       # Unconditional, unlike the two above. A literal NUL makes git render the
       # whole file as binary, so the change lands with no diff for anyone to
@@ -106,6 +128,14 @@ jobs:
       # one throws. The script header owns the rest.
       - name: No removed model-string syntax
         run: node scripts/validate-model-strings.mjs
+
+      # Same shape and the same reason as the step above: a doc teaching the
+      # superseded isolation coordinate is as wrong on main as on a PR. Wired
+      # here rather than left beside the branch that wrote it — an unrun guard
+      # is indistinguishable from one nobody wrote. The script header owns why
+      # it matches co-occurring concepts instead of a phrase list.
+      - name: No doc teaches per-kind flowIsolation
+        run: node scripts/check-isolation-coordinate.mjs
 
   knip:
     name: Knip (unused files & broken imports)

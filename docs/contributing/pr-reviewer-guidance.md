@@ -356,8 +356,9 @@ Three failure modes, all common:
 
 ## 5. Links line
 
-One line, no heading. The spec doc, the Linear issue, the epic, anything this consumes —
-and, when the PR is never merged, say so here rather than three paragraphs earlier.
+One line, no heading. The repository spec, Linear issue, epic and dependencies.
+Issue/epic specs merge after approval and required checks; only project specs keep
+the standing never-merged lifecycle.
 
 ## Below the fold
 
@@ -399,7 +400,7 @@ What goes down here:
   approve it. **Implementation calls a compliant spec made deliberately live in `PLAN.md` →
   Decided, not asked**, which is in the committed doc diff a reviewer already reads — don't
   copy them into the body.
-- **The long-form case.** On a spec or epic PR, **nothing**: the four documents are the diff,
+- **The long-form case.** On a spec or epic PR, **nothing**: the document set is the diff,
   and the links line names them. On an implementation PR, the case the body condensed.
 - **Verification output.** Test runs, goal-check transcripts, red/green evidence. State
   the verdict above the fold in a clause; the scrollback lives here.
@@ -412,8 +413,8 @@ collapsed **How to review this** section.
 
 | PR kind | The one question | The human judges | Automated review helps most on | Do **not** report |
 |---|---|---|---|---|
-| **Spec PR** (`spec/<ISSUE-ID>`, never merged) | Is this the right approach? | The numbered decisions, scope, whether it's worth building at all | Constraints that would *invalidate* the design, a case the rules miss, factual errors about the codebase, internal contradictions, a missed dependency | Names, signatures, file layout, local structure, test names, anything `PLAN.md` left open on purpose, the figures at the pixel level, the solution sketch at the line level, and **POC code at all** |
-| **Epic PR** (`epic/<name>`, never merged) | Is this body of work worth doing — and does the set overbuild? | The objective, whether it's really N issues or N−1, the cross-cutting decisions | A cross-cutting decision that contradicts another, a rule with no owner or two, an issue in the set that doesn't serve the objective, a missing issue the objective implies | Any single issue's approach, architecture, or test plan — anything touching exactly one issue — and the status in the set table, which is refreshed as the set moves |
+| **Spec PR** (`spec/<ISSUE-ID>`, merges after approval/checks) | Is this the right approach? | The numbered decisions, scope, whether it's worth building | Design-invalidating constraints, missing rules, documentation promises, predecessor treatment and experimental isolation | Unpinned names/layout, local structure, test names, pixel-level figures, sketch and POC production polish |
+| **Epic PR** (`epic/<name>`, merges after approval/checks) | Is this body of work worth doing — and does the set overbuild? | The objective, set size and cross-cutting decisions | Conflicting decisions, rule ownership, missing/unnecessary issues, shared documentation ownership and lineage | Single-issue design details and routine status movement since the dated snapshot |
 | **Implementation PR** (`fix/<ISSUE-ID>`, merges) | Is this correct, and does it match the approved direction? | The implementation decisions and their ramifications, what was subtracted, whether the goal was actually *proved* | Correctness, second paths (BP-035), auth/routing from caller-controllable input (BP-031), legacy-shape tolerance (BP-030), concurrency and null boundaries | Re-litigating a Decision the spec already settled and a human approved; style the codebase has already settled |
 
 **The implementation row is the asymmetry worth noticing.** On a spec or epic PR we are
@@ -423,15 +424,22 @@ guidance there isn't "aim lower," it's **"here is where the risk is concentrated
 is what was settled upstream so don't reopen it."** A spec PR and an impl PR asking for the
 same review is the mistake this table exists to prevent.
 
+The [canonical convergence rule](orchestration.md#spec-review-the-bar-and-the-convergence-rule)
+still limits design rounds. Optional comments do not demand zero-thread convergence;
+required checks, approvals and thread-resolution policy still apply before merge.
+Retained POCs are experimental, but isolation and absence of secrets/generated
+dependencies remain reviewable. Implementation must reconcile `DOCS.md` against behavior
+and publish it, and account for the relevant predecessors in `EVOLUTION.md`.
+
 ## Where each block is authored
 
 - **Spec PR** — blocks 1–3 are `SPEC.md`'s people table, its figure, and the decisions that
   passed the filters in compact form, condensed by `issue-spec` Step 6; the instance and the
   contract are [`spec-template.md`](spec-template.md) → "The PR body" and "How to review this".
-- **Epic PR** — authored by the `epic-agent` when it opens the epic PR and refreshed by it for
-  the epic's life (the as-of line and the figure pins on every status change, the rest on a
-  material objective change); the instance and the contract are
-  [`epic-spec-template.md`](epic-spec-template.md) → "The PR body" and "How to review this".
+- **Epic PR** — authored by `epic-agent` for its reviewed revision; later meaningful
+  amendments get follow-up PRs rather than rewriting the merged original. The instance
+  and contract are [`epic-spec-template.md`](epic-spec-template.md) → "The PR body"
+  and "How to review this".
 - **Implementation PR** — authored in `issue-implement` Step 9; contract is one of the
   four variants below, picked by what backs the change.
 
@@ -451,10 +459,10 @@ in advance — a pass scoped from the material, or work whose issue was filed af
 
 > **How to review this.** This implements an **approved spec** — the approach and the numbered
 > decisions in its `DECISIONS.md` are already signed off by a human, so please review the
-> **code against that direction**, not the direction itself. The spec lives on the issue's
-> **Linear document** (the durable copy) and on the **closed spec PR** ([link](#)), which keeps
-> its review history. Don't expect `spec/<ISSUE-ID>/` to be in *this* diff — the spec PR closes
-> unmerged at approval and the spec never lands on `main` (BP-037).
+> **code against that direction**, not the direction itself. The canonical set is retained
+> at `specs/issues/<ISSUE-ID>/` on `main`; Linear links to it and the original merged spec
+> PR, which keeps review history. Follow-up amendment PRs explain later direction changes.
+> Current architecture docs remain the authority for shipped behavior (BP-037).
 >
 > **Most valuable here:** correctness on the second path (the legacy shape, the null
 > boundary, the concurrent case, the cancel path), anything deriving an auth or routing
@@ -641,8 +649,8 @@ stops being cheap and becomes a breaking change we've promised not to make.
 
 > **1. Decision 7 — the premise that FIX-992 already closed part of this.** …
 
-**Spec:** [`spec/<ISSUE-ID>/`](#) · **Linear:** [FIX-981](#) · **Epic:** [FIX-939](#) (M1 of 5)
-· Docs-only, never merged — closed unmerged once the spec is approved.
+**Spec:** [`specs/issues/<ISSUE-ID>/`](#) · **Linear:** [FIX-981](#) · **Epic:** [FIX-939](#) (M1 of 5)
+· Docs-only; merges after human direction approval and required repository checks.
 
 <details>
 <summary><b>How to review this</b> — altitude, what's in scope, what's deliberately unsettled</summary>

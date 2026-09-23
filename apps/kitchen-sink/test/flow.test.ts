@@ -53,7 +53,7 @@ const testFlow = defineFlow({
       inputSchema: z.object({
         message: z.string(),
         mode: z.enum(["ask", "build", "interview", "debate"]).default("ask"),
-        thinkingStyle: z.enum(["auto", "default", "plan-and-execute", "supervisor", "routed-specialists"]).default("auto"),
+        thinkingStyle: z.enum(["default", "background-work"]).default("default"),
       }),
       block: thinkingStyleRouter,
     },
@@ -61,7 +61,7 @@ const testFlow = defineFlow({
   session: {
     stateSchema: z.object({
       mode: z.enum(["ask", "build", "interview", "debate"]).default("ask"),
-      thinkingStyle: z.enum(["plan-and-execute", "supervisor", "routed-specialists", "default"]).optional(),
+      thinkingStyle: z.enum(["default", "background-work"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
       features: z.object({ biasCheck: z.boolean().default(false) }).default({}),
@@ -94,7 +94,7 @@ describe("chat-agent flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Help me", mode: "ask", thinkingStyle: "auto" },
+      input: { message: "Help me", mode: "ask", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "default", features: { biasCheck: false } },
@@ -106,51 +106,11 @@ describe("chat-agent flow", () => {
     expect(routed.selectedRoute).toBe("assistant-generator");
   });
 
-  it("routes to pae-pipeline for plan-and-execute style", async () => {
-    const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Build a report", mode: "ask", thinkingStyle: "auto" },
-      flow: testFlow,
-      session: {
-        state: { thinkingStyle: "plan-and-execute", features: { biasCheck: false } },
-        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
-      },
-      unmockedGeneratorPolicy: "warn",
-    });
-    // PaE pipeline requires planner/executor mocks — we only verify route selection.
-    expect(routed.selectedRoute).toBe("pae-thinking");
-  });
-
-  it("routes to supervisor-pipeline for supervisor style", async () => {
-    const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Coordinate reviews", mode: "ask", thinkingStyle: "auto" },
-      flow: testFlow,
-      session: {
-        state: { thinkingStyle: "supervisor", features: { biasCheck: false } },
-        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
-      },
-      unmockedGeneratorPolicy: "warn",
-    });
-    expect(routed.selectedRoute).toBe("supervisor-thinking");
-  });
-
-  it("routes to routed-specialists-pipeline for routed-specialists style", async () => {
-    const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Analyze this from multiple perspectives", mode: "ask", thinkingStyle: "auto" },
-      flow: testFlow,
-      session: {
-        state: { thinkingStyle: "routed-specialists", features: { biasCheck: false } },
-        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
-      },
-      unmockedGeneratorPolicy: "warn",
-    });
-    expect(routed.selectedRoute).toBe("routedSpecialists-thinking");
-  });
-
   it("defaults to default-pipeline when thinkingStyle is not set", async () => {
     assistantFixture.reset();
     observeFixture.reset();
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Hello", mode: "ask", thinkingStyle: "auto" },
+      input: { message: "Hello", mode: "ask", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { features: { biasCheck: false } },
@@ -166,7 +126,7 @@ describe("chat-agent flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Hello kitchen sink", mode: "ask", thinkingStyle: "auto" },
+      input: { message: "Hello kitchen sink", mode: "ask", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "default", features: { biasCheck: false } },
@@ -183,7 +143,7 @@ describe("chat-agent flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Test with custom model", mode: "ask", thinkingStyle: "auto" },
+      input: { message: "Test with custom model", mode: "ask", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "default", features: { biasCheck: false } },
@@ -206,7 +166,7 @@ describe("chat-agent flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Check items", mode: "ask", thinkingStyle: "auto" },
+      input: { message: "Check items", mode: "ask", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "default", features: { biasCheck: false } },
@@ -223,7 +183,7 @@ describe("chat-agent flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Read artifact doc-1", mode: "ask", thinkingStyle: "auto" },
+      input: { message: "Read artifact doc-1", mode: "ask", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { mode: "ask", thinkingStyle: "default", requestCount: 0, features: { biasCheck: false } },
@@ -260,7 +220,7 @@ describe("chat-agent flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Tell me about your project", mode: "interview", thinkingStyle: "auto" },
+      input: { message: "Tell me about your project", mode: "interview", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false } },
@@ -276,7 +236,7 @@ describe("chat-agent flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "I think React is better than Vue", mode: "debate", thinkingStyle: "auto" },
+      input: { message: "I think React is better than Vue", mode: "debate", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false } },
@@ -292,7 +252,7 @@ describe("chat-agent flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Let's explore my project requirements", mode: "interview", thinkingStyle: "auto" },
+      input: { message: "Let's explore my project requirements", mode: "interview", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false } },
@@ -308,7 +268,7 @@ describe("chat-agent flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Microservices are always better than monoliths", mode: "debate", thinkingStyle: "auto" },
+      input: { message: "Microservices are always better than monoliths", mode: "debate", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false } },

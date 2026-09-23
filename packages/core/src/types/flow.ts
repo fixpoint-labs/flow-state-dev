@@ -12,7 +12,7 @@ import type {
   ResourceCollectionConfig,
   ResourceCollectionRef
 } from "./resource-collection";
-import type { ExternalResourceCollectionRef } from "./external-resource-collection";
+import type { ProjectedResourceCollectionRef } from "./projected-resource-collection";
 import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
 import type { WebhookConfig } from "./webhooks";
@@ -27,12 +27,12 @@ export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
 
 type InferResourceRefs<TResources extends Record<string, DeclaredResourceEntry>> = {
   // All collection refs expose async reads regardless of prefetchMode
-  // — FIX-700 collapsed the eager/lazy type split. An `external`-branded
+  // — FIX-700 collapsed the eager/lazy type split. An `projected`-branded
   // collection (FIX-858) resolves to the read-only ref — tested FIRST because
   // it is a narrower `DefinedResourceCollection`, so the plain-collection branch
   // would otherwise swallow it.
-  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S> & { external: true }
-    ? ExternalResourceCollectionRef<S>
+  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S> & { projected: true }
+    ? ProjectedResourceCollectionRef<S>
     : TResources[K] extends DefinedResourceCollection<infer S>
       ? ResourceCollectionRef<S>
       : TResources[K] extends DefinedResource<infer S>
@@ -44,7 +44,7 @@ type InferResourceRefs<TResources extends Record<string, DeclaredResourceEntry>>
 export type AnyResourceHandle =
   | ResourceRef<any>
   | ResourceCollectionRef<any>
-  | ExternalResourceCollectionRef<any>;
+  | ProjectedResourceCollectionRef<any>;
 
 /**
  * Context provided to a clientData compute function.
@@ -363,7 +363,7 @@ export type RequestConfig = {
    * When true, durable sequencer checkpoints (FIX-401) are deleted on
    * terminal completion (success / error / abort). When false (default),
    * checkpoints are retained — useful for post-mortem inspection, audit,
-   * or letting an external process decide retention.
+   * or letting a projected process decide retention.
    *
    * Latest-only persistence keeps storage bounded regardless of this
    * setting (one record per sequencer instance per request), so retention
@@ -597,6 +597,24 @@ export type FlowDefinition<
   isolateOrgState?: boolean;
 };
 
+/**
+ * Security pin for one hired flow instance.
+ *
+ * `{ orgId, userId? }`, copied from the hire row at registration. It is not
+ * parsed from the address and it is not the roster row itself. Absent means
+ * the instance is shared: an app flow, a kind, a file-declared seat.
+ * `userId` is present only for a user-owned hire.
+ */
+export interface InstanceOwnerPin {
+  /** The organization the hire row belongs to. */
+  orgId: string;
+  /**
+   * The user the hire belongs to. Absent means every member of `orgId` may
+   * see the instance — a legacy row, or an org-visible hire.
+   */
+  userId?: string;
+}
+
 export type FlowInstanceOptions<
   TActions extends Record<string, ActionConfig> = Record<string, ActionConfig>,
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
@@ -632,6 +650,12 @@ export type FlowInstanceOptions<
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
   isolateOrgState?: boolean;
+  /**
+   * Owner pin copied from the hire row. Omitted, the instance stays shared.
+   * The registry's `register(flow, { pin })` is authoritative; this field is
+   * how a reload hands the pin to that call. See {@link InstanceOwnerPin}.
+   */
+  ownerPin?: InstanceOwnerPin;
 };
 
 export type FlowInstance<
@@ -662,12 +686,6 @@ export type FlowInstance<
    * on the wire, and no part of any storage key.
    */
   config: FlowConfigValue<TConfigSchema>;
-  /**
-   * True when any block in any action declares `requireOrg: true`. The HTTP
-   * action route uses this to reject requests against unbound sessions before
-   * any execution begins.
-   */
-  requiresOrg: boolean;
   authentication?: AuthenticationConfig;
   actions: TActions;
   /** See {@link FlowDefinition.internal}. Absent when the flow declares none. */
@@ -700,6 +718,10 @@ export type FlowInstance<
    * from block-level ones.
    */
   flowLevelResourceKeys: ReadonlySet<string>;
+  /**
+   * Owner pin for a hired instance. Absent on shared flows. See {@link InstanceOwnerPin}.
+   */
+  ownerPin?: InstanceOwnerPin;
 };
 
 export type FlowType<
@@ -727,13 +749,11 @@ export type FlowType<
    * supplied one: its `configSchema` does not parse `{}`, or the value that
    * parse produced does not satisfy a block that declared `flowConfigSchema`.
    *
-   * A declaration-derived flag beside `requiresOrg` — the registry reads it
+   * A declaration-derived flag — the registry reads it
    * and refuses a blueprint handed over in place of an instance, rather than
    * behaving differently. The framework never reads INSIDE the bag.
    */
   requiresConfig: boolean;
-  /** Mirror of `FlowInstance.requiresOrg`. */
-  requiresOrg: boolean;
   authentication?: AuthenticationConfig;
   actions: TActions;
   /** Mirror of `FlowInstance.internal`. */

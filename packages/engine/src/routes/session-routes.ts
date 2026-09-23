@@ -2,12 +2,15 @@
  * Session CRUD route handlers: create, get, list, delete.
  */
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { SessionRecord, StoreRegistry } from "../stores/types";
+import type { SessionParentage, SessionRecord, StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { purgeStaleResourceState } from "../context/ensure-session-record";
 import { resolveRecordOwner } from "../context/record-owner";
+import { pinRejectsCaller, unknownFlowMessage } from "../context/hire-plane";
+import { isOrgAttributed } from "../context/org-attribution";
 import {
   asObject,
   asStringArray,
@@ -49,12 +52,56 @@ type SessionRouteContext = {
   anonymousFlowIds?: Set<string>;
 };
 
+/**
+ * The one include this listing accepts, spelled for callers rather than for
+ * the store (FIX-1440).
+ *
+ * `parentage` is a storage concept with three modes; a caller has one question
+ * — *do I also want the sessions a dispatcher ran work in?* — so that is what
+ * the wire asks. Keeping the two apart is what lets the store grow a fourth
+ * mode without teaching it to every client.
+ */
+const DISPATCH_RUNS_INCLUDE = "dispatch-runs";
+
+/**
+ * Map the `include` query parameter onto a store parentage.
+ *
+ * `undefined` — no include — leaves the option **off**, so the listing narrows
+ * to top-level sessions exactly as it always has. That is the rule, not an
+ * implementation detail: a caller that did not ask gets today's result set,
+ * unchanged (FIX-1009, and `SessionListOptions.parentage`).
+ *
+ * An unrecognised token is a **400 naming what is accepted**, never a silent
+ * ignore: a caller that misspells the include would otherwise be told nothing
+ * and conclude the flow has no dispatch runs.
+ */
+function resolveSessionInclude(
+  raw: string | null
+): { parentage?: SessionParentage } | { error: string } {
+  if (raw === null) return {};
+  const tokens = raw
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  const unknown = tokens.filter((token) => token !== DISPATCH_RUNS_INCLUDE);
+  if (unknown.length > 0) {
+    return {
+      error: `include accepts "${DISPATCH_RUNS_INCLUDE}"; received ${unknown
+        .map((token) => `"${token}"`)
+        .join(", ")}`
+    };
+  }
+  return tokens.length === 0 ? {} : { parentage: "all" };
+}
+
 export async function handleListSessions(
   request: Request,
   _route: Extract<ParsedFlowRoute, { kind: "list_sessions" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
   const url = new URL(request.url);
+  const include = resolveSessionInclude(url.searchParams.get("include"));
+  if ("error" in include) return jsonResponse(400, include);
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
     // Exact owner: one instance of a collection flow. A record with no owner
@@ -65,9 +112,26 @@ export async function handleListSessions(
     // set past the principal. Without a principal (framework default
     // resolver) the param is the only filter there is, unchanged.
     userId: ctx.principal?.userId ?? getString(url.searchParams.get("userId")),
+    // The same rule on the organization axis (BR-9, FIX-1442), and for the
+    // same reason: one person in two organizations must not see one
+    // organization's rows while acting for the other. There is deliberately no
+    // `orgId` query fallback — unlike `userId`, an organization is never a
+    // caller's to name, so a query param here could only ever widen.
+    //
+    // The key is spread in rather than always present: the store reads
+    // "`orgId` in options" as the filter being ACTIVE, so passing an explicit
+    // `undefined` would filter the listing down to rows that have no
+    // organization — the exact legacy rows BR-14 withholds.
+    ...(ctx.principal?.orgId === undefined ? {} : { orgId: ctx.principal.orgId }),
     // Always pass the tenant (present, possibly undefined) so listing isolates
     // to the calling tenant's sessions (FIX-682).
     tenantId: ctx.tenantId,
+    // Spread rather than always present, so a listing without the include is
+    // byte-identical to the one this route has always issued. The store reads
+    // an absent `parentage` as `"top-level"`, which is the narrowing FIX-1009
+    // put there on purpose; the include is the only way past it, and it widens
+    // parentage alone — never owner, tenant or organization.
+    ...(include.parentage === undefined ? {} : { parentage: include.parentage }),
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });
@@ -80,13 +144,37 @@ export async function handleListSessions(
   // Judged per row under its OWNER, not its kind, so an open peer of an
   // authenticated instance does not make that instance's sessions visible.
   const allowed = ctx.anonymousFlowIds;
-  const visible =
+  const flowVisible =
     allowed === undefined
       ? sessions
       : sessions.filter((s) => {
           const owner = resolveRecordOwner(ctx.registry, s);
           return owner.ok && allowed.has(owner.flow.id);
         });
+
+  // Records stored before organizations were required are withheld (BR-14),
+  // on EVERY path to this listing and not only the authenticated one.
+  //
+  // The `orgId` filter above runs only when there is a principal to take an
+  // organization from, so an anonymous listing reached it with no attribution
+  // filter at all — and handed out exactly the rows `handleGetSession` answers
+  // with `409 migration-required`. A refusal the listing beside it routes
+  // around is not a refusal.
+  // `isOrgAttributed`, not a presence check: the legacy shape is dual-read as
+  // `orgId?: string | null` (BP-030), so a presence check withholds the rows
+  // that stored nothing and hands out the ones that stored `null` — which is
+  // what a legacy row usually holds. Same predicate the addressed routes
+  // refuse on, so the two cannot disagree.
+  //
+  // `allowed !== undefined` means nothing authenticated this caller, and such
+  // an app's identity is the framework default (D3). A row stamped with some
+  // OTHER organization predates the upgrade and is refused by the addressed
+  // read, so it is withheld here for the same reason (BR-10) — the store query
+  // above could not scope it, because there was no principal to scope it by.
+  const visible = flowVisible.filter(
+    (s) =>
+      isOrgAttributed(s) && (allowed === undefined || s.orgId === DEFAULT_ORG_ID)
+  );
 
   return jsonResponse(200, {
     // Surface bare session ids — the stored `id` is the namespaced storage key.
@@ -146,6 +234,20 @@ export async function handleCreateSession(
     });
   }
 
+  // The hire's pin, before any session is written. `body.userId` is not an
+  // owner: only the resolved principal counts, and a missing one fails a
+  // user-owned hire closed. A mismatch is the same 404 an unknown address
+  // gets, so nothing is written and the address cannot be probed.
+  const pin = flow.ownerPin;
+  if (
+    pinRejectsCaller(pin, {
+      userId: ctx.principal?.userId ?? "",
+      orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID,
+    })
+  ) {
+    return jsonResponse(404, { error: unknownFlowMessage(route.flowKind) });
+  }
+
   const now = Date.now();
   const sessionId = getString(body.sessionId) ?? generateId("sess");
   const sessionKey = resolveSessionStorageKey(sessionId, ctx.tenantId);
@@ -185,11 +287,17 @@ export async function handleCreateSession(
     // re-entry and read on this session is admitted against it.
     flowId: flow.id,
     userId,
-    // Same rule as `userId` above, and it matters more here: `validateDispatch`
-    // reads the stored session's `orgId` to satisfy a flow's `requiresOrg`, so
-    // a caller-supplied one would become an org binding the runtime later
-    // trusts. An authenticated caller gets the principal's org or none.
-    orgId: ctx.principal === undefined ? getString(body.orgId) : ctx.principal.orgId,
+    // The organization this session is bound to for the rest of its life —
+    // and the one every later read, action and dispatched child is checked
+    // against (FIX-1442). `body.orgId` is deliberately not consulted, at all:
+    // it is caller-written, and a value taken from here would become a binding
+    // the runtime afterwards treats as verified (BP-031).
+    //
+    // No principal means no flow governing this route authenticates anybody,
+    // which is the same condition that puts the whole app on `DEFAULT_ORG_ID` —
+    // so that is what the session binds to, rather than binding to nothing and
+    // becoming a record the reads then have to refuse.
+    orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID,
     tenantId: ctx.tenantId,
     title: getString(body.title),
     description: getString(body.description),

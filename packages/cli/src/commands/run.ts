@@ -2,6 +2,7 @@
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
 import { ensureSessionRecord, ownsRecord } from "@flow-state-dev/engine";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -297,6 +298,10 @@ export async function executeRunCommand(
           flowKind: flow.kind,
           flowId: flow.id,
           userId: "cli-user",
+          // The CLI is a trusted local caller, so it names the organization
+          // rather than writing a record the run would then refuse (FIX-1442).
+          // The same one `runAction` below executes under.
+          orgId: DEFAULT_ORG_ID,
           state: seedData,
           version: 0,
           createdAt: Date.now(),
@@ -365,6 +370,7 @@ export async function executeRunCommand(
 
     try {
       result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName,
         input: input ?? {},

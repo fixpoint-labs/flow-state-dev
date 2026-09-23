@@ -38,6 +38,7 @@ import {
   type PresetDef,
   type UsesSlot,
 } from "@flow-state-dev/core";
+import type { HarnessRunOutcome } from "@flow-state-dev/core/types";
 import { withTimeout } from "@flow-state-dev/core/helpers";
 import type {
   BlockContext,
@@ -154,6 +155,52 @@ export interface PromptRunContext extends PhaseRunContext {
   askMarkerPath: string;
 }
 
+/**
+ * What a done-condition gets on top of {@link PhaseRunContext}: the one thing
+ * the run's own report adds.
+ *
+ * Separate from `PhaseRunContext` for the same reason {@link PromptRunContext}
+ * is — a prompt builder has no use for it, and the two sides carry facts about
+ * different attempts. `feedback` describes the attempt BEFORE this one and is
+ * prompt-side only; `stopReport` describes THIS one and is completion-side
+ * only. A single field meaning "this attempt" in one place and "the last one"
+ * in another lies by position.
+ */
+export interface CompletionRunContext extends PhaseRunContext {
+  /**
+   * How the run said it stopped, as it said it — the run's own three-way word
+   * (`finished` / `stopped-at-limit` / `failed`), reached only on a clean
+   * verdict.
+   *
+   * **Not the run record's `outcome`**, which is this manager's own
+   * bookkeeping (`running` / `succeeded` / `failed`) and is never what a
+   * phase reads. Two fields, two enums; the names are kept apart on purpose.
+   *
+   * **The word crosses as reported**, which is why `string` widens
+   * {@link HarnessRunOutcome} here rather than the closed union being reused.
+   *
+   * A *conforming* harness can only report the three words:
+   * `harnessRunHandleSchema` is a `z.enum`, so the union is the whole
+   * vocabulary the contract offers. But this manager does not read a handle
+   * through that schema — `decide` declares `outcome: z.string().nullable()`,
+   * deliberately loose, so a harness that reports something else is seen
+   * rather than rejected at the door. This type says what can actually arrive
+   * at this seam. Narrowing it would not make the value narrower; it would
+   * only stop a phase being able to notice, which is the silent partial
+   * success this field exists to prevent, one layer down. `null` means no
+   * terminal result was reported at all — a distinct fact from `"finished"`,
+   * and a check that cannot tell them apart is the sometimes-absent shape
+   * this contract already refuses.
+   *
+   * **No settlement decision is made on it here.** The manager's one read of
+   * the same value is arm 3's failure text, chosen after the arm already was.
+   * What "done" means is the phase's call, and a phase that ignores this
+   * field settles exactly as one written before the field existed —
+   * including on a run that committed half the job and ran out of road.
+   */
+  stopReport: HarnessRunOutcome | (string & {}) | null;
+}
+
 /** Everything that makes one phase a phase. Three values, passed in. */
 export interface PhaseSpec {
   /** The phase segment of the run record's topic. */
@@ -173,8 +220,17 @@ export interface PhaseSpec {
    * done-condition genuinely needs it wants it put on the manager's state
    * first; do that when such a phase exists rather than plumbing a field
    * nothing reads.
+   *
+   * **What it DOES get is {@link CompletionRunContext.stopReport}: how this
+   * run said it stopped.** A clean end and a finished job are not the same
+   * predicate, and a run that exhausted its turn or spend budget is where they
+   * most reliably diverge — it commits the half it managed and reports
+   * `stopped-at-limit`. A check that answers from the branch alone closes that
+   * row as done, silently. Reading the field is the phase's call, and
+   * declining to is a real choice with a real cost; the framework imposes
+   * nothing, because only the phase knows what finishing means for it.
    */
-  isDone(run: PhaseRunContext): boolean | Promise<boolean>;
+  isDone(run: CompletionRunContext): boolean | Promise<boolean>;
   /**
    * What this phase needs from the workspace, checked before anything is
    * claimed. Throws to refuse; absent means the phase needs nothing.
@@ -907,7 +963,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       ? phase
       : Object.freeze({
           ...phase,
-          isDone: (run: PhaseRunContext) => phase.isDone({ ...run, validated }),
+          isDone: (run: CompletionRunContext) => phase.isDone({ ...run, validated }),
           buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
         });
 
@@ -1531,6 +1587,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               attempt: identity.attempt,
               workspacePath: state.workspacePath!,
               branch: state.branch!,
+              // **Crossed as reported, and compared on by nothing here.** This
+              // block's own input schema reads `outcome` as a plain string
+              // deliberately, so a harness that reports outside the contract's
+              // three words is seen here rather than refused at the door;
+              // narrowing it or defaulting it to `finished` would put the
+              // silent partial success back, one layer down. `null` stays
+              // `null`: "reported nothing" is its own fact.
+              stopReport: handle.outcome,
               ctx,
             }),
           NETWORK_CALL_TIMEOUT_MS,
@@ -1570,8 +1634,28 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             (handle.finalMessage === null ? "" : ` — ${handle.finalMessage}`),
         );
       }
+      // **Phrasing, not a decision.** The arm was already chosen — the check
+      // refused — and all this reads the stop report for is to say WHICH kind
+      // of clean end the phase refused, because this string becomes the next
+      // attempt's feedback and "still not done" alone loses the one fact that
+      // explains it. A run that ran out of road and one that finished and got
+      // it wrong want different next prompts.
+      //
+      // **Every clean end gets its own words, not two.** `status` and `outcome`
+      // are independent fields, so terminating normally while reporting
+      // `failed` — or reporting nothing at all — is a pairing this contract
+      // permits. Folding those into "finished cleanly" would tell the next
+      // attempt the run succeeded and simply missed the target, which is the
+      // same narrator-says-it-went-fine defect this field exists to close, one
+      // layer up.
+      const ended =
+        handle.outcome === "finished"
+          ? "the run finished cleanly"
+          : handle.outcome === "stopped-at-limit"
+            ? "the run stopped at its limit"
+            : `the run terminated normally reporting ${handle.outcome ?? "no terminal result"}`;
       throw new HarnessAttemptFailed(
-        `the run finished cleanly and the ${state.phase} phase is still not done`,
+        `${ended} and the ${state.phase} phase is still not done`,
       );
     },
   });

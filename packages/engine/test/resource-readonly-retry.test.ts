@@ -8,6 +8,7 @@
  * happens even against the unfixed plain-Error throw.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
@@ -190,6 +191,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},
@@ -235,6 +237,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

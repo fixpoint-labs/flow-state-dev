@@ -10,7 +10,7 @@
 // classification and near-duplicate judgment is the FIX-883 sweeper's job.
 //
 // Handlers declare `resources: { inbox }` directly for a typed `ctx`
-// (the labs/trading-desk form), no capability layer. Auth is a bearer secret
+// (the Trading Desk pattern, now in its standalone repository), no capability layer. Auth is a bearer secret
 // read from `KH_MCP_SECRET`: the per-flow resolver is ALWAYS defined and fails
 // closed — a bearer resolver when the secret is set, otherwise a resolver that
 // throws, so `logActivity`/`listInbox` are unreachable over any HTTP transport
@@ -254,7 +254,7 @@ const knowledgeHubFlow = defineFlow({
     resolvePrincipal: process.env.KH_MCP_SECRET
       ? createBearerSecretPrincipalResolver({
           secret: process.env.KH_MCP_SECRET,
-          principal: { userId: "owner" }, // the single personal user the inbox binds to
+          principal: { userId: "owner", orgId: "org_test" }, // the single personal user the inbox binds to
         })
       : () => {
           throw new Error("knowledgeHub: HTTP access requires KH_MCP_SECRET");

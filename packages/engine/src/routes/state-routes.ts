@@ -22,7 +22,7 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
-  buildExternalResourceContextFromSession,
+  buildProjectedResourceContextFromSession,
   getPersistedData
 } from "../resources/internal";
 
@@ -162,21 +162,21 @@ export async function handleGetSessionState(
     configs: sessionConfigs,
     persisted: sessionState,
     persistedContent: sessionContent,
-    externalContext: buildExternalResourceContextFromSession(session, "session", route.sessionId, request.signal)
+    projectedContext: buildProjectedResourceContextFromSession(session, "session", route.sessionId, request.signal)
   });
   const userResources = createScopeResources({
     scope: "user",
     configs: userConfigs,
     persisted: userState,
     persistedContent: userContent,
-    externalContext: buildExternalResourceContextFromSession(session, "user", route.sessionId, request.signal)
+    projectedContext: buildProjectedResourceContextFromSession(session, "user", route.sessionId, request.signal)
   });
   const orgResources = createScopeResources({
     scope: "org",
     configs: orgConfigs,
     persisted: orgState,
     persistedContent: orgContent,
-    externalContext: buildExternalResourceContextFromSession(session, "org", route.sessionId, request.signal)
+    projectedContext: buildProjectedResourceContextFromSession(session, "org", route.sessionId, request.signal)
   });
 
   const sessionClientData = await computeClientData({

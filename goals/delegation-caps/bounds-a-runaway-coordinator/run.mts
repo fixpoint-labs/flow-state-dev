@@ -35,6 +35,7 @@ import {
   stripIntentOverrides,
 } from "../../lib/index.mts";
 import { defineFlow, generator } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { InitialSkill } from "@flow-state-dev/core";
 import {
   runAction,
@@ -213,6 +214,7 @@ interface Observed {
 
 async function run(actionName: ActionName): Promise<Observed> {
   const res = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow: flows[actionName],
     actionName: "process" as never,
     input: { message: USER_TURN },

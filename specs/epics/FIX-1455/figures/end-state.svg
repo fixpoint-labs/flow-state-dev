@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 452" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box for the kitchen-sink rebuild. A box holds five rows, one per issue in the set. At its foot, drawn as the floor everything stands on, FIX-1429: the file-declared workforce served over the app's real HTTP route, which today reaches zero compiled chunks after a production build. Above it, FIX-1475, durable hire: hire a team, redeploy, it is still there, as org-scoped state on the Postgres the app already uses. Then FIX-1476, channels and boards: one kind, one named instance, and a seat that drains a named subset, with a warning for a board nobody watches. Then FIX-1477, both UI shapes shipped: inline and resource-backed components as client-package exports, which the app only consumes. Then FIX-1478, one recipe per job: the patterns dependency dropped wherever Workforce covers the surface. A boundary line under the box reads: kitchen-sink is a consumer. Nothing here ships an API only it can call. To the right, composed in by the app: its own channel kinds as flow factories under flows/channels rather than new Layer 1 types, and its own seat files as the authoring path. Below that, consumed and not owned: the W3 floor FIX-1351, landed; the W4 first cut FIX-1407, landed; and the Postgres persistence the app already runs on. Below that a note says the set is open and a child filed later inherits every rule. Finally, below a fence, what is not built: no kitchen-sink-only durable store and no in-memory-only roster; no kitchen-sink-only UI API and no third Workforce UI package; no hired seat inside supervisor or any pattern factory; no Agent, Team, Channel or Board as a Layer 1 type; no ambient all-boards drain; no runtime channel-admin verbs, which are parked as FIX-1415; no nested sessions as the work control plane; and no Lab product inside the kitchen-sink, since DevForce and CyberForce run beside it.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .item  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .floor { fill:var(--code-soft); stroke:var(--code); stroke-width:2.4; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .bound { fill:none; stroke:var(--code); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-gat { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-outl{ fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+  </style>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="26" width="560" height="306" rx="5"/>
+    <text class="t-lbl" x="32" y="46">IN THE BOX — ONE WORKFORCE CONSUMER PEOPLE CLONE</text>
+
+    <rect class="item" x="32" y="56" width="528" height="44" rx="4"/>
+    <text class="t-gat" x="44" y="70">FIX-1478 &#183; ONE RECIPE PER JOB</text>
+    <text class="t-s" x="44" y="88">the patterns dependency dropped wherever Workforce covers the surface</text>
+
+    <rect class="item" x="32" y="106" width="528" height="48" rx="4"/>
+    <text class="t-gat" x="44" y="120">FIX-1477 &#183; BOTH UI SHAPES, SHIPPED</text>
+    <text class="t-b" x="44" y="136">inline and resource-backed, as client-package exports</text>
+    <text class="t-s" x="44" y="148">the app consumes them &#8212; it defines no UI API of its own</text>
+
+    <rect class="item" x="32" y="160" width="528" height="48" rx="4"/>
+    <text class="t-gat" x="44" y="174">FIX-1476 &#183; CHANNELS AND BOARDS</text>
+    <text class="t-b" x="44" y="190">one kind, one named instance, a seat that drains a subset</text>
+    <text class="t-s" x="44" y="202">a kind .ts + a CHANNEL.md instance &#183; boards are names &#183; warn on unattended</text>
+
+    <rect class="item" x="32" y="214" width="528" height="48" rx="4"/>
+    <text class="t-gat" x="44" y="228">FIX-1475 &#183; DURABLE HIRE</text>
+    <text class="t-b" x="44" y="244">hire a team, redeploy, it is still there</text>
+    <text class="t-s" x="44" y="256">org-scoped state on the Postgres the app already uses</text>
+
+    <rect class="floor" x="32" y="268" width="528" height="48" rx="4"/>
+    <text class="t-gat" x="44" y="282">FIX-1429 &#183; THE FLOOR EVERYTHING STANDS ON</text>
+    <text class="t-b" x="44" y="298">the file-declared workforce, served over the real HTTP route</text>
+    <text class="t-s" x="44" y="310">today it reaches 0 compiled chunks after a production build</text>
+  </g>
+
+  <path class="bound" d="M16 342 L576 342"/>
+  <text class="t-gat" x="16" y="356">KITCHEN-SINK IS A CONSUMER &#8212; nothing here ships an API only it can call</text>
+
+  <g id="composed-in">
+    <rect class="box" x="592" y="26" width="332" height="118" rx="5"/>
+    <text class="t-lbl" x="608" y="46">COMPOSED IN BY THE APP</text>
+    <rect class="comp" x="608" y="58" width="300" height="36" rx="4"/>
+    <text class="t-b" x="620" y="75">its own channel kinds</text>
+    <text class="t-s" x="620" y="88">flows/channels/*.ts &#183; factories, not new L1</text>
+    <rect class="comp" x="608" y="100" width="300" height="36" rx="4"/>
+    <text class="t-b" x="620" y="117">its own seat files</text>
+    <text class="t-s" x="620" y="130">WORKER.md &#8212; the authoring path, still</text>
+  </g>
+
+  <g id="consumed">
+    <rect class="box" x="592" y="156" width="332" height="136" rx="5"/>
+    <text class="t-lbl" x="608" y="176">CONSUMED, NOT OWNED</text>
+    <rect class="inp" x="608" y="186" width="300" height="30" rx="4"/>
+    <text class="t-s" x="620" y="205">W3 floor &#183; FIX-1351 &#8212; landed</text>
+    <rect class="inp" x="608" y="220" width="300" height="30" rx="4"/>
+    <text class="t-s" x="620" y="239">W4 first cut &#183; FIX-1407 &#8212; landed</text>
+    <rect class="inp" x="608" y="254" width="300" height="30" rx="4"/>
+    <text class="t-s" x="620" y="273">the Postgres path the app already runs on</text>
+  </g>
+
+  <g id="open-set">
+    <rect class="box" x="592" y="304" width="332" height="38" rx="5"/>
+    <text class="t-s" x="608" y="320">THE SET IS OPEN &#8212; a child filed later gets a row,</text>
+    <text class="t-s" x="608" y="334">a lane and a column, and inherits every rule &#183; ER-21</text>
+  </g>
+
+  <g id="not-built">
+    <path class="fence" d="M16 372 L924 372"/>
+    <text class="t-outl" x="16" y="394">NOT BUILT</text>
+    <text class="t-out" x="104" y="394">no kitchen-sink-only durable store &#183; no in-memory-only roster &#183; no kitchen-sink-only UI API</text>
+    <text class="t-out" x="104" y="410">no third Workforce UI package beside react/client &#183; no hired seat inside supervisor() or a pattern factory</text>
+    <text class="t-out" x="104" y="426">no Agent / Team / Channel / Board as an L1 type &#183; no ambient all-boards drain &#183; no nested sessions as control plane</text>
+    <text class="t-out" x="104" y="442">no runtime channel-admin verbs (parked, FIX-1415) &#183; no Lab product inside the app &#8212; DevForce runs beside it</text>
+  </g>
+</svg>

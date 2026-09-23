@@ -72,12 +72,17 @@ The vendor options differ because they are the factory's business, not the manag
 {
   phase: "implement",
   buildPrompt: (run) => `Implement ${run.issue} in ${run.workspacePath}.`,
-  isDone:      (run) => pullRequestExists(run.branch),
+  isDone:      (run) =>
+    run.stopReport === "stopped-at-limit" ? false : pullRequestExists(run.branch),
   validate:    (workspace) => checkWhateverThisPhaseNeeds(workspace),  // optional
 }
 ```
 
-`buildPrompt` is rebuilt on every attempt from current state. `isDone` is consulted only after a successful verdict — completion is a conjunction, never an alternative route. `validate` runs once at construction and whatever it returns reaches the phase's own hooks, which is how a phase carries something it learned at startup into a run.
+`buildPrompt` is rebuilt on every attempt from current state. `isDone` is consulted only after a successful verdict, which the manager reads from the handle's `status`. Completion is a conjunction, never an alternative route. `validate` runs once at construction and whatever it returns reaches the phase's own hooks, which is how a phase carries something it learned at startup into a run.
+
+`isDone` gets one fact `buildPrompt` does not: `run.stopReport`, how the run said it stopped, in the framework's own vocabulary (`"finished"`, `"stopped-at-limit"`, `"failed"`) and exactly as the harness reported it. A value this version of the framework doesn't define reaches `isDone` unchanged, and never as `"finished"`. `null` means no terminal result was reported at all. What "done" means is entirely the phase's call.
+
+Ending cleanly is not the same answer as finishing the job. A run that exhausts its turn or spend budget commits the part it got through and reports `stopped-at-limit`. A check that only asks whether the branch has a pull request settles that row as done with half the work in it.
 
 Collections a phase reads ride the standard `uses` option:
 

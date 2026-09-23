@@ -9,6 +9,7 @@
  * Run: pnpm tsx goals/delegation/synthesizes-fanned-out-worker-results/run.mts
  */
 import { readFileSync, readdirSync } from "node:fs";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { join as pathJoin } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -473,6 +474,7 @@ const runtimeConfig = { modelResolver: createModelResolver() } as never;
 
 async function run(actionName: "withTeam" | "solo", sessionId: string) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: actionName as never,
     input: { message: USER_TURN },
@@ -490,6 +492,7 @@ async function run(actionName: "withTeam" | "solo", sessionId: string) {
  */
 async function activateTeam(sessionId: string) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "activate" as never,
     input: { skillName: SKILL_NAME, input: ACTIVATION_ARGS },

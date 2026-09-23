@@ -89,7 +89,15 @@ export type DispatchOperation = (spec: {
    */
   userId: string;
   tenantId?: string;
-  orgId?: string;
+  /**
+   * The organization the SENDING request was admitted under, carried to the
+   * child unchanged (BR-11, FIX-1442). Required: a child dispatch runs below
+   * principal resolution, so there is nothing downstream that could recover an
+   * organization this spec omits — and borrowing one from the child's own
+   * session would let an incomplete envelope repair itself out of whatever
+   * record happened to be at that id.
+   */
+  orgId: string;
   /**
    * Provenance stamped onto the request record — the address, the sending
    * block, and whatever server-derived facts the sender supplied (a board's
@@ -132,7 +140,7 @@ export type DispatchOperation = (spec: {
  * it replaced. These are what someone types into a log search or a store read to
  * find the row afterwards.
  */
-export type DispatchedChild = {
+export type DispatchedRun = {
   /** Settles when the dispatched run finishes. Never awaited by the operation. */
   finished: Promise<unknown>;
   requestId: string;
@@ -168,7 +176,7 @@ export type DispatchOperationInputs = {
    * Never awaited by this operation — that would reintroduce the wait the whole
    * feature exists to remove.
    */
-  onDispatched?: (child: DispatchedChild) => void;
+  onDispatched?: (child: DispatchedRun) => void;
 };
 
 /**
@@ -221,8 +229,8 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
         action: spec.action,
         input: spec.input,
         sessionId: spec.sessionId,
-        principal: { userId: spec.userId },
-        ...(spec.orgId !== undefined ? { orgId: spec.orgId } : {}),
+        principal: { userId: spec.userId, orgId: spec.orgId },
+        orgId: spec.orgId,
         ...(spec.tenantId !== undefined ? { tenantId: spec.tenantId } : {}),
         ...(spec.metadata !== undefined ? { metadata: spec.metadata } : {}),
         // The sending request's effective config, so the dispatched request

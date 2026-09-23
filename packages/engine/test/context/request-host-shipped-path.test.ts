@@ -18,6 +18,7 @@
  *    missing seam.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatchThroughSeam, handler, requireRequestHost } from "@flow-state-dev/core";
 import type { DispatchOutcome } from "@flow-state-dev/core/types";
@@ -51,6 +52,12 @@ async function drain(stream: ReadableStream<Uint8Array> | null): Promise<void> {
     if (done) break;
   }
 }
+
+/**
+ * The org this test's session and caller are both bound to. Anything but the
+ * framework default, so the child's org can only have come from the parent.
+ */
+const SEAM_ORG = "org_acme";
 
 type Seen = {
   hasHost?: boolean;
@@ -161,6 +168,7 @@ describe("request-host seam on the shipped router path", () => {
     await stores.session.set(
       "s_live",
       {
+        orgId: DEFAULT_ORG_ID,
         id: "s_live",
         state: {},
         version: 0,
@@ -255,7 +263,7 @@ describe("request-host seam on the shipped router path", () => {
     expect(seen.hasHost).toBe(true);
   });
 
-  it("the seam binds the session's RESOLVED org, not the dispatch's omitted one", async () => {
+  it("the seam binds the session's RESOLVED org onto the child it creates", async () => {
     const seen: Seen = {};
     const registry = createFlowRegistry();
     registry.register(probeFlow("shipped-org", seen, []));
@@ -266,6 +274,11 @@ describe("request-host seam on the shipped router path", () => {
     const router = createFlowApiRouter({
       registry,
       stores,
+      // A real resolver, so the org execution resolves to is `SEAM_ORG` rather
+      // than the framework default. Without it the caller can only ever be in
+      // the default org, the session has to be seeded there too, and the
+      // assertion below stops discriminating anything.
+      resolvePrincipal: () => ({ userId: "u_alice", orgId: SEAM_ORG }),
       // A wired host dispatch operation, as an orchestration deployment has.
       // The router carries `dispatchOperation` through untouched, so the seam
       // reaches the point where it writes the child session record — and
@@ -292,16 +305,20 @@ describe("request-host seam on the shipped router path", () => {
         updatedAt: ts,
         flowKind: "shipped-org",
         userId: "u_alice",
-        orgId: "org_acme",
+        // Deliberately NOT the framework default. A request cannot omit its org
+        // now (FIX-1442) and a session bound to a different org than the caller
+        // resolved is a binding mismatch, so both sides of this test name the
+        // same org — but that org has to be one nothing else would produce. Seed
+        // it as `DEFAULT_ORG_ID` and the assertion below passes for a seam that
+        // hardcodes the default, never reads the resolved identity at all, or
+        // falls back to it: every wrong answer is the expected answer.
+        orgId: SEAM_ORG,
         journal: []
       },
       "any"
     );
 
-    // The dispatch OMITS orgId. That is legal — only a *differing* org is
-    // rejected — and execution resolves the authoritative org from the session
-    // record. The seam must close over that, not over the absent option.
-    await post(router, "shipped-org", "s_org_bound");
+    await post(router, "shipped-org", "s_org_bound", SEAM_ORG);
 
     expect(seen.error).toBeUndefined();
     // Dispatch was admitted — otherwise the org assertion below would pass
@@ -310,11 +327,11 @@ describe("request-host seam on the shipped router path", () => {
     expect(started).toHaveLength(1);
 
     // The observable: the child the seam created carries the parent's org.
-    // Reading `options.orgId` here left it undefined, so the seam produced a
-    // child outside the parent's org — org-scoped child work then runs without
-    // the org context its inheritance contract promises.
+    // A seam that read its own options instead of the resolved identity would
+    // produce a child outside the parent's org, and org-scoped child work would
+    // then run without the org context its inheritance contract promises.
     const child = await stores.session.get(started[0]!);
-    expect(child?.orgId).toBe("org_acme");
+    expect(child?.orgId).toBe(SEAM_ORG);
   });
 });
 
@@ -343,6 +360,7 @@ describe("request-host seam on the shipped worker path", () => {
     const runtime = await state.getRuntime();
 
     await runAction({
+      orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: {},

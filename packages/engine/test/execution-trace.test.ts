@@ -9,6 +9,7 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import type { BlockTraceItem, RouterDecisionItem } from "@flow-state-dev/core/items";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -118,6 +119,7 @@ describe("execution trace system", () => {
       const response = createResponseEmitter({ requestId: "req_kind", now: () => Date.now() });
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { x: 5 },
@@ -156,6 +158,7 @@ describe("execution trace system", () => {
       const response = createResponseEmitter({ requestId: "req_seq", now: () => Date.now() });
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { message: "hello" },
@@ -221,6 +224,7 @@ describe("execution trace system", () => {
       const response = createResponseEmitter({ requestId: "req_fail", now: () => Date.now() });
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { message: "hello" },
@@ -259,6 +263,7 @@ describe("execution trace system", () => {
       const response = createResponseEmitter({ requestId: "req_router", now: () => Date.now() });
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { message: "A test" },
@@ -295,6 +300,7 @@ describe("execution trace system", () => {
       const response = createResponseEmitter({ requestId: "req_router_b", now: () => Date.now() });
 
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { message: "B test" },
@@ -324,6 +330,7 @@ describe("execution trace system", () => {
       const response = createResponseEmitter({ requestId: "req_filter", now: () => Date.now() });
 
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { message: "hello" },
@@ -352,6 +359,7 @@ describe("execution trace system", () => {
       const response = createResponseEmitter({ requestId: "req_rd_filter", now: () => Date.now() });
 
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { message: "A test" },
@@ -475,6 +483,7 @@ describe("execution trace system", () => {
       } as any, "any");
 
       const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_cur_llm",
@@ -545,6 +554,7 @@ describe("execution trace system", () => {
       const response = createResponseEmitter({ requestId: "req_identity", now: () => Date.now() });
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { x: 1 },
@@ -582,6 +592,7 @@ describe("execution trace system", () => {
       const response = createResponseEmitter({ requestId: "req_router_id", now: () => Date.now() });
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { message: "A test" },

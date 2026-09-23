@@ -195,14 +195,14 @@ function discoverMounts(
     if (key === WORKSPACE_OUTCOMES) continue;
     if (wanted ? !wanted.has(key) : excluded.has(key)) continue;
     if (!isCollectionRef(value)) continue;
-    // An external collection answers the duck-type — it has a `pattern` and a
+    // A projected collection answers the duck-type — it has a `pattern` and a
     // `list` — and is not projectable through either. Its `list` is paged, so
     // hydrate's `for (const entry of await list())` throws before the run
     // starts, and it carries no mutators for a writable mount to flush
     // through. The brand is what separates them; the shape does not.
-    if ((value as { external?: unknown }).external === true) {
+    if ((value as { projected?: unknown }).projected === true) {
       console.warn(
-        `[workspace-agent] collection "${key}" is external and read-through, so it cannot be projected into a directory — skipped.`,
+        `[workspace-agent] collection "${key}" is a read-through projection, so it cannot be mounted into a directory — skipped.`,
       );
       continue;
     }

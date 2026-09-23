@@ -20,15 +20,18 @@
  * stop, never as "reuse what I had cached".
  */
 import { describe, it, expect } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createRequestHost } from "../../src/context/create-request-host";
-import { deriveDispatchChildSessionId } from "../../src/context/detached-child";
+import { deriveDispatchRunSessionId } from "../../src/context/dispatch-run";
 import type { ExpectedVersion, SessionRecord } from "../../src/stores/types";
 import { CHILD_ENTRY, dispatchableFlow } from "./seam-harness";
 
 const IDENTITY = {
   userId: "u_alice",
   tenantId: undefined,
-  orgId: undefined,
+  // The running request's organization; the child inherits it verbatim and
+  // adoption compares it, so it must match what the fixtures write (BR-11/BR-6).
+  orgId: DEFAULT_ORG_ID,
   /** The running request's session — the parent of anything it spawns. */
   sessionId: "s_parent",
   lineageId: "lin_race"
@@ -40,7 +43,7 @@ const FLOW = dispatchableFlow("seam-race");
 
 /** The child this call would have created, as the winner already created it. */
 function winnerRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
-  const childId = deriveDispatchChildSessionId(
+  const childId = deriveDispatchRunSessionId(
     {
       userId: IDENTITY.userId,
       tenantId: IDENTITY.tenantId,
@@ -51,6 +54,7 @@ function winnerRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
   );
   const ts = 1_700_000_000_000;
   return {
+    orgId: DEFAULT_ORG_ID,
     id: childId,
     state: {},
     version: 0,

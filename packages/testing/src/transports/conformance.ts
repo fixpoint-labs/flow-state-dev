@@ -40,7 +40,7 @@ export type MockTransportHost = InboundTransportHost & {
 };
 
 export type CreateMockTransportHostOptions = {
-  /** Resolver invoked for `resolvePrincipal`. Default returns `{ userId: "test-user" }`. */
+  /** Resolver invoked for `resolvePrincipal`. Default returns `{ userId: "test-user", orgId: "org_test" }`. */
   resolvePrincipal?: (
     ctx: PrincipalResolutionContext
   ) => Promise<ResolvedPrincipal> | ResolvedPrincipal;
@@ -58,7 +58,7 @@ export function createMockTransportHost(
   const principalCalls: PrincipalResolutionContext[] = [];
 
   const resolvePrincipal = options.resolvePrincipal ??
-    ((_: PrincipalResolutionContext) => ({ userId: "test-user" }));
+    ((_: PrincipalResolutionContext) => ({ userId: "test-user", orgId: "org_test" }));
 
   const host: InboundTransportHost = {
     registry: minimalRegistry(),
@@ -162,7 +162,7 @@ export function createInboundTransportConformanceTests(
     it("envelope carries the resolved principal", async () => {
       const adapter = factory();
       const host = createMockTransportHost({
-        resolvePrincipal: () => ({ userId: "u_conform" })
+        resolvePrincipal: () => ({ userId: "u_conform", orgId: "org_test" })
       });
       const envelope = await helpers.buildEnvelope(adapter, host);
       expect(envelope.principal).toBeDefined();

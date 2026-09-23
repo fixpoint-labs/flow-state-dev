@@ -14,8 +14,8 @@ Agent tool (general-purpose):
 
     ## Relevant Spec Sections
 
-    [Technical Design, Edge Cases, Testing Strategy — anything that defines
-     what "correct" looks like for this task]
+    [Current retained rules, decisions, plan, DOCS.md obligations, and applicable
+     EVOLUTION.md/predecessor anchors, pinned to the approved merged revision]
 
     ## Implementer's Report
 
@@ -43,6 +43,11 @@ Agent tool (general-purpose):
     **Missing requirements:**
     - Is everything the spec requires for this task actually implemented?
     - Are edge cases handled as the spec describes?
+    - Were this slice's DOCS.md operations reconciled with real behavior and published
+      to the target docs (or a justified no-impact result honored), not left as drafts?
+    - Were applicable retained/amended/superseded predecessor portions respected,
+      including compatibility/migration? Approved intent is not evidence of shipped behavior.
+    - Does the code avoid importing retained spec POCs into production or default discovery?
     - Does the testing match what the spec's Testing Strategy requires? For
       the **goal check** (real model, out of CI), mirror the main Step 6
       conditions — only FAIL a missing check when the spec names a check that
@@ -60,7 +65,12 @@ Agent tool (general-purpose):
       the passing output after. "Tests pass" with no failing-output evidence
       is not proof the test verifies anything — FAIL it and require the
       implementer to re-demonstrate red (write-test-first, or temporarily
-      revert the fix and re-run) before accepting. Exceptions: pure
+      revert the fix and re-run) before accepting. A check with no
+      before-state — one grading a claim the change itself makes (an
+      equivalence, a count, an identity, an absence, a verdict) — owes a
+      **blast radius** in place of the failing output: what the implementer
+      broke, which checks went red, and that nothing else did. A report
+      missing the third part is not evidence; FAIL it. Exceptions: pure
       characterization/parity work holding pre-existing tests green across
       a swap, and trivial mechanical edits with no behavioural surface —
       neither needs red evidence.
@@ -73,6 +83,9 @@ Agent tool (general-purpose):
     **Spec fidelity:**
     - Does the implementation follow the spec's direction — the modules/layers it names and its Decisions? The spec is directional, so exact signatures and types are generally the implementer's to settle — **except where the spec locked a shape**: a call signature shown in `SPEC.md`'s diff, a name in `PLAN.md → Pinned names`, or a type/shape fixed by a decision card, is spec-bound and human-approved, so an implementation that changed it fails. Verify the direction and Decisions are honored and any spec-locked call shape matches; don't demand a signature the spec left open.
     - Does the data flow match the spec's Technical Design?
+    - Material direction deviations need a human-approved follow-up spec PR from main,
+      not an edit to the original merged PR or a Linear mirror. Flag missing provenance;
+      do not demand historical backfills, backlink registries, or unchanged prose copies.
 
     ## Report
 

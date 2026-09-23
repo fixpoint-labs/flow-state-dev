@@ -2,7 +2,8 @@
  * The resources convention loader — read a workforce tree's documents into
  * neutral records.
  *
- * Walks `<root>/org/resources/` and `<root>/teams/<teamId>/resources/`, reads
+ * Walks `<root>/org/resources/`, `<root>/teams/<teamId>/resources/` and every
+ * `resources/` folder inside a worker's own folder under either parent, reads
  * each `<name>.md`, and returns one plain record per document. Frontmatter is
  * settings and the Markdown body is the document, the same bargain `WORKER.md`
  * makes. Everything the convention does not derive is carried verbatim, so a
@@ -13,6 +14,26 @@
  * Two rules run through the whole walk, both shared with the other readers.
  * **Symlinks are never followed**, at any level. And a path is judged by the
  * slot it occupies, not by what it looks like.
+ *
+ * **One walk, two slots.** The same convention covers `resources/` and
+ * `references/` at the same four levels, so this module reads a slot rather
+ * than a folder name: {@link readResourcesDirectory} and
+ * {@link readReferencesDirectory} are the same walk with a different slot and a
+ * different refusal set. A second ~400-line reader would be a second answer to
+ * "where does the convention look", and the two would drift at the first level
+ * added.
+ *
+ * What differs between them is not the walk. A `resources/` document's body
+ * becomes a stored row that then evolves; a `references/` document's file stays
+ * the source, so its record carries the {@link ResourceDoc.filePath} the
+ * install half points at and refuses a wider set of declarations. Both are the
+ * caller's business, not this walk's.
+ *
+ * **This reader is one of two over the same folder.** A `resources/` folder
+ * takes Markdown documents and TypeScript modules side by side; the `.ts` files
+ * are the module walk's (`../codegen/discover-resource-modules`), which mints
+ * their refs by the same rule this one does. So a non-`.md` entry is passed
+ * over here because it is not a document, not because nobody meant it.
  *
  * **A resource is a file, not a folder** — which inverts the worker reader's
  * skip rule, deliberately. There, a *file* in the `workers/` slot does not
@@ -31,24 +52,29 @@ import {
   parseFrontmatterYaml,
   splitFrontmatter,
 } from "@flow-state-dev/orchestration";
-import { refusedDeclarationMessage, type ResourceDoc } from "../manifest";
-import { validateSegment } from "./segments";
 import {
+  refusedDeclarationMessage,
+  refusedReferenceDeclarationMessage,
+  type ResourceDoc,
+} from "../manifest";
+import {
+  DOCUMENT_EXTENSION,
+  REFERENCES_SLOT,
+  RESOURCES_SLOT,
+  WORKERS_LEVEL,
+  type DocumentSlot,
+  mintResourceRef,
+} from "./resource-convention";
+import {
+  IGNORED_ENTRIES,
   type PathReport,
   classify,
+  openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
+  walkTeams,
 } from "./structural-directory";
-
-/** Filenames that are never a document — editor and OS droppings. */
-const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
-
-/** The slot a document sits in, under either root. */
-const RESOURCES_SLOT = "resources";
-
-/** The extension a document is written in. Anything else is not a document. */
-const DOCUMENT_EXTENSION = ".md";
 
 /**
  * Why one thing that should have produced a document did not — the discriminant
@@ -59,7 +85,7 @@ const DOCUMENT_EXTENSION = ".md";
  * `error.message`. Every entry still carries the `path` it was observed at.
  */
 export type ResourceDocErrorKind =
-  /** A structural folder — a root, a team, or a `resources/` slot — is a symlink or is there and could not be listed. Every document under it is missing. */
+  /** A structural folder — a root, a team, a `workers/` level, a worker folder, or a `resources/` slot — is a symlink or is there and could not be listed. Every document under it is missing. */
   | "unreadable-slot"
   /** A directory sits where a document file belongs — the mistake an author arriving from `workers/` or `channels/` makes. */
   | "folder-where-file-belongs"
@@ -89,9 +115,10 @@ export interface ReadResourcesDirectoryResult {
    *
    * Usually a file in a `resources/` slot — or a directory in one, which is the
    * mistake this convention most expects. It can also be a structural folder —
-   * `org`, `org/resources`, `teams`, `teams/<id>`, `teams/<id>/resources` —
-   * when that folder is refused or unreadable, because the documents beneath it
-   * cannot be enumerated to be named individually.
+   * `org`, `org/resources`, `org/workers`, `teams`, `teams/<id>`,
+   * `teams/<id>/resources`, either level's `workers/<worker>` or that worker's
+   * `resources` — when that folder is refused or unreadable, because the
+   * documents beneath it cannot be enumerated to be named individually.
    *
    * Collected rather than thrown, for the reason the worker reader collects: a
    * library that hands back data does not get to set an app's boot policy. That
@@ -102,106 +129,270 @@ export interface ReadResourcesDirectoryResult {
 }
 
 /**
- * Read every `<root>/org/resources/<name>.md` and
- * `<root>/teams/<teamId>/resources/<name>.md`, and return one neutral record
- * per document.
+ * Read every `<name>.md` in a `resources/` folder anywhere the convention puts
+ * one — the org level, a team, and a worker's own folder under either of those
+ * — and return one neutral record per document.
+ *
+ * A worker's folder is an ADDRESS, not a visibility boundary. Its documents are
+ * minted under a worker-qualified ref and installed on the worker kind's flow
+ * like any other; what makes one private to the seat that owns it is
+ * `flowIsolation: true` in that document's own frontmatter, which this reader
+ * carries verbatim and never inspects.
  *
  * Throws only when `root` itself is refused — a symlink, or a path that cannot
  * be read at all. A configured root that does not exist, or that would take the
  * walk somewhere else entirely, is a wiring mistake, not a per-document one.
  *
  * A root with neither `org/` nor `teams/` is an empty result: an app may
- * declare no documents in files, and a team may have no `resources/` folder.
+ * declare no documents in files, and a team, or a seat, may have no
+ * `resources/` folder.
  * Everything else that goes wrong lands in `errors`, so one bad file never
  * costs an app its other documents.
  */
 export async function readResourcesDirectory(
   root: string,
 ): Promise<ReadResourcesDirectoryResult> {
+  return await readDocumentSlot(root, RESOURCES_SLOT, refusedDeclarationMessage, false);
+}
+
+/**
+ * Read every `<name>.md` in a `references/` folder anywhere the convention puts
+ * one, and return one neutral record per document — each carrying the
+ * {@link ResourceDoc.filePath} it was read from.
+ *
+ * The same walk as {@link readResourcesDirectory}, at the same four levels,
+ * minting refs into the same namespace. Two things differ, and both belong to
+ * what a reference IS rather than to where it sits:
+ *
+ * - **The record carries its file path**, because the install half points the
+ *   resource at the file instead of copying the body into a row. The body is
+ *   still parsed here, because `description` is required of every file in this
+ *   dialect and a file that cannot be parsed is a load failure either way.
+ * - **A wider declaration refusal.** `writable:`, `llmWritable:` and `render:`
+ *   are derived for a reference and refused by name
+ *   ({@link refusedReferenceDeclarationMessage}), because the folder carries
+ *   the seal and a file that could unseal itself would make the folder a
+ *   suggestion.
+ *
+ * Errors, symlink discipline and the collect-don't-throw bargain are the walk's
+ * and are identical. Throws only when `root` itself is refused.
+ *
+ * @param root The workforce tree — the folder holding `org/` and `teams/`.
+ * @returns One record per reference that loaded, and one entry per path that
+ *   should have produced one and did not.
+ */
+export async function readReferencesDirectory(
+  root: string,
+): Promise<ReadResourcesDirectoryResult> {
+  return await readDocumentSlot(root, REFERENCES_SLOT, refusedReferenceDeclarationMessage, true);
+}
+
+/**
+ * The walk both readers are. Parameterized by the slot it looks in and the
+ * declaration refusal that slot imposes; everything else — the four levels, the
+ * symlink rule, the directory-in-a-documents-slot report — is the convention's
+ * and is shared by construction rather than by two copies kept in step.
+ */
+async function readDocumentSlot(
+  root: string,
+  slot: DocumentSlot,
+  refuseDeclaration: (declared: Record<string, unknown>) => string | undefined,
+  carriesFilePath: boolean,
+): Promise<ReadResourcesDirectoryResult> {
   const documents: ResourceDoc[] = [];
   const errors: ResourceDocError[] = [];
 
-  // The root is classified before it is listed, for the reason every nested
-  // structural folder is: a bare `readdir` follows a symlink, and a symlinked
-  // root would load the whole tree from somewhere the caller never configured.
-  // It throws rather than landing in `errors` because the root is the one level
-  // whose failure is a wiring mistake, not a document-shaped one.
-  if ((await classify(root)).kind === "symlink") {
-    throw refusedSymlink("workforce directory", root);
-  }
+  await openRoot(root);
 
-  try {
-    await fs.readdir(root);
-  } catch (err) {
-    throw new Error(
-      `Failed to read workforce directory "${root}": ${(err as Error).message}`,
-    );
-  }
+  /** File a structural refusal met on the way to a slot, at either root. */
+  const report = (at: string, error: Error): void => {
+    errors.push({ path: at, error, kind: "unreadable-slot" });
+  };
 
   // The org root. Opened structurally rather than merely classified, so a
-  // symlinked or unreadable `org/` is reported the way `teams/` is.
+  // symlinked or unreadable `org/` is reported the way `teams/` is. It stays
+  // here rather than moving into the shared walk: it has one caller, and a
+  // shared open would hand the channels reader an `org/` scope it is not
+  // allowed to use.
   const org = await openStructuralDirectory(path.join(root, "org"), "org");
   if (org.refusal !== undefined) {
-    errors.push({ path: "org", error: org.refusal.error, kind: "unreadable-slot" });
+    report("org", org.refusal.error);
   }
   if (org.entries !== undefined) {
-    await readSlot(path.join(root, "org", RESOURCES_SLOT), `org/${RESOURCES_SLOT}`, {
+    await readSlot(path.join(root, "org", slot), `org/${slot}`, {
       documents,
       errors,
-      mintRef: (name) => mintResourceRef(undefined, name),
+      slot,
+      refuseDeclaration,
+      carriesFilePath,
+      mintRef: (name) => mintResourceRef(undefined, undefined, name),
+    });
+    // Org workers are rare shared-infra seats, and their documents load for the
+    // reason a team worker's do. Their ref drops `org/`, exactly as an org
+    // document's does. No seat can be hired at that address yet — the roster
+    // reader passes over `org/workers/` in silence and a worker id requires a
+    // team — which is a larger gap than this reader closes, and not a reason
+    // for the documents to go on being unread.
+    await walkWorkers(path.join(root, "org"), "org", undefined, {
+      documents,
+      errors,
+      slot,
+      refuseDeclaration,
+      carriesFilePath,
     });
   }
 
-  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams");
-  if (teams.refusal !== undefined) {
-    errors.push({ path: "teams", error: teams.refusal.error, kind: "unreadable-slot" });
-  }
-  if (teams.entries === undefined) return { documents, errors };
-
-  for (const teamId of teams.entries) {
-    if (IGNORED_ENTRIES.has(teamId)) continue;
-
-    const teamDir = path.join(root, "teams", teamId);
-    const teamPath = `teams/${teamId}`;
-    const team = await classify(teamDir);
-    if (team.kind === "symlink") {
-      errors.push({
-        path: teamPath,
-        error: refusedSymlink("team folder", teamId),
-        kind: "unreadable-slot",
-      });
-      continue;
-    }
-    if (team.kind === "unreadable") {
-      errors.push({
-        path: teamPath,
-        error: unreadable("Team folder", teamId, team.error),
-        kind: "unreadable-slot",
-      });
-      continue;
-    }
-    if (team.kind !== "directory") continue;
-
-    await readSlot(path.join(teamDir, RESOURCES_SLOT), `${teamPath}/${RESOURCES_SLOT}`, {
+  for await (const team of walkTeams(root, report)) {
+    await readSlot(path.join(team.dir, slot), `${team.path}/${slot}`, {
       documents,
       errors,
-      mintRef: (name) => mintResourceRef(teamId, name),
+      slot,
+      refuseDeclaration,
+      carriesFilePath,
+      mintRef: (name) => mintResourceRef(team.id, undefined, name),
+    });
+    await walkWorkers(team.dir, team.path, team.id, {
+      documents,
+      errors,
+      slot,
+      refuseDeclaration,
+      carriesFilePath,
     });
   }
 
   return { documents, errors };
 }
 
-/** Everything reading one `resources/` slot needs that differs between roots. */
+/**
+ * Read every worker's `resources/` slot under one parent — `org/` or a team
+ * folder — and collect what they hold.
+ *
+ * One function called twice rather than two copies: the two parents differ only
+ * in the team id handed to the ref minter, and a second copy is how the levels
+ * of a tree start disagreeing about what a symlink means.
+ *
+ * This level is the worker reader's rule, not this reader's: a `workers/` level
+ * holds folders, so a *file* in it occupies no slot and is passed over in
+ * silence. Inside a worker's `resources/` slot the rule inverts back, because
+ * that is a documents slot and a directory in one is an author's mistake worth
+ * reporting.
+ *
+ * What it does NOT do is open `WORKER.md`. Whether a folder describes a seat is
+ * the roster reader's question, answered separately and already reported by the
+ * reader whose job it is; this one is answering a question about a file.
+ */
+async function walkWorkers(
+  parentDir: string,
+  parentPath: string,
+  teamId: string | undefined,
+  ctx: Omit<SlotContext, "mintRef">,
+): Promise<void> {
+  const workersPath = `${parentPath}/${WORKERS_LEVEL}`;
+  const slots = await openStructuralDirectory(
+    path.join(parentDir, WORKERS_LEVEL),
+    workersPath,
+  );
+  if (slots.refusal !== undefined) {
+    ctx.errors.push({
+      path: workersPath,
+      error: slots.refusal.error,
+      kind: "unreadable-slot",
+    });
+  }
+  if (slots.entries === undefined) return;
+
+  for (const workerName of slots.entries) {
+    if (IGNORED_ENTRIES.has(workerName)) continue;
+
+    // No name is special at this level — including `resources`. A folder here
+    // is judged by the slot it occupies, not by what it looks like, which is
+    // this module's second rule and the rule the other two readers already
+    // apply: `readWorkforceDirectory` hires `teams/<t>/workers/resources/` off
+    // its `WORKER.md`, and `readSeatSkills` reads that seat's own `skills/`.
+    // Skipping the name here would leave exactly one seat in the tree whose
+    // documents are read by nothing and reported by nothing — the silent drop
+    // this convention exists to remove, reintroduced one level down.
+    //
+    // It would also buy nothing. The author who writes a document one level too
+    // high, at `workers/resources/stray.md`, is not rescued by a skip: that file
+    // sits beside a `resources/` slot rather than in one, so the walk passes it
+    // over either way. What the skip cost was a real seat's documents.
+    const workerDir = path.join(parentDir, WORKERS_LEVEL, workerName);
+    const entryPath = `${workersPath}/${workerName}`;
+    const slot = await classify(workerDir);
+
+    // A file under `workers/` does not occupy a worker slot — a slot is a
+    // directory — so it is skipped rather than reported, the way the roster
+    // reader skips one.
+    if (slot.kind === "absent" || slot.kind === "file") continue;
+
+    // Both refusals are structural: the folder is there and the walk will not
+    // go through it, so every document under it is missing and none of them can
+    // be named individually. `absent` and `unreadable` stay apart here for the
+    // reason they do at every other level — folded together, a folder we cannot
+    // stat is skipped in silence and its documents disappear with `errors`
+    // empty for a caller's fatal check to look at.
+    if (slot.kind === "symlink") {
+      ctx.errors.push({
+        path: entryPath,
+        error: refusedSymlink("worker folder", workerName),
+        kind: "unreadable-slot",
+      });
+      continue;
+    }
+    if (slot.kind === "unreadable") {
+      ctx.errors.push({
+        path: entryPath,
+        error: unreadable("Worker folder", workerName, slot.error),
+        kind: "unreadable-slot",
+      });
+      continue;
+    }
+
+    await readSlot(path.join(workerDir, ctx.slot), `${entryPath}/${ctx.slot}`, {
+      documents: ctx.documents,
+      errors: ctx.errors,
+      slot: ctx.slot,
+      refuseDeclaration: ctx.refuseDeclaration,
+      carriesFilePath: ctx.carriesFilePath,
+      mintRef: (name) => mintResourceRef(teamId, workerName, name),
+    });
+  }
+}
+
+/** Everything reading one documents slot needs that differs between roots. */
 interface SlotContext {
   documents: ResourceDoc[];
   errors: ResourceDocError[];
+  /** Which slot is being read — the folder name, and what a refusal names. */
+  slot: DocumentSlot;
+  /**
+   * Why this slot refuses a declaration, or `undefined` when it does not.
+   *
+   * Passed rather than branched on {@link SlotContext.slot}, so the two slots'
+   * refusal sets stay one export each in `../manifest` and this walk stays a
+   * walk.
+   */
+  refuseDeclaration: (declared: Record<string, unknown>) => string | undefined;
+  /**
+   * Whether the record carries the absolute path it was read from.
+   *
+   * **True for `references/` only, and that is not symmetry lost — it is the
+   * mutable path left alone.** A reference IS its file, so the path is what the
+   * install half installs. A `resources/` document's source is its stored row,
+   * so a path on that record would be a field nothing reads, and it would
+   * change what the reader hands back for every tree that has one. Two records
+   * read from different roots would stop comparing equal, which is exactly how
+   * the existing suite caught this being added everywhere.
+   */
+  carriesFilePath: boolean;
   /** Mint this slot's ref for a document name. Throws on a bad segment. */
   mintRef: (name: string) => string;
 }
 
 /**
- * Read one `resources/` slot. An absent slot is silent — a team may have no
+ * Read one documents slot — `resources/` or `references/`, whichever
+ * {@link SlotContext.slot} names. An absent slot is silent — a team may have no
  * documents — and a slot that is there and cannot be walked is reported under
  * its own path, because the documents beneath it cannot be named individually.
  */
@@ -227,7 +418,7 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
         path: entryPath,
         error: new Error(
           `"${entryName}" is a directory. A resource is a file, not a folder — write the ` +
-            `document as "${entryName}${DOCUMENT_EXTENSION}" in this ${RESOURCES_SLOT}/ ` +
+            `document as "${entryName}${DOCUMENT_EXTENSION}" in this ${ctx.slot}/ ` +
             `folder instead.`,
         ),
         kind: "folder-where-file-belongs",
@@ -253,19 +444,27 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
       continue;
     }
 
-    // A stray `notes.txt` or an image is not a document anyone declared. Unlike
-    // a directory, it carries no sign that someone meant it to be one.
+    // Not a document, so not this reader's. The skip is deliberate and stays a
+    // skip, but it no longer means "nobody meant this file": a `.ts` beside the
+    // Markdown is a resource module, read by the other door
+    // (`../codegen/discover-resource-modules`) and refused by name there when
+    // it cannot be one. Passing it over here is how the two doors stay two
+    // readers over one folder. A stray `notes.txt` or an image belongs to
+    // neither, and is the one thing this branch still drops in silence.
     if (!entryName.endsWith(DOCUMENT_EXTENSION)) continue;
 
-    let loaded: { ref: string; declared: Record<string, unknown>; body: string };
+    let loaded: ResourceDoc;
     try {
       const name = entryName.slice(0, -DOCUMENT_EXTENSION.length);
       // Identity first: a document whose segments break the rules has no ref to
       // be keyed under, so there is nothing to be gained by reading its file.
       const ref = ctx.mintRef(name);
-      const text = await fs.readFile(path.join(slotDir, entryName), "utf8");
+      const filePath = path.resolve(slotDir, entryName);
+      const text = await fs.readFile(filePath, "utf8");
       const { declared, body } = parseResourceMd(text, entryName);
-      loaded = { ref, declared, body };
+      // The path rides only on a record whose slot needs it. See
+      // `SlotContext.carriesFilePath` for why that is not an asymmetry to tidy.
+      loaded = ctx.carriesFilePath ? { ref, declared, body, filePath } : { ref, declared, body };
     } catch (err) {
       ctx.errors.push({ path: entryPath, error: err as Error, kind: "document-load-failed" });
       continue;
@@ -275,7 +474,7 @@ async function readSlot(slotDir: string, slotPath: string, ctx: SlotContext): Pr
     // that could not be read is an author's typo, and a file declaring what the
     // convention derives is an author's misunderstanding. Checked here rather
     // than inside the parse so the two stay tellable apart by control flow.
-    const refused = refusedDeclarationMessage(loaded.declared);
+    const refused = ctx.refuseDeclaration(loaded.declared);
     if (refused !== undefined) {
       ctx.errors.push({
         path: entryPath,
@@ -317,28 +516,4 @@ function parseResourceMd(
   }
 
   return { declared, body };
-}
-
-/**
- * Mint a document's whole identity from where it sits: `"<name>"` at the org
- * level, `"teams/<teamId>/<name>"` for a team's.
- *
- * The one place this string is built. Team-qualified so two teams can each have
- * a `handbook` without coordinating names, and **path-joined, not dot-joined**:
- * the atlas fixes this key as a path, so a dotted ref would put the same
- * logical document at a different org storage row from anything else following
- * the atlas. The worker id's reason for dot-joining does not carry across — a
- * worker id becomes a flow instance id and a slashed one fails to route, while
- * a resource ref is a storage-key namespace and never routes.
- *
- * Throws when a segment breaks the rules, naming the rule.
- */
-function mintResourceRef(teamId: string | undefined, name: string): string {
-  if (teamId === undefined) {
-    validateSegment(name, "Document");
-    return name;
-  }
-  validateSegment(teamId, "Team");
-  validateSegment(name, "Document");
-  return `teams/${teamId}/${name}`;
 }

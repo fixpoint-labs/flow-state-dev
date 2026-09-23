@@ -9,10 +9,19 @@
  * `devtool-panel-owned-subtree.test.tsx`, and those hooks deliberately carry no
  * fence of their own.
  *
- * The hooks here are the exceptions: the navigator's session list, and the
- * panel's own request list, both of which live ABOVE that boundary and survive
- * the switch. Nothing unmounts them, so a read fence is the only thing standing
- * between a response for the copy just left and the copy now on screen.
+ * The hook here is the exception: the panel's own request list, which lives
+ * ABOVE that boundary and survives the switch. Nothing unmounts it, so a read
+ * fence is the only thing standing between a response for the copy just left
+ * and the copy now on screen.
+ *
+ * The rail's session list used to be the second exception and is no longer in
+ * this package — it is `useLeafSessions` inside `FlowNavigator`, fenced on the
+ * same primitive, and both of its hazards are pinned by
+ * `packages/react/test/flow-navigator-read-fence.test.ts`. What the rail does
+ * on a CREDENTIAL change, where this tool rebuilds its clients and the list
+ * must not sit there showing the previous operator's sessions, is pinned by
+ * `flow-rail.test.tsx` — that one is an integration property of this host, not
+ * of the component.
  *
  * Each case holds a read open, moves the workspace, then lets it land.
  */
@@ -37,7 +46,6 @@ vi.mock("../src/react/context/devtool-context", () => ({
   useDevTool: () => devToolState,
 }));
 
-import { useSessions } from "../src/react/hooks/use-sessions";
 import { useSessionRequests } from "../src/react/hooks/use-session-requests";
 
 /** A promise a test resolves by hand, so a read can be held across a switch. */
@@ -57,80 +65,6 @@ describe("workspace retirement, for the readers that outlive the switch", () => 
     sessionClient.listSessions.mockReset().mockResolvedValue([]);
     sessionClient.listSessionRequests.mockReset().mockResolvedValue([]);
     recoveryClient.checkInterrupted.mockReset().mockResolvedValue(undefined);
-  });
-
-  describe("the session list", () => {
-    it("does not put one copy's sessions under its peer", async () => {
-      const held = deferred<unknown>();
-      sessionClient.listSessions.mockReturnValueOnce(held.promise);
-      sessionClient.listSessions.mockReturnValue(new Promise(() => {}));
-
-      const { result, rerender } = renderHook(
-        ({ id }: { id: string }) =>
-          useSessions({ id, cardinality: "collection" as const }),
-        { initialProps: { id: "engineer-a" } },
-      );
-      await waitFor(() => expect(sessionClient.listSessions).toHaveBeenCalled());
-
-      rerender({ id: "engineer-b" });
-
-      await act(async () => {
-        held.resolve([{ id: "sess-a", flowId: "engineer-a" }]);
-        await Promise.resolve();
-      });
-
-      // Two navigator rows of one kind is exactly where a late list lands in
-      // the wrong place — the rows look alike, and only the id says otherwise.
-      // This hook is in the navigator, which does not remount on a switch.
-      expect(result.current.sessions).toEqual([]);
-    });
-
-    it("lists a singleton by kind, so sessions from before owners were recorded still show", async () => {
-      renderHook(() => useSessions({ id: "reports", cardinality: "singleton" as const }));
-
-      await waitFor(() => {
-        expect(sessionClient.listSessions).toHaveBeenCalledWith({
-          flowKind: "reports",
-          userId: "devuser",
-        });
-      });
-    });
-
-    it("lists a collection member by its exact owner", async () => {
-      renderHook(() =>
-        useSessions({ id: "engineer-b", cardinality: "collection" as const }),
-      );
-
-      await waitFor(() => {
-        expect(sessionClient.listSessions).toHaveBeenCalledWith({
-          flowId: "engineer-b",
-          userId: "devuser",
-        });
-      });
-    });
-
-    it("re-lists when the operator identity changes", async () => {
-      // Sessions are per user as well as per instance, so the list on screen
-      // belongs to whoever was signed in when it was read. The client is
-      // rebuilt on a credential change, and the read identity carries both it
-      // and the user id — so the list refetches rather than sitting there
-      // showing the previous operator's sessions.
-      const { rerender } = renderHook(() =>
-        useSessions({ id: "reports", cardinality: "singleton" as const }),
-      );
-      await waitFor(() => expect(sessionClient.listSessions).toHaveBeenCalledTimes(1));
-
-      devToolState.config = { userId: "someone-else" };
-      devToolState.sessionClient = { ...sessionClient };
-      rerender();
-
-      await waitFor(() => {
-        expect(sessionClient.listSessions).toHaveBeenCalledWith({
-          flowKind: "reports",
-          userId: "someone-else",
-        });
-      });
-    });
   });
 
   describe("the request list", () => {

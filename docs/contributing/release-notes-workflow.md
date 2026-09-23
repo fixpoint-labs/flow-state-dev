@@ -8,13 +8,13 @@ The authoritative rule is [BP-022](best-practices.md#bp-022-release-notes-via-ch
 
 ## When to write a changeset
 
-A changeset exists for one reader: somebody who has installed a published `@flow-state-dev/*` or `@thought-fabric/core` package and is deciding whether to upgrade. Write one when that person needs to know something. Otherwise don't — an empty fragment is not required either.
+A changeset exists for one reader: somebody who has installed a published `@flow-state-dev/*` package and is deciding whether to upgrade. Write one when that person needs to know something. Otherwise don't — an empty fragment is not required either.
 
 | Change | Changeset? |
 |---|---|
 | Public API, capability, block, CLI command, hook, env var, or config key a consumer calls — added, changed, or removed | Yes |
 | Behavior a consumer can observe from outside the package: return value, emitted item, error message they key off, default that shifts | Yes |
-| Anything scoped to a private package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `plugins/*`, `goals` | No |
+| Anything scoped to a private package — `labs/*`, `examples/*`, `apps/*`, `packages/ui`, `packages/integration-tests`, `packages/thought-fabric-core`, `plugins/*`, `goals` | No |
 | Internal refactor, test-only change, internal helper, infra, docs-site edit, type tightening behind a public surface | No |
 | Workflow file, lint config, repo-root tooling, agent skills | No |
 
@@ -24,7 +24,7 @@ Skipping needs no ceremony. Say "no changeset needed" in the PR description if a
 
 ### Labs and other private packages
 
-`labs/conductor`, `labs/knowledge-hub`, and `labs/trading-desk` are `private: true`, and so are the examples, the apps, the plugin tree, and `goals`. None of them publish, so none of them have a downstream consumer to notify.
+`labs/conductor` and `labs/knowledge-hub` are `private: true`, and so are the examples, the apps, the plugin tree, and `goals`. None of them publish, so none of them have a downstream consumer to notify.
 
 This is enforced by `.changeset/config.json`, which sets `privatePackages: { version: false }`. Every `private: true` package is skipped: the `pnpm changeset` picker will not offer it, and `pnpm version-packages` will not bump it or write it a `CHANGELOG.md`. Adding a fourth lab needs no config change.
 
@@ -36,7 +36,7 @@ Do not hand-write a fragment naming a private package. Changesets rejects a frag
 pnpm changeset
 ```
 
-The picker shows publishable packages only (`@flow-state-dev/*` + `@thought-fabric/core`); private packages are filtered out by `privatePackages: { version: false }`.
+The picker shows publishable packages only (`@flow-state-dev/*`); private packages are filtered out by `privatePackages: { version: false }`.
 
 Pick the affected packages, choose the bump, write the entry. The CLI saves `.changeset/<random-words>.md` — keep the random name; you don't need to rename it. Commit it with the PR.
 
@@ -51,7 +51,7 @@ Fragment format:
 One user-facing sentence (FIX-123).
 ```
 
-**Every fragment names its Linear issue.** The repo keeps no spec copy ([BP-037](best-practices/process.md)), so the issue id is the only route from a released change back to the reasoning behind it. `scripts/validate-changeset-refs.mjs` enforces this in CI on fragments a PR adds or edits.
+**Every fragment names its Linear issue.** That issue links to retained design history where a spec exists ([BP-037](best-practices/process.md)); release notes stay concise while preserving the route to the reasoning. `scripts/validate-changeset-refs.mjs` enforces the issue reference in CI on fragments a PR adds or edits.
 
 The body is what shows up under that package's heading in the next `CHANGELOG.md` release section, so write it for the next reader, not for the PR reviewer. Implementation rationale, decision lineage, file paths, exact test counts, "out of scope" sections, and Linear ticket internals belong in the PR description, not in the fragment.
 

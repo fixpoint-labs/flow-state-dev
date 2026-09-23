@@ -28,7 +28,7 @@ function buildRouter(adapter = createMcpTransportAdapter()) {
       requireUser: false,
       authentication: {
         requireUser: false,
-        resolvePrincipal: () => ({ userId: "mcp-test" })
+        resolvePrincipal: () => ({ userId: "mcp-test", orgId: "org_mcp" })
       },
       mcp: { enabled: true },
       actions: {

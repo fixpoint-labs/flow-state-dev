@@ -35,6 +35,20 @@ export type ListSessionsOptions = {
   userId?: string;
   limit?: number;
   offset?: number;
+  /**
+   * Also return the sessions a dispatcher ran work in (FIX-1440).
+   *
+   * Off by default, and that default is the contract: a listing without this
+   * returns exactly what it has always returned — the sessions a person
+   * started. Passing it widens **parentage only**. A run belonging to another
+   * principal, another organization or another tenant stays absent at every
+   * setting.
+   *
+   * A row that came in this way carries {@link SessionSummary.parentSessionId},
+   * which is what marks it as a dispatch run and names the session that
+   * started it.
+   */
+  include?: "dispatch-runs";
 };
 
 /**
@@ -85,7 +99,6 @@ export type CreateSessionOptions = {
   flowKind: string;
   userId: string;
   sessionId?: string;
-  orgId?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -299,7 +312,6 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
         body: JSON.stringify({
           userId,
           sessionId: createOptions.sessionId,
-          orgId: createOptions.orgId,
           title: createOptions.title,
           description: createOptions.description,
           tags: createOptions.tags,

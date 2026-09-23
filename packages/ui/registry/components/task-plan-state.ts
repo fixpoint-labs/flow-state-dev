@@ -269,9 +269,10 @@ export function collectTaskOwnedItemIds(
  * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm
  * (FIX-658): attribution is by the emit-time `taskId` stamped on each item,
  * so each item lands in exactly one task's bucket — even when sibling workers
- * run concurrently or one worker runs several tasks in sequence. Bookend
- * `task-change` / `task-board-meta` items are excluded. This returns the same
- * buckets as the substrate's `task.items()`.
+ * run concurrently or one worker runs several tasks in sequence. Items the
+ * substrate emitted about itself — `task-change`, `task-board-meta` and
+ * `task-board-recorder-failure` — are excluded. This returns the same buckets
+ * as the substrate's `task.items()`.
  */
 export function extractTaskItemWindows(
   items: ReadonlyArray<OutputItem>,

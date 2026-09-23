@@ -139,7 +139,7 @@ Quick rules:
 
 ### Session scope and background work
 
-Background work runs in a session of its own, hanging off the conversation that started it. Each session has its own session scope, so a session-scoped resource in a child session is a different resource from the one in the conversation, holding whatever the child put in it.
+Background work runs in a *dispatch run*, a session of its own hanging off the conversation that started it. Each session has its own session scope, so a session-scoped resource in a dispatch run is a different resource from the one in the conversation, holding whatever the run put in it.
 
 To give a session-scoped resource one identity across a conversation and every session dispatched under it, mark it `sharedToLineage`:
 

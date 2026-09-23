@@ -19,7 +19,7 @@ Identify which question is being answered — from the user's prompt, the surrou
 | The question | Skill |
 |---|---|
 | *What should we do?* — yours, private, answer captured in `NOTES.md` | **this one** |
-| *Is this direction right?* — published on a never-merged spec/epic PR so reviewers and the human at the gate can run it | [`spec-poc`](../spec-poc/SKILL.md) |
+| *Is this direction right?* — published as retained spec-owned evidence on the review PR, or a follow-up PR after approval | [`spec-poc`](../spec-poc/SKILL.md) |
 | *Who is right?* — a factual claim a review has argued twice ("a router can't do that"), adjudicated by a check where PASS and FAIL both mean something | [`settle-claim`](../settle-claim/SKILL.md) |
 | *What else could we do?* — the candidates you hold all feel like variations of one idea, so the set is too narrow to build from yet | [`adhd`](../adhd/SKILL.md) |
 

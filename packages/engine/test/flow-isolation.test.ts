@@ -4,13 +4,14 @@
  * isolation behavior.
  */
 import {
-  defineExternalResourceCollection,
+  defineProjectedResourceCollection,
   defineFlow,
   defineResource,
   defineResourceCollection,
   handler
 } from "@flow-state-dev/core";
 import { z } from "zod";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   CrossFlowSchemaConflictError,
@@ -46,7 +47,7 @@ function buildResources(
   rawResources?: Record<string, unknown>
 ): Record<string, unknown> | undefined {
   // Pre-built entries, for the cases the spec shorthand can't express:
-  // two accessors sharing ONE definition object, external collections, and
+  // two accessors sharing ONE definition object, projected collections, and
   // definitions carrying incidental extra properties.
   const declared: Record<string, unknown> = { ...rawResources };
   for (const [name, schema] of Object.entries(userResources ?? {})) {
@@ -552,13 +553,13 @@ describe("cross-flow resource schema validation", () => {
    * version of this check never threw at all.
    */
   describe("does not reject valid apps", () => {
-    it("ignores external collections sharing a pattern", () => {
-      // External collections are read-through views over the app's own store,
+    it("ignores projected collections sharing a pattern", () => {
+      // Projected collections are read-through views over the app's own store,
       // so two flows exposing `positions/*` over separate backings share no
       // framework cell. Their config admits neither `ref` nor `flowIsolation`,
       // so a rejection here would be unstartable with no way out.
       const external = (schema: z.ZodTypeAny) =>
-        defineExternalResourceCollection({
+        defineProjectedResourceCollection({
           pattern: "positions/*",
           scope: "user",
           stateSchema: schema,
@@ -1017,6 +1018,7 @@ describe("cross-flow resource schema validation", () => {
       const stores = createInMemoryStores();
 
       const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow, actionName: "run", requestId: "req_p", sessionId: "sess_p", userId: "user_1", stores,
       });
 
@@ -1040,6 +1042,7 @@ describe("cross-flow resource schema validation", () => {
       const stores = createInMemoryStores();
 
       const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow, actionName: "run", requestId: "req_t", sessionId: "sess_t", userId: "user_1", stores,
       });
 
@@ -1268,11 +1271,13 @@ describe("end-to-end: shared vs isolated state", () => {
     const stores = createInMemoryStores();
 
     const ctxA = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: flowA, actionName: "run", requestId: "req_a", sessionId: "sess_a", userId: "user_1", stores,
     });
     await ctxA.user.patchState({ displayName: "Alice" });
 
     const ctxB = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: flowB, actionName: "run", requestId: "req_b", sessionId: "sess_b", userId: "user_1", stores,
     });
     expect(ctxB.user.state).toMatchObject({ displayName: "Alice" });
@@ -1287,11 +1292,13 @@ describe("end-to-end: shared vs isolated state", () => {
     const stores = createInMemoryStores();
 
     const ctxShared = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: sharedFlow, actionName: "run", requestId: "req_shared", sessionId: "sess_shared", userId: "user_1", stores,
     });
     await ctxShared.user.patchState({ displayName: "Alice" });
 
     const ctxIsolated = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow: isolatedFlow, actionName: "run", requestId: "req_iso", sessionId: "sess_iso", userId: "user_1", stores,
     });
     await ctxIsolated.user.patchState({ locale: "en" });

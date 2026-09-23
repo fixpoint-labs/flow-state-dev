@@ -36,6 +36,7 @@
  * the wrong reason.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
@@ -124,6 +125,7 @@ function spellPathsTheOldWay(items: readonly unknown[]): unknown[] {
 /** Run until the gate suspends — the side chain has drained by then. */
 async function runToSuspension(flow: FlowInstance, stores: ReturnType<typeof createDurableStores>["stores"], provider: ReturnType<typeof createDurableStores>["provider"]) {
   const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     input: {},

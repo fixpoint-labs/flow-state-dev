@@ -24,6 +24,7 @@
  * Run: pnpm tsx goals/goal-seek-loop/replans-until-done/run.mts
  */
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { runAction, createInMemoryStores, createModelResolver } from "@flow-state-dev/engine";
 import {
   goalSeekLoop,
@@ -265,6 +266,7 @@ async function runLoopOnce(attempt: number): Promise<Observation> {
   })({ id: "gsl-goal" });
 
   const res = await runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     input: {},

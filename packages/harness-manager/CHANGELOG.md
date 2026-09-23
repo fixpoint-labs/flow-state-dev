@@ -1,5 +1,49 @@
 # @flow-state-dev/harness-manager
 
+## 0.2.0
+
+### Minor Changes
+
+- 0ab8c2e: A phase's `isDone` is handed how the run said it stopped, as `CompletionRunContext.stopReport`, so a completion check can refuse to settle a row whose run ran out of budget partway (FIX-1438).
+
+### Patch Changes
+
+- Updated dependencies [0f812c9]
+- Updated dependencies [b597600]
+- Updated dependencies [8faf08e]
+- Updated dependencies [6b8bfe4]
+- Updated dependencies [b48158a]
+- Updated dependencies [f25f03c]
+- Updated dependencies [218de72]
+- Updated dependencies [e4c443e]
+- Updated dependencies [bff5e06]
+  - @flow-state-dev/orchestration@0.3.0
+  - @flow-state-dev/core@0.2.0
+
+## 0.1.2
+
+### Patch Changes
+
+- b56e7d1: Every package can be imported again: 0.1.1 shipped JavaScript whose relative imports were missing the file extensions Node's ESM resolver requires, so importing any 0.1.1 package failed with `ERR_MODULE_NOT_FOUND` (FIX-1431).
+- Updated dependencies [b56e7d1]
+  - @flow-state-dev/core@0.1.2
+  - @flow-state-dev/orchestration@0.2.1
+
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [7c52923]
+- Updated dependencies [a8e22c4]
+- Updated dependencies [23bc757]
+- Updated dependencies [64b323e]
+- Updated dependencies [119936d]
+- Updated dependencies [c25ad3e]
+- Updated dependencies [8a1173a]
+- Updated dependencies [23ac6de]
+  - @flow-state-dev/core@0.1.1
+  - @flow-state-dev/orchestration@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,4 +1,5 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores, runAction } from "../src";
@@ -31,6 +32,7 @@ describe("retention policy integration", () => {
     // With maxItems: 3, the oldest requests should be evicted.
     for (let i = 0; i < 4; i++) {
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: i },
@@ -86,6 +88,7 @@ describe("retention policy integration", () => {
 
     for (let i = 0; i < 3; i++) {
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: i },
@@ -125,6 +128,7 @@ describe("retention policy integration", () => {
 
     for (let i = 0; i < 5; i++) {
       await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: i },
@@ -170,6 +174,7 @@ describe("retention policy integration", () => {
 
     // First: a successful request
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 1 },
@@ -182,6 +187,7 @@ describe("retention policy integration", () => {
 
     // Second: a failed request
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: -1 },
@@ -194,6 +200,7 @@ describe("retention policy integration", () => {
 
     // Third: another successful request. This triggers eviction.
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 2 },

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createInMemoryStores } from "../src/stores";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import { createStaleRequestSweeper } from "../src/execution/stale-request-sweeper";
@@ -9,6 +10,7 @@ function makeRequestRecord(
 ): RequestRecord {
   const ts = Date.now();
   return {
+    orgId: DEFAULT_ORG_ID,
     id,
     flowKind: "chat",
     actionName: "run",
@@ -47,6 +49,7 @@ describe("createStaleRequestSweeper", () => {
 
     const startedAt = Date.now() - 120_000;
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_stuck",
       flowKind: "chat",
       actionName: "run",
@@ -82,6 +85,7 @@ describe("createStaleRequestSweeper", () => {
     vi.useFakeTimers();
 
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_done",
       flowKind: "chat",
       actionName: "run",
@@ -123,6 +127,7 @@ describe("createStaleRequestSweeper", () => {
 
     // Add stale entry AFTER dispose; sweeper must not act on it.
     await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
       requestId: "req_after_dispose",
       flowKind: "chat",
       actionName: "run",

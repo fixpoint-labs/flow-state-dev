@@ -15,6 +15,7 @@ import {
   type CreateModelResolverOptions,
   type FlowStateSettings
 } from "@flow-state-dev/core";
+import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
 import { createRuntimeConfig, resolveStaleSweep, type RuntimeConfig } from "../runtime-config";
@@ -34,7 +35,7 @@ import type { FlowDispatcher } from "../transports/dispatcher";
 import {
   createDispatchOperation,
   type DispatchOperation,
-  type DispatchedChild
+  type DispatchedRun
 } from "../context/dispatch-operation";
 import type { InboundTransportHost } from "../transports/types";
 import type { StoreRegistry } from "../stores/types";
@@ -239,7 +240,7 @@ class InternalFlowState<TSettings extends object>
    * for. Entries remove themselves when they settle, so a long-lived server does
    * not accumulate them.
    */
-  readonly #dispatchedChildren = new Set<DispatchedChild>();
+  readonly #dispatchedRuns = new Set<DispatchedRun>();
   /**
    * The host the request-host operations dispatch through, built on first use
    * and shared by the detached start and the dispatch seam — see
@@ -337,9 +338,27 @@ class InternalFlowState<TSettings extends object>
     return this.#options.settings ?? ({} as TSettings);
   }
 
+  register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
+    this.#registry.register(flow, options);
+  }
+
+  unregister(id: string): boolean {
+    return this.#registry.unregister(id);
+  }
+
   get meta(): FlowState<TSettings>["meta"] {
     return {
-      flowKeys: Object.keys(this.#options.flows),
+      // The REGISTRY, not the construction options. `flowKeys` is a
+      // diagnostic answer to "what does this app serve", and the options map
+      // stopped being that the moment `register` existed: a seat hired at
+      // runtime would be served and absent from this list, and a flow that was
+      // unregistered would be listed and unreachable. Reading the registry
+      // also changes what the strings ARE — instance ids rather than the
+      // arbitrary keys of the `flows` record — which is the more useful answer
+      // of the two, because an id is what a caller puts on a URL. The two
+      // agree for every flow declared the ordinary way, since `createFlowState`
+      // keys its map by the instance it holds.
+      flowKeys: this.#registry.list().map((flow) => flow.id),
       profileKeys: this.#profileKeys,
       declaredSlots: declaredSlots(this.#options.stores),
       devtool: this.#options.devtool
@@ -456,7 +475,7 @@ class InternalFlowState<TSettings extends object>
    * process leaves nothing.
    */
   async #drainDetachedChildren(): Promise<void> {
-    if (this.#dispatchedChildren.size === 0) return;
+    if (this.#dispatchedRuns.size === 0) return;
 
     const budgetMs = resolveDispatchDrainTimeout(this.#options.dispatchDrainTimeoutMs);
     const startedAt = Date.now();
@@ -484,13 +503,13 @@ class InternalFlowState<TSettings extends object>
 
     for (
       let round = 0;
-      this.#dispatchedChildren.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
+      this.#dispatchedRuns.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
       round += 1
     ) {
       const remainingMs = waitDeadline - Date.now();
       if (remainingMs <= 0) break;
 
-      const pending = [...this.#dispatchedChildren];
+      const pending = [...this.#dispatchedRuns];
       // Printed because an unexplained pause at exit reads as a hang — this says
       // what is being waited for.
       //
@@ -520,7 +539,7 @@ class InternalFlowState<TSettings extends object>
       if (!finishedInTime) break;
     }
 
-    if (this.#dispatchedChildren.size > 0) {
+    if (this.#dispatchedRuns.size > 0) {
       await this.#cancelOutstandingChildren(deadline, startedAt, budgetMs);
     }
   }
@@ -556,7 +575,7 @@ class InternalFlowState<TSettings extends object>
     startedAt: number,
     budgetMs: number
   ): Promise<void> {
-    const abandoned = [...this.#dispatchedChildren];
+    const abandoned = [...this.#dispatchedRuns];
 
     for (const child of abandoned) {
       // Best-effort by contract: `false` means the run already deregistered,
@@ -641,7 +660,7 @@ class InternalFlowState<TSettings extends object>
    * with afterwards.
    */
   #reportTruncatedChildren(
-    abandoned: readonly DispatchedChild[],
+    abandoned: readonly DispatchedRun[],
     elapsedMs: number,
     budgetMs: number
   ): void {
@@ -1054,7 +1073,7 @@ class InternalFlowState<TSettings extends object>
     return createDispatchOperation({
       host,
       ...(runsHere
-        ? { onDispatched: (child: DispatchedChild) => this.#trackDetachedChild(child) }
+        ? { onDispatched: (child: DispatchedRun) => this.#trackDispatchedRun(child) }
         : {})
     });
   }
@@ -1068,11 +1087,11 @@ class InternalFlowState<TSettings extends object>
    * handled. Without the `catch` here, the `finally` link would itself reject
    * and become the unhandled rejection this is meant to avoid.
    */
-  #trackDetachedChild(child: DispatchedChild): void {
-    this.#dispatchedChildren.add(child);
+  #trackDispatchedRun(child: DispatchedRun): void {
+    this.#dispatchedRuns.add(child);
     void child.finished
       .catch(() => undefined)
-      .finally(() => this.#dispatchedChildren.delete(child));
+      .finally(() => this.#dispatchedRuns.delete(child));
   }
 
   async #doInit(): Promise<FlowApiRouter> {

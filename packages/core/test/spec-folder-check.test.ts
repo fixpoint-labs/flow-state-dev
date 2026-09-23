@@ -1,12 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import {
-  ephemeralDirs,
-  scanExtensions,
-  scanFiles,
-  scanRoots,
-  scanSources,
-} from "../../../scripts/validate-spec-folder.mjs";
+import { scanSources } from "../../../scripts/validate-spec-folder.mjs";
 
 type Hit = { file: string; line: number; text: string };
 type Result = { hits: Hit[]; retired: Hit[] };
@@ -14,12 +12,23 @@ type Result = { hits: Hit[]; retired: Hit[] };
 const scan = (text: string, path = "packages/core/src/fixture.ts"): Result =>
   (scanSources as (s: Array<{ path: string; text: string }>) => Result)([{ path, text }]);
 
-/**
- * The guard's whole value is that it fires on a real dangling citation and stays
- * quiet on the docs that have to name the path shape. Both halves are regex, so
- * both are pinned here rather than discovered by a red CI run on someone's PR.
- */
-describe("spec citations — concrete paths are dangling, placeholders are not", () => {
+/** Legacy and never-merged paths remain dangling; retained specs use specs/. */
+describe("legacy spec citations — concrete paths are dangling, placeholders are not", () => {
+  it("accepts external historical provenance without hiding a local citation on the same line", () => {
+    const { hits, retired } = scan(
+      "[Previous spec](https://github.com/example/project/blob/0123456/spec/FIX-101/SPEC.md) " +
+        "[Older record](https://github.com/example/project/blob/0123456/docs/specs/FIX-100.md) " +
+        "but spec/FIX-102/DECISIONS.md is still a dangling local citation. " +
+        "[Historical](https://github.com/example/project/blob/0123456/spec/FIX-101/SPEC.md)" +
+        "[Local](spec/FIX-103/SPEC.md)",
+    );
+    expect(hits.map((hit) => hit.text)).toEqual([
+      "spec/FIX-102/DECISIONS.md",
+      "spec/FIX-103/SPEC.md",
+    ]);
+    expect(retired).toEqual([]);
+  });
+
   it("flags a document in an issue spec's directory cited by repo path", () => {
     const { hits } = scan("// see spec/FIX-123/SPEC.md for the rationale");
     expect(hits.map((h) => h.text)).toEqual(["spec/FIX-123/SPEC.md"]);
@@ -30,9 +39,14 @@ describe("spec citations — concrete paths are dangling, placeholders are not",
     expect(hits.map((h) => h.text)).toEqual(["spec/FIX-123/figures/drawers.svg"]);
   });
 
-  it("flags a document in an epic spec's directory — an epic PR never merges either", () => {
+  it("flags the legacy epic directory, which is not retained under specs/epics/", () => {
     const { hits } = scan("// see spec/_epics/task-substrate/PLAN.md");
     expect(hits.map((h) => h.text)).toEqual(["spec/_epics/task-substrate/PLAN.md"]);
+  });
+
+  it("flags a document in a project spec's directory — a project PR never merges either", () => {
+    const { hits } = scan("// see spec/_projects/streaming/BUSINESS-RULES.md");
+    expect(hits.map((h) => h.text)).toEqual(["spec/_projects/streaming/BUSINESS-RULES.md"]);
   });
 
   it("still flags the pre-directory shape, which is just as dangling", () => {
@@ -47,6 +61,11 @@ describe("spec citations — concrete paths are dangling, placeholders are not",
 
   it("ignores the epic-spec placeholder", () => {
     expect(scan("the set lives at spec/_epics/<name>/SPEC.md on that branch").hits).toEqual([]);
+  });
+
+  it("ignores the project-spec placeholder", () => {
+    expect(scan("the set lives at spec/_projects/<slug>/SPEC.md on that branch").hits).toEqual([]);
+    expect(scan("pinned at <sha>/spec/_projects/<slug>/figures/arc.svg").hits).toEqual([]);
   });
 
   it("does not double-report a retired docs/specs/ path as a spec citation", () => {
@@ -98,23 +117,90 @@ describe("exempt lists — narrow, because placeholders need no exemption", () =
   });
 });
 
-describe("scanned surface", () => {
-  it("reaches the root-level docs that no scanned tree contains", () => {
-    expect(scanFiles).toEqual(expect.arrayContaining(["README.md", "CLAUDE.md", "AGENTS.md"]));
+/**
+ * Run the actual CLI in a disposable repository layout, so assertions cover
+ * discovered files and the process exit status rather than exported config.
+ */
+describe("retained specs through the guard CLI", () => {
+  const roots: string[] = [];
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   });
 
-  it("includes .github, where the workflows describe the spec convention", () => {
-    expect(scanRoots).toContain(".github");
-  });
-
-  it("guards spec-poc/ as well as spec/ — both stay on the spec branch", () => {
-    expect(ephemeralDirs).toEqual(expect.arrayContaining(["spec", "spec-poc"]));
-  });
-
-  it("reads every TypeScript module variant, not just .ts", () => {
-    const matches = (name: string) => (scanExtensions as RegExp).test(name);
-    for (const name of ["a.ts", "a.mts", "a.cts", "a.js", "a.mjs", "a.cjs"]) {
-      expect(matches(name), name).toBe(true);
+  function check(files: Record<string, string>) {
+    const root = mkdtempSync(join(tmpdir(), "spec-folder-check-"));
+    roots.push(root);
+    mkdirSync(join(root, "scripts"));
+    const script = join(root, "scripts/validate-spec-folder.mjs");
+    copyFileSync(new URL("../../../scripts/validate-spec-folder.mjs", import.meta.url), script);
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), text);
     }
+    const result = spawnSync(process.execPath, [script], { cwd: root, encoding: "utf8" });
+    if (result.error) throw result.error;
+    return result;
+  }
+
+  it("accepts retained documents, authored assets, POCs and citations to two predecessors", () => {
+    const files: Record<string, string> = {
+      "spec/README.md": "Project specs remain on their never-merged project branch.",
+      "spec-poc/README.md": "Legacy POCs remain isolated.",
+      "README.md": "[Direction](specs/issues/FIX-123/SPEC.md#direction)",
+      "packages/core/src/fixture.ts": "// Rationale: specs/epics/FIX-100/DECISIONS.md#ownership",
+      "specs/issues/FIX-123/EVOLUTION.md":
+        "[Amends ownership](../../epics/FIX-100/DECISIONS.md#ownership)\n" +
+        "[Retains compatibility](../FIX-101/BUSINESS-RULES.md#compatibility)",
+      "specs/issues/FIX-123/figures/flow.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+      "specs/issues/FIX-123/assets/example.json": "{\"input\":\"authored\"}",
+      "specs/issues/FIX-123/poc/ordering/probe.mjs": "// Authored experiment, not production.",
+    };
+    for (const owner of ["issues/FIX-123", "issues/FIX-101", "epics/FIX-100"]) {
+      for (const document of ["SPEC", "DECISIONS", "BUSINESS-RULES", "PLAN", "DOCS"]) {
+        files[`specs/${owner}/${document}.md`] =
+          document === "DOCS"
+            ? "Update docs/architecture/example.md: explain the retained ordering contract.\n" +
+              "[Proposed behavior](./SPEC.md#direction)\n"
+            : "# Direction\n## Ownership\n## Compatibility\n";
+      }
+    }
+    const result = check(files);
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  it("rejects a dangling legacy citation in a retained issue's evolution record", () => {
+    const result = check({
+      "specs/issues/FIX-123/EVOLUTION.md": "Predecessor: [decision](spec/FIX-101/DECISIONS.md)",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("specs/issues/FIX-123/EVOLUTION.md:1");
+    expect(result.stderr).toContain("spec/FIX-101/DECISIONS.md");
+  });
+
+  it("rejects a retired docs/specs citation in an epic's proposed documentation", () => {
+    const result = check({
+      "specs/epics/FIX-100/DOCS.md": "See [the rule](docs/specs/FIX-101.md).",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("specs/epics/FIX-100/DOCS.md:1");
+    expect(result.stderr).toContain("docs/specs/FIX-101.md");
+  });
+
+  it("still rejects project spec files outside their never-merged branch", () => {
+    const result = check({ "spec/_projects/streaming/SPEC.md": "# Project direction" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("spec/_projects");
+  });
+
+  it("still rejects legacy issue specs and detached POCs", () => {
+    const result = check({
+      "spec/FIX-123/SPEC.md": "# Legacy direction",
+      "spec-poc/ordering/probe.mjs": "// Legacy experiment",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("spec/FIX-123");
+    expect(result.stderr).toContain("spec-poc/ordering");
   });
 });
+

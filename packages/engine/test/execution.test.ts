@@ -7,6 +7,7 @@ import {
   transientSlot
 } from "@flow-state-dev/core";
 import { z } from "zod";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import {
@@ -52,6 +53,7 @@ async function createRuntimeContext(requestId: string) {
   });
 
   const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName: "run",
     requestId,
@@ -129,6 +131,7 @@ describe("execution runtime", () => {
     })();
 
     const success = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { text: "x" },
@@ -176,6 +179,7 @@ describe("execution runtime", () => {
     })();
 
     const failed = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: failingFlow,
       actionName: "run",
       input: { text: "x" },
@@ -454,6 +458,7 @@ describe("execution runtime", () => {
     })();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_targets",
@@ -1248,6 +1253,7 @@ describe("execution runtime", () => {
 
     const response = createResponseEmitter({ requestId: "req_session_scope" });
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_session_scope",
@@ -1416,6 +1422,7 @@ describe("execution runtime", () => {
 
     const response = createResponseEmitter({ requestId: "req_scope_noop" });
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_scope_noop",
@@ -1465,6 +1472,7 @@ describe("execution runtime", () => {
 
       const prodResponse = createResponseEmitter({ requestId: "req_scope_prod" });
       const prodCtx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_scope_prod",
@@ -1489,6 +1497,7 @@ describe("execution runtime", () => {
       flow.persistStateChanges = true;
       const persistedResponse = createResponseEmitter({ requestId: "req_scope_persist" });
       const persistedCtx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_scope_persist",
@@ -1548,6 +1557,7 @@ describe("execution runtime", () => {
 
       const response = createResponseEmitter({ requestId: "req_transient_prod" });
       const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_transient_prod",
@@ -1573,6 +1583,7 @@ describe("execution runtime", () => {
       flow.persistStateChanges = true;
       const persistedResponse = createResponseEmitter({ requestId: "req_transient_persist" });
       const persistedCtx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_transient_persist",
@@ -1663,6 +1674,7 @@ describe("execution runtime", () => {
 
       const response = createResponseEmitter({ requestId: "req_noop_persisted" });
       const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         requestId: "req_noop_persisted",
@@ -1882,6 +1894,7 @@ describe("execution runtime", () => {
     })();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_seq_tool",
@@ -2252,6 +2265,7 @@ describe("execution runtime", () => {
     })();
 
     const success = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: successFlow,
       actionName: "run",
       input: { value: 1 },
@@ -2298,6 +2312,7 @@ describe("execution runtime", () => {
     })();
 
     const failed = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: failureFlow,
       actionName: "run",
       input: { value: 1 },
@@ -2360,6 +2375,7 @@ describe("execution runtime", () => {
     })();
 
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: 1 },
@@ -2457,6 +2473,7 @@ describe("transient block output", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: "test" },
@@ -2497,6 +2514,7 @@ describe("transient block output", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: "hello" },
@@ -2561,6 +2579,7 @@ describe("transient block output", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: "test" },
@@ -2613,6 +2632,7 @@ describe("transient block output", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { prompt: "hello" },
@@ -2675,6 +2695,7 @@ describe("transient block output", () => {
       })();
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: "ok" },
@@ -2716,6 +2737,7 @@ describe("transient block output", () => {
       })();
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: "ok" },
@@ -2756,6 +2778,7 @@ describe("transient block output", () => {
       })();
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: "ok" },
@@ -2797,6 +2820,7 @@ describe("transient block output", () => {
       })();
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: "ok" },
@@ -2842,6 +2866,7 @@ describe("transient block output", () => {
       })();
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: "ok" },
@@ -2882,6 +2907,7 @@ describe("transient block output", () => {
       })();
 
       const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
         input: { value: "ok" },
@@ -2923,6 +2949,7 @@ describe("transient block output", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { text: "ok" },
@@ -2968,6 +2995,7 @@ describe("keyed component upsert (FIX-491)", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: "ok" },
@@ -3025,6 +3053,7 @@ describe("keyed component upsert (FIX-491)", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: "ok" },
@@ -3073,6 +3102,7 @@ describe("keyed component upsert (FIX-491)", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: "ok" },
@@ -3119,6 +3149,7 @@ describe("keyed component upsert (FIX-491)", () => {
     })();
 
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: "ok" },
@@ -3233,6 +3264,7 @@ describe("rescue boundary in nested sequencer", () => {
 
     const stores = createInMemoryStores();
     const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       input: { value: "test" },
@@ -3449,6 +3481,7 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
     })();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_tool_status_restore",
@@ -3528,6 +3561,7 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
     })();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_parallel_tools",
@@ -3606,6 +3640,7 @@ describe("generator/tool status-slot restore (FIX-600)", () => {
     })();
 
     const ctx = await createExecutionContext({
+    orgId: DEFAULT_ORG_ID,
       flow,
       actionName: "run",
       requestId: "req_silent_tool",

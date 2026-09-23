@@ -15,9 +15,17 @@
  * re-binding an *existing* session), so these tests exercise the path that
  * guard cannot see: a brand-new session, where the request's orgId becomes the
  * binding rather than being checked against one.
+ *
+ * A flow that configures no `authentication` at all is a second instance of
+ * that same path, on a host that resolves no principal for anybody. There is
+ * no resolver to displace, so the binding falls to `DEFAULT_ORG_ID` — the
+ * session-creation route must still ignore `body.orgId` rather than adopting
+ * it as that flow's only signal of org identity (`session-routes.ts`'s
+ * `handleCreateSession`). This is what keeps an unauthenticated reference app
+ * from being steered into another org's data by whatever the caller sends.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
@@ -116,5 +124,62 @@ describe("action dispatch org binding", () => {
     // spoofed value here would persist past the request that set it.
     const session = await stores.session.get("sess-binding");
     expect(session?.orgId).toBe("org-x");
+  });
+});
+
+/** Flow with no `authentication` at all — the condition this test exercises. */
+function buildUnauthenticatedFlow() {
+  const probe = handler({
+    name: "probe",
+    inputSchema: z.object({}),
+    outputSchema: z.object({}),
+    execute: () => ({})
+  });
+  return defineFlow({
+    kind: "no-auth-flow",
+    actions: { run: { inputSchema: z.object({}), block: probe } }
+  });
+}
+
+async function createSession(
+  router: ReturnType<typeof createFlowApiRouter>,
+  flowKind: string,
+  body: Record<string, unknown>
+): Promise<string> {
+  const path = [flowKind, "sessions"];
+  const response = await router.POST(
+    new Request(`http://localhost/api/flows/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    }),
+    { params: { path } }
+  );
+  const json = (await response.json()) as { session?: { id: string }; id?: string };
+  const id = json.session?.id ?? json.id;
+  if (id === undefined) throw new Error(`no session id in ${JSON.stringify(json)}`);
+  return id;
+}
+
+// No request carries an org in a header anywhere in this codebase — engine
+// routes read `accept`, `last-event-id`, `content-type`, `content-length`,
+// and a deployment-set tenant header (a separate, already-verified axis,
+// FIX-682), never an org. `body.orgId` is the only channel a caller has, so
+// it is the only one this test spoofs; a future header assertion here would
+// be checking something that cannot fail.
+describe("session creation with no principal resolver", () => {
+  it("binds a new session to DEFAULT_ORG_ID, not the body's orgId", async () => {
+    const registry = createFlowRegistry();
+    registry.register(buildUnauthenticatedFlow());
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores });
+
+    const sessionId = await createSession(router, "no-auth-flow", {
+      userId: "u1",
+      orgId: "victim-org"
+    });
+
+    const stored = await stores.session.get(sessionId);
+    expect(stored?.orgId).toBe(DEFAULT_ORG_ID);
   });
 });

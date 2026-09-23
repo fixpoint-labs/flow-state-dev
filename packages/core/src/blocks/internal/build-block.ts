@@ -111,11 +111,6 @@ export type BuildBlockOptions<
   /** Resolved capabilities from `uses`, stored for ctx.cap construction at runtime. */
   resolvedCapabilities?: CapabilityRef[];
   /**
-   * Pre-computed `requiresOrg` derived from child blocks. Sequencer/router
-   * builders OR this with their own `config.requireOrg`. Leaves omit it.
-   */
-  requiresOrg?: boolean;
-  /**
    * Every block this block statically composes — a sequencer's step children
    * and chain-level rescue handlers, a router's routes, the block `asTool`
    * wraps. Rescue handlers installed via `config.rescue` are folded in here
@@ -202,10 +197,17 @@ export function buildBlock<
 
   const transient = config.transient === true;
 
-  // Bubble: a block requires org if it declares `requireOrg: true` or any
-  // descendant requires it (sequencer/router builders pass children's
-  // aggregate as `options.requiresOrg`).
-  const requiresOrg = Boolean(config.requireOrg) || Boolean(options.requiresOrg);
+  // A block that still declares `requireOrg` is refused rather than built
+  // (FIX-1442). Organization identity is unconditional, so the declaration has
+  // no effect left — and a block whose author believed it was gating on an org
+  // is exactly the one that must not run as though it had asked for nothing.
+  if ("requireOrg" in (config as unknown as Record<string, unknown>)) {
+    throw new Error(
+      `Block "${String((config as { name?: unknown }).name ?? kind)}" declares requireOrg, ` +
+        `which no longer exists. Organization identity is required on every request ` +
+        `(FIX-1442), so the declaration is redundant: remove it.`
+    );
+  }
 
   // Every block this one statically composes. Rescue handlers are children like
   // any other — a board reachable only on the failure path is still a board the
@@ -229,7 +231,6 @@ export function buildBlock<
     config: runtimeConfig,
     declaredResources: options.declaredResources,
     ownDeclaredResources: options.ownDeclaredResources,
-    requiresOrg,
     childBlocks,
     ...(options.dispatch !== undefined ? { dispatch: options.dispatch } : {}),
     _modelOutputMapper: options.modelOutputMapper,
@@ -379,7 +380,6 @@ export function buildBlock<
         declaredResources: definition.declaredResources,
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
-        requiresOrg: definition.requiresOrg,
         // Structure and the dispatch address ride every rebuild. The address is
         // read off `definition`, never `options`: `markDispatcher` stamps the
         // finished block, so the construction-time `options` value predates
@@ -403,23 +403,18 @@ export function buildBlock<
         declaredResources: definition.declaredResources,
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
-        requiresOrg: definition.requiresOrg,
         childBlocks: options.childBlocks,
         dispatch: definition.dispatch,
         modelOutputMapper: mapper,
       });
     },
     rescue(handlers: RescueHandlerSpec[]): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
-      // Fold each rescue handler block's declared resources / `requiresOrg`
-      // into this block's accumulators so a handler's resources resolve at run
-      // time, mirroring the sequencer's chain-level `.rescue()`.
+      // Fold each rescue handler block's declared resources into this block's
+      // accumulator so a handler's resources resolve at run time, mirroring the
+      // sequencer's chain-level `.rescue()`.
       let mergedResources = options.declaredResources;
-      let mergedRequiresOrg = requiresOrg;
       for (const handler of handlers) {
         mergedResources = mergeDeclaredResources(mergedResources, handler.block.declaredResources);
-        if (handler.block.requiresOrg === true) {
-          mergedRequiresOrg = true;
-        }
       }
       // `handlers` REPLACES the installed set, and `buildBlock` re-derives
       // `childBlocks` from the config it is handed, so a replaced handler
@@ -431,7 +426,6 @@ export function buildBlock<
         declaredResources: mergedResources,
         ownDeclaredResources: options.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
-        requiresOrg: mergedRequiresOrg,
         childBlocks: options.childBlocks,
         dispatch: definition.dispatch,
         modelOutputMapper: options.modelOutputMapper,
@@ -505,7 +499,6 @@ export function buildBlock<
         declaredResources: definition.declaredResources,
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
-        requiresOrg: definition.requiresOrg,
         childBlocks: [definition],
       });
     },
@@ -535,7 +528,6 @@ export function buildBlock<
         declaredResources: definition.declaredResources,
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
-        requiresOrg: definition.requiresOrg,
         childBlocks: options.childBlocks,
         dispatch: definition.dispatch,
       });

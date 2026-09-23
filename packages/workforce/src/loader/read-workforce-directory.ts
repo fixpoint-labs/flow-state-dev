@@ -29,22 +29,47 @@ import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
+  REFUSED_SEAT_TOOLS_KEY_MESSAGE,
+  REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
   SEAT_SKILLS_KEY,
+  SEAT_TOOLS_KEY,
+  TEAM_INSTRUCTIONS_KEY,
   type WorkerManifest,
 } from "../manifest";
 import { validateSegment } from "./segments";
 import {
+  IGNORED_ENTRIES,
+  type PathReport,
   classify,
+  openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
+  walkTeams,
 } from "./structural-directory";
-
-/** Filenames that are never a worker folder — editor and OS droppings. */
-const IGNORED_ENTRIES = new Set([".DS_Store", "Thumbs.db"]);
 
 /** The document that describes a worker. */
 const WORKER_MD = "WORKER.md";
+
+/**
+ * Why one thing that should have produced a worker did not — the discriminant
+ * on every entry in {@link ReadWorkforceDirectoryResult.errors}.
+ *
+ * Three conditions land in one flat array, and a caller that wants to tolerate
+ * one class while refusing another needs to tell them apart without matching on
+ * `error.message`. That is all this is for: the message text is unchanged, and
+ * every entry still carries the `path` it always did.
+ */
+export type WorkerManifestErrorKind =
+  /** A structural folder — `teams`, a team, or a `workers/` slot — is a symlink or is there and could not be listed. Every worker under it is missing. */
+  | "unreadable-slot"
+  /** One worker folder did not load: an unusable name, a symlinked folder, or a missing, unreadable or malformed `WORKER.md`. */
+  | "worker-load-failed"
+  /** A `WORKER.md` declares a key the framework imposes, so the worker is left out. */
+  | "refused-declaration";
+
+/** One path that should have produced a worker and did not. */
+export type WorkerManifestError = PathReport<WorkerManifestErrorKind>;
 
 /** What `readWorkforceDirectory` hands back. */
 export interface ReadWorkforceDirectoryResult {
@@ -68,15 +93,18 @@ export interface ReadWorkforceDirectoryResult {
    * was supposed to have, so booting past it boots a short roster with nothing
    * said.
    */
-  errors: Array<{ path: string; error: Error }>;
+  errors: WorkerManifestError[];
 }
 
 /**
  * Read every `<root>/teams/<teamId>/workers/<name>/` and return one neutral
  * manifest per worker.
  *
- * Throws only when `root` itself cannot be read — a configured root that does
- * not exist is a wiring mistake, not a per-worker one. A root with no `teams/`
+ * Throws only when `root` itself is refused — a symlink, or a path that cannot
+ * be read at all. A configured root that does not exist, or that would take the
+ * walk somewhere else entirely, is a wiring mistake, not a per-worker one.
+ *
+ * A root with no `teams/`
  * is an empty result: an app may declare no workers in files. Everything else
  * that goes wrong lands in `errors`, so one bad folder never costs an app its
  * other workers.
@@ -87,64 +115,62 @@ export async function readWorkforceDirectory(
   const workers: WorkerManifest[] = [];
   const errors: ReadWorkforceDirectoryResult["errors"] = [];
 
-  try {
-    await fs.readdir(root);
-  } catch (err) {
-    throw new Error(
-      `Failed to read workforce directory "${root}": ${(err as Error).message}`,
-    );
-  }
+  await openRoot(root);
 
-  const teams = await openStructuralDirectory(path.join(root, "teams"), "teams");
-  if (teams.refusal !== undefined) {
-    errors.push({ path: "teams", error: teams.refusal.error });
-  }
-  if (teams.entries === undefined) return { workers, errors };
+  /** File a structural refusal the shared walk met on the way to a team. */
+  const report = (at: string, error: Error): void => {
+    errors.push({ path: at, error, kind: "unreadable-slot" });
+  };
 
-  for (const teamId of teams.entries) {
-    if (IGNORED_ENTRIES.has(teamId)) continue;
-
-    const teamDir = path.join(root, "teams", teamId);
-    const teamPath = `teams/${teamId}`;
-    const team = await classify(teamDir);
-    if (team.kind === "symlink") {
-      errors.push({ path: teamPath, error: refusedSymlink("team folder", teamId) });
-      continue;
-    }
-    if (team.kind === "unreadable") {
-      errors.push({ path: teamPath, error: unreadable("Team folder", teamId, team.error) });
-      continue;
-    }
-    if (team.kind !== "directory") continue;
-
-    const workersPath = `${teamPath}/workers`;
+  for await (const team of walkTeams(root, report)) {
+    const workersPath = `${team.path}/workers`;
     const workerSlots = await openStructuralDirectory(
-      path.join(teamDir, "workers"),
+      path.join(team.dir, "workers"),
       workersPath,
     );
     if (workerSlots.refusal !== undefined) {
-      errors.push({ path: workersPath, error: workerSlots.refusal.error });
+      errors.push({
+        path: workersPath,
+        error: workerSlots.refusal.error,
+        kind: "unreadable-slot",
+      });
     }
     if (workerSlots.entries === undefined) continue;
 
     for (const workerName of workerSlots.entries) {
       if (IGNORED_ENTRIES.has(workerName)) continue;
 
-      const workerDir = path.join(teamDir, "workers", workerName);
+      const workerDir = path.join(team.dir, "workers", workerName);
+      const entryPath = `${workersPath}/${workerName}`;
       const slot = await classify(workerDir);
       // A file under `workers/` does not occupy a worker slot — a slot is a
       // directory — so it is skipped rather than reported.
       if (slot.kind === "absent" || slot.kind === "file") continue;
 
+      let loaded: WorkerManifest;
       try {
         if (slot.kind === "symlink") throw refusedSymlink("worker folder", workerName);
         if (slot.kind === "unreadable") {
           throw unreadable("Worker folder", workerName, slot.error);
         }
-        workers.push(await readWorkerSlot(teamId, workerName, workerDir));
+        loaded = await readWorkerSlot(team.id, workerName, workerDir);
       } catch (err) {
-        errors.push({ path: `${workersPath}/${workerName}`, error: err as Error });
+        errors.push({ path: entryPath, error: err as Error, kind: "worker-load-failed" });
+        continue;
       }
+
+      // A separate condition for a caller, so it is a separate branch: a folder
+      // that could not be read is an author's typo, and a file declaring what
+      // the framework imposes is an author's misunderstanding. Checked here
+      // rather than inside the parse so the two stay tellable apart by control
+      // flow, the way the channels and resources readers keep them apart.
+      const refused = refusedDeclaration(loaded.declared, workerName);
+      if (refused !== undefined) {
+        errors.push({ path: entryPath, error: refused, kind: "refused-declaration" });
+        continue;
+      }
+
+      workers.push(loaded);
     }
   }
 
@@ -204,13 +230,10 @@ async function readWorkerSlot(
  * files an author writes by hand, and a second dialect would mean learning one
  * teaches the wrong thing about the other.
  *
- * `description` is required, the one refused key is rejected, and everything
- * else is carried verbatim. Both rules are the dialect's, not a consumer's —
- * `SKILL.md` throws on a missing description too — and they are what keeps
- * "carried verbatim" safe to promise: a key nobody has claimed arrives
- * unchanged, but a key that has been *unclaimed* is not the same thing as a key
- * nobody ever read, and reading a file that still uses one as if it simply held
- * an unknown key is how a worker boots with no instructions and no complaint.
+ * `description` is required — the dialect's rule, not a consumer's; `SKILL.md`
+ * throws on a missing description too — and everything else is carried
+ * verbatim. The keys the framework imposes are refused by the caller, which
+ * reports that as its own condition ({@link refusedDeclaration}).
  */
 function parseWorkerMd(
   text: string,
@@ -231,20 +254,62 @@ function parseWorkerMd(
     );
   }
 
+  return { declared, body };
+}
+
+/**
+ * The refusal a `WORKER.md` earns by declaring a key the framework imposes, or
+ * `undefined` when it declares neither.
+ *
+ * Both rules are the dialect's, not a consumer's, and they are what keeps
+ * "carried verbatim" safe to promise: a key nobody has claimed arrives
+ * unchanged, but a key that has been *unclaimed* is not the same thing as a key
+ * nobody ever read, and reading a file that still uses one as if it simply held
+ * an unknown key is how a worker boots with no instructions and no complaint.
+ *
+ * Checked in the order the keys were added, so a file using two of them names
+ * the first — the same sentence a reader saw before this became its own
+ * condition.
+ *
+ * **Hand-maintained, and knowingly so.** This is not `hire.ts`'s
+ * `CONTRACT_KEYS`, which is now read off `workerConfigSchema()` precisely
+ * because a second copy of that membership drifts. The set here is a different
+ * set — the contract's keys MINUS `instructions`, which a file may legitimately
+ * declare, PLUS `persona`, which the contract does not carry at all — and each
+ * member answers with its own wording. A shared list would have to unify those
+ * wordings to exist, which would cost more than it saves. So a fifth imposed
+ * key needs a fifth condition here, deliberately, and the test beside each one
+ * is what notices when it is missing.
+ */
+function refusedDeclaration(
+  declared: Record<string, unknown>,
+  workerName: string,
+): Error | undefined {
   if (Object.hasOwn(declared, REFUSED_PERSONA_KEY)) {
-    throw new Error(
-      `${WORKER_MD} in "${workerName}/" ${REFUSED_PERSONA_KEY_MESSAGE}`,
-    );
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_PERSONA_KEY_MESSAGE}`);
   }
 
   // The second imposed key, refused at this door for the reason the first is.
   if (Object.hasOwn(declared, SEAT_SKILLS_KEY)) {
-    throw new Error(
-      `${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_SKILLS_KEY_MESSAGE}`,
-    );
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_SKILLS_KEY_MESSAGE}`);
   }
 
-  return { declared, body };
+  // The third. Refused from the shared constant, never a literal spelled in
+  // here, so a rename moves this door with the others instead of leaving one
+  // of them open with nothing said.
+  if (Object.hasOwn(declared, TEAM_INSTRUCTIONS_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE}`);
+  }
+
+  // The fourth. A file that reaches a caller carrying this key is a file whose
+  // seat would run holding tools no folder of its registers — and a key refused
+  // at the hire but accepted here is the same file getting two answers
+  // depending on which door read it.
+  if (Object.hasOwn(declared, SEAT_TOOLS_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_TOOLS_KEY_MESSAGE}`);
+  }
+
+  return undefined;
 }
 
 /**

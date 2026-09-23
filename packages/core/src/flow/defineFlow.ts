@@ -361,7 +361,7 @@ function normalizeInstanceConfig(
  *
  * Collected off `walkBlockGraph`'s closure — the same walk the dispatch-address
  * refusal reads, tool edge included — rather than off the action roots that
- * `declaredResources` and `requiresOrg` ride. A plain tool block that reads
+ * `declaredResources` rides. A plain tool block that reads
  * `ctx.flow.config` has no action root of its own, so collecting off the roots
  * would silently skip it.
  *
@@ -630,10 +630,10 @@ function withFlowToolsSchedules(
  * Every executable block the flow declares: each caller-addressed action's
  * block plus each event-addressed binding's handler block (webhook, static
  * schedule). Every event binding is an action in transport form,
- * carrying its handler inline, so its block must participate in resource and
- * `requireOrg` aggregation exactly like a `flow.actions` block — otherwise
- * event-declared resources never prefetch and their `requireOrg` is never
- * detected. Dynamic schedule blocks are produced at dispatch time and cannot
+ * carrying its handler inline, so its block must participate in resource
+ * aggregation exactly like a `flow.actions` block — otherwise event-declared
+ * resources never prefetch. Dynamic schedule blocks are produced at dispatch
+ * time and cannot
  * be walked here.
  */
 /**
@@ -641,8 +641,8 @@ function withFlowToolsSchedules(
  * lifecycle observers `runAction` executes alongside it.
  *
  * The observers are collected for the same reason the root is. They run as real
- * blocks in the request, so whatever they declare — resources, `requireOrg`,
- * detached worker bindings — is as load-bearing as the root's. A board mounted
+ * blocks in the request, so whatever they declare — resources, detached
+ * worker bindings — is as load-bearing as the root's. A board mounted
  * under `onCompleted` is a board this flow has to be able to route to, and a
  * resource it needs is one the registry has to install.
  */
@@ -723,14 +723,6 @@ function collectBlockResources(
   return collected;
 }
 
-
-/** True when any declared block (root or lifecycle observer) opted into `requireOrg`. */
-function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
-  for (const block of blocks) {
-    if (block.requiresOrg) return true;
-  }
-  return false;
-}
 
 /**
  * Read the entries of one typed map (`flow.internal` / `flow.task`), refusing
@@ -1133,6 +1125,29 @@ function validateRequireUserFalseConsistency(
  * through to the definition. Returns `undefined` only when neither side is
  * set so we don't materialize empty config objects on every flow.
  */
+/**
+ * Refuse an `authentication.requireOrg` that a flow still declares (FIX-1442).
+ *
+ * Organization identity is unconditional now, so the flag has nothing left to
+ * say — but an author who wrote it meant "this flow needs an org", and
+ * accepting it silently would leave a config expressing an intent the framework
+ * no longer reads. That is the one outcome worse than either keeping or
+ * removing it, so the flow refuses to start and names the migration.
+ */
+function rejectRetiredOrgRequirement(
+  flowKind: string,
+  authentication: AuthenticationConfig | undefined
+): void {
+  if (authentication === undefined) return;
+  if (!("requireOrg" in (authentication as Record<string, unknown>))) return;
+  throw new Error(
+    `Flow "${flowKind}" sets authentication.requireOrg, which no longer exists. ` +
+      `Organization identity is required on every request (FIX-1442): remove the flag. ` +
+      `Return a verified orgId from authentication.resolvePrincipal, or configure no ` +
+      `resolver to run under DEFAULT_ORG_ID.`
+  );
+}
+
 function mergeAuthentication(
   base: AuthenticationConfig | undefined,
   override: AuthenticationConfig | undefined
@@ -1143,8 +1158,7 @@ function mergeAuthentication(
   return {
     resolvePrincipal: override.resolvePrincipal ?? base.resolvePrincipal,
     defaultUserId: override.defaultUserId ?? base.defaultUserId,
-    requireUser: override.requireUser ?? base.requireUser,
-    requireOrg: override.requireOrg ?? base.requireOrg
+    requireUser: override.requireUser ?? base.requireUser
   };
 }
 
@@ -1183,7 +1197,7 @@ function validateMcpConfig(
  *
  * Split from {@link createFlowInstance} so a definition can be described
  * without being instantiated: `defineFlow` reads this once to populate the
- * callable blueprint's metadata (`actions`, `resources`, `requiresOrg`, …),
+ * callable blueprint's metadata (`actions`, `resources`, `requiresConfig`, …),
  * and a collection definition has no id to instantiate with at that point.
  * Putting the collection-id requirement here would make every collection
  * definition fail before its author could supply an id.
@@ -1218,7 +1232,11 @@ function createFlowInstance(
   return {
     id,
     config: normalizeInstanceConfig(definition, options, normalized.kind, id, requiredFlowConfig),
-    ...instanceFields
+    ...instanceFields,
+    // Copied off the mint options rather than the normalized definition: a
+    // blueprint has no plane, and two copies of one kind can be pinned to
+    // different organizations.
+    ...(options?.ownerPin !== undefined ? { ownerPin: options.ownerPin } : {}),
   };
 }
 
@@ -1234,6 +1252,9 @@ function normalizeFlowConfig(
   rejectInstanceCardinality(options, definition.kind);
   rejectInstanceConfigSchema(options, definition.kind);
   const cardinality = normalizeCardinality(definition.kind, definition.cardinality);
+
+  rejectRetiredOrgRequirement(definition.kind, definition.authentication);
+  rejectRetiredOrgRequirement(definition.kind, options?.authentication);
 
   const authentication = mergeAuthentication(
     definition.authentication,
@@ -1267,7 +1288,7 @@ function normalizeFlowConfig(
   const isolateOrgState = options?.isolateOrgState ?? definition.isolateOrgState ?? false;
 
   // Validate transport configs before any aggregation walks their blocks: an
-  // event binding's handler block participates in resource/`requireOrg`
+  // event binding's handler block participates in resource
   // collection, so a malformed binding must be rejected here with a clear
   // message rather than crashing the aggregation (or the tools wrap below).
   //
@@ -1335,7 +1356,7 @@ function normalizeFlowConfig(
     requestMerged
   );
 
-  // Resources and `requiresOrg` are collected off the action roots alone. A
+  // Resources are collected off the action roots alone. A
   // handed-off board's worker is not a child of any root — the drain routes
   // the seat to a hand-off block — but the ledger it settles against is
   // declared by the gate on the task entry the seat addresses, and task
@@ -1395,7 +1416,6 @@ function normalizeFlowConfig(
     cardinality,
     requireUser,
     requiredFlowConfig,
-    requiresOrg: collectRequiresOrg(declaredBlocks),
     authentication,
     actions,
     ...(internal !== undefined ? { internal: { actions: internal } } : {}),
@@ -1479,10 +1499,9 @@ export function defineFlow<
     requireUser: baseInstance.requireUser,
     config: probedConfig,
     requiresConfig,
-    requiresOrg: baseInstance.requiresOrg,
     authentication: baseInstance.authentication,
     actions: baseInstance.actions as TActions,
-    // Mirrored for the same reason `requiresOrg` is: this blueprint is read
+    // Mirrored for the same reason `requiresConfig` is: this blueprint is read
     // directly, and a missing map reads as an absent feature rather than as an
     // unmirrored one.
     ...(baseInstance.internal !== undefined ? { internal: baseInstance.internal } : {}),

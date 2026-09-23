@@ -45,7 +45,7 @@ The callback is read-only. Its return value is ignored, and the runtime calls it
 | `actionName` | `string` | The action that was running. |
 | `userId` | `string` | The caller. |
 | `sessionId` | `string?` | Present for session-bound requests. |
-| `orgId` | `string?` | Present when the request is org-scoped. |
+| `orgId` | `string?` | The organization the request ran in. Optional in the type; set on every event. |
 | `blockName` | `string?` | The failing block (the leaf, not the enclosing sequencer). |
 | `blockKind` | `"handler" \| "generator" \| "sequencer" \| "router"?` | |
 | `blockInstanceId` | `string?` | Deterministic per block instance. Useful for correlating retries. |

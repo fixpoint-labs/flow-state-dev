@@ -22,6 +22,7 @@ import { hasClientProjection, resolveClientProjection } from "@flow-state-dev/co
 import {
   getPersistedData,
   isCollectionConfig,
+  isProjectedResourceCollection,
   type ResolvedResourceScope,
   type ResourceFlowLike,
   type ResourceOwnerFlow,
@@ -78,6 +79,34 @@ export interface DebugResourceEntry {
   itemCountTruncated?: boolean;
   storagePrefix?: string;
   clientConfig: DebugResourceClientConfig;
+  /**
+   * Whether the store will accept a write to this resource's state or content.
+   * **Omitted when nothing makes it unwritable**, which is the common case.
+   *
+   * Usually this is `config.writable` as the author declared it. The one place
+   * it is not is a projected collection, which has no `writable` field to
+   * declare and is refused every mutator structurally — reported as `false`
+   * because it is, not because anybody said so.
+   *
+   * Absent means writable — the framework's default. Never coerce it to
+   * `false` on the way out: a reader that mistakes an absent setting for a
+   * closed door reports a resource anybody can edit as read-only (BP-030).
+   *
+   * **`false` is narrower than "immutable".** It refuses state and content
+   * writes *through this definition*. A collection still permits `create`,
+   * `getOrCreate` and `delete`, which consult nothing; and the flag lives on
+   * the config, not the storage cell, so another flow holding its own unsealed
+   * definition of a shared org or user resource can still write the same key.
+   */
+  writable?: boolean;
+  /**
+   * `config.llmWritable` as the author declared it, omitted when they declared
+   * nothing. A different question from {@link writable} — whether a model is
+   * offered a write tool, not whether the write is possible at all — and
+   * **opt-in**, so most mutable resources leave it unset. Reported beside
+   * `writable`, never in place of it.
+   */
+  llmWritable?: boolean;
 }
 
 export interface DebugResourcesResponse {
@@ -150,6 +179,41 @@ function describeClientConfig(
     stateRead: hasClient,
     contentRead,
     prefetchWindow: null
+  };
+}
+
+/**
+ * The two permission settings, reporting what is *true* of the resource.
+ *
+ * The field answers "can this be written", not "did an author type a key".
+ * For every config that HAS a `writable` field the two coincide, so the key is
+ * present only when it was declared and an absent key still means writable —
+ * the framework's default, and the rule a reader must not get backwards
+ * (BR-12, BR-14).
+ *
+ * **A projected collection is the case where they come apart.** Its config has
+ * no `writable` field at all — `ProjectedResourceCollectionConfig` calls
+ * read-only "structural, not a flag" — and the registry refuses it every
+ * mutator. Staying literal there would report "declared nothing", which the
+ * reader is told to take as writable, leaving a genuinely unwritable
+ * collection unmarked. That is a false negative, and the failure taxonomy is
+ * explicit that a wrong mark is the worse direction than silence.
+ *
+ * `llmWritable` gets no such treatment: a projected collection has no
+ * model-write door to describe, so the key stays absent rather than inventing
+ * an answer.
+ */
+function describePermissions(
+  config: ResourceConfig | ResourceCollectionConfig
+): { writable?: boolean; llmWritable?: boolean } {
+  if (isProjectedResourceCollection(config)) {
+    return { writable: false };
+  }
+  return {
+    ...(typeof config.writable === "boolean" ? { writable: config.writable } : {}),
+    ...(typeof config.llmWritable === "boolean"
+      ? { llmWritable: config.llmWritable }
+      : {})
   };
 }
 
@@ -300,6 +364,7 @@ export async function buildDebugResourceTree(opts: {
     const definitionId = `dr_${counter}`;
     const persisted = persistedCache.get(group.scope) ?? null;
     const clientConfig = describeClientConfig(group.config);
+    const permissions = describePermissions(group.config);
     const primaryName = group.aliases[0]!;
 
     if (isCollectionConfig(group.config)) {
@@ -315,7 +380,8 @@ export async function buildDebugResourceTree(opts: {
           itemCount: 0,
           itemCountTruncated: false,
           storagePrefix: deriveStoragePrefix(pattern),
-          clientConfig
+          clientConfig,
+          ...permissions
         });
         continue;
       }
@@ -334,7 +400,8 @@ export async function buildDebugResourceTree(opts: {
         itemCount: count,
         itemCountTruncated: truncated,
         storagePrefix: deriveStoragePrefix(pattern),
-        clientConfig
+        clientConfig,
+        ...permissions
       });
       continue;
     }
@@ -361,7 +428,8 @@ export async function buildDebugResourceTree(opts: {
         : undefined,
       contentType: hasContent ? deriveContentType(group.config) : undefined,
       contentVisibleToClient: clientConfig.contentRead,
-      clientConfig
+      clientConfig,
+      ...permissions
     });
   }
 

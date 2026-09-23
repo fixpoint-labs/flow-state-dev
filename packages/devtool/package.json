@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/devtool",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pre-built DevTool assets served by fsdev dev.",
   "keywords": [
     "ai",
@@ -69,6 +69,7 @@
   "dependencies": {
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/react": "workspace:*",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
@@ -98,8 +99,9 @@
     "vitest": "^3.2.4"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-styles.mjs",
+    "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist && node scripts/copy-styles.mjs",
     "build:assets": "node scripts/build-assets.mjs",
+    "prepublishOnly": "node scripts/check-assets.mjs",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run",

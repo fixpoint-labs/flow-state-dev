@@ -14,6 +14,7 @@
  * dispatched, so the sender's request carries it and no child runs.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "../../src";
@@ -95,6 +96,7 @@ function run(
   sessionId = "s_parent"
 ) {
   return runAction({
+    orgId: DEFAULT_ORG_ID,
     flow,
     actionName,
     input,
@@ -110,7 +112,12 @@ async function createSession(
   id: string,
   flowKind: string,
   userId: string,
-  orgId?: string
+  // Defaults to the organization `run()` executes under, so a session seeded
+  // for a delivery test is reachable from it. Pass an org to exercise the
+  // boundary, or `null` for a session stored before organizations were
+  // required — which is a state the store still holds and the guards still
+  // have to answer for.
+  orgId: string | null = DEFAULT_ORG_ID
 ): Promise<void> {
   const ts = Date.now();
   await runtime.stores.session.set(
@@ -123,7 +130,7 @@ async function createSession(
       updatedAt: ts,
       flowKind,
       userId,
-      ...(orgId !== undefined ? { orgId } : {}),
+      ...(orgId === null ? {} : { orgId }),
       journal: []
     },
     "any"
@@ -229,7 +236,8 @@ describe("a dispatcher delivering into an existing session (the `id` policy)", (
   it("refuses an org binding that differs in either direction, and accepts a matching one", async () => {
     const { observed, flow, runtime, state } = await boot("seam-org");
     try {
-      await createSession(runtime, "s_unbound", "seam-org", USER_ID);
+      // Deliberately unattributed: a recipient stored before organizations existed.
+      await createSession(runtime, "s_unbound", "seam-org", USER_ID, null);
       await createSession(runtime, "s_acme", "seam-org", USER_ID, "org_acme");
 
       // A sender session per binding: a session's org is fixed on first use,
@@ -242,7 +250,7 @@ describe("a dispatcher delivering into an existing session (the `id` policy)", (
           input: { to, note: "org" },
           userId: USER_ID,
           sessionId: orgId === undefined ? "s_sender_unbound" : `s_sender_${orgId}`,
-          ...(orgId !== undefined ? { orgId } : {}),
+          orgId: orgId ?? DEFAULT_ORG_ID,
           stores: runtime.stores,
           runtimeConfig: { ...runtime.runtimeConfig }
         });

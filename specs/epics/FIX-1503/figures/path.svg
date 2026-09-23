@@ -1,0 +1,58 @@
+<svg viewBox="0 0 940 320" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path: lanes against time, now line at 22 September 2026 during spec authoring. An input lane from FIX-1442 is done. Then four set lanes with no live bars: mint plus verified default, consumer cutover, CyberForce proof marked NO CHILD, and FIX-906 leftover after the engine. The critical path runs engine, then cutover, then the proof.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .done  { fill:var(--code); stroke:none; }
+    .todo  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .axis  { stroke:var(--rule); stroke-width:1; }
+    .now   { stroke:var(--gone); stroke-width:1.4; }
+    .crit  { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-ln  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.06em; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+
+  <text class="t-lbl" x="16" y="18">THE PATH &#8212; SEQUENCED AROUND CALLERS, NOT A ONE-LINE FLIP</text>
+  <path class="axis" d="M220 40 L924 40"/>
+  <text class="t-s" x="220" y="32">FIX-1442 done</text>
+  <text class="t-now" x="360" y="32">now &#183; 22 Sep</text>
+  <text class="t-s" x="640" y="32">ahead &#183; not scheduled</text>
+  <path class="now" d="M400 40 L400 300"/>
+
+  <g id="input">
+    <text class="t-ln" x="16" y="70">FIX-1442 &#183; org</text>
+    <rect class="done" x="220" y="58" width="170" height="16" rx="2"/>
+    <text class="t-s" x="226" y="70">Done &#183; input, not a child</text>
+  </g>
+  <g id="engine">
+    <text class="t-ln" x="16" y="118">FIX-XXX &#183; mint + default</text>
+    <rect class="todo" x="420" y="104" width="220" height="22" rx="3"/>
+    <text class="t-s" x="428" y="119">unfiled &#183; can start at the gate</text>
+  </g>
+  <g id="cutover">
+    <text class="t-ln" x="16" y="166">FIX-XXX &#183; consumers</text>
+    <rect class="todo" x="560" y="152" width="240" height="22" rx="3"/>
+    <text class="t-s" x="568" y="167">unfiled &#183; waits on a mint</text>
+  </g>
+  <g id="leftover">
+    <text class="t-ln" x="16" y="214">FIX-906 &#183; leftover</text>
+    <rect class="todo" x="500" y="200" width="200" height="22" rx="3"/>
+    <text class="t-s" x="508" y="215">Backlog &#183; after engine</text>
+  </g>
+  <g id="proof">
+    <text class="t-ln" x="16" y="262">FIX-XXX &#183; CyberForce</text>
+    <text class="t-g" x="420" y="262">NO CHILD &#183; waits on cutover</text>
+  </g>
+  <path class="crit" d="M530 126 L560 163 L680 163 L680 252"/>
+  <text class="t-g" x="16" y="304">Critical path: engine &#8594; cutover &#8594; proof. Leftover is beside cutover, not on it.</text>
+</svg>

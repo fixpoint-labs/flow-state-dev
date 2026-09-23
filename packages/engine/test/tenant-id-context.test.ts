@@ -5,6 +5,7 @@
  * separate, deferred change — this only threads the axis.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -49,6 +50,7 @@ describe("tenantId context axis", () => {
   it("threads tenantId onto request and session identity (runAction)", async () => {
     const capture: { tenantId?: string; sessionTenantId?: string } = {};
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: buildCapturingFlow(capture),
       actionName: "run",
       input: {},
@@ -67,6 +69,7 @@ describe("tenantId context axis", () => {
   it("leaves tenantId undefined when not provided", async () => {
     const capture: { tenantId?: string; sessionTenantId?: string } = {};
     await runAction({
+    orgId: DEFAULT_ORG_ID,
       flow: buildCapturingFlow(capture),
       actionName: "run",
       input: {},
