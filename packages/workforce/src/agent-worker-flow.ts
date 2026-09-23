@@ -613,6 +613,8 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // `tools:` setting. That registration path stays off; the generator's own
   // `tools:` slot below, fenced at the mint by the `tools` schema, is the
   // only stock tool-registration path.
+  // Organization scope, the library default. The organization is the
+  // principal's. A request sends `userId` and does not carry an org id.
   const skills = createSkillsLibrary({
     catalog,
     registerCatalogTools: false,

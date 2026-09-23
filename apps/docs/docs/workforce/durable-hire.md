@@ -211,10 +211,10 @@ The seat answers immediately, on the same route as any other flow. Its address c
 ```bash
 curl -X POST localhost:3000/api/flows/acme.support.ada/actions/answer \
   -H 'content-type: application/json' \
-  -d '{"userId":"you","orgId":"acme","input":{"note":"is the printer fixed?"}}'
+  -d '{"userId":"you","input":{"note":"is the printer fixed?"}}'
 ```
 
-The organization is part of the address because two organizations can both want a seat called `support.ada`, and an app serves one flat set of addresses. It identifies the seat. It does not authorize anything: who may call it is still decided by the principal on the request.
+The organization is part of the address because two organizations can both want a seat called `support.ada`, and an app serves one flat set of addresses. It identifies the seat. It does not authorize anything: who may call it is decided by the principal on the request. The body does not name the organization.
 
 ## Reading the roster back at the next start
 
