@@ -48,6 +48,33 @@ function failingSource(message: string) {
   };
 }
 
+/**
+ * A collection source that pages, the way the real list route does: a page of
+ * `pageSize`, plus `nextCursor` (the last item's own topic — opaque either
+ * way) while rows remain. Lets a test seed past one page and prove the panel
+ * keeps reading rather than stopping at the first response (BR-19, BR-21,
+ * V11).
+ */
+function pagedSource(items: Array<{ topic: string; clientData: unknown }>, pageSize = 50) {
+  const listCollectionItems = vi.fn(
+    async (
+      _sessionId: string,
+      _ref: string,
+      options?: { limit?: number; cursor?: string }
+    ) => {
+      const start =
+        options?.cursor === undefined
+          ? 0
+          : items.findIndex((item) => item.topic === options.cursor) + 1;
+      const size = options?.limit ?? pageSize;
+      const page = items.slice(start, start + size);
+      const hasMore = start + size < items.length;
+      return { items: page, ...(hasMore ? { nextCursor: page[page.length - 1]!.topic } : {}) };
+    }
+  );
+  return { listCollectionItems };
+}
+
 const seat = (seatId: string, flow = "agent") => ({
   topic: seatId,
   clientData: { seatId, flow, instructions: null }
@@ -155,6 +182,21 @@ describe("Roster", () => {
     // this is the runtime half, so a reader sees the rule without compiling.
     expect(rosterPropNames).not.toContain("orgId");
     expect(rosterPropNames.filter((name) => /org|tenant|filter/i.test(name))).toEqual([]);
+  });
+
+  it("reads every page of the roster, not only the first (BR-19, V11)", async () => {
+    // 51 rows past the route's default 50-row page (resource-routes.ts:388) —
+    // a panel that reads page one and stops truncates the last seat silently.
+    const seats = Array.from({ length: 51 }, (_, i) => seat(`seat-${String(i).padStart(3, "0")}`));
+    const source = pagedSource(seats);
+    render(createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster" }));
+
+    await waitFor(() => expect(screen.getByText("seat-050")).toBeTruthy());
+    expect(document.querySelector("[data-roster-seats]")?.getAttribute("data-roster-seats")).toBe(
+      "51"
+    );
+    // Two requests: the first page and the one the cursor points to.
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -280,4 +322,37 @@ describe("BoardColumns", () => {
     expect(boardColumnsPropNames).not.toContain("orgId");
     expect(boardColumnsPropNames.filter((name) => /org|tenant|filter/i.test(name))).toEqual([]);
   });
+
+  it(
+    "reads every page of a board, not only the first, and renders only the " +
+      "projected fields (BR-21, V11)",
+    async () => {
+      // 51 rows past the route's default 50-row page. Each raw row also
+      // carries envelope fields the collection's `expose` withholds in
+      // production and this component's type never reads — claimedBy, a
+      // lease, a retry ledger, a write log — so a regression that started
+      // rendering the whole envelope instead of the projection would show up
+      // here too.
+      const rows = Array.from({ length: 51 }, (_, i) =>
+        card(`t-${String(i).padStart(3, "0")}`, "pending", {
+          title: `task ${i}`,
+          claimedBy: "worker-9",
+          lease: { expiresAt: "2026-01-01T00:00:00Z" },
+          retryLedger: [{ attempt: 1, error: "boom" }],
+          writeLog: ["created", "claimed"]
+        })
+      );
+      const source = pagedSource(rows);
+      render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", resourceClient: source }));
+
+      await waitFor(() => expect(screen.getByText("task 50")).toBeTruthy());
+      expect(document.querySelectorAll('[data-column="pending"] [data-task-id]').length).toBe(51);
+      expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+
+      // None of the withheld envelope fields ever reach the DOM — only what
+      // `defaultCardBody` projects (the label and, when present, `assignee`).
+      const text = document.body.textContent ?? "";
+      expect(text).not.toMatch(/worker-9|expiresAt|boom|write ?log/i);
+    }
+  );
 });

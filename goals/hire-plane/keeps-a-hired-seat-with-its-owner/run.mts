@@ -2,21 +2,27 @@
  * Goal check — a hired seat stays with the organization and the user that
  * hired it, on the HTTP router, with no model.
  *
- * See goal.md for the contract, including the two source-revert controls.
+ * See goal.md for the contract, including the three source-revert controls.
  *
  * Run: pnpm tsx goals/hire-plane/keeps-a-hired-seat-with-its-owner/run.mts
  */
 import { defineFlow, defineResourceCollection, handler, type FlowInstance } from "@flow-state-dev/core";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState, executeBlock, inMemoryStores } from "@flow-state-dev/engine";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
+  createSeatHireCapability,
+  defineAgentWorkerFlow,
   defineHiredRosterCollection,
   encodeUserSegment,
+  hireWorkforce,
   reloadHiredSeats,
   seatAddress,
+  workerConfigSchema,
+  type HireOptions,
 } from "@flow-state-dev/workforce";
+import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { loadFixture, runGoal } from "../../lib/index.mts";
+import { loadFixture, runGoal, stripIntentOverrides } from "../../lib/index.mts";
 
 type Fixture = {
   ownerOrg: string;
@@ -28,9 +34,13 @@ type Fixture = {
   legacySeatId: string;
   secret: string;
   widePattern: string;
+  managerId: string;
+  hiredSeatId: string;
 };
 
 type Who = { user: string; org: string };
+
+stripIntentOverrides();
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 const tagInput = z.object({ tag: z.string() });
@@ -328,13 +338,122 @@ await runGoal(async () => {
   const claimedOpen = await open(foreign, legacyAddress);
   if (claimedOpen.status !== 404) fail("g", `foreign-owned row opened as ${claimedOpen.status}`);
 
+  // (h) A row the seat-hire capability wrote, copied into another org's cell,
+  // is refused on reload. The hire is a manager seat calling `hire` under the
+  // owner org; the stored value is then copied as-is into both cells.
+  const hiredKind = defineFlow({
+    kind: "hired",
+    cardinality: "collection",
+    configSchema: workerConfigSchema(),
+    resources,
+    actions: { whoami: { inputSchema: tagInput, block: whoami } },
+    authentication: verified,
+  });
+  const hireKinds: NonNullable<HireOptions["kinds"]> = { hired: hiredKind };
+  const seatHire = createSeatHireCapability({
+    kinds: hireKinds,
+    register: (seat, pin) => state.register(seat, { pin }),
+    unregister: (id) => state.unregister(id),
+  });
+  hireKinds.agent = defineAgentWorkerFlow({ uses: [seatHire] });
+  const [manager] = hireWorkforce(
+    [{ id: fixture.managerId, declared: { tools: ["hire"] }, body: "Expands the roster." }],
+    { kinds: hireKinds },
+  );
+  const hiredAddress = seatAddress(fixture.ownerOrg, fixture.hiredSeatId);
+  const copiedAddress = seatAddress(fixture.otherOrg, fixture.hiredSeatId);
+  const rosterKey = `workforce/roster/${fixture.hiredSeatId}`;
+  let copied: unknown;
+  if (manager === undefined) {
+    fail("h", "hireWorkforce minted no manager");
+  } else {
+    const hireRun = await createTestContext({
+      flow: { ...manager, cardinality: "singleton" },
+      orgId: fixture.ownerOrg,
+      org: { state: {} },
+      sessionId: "goal-hire",
+      sequencerName: manager.actions.run!.block.name,
+      declaredResources: manager.actions.run!.block.declaredResources,
+      generators: {
+        "agent-answer": mockGenerator({
+          name: "agent-answer",
+          script: [
+            {
+              toolCalls: [
+                {
+                  toolCallId: "hire-1",
+                  toolName: "hire",
+                  args: { seatId: fixture.hiredSeatId, flow: "hired", instructions: fixture.secret },
+                },
+              ],
+            },
+            { text: "done" },
+          ] as never,
+        }),
+      },
+    });
+    const hired = await executeBlock({
+      block: manager.actions.run!.block,
+      input: { message: "hire the named seat" },
+      ctx: hireRun.ctx,
+    });
+    if (hired.error !== undefined) fail("h", `capability hire failed: ${hired.error.message}`);
+    const written = (await hireRun.stores.resourceState.get("org", fixture.ownerOrg, rosterKey)) as
+      | { state?: unknown }
+      | undefined;
+    copied = written?.state;
+    if (copied === undefined) fail("h", `the capability wrote no row at ${rosterKey}`);
+  }
+  if (copied !== undefined) {
+    state.unregister(hiredAddress);
+    for (const org of [fixture.ownerOrg, fixture.otherOrg]) {
+      await primary.resourceState!.set("org", org, rosterKey, copied as never, "any");
+    }
+    const home = await reloadHiredSeats({
+      stores: runtime.stores,
+      orgIds: [fixture.ownerOrg],
+      kinds: hireKinds,
+    });
+    if (!home.seats.some((seat) => seat.id === hiredAddress)) {
+      fail("h", `the capability's row did not reload in ${fixture.ownerOrg}: ${home.problems.join("; ")}`);
+    }
+    const away = await reloadHiredSeats({
+      stores: runtime.stores,
+      orgIds: [fixture.otherOrg],
+      kinds: hireKinds,
+    });
+    // What a host does with a reload: register each seat under its own pin.
+    for (const seat of away.seats) {
+      const pin = (seat as { ownerPin?: { orgId: string; userId?: string } }).ownerPin;
+      state.register(seat, pin === undefined ? undefined : { pin });
+    }
+    if (away.seats.some((seat) => seat.id === copiedAddress)) {
+      fail("h", `reload in ${fixture.otherOrg} minted ${copiedAddress} from the copied row`);
+    }
+    if (!away.problems.some((problem) => problem.includes(fixture.hiredSeatId))) {
+      fail("h", `reload in ${fixture.otherOrg} reported no problem for the copied row`);
+    }
+    const copiedOpen = await open(foreign, copiedAddress);
+    if (copiedOpen.status !== 404) {
+      fail("h", `${fixture.otherOrg} opened the copied seat as ${copiedOpen.status}`);
+      if (copiedOpen.status === 201) {
+        await run(foreign, copiedOpen.json.session.id as string, "whoami", "copied", copiedAddress);
+        if ((await seenInstructions(fixture.otherOrg, "copied"))?.includes(fixture.secret)) {
+          fail("h", `${fixture.otherOrg} ran the copied seat and read the marker`);
+        }
+      }
+    }
+  }
+
   const evidence =
     failures.length > 0
       ? ""
       : `owner wrote ${fixture.secret} at ${ownedAddress}; teammate and ${fixture.otherOrg} got 404; ` +
         `catalog listed the seat for the owner only; resume after re-pin was 404; ` +
         `browser read was undefined; ${fixture.widePattern} was refused; ` +
-        `a row owned by ${fixture.otherOrg} was a reload problem and did not open. ` +
+        `a row owned by ${fixture.otherOrg} was a reload problem and did not open; ` +
+        `the capability's ${fixture.hiredSeatId} row reloaded in ${fixture.ownerOrg} and was a ` +
+        `reload problem in ${fixture.otherOrg}, where ${copiedAddress} did not open. ` +
         `Shared app still ran for ${fixture.otherOrg}.`;
   return { failures, evidence };
 });
