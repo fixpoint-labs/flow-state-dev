@@ -31,15 +31,18 @@
  *
  * ## Where the declared half is read
  *
- * From BOOT state, handed in once. `readDeclaredRoster` is a synchronous
- * filesystem tree walk, and this runs behind a tool a model may call on every
- * step — so the roster is resolved where the app already resolves it and passed
- * here as data. That is also why this module is node-free and lives at the
- * package root rather than behind `./loader`.
+ * From BOOT state, handed in once — the file tree — plus, when the app names
+ * the hired-roster key, from that collection at call time. A runtime hire has
+ * no file; its roster row is the declared half so Discover can see it
+ * (FIX-1526). `readDeclaredRoster` is a synchronous filesystem tree walk, and
+ * this runs behind a tool a model may call on every step — so the file tree is
+ * resolved where the app already resolves it and passed here as data. That is
+ * also why this module is node-free and lives at the package root rather than
+ * behind `./loader`.
  *
  * Neither reader is modified. The inventory's storage keys and row schemas are
  * a public surface with persisted data behind them; these sources read them and
- * write nothing.
+ * write nothing. The hired roster is the same: this module reads it.
  */
 
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
@@ -47,6 +50,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration";
 import type { ChannelManifest, WorkerManifest } from "./manifest";
 import type { ChannelInventoryRow, SeatInventoryRow } from "./inventory/collections";
+import { hiredSeatManifest, parseHiredSeatRow } from "./roster/rows";
 
 /**
  * The declared half, as the sources need it — a structural subset of
@@ -85,19 +89,43 @@ export interface WorkforceManifestSourceOptions {
   roster: DeclaredWorkforce;
   /** Where the live rows are mounted. A domain with no key gets no source. */
   inventory: InventoryKeys;
+  /**
+   * Registry key for the durable hired roster (`defineHiredRosterCollection`).
+   *
+   * When named, a roster row with no file is the declared half for that seat
+   * — so Discover sees a runtime hire the same way it sees a file-declared
+   * one (FIX-1526). Omitted, only the boot-resolved file tree is declared,
+   * which is the ordinary state for an app that does not hire at runtime.
+   */
+  hiredRoster?: string;
 }
 
 /**
- * One line saying what a declared record is for — its `description:`.
+ * One line saying what a declared record is for — its `description:`, or
+ * for a runtime hire its instructions.
  *
  * Required on a `CHANNEL.md` by the reader and conventional on a `WORKER.md`
  * (the hire step reserves the key). A record that carries none falls back to
  * its id, which is all the declaration actually says.
  */
-function purposeOf(declared: Record<string, unknown>, id: string, noun: string): string {
+function purposeOf(
+  declared: Record<string, unknown>,
+  id: string,
+  noun: string,
+  instructions?: string,
+): string {
   const described = declared["description"];
   if (typeof described === "string" && described.trim() !== "") return described.trim();
+  if (typeof instructions === "string" && instructions.trim() !== "") return instructions.trim();
   return `The ${noun} "${id}". Its file declares no description.`;
+}
+
+/**
+ * The org this discover call runs under, from the verified principal.
+ */
+function orgOf(ctx: BlockContext): string | undefined {
+  const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
+  return typeof orgId === "string" && orgId.length > 0 ? orgId : undefined;
 }
 
 /**
@@ -135,8 +163,8 @@ async function listRows<T>(
   const collection = resolveResourceCollection(ctx, key);
   if (collection === undefined) {
     throw new Error(
-      `The ${domain} inventory collection "${key}" is not registered on ctx.resources. ` +
-        `Install it on the block that carries the discovery door, or drop \`inventory.${domain}\` ` +
+      `The ${domain} collection "${key}" is not registered on ctx.resources. ` +
+        `Install it on the block that carries the discovery door, or drop that key ` +
         `from createWorkforceCapability.`,
     );
   }
@@ -150,12 +178,31 @@ async function listRows<T>(
  * seat was hired into — that one is a fact about how it runs and belongs on the
  * contract line, where a planner reads it only when it asks for detail.
  */
-function seatsSource(roster: DeclaredWorkforce, key: string): BlockManifestSource {
-  const declared = new Map(roster.workers.map((worker) => [worker.id, worker]));
+function seatsSource(
+  roster: DeclaredWorkforce,
+  key: string,
+  hiredRosterKey?: string,
+): BlockManifestSource {
+  const files = new Map(roster.workers.map((worker) => [worker.id, worker]));
   return {
     domain: "seats",
     origin: "createWorkforceCapability",
     entries: async (ctx: BlockContext): Promise<ManifestEntry[]> => {
+      const declared = new Map(files);
+      if (hiredRosterKey !== undefined) {
+        const orgId = orgOf(ctx);
+        if (orgId !== undefined) {
+          for (const stored of await listRows<unknown>(ctx, hiredRosterKey, "hired roster")) {
+            const parsed = parseHiredSeatRow(stored.state);
+            if ("problem" in parsed) continue;
+            const record = hiredSeatManifest(orgId, parsed.row);
+            if (!declared.has(record.manifest.id)) {
+              declared.set(record.manifest.id, record.manifest);
+            }
+          }
+        }
+      }
+
       const entries: ManifestEntry[] = [];
       for (const row of await listRows<SeatInventoryRow>(ctx, key, "seats")) {
         // A row that lost its required fields reads back empty rather than
@@ -169,7 +216,7 @@ function seatsSource(roster: DeclaredWorkforce, key: string): BlockManifestSourc
         entries.push({
           id,
           kind: "seat",
-          purpose: purposeOf(worker.declared, id, "seat"),
+          purpose: purposeOf(worker.declared, id, "seat", worker.body),
           contract:
             `Hired into the "${typeof kind === "string" && kind !== "" ? kind : "agent"}" ` +
             `worker kind. Hand it work by its id.`,
@@ -242,7 +289,7 @@ export function workforceManifestSources(
 ): BlockManifestSource[] {
   const sources: BlockManifestSource[] = [];
   if (options.inventory.seats !== undefined) {
-    sources.push(seatsSource(options.roster, options.inventory.seats));
+    sources.push(seatsSource(options.roster, options.inventory.seats, options.hiredRoster));
   }
   if (options.inventory.channels !== undefined) {
     sources.push(channelsSource(options.roster, options.inventory.channels));

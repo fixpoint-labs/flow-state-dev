@@ -11,8 +11,9 @@
  * `inventory/seats/*` answers *was registered in this org* and never deletes a
  * row — which is right for browsing and wrong for a roster, because firing a
  * seat has to remove it. Two contracts, two collections; they join on the seat
- * id and nothing else. A runtime-hired seat gets a roster row and no inventory
- * row, so nothing has to explain which of two answers is current.
+ * id and nothing else. A runtime hire writes both: the roster row is who was
+ * hired (and fire deletes it), the inventory row is *was registered here*
+ * and stays. Discover joins file ∪ roster against inventory.
  *
  * These keys are a public surface on the same terms the inventory's are:
  * moving the prefix breaks every deployment that has already hired.
