@@ -196,6 +196,7 @@ function seatsSource(
             const parsed = parseHiredSeatRow(stored.state);
             if ("problem" in parsed) continue;
             const record = hiredSeatManifest(orgId, parsed.row);
+            if ("problem" in record) continue;
             if (!declared.has(record.manifest.id)) {
               declared.set(record.manifest.id, record.manifest);
             }
