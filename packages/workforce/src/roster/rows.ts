@@ -205,8 +205,9 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  * @returns the record, or a reason when the row's owning organization is
  * not `orgId`. A row that predates the stamp binds `orgId` — the cell it
  * was read from — rather than refusing. A bad ORG still throws, via
- * {@link seatAddress}; a caller walking stored rows catches that per row, as
- * `reloadHiredSeats` does, so one unaddressable row is one skip.
+ * {@link seatAddress}; a caller walking stored rows reads through
+ * {@link hiredSeatManifestFromStored}, which turns that throw into one row's
+ * reason, so one unaddressable row is one skip.
  */
 export function hiredSeatManifest(
   orgId: string,
@@ -241,6 +242,32 @@ export function hiredSeatManifest(
       ownerPin: hiredSeatOwnerPin(owningOrgId, row),
     },
   };
+}
+
+/**
+ * A stored value, read under `orgId`, as the record a seat is minted from —
+ * or the one reason it cannot be.
+ *
+ * The per-row walk every reader of stored rows needs: parse, apply the
+ * owning-org fence, and build the address. The address throws when the org or
+ * the seat id cannot be one (a row under `DEFAULT_ORG_ID`, a seat id starting
+ * with `~`); here that throw is one row's reason, so a caller walking a roster
+ * skips it and keeps the rest. `reloadHiredSeats` and the seats manifest
+ * source both read through this, so they agree on which rows count.
+ *
+ * @returns the record, or a reason. Never throws.
+ */
+export function hiredSeatManifestFromStored(
+  orgId: string,
+  stored: unknown
+): { manifest: WorkerManifest } | RowProblem {
+  const parsed = parseHiredSeatRow(stored);
+  if ("problem" in parsed) return parsed;
+  try {
+    return hiredSeatManifest(orgId, parsed.row);
+  } catch (error) {
+    return { problem: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /**
