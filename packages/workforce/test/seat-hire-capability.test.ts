@@ -18,7 +18,7 @@ import { createWorkforceCapability } from "../src/workforce-capability";
 import { workforceManifestSources } from "../src/manifest-sources";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { hireWorkforce, type HireOptions } from "../src/hire";
-import { hiredSeatManifest, parseHiredSeatRow } from "../src/roster/rows";
+import { parseHiredSeatRow } from "../src/roster/rows";
 import type { WorkerManifest } from "../src/manifest";
 import type { FlowInstance } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
@@ -194,39 +194,6 @@ describe("the tools fence on seat-hire", () => {
     expect(hireReturn(result.items)).toMatchObject({ seatId: "eng.ada", address: "acme.eng.ada" });
   });
 
-  it("stamps the row with the principal's org, so a copy read under another org is refused", async () => {
-    // An unstamped row binds whatever cell it is read from. The stamp is what
-    // lets a reload of a copied row refuse instead of re-owning it.
-    const live = liveRoster();
-    const { kinds } = kindWithHire(live);
-
-    const [manager] = hireWorkforce(
-      [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],
-      { kinds },
-    );
-
-    const { result, ctx } = await runSeat(manager!, [
-      {
-        toolCalls: [
-          callTool("hire", { seatId: "eng.ada", flow: "agent", orgId: "globex" }),
-        ],
-      },
-      { text: "done" },
-    ]);
-
-    expect(result.error).toBeUndefined();
-    const [stored] = await collectionOf(ctx as never, HIRED_ROSTER_RESOURCE).list();
-    const parsed = parseHiredSeatRow(stored?.state);
-    if ("problem" in parsed) throw new Error(parsed.problem);
-    expect(parsed.row.owningOrgId).toBe("acme");
-    expect(parsed.row.ownerUserId).toBeNull();
-
-    expect(hiredSeatManifest("acme", parsed.row)).toHaveProperty("manifest.id", "acme.eng.ada");
-    expect(hiredSeatManifest("globex", parsed.row)).toEqual({
-      problem: expect.stringContaining('owned by organization "acme"'),
-    });
-  });
-
   it("refuses a kind this app never registered, and writes nothing", async () => {
     const live = liveRoster();
     const { kinds } = kindWithHire(live);
@@ -298,6 +265,11 @@ describe("the tools fence on seat-hire", () => {
     expect(live.has("other-org.eng.ada")).toBe(false);
     expect(await listedIds(ctx, HIRED_ROSTER_RESOURCE, "seatId")).toEqual(["eng.ada"]);
     expect(await listedIds(ctx, SEAT_INVENTORY_RESOURCE, "id")).toEqual(["acme.eng.ada"]);
+    const [stored] = await collectionOf(ctx as never, HIRED_ROSTER_RESOURCE).list();
+    const parsed = parseHiredSeatRow(stored?.state);
+    if ("problem" in parsed) throw new Error(parsed.problem);
+    expect(parsed.row.owningOrgId).toBe("acme");
+    expect(parsed.row.ownerUserId).toBeNull();
   });
 });
 

@@ -241,10 +241,6 @@ export function createSeatHireCapability(
         );
       }
 
-      // Stamped with the principal's org, never the body's. An unstamped row
-      // binds whatever cell it is read from, so a copy under another org
-      // would reload as that org's seat; a stamped one is refused there.
-      // Org-visible only: this tool never hires a user-owned seat.
       const row = toHiredSeatRow({
         seatId: input.seatId,
         flow: input.flow,
@@ -253,6 +249,7 @@ export function createSeatHireCapability(
         owningOrgId: orgId,
       });
       const record = hiredSeatManifest(orgId, row);
+      // Type narrowing, not a second fence: the row was just stamped with this org.
       if ("problem" in record) {
         throw new Error(`"${address}" could not be hired: ${record.problem}.`);
       }
