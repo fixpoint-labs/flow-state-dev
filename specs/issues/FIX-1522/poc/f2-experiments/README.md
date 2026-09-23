@@ -31,6 +31,37 @@ Run on this branch (based on `d8d4c26`): **8 passed**.
 | E8 HOLE | Does the catalog show other planes' seats? | Yes. mallory@globex sees `acme.eng.lead`, and bob@acme sees `acme.~alice.research` |
 | E9 HOLDS | Can a held address be re-registered under a different config? | No. A duplicate address is refused already. Once released, though, the address takes any config, and alice's open session on it runs the new one |
 
+## After: run against the FIX-1529 branch
+
+`after.poc.test.ts` uses the same harness, but hires the way a hire writer does, with a pin.
+It runs against a checkout of fixpoint-labs/flow-state-dev#2091 (head `01b29f0d`):
+
+```bash
+bash specs/issues/FIX-1522/poc/f2-experiments/run-after.sh /path/to/fix-1529-checkout
+```
+
+**9 passed.**
+
+Six CLOSED legs, each refused as the plan expects:
+- **E3:** a session opened before the pin existed is refused on resume after the reload pins
+  the seat.
+- **E7:** mallory's internal dispatch never runs the pinned seat. As a control, alice's dispatch
+  does run it.
+- **E1/E2:** a foreign org and a roster peer both get `404` before any ack, with a session or
+  without one.
+- **E6:** the pin decides, not the address. `acme.x` pinned to globex admits globex and
+  refuses acme.
+- **E8:** the catalog is per caller. An anonymous caller sees shared flows only, with a `200`.
+- **E9:** after release and a re-hire under another pin, the old session is refused.
+
+The fence holds on every path the plan named. Three probes found gaps outside it:
+
+| Probe | Observed on `01b29f0d` |
+|---|---|
+| **A** address collision | Alice's `~alice/research` and Bob's `~bob/research` both mint `acme.research`, because a user-owned seat's address is `<org>.<seatId>` with no user in it. The reload returns both; the second is refused as "already registered". At hire time, kitchen-sink's refusal names the holder's kind, which tells Bob that a private seat by that name exists |
+| **B** private writer is readable | Any flow may declare `defineHiredRosterPrivateCollection()`, whose pattern the guard exempts. An app action in bob@acme's session listed it and read `ALICE-PRIVATE` |
+| **C** the guard tests one key | `workforce/roster/[owner]/notes` is admitted, because the guard only checks whether a pattern matches `workforce/roster/~alice/research`. It still reads every user's private `notes` row |
+
 ## Limits
 
 - **Not run:** E6 (pin, not address) and the anonymous half of E8. Both need a pin to exist
