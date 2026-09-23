@@ -392,7 +392,6 @@ describe("after · resource planes for one person in two orgs", () => {
       console.log("PLANE-ERR", errs);
     }
     expect(done).toEqual({ http: 202, outcome: "completed" });
-    const rows = await h.seenIn(who.org);
     const mine = (await h.runtime.stores.resourceState.get("org", who.org, `seen/${tag}`)) as any;
     return JSON.parse(mine.state.instructions);
   };
