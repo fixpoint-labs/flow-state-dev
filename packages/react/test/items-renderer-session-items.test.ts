@@ -20,6 +20,7 @@ import type {
 import {
   FlowProvider,
   ItemsRenderer,
+  SessionItemsProvider,
   useContainerItems,
   useSessionItems
 } from "../src";
@@ -80,5 +81,32 @@ describe("ItemsRenderer session-items provider (FIX-1498)", () => {
     );
 
     expect(screen.getByTestId("container-probe").textContent).toBe("visible-turn");
+  });
+
+  it("keeps an ancestor session list when ItemsRenderer is given a filtered subset", () => {
+    // RequestGroup drops task-owned items before ItemsRenderer so they
+    // render only inside TaskPlan. TaskPlan reads useSessionItems().
+    // Replacing the ancestor list with that subset empties the expansion.
+    const visible = containerItem();
+    const taskOwned = ownedSnapshot();
+
+    function ExpansionProbe(): ReactNode {
+      const ids = useSessionItems().map((item) => item.id);
+      return createElement("div", { "data-testid": "seen-ids" }, ids.join(" "));
+    }
+
+    render(
+      createElement(
+        SessionItemsProvider,
+        { value: [visible, taskOwned] },
+        createElement(
+          FlowProvider,
+          { renderers: { container: { debate: ExpansionProbe } } },
+          createElement(ItemsRenderer, { items: [visible] })
+        )
+      )
+    );
+
+    expect(screen.getByTestId("seen-ids").textContent).toContain("cmp_1");
   });
 });

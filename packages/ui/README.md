@@ -73,7 +73,7 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 </FlowProvider>
 ```
 
-`ItemsRenderer` puts `session.items` in scope for nested `useSessionItems()` consumers, including `TaskPlan` and `Approval`.
+`ItemsRenderer` puts `session.items` in scope for nested `useSessionItems()` consumers, including `TaskPlan` and `Approval`, when no `SessionItemsProvider` is already mounted. An ancestor provider stays in place.
 
 Sources are excluded from the renderer map (`source: false`) — render them grouped separately via `<SourcesGroup>` to display as a collapsed list after the message thread.
 

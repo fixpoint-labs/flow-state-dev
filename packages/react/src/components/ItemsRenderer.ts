@@ -15,7 +15,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
-import { SessionItemsProvider } from "../context/SessionItemsContext";
+import { SessionItemsGate } from "../context/SessionItemsContext";
 import type { RendererRegistry } from "../registry/block-renderers";
 import { ItemRenderer } from "./ItemRenderer";
 
@@ -216,9 +216,10 @@ export function buildItemRenderStream(
  * items in the filtered stream render as a single group via the supplied
  * component rather than individually.
  *
- * Mounts {@link SessionItemsProvider} with the full `items` list so
- * container and HITL renderers can call `useSessionItems()` under the
- * documented FlowProvider + ItemsRenderer composition.
+ * Mounts a session-items provider with `items` when none is already in
+ * scope, so container and HITL renderers can call `useSessionItems()`
+ * under the documented FlowProvider + ItemsRenderer composition. An
+ * ancestor provider is kept: its list may be a superset of `items`.
  */
 export function ItemsRenderer(props: ItemsRendererProps): ReactNode {
   const { deduplicateByKey = true, showSubAgents = false, toolGroupRenderer } = props;
@@ -268,5 +269,5 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode {
     return createElement(ItemRenderer, { item, key: item.id });
   });
 
-  return createElement(SessionItemsProvider, { value: props.items }, nodes);
+  return createElement(SessionItemsGate, { value: props.items }, nodes);
 }

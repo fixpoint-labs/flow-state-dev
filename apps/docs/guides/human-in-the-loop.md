@@ -172,7 +172,7 @@ Submitting runs the flow until the gate. The `Approval` card appears in the conv
 
 `SuspensionResolverProvider` hands the card the session's streaming resume (`session.resumeSuspension`). Without it, the card resolves, but the continuation only appears after the session refetches. With it, the resumed output streams onto the same request the user is watching. This matters most on serverless, where the continuation runs in a different invocation than the original stream.
 
-The `Approval` card reads the session list through `useSessionItems()`. `ItemsRenderer` puts `session.items` in that scope. Mount `<SessionItemsProvider value={session.items}>` only when you render the card outside `ItemsRenderer`.
+The `Approval` card reads the session list through `useSessionItems()`. `ItemsRenderer` puts `session.items` in that scope when no `SessionItemsProvider` is already mounted. Mount `<SessionItemsProvider value={session.items}>` when you render the card outside `ItemsRenderer`, or above it when the rendered list is a subset of the session.
 
 ### Without the ui registry
 

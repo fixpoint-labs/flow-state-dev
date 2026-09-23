@@ -45,7 +45,7 @@ Human-in-the-loop approval card for `suspension` items. Shows the gate's message
 fsdev ui add approval
 ```
 
-The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. Under `<ItemsRenderer items={session.items} />`, `useSessionItems()` sees that list. Mount `<SessionItemsProvider value={session.items}>` only when you render the card outside `ItemsRenderer`. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
+The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. Under `<ItemsRenderer items={session.items} />`, `useSessionItems()` sees that list when no `SessionItemsProvider` is already mounted. Mount `<SessionItemsProvider value={session.items}>` when you render the card outside `ItemsRenderer`, or above it when the rendered list is a subset of the session. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
 
 ## ModelBadge
 
@@ -71,7 +71,7 @@ fsdev ui add audit-annotation
 
 ## SessionItemsContext
 
-React context that holds the session item list for `useSessionItems()`. `ItemsRenderer` mounts the provider. Add this file and wrap a card yourself when you render it outside `ItemsRenderer`.
+React context that holds the session item list for `useSessionItems()`. `ItemsRenderer` mounts the provider when none is already mounted. Add this file and wrap a card yourself when you render it outside `ItemsRenderer`, or above `ItemsRenderer` when the rendered list is a subset of the session.
 
 The file re-exports `SessionItemsProvider` and `useSessionItems` from `@flow-state-dev/react`.
 

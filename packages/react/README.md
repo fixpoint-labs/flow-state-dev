@@ -366,7 +366,7 @@ The player exposes `enqueueChunk(chunk)` for direct callers and `dispose()` for 
 <ItemsRenderer items={session.items} />
 ```
 
-`ItemsRenderer` puts that `items` array in scope for nested `useSessionItems()` consumers. `ItemRenderer` does not.
+`ItemsRenderer` puts that `items` array in scope for nested `useSessionItems()` consumers when no `SessionItemsProvider` is already mounted. An ancestor provider stays in place. `ItemRenderer` does not mount one.
 
 When you render a stream-aware card outside `ItemsRenderer`, mount the provider yourself:
 
