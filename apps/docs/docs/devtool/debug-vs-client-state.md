@@ -25,7 +25,9 @@ For each storage key the session touches, the debug response includes:
 - A second copy showing the projection your `client.data` would produce
 - Whether the resource may be written, and whether a model is offered a write tool for its content. Either can be absent; [Read-only resources](#read-only-resources) covers what that means
 
-It does not apply `prefetchWindow`. Every item in every collection is listed. It does not apply `client.data` to the storage view; that projection is shown alongside the raw state, not in place of it.
+It does not apply `prefetchWindow`, so a collection lists every item a run in that session could reach through it, not a window of them. On the workforce roster, a seat another user [hired for themselves](../workforce/durable-hire.md) is not one of those. It is left out of the listing and the item count, and a request for its content returns 404. So does a request for a topic the collection's pattern doesn't match.
+
+It does not apply `client.data` to the storage view; that projection is shown alongside the raw state, not in place of it.
 
 The endpoint is read-only. You can't mutate state through it.
 
