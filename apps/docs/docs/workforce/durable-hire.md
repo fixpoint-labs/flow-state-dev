@@ -81,6 +81,8 @@ export const hireSeat = handler({
       flow: input.flow,
       settings: input.settings,
       instructions: input.instructions ?? null,
+      // Lets a reload refuse this row if it is ever read under another organization.
+      owningOrgId: orgId,
     });
 
     // Minted from exactly what will be stored, so the row can rebuild the seat
@@ -303,7 +305,7 @@ The roster is organization-scoped, so that `getOptional` is also the fence. Anot
 
 The hire above is org-visible. Every member of the organization can call the seat, and its row is one a browser in that organization can read. To hire a seat that belongs to one member, change the hire like this, in the handler and in `flow.ts`:
 
-- **Stamp the owner on the row.** Pass `ownerUserId` to `toHiredSeatRow`. `hiredSeatManifest` then pins the record to that user as well as the organization, and registering with that pin is what closes the seat to everyone else.
+- **Stamp the owner on the row.** Pass `ownerUserId` to `toHiredSeatRow`, and keep `owningOrgId`, the organization the hire runs under: that stamp is what lets a reload refuse the row if it is ever read under another organization. `hiredSeatManifest` then pins the record to that user as well as the organization, and registering with that pin is what closes the seat to everyone else.
 - **Put the owner in the address.** `seatAddress(orgId, seatId, userId)` returns `<orgId>.~<user>.<seatId>`, so two members can each hire `research` without colliding.
 - **Write the row through the private collection.** Install `defineHiredRosterPrivateCollection()` beside the roster and write with the object key `{ owner, seat }`, where `owner` is `~` followed by the user id passed through `encodeUserSegment` (the same escaping `seatAddress` applies). The row lands at `workforce/roster/~<user>/<seatId>`, which the browser-readable roster does not list.
 
@@ -321,6 +323,7 @@ const row = toHiredSeatRow({
   flow: input.flow,
   settings: input.settings,
   instructions: input.instructions ?? null,
+  owningOrgId: orgId,
   ownerUserId: userId,
 });
 
