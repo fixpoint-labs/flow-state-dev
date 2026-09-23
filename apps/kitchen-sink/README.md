@@ -1,8 +1,14 @@
 # Kitchen Sink
 
-The canonical reference application for `@flow-state-dev`. A full Next.js app demonstrating every framework building block with a polished UI built on [Vercel AI Elements](https://sdk.vercel.ai/docs/ai-sdk-ui/ai-elements) and [shadcn/ui](https://ui.shadcn.com).
+The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a team, gives that team channels and boards, and shows all of it in a shell whose navigator, roster and board columns are imported from `@flow-state-dev/react` rather than written here. The files it installed from the component registry match their source.
 
-Kitchen sink is a reference app, not a minimal example. It hosts multiple flows, integrates every subsystem (DevTool, skills, thinking style, advisor, workforce), and is the place we test new features end-to-end. For small, focused, copy-paste-able demos see `examples/`.
+Kitchen sink is a reference app, not a minimal example. It hosts every subsystem and is where features get tested end to end. For small, focused, copy-paste-able demos see `examples/`.
+
+## What to read first
+
+- `workforce/` — the team, its channel kinds and its `CHANNEL.md` instances. This is the authoring path, and the shortest route to understanding the app.
+- `app/page.tsx` — the shell: one navigator on the left, the stream in the middle, boards and the roster on the right. The navigator, the roster and the boards are package imports.
+- `flows/` — the flows the app serves, including `chat-agent`, the assistant the stream talks to.
 
 The chat agent either answers in the turn or files the work to a durable board, where a child session picks it up and the result comes back on a later turn. For coordination that happens inside a single request, see the [patterns documentation](../docs/docs/patterns/overview.md); each pattern page carries its own runnable example. The one pattern this app still uses is the response auditor, which annotates an answer after it is produced.
 
@@ -106,12 +112,12 @@ Restart the app and ask the seat something. The reload runs at startup, before t
 
 ## Web Application (`app/`)
 
-- Three-column layout: session sidebar, conversation, artifact panel
+- Three-column layout: a `FlowNavigator` rail over channels, seats and the assistant's conversations; the stream; and a standing panel with the roster and the channel boards (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
 - **Client data bar**: Live display of mode status, request count, user preferences
 - **Mode selector**: Chat / Plan / Review tabs that feed into `sendAction`
-- **Session management**: Create, list, and switch between sessions
+- **Session management**: Create and switch between the assistant's sessions from its row in the rail; a channel's or a seat's session opens read-only
 - **Tool call visualization**: Inline display of tool invocations with args + output via AI Elements Tool component
 - **Streaming indicators**: PromptInputSubmit status, Shimmer for status items, skeleton cards for in-progress blocks
 
@@ -201,7 +207,7 @@ apps/kitchen-sink/
     flow-state/              Shared item-renderer UI (installed from @flow-state-dev/ui)
     chat-agent/              chat-agent-specific renderers
     ui/                      shadcn/ui primitives
-    ...                      Shared app UI (sidebar, mode selector, etc.)
+    ...                      Shared app UI (team panel, mode selector, etc.)
   lib/
     server.ts                Flow registry + API router setup
     mcp.ts                   Optional MCP capability (env-gated)

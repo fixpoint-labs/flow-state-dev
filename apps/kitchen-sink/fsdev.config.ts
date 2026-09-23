@@ -26,6 +26,7 @@ import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { setWorkforceRegistrarImpl, workforceRegistrar } from "@/lib/workforce-registrar";
+import { admitReloadedSeats } from "@/lib/roster-reload-report";
 import { adminCredentialConfigured } from "@/lib/workforce-admin-auth";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
@@ -249,9 +250,8 @@ setWorkforceRegistrarImpl({
 /**
  * What the boot brought back, and what it could not.
  *
- * Exported rather than only logged: "the roster" and "what answers" are two
- * numbers, and a warning on stderr is not a report. The roster's one home in
- * the shell is FIX-1477's, and this is what it reads.
+ * The log lines below print it. The browser does not read this: the shell's
+ * roster panel reads the per-organization report `admitReloadedSeats` writes.
  */
 export const hiredRosterReload: { seats: string[]; problems: string[] } = {
   seats: [],
@@ -278,25 +278,25 @@ export const hiredRosterReload: { seats: string[]; problems: string[] } = {
   });
   hiredRosterReload.problems.push(...reload.problems);
 
-  for (const seat of reload.seats) {
-    try {
-      // Through the registrar, not `flowstate.register`: these seats came from
-      // roster rows, and that provenance is what `fire` checks before it
-      // releases an address (BR-28). Registering them directly would leave
-      // every reloaded seat unfireable after a restart.
+  // One organization at a time, so a refusal is filed under the organization
+  // the seat was hired for. Each organization's report is written to its own
+  // scope, which is where the shell's roster panel reads it. Refusals also go
+  // into the flat list above, which is what the log lines below print.
+  const admitted = await admitReloadedSeats({
+    reload,
+    stores: runtime.stores,
+    // Through the registrar, not `flowstate.register`: these seats came from
+    // roster rows, and that provenance is what `fire` checks before it
+    // releases an address (BR-28). Registering them directly would leave
+    // every reloaded seat unfireable after a restart.
+    admit: (seat) =>
       workforceRegistrar.registerFromRoster(
         seat,
         seat.ownerPin !== undefined ? { pin: seat.ownerPin } : undefined
-      );
-      hiredRosterReload.seats.push(seat.id);
-    } catch (error) {
-      // One seat the registry refuses is one seat that cannot run, not a
-      // reason for the app to fail to start.
-      hiredRosterReload.problems.push(
-        `${seat.id} — ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
+      ),
+  });
+  hiredRosterReload.seats.push(...admitted.seats);
+  hiredRosterReload.problems.push(...admitted.refusals);
 
   if (hiredRosterReload.seats.length > 0) {
     console.log(

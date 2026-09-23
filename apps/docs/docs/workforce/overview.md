@@ -17,6 +17,18 @@ Reach for Workforce when you want a named roster you address by opening a sessio
 
 Reach for [Orchestration](../orchestration/overview) when you want to coordinate units of work on a task board. A board worker is a block that claims tasks. A task's `assignee` never names a hired worker.
 
+## What a Workforce app looks like
+
+A Workforce app is a roster, the channels that roster talks in, and the boards its work sits on. You describe the roster in files, hire it, and open sessions against the seats you get back. The seats are flow copies, the channels are flows, and the boards are ledgers.
+
+Three things turn that into an app someone can use:
+
+- **The roster outlives the process.** A team you hire while the app is running is still there after a restart or a redeploy, because the hire is written to the store your app uses. See [Hiring while the app runs](./durable-hire).
+- **A channel is what a reader opens.** A channel's transcript is its session history, not a second kind of conversation beside sessions. See [Channels](./channels).
+- **The screens are importable.** One navigator browses the whole workforce, and the roster and board columns ship beside it, as components from `@flow-state-dev/react`. See [Workforce components](./ui).
+
+Files stay the authoring path throughout. A `WORKER.md` under `teams/` and a `CHANNEL.md` beside it are how a roster is written down. Hiring at runtime adds to that roster; it doesn't replace the tree.
+
 ## Hire a roster
 
 Each worker lives at `teams/<team>/workers/<name>/WORKER.md`. `teams/engineering/workers/lead/` hires as `engineering.lead`.
@@ -95,6 +107,8 @@ Workforce does not staff a task board. It does not replace flows, sessions, or r
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
 - [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
+- [Hiring while the app runs](./durable-hire) — a roster hired at runtime, written to your store, reloaded on the next boot.
+- [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.
 - [Flows](../fundamentals/flows.md) — how a flow copy is configured and addressed.
