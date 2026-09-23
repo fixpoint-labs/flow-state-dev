@@ -43,18 +43,16 @@ three remaining issues are polish.
 | **Because** | The product owner decided a private team is not portable. The Architect separates three planes: the person's cross-org data, org-bound data, and a hired seat's private data. Only the third is this epic's. Re-keying every flow would decide the first plane too, which the product owner has not decided. A second store is invent-killed |
 | **Locks in** | FIX-1538 changes where a pinned instance resolves user-scoped data, and nothing else. It owns the migration: a person in one org sees no change, and data already written under the bare user id is named, not silently moved or dropped ([ER-5](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
-**Evidence.** `packages/engine/src/stores/scope-keys.ts` keys a user-scoped resource at the bare
-user id when shared and at `userId:instanceId` when isolated. A hired seat's instance id carries its
-org (`acme.~alice.research`), so isolated data is already per org. The leak is the shared bucket.
-That makes the change narrow and the shape clear enough to skip an end-state POC.
+The change is narrow enough to skip an end-state POC: only the shared user bucket leaks
+([EVOLUTION.md](EVOLUTION.md), third row). The file-level evidence moves to FIX-1538's spec.
 
 <a name="d3"></a>
-## D3 · Every fence sits at the framework's admission or read seam, and every leg is proved on the real path
+## D3 · Every fence sits at a framework seam (dispatch, admission or read), and every leg is proved on the real path
 
 | | |
 |---|---|
 | **Instead of** | A check in each route or each app · or a unit test that asserts the pin field is set |
-| **Because** | F2 put the check at `createExecutionContext` and the HTTP entry points, so every door inherits it. A leg proved only by "it shares a code path" is how the drain leg went unproven. A test that reads the pin passes even if admission never consults it |
+| **Because** | F2 put the check at `createExecutionContext` and the HTTP entry points, and the drain reuses the same predicate at the dispatch seam, so every door inherits one rule. A leg proved only by "it shares a code path" is how the drain leg went unproven. A test that reads the pin passes even if admission never consults it |
 | **Locks in** | FIX-1534 walks a real claimed-task drain. FIX-1535 reads through the scoped handle, not a second listing door. Each leg is graded by who is asking, with the owner's own run as the control ([ER-13](BUSINESS-RULES.md#how-the-set-is-run)) |
 
 <a name="d4"></a>
@@ -92,7 +90,7 @@ re-deciding. FIX-1538 owns the proof, so it is the only column that reads every 
 ## What the end-state POC showed
 
 None built. The explore's POC on #2070 already assembles the planes end to end (24 legs), and the
-one open shape, FIX-1538's cell, is narrow by the evidence under [D2](#d2).
+one open shape, FIX-1538's cell, is narrow ([D2](#d2)).
 
 ## How it got here
 

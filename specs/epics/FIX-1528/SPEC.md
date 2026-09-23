@@ -14,7 +14,7 @@ user's own boards, inventory and listings), which wait for
 | A team that… | Before this epic | After this epic |
 |---|---|---|
 | **hires a private seat for one person** | Another org could run it with that person's instructions | Only that person, in that org, can list, open, run or resume it. *Shipped* |
-| **drains an org board onto hired seats** | The refusal was inferred from a shared code path, never exercised | A drain onto another org's or user's seat is refused, task unclaimed |
+| **drains an org board onto hired seats** | The refusal was inferred from a shared code path, never exercised | A drain onto another org's or user's seat is refused. The task ends `errored` with the refusal, and its claim is released |
 | **turns debug endpoints on for many users** | The debug listing hands Alice's private seat row to Bob | Scoped like the normal route |
 | **has a person in two orgs** | Alice's Acme seat stores data in a cell that follows her to Globex | Her Acme seat's data stays in Acme |
 
@@ -24,7 +24,7 @@ user's own boards, inventory and listings), which wait for
 |---|---|
 | **Outcome** | Alice's Acme private team is invisible and inert from Globex, and from Bob in Acme |
 | **Proof** | One assembled goal on the real router and worker pool, owned by FIX-1538 ([ER-15](BUSINESS-RULES.md#the-proof)) |
-| **Lead measure** | Fence legs passing on the real path, graded by who asks. **7 of 10 today**: F2's goal legs (a)–(g). Next: drain (FIX-1534), debug (FIX-1535), stored data (FIX-1538) |
+| **Lead measure** | Fence legs passing on the real path, graded by who asks. **7 of 11 today**: F2's goal legs (a)–(g). Next: drain (FIX-1534), debug (FIX-1535), and stored data from Alice's Globex seat and from Bob's Acme seat (FIX-1538, one leg for each half of the (org, user) cell) |
 | **Not doing** | User planes, portability, org-owned hire cells, bridge seats, notify, always-on, board assignment to user ids |
 
 ## Why now
@@ -66,7 +66,7 @@ outcome is the proof ([D1](DECISIONS.md#d1)).
 flowchart LR
   X["FIX-1522 · explore"] -->|"the F2 plan"| F["FIX-1529 · F2 pin and fence"]
   X -->|"hire door findings"| H["FIX-1525/1526 · seat-hire tools"]
-  F -->|"the pin, the admission seam"| D["FIX-1534 · drain leg"]
+  F -->|"the pin and its predicate"| D["FIX-1534 · drain leg"]
   F -->|"the private-row fence"| B["FIX-1535 · debug listing"]
   X -->|"decision 1"| S["FIX-1538 · per-org private cell and proof"]
   F -->|"the pin"| S

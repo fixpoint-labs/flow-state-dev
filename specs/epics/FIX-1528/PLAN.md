@@ -19,9 +19,9 @@ is in [the spec](SPEC.md#how-the-issues-flow-into-each-other); this figure adds 
 
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
-| **FIX-1534** drain leg | direct → impl PR | The pin (ER-1) · the admission seam · the existing claimed-task drain | A real drain refused for another org and for another user's private seat, task not claimed. A fix if the drain skips admission | The drain leg for the proof | Small, unless the drain bypasses admission |
+| **FIX-1534** drain leg | direct → impl PR | The pin (ER-1) · the dispatch and admission seams · the existing claimed-task drain | A real drain refused for another org and for another user's private seat, before a session exists on the seat. The row ends `errored` with its claim released (ER-2) | The drain leg for the proof | Small |
 | **FIX-1535** debug listing | direct → impl PR | The private-row fence FIX-1529 built | The debug collection listing read through the scoped handle | The debug leg for the proof | Small |
-| **FIX-1538** per-org private cell | spec → impl PR | Decision 1 on #2070 · the pin · [D2](DECISIONS.md#d2) · both legs above | A pinned seat's user-scoped data keyed per (org, user), the migration, the assembled goal, the durable-hire docs | The epic's wrap | Medium · the migration is most of it |
+| **FIX-1538** per-org private cell | spec → impl PR | Decision 1 on #2070 · the pin · [D2](DECISIONS.md#d2) · both legs above | A pinned seat's user-scoped data keyed per (org, user), the migration, the assembled goal with a stored-data leg for each half of the cell (Alice in Globex, Bob in Acme), the durable-hire docs | The epic's wrap | Medium · the migration is most of it |
 
 ## Where it is
 
@@ -50,7 +50,7 @@ Inputs from outside the set, checked 2026-09-23:
 
 | Seam | Between | Rule |
 |---|---|---|
-| The admission seam, `createExecutionContext` | FIX-1534 and FIX-1529's shipped fence | A drain routes through it. A second admission check for drains is the defect, not the fix |
+| The dispatch seam and the admission seam, `createExecutionContext` | FIX-1534 and FIX-1529's shipped fence | The drain is refused with the same pin predicate the HTTP doors use; admission stays the backstop. A pin check on the board side, before the claim, is a second fence and the defect |
 | `packages/engine/src/routes/debug-routes.ts` vs the resource routes | FIX-1535 and FIX-1529's collection-pattern fence | One scoped read. No second listing door |
 | `packages/engine/src/stores/scope-keys.ts` | FIX-1538 and [FIX-1396](https://linear.app/fixpoint-labs/issue/FIX-1396) | FIX-1538 changes the shared user bucket for pinned seats only. FIX-1396's per-tier isolation stays its own |
 | `apps/docs/docs/workforce/durable-hire.md` | FIX-1538 and whichever bug documents a limit | FIX-1538 publishes the shared paragraph. Others link to it |
