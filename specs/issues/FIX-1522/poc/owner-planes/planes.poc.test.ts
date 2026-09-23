@@ -67,10 +67,12 @@ const resources = {
 };
 
 type Resources = { resources: Record<string, unknown> };
+/** One declared collection by its map key — the single cast the handlers need. */
+const collection = (ctx: Resources, ref: string) => ctx.resources[ref] as unknown as ResourceCollectionRef;
 const rosterRef = (ctx: Resources, plane: PlaneType) =>
-  ctx.resources[plane === "org" ? REF.orgRoster : REF.userRoster] as unknown as ResourceCollectionRef;
+  collection(ctx, plane === "org" ? REF.orgRoster : REF.userRoster);
 const boardRef = (ctx: Resources, plane: PlaneType) =>
-  ctx.resources[plane === "org" ? REF.orgBoard : REF.userBoard] as unknown as ResourceCollectionRef;
+  collection(ctx, plane === "org" ? REF.orgBoard : REF.userBoard);
 
 const PACK: SeedPack = {
   id: "starter",
@@ -112,7 +114,11 @@ const fire = handler({
 
 const seed = handler({
   name: "seed",
-  inputSchema: z.object({ plane, strategy: z.enum(["create-if-absent", "ledgered"]) }),
+  inputSchema: z.object({
+    plane,
+    strategy: z.enum(["create-if-absent", "ledgered"]),
+    version: z.number().optional(),
+  }),
   outputSchema: ok,
   resources,
   execute: async (input, ctx) => {
@@ -120,7 +126,8 @@ const seed = handler({
     const ledger = ctx.resources[input.plane === "org" ? REF.orgSeeded : REF.userSeeded] as unknown as ResourceRef<{
       packs: Record<string, { version: number; seededAt: string }>;
     }>;
-    await seedPlane(rosterRef(ctx, input.plane), ledger, orgId, ownPlane(ctx, input.plane), PACK, input.strategy);
+    const pack = { ...PACK, version: input.version ?? PACK.version };
+    await seedPlane(rosterRef(ctx, input.plane), ledger, orgId, ownPlane(ctx, input.plane), pack, input.strategy);
     return { ok: true };
   },
 });
@@ -179,11 +186,11 @@ const shipped = handler({
   resources,
   execute: async (input, ctx) => {
     const now = Date.now();
-    const board = ctx.resources[REF.shippedBoard] as unknown as ResourceCollectionRef;
+    const board = collection(ctx, REF.shippedBoard);
     await board.create(`task-${input.goal}`, {
       id: `task-${input.goal}`, goal: input.goal, status: "pending", attempts: 0, createdAt: now, updatedAt: now,
     });
-    const seats = ctx.resources[REF.shippedSeats] as unknown as ResourceCollectionRef;
+    const seats = collection(ctx, REF.shippedSeats);
     await seats.upsert(input.seatId, { id: input.seatId, kind: "clerk" });
     return { ok: true };
   },
@@ -355,7 +362,20 @@ describe("A · the owner key", () => {
     const org: WorkforceOwner = { type: "org", id: "acme" };
     expect(planeAddress("acme", { type: "user", id: "alice" }, "eng.lead")).toBe("acme.~alice.eng.lead");
     expect(() => planeAddress("acme", org, "~alice.eng.lead")).toThrow(/user plane/);
-    expect(() => planeAddress("acme", { type: "user", id: "al.ice" }, "eng.lead")).toThrow();
+  });
+
+  it("A4 an opaque principal id still makes a seat that reloads", async () => {
+    // Principal ids are the host's, not folder names: dotted, `@`, `|`.
+    expect(planeAddress("acme", { type: "user", id: "al.ice" }, "eng.lead")).toBe("acme.~al%2Eice.eng.lead");
+    expect(planeAddress("acme", { type: "user", id: "al%2Eice" }, "eng.lead")).toBe("acme.~al%252%45ice.eng.lead");
+
+    const EMAIL: Who = { user: "alice@example.com", org: "acme" };
+    const h = await boot();
+    const session = await h.open(EMAIL);
+    await h.must(EMAIL, session, "hire", { plane: "user", seatId: "research.scout", flow: "clerk" });
+    const reload = await reloadPlane(h.runtime.stores, "acme", { type: "user", id: EMAIL.user }, { clerk: clerk(true) });
+    expect(reload.problems).toEqual([]);
+    expect(reload.seats.map((s) => s.id)).toEqual(["acme.~alice%40example%2Ecom.research.scout"]);
   });
 });
 
@@ -400,6 +420,27 @@ describe("B · seed-then-evolve", () => {
     const bob = await h.open(BOB);
     await h.must(BOB, bob, "seed", { plane: "user", strategy: "ledgered" });
     expect(await h.cell("user", "bob", "workforce/roster/")).toHaveLength(2);
+  });
+
+  it("B4 a user's plane in a second org seeds on its own first open", async () => {
+    const h = await boot();
+    await h.must(ALICE, await h.open(ALICE), "seed", { plane: "user", strategy: "ledgered" });
+    const ALICE_GLOBEX: Who = { user: "alice", org: "globex" };
+    await h.must(ALICE_GLOBEX, await h.open(ALICE_GLOBEX), "seed", { plane: "user", strategy: "ledgered" });
+    expect(await h.cell("user", "alice", "workforce/roster/globex/")).toHaveLength(2);
+  });
+
+  it("B5 a bumped pack version is recorded and hires nothing", async () => {
+    const h = await boot();
+    const alice = await h.open(ALICE);
+    await h.must(ALICE, alice, "seed", { plane: "user", strategy: "ledgered" });
+    await h.must(ALICE, alice, "fire", { plane: "user", seatId: "research.editor" });
+    await h.must(ALICE, alice, "seed", { plane: "user", strategy: "ledgered", version: 2 });
+
+    expect(await h.cell("user", "alice", "workforce/roster/acme/")).toEqual(["workforce/roster/acme/research.scout"]);
+    const stored = await h.runtime.stores.resourceState.getByPrefix("user", "alice", "workforce-seeded");
+    const packs = Object.values(stored).map((entry) => (entry.state as any).packs);
+    expect(packs).toEqual([{ "acme/starter": { version: 2, seededAt: expect.any(String) } }]);
   });
 });
 
@@ -558,20 +599,36 @@ describe("D · an org-hired bridge seat reaching a user plane", () => {
     expect(await h.cell("user", "svc", "")).toEqual(expect.arrayContaining([expect.stringContaining("via-bridge")]));
   });
 
-  it("D2 the bridge cannot act inside alice's session", async () => {
-    const { h } = await withBridge();
+  it("D2 the bridge's own flow cannot act inside alice's session", async () => {
+    const { h, bridgeId } = await withBridge();
     const alice = await h.open(ALICE);
-    const result = await h.act(SVC, alice, "assign", { plane: "user", goal: "via-bridge", guard: true });
-    expect(result).toEqual({ http: 202, outcome: "vanished" });
-    expect(clientGoals(await h.read(ALICE, alice, REF.userBoard))).toEqual([]);
+
+    // Alice's app session, addressed through the bridge instance: refused
+    // loudly, because a session belongs to the instance that created it.
+    const intoApp = await h.act(SVC, alice, "assign", { plane: "user", goal: "a", guard: true }, { flowId: bridgeId });
+    expect(intoApp).toEqual({ http: 409 });
+
+    // A session alice opened ON the bridge seat: the instance matches, and the
+    // run is refused at admission because the session is alice's, not svc's.
+    const aliceOnBridge = await h.open(ALICE, bridgeId);
+    const intoBridge = await h.act(SVC, aliceOnBridge, "assign", { plane: "user", goal: "b", guard: true }, { flowId: bridgeId });
+    expect(intoBridge).toEqual({ http: 202, outcome: "vanished" });
+
+    expect(await h.cell("user", "alice", "")).toEqual([]);
   });
 
   it("D3 claiming alice in the body changes nothing under verified identity", async () => {
     const { h, bridgeId } = await withBridge();
     const alice = await h.open(ALICE);
-    const bridge = await h.open(SVC, bridgeId, "alice");
-    const intoAlice = await h.act(SVC, alice, "assign", { plane: "user", goal: "x", guard: true }, { bodyUser: "alice" });
+    const aliceOnBridge = await h.open(ALICE, bridgeId);
+    const intoAlice = await h.act(SVC, aliceOnBridge, "assign", { plane: "user", goal: "x", guard: true }, {
+      flowId: bridgeId,
+      bodyUser: "alice",
+    });
     expect(intoAlice).toEqual({ http: 202, outcome: "vanished" });
+
+    // Its own session, created while claiming to be alice, is still svc's.
+    const bridge = await h.open(SVC, bridgeId, "alice");
     await h.must(SVC, bridge, "assign", { plane: "user", goal: "y", guard: false }, { flowId: bridgeId, bodyUser: "alice" });
     expect(clientGoals(await h.read(ALICE, alice, REF.userBoard))).toEqual([]);
   });

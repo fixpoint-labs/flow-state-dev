@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="A matrix. Rows are callers reaching for alice's user plane: bob in the same org, an org session, an org-hired bridge seat, the bridge in an app without verified identity, and alice herself signed into another org. Columns are list her roster, act in her session, file work on her board, drain her board, and see her seat's address in the catalog. Bob: list holds (C1), act fails closed but acks 202 (C2), catalog leaks (C8). Org session: list holds (C6), file is mis-filed into the caller's own cell unguarded (C3) and refused with the guard (C4), drain holds (C5), catalog leaks. Bridge: act fails closed but quiet (D2, D3), file is mis-filed (D1), catalog leaks. Bridge without verified identity: act crosses by impersonation (D4). Alice in globex: list leaks her acme rows (C7), catalog leaks. Other cells were not run.">
+     aria-label="A matrix. Rows are callers reaching for alice's user plane: bob in the same org, an org session, an org-hired bridge seat, the bridge in an app without verified identity, and alice herself signed into another org. Columns are list her roster, act in her session, file work on her board, drain her board, and see her seat's address in the catalog. Bob: list holds (C1), act fails closed but acks 202 (C2), catalog leaks (C8). Org session: list holds (C6), file is mis-filed into the caller's own cell unguarded (C3) and refused with the guard (C4), drain holds (C5), catalog leaks. Bridge: act fails closed, with a 409 into her app session and a quiet 202 into her session on the bridge (D2, D3), file is mis-filed (D1), catalog leaks. Bridge without verified identity: act crosses by impersonation (D4). Alice in globex: list leaks her acme rows (C7), catalog leaks. Other cells were not run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -53,7 +53,7 @@
   <g id="row-bridge" transform="translate(0 164)">
     <text class="t-b" x="16" y="24">bridge seat</text><text class="t-s" x="16" y="40">org-hired, runs as svc</text>
     <rect class="none" x="188" y="4" width="140" height="48" rx="4"/><text class="t-n" x="198" y="32">not run</text>
-    <rect class="quiet" x="336" y="4" width="140" height="48" rx="4"/><text class="t-c" x="346" y="24">202, then dropped</text><text class="t-s" x="346" y="40">D2 · D3</text>
+    <rect class="quiet" x="336" y="4" width="140" height="48" rx="4"/><text class="t-c" x="346" y="24">409, or quiet 202</text><text class="t-s" x="346" y="40">D2 · D3</text>
     <rect class="misf" x="484" y="4" width="140" height="48" rx="4"/><text class="t-c" x="494" y="24">lands in own cell</text><text class="t-s" x="494" y="40">D1</text>
     <rect class="none" x="632" y="4" width="140" height="48" rx="4"/><text class="t-n" x="642" y="32">not run</text>
     <rect class="leak" x="780" y="4" width="144" height="48" rx="4"/><text class="t-c" x="790" y="24">listed</text><text class="t-s" x="790" y="40">C8</text>

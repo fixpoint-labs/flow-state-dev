@@ -2,7 +2,7 @@
 
 An Explore, not a spec. There is no approval gate, and nothing here ships. The five-document spec
 set is deliberately skipped: this directory holds the findings, six figures, and the runnable POC
-they come from ([`poc/owner-planes/`](poc/owner-planes/README.md), 21 legs, all green on `main`
+they come from ([`poc/owner-planes/`](poc/owner-planes/README.md), 24 legs, all green on `main`
 at `d8d4c26`). Linear: [FIX-1522](https://linear.app/fixpoint-labs/issue/FIX-1522).
 
 ## The short version
@@ -29,8 +29,8 @@ identity. The only way through is to mint the user's principal, which is what ve
 
 | The ask | Answer | Legs |
 |---|---|---|
-| 1 · owner key through hire → inventory → channel open → boards | `owner: { type: "org" \| "user", id }` maps to the resource scope. The org id always comes from the session. Hire, roster, reload, address, board and drain carry it as a parameter. Inventory and the shipped channel board can't carry it yet | A1–A3, C5, C9, C10 · [fig 1](#fig-1), [fig 6](#fig-6) |
-| 2 · seed pack → durable store | Seed **once per plane**, recorded in a per-plane ledger. Seeding "if the row is missing" brings back seats the user fired | B1–B3 · [fig 3](#fig-3) |
+| 1 · owner key through hire → inventory → channel open → boards | `owner: { type: "org" \| "user", id }` maps to the resource scope. The org id always comes from the session. Hire, roster, reload, address, board and drain carry it as a parameter. Inventory and the shipped channel board can't carry it yet | A1–A4, C5, C9, C10 · [fig 1](#fig-1), [fig 6](#fig-6) |
+| 2 · seed pack → durable store | Seed **once per plane**, recorded in a per-plane ledger (a user's is keyed by org too). Seeding "if the row is missing" brings back seats the user fired | B1–B5 · [fig 3](#fig-3) |
 | 3 · prove isolation | user↔user holds on list and act, and org↛user holds on drain. Assign is the soft spot: without a guard, a cross-plane write *succeeds in the wrong cell* instead of failing. Two leaks sit outside Workforce | C1–C10 · [fig 2](#fig-2), [fig 5](#fig-5) |
 | 4 · bridge seat | Fails under verified identity, and "works" only by impersonation without it | D1–D4 · [fig 4](#fig-4) |
 
@@ -68,7 +68,7 @@ The fourth crosses only because an unverified app takes the caller's word for wh
 ```mermaid
 flowchart LR
   B["bridge seat · runs as svc"] -->|"D1 file for alice"| S["svc's own cell"]
-  B -->|"D2 act in her session"| F["refused after 202"]
+  B -->|"D2 act in her session"| F["refused: 409, or 202 then dropped"]
   B -->|"D3 claim userId alice"| F
   B -->|"D4 unverified app"| A["alice's board"]
 ```

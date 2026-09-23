@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 380" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="A fence between the org plane on the left and alice's user plane on the right. The fence is the session's owner: a session is bound to one verified user. An org-hired bridge seat, running as the org's service principal svc, tries four paths. D1: it files work for alice from its own session, and the write lands back in svc's own user cell, never crossing. D2: it posts into alice's session, and stops at the fence; the POST is acked 202 and the run is refused with UserBindingMismatchError. D3: the same, claiming userId alice in the body; stops at the same point. D4: in an app with no verified identity, the body's userId is the principal, so the bridge becomes alice and crosses the fence into her board. Under the fence: the only door is minting alice's principal.">
+     aria-label="A fence between the org plane on the left and alice's user plane on the right. The fence is the session's owner: a session is bound to one verified user. An org-hired bridge seat, running as the org's service principal svc, tries four paths. D1: it files work for alice from its own session, and the write lands back in svc's own user cell, never crossing. D2: through its own flow it posts into alice's session and stops at the fence: her app session answers 409 wrong-instance-session, and a session she opened on the bridge acks 202 and the run is refused with UserBindingMismatchError. D3: the same, claiming userId alice in the body; stops at the same point. D4: in an app with no verified identity, the body's userId is the principal, so the bridge becomes alice and crosses the fence into her board. Under the fence: the only door is minting alice's principal.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -72,7 +72,8 @@
   <g id="d3">
     <path class="a-stop" d="M206 76 H 590"/><line class="bar" x1="590" y1="70" x2="590" y2="84"/>
     <text class="t-c" x="226" y="94">D3 · …claiming userId: alice</text>
-    <text class="t-s" x="226" y="124">202, then UserBindingMismatchError — nothing written</text>
+    <text class="t-s" x="226" y="112">her app session: 409 wrong-instance-session</text>
+    <text class="t-s" x="226" y="126">her session on the bridge: 202, then refused — nothing written</text>
   </g>
 
   <g id="d4">

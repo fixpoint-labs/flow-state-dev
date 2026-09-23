@@ -28,7 +28,6 @@ import { defineResource, defineResourceCollection } from "@flow-state-dev/core";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { hireWorkforce, type HireOptions } from "../src/hire";
-import { validateSegment } from "../src/loader/segments";
 import {
   defineHiredRosterCollection,
   HIRED_ROSTER_PREFIX,
@@ -101,11 +100,36 @@ export function planeAddress(orgId: string, owner: WorkforceOwner, seatId: strin
     throw new Error(`seat id "${seatId}" starts with "~", which marks a user plane's address`);
   }
   if (owner.type === "org") return seatAddress(orgId, seatId);
-  validateSegment(owner.id, "Org");
-  return seatAddress(orgId, `~${owner.id}.${seatId}`);
+  return seatAddress(orgId, `~${encodeUserSegment(owner.id)}.${seatId}`);
 }
 
-/** The roster row's key within the plane's cell. */
+/**
+ * A principal's user id as one address segment. User ids are opaque
+ * (`alice@example.com`, `auth0|123`) and may carry dots, so they are escaped
+ * rather than held to the folder-name rule: every character outside
+ * `[a-z0-9-]` becomes `%XX` per UTF-8 byte. `%` is itself escaped, so the
+ * encoding is injective, and no `.` survives, so the address still splits.
+ */
+export function encodeUserSegment(userId: string): string {
+  if (userId.length === 0) throw new Error("a user id must not be empty — it is part of a seat's address");
+  let out = "";
+  for (const char of userId) {
+    if (/[a-z0-9-]/.test(char)) {
+      out += char;
+      continue;
+    }
+    for (const byte of new TextEncoder().encode(char)) out += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  return out;
+}
+
+/**
+ * The roster row's key within the plane's cell.
+ *
+ * Explore-only: the org in a user row's key works around a user cell being
+ * one per person rather than per org (C7), and the browser read still spans
+ * orgs. The shippable shape is a (user × org) cell in the engine.
+ */
 export function planeRowKey(orgId: string, owner: WorkforceOwner, seatId: string): string {
   return owner.type === "org" ? seatId : `${orgId}/${seatId}`;
 }
@@ -182,12 +206,22 @@ interface LedgerRef {
 }
 
 /**
+ * The ledger key for one pack on one plane. A user's ledger is one record per
+ * person (user scope), so it carries the org the same way the roster key does —
+ * otherwise seeding at one org would mark the pack seeded in all of them.
+ */
+export function seedMarker(orgId: string, owner: WorkforceOwner, packId: string): string {
+  return owner.type === "org" ? packId : `${orgId}/${packId}`;
+}
+
+/**
  * Apply `pack` to one plane's roster. Returns the seat ids it wrote.
  *
  * `ledgered` writes each seat with `create` (so a hire already there is never
  * overwritten) and only on the plane's FIRST seeding of this pack id. A bumped
- * version is recorded but hires nothing on its own: what a new version should
- * do to a plane that has evolved is a product call, not a mechanism.
+ * version is recorded, keeping the first `seededAt`, but hires nothing on its
+ * own: what a new version should do to a plane that has evolved is a product
+ * call, not a mechanism.
  */
 export async function seedPlane(
   roster: RosterRef,
@@ -197,7 +231,16 @@ export async function seedPlane(
   pack: SeedPack,
   strategy: SeedStrategy
 ): Promise<string[]> {
-  if (strategy === "ledgered" && ledger.state.packs[pack.id] !== undefined) return [];
+  const marker = seedMarker(orgId, owner, pack.id);
+  const recorded = ledger.state.packs[marker];
+  if (strategy === "ledgered" && recorded !== undefined) {
+    if (recorded.version !== pack.version) {
+      await ledger.patchState({
+        packs: { ...ledger.state.packs, [marker]: { version: pack.version, seededAt: recorded.seededAt } },
+      });
+    }
+    return [];
+  }
 
   const written: string[] = [];
   for (const seat of pack.seats) {
@@ -209,7 +252,7 @@ export async function seedPlane(
 
   if (strategy === "ledgered") {
     await ledger.patchState({
-      packs: { ...ledger.state.packs, [pack.id]: { version: pack.version, seededAt: new Date().toISOString() } },
+      packs: { ...ledger.state.packs, [marker]: { version: pack.version, seededAt: new Date().toISOString() } },
     });
   }
   return written;
