@@ -72,6 +72,7 @@ The fence holds on every path the plan named. Three probes found gaps outside it
 | **B** | A flow may still declare the branded writer, but a run only ever sees its own user's rows. bob's list comes back empty |
 | **B2** | bob asking for `~alice/research` by its exact key gets `undefined` |
 | **C** | `workforce/roster/[owner]/notes` is refused when it is defined, by the structural guard |
+| **C2** (open) | Fully parameterised deep patterns get past the structural guard. `workforce/[r]/[owner]/[seat]` and `[a]/[b]/[c]/[d]` both register, and a run in bob's session lists `ALICE-PRIVATE`. The guard only inspects patterns that start with the literal `workforce/roster/`, but a `[param]` segment matches any segment. (`*`-led patterns such as `*/*/*/*` register too, but match nothing, because `*` is literal inside a parameterised pattern and a bare `*/…` has no prefix to anchor on) |
 | **B4** (note) | With debug endpoints switched on (`debugEndpointsEnabled: true`, off by default), the debug collection listing returns alice's row, instructions included, to bob's session. Debug routes read the store directly and bypass the resource handle. That is an operator-tool property, not an F2 path, but a host must not switch debug endpoints on in a multi-user deployment |
 
 ### Resource planes: R1–R3 on `fdca49fd`

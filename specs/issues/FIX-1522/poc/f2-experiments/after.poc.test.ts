@@ -364,6 +364,44 @@ describe("after · probes", () => {
     console.log("PROBE-B4", r.status, JSON.stringify(r.json).slice(0, 300));
   });
 
+  it("PROBE-C2 a fully parameterised deep pattern slips the structural guard and lists private rows", async () => {
+    for (const pattern of ["workforce/[r]/[owner]/[seat]", "[a]/[b]/[c]/[d]"]) {
+      const wide = defineResourceCollection({ pattern, scope: "org", stateSchema: z.object({}).passthrough() });
+      const peekWide = handler({
+        name: "peek-wide",
+        inputSchema: tagInput,
+        outputSchema: z.object({ ok: z.boolean() }),
+        resources: { ...resources, wide },
+        execute: async (input, ctx) => {
+          const rows = await (ctx.resources.wide as unknown as ResourceCollectionRef).list();
+          const seen = ctx.resources.seen as unknown as ResourceCollectionRef;
+          const { userId = "", orgId = "" } = ctx.session.identity;
+          const got = (rows as any[]).map((r) => (r.state ?? {}).instructions).filter(Boolean).join("|");
+          await seen.create(input.tag, { instance: pattern, as: `${userId}@${orgId}`, instructions: got });
+          return { ok: true };
+        },
+      });
+      const wideFlow = defineFlow({
+        kind: "wide",
+        resources: { ...resources, wide },
+        actions: { peek: { inputSchema: tagInput, block: peekWide } },
+        authentication: verified,
+      });
+      const stores = inMemoryStores();
+      await storeRow(stores, "acme", "~alice/research", {
+        seatId: "research", flow: "seat", settings: {}, instructions: "ALICE-PRIVATE", owningOrgId: "acme", ownerUserId: "alice",
+      });
+      const h = await boot(stores);
+      let registered = "yes";
+      try { h.state.register(wideFlow()); } catch (e) { registered = `refused: ${(e as Error).message}`; }
+      if (registered === "yes") {
+        const s = await h.open(BOB, "wide");
+        await h.act(BOB, (s as any).id, "peek", { tag: "wide" }, "wide");
+      }
+      console.log("PROBE-C2", pattern, "registered:", registered, (await h.seenIn("acme")).map((r: any) => r.instructions));
+    }
+  });
+
   it("PROBE-C a deep pattern that misses the guard's one probe key is admitted", async () => {
     let refused: string | undefined;
     try {
