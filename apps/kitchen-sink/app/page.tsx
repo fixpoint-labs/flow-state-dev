@@ -194,6 +194,10 @@ function KitchenSinkApp() {
 
   // A channel's or a seat's session, when one is picked in the rail. Read
   // only: the composer below talks to the assistant's flow and no other.
+  // This session and the assistant's (`session`, above) are both live
+  // subscriptions while a rail session is open — deliberate, not an oversight:
+  // the rail panel needs its own stream to update live, and the composer
+  // stays wired to the assistant's session regardless of what is picked.
   const pickedSession = useSession(picked?.sessionId, {
     flowKind: picked?.address,
     items: true,

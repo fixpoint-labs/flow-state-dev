@@ -19,17 +19,17 @@
  * A clean organization gets an empty list, so last boot's problems do not stay
  * on screen after they are fixed.
  *
- * A report that cannot be written does not stop the boot. It is returned as a
- * problem for the boot's log, and the remaining organizations are admitted and
- * written as usual.
+ * A report that cannot be written does not stop the boot, and is not a skipped
+ * seat: the seat it describes was admitted and is running, only the panel's
+ * picture of it failed to save. It is returned separately, as a
+ * `reportErrors` entry for the boot's log, and the remaining organizations
+ * are admitted and written as usual.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { HiredRosterReload } from "@flow-state-dev/workforce";
 
-import {
-  ROSTER_BOOT_REPORT_KEY,
-  type RosterBootReport,
-} from "@/flows/chat-agent/shared/workforce-panels";
+import type { RosterBootReport } from "@/lib/roster-boot-report-schema";
+import { ROSTER_BOOT_REPORT_KEY } from "@/lib/workforce-shell";
 
 /** The one store write this needs. Satisfied by the engine's `StoreRegistry`. */
 export interface RosterReportStores {
@@ -55,10 +55,19 @@ export interface AdmittedSeats {
   /** Ids of the seats that were admitted. */
   seats: string[];
   /**
-   * One entry per seat the registry refused, as `<seat id> — <reason>`, and one
-   * per organization whose report could not be written.
+   * One entry per seat the registry refused, as `<seat id> — <reason>`. Every
+   * one of these is a seat that did not come back, so the boot's "N stored
+   * seat(s) could not be brought back" count is drawn from this list alone.
    */
   problems: string[];
+  /**
+   * One entry per organization whose report could not be written, as
+   * `organization "<orgId>" — its boot report could not be written: <reason>`.
+   * Kept apart from `problems`: the seat itself was admitted, only the
+   * panel's picture of it failed to save, so this must never be counted as a
+   * skipped seat.
+   */
+  reportErrors: string[];
 }
 
 /**
@@ -71,7 +80,7 @@ export interface AdmittedSeats {
 export async function admitReloadedSeats(
   options: AdmitReloadedSeatsOptions,
 ): Promise<AdmittedSeats> {
-  const admitted: AdmittedSeats = { seats: [], problems: [] };
+  const admitted: AdmittedSeats = { seats: [], problems: [], reportErrors: [] };
 
   for (const org of options.reload.byOrg) {
     const problems = [...org.problems];
@@ -96,7 +105,7 @@ export async function admitReloadedSeats(
         "any",
       );
     } catch (error) {
-      admitted.problems.push(
+      admitted.reportErrors.push(
         `organization "${org.orgId}" — its boot report could not be written: ${
           error instanceof Error ? error.message : String(error)
         }`,

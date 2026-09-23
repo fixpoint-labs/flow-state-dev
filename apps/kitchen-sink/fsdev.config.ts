@@ -252,10 +252,15 @@ setWorkforceRegistrarImpl({
  *
  * The log lines below print it. The browser does not read this: the shell's
  * roster panel reads the per-organization report `admitReloadedSeats` writes.
+ *
+ * `reportErrors` is kept apart from `problems`: a report that failed to write
+ * describes a seat that *was* admitted, so it must never inflate the "stored
+ * seat(s) could not be brought back" count below.
  */
-export const hiredRosterReload: { seats: string[]; problems: string[] } = {
+export const hiredRosterReload: { seats: string[]; problems: string[]; reportErrors: string[] } = {
   seats: [],
   problems: [],
+  reportErrors: [],
 };
 
 {
@@ -297,6 +302,7 @@ export const hiredRosterReload: { seats: string[]; problems: string[] } = {
   });
   hiredRosterReload.seats.push(...admitted.seats);
   hiredRosterReload.problems.push(...admitted.problems);
+  hiredRosterReload.reportErrors.push(...admitted.reportErrors);
 
   if (hiredRosterReload.seats.length > 0) {
     console.log(
@@ -311,6 +317,12 @@ export const hiredRosterReload: { seats: string[]; problems: string[] } = {
       `[workforce] ${hiredRosterReload.problems.length} stored seat(s) could not be brought back; ` +
         `the rest of the roster is serving`,
     );
+  }
+  // A report-write failure is not a skipped seat — the seat above is running.
+  // Only the roster panel's picture of it, for that one organization, is
+  // stale until the next boot.
+  for (const reportError of hiredRosterReload.reportErrors) {
+    console.error(`[workforce] a roster boot report could not be written — ${reportError}`);
   }
 }
 

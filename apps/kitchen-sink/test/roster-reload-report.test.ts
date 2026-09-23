@@ -45,8 +45,42 @@ describe("admitReloadedSeats", () => {
     expect(admitted).toEqual(["acme.support.ada", "beta.support.ada"]);
     expect(written).toEqual(["beta"]);
     expect(result.seats).toEqual(["acme.support.ada", "beta.support.ada"]);
-    expect(result.problems).toHaveLength(1);
-    expect(result.problems[0]).toContain('organization "acme"');
-    expect(result.problems[0]).toContain("connection reset");
+    // Both seats were admitted; a report-write failure is not a skipped seat.
+    expect(result.problems).toHaveLength(0);
+    expect(result.reportErrors).toHaveLength(1);
+    expect(result.reportErrors[0]).toContain('organization "acme"');
+    expect(result.reportErrors[0]).toContain("connection reset");
+  });
+
+  it("counts a report-write failure separately from skipped seats, with every seat admitted", async () => {
+    const reload: HiredRosterReload = {
+      seats: [seat("acme.support.ada")],
+      problems: [],
+      byOrg: [{ orgId: "acme", seats: [seat("acme.support.ada")], problems: [] }],
+    };
+    const admitted: string[] = [];
+
+    const result = await admitReloadedSeats({
+      reload,
+      admit: (instance) => {
+        admitted.push(instance.id);
+      },
+      stores: {
+        resourceState: {
+          set: async () => {
+            throw new Error("connection reset");
+          },
+        },
+      },
+    });
+
+    expect(admitted).toEqual(["acme.support.ada"]);
+    expect(result.seats).toEqual(["acme.support.ada"]);
+    // A report the boot could not write is not a seat the boot could not
+    // bring back — the seat is running, only the panel's picture of it isn't.
+    expect(result.problems).toHaveLength(0);
+    expect(result.reportErrors).toHaveLength(1);
+    expect(result.reportErrors[0]).toContain('organization "acme"');
+    expect(result.reportErrors[0]).toContain("connection reset");
   });
 });

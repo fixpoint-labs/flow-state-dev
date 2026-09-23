@@ -62,9 +62,18 @@ export const shell = defineFlow({
 ```
 
 ```tsx
-<Roster sessionId={sessionId} problems={bootProblems} />
-<BoardColumns sessionId={sessionId} boardRef="support.desk.followups" />
+import { useMemo } from "react";
+import { createResourceClient } from "@flow-state-dev/client";
+
+// Built once, and wired to however your deployment authenticates (a
+// `fetcher` that attaches your bearer token or cookie).
+const resourceClient = useMemo(() => createResourceClient({ baseUrl: "" }), []);
+
+<Roster sessionId={sessionId} problems={bootProblems} resourceClient={resourceClient} />
+<BoardColumns sessionId={sessionId} boardRef="support.desk.followups" resourceClient={resourceClient} />
 ```
+
+Pass the same `resourceClient` to both. Leave it out and each panel builds its own unauthenticated one instead, which works with no sign-in configured but gets a 401 the moment your resource routes require a credential.
 
 `problems` is the list of seats your last boot could not bring back. It comes from `reloadHiredSeats` on the server, so your app has to hand it to the browser itself, for example by writing it to an organization-scoped collection the same flow declares. See [Hiring while the app runs](./durable-hire).
 

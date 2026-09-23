@@ -10,28 +10,22 @@
  *   boot reload use, so there is one declaration of that contract.
  * - `rosterBootReport` — what the last boot could not bring back, one row per
  *   organization. The boot writes it (`lib/roster-reload-report.ts`); nothing
- *   in this flow does.
+ *   in this flow does. The key and the row's schema are declared in
+ *   `lib/` (`workforce-shell.ts` and `roster-boot-report-schema.ts`), since
+ *   the boot writer must reach them without importing this flow module.
  * - One ledger per board in `SHELL_BOARDS`, declared through `channelBoard` so
  *   it is the same declaration the channel itself holds.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { channelBoard, defineHiredRosterCollection } from "@flow-state-dev/workforce";
-import { z } from "zod";
 
-import { ROSTER_BOOT_REPORT_REF, ROSTER_REF, SHELL_BOARDS } from "@/lib/workforce-shell";
-
-/** Storage prefix of the boot report. One row per organization lives under it. */
-export const ROSTER_BOOT_REPORT_PREFIX = "kitchen-sink/roster-boot-report/";
-
-/** The one row a boot writes into each organization it reloaded. */
-export const ROSTER_BOOT_REPORT_KEY = `${ROSTER_BOOT_REPORT_PREFIX}latest`;
-
-/** What the report holds: the problems the roster panel shows beside the seats. */
-export const rosterBootReportSchema = z.object({
-  problems: z.array(z.string()),
-});
-
-export type RosterBootReport = z.infer<typeof rosterBootReportSchema>;
+import { rosterBootReportSchema } from "@/lib/roster-boot-report-schema";
+import {
+  ROSTER_BOOT_REPORT_PREFIX,
+  ROSTER_BOOT_REPORT_REF,
+  ROSTER_REF,
+  SHELL_BOARDS,
+} from "@/lib/workforce-shell";
 
 /**
  * Org-scoped and shared across flows: the boot writes it with no flow at all,
