@@ -92,7 +92,10 @@ export type RosterProps = {
    * client every render.
    */
   readonly resourceClient?: PanelRowSource;
-  /** Most seats to read in one page. */
+  /**
+   * Seats to request per page. The panel reads every page regardless — this
+   * sets the size of each fetch, not a cap on what renders (BR-19).
+   */
   readonly limit?: number;
   readonly slots?: RosterSlots;
 };
