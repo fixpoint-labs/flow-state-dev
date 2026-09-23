@@ -200,7 +200,21 @@ export async function reloadHiredSeats(
         continue;
       }
 
-      const record = hiredSeatManifest(orgId, parsed.row);
+      // The address is built here, and it THROWS for a cell whose org id is
+      // not a legal segment (`DEFAULT_ORG_ID`, where an app with no principal
+      // resolver hires) or a seat id carrying the user-owned `~` marker. That
+      // is a past write the code cannot address, so it is one named skip like
+      // the rest — left uncaught it rejected the whole reload, and every
+      // other org's team with it. The owning-org fence inside runs first and
+      // is untouched: a row stamped for another org is still refused, never
+      // re-bound to a cell it could be addressed under.
+      let record: ReturnType<typeof hiredSeatManifest>;
+      try {
+        record = hiredSeatManifest(orgId, parsed.row);
+      } catch (error) {
+        problems.push(`${where} — ${messageOf(error)}`);
+        continue;
+      }
       if ("problem" in record) {
         problems.push(`${where} — ${record.problem}`);
         continue;
