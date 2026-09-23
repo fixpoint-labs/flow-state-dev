@@ -22,8 +22,9 @@
  *     it were the whole one is the failure being avoided, and a cap that
  *     quietly truncated would be that failure with extra steps.
  *   - A row that disagrees with the code — a kind that is gone, settings the
- *     kind now refuses, a shape nothing can parse — is **skipped, named, and
- *     returned in `problems`**. No retry fixes any of those, so failing the
+ *     kind now refuses, a shape nothing can parse, an org or seat id that
+ *     cannot be an address — is **skipped, named, and returned in
+ *     `problems`**. No retry fixes any of those, so failing the
  *     boot over one would mean an app that can never start until somebody
  *     reaches the database, and the hostage is every other org's team.
  *
