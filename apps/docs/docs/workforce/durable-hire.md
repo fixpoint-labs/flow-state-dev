@@ -22,7 +22,7 @@ All from `@flow-state-dev/workforce`:
 | Call | What it does |
 | --- | --- |
 | `defineHiredRosterCollection()` | Declares the stored roster: an organization-scoped resource collection at `workforce/roster/*`, one row per hired seat. Takes no options. |
-| `defineHiredRosterPrivateCollection()` | Where a [user-owned seat](#hiring-a-seat-only-one-member-can-reach)'s row is written, at `workforce/roster/~<user>/<seatId>`. Server-side only, and a block holding it reaches only the calling user's rows. |
+| `defineHiredRosterPrivateCollection()` | Declares where a [user-owned seat](#hiring-a-seat-only-one-member-can-reach)'s row is written, at `workforce/roster/~<user>/<seatId>`. Server-side only, and a block that has it in `resources` reaches only the calling user's rows. |
 | `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, with the user escaped, so two people can hire the same seat id. Throws when the organization id is not a single address segment, or when the seat id starts with `~`. |
 | `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
 | `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems }`. It registers nothing. |
@@ -301,11 +301,11 @@ The roster is organization-scoped, so that `getOptional` is also the fence. Anot
 
 ## Hiring a seat only one member can reach
 
-The hire above is org-visible. Every member of the organization can call the seat, and its row is one a browser in that organization can read. To hire a seat that belongs to one member, change three things in the handler:
+The hire above is org-visible. Every member of the organization can call the seat, and its row is one a browser in that organization can read. To hire a seat that belongs to one member, change the hire like this, in the handler and in `flow.ts`:
 
-- **Stamp the owner on the row.** Pass `owningOrgId` and `ownerUserId` to `toHiredSeatRow`. `hiredSeatManifest` then pins the record to that user as well as the organization, and registering with that pin is what closes the seat to everyone else.
+- **Stamp the owner on the row.** Pass `ownerUserId` to `toHiredSeatRow`. `hiredSeatManifest` then pins the record to that user as well as the organization, and registering with that pin is what closes the seat to everyone else.
 - **Put the owner in the address.** `seatAddress(orgId, seatId, userId)` returns `<orgId>.~<user>.<seatId>`, so two members can each hire `research` without colliding.
-- **Write the row through the private collection.** Install `defineHiredRosterPrivateCollection()` beside the roster and write with an object key. The row lands at `workforce/roster/~<user>/<seatId>`, which the browser-readable roster does not list.
+- **Write the row through the private collection.** Install `defineHiredRosterPrivateCollection()` beside the roster and write with the object key `{ owner, seat }`, where `owner` is `~` followed by the user id passed through `encodeUserSegment` (the same escaping `seatAddress` applies). The row lands at `workforce/roster/~<user>/<seatId>`, which the browser-readable roster does not list.
 
 ```ts title="src/flows/workforce-admin/hire.ts (the lines that change)"
 import { encodeUserSegment } from "@flow-state-dev/workforce";
@@ -321,7 +321,6 @@ const row = toHiredSeatRow({
   flow: input.flow,
   settings: input.settings,
   instructions: input.instructions ?? null,
-  owningOrgId: orgId,
   ownerUserId: userId,
 });
 
@@ -348,11 +347,11 @@ resources: {
 
 The owner comes from the credential, so your resolver has to name the member making the call. The example resolver above answers `workforce-admin` for every token, which would make every seat belong to that one user and nobody else.
 
-The private collection reaches only the calling user's own rows. A key naming another user is refused, and `getOptional` on one returns `undefined`. Firing a user-owned seat reads and deletes through the same collection and key, then releases `seatAddress(orgId, seatId, userId)`. `reloadHiredSeats` needs no change: it reads these rows with the rest, and each seat's `ownerPin` carries the user.
+The private collection reaches only the calling user's own rows. `create`, `get` and `delete` on a key naming another user throw `A hired-seat row is readable only by the user it belongs to.`, `getOptional` on one returns `undefined`, and `list` leaves such rows out. Firing a user-owned seat reads and deletes through the same collection and key, then releases `seatAddress(orgId, seatId, userId)`. `reloadHiredSeats` needs no change: it reads these rows with the rest, and each seat's `ownerPin` carries the user.
 
 Once registered, the seat answers its owner only. Any other member gets `404 Unknown flow`. The row has no browser read at all, so a roster panel reading the browser collection does not show it, not even to its owner.
 
-The `seat-hire` capability, `createSeatHireCapability`, always hires org-visible seats. For a user-owned hire, write the action yourself as above.
+The `seat-hire` capability, `createSeatHireCapability`, gives a worker kind ready-made `hire` and `fire` tools, and it always hires org-visible seats. For a user-owned hire, write the action yourself as above.
 
 ## What is stored, and where
 
@@ -366,7 +365,7 @@ The roster is not the [live inventory](./inventory.md). An inventory row means *
 
 **Firing has the same window, and it is the sharper end of it.** A fired seat is gone from storage immediately and will not come back at any start. But a sibling instance that is already serving it keeps serving it until that instance restarts. If you fire a seat because it should stop answering right now, restart the app rather than assuming the fire did it.
 
-**Inside the organization, an address is not a permission.** An org-visible seat answers every member your resolver admits, and whatever its instructions say can come back in an answer. If only one member should reach a seat, [hire it user-owned](#hiring-a-seat-only-one-member-can-reach). The seat-hire capability cannot do that, since it always hires org-visible seats. For any other rule about who may call a seat, put your own check in front of it. Outside the organization the seat is closed: a caller whose principal belongs to another organization, or a user other than a user-owned seat's owner, gets `404 Unknown flow` (the same answer as an address your app does not serve), and nothing runs.
+**Inside the organization, an address is not a permission.** An org-visible seat answers every member your resolver admits, and whatever its instructions say can come back in an answer. If only one member should reach a seat, [hire it user-owned](#hiring-a-seat-only-one-member-can-reach). For any other rule about who may call a seat, put your own check in front of it. Outside the organization the seat is closed: a caller whose principal belongs to another organization, or a user other than a user-owned seat's owner, gets `404 Unknown flow` (the same answer as an address your app does not serve), and nothing runs.
 
 **A start may serve fewer seats than the roster names.** If a stored seat names a flow kind the current code no longer has, or carries settings that kind no longer accepts, that seat is skipped and named in `problems`. The app starts and every other seat answers. The skipped row is left exactly as it was: nothing is repaired or deleted on your behalf. Fix it by putting the kind back, or by firing the seat.
 
