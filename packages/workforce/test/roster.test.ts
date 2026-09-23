@@ -394,6 +394,55 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
   });
 });
 
+describe("the reload, partitioned by organization", () => {
+  // A caller that publishes the report per organization needs each org's slice
+  // from the reload itself. The flat `problems` names the org only inside its
+  // prose, and re-deriving structure from prose is the wrong way round.
+  const good = { seatId: "support.ada", flow: "desk-clerk", settings: {} };
+  const stores = () =>
+    storeHolding({
+      acme: {
+        "support.ada": good,
+        "support.bo": { seatId: "support.bo", flow: "kind-that-is-gone", settings: {} },
+      },
+      beta: { "support.ada": good },
+      quiet: {},
+    });
+
+  it("returns one entry per organization it was given, in that order, empty ones included", async () => {
+    const { byOrg } = await reloadHiredSeats({
+      stores: stores(),
+      orgIds: ["acme", "beta", "quiet"],
+      kinds,
+    });
+
+    // An org with nothing to report still gets an entry. Leaving it out is how
+    // a report written on the last boot stays standing when nobody rewrites it.
+    expect(byOrg.map((org) => org.orgId)).toEqual(["acme", "beta", "quiet"]);
+    expect(byOrg[2]).toEqual({ orgId: "quiet", seats: [], problems: [] });
+  });
+
+  it("files each seat and each problem under its own organization only", async () => {
+    const { byOrg, seats, problems } = await reloadHiredSeats({
+      stores: stores(),
+      orgIds: ["acme", "beta", "quiet"],
+      kinds,
+    });
+    const [acme, beta] = byOrg;
+
+    expect(acme!.seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
+    expect(acme!.problems).toHaveLength(1);
+    expect(acme!.problems[0]).toContain("support.bo");
+
+    expect(beta!.seats.map((seat) => seat.id)).toEqual(["beta.support.ada"]);
+    expect(beta!.problems).toEqual([]);
+
+    // The flat fields are unchanged: the union of the slices.
+    expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada", "beta.support.ada"]);
+    expect(problems).toEqual(acme!.problems);
+  });
+});
+
 describe("V6 · a store that never answers fails the boot inside its bound", () => {
   it("rejects, returns no partial result, and does so well within the test's own budget", async () => {
     vi.useFakeTimers();

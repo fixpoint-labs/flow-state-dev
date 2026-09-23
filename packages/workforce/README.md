@@ -1312,6 +1312,11 @@ setting that kind no longer accepts, comes back here with its reason instead of 
 seats still hire, the app still starts, and the row is left exactly as it was — nothing is repaired
 or deleted on your behalf.
 
+`byOrg` is the same result split by organization: one `{ orgId, seats, problems }` per organization
+you passed in, in that order, with empty lists where there was nothing to report. Use it when each
+organization's report goes somewhere only that organization reads, and loop its `seats` rather than
+the flat list so a registry refusal lands in the right organization's `problems`.
+
 A read the store will not complete rejects, and a set of organizations larger than the cap rejects
 too, naming both numbers. The cap is `maxOrgs`, 100 by default; the read's own bound is `timeoutMs`,
 10000ms by default, and it covers the whole set rather than each organization. Neither returns a
@@ -1634,7 +1639,7 @@ membershipPrefix("");
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
 | `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and channel sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
-| `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat names those tools in `tools:` or cannot call them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
+| `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat names those tools in `tools:` or cannot call them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
 | `registerHiredSeat(register, seat, pin)` | The hire writer's register path. Refuses when `pin` has no `orgId`. The pin is the hire row's roster owner, not the address. |
 | `HiredSeatOwnerPin` | `{ orgId, userId? }`. `userId` is present only for a user-owned hire row. |
 | `SEAT_HIRE_CAPABILITY` | The capability name, `"seat-hire"`. |
@@ -1693,9 +1698,9 @@ membershipPrefix("");
 | `hiredRosterStorageKey(row)` | `seatId` for an org-visible row, `~<escaped user>/<seatId>` for a user-owned one. The user id is escaped, so a `/` in it stays one segment. |
 | `hiredSeatManifest(orgId, row)` / `hiredSeatRowFromManifest(orgId, manifest)` | Turn a row into the record `hireWorkforce` mints from, and back. Each returns `{ ... }` or `{ problem }`. A row whose `owningOrgId` disagrees with `orgId` is a problem and is not minted. A legacy row (`owningOrgId` null) binds `orgId`. The manifest's `ownerPin` is `{ orgId, userId? }`. |
 | `registerHiredSeat(register, seat, pin)` | The hire writer's register. Calls `register(seat, pin)` only when `pin.orgId` is present. Omitting the pin throws, and `register` is not called. Wrap the engine door as `(seat, pin) => state.register(seat, { pin })`. App and kind flows do not use this. |
-| `reloadHiredSeats(options)` | Read each organization's stored roster at boot and hire what it names. Takes `{ stores, orgIds, kinds?, maxOrgs?, timeoutMs? }` and returns `{ seats, problems }`. **It registers nothing** — loop the seats and `register(seat, { pin: seat.ownerPin })` one at a time, folding refusals into `problems`. Rejects (loading nothing) past the org cap (`maxOrgs`, default 100) or when the whole read does not complete in its bound (`timeoutMs`, default 10000). |
+| `reloadHiredSeats(options)` | Read each organization's stored roster at boot and hire what it names. Takes `{ stores, orgIds, kinds?, maxOrgs?, timeoutMs? }` and returns `{ seats, problems, byOrg }`, where `byOrg` is one `{ orgId, seats, problems }` per organization passed in, in that order, empty ones included. **It registers nothing** — loop the seats and `register(seat, { pin: seat.ownerPin })` one at a time, folding refusals into `problems`. Rejects (loading nothing) past the org cap (`maxOrgs`, default 100) or when the whole read does not complete in its bound (`timeoutMs`, default 10000). |
 | `DEFAULT_MAX_RELOAD_ORGS` / `DEFAULT_ROSTER_READ_TIMEOUT_MS` | The two bounds' defaults: 100 organizations, and 10000 ms for the whole read. |
-| `HiredRosterReload` / `HiredRosterStores` / `ReloadHiredSeatsOptions` / `RowProblem` | What the reload returns, the slice of the runtime's stores it reads through, its options, and the `{ problem }` shape a row that could not be read comes back as. |
+| `HiredRosterReload` / `HiredRosterOrgReload` / `HiredRosterStores` / `ReloadHiredSeatsOptions` / `RowProblem` | What the reload returns, one organization's share of it, the slice of the runtime's stores it reads through, its options, and the `{ problem }` shape a row that could not be read comes back as. |
 | `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
 | `defineChannelInventoryCollection()` | The channel inventory: one org-scoped row per open channel, at `inventory/channels/<channelId>`, carrying the channel's `members` and `openedAt`. Takes no options. |
 | `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so one seat's channels can be listed by prefix. Takes no options. |

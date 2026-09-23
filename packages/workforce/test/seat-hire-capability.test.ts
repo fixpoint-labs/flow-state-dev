@@ -18,6 +18,7 @@ import { createWorkforceCapability } from "../src/workforce-capability";
 import { workforceManifestSources } from "../src/manifest-sources";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { hireWorkforce, type HireOptions } from "../src/hire";
+import { parseHiredSeatRow } from "../src/roster/rows";
 import type { WorkerManifest } from "../src/manifest";
 import type { FlowInstance } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
@@ -264,6 +265,11 @@ describe("the tools fence on seat-hire", () => {
     expect(live.has("other-org.eng.ada")).toBe(false);
     expect(await listedIds(ctx, HIRED_ROSTER_RESOURCE, "seatId")).toEqual(["eng.ada"]);
     expect(await listedIds(ctx, SEAT_INVENTORY_RESOURCE, "id")).toEqual(["acme.eng.ada"]);
+    const [stored] = await collectionOf(ctx as never, HIRED_ROSTER_RESOURCE).list();
+    const parsed = parseHiredSeatRow(stored?.state);
+    if ("problem" in parsed) throw new Error(parsed.problem);
+    expect(parsed.row.owningOrgId).toBe("acme");
+    expect(parsed.row.ownerUserId).toBeNull();
   });
 });
 
