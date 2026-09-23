@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 380" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path, lanes against time from 22 September 2026, with a now line late on the 23rd. Inputs: FIX-1503 verified identity in spec review since the 22nd; FIX-1486 listing identity not started. Set lanes: FIX-1522 explore in review since the 22nd; FIX-1525 and 1526 done on the 23rd; FIX-1529 done on the 23rd; FIX-1534 and FIX-1535 in flight at the now line; FIX-1538 not started, waiting on the gate. The critical path runs from the gate through FIX-1538 to the wrap, and the two bug lanes feed its goal.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .done  { fill:var(--code); stroke:none; }
+    .flight{ fill:var(--accent); stroke:none; }
+    .input { fill:var(--prose); stroke:none; }
+    .todo  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .axis  { stroke:var(--rule); stroke-width:1; }
+    .tick  { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 3; }
+    .now   { stroke:var(--gone); stroke-width:1.4; }
+    .crit  { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-ln  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+  <text class="t-lbl" x="16" y="18">THE PATH &#183; AS OF 23 SEP 2026 &#183; ONE DAY = 160 PX</text>
+
+  <g id="axis">
+    <path class="axis" d="M220 44 L924 44"/>
+    <text class="t-s" x="220" y="36">22 Sep</text>
+    <path class="tick" d="M380 44 L380 330"/>
+    <text class="t-s" x="380" y="36">23 Sep</text>
+    <text class="t-now" x="490" y="36">now</text>
+    <path class="now" d="M524 44 L524 330"/>
+    <text class="t-s" x="620" y="36">ahead &#183; not scheduled</text>
+  </g>
+
+  <g id="in-1503">
+    <text class="t-ln" x="16" y="70">FIX-1503 &#183; identity</text>
+    <rect class="input" x="236" y="60" width="288" height="12" rx="2"/>
+    <text class="t-s" x="534" y="70">input &#183; epic in spec review</text>
+  </g>
+  <g id="in-1486">
+    <text class="t-ln" x="16" y="96">FIX-1486 &#183; listing org</text>
+    <text class="t-s" x="534" y="96">input &#183; Todo &#183; gates user planes, not this exit</text>
+  </g>
+  <path class="axis" d="M16 108 L924 108"/>
+
+  <g id="l-1522">
+    <text class="t-ln" x="16" y="134">FIX-1522 &#183; explore</text>
+    <rect class="flight" x="358" y="122" width="166" height="16" rx="2"/>
+    <text class="t-s" x="534" y="134">spec in review &#183; #2070</text>
+  </g>
+  <g id="l-1525">
+    <text class="t-ln" x="16" y="166">FIX-1525/1526 &#183; hire</text>
+    <rect class="done" x="379" y="154" width="138" height="16" rx="2"/>
+    <text class="t-s" x="534" y="166">done &#183; #2079</text>
+  </g>
+  <g id="l-1529">
+    <text class="t-ln" x="16" y="198">FIX-1529 &#183; F2 fence</text>
+    <rect class="done" x="479" y="186" width="38" height="16" rx="2"/>
+    <text class="t-s" x="534" y="198">done &#183; #2091</text>
+  </g>
+  <g id="l-1534">
+    <text class="t-ln" x="16" y="230">FIX-1534 &#183; drain leg</text>
+    <rect class="flight" x="516" y="218" width="16" height="16" rx="2"/>
+    <text class="t-s" x="540" y="230">implementing</text>
+  </g>
+  <g id="l-1535">
+    <text class="t-ln" x="16" y="262">FIX-1535 &#183; debug read</text>
+    <rect class="flight" x="516" y="250" width="16" height="16" rx="2"/>
+    <text class="t-s" x="540" y="262">implementing</text>
+  </g>
+  <g id="l-1538">
+    <text class="t-ln" x="16" y="302">FIX-1538 &#183; per-org cell</text>
+    <rect class="todo" x="640" y="288" width="200" height="22" rx="3"/>
+    <text class="t-s" x="648" y="303">spec &#8594; build &#8594; assembled goal</text>
+    <text class="t-g" x="854" y="303">wrap</text>
+  </g>
+
+  <g id="critical">
+    <path class="crit" d="M524 299 L640 299"/>
+    <path class="crit" d="M632 226 L700 226 L700 288"/>
+    <path class="crit" d="M632 258 L700 258"/>
+    <text class="t-g" x="534" y="293">gate</text>
+    <text class="t-g" x="16" y="358">Critical path: this gate &#8594; FIX-1538 &#8594; wrap. The two bugs only have to land before its goal runs.</text>
+  </g>
+</svg>

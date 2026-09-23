@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 344" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: seven rules by five issues. The product decisions are decided by FIX-1522 and consumed by FIX-1538. The pin and fence, ER-1, is built by FIX-1529 and consumed by FIX-1534, FIX-1535 and FIX-1538. The drain refusal, ER-2, is built by FIX-1534 and consumed by FIX-1538. The debug listing, ER-3, is built by FIX-1535 and consumed by FIX-1538. The per-org cell, ER-4, the migration, ER-5, and the assembled proof, ER-15, are built by FIX-1538; FIX-1534 and FIX-1535 consume the proof.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .grid  { stroke:var(--rule); stroke-width:1; }
+    .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .dec   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-sub { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-dec { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-con { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="344"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#183; ONE OWNER PER RULE</text>
+
+  <g id="columns">
+    <text class="t-col" x="364" y="46">FIX-1522</text><text class="t-sub" x="364" y="60">explore</text>
+    <text class="t-col" x="478" y="46">FIX-1529</text><text class="t-sub" x="478" y="60">F2 &#183; shipped</text>
+    <text class="t-col" x="592" y="46">FIX-1534</text><text class="t-sub" x="592" y="60">drain bug</text>
+    <text class="t-col" x="706" y="46">FIX-1535</text><text class="t-sub" x="706" y="60">debug bug</text>
+    <text class="t-col" x="820" y="46">FIX-1538</text><text class="t-sub" x="820" y="60">per-org cell</text>
+    <path class="grid" d="M16 70 L924 70"/>
+  </g>
+
+  <g id="r1">
+    <text class="t-row" x="16" y="96">Not portable; user planes wait</text>
+    <rect class="dec" x="356" y="80" width="104" height="24" rx="3"/><text class="t-dec" x="366" y="96">decides</text>
+    <text class="t-con" x="830" y="96">consumes</text>
+    <path class="grid" d="M16 110 L924 110"/>
+  </g>
+  <g id="r2">
+    <text class="t-row" x="16" y="134">ER-1 &#183; pin and fence at every door</text>
+    <rect class="own" x="470" y="118" width="104" height="24" rx="3"/><text class="t-own" x="480" y="134">builds</text>
+    <text class="t-con" x="602" y="134">consumes</text>
+    <text class="t-con" x="716" y="134">consumes</text>
+    <text class="t-con" x="830" y="134">consumes</text>
+    <path class="grid" d="M16 148 L924 148"/>
+  </g>
+  <g id="r3">
+    <text class="t-row" x="16" y="172">ER-2 &#183; cross-plane drain refused</text>
+    <rect class="own" x="584" y="156" width="104" height="24" rx="3"/><text class="t-own" x="594" y="172">builds</text>
+    <text class="t-con" x="830" y="172">consumes</text>
+    <path class="grid" d="M16 186 L924 186"/>
+  </g>
+  <g id="r4">
+    <text class="t-row" x="16" y="210">ER-3 &#183; debug listing scoped</text>
+    <rect class="own" x="698" y="194" width="104" height="24" rx="3"/><text class="t-own" x="708" y="210">builds</text>
+    <text class="t-con" x="830" y="210">consumes</text>
+    <path class="grid" d="M16 224 L924 224"/>
+  </g>
+  <g id="r5">
+    <text class="t-row" x="16" y="248">ER-4 &#183; stored data per (org, user)</text>
+    <rect class="own" x="812" y="232" width="104" height="24" rx="3"/><text class="t-own" x="822" y="248">builds</text>
+    <path class="grid" d="M16 262 L924 262"/>
+  </g>
+  <g id="r6">
+    <text class="t-row" x="16" y="286">ER-5 &#183; migration, nothing silently lost</text>
+    <rect class="own" x="812" y="270" width="104" height="24" rx="3"/><text class="t-own" x="822" y="286">builds</text>
+    <path class="grid" d="M16 300 L924 300"/>
+  </g>
+  <g id="r7">
+    <text class="t-row" x="16" y="324">ER-15 &#183; the assembled proof</text>
+    <text class="t-con" x="602" y="324">consumes</text>
+    <text class="t-con" x="716" y="324">consumes</text>
+    <rect class="own" x="812" y="308" width="104" height="24" rx="3"/><text class="t-own" x="822" y="324">builds</text>
+  </g>
+</svg>
