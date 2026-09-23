@@ -22,33 +22,44 @@
  * value is that every reader agrees on it.
  */
 
+import { encodeUserSegment, type InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { validateSegment } from "../loader/segments";
 import type { WorkerManifest } from "../manifest";
 import { hiredSeatRowSchema, type HiredSeatRow } from "./collections";
 
+export { encodeUserSegment };
+
 /**
- * The address a runtime-hired seat answers on: `<org>.<seatId>`.
+ * The address a runtime-hired seat answers on.
  *
- * The org is validated as one address segment, so it carries no `.` — which is
- * what makes the join injective and therefore reversible by
- * {@link splitSeatAddress}. Without it, org `acme` + seat `support.ada` and
- * org `acme.support` + seat `ada` would both spell `acme.support.ada`, and the
- * second hire would silently rebind the first's address.
+ * Org-visible: `<org>.<seatId>`. User-owned: `<org>.~<user>.<seatId>`, with
+ * the user escaped. `ownerUserId` comes from the hire row. Nothing here
+ * reads a pin out of an address that was already built.
  *
- * The SEAT id is not segment-validated, and that is deliberate rather than an
- * omission: a seat id is already `"<teamId>.<name>"` and is meant to be
- * dotted. Only the leading segment has to be dot-free for the split to be
- * unambiguous.
+ * The org is validated as one address segment, so it carries no `.` — which
+ * is what makes the join injective and therefore reversible by
+ * {@link splitSeatAddress}. The seat id stays dotted on purpose
+ * (`"<teamId>.<name>"`). Only the leading segment has to be dot-free.
  *
- * @throws when the org id is not a legal address segment — empty, over-long,
- * or containing a `.`. Thrown rather than returned because an org id reaches
- * this from the request being served right now, so the caller has someone to
- * tell.
+ * @throws when the org id is not a legal address segment, the seat id is
+ * empty, or the seat id starts with `~` (that marker is the user-owned form).
  */
-export function seatAddress(orgId: string, seatId: string): string {
+export function seatAddress(
+  orgId: string,
+  seatId: string,
+  ownerUserId?: string | null,
+): string {
   validateSegment(orgId, "Org");
   if (seatId.length === 0) {
     throw new Error("A seat id must not be empty — it is half of the seat's address");
+  }
+  if (seatId.startsWith("~")) {
+    throw new Error(
+      `seat id "${seatId}" starts with "~", which marks a user-owned seat's address`,
+    );
+  }
+  if (ownerUserId != null && ownerUserId.length > 0) {
+    return `${orgId}.~${encodeUserSegment(ownerUserId)}.${seatId}`;
   }
   return `${orgId}.${seatId}`;
 }
@@ -61,11 +72,25 @@ export function seatAddress(orgId: string, seatId: string): string {
  * validated segment. Splitting at the last dot, or splitting on every dot,
  * would mangle every ordinary `"<teamId>.<name>"` seat id.
  */
+/**
+ * The seat id inside an address this org owns, or `undefined`.
+ *
+ * One split at the first dot, which is correct only because the org is a
+ * validated segment. A user-owned address is `<org>.~<user>.<seatId>`; the
+ * user segment is skipped and is not returned as an owner. The pin stays on
+ * the hire row.
+ */
 export function splitSeatAddress(orgId: string, address: string): string | undefined {
   const prefix = `${orgId}.`;
   if (!address.startsWith(prefix)) return undefined;
-  const seatId = address.slice(prefix.length);
-  return seatId.length > 0 ? seatId : undefined;
+  const rest = address.slice(prefix.length);
+  if (rest.startsWith("~")) {
+    const dot = rest.indexOf(".");
+    if (dot <= 1 || dot === rest.length - 1) return undefined;
+    const seatId = rest.slice(dot + 1);
+    return seatId.length > 0 ? seatId : undefined;
+  }
+  return rest.length > 0 ? rest : undefined;
 }
 
 /**
@@ -82,6 +107,16 @@ export function toHiredSeatRow(input: {
   flow: string;
   settings?: Record<string, unknown>;
   instructions?: string | null;
+  /**
+   * The organization the row is written for. `null` — the default — is a
+   * legacy row; a reload binds the cell it was read from.
+   */
+  owningOrgId?: string | null;
+  /**
+   * The user the hire belongs to, or `null` when every member of the owning
+   * org may see it. A user-owned row is stored under a nested key.
+   */
+  ownerUserId?: string | null;
 }): HiredSeatRow {
   const instructions =
     typeof input.instructions === "string" && input.instructions.trim().length > 0
@@ -92,7 +127,35 @@ export function toHiredSeatRow(input: {
     flow: input.flow,
     settings: { ...(input.settings ?? {}) },
     instructions,
+    owningOrgId: input.owningOrgId ?? null,
+    ownerUserId: input.ownerUserId ?? null,
   };
+}
+
+/**
+ * The storage key for one row, relative to `workforce/roster/`.
+ *
+ * Org-visible rows stay one segment (`eng.lead`), which the browser
+ * collection lists. User-owned rows nest under `~<escaped user>/seat`, which
+ * that collection does not match. The user is escaped with the same encoding
+ * as the address, so a `/` in the id cannot extend another user's prefix.
+ * The address is not this key.
+ */
+export function hiredRosterStorageKey(row: {
+  seatId: string;
+  ownerUserId?: string | null;
+}): string {
+  if (row.ownerUserId != null && row.ownerUserId.length > 0) {
+    return `~${encodeUserSegment(row.ownerUserId)}/${row.seatId}`;
+  }
+  return row.seatId;
+}
+
+/** The pin a row registers under. `userId` is omitted when the row is org-visible. */
+export function hiredSeatOwnerPin(orgId: string, row: HiredSeatRow): InstanceOwnerPin {
+  const pin: InstanceOwnerPin = { orgId };
+  if (row.ownerUserId != null && row.ownerUserId.length > 0) pin.userId = row.ownerUserId;
+  return pin;
 }
 
 /** What a row could not be read as, when it could not be read. */
@@ -139,13 +202,22 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  * there are no folders. Setting them to `[]` would tell the kind its seat was
  * read and found empty, which is a different and false claim.
  *
- * @returns the record. There is no reason arm here — nothing about `row`
- * itself can make this fail, since a row that reached this function has
- * already been validated by {@link parseHiredSeatRow}. A bad ORG still
- * throws, via {@link seatAddress} — see this file's header for why the two
- * differ.
+ * @returns the record, or a reason when the row's owning organization is
+ * not `orgId`. A row that predates the stamp binds `orgId` — the cell it
+ * was read from — rather than refusing. A bad ORG still throws, via
+ * {@link seatAddress}.
  */
-export function hiredSeatManifest(orgId: string, row: HiredSeatRow): { manifest: WorkerManifest } {
+export function hiredSeatManifest(
+  orgId: string,
+  row: HiredSeatRow
+): { manifest: WorkerManifest } | RowProblem {
+  if (row.owningOrgId != null && row.owningOrgId !== orgId) {
+    return {
+      problem:
+        `the row is owned by organization "${row.owningOrgId}" and cannot be registered under "${orgId}"`,
+    };
+  }
+  const owningOrgId = row.owningOrgId ?? orgId;
   // `flow` is spread in as a declared key rather than handed over separately,
   // so `hireWorkforce`'s own kind resolution and its own refusals are what
   // decide it. A pre-check here would be a second gatekeeper with a second
@@ -162,9 +234,10 @@ export function hiredSeatManifest(orgId: string, row: HiredSeatRow): { manifest:
   // longer be shadowed by the row's own settings.
   return {
     manifest: {
-      id: seatAddress(orgId, row.seatId),
+      id: seatAddress(owningOrgId, row.seatId, row.ownerUserId),
       declared: { ...row.settings, flow: row.flow },
       body: row.instructions ?? "",
+      ownerPin: hiredSeatOwnerPin(owningOrgId, row),
     },
   };
 }
@@ -193,5 +266,23 @@ export function hiredSeatRowFromManifest(
   if (typeof flow !== "string" || flow.length === 0) {
     return { problem: `"${manifest.id}" declares no flow kind` };
   }
-  return { row: toHiredSeatRow({ seatId, flow, settings, instructions: manifest.body }) };
+  const pin = manifest.ownerPin;
+  if (pin === undefined || pin.orgId !== orgId) {
+    return {
+      problem:
+        pin === undefined
+          ? `"${manifest.id}" declares no owning organization`
+          : `"${manifest.id}" is owned by organization "${pin.orgId}", not "${orgId}"`,
+    };
+  }
+  return {
+    row: toHiredSeatRow({
+      seatId,
+      flow,
+      settings,
+      instructions: manifest.body,
+      owningOrgId: pin.orgId,
+      ownerUserId: pin.userId ?? null,
+    }),
+  };
 }

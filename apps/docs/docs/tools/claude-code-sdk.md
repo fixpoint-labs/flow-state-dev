@@ -114,15 +114,15 @@ resource (an open connection, for example).
 
 ### Turning it off for background work
 
-Background work runs in a child session, outside the request that started it. If
-you dispatch the agent into one, set `detached: true`:
+Background work runs in a *dispatch run*, a session separate from the request
+that started it. If you dispatch the agent into one, set `detached: true`:
 
 ```ts
 const agent = claudeCodeAgent({ detached: true });
 ```
 
 Each job is then one run. Nothing is written to session state, and no prior SDK
-conversation is resumed — a second job landing in the same child session begins a
+conversation is resumed — a second job landing in the same session begins a
 new agent run. What the run did is still recorded: that session's own item stream
 holds its messages, reasoning, and tool calls in order, which is what you read the
 run back from.
@@ -134,7 +134,7 @@ worker, that handle is the worker's output, and the board writes the output onto
 the task when it settles — so the id is persisted there. Worth knowing if you are
 reasoning about data retention, or if you plan to resume a run by hand later.
 
-You have to pass it there. A worker that runs in a child session may share that
+You have to pass it there. A worker that runs in a dispatch run may share that
 session with other rows, so two blocks declaring the same session-state key would
 overwrite each other. The task board refuses to build a hand-off whose block
 declares session state.
@@ -149,7 +149,7 @@ the capability form takes the same one:
 createClaudeCodeAgentCapability({ detached: true });
 ```
 
-See [Dispatched work](../server/background-work.md) for how the child session is
+See [Dispatched work](../server/background-work.md) for how a dispatch run is
 started and read back.
 
 ### Continuing a run on the background path

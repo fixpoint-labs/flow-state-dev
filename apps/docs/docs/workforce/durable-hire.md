@@ -22,9 +22,9 @@ All from `@flow-state-dev/workforce`:
 | Call | What it does |
 | --- | --- |
 | `defineHiredRosterCollection()` | Declares the stored roster: an organization-scoped resource collection at `workforce/roster/*`, one row per hired seat. Takes no options. |
-| `seatAddress(orgId, seatId)` | Returns `<orgId>.<seatId>`, the address a hired seat answers on. Throws when the organization id is not a single address segment. |
+| `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, with the user escaped, so two people can hire the same seat id. Throws when the organization id is not a single address segment, or when the seat id starts with `~`. |
 | `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
-| `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems }`. It registers nothing. |
+| `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems, byOrg }`. It registers nothing. |
 
 Two smaller helpers appear in the example below: `toHiredSeatRow` builds a stored row out of what a hire supplied, and `hiredSeatManifest` turns a row back into the record `hireWorkforce` takes.
 
@@ -84,8 +84,9 @@ export const hireSeat = handler({
 
     // Minted from exactly what will be stored, so the row can rebuild the seat
     // at the next start. The kind's settings schema runs here, before any write.
-    const { manifest } = hiredSeatManifest(orgId, row);
-    const [seat] = hireWorkforce([manifest], { kinds });
+    const record = hiredSeatManifest(orgId, row);
+    if ("problem" in record) throw new Error(record.problem);
+    const [seat] = hireWorkforce([record.manifest], { kinds });
     if (!seat) throw new Error(`"${address}" could not be hired.`);
 
     const roster = ctx.resources.roster as unknown as ResourceCollectionRef;
@@ -95,7 +96,7 @@ export const hireSeat = handler({
     await roster.create(input.seatId, row as unknown as JsonObject);
 
     try {
-      registerSeat(seat);
+      registerSeat(seat, record.manifest.ownerPin);
     } catch (error) {
       await roster.delete(input.seatId);
       throw error;
@@ -111,8 +112,9 @@ A row holds the seat's id within its organization, the flow kind, the settings b
 `registerSeat` exists because the flow needs the `FlowState` it is itself registered on, and importing that directly is a cycle. Install it instead:
 
 ```ts title="src/flows/workforce-admin/registry-access.ts"
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import type { FlowState } from "@flow-state-dev/engine";
+import { registerHiredSeat } from "@flow-state-dev/workforce";
 
 let app: FlowState | undefined;
 
@@ -121,9 +123,10 @@ export function useFlowState(next: FlowState): void {
   app = next;
 }
 
-export function registerSeat(seat: FlowInstance): void {
-  if (!app) throw new Error("No FlowState to register into.");
-  app.register(seat);
+export function registerSeat(seat: FlowInstance, pin?: InstanceOwnerPin): void {
+  const state = app;
+  if (!state) throw new Error("No FlowState to register into.");
+  registerHiredSeat((instance, owner) => state.register(instance, { pin: owner }), seat, pin);
 }
 
 export function releaseSeat(id: string): boolean {
@@ -133,7 +136,7 @@ export function releaseSeat(id: string): boolean {
 
 ### The organization has to come from the credential
 
-The organization comes from the credential, not from the request body. A hire writes durable state that belongs to an organization, so it has to come from something the framework can trust. Configure [`resolvePrincipal`](../server/authentication.md) on the flow and the action's `orgId` comes from there; an `orgId` in the body is ignored.
+The organization comes from the credential, not from the request body. A hire writes durable state that belongs to an organization, so it has to come from something the framework can trust. Configure [`resolvePrincipal`](../server/authentication.md) on the flow and the action's `orgId` comes from there; an `orgId` in the body is ignored. A hired seat is pinned to that organization, so the host that serves the seat needs the same resolver. The framework default resolver does not name one, and opening the seat answers `404 Unknown flow` even for the person who hired it.
 
 ```ts title="src/flows/workforce-admin/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
@@ -211,10 +214,10 @@ The seat answers immediately, on the same route as any other flow. Its address c
 ```bash
 curl -X POST localhost:3000/api/flows/acme.support.ada/actions/answer \
   -H 'content-type: application/json' \
-  -d '{"userId":"you","orgId":"acme","input":{"note":"is the printer fixed?"}}'
+  -d '{"userId":"you","input":{"note":"is the printer fixed?"}}'
 ```
 
-The organization is part of the address because two organizations can both want a seat called `support.ada`, and an app serves one flat set of addresses. It identifies the seat. It does not authorize anything: who may call it is still decided by the principal on the request.
+The organization is part of the address because two organizations can both want a seat called `support.ada`, and an app serves one flat set of addresses. It identifies the seat. It does not authorize anything: who may call it is decided by the principal on the request. The body does not name the organization.
 
 ## Reading the roster back at the next start
 
@@ -235,7 +238,7 @@ const { seats, problems } = await reloadHiredSeats({
 
 for (const seat of seats) {
   try {
-    registerSeat(seat);
+    registerSeat(seat, seat.ownerPin);
   } catch (error) {
     problems.push(`${seat.id} — ${String(error)}`);
   }
@@ -255,6 +258,8 @@ import { Roster } from "@flow-state-dev/react";
 ```
 
 Keep the list from the boot somewhere your app can reach it. `reloadHiredSeats` runs on the server, and nothing carries its result to a browser on its own.
+
+The same result splits both lists by organization. `byOrg` has one entry per organization you passed in, in that order, each with that organization's `orgId`, `seats` and `problems`. An organization with nothing to report still gets an entry, with empty lists. Store each organization's problems where only that organization reads them, and write the empty ones too, so a problem fixed since the last start stops showing. A seat your registry then refuses belongs in its own organization's list as well.
 
 The roster collection itself is readable by a browser, so the seats come straight from it. Being organization-scoped, that read resolves against the organization the reading session belongs to. A seat crosses as `seatId`, `flow` and `instructions`. The settings bag stays on the server.
 

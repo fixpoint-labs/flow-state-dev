@@ -53,16 +53,19 @@
  *
  * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too
  * (FIX-1393): core drops a capability's catalog-granted tools when the block
- * declares `tools:`, and this kind declares it on every seat. An app passing a
- * capability with default-on tools no longer has to turn them off to keep a
- * seat's list honest. What the fence does not touch is a capability's
- * `controlTools` — see the paragraph above.
+ * declares `tools:`, and this kind declares it on every seat. Catalog tools a
+ * capability contributes are therefore copied onto this kind's catalog at
+ * construction, so a seat can name them in `tools:` the same way it names an
+ * app-passed tool. An empty list still means none. What the fence does not
+ * touch is a capability's `controlTools` — see the paragraph above.
  */
 
 import { defineFlow, generator, handler, sequencer, MANIFEST_DOMAINS } from "@flow-state-dev/core";
+import { flattenCapabilities, getBaseCapability, resolveActivePresets } from "@flow-state-dev/core/capability";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   BlockDefinition,
+  CapabilityRef,
   DeclaredResources,
   GeneratorTool,
   InitialSkill,
@@ -492,6 +495,71 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
  * Every mismatch is named in one message, for the reason `hireWorkforce`
  * collects: an author fixing a catalog should see the whole list in one run.
  */
+/**
+ * Catalog tools a kind's `uses` already grants — capability tools fill the
+ * kind catalog so a seat can name them in `tools:`.
+ *
+ * Core drops a capability's catalog tools when the consuming block declares
+ * `tools:` (FIX-1393). This kind always declares that slot, so a grant that
+ * stayed only on the capability would be a name no seat could call. Filling
+ * the catalog is what makes "kind installs via `uses`, seat names the tool"
+ * one path rather than two.
+ *
+ * Static arrays only. A preset whose `tools` is a function cannot be named
+ * at kind construction, and is left for the capability merge to contribute
+ * when the fence is down.
+ */
+function catalogToolsFromUses(uses: UsesSlot | undefined): ToolCatalog {
+  const filled: ToolCatalog = {};
+  if (!uses) return filled;
+
+  const topLevel = uses.filter((entry): entry is CapabilityRef => typeof entry !== "function");
+  for (const entry of flattenCapabilities(topLevel)) {
+    for (const { preset } of resolveActivePresets(entry)) {
+      if (!Array.isArray(preset.tools)) continue;
+      for (const tool of preset.tools) {
+        const toolName = (tool as { name?: unknown }).name;
+        if (typeof toolName !== "string" || toolName.length === 0) continue;
+        const existing = filled[toolName];
+        if (existing !== undefined && existing !== tool) {
+          throw new Error(
+            `defineAgentWorkerFlow refused catalog key "${toolName}": two capabilities in ` +
+              `\`uses\` contribute different tools under that name (${getBaseCapability(entry).name} ` +
+              `and another). One name is one tool.`
+          );
+        }
+        filled[toolName] = tool as GeneratorTool;
+      }
+    }
+  }
+  return filled;
+}
+
+/**
+ * The kind's catalog: capability grants first, the app's map on top only when
+ * the two agree. A collision of different instances is a construction error
+ * rather than a silent overlay — the seat's `tools:` would otherwise name
+ * one tool and call the other.
+ */
+function mergeKindCatalog(
+  uses: UsesSlot | undefined,
+  catalog: ToolCatalog | undefined
+): ToolCatalog {
+  const fromUses = catalogToolsFromUses(uses);
+  const fromApp = catalog ?? {};
+  for (const [name, tool] of Object.entries(fromApp)) {
+    const granted = fromUses[name];
+    if (granted !== undefined && granted !== tool) {
+      throw new Error(
+        `defineAgentWorkerFlow refused catalog key "${name}": the app's catalog and a ` +
+          `capability in \`uses\` both contribute that name, as different tools. ` +
+          `Drop one, or pass the capability's own tool under that key.`
+      );
+    }
+  }
+  return { ...fromUses, ...fromApp };
+}
+
 function assertOneNamePerCatalogEntry(catalog: ToolCatalog): void {
   const problems: string[] = [];
   for (const [key, tool] of Object.entries(catalog)) {
@@ -571,7 +639,7 @@ function catalogDeclaredResources(catalog: ToolCatalog): DeclaredResources | und
  * @returns A `defineFlow` result of kind `agent`, cardinality `collection`.
  */
 export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
-  const catalog = options.catalog ?? {};
+  const catalog = mergeKindCatalog(options.uses, options.catalog);
   // Before anything is built from it. A catalog key that disagrees with its
   // block's own name would hand the model a tool no seat's `tools:` can
   // authorize, and the kind is the door that holds the map.
@@ -584,7 +652,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // at the mint AND what the per-seat entry below resolves through, and two
   // readings of one `uses` array is how the two halves drift apart.
   const seatCapabilityCatalog = catalogSeatCapabilities(options.uses);
-  const settings = settingsSchema(options, seatCapabilityCatalog);
+  const settings = settingsSchema({ ...options, catalog }, seatCapabilityCatalog);
   const inputSchema = z.object({ message: z.string() });
 
   const appSkills = options.skills ?? [];
@@ -613,6 +681,8 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // `tools:` setting. That registration path stays off; the generator's own
   // `tools:` slot below, fenced at the mint by the `tools` schema, is the
   // only stock tool-registration path.
+  // Organization scope, the library default. The organization is the
+  // principal's. A request sends `userId` and does not carry an org id.
   const skills = createSkillsLibrary({
     catalog,
     registerCatalogTools: false,

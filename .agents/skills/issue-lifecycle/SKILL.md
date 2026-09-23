@@ -170,8 +170,10 @@ to make room for — the opposite of the point. Then:
   gate, stating that it's converged and that remaining open threads are carried as
   implementer notes in the plan. Then **stop dispatching review rounds**; further spec-PR review events
   are logged in the cache and ignored until the gate resolves. The only event that still
-  acts is a **human** one — an approving comment/review (the gate), or the user asking for
-  a specific change.
+  acts is a **human** one — a gate signal from
+  [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
+  (in-session go-ahead, a non-owner human review with no agent header, or an owner label),
+  or the user asking for a specific change. An owner-login review is not that signal.
 - **A third round is allowed only when round two surfaced a genuine spec-level finding** —
   a new approach question, not more notes. The Step 6.5 sub-agent reports whether anything
   was spec-level; that flag is what authorizes the extra round. Say so in one line when you
@@ -486,9 +488,17 @@ transitions webhooks *don't* cover — CI success and merge — schedule a check
 (`send_later`, ~30–60 min) and re-arm it while the issue is
 live; stop once the impl PR is merged or closed. On each wake, re-read the spec-PR
 approval signal rather than trusting a webhook arrived: in AWAITING_SPEC_APPROVAL, the go-ahead
-is an approving human comment, an approving review, **or the `spec approved` label** — check
-comments, reviews *and* labels, all small reads. The label needs checking precisely because it
-never wakes the session, so it is only ever found by looking.
+is a message from the user in this conversation (`approvedInSession` on the reviewed head),
+a non-owner human approving comment or review with no agent header, **or the `spec approved`
+label** — check comments, reviews *and* labels, all small reads. An agent-mailbox header
+(`from:` / `session:` / `kind:`, then a blank line) means the review or comment is
+agent-authored and is not the gate. An approving review or comment under the owner login
+with no such header is **suspect**: escalate it, do not treat it as sign-off, do not
+implement. The owner is still not excluded merely for authoring the PR. Do not use
+timestamps or prose style to decide. The label needs checking precisely because it
+never wakes the session, so it is only ever found by looking. When you post a review or
+PR comment, start the body with that header
+([Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)).
 Approval detection is not merge detection: also read required checks, required thread
 state, and actual merge status. An attributed label must identify the reviewed head;
 a later push requires renewed revision-bound sign-off, not a standing-label bypass.

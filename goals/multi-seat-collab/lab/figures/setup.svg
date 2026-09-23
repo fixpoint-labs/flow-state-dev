@@ -1,0 +1,109 @@
+<svg viewBox="0 0 940 470" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="How the lab is wired, left to right. On disk, the Markdown tree under lab/workforce/teams/eng: one CHANNEL.md for the channel eng.queue, naming three members and declaring boards: [work]; a planner WORKER.md with flow: planner; a builder WORKER.md with flow: worker and answersFor: build; a reviewer WORKER.md with flow: worker and answersFor: review. In the middle, the code: host.mts reads the tree, refuses it unless it is exactly one planner and two workers, and hires every seat with hireLab, given the app's desk-to-seat map ROUTES from fsdev.config.mts, build to eng.builder and review to eng.reviewer; the map is never read off the tree. The two kinds sit in lab/workforce/flows/workers: planner.mts, whose one action file dispatches into the channel's own fileTask door, and worker.mts, whose board worker-desk-board claims only the desks the map routes to the seat, hands each row to the work task entry in its own child session, and exposes the drain and answer actions. On the right, what runs: fsdev.config.mts default-exports one FlowState holding the channel and the three seats over SQLite, the shipped fsdev dev serves it with --config, and the shipped DevTool reads it. run-scenario.mts drives the server over HTTP: file on eng.planner, drain on each worker seat, answer on the owning seat. The person's answer enters only through the owning seat's own answer action, and the person holds no claim.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); }
+    .n-box { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-code { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-run { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-human { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .fence { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .flow { stroke:var(--ink-2); stroke-width:1.4; fill:none; }
+    .human { stroke:var(--prose); stroke-width:2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-h { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="columns">
+    <text class="t-lbl" x="16" y="22">ON DISK · lab/workforce/teams/eng</text>
+    <text class="t-lbl" x="330" y="22">THE LAB'S CODE</text>
+    <text class="t-lbl" x="660" y="22">WHAT RUNS</text>
+    <line class="fence" x1="312" y1="10" x2="312" y2="380"/>
+    <line class="fence" x1="642" y1="10" x2="642" y2="380"/>
+  </g>
+
+  <g id="tree">
+    <rect class="n-box" x="16" y="34" width="280" height="62" rx="5"/>
+    <text class="t-b" x="28" y="53">channels/queue/CHANNEL.md</text>
+    <text class="t-s" x="28" y="70">members: eng.planner, eng.builder,</text>
+    <text class="t-s" x="28" y="85">  eng.reviewer · boards: [work]</text>
+    <rect class="n-box" x="16" y="108" width="280" height="44" rx="5"/>
+    <text class="t-b" x="28" y="127">workers/planner/WORKER.md</text>
+    <text class="t-s" x="28" y="143">flow: planner</text>
+    <rect class="n-box" x="16" y="164" width="280" height="44" rx="5"/>
+    <text class="t-b" x="28" y="183">workers/builder/WORKER.md</text>
+    <text class="t-s" x="28" y="199">flow: worker · answersFor: build</text>
+    <rect class="n-box" x="16" y="220" width="280" height="44" rx="5"/>
+    <text class="t-b" x="28" y="239">workers/reviewer/WORKER.md</text>
+    <text class="t-s" x="28" y="255">flow: worker · answersFor: review</text>
+    <text class="t-s" x="16" y="284">answersFor is the oracle the checks grade</text>
+    <text class="t-s" x="16" y="298">against; nothing that routes reads it</text>
+  </g>
+
+  <g id="code">
+    <rect class="n-code" x="330" y="34" width="296" height="74" rx="5"/>
+    <text class="t-b" x="342" y="53">host.mts</text>
+    <text class="t-s" x="342" y="70">readLabTree · refused unless exactly</text>
+    <text class="t-s" x="342" y="84">1 planner + 2 workers</text>
+    <text class="t-s" x="342" y="98">hireLab({ tree, routes }) → hireWorkforce</text>
+    <rect class="n-code" x="330" y="124" width="296" height="62" rx="5"/>
+    <text class="t-b" x="342" y="143">flows/workers/planner.mts</text>
+    <text class="t-s" x="342" y="160">action file → the channel's own</text>
+    <text class="t-s" x="342" y="174">fileTask door · no board, no drain</text>
+    <rect class="n-code" x="330" y="200" width="296" height="98" rx="5"/>
+    <text class="t-b" x="342" y="219">flows/workers/worker.mts</text>
+    <text class="t-s" x="342" y="236">board worker-desk-board · onReview: exit</text>
+    <text class="t-s" x="342" y="251">claims only the desks ROUTES gives it</text>
+    <text class="t-s" x="342" y="266">each row → task entry work, own session</text>
+    <text class="t-s" x="342" y="281">actions: drain · answer</text>
+    <text class="t-s" x="342" y="312">flows/piece.mts · the row's input, shared</text>
+    <path class="flow" d="M296 65 L318 65 L318 71 L330 71"/>
+    <path class="flow" d="M296 130 L318 130 L318 155 L330 155"/>
+    <path class="flow" d="M296 186 L318 186 L318 249 L330 249"/>
+    <path class="flow" d="M296 242 L318 242"/>
+  </g>
+
+  <g id="runs">
+    <rect class="n-run" x="660" y="34" width="264" height="104" rx="5"/>
+    <text class="t-b" x="672" y="53">fsdev.config.mts</text>
+    <text class="t-s" x="672" y="70">ROUTES · the app's desk → seat map</text>
+    <text class="t-s" x="672" y="84">  build → eng.builder</text>
+    <text class="t-s" x="672" y="98">  review → eng.reviewer</text>
+    <text class="t-s" x="672" y="114">one FlowState: channel + 3 seats</text>
+    <text class="t-s" x="672" y="128">over SQLite · GOAL_CONTROL read here</text>
+    <rect class="n-run" x="660" y="160" width="264" height="44" rx="5"/>
+    <text class="t-b" x="672" y="179">fsdev dev --config</text>
+    <text class="t-s" x="672" y="195">the shipped dev server, HTTP</text>
+    <rect class="n-run" x="660" y="226" width="264" height="44" rx="5"/>
+    <text class="t-b" x="672" y="245">the shipped DevTool</text>
+    <text class="t-s" x="672" y="261">Tasks tab · Resources panel</text>
+    <path class="flow" d="M660 60 L626 60"/>    <path class="flow" d="M792 138 L792 160"/>
+    <path class="flow" d="M792 204 L792 226"/>
+  </g>
+
+  <g id="driver">
+    <rect class="n-box" x="330" y="336" width="296" height="44" rx="5"/>
+    <text class="t-b" x="342" y="355">run-scenario.mts · the driver</text>
+    <text class="t-s" x="342" y="371">HTTP: file · drain · answer · reads the ledger</text>
+    <path class="flow" d="M626 358 L651 358 L651 182 L660 182"/>
+  </g>
+
+  <g id="person">
+    <line class="fence" x1="16" y1="398" x2="924" y2="398"/>
+    <rect class="n-human" x="16" y="412" width="280" height="44" rx="5"/>
+    <text class="t-b" x="28" y="431">the person</text>
+    <text class="t-s" x="28" y="447">one principal · holds no claim</text>
+    <path class="human" d="M296 434 L321 434 L321 281 L330 281"/>
+    <text class="t-h" x="340" y="426">answer · the owning seat's own action, on that seat's session</text>
+    <text class="t-s" x="340" y="444">unpark with the answer; that seat's drain runs the row again</text>
+  </g>
+</svg>

@@ -75,7 +75,7 @@ transports](https://flow-state.dev/docs/advanced/inbound-transports#execution-co
 
 **`worker-only` starts background work in-process, and it is not durable.** That
 mode installs no dispatcher, so a dispatch — what a `dispatcher()` block and a task
-board's hand-off seat both send — runs the child inside the worker process and
+board's hand-off seat both send — runs the work inside the worker process and
 enqueues nothing. If the process stops, nothing re-runs it. A
 `worker-only` process is a good place to *consume* durable jobs and a poor place
 to *start* them; start them from `colocated` or `dispatch-only`. See [Work that
@@ -85,7 +85,7 @@ outlives the turn](https://flow-state.dev/guides/background-work).
 jobs this process is running, not jobs sitting in the queue or running in
 another container. That drain is a non-forced `Worker.close()` and is **not**
 bounded by `dispatchDrainTimeoutMs` — it takes as long as the claimed job does.
-Only the separate wait for in-process dispatched children carries that budget. See
+Only the separate wait for in-process dispatch runs carries that budget. See
 [Shutdown](https://flow-state.dev/docs/api/server#shutdown).
 
 ### Lower-level composition
@@ -262,7 +262,7 @@ The kitchen-sink app includes a working integration at `/api/admin/queues` (requ
 ## See also
 
 - [BullMQ background jobs guide](https://flow-state.dev/guides/background-jobs-bullmq) — setup walkthrough with Docker
-- [Work that outlives the turn](https://flow-state.dev/guides/background-work) — how queued action runs relate to side chains and dispatched child sessions
+- [Work that outlives the turn](https://flow-state.dev/guides/background-work) — how queued action runs relate to side chains and dispatch runs
 - [Dispatched work](https://flow-state.dev/docs/server/background-work) — reading what a queued job became
 - [Scheduled actions reference](https://flow-state.dev/docs/server/scheduled) — framework scheduling contract
 - [Inbound transports architecture](https://flow-state.dev/docs/advanced/inbound-transports) — dispatcher and transport adapter contracts

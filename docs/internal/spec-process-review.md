@@ -153,7 +153,7 @@ Evidence that code is reaching for that missing home:
 ```
 packages/node/src/bind-guard.ts:15        → "see the known limits in docs/specs/FIX-893.md §3"
 packages/node/src/bind-guard.ts:65        → "see docs/specs/FIX-893.md §8"
-labs/trading-desk/.../alpha-vantage.ts:19 → "See docs/specs/FIX-798.md"
+the former Trading Desk alpha-vantage provider → "See docs/specs/FIX-798.md"
 ```
 
 Neither file was ever committed to this repo. `bind-guard.ts` is citing the known limits of a

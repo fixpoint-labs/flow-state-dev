@@ -160,7 +160,7 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 | `historyWindow` | `{ turns: number }` | `50` | Caps cross-turn history loaded per request. `0` or a negative number disables it. Per-call `history({ limit })` can only shrink this window. |
 | `cas` | `CASOptions` | — | Optimistic-concurrency options for this scope. |
 
-`clientData` on a scope was removed. `defineFlow` throws if it is still set — use `client.derived` (or `expose` for verbatim passthrough).
+`clientData` is not a scope config key. `defineFlow` throws if a scope sets it: compute functions go under `client.derived`, verbatim passthrough under `client.expose`.
 
 ### `request`
 

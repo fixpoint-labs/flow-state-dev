@@ -1,0 +1,115 @@
+<svg viewBox="0 0 940 420" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="How one run moves, as four lanes against time, with the check that grades each step. Lane one, eng.planner, runs file: one row lands for the build desk, graded by V1. Lane two, eng.builder, runs drain: it claims the row from its own session and hands it to its own child session, where the row parks with the question as its reason; a later drain over the parked row returns parked-for-review, graded by V3. Lane three is the person. A second person's answer, sent to eng.builder's session, does not land, graded by V4. The person's answer goes through eng.builder's own answer action, which unparks the row and drains it in the same request; the same seat finishes the row, files a second row for the review desk naming the first, and is refused when it tries to move the first row's assignee, graded by V3 and V5. Lane four, eng.reviewer, drains, claims the review row and finishes it in its own child session, graded by V5. Every attempt is graded against the WORKER.md of the seat that ran it, V2. Last, the planner files a row for nobody, which a seat takes and refuses by name, graded by V1 and V4. Below a dashed fence, the three DevTool screens that read the run, all graded by VB: screen one, eng.builder's session Tasks tab with the row and its dispatch-run link; screen two, reached by clicking that link, the child session's Tasks tab with the question in the Reason column and then the answer; screen three, the Resources panel's ledger collection, with both rows, their assignees and the seat that ran each.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); }
+    .n-seat { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-human { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-no { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-tool { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .lane { stroke:var(--rule); stroke-width:1; }
+    .fence { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .flow { stroke:var(--ink-2); stroke-width:1.4; fill:none; }
+    .hand { stroke:var(--code); stroke-width:2.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-s { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-v { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:700; font-size:9.5px; }
+    .t-hand { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="lanes">
+    <text class="t-lbl" x="16" y="44">eng.planner</text>
+    <line class="lane" x1="16" y1="62" x2="924" y2="62"/>
+    <text class="t-lbl" x="16" y="100">eng.builder</text>
+    <line class="lane" x1="16" y1="118" x2="924" y2="118"/>
+    <text class="t-lbl" x="16" y="156">the person</text>
+    <line class="lane" x1="16" y1="174" x2="924" y2="174"/>
+    <text class="t-lbl" x="16" y="212">eng.reviewer</text>
+    <line class="lane" x1="16" y1="230" x2="924" y2="230"/>
+    <text class="t-v" x="16" y="248">V2 · every attempt is graded against its own seat's WORKER.md</text>
+  </g>
+
+  <g id="planner">
+    <rect class="n-seat" x="110" y="26" width="150" height="32" rx="5"/>
+    <text class="t-b" x="120" y="41">file</text>
+    <text class="t-s" x="120" y="53">one row · desk build</text>
+    <text class="t-v" x="252" y="41" text-anchor="end">V1</text>
+    <rect class="n-seat" x="764" y="26" width="160" height="32" rx="5"/>
+    <text class="t-b" x="774" y="41">file · for nobody</text>
+    <text class="t-s" x="774" y="53">taken, refused by name</text>
+    <text class="t-v" x="916" y="41" text-anchor="end">V1 V4</text>
+    <path class="flow" d="M260 42 L272 42 L272 84"/>
+  </g>
+
+  <g id="builder">
+    <rect class="n-seat" x="272" y="82" width="130" height="32" rx="5"/>
+    <text class="t-b" x="282" y="97">drain · claim</text>
+    <text class="t-s" x="282" y="109">→ its child session</text>
+    <rect class="n-seat" x="414" y="82" width="150" height="32" rx="5"/>
+    <text class="t-b" x="424" y="97">park · reason</text>
+    <text class="t-s" x="424" y="109">= the question</text>
+    <text class="t-v" x="556" y="97" text-anchor="end">V3</text>
+    <path class="flow" d="M402 98 L414 98"/>
+    <rect class="n-seat" x="640" y="82" width="150" height="32" rx="5"/>
+    <text class="t-b" x="650" y="97">finish · file next</text>
+    <text class="t-s" x="650" y="109">row for review</text>
+    <text class="t-v" x="782" y="109" text-anchor="end">V3 V5</text>
+  </g>
+
+  <g id="person">
+    <rect class="n-no" x="414" y="138" width="150" height="32" rx="5"/>
+    <text class="t-b" x="424" y="153">a second principal</text>
+    <text class="t-s" x="424" y="165">answer does not land</text>
+    <text class="t-v" x="556" y="165" text-anchor="end">V4</text>
+    <path class="flow" d="M489 114 L489 138"/>
+    <rect class="n-human" x="576" y="138" width="140" height="32" rx="5"/>
+    <text class="t-b" x="586" y="153">answer</text>
+    <text class="t-s" x="586" y="165">eng.builder's action</text>
+    <text class="t-v" x="708" y="153" text-anchor="end">V3</text>
+    <path class="flow" d="M564 98 L570 98 L570 128 L646 128 L646 138"/>
+    <path class="flow" d="M716 154 L728 154 L728 114"/>
+  </g>
+
+  <g id="reviewer">
+    <path class="hand" d="M790 98 L844 98 L844 194"/>
+    <text class="t-hand" x="640" y="76">the handoff · a second row</text>
+    <rect class="n-seat" x="764" y="194" width="160" height="32" rx="5"/>
+    <text class="t-b" x="774" y="209">drain · claim · finish</text>
+    <text class="t-s" x="774" y="221">its own child session</text>
+    <text class="t-v" x="916" y="221" text-anchor="end">V5</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="266" x2="924" y2="266"/>
+    <text class="t-lbl" x="16" y="284">THE THREE DEVTOOL SCREENS THAT READ IT · ALL GRADED BY VB</text>
+  </g>
+
+  <g id="devtool">
+    <rect class="n-tool" x="16" y="298" width="270" height="92" rx="5"/>
+    <text class="t-lbl" x="28" y="316">1 · s_eng_builder · TASKS</text>
+    <text class="t-b" x="28" y="334">the row, and where it went</text>
+    <text class="t-s" x="28" y="351">goal · assignee build</text>
+    <text class="t-s" x="28" y="366">dispatch-run link →</text>
+    <rect class="n-tool" x="334" y="298" width="270" height="92" rx="5"/>
+    <text class="t-lbl" x="346" y="316">2 · CHILD SESSION · TASKS</text>
+    <text class="t-b" x="346" y="334">why it waited, then the answer</text>
+    <text class="t-s" x="346" y="351">parked · Reason: the question</text>
+    <text class="t-s" x="346" y="366">completed · Reason: the answer</text>
+    <text class="t-s" x="346" y="381">nothing expanded</text>
+    <rect class="n-tool" x="652" y="298" width="272" height="92" rx="5"/>
+    <text class="t-lbl" x="664" y="316">3 · RESOURCES · THE LEDGER</text>
+    <text class="t-b" x="664" y="334">both rows, as they are now</text>
+    <text class="t-s" x="664" y="351">assignees build + review</text>
+    <text class="t-s" x="664" y="366">seat: eng.builder, eng.reviewer</text>
+    <path class="hand" d="M286 336 L334 336"/>
+    <text class="t-hand" x="292" y="329">click</text>
+  </g>
+</svg>

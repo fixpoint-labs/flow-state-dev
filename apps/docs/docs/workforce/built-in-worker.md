@@ -95,7 +95,7 @@ A replacement declares `kind: "agent"`, like any other kind passed under its own
 
 ## Skills
 
-A worker's skills are that worker's, and they are stored at organization scope. Each one keeps its own copy, so two workers on one roster never read each other's instructions.
+A worker's skills are that worker's, stored at organization scope. Two workers on one roster never read each other's instructions. Two organizations do not share one seat's skills. Send `userId` with the input. The skills read are the ones stored for the organization the caller already belongs to. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from.
 
 Which skills a worker gets is decided by where the folders sit. Three places feed one worker:
 

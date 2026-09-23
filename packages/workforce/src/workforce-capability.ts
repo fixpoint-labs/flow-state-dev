@@ -5,7 +5,8 @@
  * Compose it into a worker kind's `uses` and every seat of that kind gains one
  * tool: `discover`, which answers what is in scope for it right now. The
  * capability installs the workforce's own two domains (seats and channels,
- * projected from the declared roster joined to FIX-1405's live inventory rows —
+ * projected from the declared roster (files, and when asked the durable hired
+ * roster) joined to FIX-1405's live inventory rows —
  * see `./manifest-sources`) and carries whatever other domains the app hands
  * it, so there is ONE registration point and one door rather than a second
  * registry per package.
@@ -68,6 +69,12 @@ export interface WorkforceCapabilityOptions {
    */
   inventory: InventoryKeys;
   /**
+   * Registry key for the durable hired roster. When set, Discover treats a
+   * roster row with no file as the declared half for that seat, so a runtime
+   * hire is visible on the same lookup Labs already use.
+   */
+  hiredRoster?: string;
+  /**
    * Other domains' sources to put behind the same door — `skillsManifestSource()`
    * from `@flow-state-dev/orchestration`, `resourcesManifestSource()` from
    * `@flow-state-dev/core`.
@@ -117,7 +124,11 @@ export function createWorkforceCapability(
   // app's go into the same call, so a duplicate is refused in one place with
   // both sites named rather than discovered when a seat asks.
   const registry: ManifestRegistry = createManifestRegistry([
-    ...workforceManifestSources({ roster: options.roster, inventory: options.inventory }),
+    ...workforceManifestSources({
+      roster: options.roster,
+      inventory: options.inventory,
+      hiredRoster: options.hiredRoster,
+    }),
     ...(options.sources ?? []),
   ]);
 

@@ -25,7 +25,6 @@ const sidebars: SidebarsConfig = {
     },
     "human-in-the-loop",
     "prompts-as-markdown",
-    "trading-desk-walkthrough",
     "adding-skills-to-your-app",
     "projects-on-org-scope",
     "writing-ui-stories",

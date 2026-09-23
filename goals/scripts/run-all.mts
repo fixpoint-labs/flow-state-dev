@@ -47,7 +47,7 @@ function discover(dir: string, found: Goal[] = []): Goal[] {
     if (isGoal) {
       const spec = readFileSync(goalMd, "utf8");
       // Two goal.md schemas are in use: the template's field list (`**Model:**`)
-      // and the trading-desk prose form (`**Model.**`). Accept both.
+      // and a prose form (`**Model.**`). Accept both.
       const modelLine = /^\*\*Model[:.]\*\*(.*)$/m.exec(spec);
       const declared = (modelLine?.[1] ?? "").trim().toLowerCase();
       found.push({
@@ -108,12 +108,11 @@ if (args.includes("--help")) {
 /**
  * Per-goal wall-clock cap. Without one, a wedged goal stalls the whole
  * sequential sweep: `spawnSync` waits forever, so no later goal runs and no
- * summary prints. That is not hypothetical — `trading-desk-portfolio/gate-non-equity`
- * records in its verdict log that `fsdev run analysis` hangs in some containers,
- * and it wedged a sweep here for 30 minutes before being killed by hand.
+ * summary prints. Historical note: a former trading-desk portfolio goal once
+ * wedged a sweep for 30 minutes when `fsdev run analysis` hung in a container.
  *
- * 20 minutes is generous for the slowest legitimate goal (trading-desk-eval
- * sweeps two full analyze runs plus judges) while still bounding a hang.
+ * 20 minutes is generous for the slowest legitimate goals while still bounding
+ * a hang.
  */
 const DEFAULT_TIMEOUT_MINUTES = 20;
 const timeoutArg = args.find((a) => a.startsWith(TIMEOUT_FLAG));

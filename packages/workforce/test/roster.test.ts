@@ -124,7 +124,11 @@ describe("V3 · a row round-trips to a record and back", () => {
     const back = hiredSeatRowFromManifest("acme", record.manifest);
     expect("row" in back).toBe(true);
     if (!("row" in back)) return;
-    expect(back.row).toEqual(parsed.row);
+    expect(back.row).toEqual({
+      ...parsed.row,
+      owningOrgId: "acme",
+      ownerUserId: null,
+    });
   });
 
   it("returns a reason for a row missing a required field, and never throws", () => {
@@ -171,6 +175,7 @@ describe("V3 · a row round-trips to a record and back", () => {
     if (!("row" in parsed)) throw new Error("expected a row");
 
     const record = hiredSeatManifest("acme", parsed.row);
+    if (!("manifest" in record)) throw new Error("expected a manifest");
     expect(record.manifest.declared.flow).toBe("desk-clerk");
 
     // …and the seat that actually mints is the row's kind, not the bag's.
@@ -193,6 +198,7 @@ describe("V3 · a row round-trips to a record and back", () => {
       settings: { flow: "agent", desk: "back" },
     });
     const record = hiredSeatManifest("acme", row);
+    if (!("manifest" in record)) throw new Error("expected a manifest");
     const back = hiredSeatRowFromManifest("acme", record.manifest);
     if (!("row" in back)) throw new Error("expected a row");
 
@@ -207,6 +213,9 @@ describe("V4 · the org segment is what makes the address unambiguous", () => {
     // and it is refused at the segment check rather than discovered later by
     // whichever hire happened to land second.
     expect(seatAddress("acme", "support.ada")).toBe("acme.support.ada");
+    expect(seatAddress("acme", "research", "alice")).toBe("acme.~alice.research");
+    expect(seatAddress("acme", "research", "alice@acme.com")).toBe("acme.~alice%40acme%2Ecom.research");
+    expect(() => seatAddress("acme", "~research", "alice")).toThrow(/starts with "~"/);
     expect(() => seatAddress("acme.support", "ada")).toThrow(/Organization id/);
     expect(() => seatAddress("acme.support", "ada")).toThrow(/"\."/);
   });
@@ -319,6 +328,55 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
     await reloadHiredSeats({ stores, orgIds: ["acme"], kinds });
     expect(seen).toEqual(["workforce/roster/"]);
     expect(HIRED_ROSTER_PREFIX).toBe("workforce/roster/");
+  });
+});
+
+describe("the reload, partitioned by organization", () => {
+  // A caller that publishes the report per organization needs each org's slice
+  // from the reload itself. The flat `problems` names the org only inside its
+  // prose, and re-deriving structure from prose is the wrong way round.
+  const good = { seatId: "support.ada", flow: "desk-clerk", settings: {} };
+  const stores = () =>
+    storeHolding({
+      acme: {
+        "support.ada": good,
+        "support.bo": { seatId: "support.bo", flow: "kind-that-is-gone", settings: {} },
+      },
+      beta: { "support.ada": good },
+      quiet: {},
+    });
+
+  it("returns one entry per organization it was given, in that order, empty ones included", async () => {
+    const { byOrg } = await reloadHiredSeats({
+      stores: stores(),
+      orgIds: ["acme", "beta", "quiet"],
+      kinds,
+    });
+
+    // An org with nothing to report still gets an entry. Leaving it out is how
+    // a report written on the last boot stays standing when nobody rewrites it.
+    expect(byOrg.map((org) => org.orgId)).toEqual(["acme", "beta", "quiet"]);
+    expect(byOrg[2]).toEqual({ orgId: "quiet", seats: [], problems: [] });
+  });
+
+  it("files each seat and each problem under its own organization only", async () => {
+    const { byOrg, seats, problems } = await reloadHiredSeats({
+      stores: stores(),
+      orgIds: ["acme", "beta", "quiet"],
+      kinds,
+    });
+    const [acme, beta] = byOrg;
+
+    expect(acme!.seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
+    expect(acme!.problems).toHaveLength(1);
+    expect(acme!.problems[0]).toContain("support.bo");
+
+    expect(beta!.seats.map((seat) => seat.id)).toEqual(["beta.support.ada"]);
+    expect(beta!.problems).toEqual([]);
+
+    // The flat fields are unchanged: the union of the slices.
+    expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada", "beta.support.ada"]);
+    expect(problems).toEqual(acme!.problems);
   });
 });
 

@@ -80,7 +80,10 @@ The presets frame the board id into the key (`taskSessionKeyFor`,
 task ids coincide; a custom key is used as returned, so two seats that return
 the same string share one child. A shared child serialises its rows:
 `defineFlow` defaults the entry a `per-worker` or `key` seat hands off to
-`queue` concurrency, and an explicit policy on the entry wins.
+`queue` concurrency, and an explicit policy on the entry wins. Only the
+in-process dispatcher enforces it: with an external dispatcher the host skips
+arbitration (`createInboundTransportHost.ts`), so rows sharing a child can
+overlap there.
 
 The child id is derived, never chosen (`deriveDispatchRunSessionId`,
 `engine/src/context/dispatch-run.ts`): tenant, principal, parent session,

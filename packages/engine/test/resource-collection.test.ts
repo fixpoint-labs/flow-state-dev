@@ -114,6 +114,38 @@ describe("collection CRUD", () => {
     expect(await ns.getOptional("nope.ts")).toBeUndefined();
   });
 
+  it("a collection does not address a key its pattern does not match, even when the prefix cache holds it", async () => {
+    const positions = defineResourceCollection({
+      scope: "session",
+      pattern: "positions/*",
+      stateSchema: z.object({ note: z.string() }),
+    });
+    const stores = createInMemoryStores();
+    await stores.resourceState!.set(
+      "session",
+      "sess_1",
+      "positions/AAPL/history",
+      { note: "SECRET" },
+      "any"
+    );
+    const ctx = await createExecutionContext({
+      orgId: DEFAULT_ORG_ID,
+      flow: makeFlow({ positions }),
+      actionName: "run",
+      requestId: "req_1",
+      sessionId: "sess_1",
+      userId: "user_1",
+      stores,
+    });
+    const ns = ctx.resources.positions as ResourceCollectionRef<{ note: string }>;
+    expect(await ns.getOptional("AAPL/history")).toBeUndefined();
+    await expect(ns.get("AAPL/history")).rejects.toThrow(/does not match collection pattern/);
+    await expect(ns.getOrCreate("AAPL/history", { note: "x" })).rejects.toThrow(/does not match collection pattern/);
+    await expect(ns.delete("AAPL/history")).rejects.toThrow(/does not match collection pattern/);
+    const still = await stores.resourceState!.get("session", "sess_1", "positions/AAPL/history");
+    expect(still?.state).toEqual({ note: "SECRET" });
+  });
+
   it("getOrCreate() creates if absent", async () => {
     const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);

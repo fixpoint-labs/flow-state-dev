@@ -17,6 +17,16 @@ Reach for Workforce when you want a named roster you address by opening a sessio
 
 Reach for [Orchestration](../orchestration/overview) when you want to coordinate units of work on a task board. A board worker is a block that claims tasks. A task's `assignee` never names a hired worker.
 
+## What a Workforce app looks like
+
+A Workforce app is a roster, the channels that roster talks in, and the boards its work sits on. A board is a list of tasks, each one something somebody takes and finishes. You describe the roster in files, hire it, and open sessions against the seats you get back.
+
+- **The roster outlives the process.** A team you hire while the app is running is still there after a restart or a redeploy, because the hire is written to the store your app uses. See [Hiring while the app runs](./durable-hire).
+- **A channel is what a reader opens.** A channel is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. See [Channels](./channels).
+- **The screens are importable.** One navigator browses the whole workforce, and the roster and board columns ship beside it, as components from `@flow-state-dev/react`. See [Workforce components](./ui).
+
+Files are the authoring path. A `WORKER.md` under `teams/` and a `CHANNEL.md` beside it are how a roster is written down. Hiring at runtime adds to that roster; it doesn't replace the tree.
+
 ## Hire a roster
 
 Each worker lives at `teams/<team>/workers/<name>/WORKER.md`. `teams/engineering/workers/lead/` hires as `engineering.lead`.
@@ -53,7 +63,7 @@ flowRegistry.registerMany(seats);
 
 That worker file names no `flow:`, so it runs on the built-in worker kind. Its body becomes its instructions, and it talks.
 
-It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. Those skills are stored at organization scope, so each organization keeps its own copy. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
+It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. Each organization keeps its own copy of a seat's skills. On the action call, send `userId` beside `input`. The skills read are the ones stored for the organization that caller already belongs to. The call does not name the organization. Every request runs in one. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 
 To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
 
@@ -95,6 +105,8 @@ Workforce does not staff a task board. It does not replace flows, sessions, or r
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
 - [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
+- [Hiring while the app runs](./durable-hire) — a roster hired at runtime, written to your store, reloaded on the next boot.
+- [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.
 - [Flows](../fundamentals/flows.md) — how a flow copy is configured and addressed.

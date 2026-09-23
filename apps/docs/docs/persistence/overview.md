@@ -346,7 +346,7 @@ The filesystem store gives you that among writes through one store instance. Poi
 
 The tradeoff against the metadata approach is that the id becomes part of your data model. Session ids are namespaced per tenant, so two tenants using the same derived id stay separate, and you cannot change an id later without creating a new session.
 
-The trading-desk example uses this pattern end-to-end — see the [walkthrough](/guides/trading-desk-walkthrough#session-lifecycle-and-persistence).
+Trading Desk demonstrates this pattern end-to-end in its [standalone repository](https://github.com/fixpoint-labs/trading-desk).
 
 ## Choosing a store
 
@@ -360,4 +360,4 @@ Pick by where you run — there's no single "recommended stack":
 
 ### Resource vs. app-owned tables
 
-Resources are the right home for agent-facing, streaming, and per-scope state. For a real relational **system of record** — a ledger, normalized domain entities, cross-row integrity — don't force it into resources: give the app its own typed tables and migrations, sharing the same database and pool as the store. The trading-desk example does exactly this.
+Resources are the right home for agent-facing, streaming, and per-scope state. For a real relational **system of record** — a ledger, normalized domain entities, cross-row integrity — don't force it into resources: give the app its own typed tables and migrations, sharing the same database and pool as the store. Trading Desk demonstrates this in its [standalone repository](https://github.com/fixpoint-labs/trading-desk).

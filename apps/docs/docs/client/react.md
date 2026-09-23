@@ -102,27 +102,27 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 
 ### Background work
 
-Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on in a session of its own. `session.childSessions` is how you show it.
+Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on in a session of its own, called a *dispatch run*. `session.childSessions` is how you show those runs, one `ChildSessionSummary` per run.
 
-Each entry is one child session, with enough on it to render a row:
+Each entry carries enough to render a row:
 
 ```tsx
 const session = useSession(sessionId, { flowKind: "assistant" });
 
 return (
   <aside>
-    {session.childSessions.map((child) => (
-      <button key={child.id} onClick={() => setOpenJobId(child.id)}>
-        {child.topic ?? child.id} — {child.status ?? "not started"}
+    {session.childSessions.map((run) => (
+      <button key={run.id} onClick={() => setOpenRun(run)}>
+        {run.topic ?? run.id} — {run.status ?? "not started"}
       </button>
     ))}
   </aside>
 );
 ```
 
-`topic` is the key the flow derived the child from, so it reads well only when the flow keyed on something legible. Falling back to the session id keeps the row honest when it didn't.
+`topic` is the key the flow derived the run's session from, so it reads well only when the flow keyed on something legible. Falling back to the session id keeps the row honest when it didn't.
 
-This list sits beside the conversation rather than inside it. Nothing a child session produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
+This list sits beside the conversation rather than inside it. Nothing a run produces is added to the chat for you, so if you want "here's what came back" to appear in the transcript, write that yourself and word it how you like.
 
 #### When the list changes
 
@@ -143,24 +143,27 @@ const session = useSession(sessionId, {
 
 `status` is missing until the work has actually run something. Otherwise it is either how the work ended, or `"active"`.
 
-`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question — so don't label it "running" or "working" in your UI. It also reports the last state that was recorded, not a check that the job is alive: work whose worker stopped unexpectedly keeps reading as unfinished until the system picks it back up.
+`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question — so don't label it "running" or "working" in your UI. It also reports the last state that was recorded, not a check that the job is alive: work whose worker stopped unexpectedly keeps reading as unfinished until the system picks it back up. [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value in full.
 
 New status values can appear over time. Render one you don't recognise instead of switching exhaustively over the set.
 
 #### Opening one
 
-A child is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
+A run is a session, so the hook you already have reads it. Keep the whole row when one is chosen, not just its id, and mount the detail view with it:
 
 ```tsx
-function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {
+function BackgroundJobDetail({ run, flowKind }: { run: ChildSessionSummary; flowKind: string }) {
   // `autoResume` matters here: without it you load one snapshot and it never
   // fills in while the job keeps going.
-  const job = useSession(jobId, { flowKind, autoResume: true });
+  const job = useSession(run.id, {
+    flowKind: run.flowId ?? flowKind, // the run's flow, not the conversation's
+    autoResume: true,
+  });
   return <ItemsRenderer items={job.items} />;
 }
 ```
 
-Pass the **same flow kind as the conversation the job belongs to**. Background work runs on its parent flow's worker core, so the job is stamped with that flow's kind rather than a kind of its own — you already have the value, and it needs no lookup. Passing a different name reads as a different flow, and an active job's stream comes back 404 with the view stuck on its first snapshot.
+Pass the flow **the run itself belongs to**, which is not always the conversation's. A run dispatched on the same flow stays there, so the conversation's kind is the value. A run dispatched into another flow belongs to the instance it was sent to, and the row's `flowId` is that address. `run.flowId ?? flowKind` covers both, since `flowId` is absent only on a row that records no owner. Passing a different name reads as a different flow, and an active run's stream comes back 404 with the view stuck on its first snapshot.
 
 Steps show up as the job finishes them. You won't see text being typed out as it is generated — background work surfaces completed steps only.
 

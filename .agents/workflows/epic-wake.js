@@ -1665,6 +1665,90 @@ function bindByPosition(results, ids, onMismatch) {
   return byId
 }
 
+/**
+ * Agent-authored GitHub reviews and comments.
+ *
+ * The grammar is the agent-mailbox header, copied so a workflow script (no imports) can
+ * classify a body. `.omp/extensions/mailbox.ts` `parseMail` is the source of that grammar;
+ * `verify.mjs` fails if the two literals drift. A valid header is `from`, `session`, an
+ * optional `to`, then `kind` (`ask|reply|block|decision|review`), a blank line, and a
+ * non-empty body. Anything else — a role signature, a disclaimer, a timestamp — is not a marker.
+ *
+ * @param {string} body review or comment body, from its first character
+ * @returns {boolean} true when the body carries a well-formed agent header
+ */
+function hasAgentAuthoredMarker(body) {
+  if (typeof body !== 'string' || !body) return false
+  const match = body.replace(/\r\n/g, '\n').match(
+    /^from:[ \t]*([a-z0-9._-]+)[ \t]*\nsession:[ \t]*([a-z0-9._-]+)[ \t]*\n(?:to:[ \t]*([a-z0-9._-]+)[ \t]*\n)?kind:[ \t]*(ask|reply|block|decision|review)[ \t]*\n[ \t]*\n([\s\S]+)$/i,
+  )
+  return !!(match && match[5].trim())
+}
+
+/**
+ * Whether author-exclusion drops this login.
+ *
+ * FIX-1300: the configured owner is not excluded for being the PR author. Every PR is
+ * opened under that login, so a literal "not the author" rule ruled the owner out by
+ * construction. Every other author is still excluded — that is what stops a worker
+ * approving its own PR. The exception does not make an owner-login review the owner's
+ * signature; `classifyApprovalArtifacts` applies that check separately.
+ *
+ * @param {string} login GitHub login on the review or comment
+ * @param {boolean} prAuthor true when that login opened the PR
+ * @param {string | null | undefined} owner configured approval owner
+ * @returns {boolean} true when this login's approval is a self-approval
+ */
+function authorExcludedFromApproval(login, prAuthor, owner) {
+  if (!prAuthor) return false
+  const ownerLogin = typeof owner === 'string' ? owner.trim().toLowerCase() : ''
+  if (ownerLogin && String(login || '').toLowerCase() === ownerLogin) return false
+  return true
+}
+
+/**
+ * Decide whether GitHub comments and reviews satisfy a direction gate.
+ *
+ * The scout's approval boolean is not this decision. Agents post as the owner, so login
+ * and `MEMBER` cannot tell them apart. A valid agent header never counts. An approval-shaped
+ * artifact under the owner login with no header is suspect — not satisfied. A non-owner
+ * human who is not the PR author still counts, on the current head only. Bots never count.
+ * Prose and timestamps are not inputs.
+ *
+ * @param {Array<object>} artifacts review and comment records the scout copied
+ * @param {string | null | undefined} owner configured approval owner
+ * @returns {{ approved: boolean, suspectOwnerApproval: boolean, agentMarkedApproval: boolean }}
+ */
+function classifyApprovalArtifacts(artifacts, owner) {
+  const list = Array.isArray(artifacts) ? artifacts : []
+  const ownerLogin = typeof owner === 'string' && owner.trim() ? owner.trim().toLowerCase() : null
+  let approved = false
+  let suspectOwnerApproval = false
+  let agentMarkedApproval = false
+  for (const artifact of list) {
+    if (!artifact || typeof artifact !== 'object') continue
+    const login = String(artifact.login || '')
+    const bot = artifact.bot === true || /\[bot\]$/i.test(login)
+    const marked = hasAgentAuthoredMarker(artifact.body)
+    const approvalShaped =
+      artifact.state === 'APPROVED' ||
+      (artifact.countsAsApprovalAttempt === true &&
+        (artifact.state === 'COMMENTED' || artifact.state === 'COMMENT' || artifact.channel === 'comment'))
+    if (!approvalShaped || bot) continue
+    if (marked) {
+      agentMarkedApproval = true
+      continue
+    }
+    if (authorExcludedFromApproval(login, artifact.prAuthor === true, owner)) continue
+    if (ownerLogin && login.toLowerCase() === ownerLogin) {
+      suspectOwnerApproval = true
+      continue
+    }
+    if (artifact.onCurrentHead === true) approved = true
+  }
+  return { approved, suspectOwnerApproval, agentMarkedApproval }
+}
+
 // ---------------------------------------------------------------------------
 // Agent result schemas
 // ---------------------------------------------------------------------------
@@ -1701,6 +1785,26 @@ const SETTLE_REQUESTED_SCHEMA = {
   },
 }
 
+const APPROVAL_ARTIFACT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['channel', 'login', 'bot', 'prAuthor', 'state', 'onCurrentHead', 'body', 'countsAsApprovalAttempt'],
+  properties: {
+    channel: { type: 'string', enum: ['review', 'comment'] },
+    login: { type: 'string' },
+    bot: { type: 'boolean' },
+    prAuthor: { type: 'boolean', description: 'True when this login opened the PR' },
+    state: { type: 'string', enum: ['APPROVED', 'COMMENTED', 'CHANGES_REQUESTED', 'DISMISSED', 'COMMENT'] },
+    onCurrentHead: { type: 'boolean' },
+    body: { type: 'string', description: 'Body from its first character. Do not strip a header.' },
+    countsAsApprovalAttempt: {
+      type: 'boolean',
+      description:
+        'True for a COMMENTED review or a comment you would have called approving. An APPROVED review is approval-shaped either way.',
+    },
+  },
+}
+
 const GATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -1714,9 +1818,20 @@ const GATE_SCHEMA = {
     'latestActivityAt',
     'approvedHeadSha',
     'specMerged',
+    'approvalArtifacts',
   ],
   properties: {
-    approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human — or by the configured owner, who counts even as the PR author' },
+    approved: {
+      type: 'boolean',
+      description:
+        'Ignored for the comment/review channel — the wake classifies approvalArtifacts. Still required so an omission cannot be read as approval. Labels stay on approvedByLabel.',
+    },
+    approvalArtifacts: {
+      type: 'array',
+      description:
+        'Every review submission, plus every comment you would treat as approving. The wake classifies these; an empty array is no comment/review approval. Copy each body from its first character.',
+      items: APPROVAL_ARTIFACT_SCHEMA,
+    },
     approvedByLabel: {
       type: 'boolean',
       description:
@@ -1788,7 +1903,7 @@ const PR_STATE_SCHEMA = {
   // schema while omitting it, and `cursorUsable` correctly refused the batch — but the planner had no
   // way to tell that refusal apart from a genuinely converged review, so it logged "converged" for a
   // fold that was actually withheld. `['string','null']` still lets a scout say "no activity to date".
-  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'approvedHeadSha', 'specMerged', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt'],
+  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'approvedHeadSha', 'specMerged', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt', 'approvalArtifacts'],
   properties: {
     issueId: { type: 'string' },
     observed: {
@@ -1808,7 +1923,17 @@ const PR_STATE_SCHEMA = {
     },
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
-    specApproved: { type: 'boolean', description: 'Approving human comment/review on the CURRENT head — never a stale one' },
+    specApproved: {
+      type: 'boolean',
+      description:
+        'Ignored for the comment/review channel — the wake classifies approvalArtifacts. Still required so an omission cannot be read as approval. Labels stay on specApprovedByLabel.',
+    },
+    approvalArtifacts: {
+      type: 'array',
+      description:
+        'Every review on the spec PR, plus every comment you would treat as approving. The wake classifies these. Copy each body from its first character. Empty means no comment/review approval.',
+      items: APPROVAL_ARTIFACT_SCHEMA,
+    },
     approvedHeadSha: { type: ['string', 'null'], description: 'The source head actually approved by the human. For an already merged spec, recover its historical approval, not an implementation head.' },
     specMerged: { type: 'boolean', description: 'The SPEC PR was observed merged. Separate from merged, which describes implementation.' },
     specApprovedByLabel: {
@@ -2117,15 +2242,24 @@ const rows = input.issues || []
 const approvalOwner = typeof input.owner === 'string' && input.owner.trim() ? input.owner.trim() : null
 // Who may approve by COMMENT or REVIEW. "Not the PR author" exists so a worker cannot approve its own
 // PR — and every PR here is opened under the owner's login, so read literally it excluded the owner
-// by construction: "Approved. Lets proceed." from the owner on their own spec PR read as a
-// self-approval and released nothing. The owner is not a worker; their sign-off counts as author.
-// Every OTHER login keeps the exclusion, and bots never count. With no owner configured there is
-// nobody to exempt, so the rule stands as it was.
-const approverRule =
-  `from a human who is not the PR author` +
+// by construction (FIX-1300). The owner stays eligible as author. That exception is not a signature:
+// agents post under the same login, so an owner-login review is classified from approvalArtifacts
+// (agent header → not approval; no header → suspect, not satisfied). Every OTHER login keeps the
+// author exclusion, and bots never count. With no owner configured there is nobody to mark suspect.
+const authorshipScan =
+  `Return approvalArtifacts: every review submission, plus every PR comment or review comment you would treat as an approving comment. ` +
+  `Copy each body from its first character — do not strip a header. ` +
+  `channel is review or comment; login; bot; prAuthor true when that login opened the PR; state one of APPROVED, COMMENTED, CHANGES_REQUESTED, DISMISSED, COMMENT; onCurrentHead; countsAsApprovalAttempt true only for a COMMENTED review or a comment you would have called approving. ` +
+  `The wake IGNORES your approved/specApproved boolean for comments and reviews and classifies this array. An empty array means no comment/review approval. ` +
+  `A body is agent-authored only when it opens with the agent-mailbox header: from:, then session:, an optional to:, then kind: whose value is ask, reply, block, decision, or review, then a blank line and a non-empty body. ` +
+  `That marker never satisfies the gate, and an agent-marked review is not a human CHANGES_REQUESTED. ` +
+  `An APPROVED review, or an approval-attempt comment, under the configured owner login with no such header is SUSPECT — include it and do not treat it as the gate. ` +
+  `Do not use timestamp proximity or prose style as a discriminator. ` +
+  `Author exclusion: a human who is not the PR author` +
   (approvalOwner
-    ? ` — EXCEPT \`${approvalOwner}\`, whose approving comment or review counts even when that login is also the PR's author. Every PR in this repo is opened under that account, so the author exclusion would rule the owner out by construction; it exists so a worker cannot approve its own PR, and the owner is not a worker. Every other login is still excluded when it authored the PR`
-    : '')
+    ? `. EXCEPT \`${approvalOwner}\`, who is NOT excluded for being the PR author (FIX-1300) — every PR is opened under that login, and the exclusion exists so a worker cannot approve its own PR. The exception does not make an \`${approvalOwner}\` review or comment into their sign-off. Every other login is still excluded when it authored the PR.`
+    : '. No owner login is configured, so no login is exempt from author exclusion and none is owner-looking.') +
+  ` Bots ([bot], Bugbot, Codex, Copilot) never count.\n`
 // An explicit positive cap wins; anything else (absent, 0, junk) falls back to the default
 // rather than silently becoming it.
 const cap = Number.isFinite(input.cap) && input.cap > 0 ? input.cap : 3
@@ -2163,7 +2297,8 @@ if (carriedForward.size) {
 const [gate, linear, prScan] = await parallel([
   () =>
     agent(
-      `Scan epic PR #${epic.prNumber} for objective approval AND spec merge. Report specMerged from actual PR merge metadata, never closure or labels. Report approvedHeadSha as the exact source revision the human reviewed. For an open spec, approved:true requires a human approving comment or latest APPROVED review on its CURRENT head, ${approverRule}; a later push invalidates it. For an already merged original, recover the historical human approval and source head from its review record even if labels or the source branch were deleted. Never substitute main's current SHA or the merge commit for the reviewed source head. Exclude bots (Bugbot, Codex, Copilot) and agent self-approval.\n` +
+      `Scan epic PR #${epic.prNumber} for objective approval AND spec merge. Report specMerged from actual PR merge metadata, never closure or labels. Report approvedHeadSha as the exact source revision a human approval names. A later push invalidates an open-spec approval. For an already merged original, recover the historical human approval and source head from its review record even if labels or the source branch were deleted. Never substitute main's current SHA or the merge commit for the reviewed source head. Never infer approval from merge alone or from body prose.\n` +
+        authorshipScan +
         (approvalOwner
           ? `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL **and \`${approvalOwner}\` applied it**. Two independent checks, and conflating them is the bug this wording exists to prevent:\n` +
             `  · WHO — verify provenance. Read the PR's timeline for \`labeled\` events naming \`epic approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\`. Not "a human" — this label is that account's authorization channel specifically, and a label is writable by every collaborator and every bot with write access, so accepting it from anyone else releases every child issue without the sign-off the gate exists to require. If the timeline is unreadable, or no \`labeled\` event can be found for a label that is present, or the most recent one was applied by anybody else, report FALSE — an approval you cannot attribute to \`${approvalOwner}\` is not an approval.\n` +
@@ -2228,7 +2363,8 @@ const [gate, linear, prScan] = await parallel([
                 )
                 .join('') +
               `\nFor EVERY issue above:\n` +
-              `Read PR comments, reviews, check-runs and merge metadata. Report specMerged for the SPEC PR, separately from merged for implementation. headSha is the SPEC source head whenever a spec exists, not the implementation head. Report approvedHeadSha as the source revision actually approved. For an open spec, specApproved requires a current-head human approving comment or latest APPROVED review, ${approverRule}. Any human's latest CHANGES_REQUESTED vetoes open-spec approval. For merged originals recover historical approval and source-head provenance even after branch deletion or label removal. Never infer approval from merge alone, body claims, or bot reviews.\n` +
+              `Read PR comments, reviews, check-runs and merge metadata. Report specMerged for the SPEC PR, separately from merged for implementation. headSha is the SPEC source head whenever a spec exists, not the implementation head. Report approvedHeadSha as the source revision a human approval names. Any human's latest CHANGES_REQUESTED vetoes open-spec approval — a bot or an agent-marked review does not. For merged originals recover historical approval and source-head provenance even after branch deletion or label removal. Never infer approval from merge alone or from body prose.\n` +
+              authorshipScan +
               (approvalOwner
                 ? `SEPARATELY report specApprovedByLabel:true only for a \`spec approved\` label that \`${approvalOwner}\` applied to the reviewed source head. Read the most recent labeling event and require that exact owner's login, not merely any human. Establish approvedHeadSha from the event and PR timeline; a label left on a later push is stale. Unreadable provenance or an unknown reviewed revision means FALSE, not inherited approval.\n`
                 : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
@@ -2239,6 +2375,47 @@ const [gate, linear, prScan] = await parallel([
       ]
     : []),
 ])
+
+// Comment/review approval is the artifact classification, not the scout's boolean. The boolean stays
+// in the schema so an omission cannot be mistaken for a value, and is then overwritten. A missing
+// array fails closed: a claimed approval with no evidence is not a gate. Labels are a separate field.
+const suspectOwnerApprovals = []
+function applyReviewAuthorship(entry, where) {
+  if (!entry) return entry
+  const claimed = !!(entry.approved || entry.specApproved)
+  if (!Array.isArray(entry.approvalArtifacts)) {
+    if (claimed) {
+      log(`${where}: scout reported a GitHub approval with no approvalArtifacts. Comment/review approval fails closed.`)
+    }
+    const closed = { ...entry }
+    if ('approved' in entry) closed.approved = false
+    if ('specApproved' in entry) closed.specApproved = false
+    return closed
+  }
+  const classified = classifyApprovalArtifacts(entry.approvalArtifacts, approvalOwner)
+  if (claimed && !classified.approved) {
+    log(`${where}: a scout-reported GitHub approval did not survive the authorship check. Not a satisfied gate.`)
+  }
+  if (classified.suspectOwnerApproval) {
+    suspectOwnerApprovals.push(
+      where === 'epic'
+        ? { kind: 'epic', pr: epic.prNumber }
+        : { kind: 'spec', issueId: entry.issueId || null, pr: entry.specPr || null },
+    )
+    log(
+      `${where}: unmarked approval under \`${approvalOwner || 'the owner login'}\` is suspect. It is not the gate — escalate, do not implement.`,
+    )
+  }
+  const next = { ...entry, suspectOwnerApproval: classified.suspectOwnerApproval }
+  if ('approved' in entry) next.approved = classified.approved
+  if ('specApproved' in entry) next.specApproved = classified.approved
+  return next
+}
+if (gate) {
+  const rewritten = applyReviewAuthorship(gate, 'epic')
+  gate.approved = rewritten.approved
+  gate.suspectOwnerApproval = rewritten.suspectOwnerApproval
+}
 
 // Approval authorizes the coordinator to dispatch spec merge under the canonical worker contract.
 // It does not release children until that merge is observed. Landed originals are historical
@@ -2304,7 +2481,9 @@ const linearById = new Map(linearIssues.map((i) => [i.id, i]))
 // its entries, and it is precisely what the refresh has an invariant against: `issueId` is a
 // free-form string, so one issue's approval could land on another row's gate. Position decides; the
 // name only ever discards.
-const scanEntries = (prScan && prScan.issues) || []
+const scanEntries = ((prScan && prScan.issues) || []).map((entry) =>
+  entry && entry.observed ? applyReviewAuthorship(entry, entry.issueId || 'spec') : entry,
+)
 if (!prScan && scannedRows.length) {
   // Batching's one real cost, said out loud. One dead scan is now every row's dead scout — which is
   // the SAFE failure (nothing observed, nothing advanced) and not the dangerous one (rows read as
@@ -3591,4 +3770,8 @@ return {
   // row is terminal" is true precisely in the failure case this guards. Every wake with a drop
   // holds the wrap, whether or not the drop was ultimately tied to a carried row.
   mayWrap: wrapReadyButForDrops && droppedLinearEntries.length === 0,
+  // Owner-login GitHub approvals with no agent header. Not a satisfied gate. The coordinator
+  // escalates these; it does not treat them as sign-off and it does not drop a separate
+  // acceptance (a non-owner human review, an in-session go-ahead, or an owner label).
+  suspectOwnerApprovals,
 }

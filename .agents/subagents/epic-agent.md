@@ -86,10 +86,12 @@ Take the single action the dispatch calls for:
   live forks included); *Reviewers · look here* at epic altitude; the links line; the contract
   collapsed and pasted **verbatim**. **Budget ~450 words.** Pin every image to the commit SHA
   and use the raw-content URL — a branch URL is cached stale by GitHub's image proxy and a blob
-  URL doesn't render. If the tool you write the body with defangs the image lines (wraps them
-  in backticks), don't fight it: leave a link to `SPEC.md`'s blob view in their place and
-  return the three `<img>` lines in `pins:` for a person to paste; and **never rewrite a body a
-  person has pasted an image into** — return the new pins instead.
+  URL doesn't render. Read the stored body back ([`spec-figures.md`](../../docs/contributing/spec-figures.md) →
+  "In the PR body"). A `src` with no backtick renders, and a later edit keeps it — do not drop
+  the figures because an update is assumed to kill them. If a `src` comes back with a backtick
+  in it, don't fight that write: leave a link to `SPEC.md`'s blob view in their place and
+  return the three clean `<img>` lines in `pins:` (the lines you sent, not the stored ones);
+  and **never rewrite a body a person has pasted an image into** — return the new pins instead.
 
 - **End-state POC** (when the coordinator dispatches one): build it under
   `specs/epics/<EPIC-ISSUE-ID>/poc/<experiment>/` on the current review or new amendment branch, following
