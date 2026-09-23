@@ -774,29 +774,36 @@ export function hireWorkforce(
 
   // After the refusals, deliberately: a roster that did not hire has nothing
   // to be unattended by, and a warning printed beside a fatal error is noise.
-  warnUnattendedBoards(options.channelBoards ?? [], seats);
+  for (const warning of unattendedBoardWarnings(options.channelBoards ?? [], seats)) {
+    console.warn(warning);
+  }
 
   return seats;
 }
 
 /**
- * Say which channel boards nobody hired here drains.
+ * The unattended-board sentences `hireWorkforce` prints, as values.
+ *
+ * Hire does not attach boards. A caller that surfaces the same warning on a
+ * tool result (the seat-hire capability) reads them here rather than
+ * re-deriving the text, so the mint and the tool stay one story.
  *
  * Read off the hired instances' merged `resources` rather than off the kinds:
  * a board reaches a flow either as a flow-level declaration or by bubbling up
  * from a capability, and only the minted instance has both.
  */
-function warnUnattendedBoards(
+export function unattendedBoardWarnings(
   boardIds: readonly string[],
   seats: readonly FlowInstance[]
-): void {
-  if (boardIds.length === 0) return;
+): string[] {
+  if (boardIds.length === 0) return [];
 
   const declared = new Set<string>();
   for (const seat of seats) {
     for (const key of Object.keys(seat.resources ?? {})) declared.add(key);
   }
 
+  const warnings: string[] = [];
   for (const boardId of boardIds) {
     if (declared.has(boardId)) continue;
     // A board id is its channel's id, a dot, and a name carrying no dot.
@@ -805,7 +812,7 @@ function warnUnattendedBoards(
     // and what an operator goes looking for. The minted id appears once, in
     // the fix, where it is the thing to copy.
     const boardName = boardId.slice(channelId.length + 1);
-    console.warn(
+    warnings.push(
       `[workforce] channel "${channelId}" holds board "${boardName}" (ledger "${boardId}"), ` +
         `and no flow hired in this ` +
         `call declares it. Rows filed there will sit pending until something drains them — ` +
@@ -814,4 +821,5 @@ function warnUnattendedBoards(
         `or ignore this if that seat runs in another process.`
     );
   }
+  return warnings;
 }

@@ -30,7 +30,7 @@ const channel = (id: string, description?: string): ChannelManifest => ({
 });
 
 /** A ctx carrying one stub collection per key, listing the rows it was given. */
-function ctxWith(collections: Record<string, unknown[]>): never {
+function ctxWith(collections: Record<string, unknown[]>, orgId?: string): never {
   const resources: Record<string, unknown> = {};
   for (const [key, rows] of Object.entries(collections)) {
     resources[key] = {
@@ -42,12 +42,19 @@ function ctxWith(collections: Record<string, unknown[]>): never {
       list: async () => rows.map((state, index) => ({ path: `${key}/${index}`, state }))
     };
   }
-  return { resources } as never;
+  return {
+    resources,
+    ...(orgId === undefined ? {} : { org: { identity: { orgId, id: orgId } } }),
+  } as never;
 }
 
 /** The sources, keyed by domain, for a roster and a set of inventory keys. */
-function sourcesOf(roster: DeclaredWorkforce, inventory: { seats?: string; channels?: string }) {
-  const built = workforceManifestSources({ roster, inventory });
+function sourcesOf(
+  roster: DeclaredWorkforce,
+  inventory: { seats?: string; channels?: string },
+  hiredRoster?: string,
+) {
+  const built = workforceManifestSources({ roster, inventory, hiredRoster });
   return Object.fromEntries(built.map((source) => [source.domain, source]));
 }
 
@@ -103,6 +110,56 @@ describe("the seats source", () => {
     const { seats } = sourcesOf({ workers: [worker("a.b")], channels: [] }, { seats: "seatRows" });
     const [entry] = await seats!.entries(ctxWith({ seatRows: [{ id: "a.b", kind: "agent" }] }));
     expect(entry!.purpose).toBe('The seat "a.b". Its file declares no description.');
+  });
+
+  it("FIX-1526 · a roster row with no file is the declared half, so Discover lists a runtime hire", async () => {
+    const { seats } = sourcesOf(EMPTY, { seats: "seatRows" }, "hiredRows");
+    const ctx = ctxWith(
+      {
+        seatRows: [{ id: "acme.eng.ada", kind: "agent" }],
+        hiredRows: [
+          { seatId: "eng.ada", flow: "agent", settings: {}, instructions: "You take support tickets." },
+        ],
+      },
+      "acme",
+    );
+
+    const entries = await seats!.entries(ctx);
+    expect(entries.map((entry) => entry.id)).toEqual(["acme.eng.ada"]);
+    expect(entries[0]!.purpose).toBe("You take support tickets.");
+  });
+
+  it("FIX-1526 · an inventory row whose roster row was fired is withheld", async () => {
+    const { seats } = sourcesOf(EMPTY, { seats: "seatRows" }, "hiredRows");
+    const ctx = ctxWith(
+      {
+        seatRows: [{ id: "acme.eng.ada", kind: "agent" }],
+        hiredRows: [],
+      },
+      "acme",
+    );
+
+    expect(await seats!.entries(ctx)).toEqual([]);
+  });
+
+  it("FIX-1526 · a file-declared seat still wins over a same-id roster row", async () => {
+    const roster: DeclaredWorkforce = {
+      workers: [worker("acme.eng.ada", "Declared on disk.")],
+      channels: [],
+    };
+    const { seats } = sourcesOf(roster, { seats: "seatRows" }, "hiredRows");
+    const ctx = ctxWith(
+      {
+        seatRows: [{ id: "acme.eng.ada", kind: "agent" }],
+        hiredRows: [
+          { seatId: "eng.ada", flow: "agent", settings: {}, instructions: "Runtime body that must not win." },
+        ],
+      },
+      "acme",
+    );
+
+    const [entry] = await seats!.entries(ctx);
+    expect(entry!.purpose).toBe("Declared on disk.");
   });
 });
 
@@ -238,7 +295,7 @@ describe("what gets registered, and what a missing collection does", () => {
       seats: "seatRows"
     });
     await expect(seats!.entries(ctxWith({ somethingElse: [] }))).rejects.toThrow(
-      /seats inventory collection "seatRows" is not registered/
+      /seats collection "seatRows" is not registered/
     );
   });
 });

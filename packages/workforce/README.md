@@ -1318,14 +1318,15 @@ too, naming both numbers. The cap is `maxOrgs`, 100 by default; the read's own b
 partial roster, because a short roster that looks complete is the failure this is guarding against.
 
 The roster and the inventory are different collections. A roster row at
-`workforce/roster/<seatId>` is the durable hire: `hire` writes it with `create()`, `fire` deletes
-it. An inventory row at `inventory/seats/<address>` means *was registered in this organization* and
+`workforce/roster/<seatId>` is the durable hire: `hire` writes it, `fire` deletes it. An
+inventory row at `inventory/seats/<address>` means *was registered in this organization* and
 is never removed.
 
-`createSeatHireCapability`'s `hire` tool writes both. `discover` lists a seat only when a
-declaration and an inventory row both answer. The declared half is the boot-resolved file tree,
-plus hired-roster rows when you pass `hiredRoster`. A file-declared description wins over a
-same-id roster row. After `fire`, the inventory row remains and `discover` withholds the seat.
+`createSeatHireCapability`'s `hire` tool writes both. `discover` lists a seat when it is still
+hired or still declared in a worker file, and has been registered in this organization. Pass
+`hiredRoster` on `createWorkforceCapability` so a runtime hire is listed the same way a
+file-declared seat is. A file-declared description wins over a same-id hire. After `fire`,
+the inventory row remains and `discover` withholds the seat.
 
 ### Hire and fire as catalog tools
 
@@ -1333,8 +1334,7 @@ same-id roster row. After `fire`, the inventory row remains and `discover` withh
 `defineAgentWorkerFlow({ uses: [seatHire] })`. A seat has to name those tools in `tools:`.
 An empty `tools:` list means the seat cannot call them.
 
-The org is never an option. It comes from the verified principal (`ctx.org.identity.orgId`). A
-body that names `orgId` is accepted and ignored.
+The seat is hired in the caller's organization. A body `orgId` is ignored.
 
 ```ts
 import {
@@ -1380,27 +1380,24 @@ const [manager] = hireWorkforce(
 );
 ```
 
-Assign the kind onto `kinds` after the factory runs, so the closed-over map sees it.
-
-A seat whose `tools:` is empty cannot hire, even though the kind installed the capability.
+Pass the same `kinds` object you pass to `hireWorkforce`. A kind you add on that object after
+the factory runs is hireable.
 
 | Option | Role |
 |--------|------|
-| `kinds` | The same map `hireWorkforce` takes. Closed over, not copied. Omit it and only built-in `agent` is hireable, unless `allowKinds` excludes it. |
+| `kinds` | The same map `hireWorkforce` takes. Omit it and only built-in `agent` is hireable, unless `allowKinds` excludes it. |
 | `register(seat)` | Admit the minted flow at its address. |
 | `unregister(id)` | Release the address in this process. Returns whether it was held. |
-| `kindAt?(id)` | Kind serving an address right now. Hire uses it to refuse a second hire of a live seat. Fire uses it to refuse a file-declared seat. Omit it and `create()` on the roster is the duplicate refusal. |
+| `kindAt?(id)` | Kind serving an address right now. Hire uses it to refuse a second hire of a live seat. Fire uses it to refuse a file-declared seat. Omit it and a duplicate seat is still refused. |
 | `allowKinds?` | Subset of kinds this tool may mint. |
 | `channelBoards?` | Ledger ids forwarded so an unattended board warns. Hire does not attach boards. |
 
 **`hire`** takes `{ seatId, flow, settings?, instructions?, orgId? }` (extra keys are refused)
 and returns `{ seatId, address, warning? }`. `address` is `<orgId>.<seatId>`.
 
-It writes `workforce/roster/<seatId>` with `create()` (a duplicate throws), then registers the
-minted flow, then upserts `inventory/seats/<address>` as `{ id: address, kind: flow }`. If
-`register` throws, the roster row is deleted and the inventory row is not written. It does not
-invent a kind. It does not attach boards. `warning` is present when a named channel board is
-unattended.
+A successful hire leaves a roster row and an inventory row. A thrown `register` leaves neither.
+A duplicate seat is refused. It does not invent a kind. It does not attach boards. `warning`
+is present when a named channel board is unattended.
 
 It refuses an unknown kind or one outside `allowKinds` (and lists the hireable ones), an
 address already served, and a request with no organization.
@@ -1415,10 +1412,9 @@ It refuses when this organization hired no seat, or when a live file-declared se
 address (removed by editing its folder, not by firing it).
 
 **Pairing with `discover`.** Compose both capabilities on the kind and pass
-`inventory: { seats: SEAT_INVENTORY_RESOURCE }` plus `hiredRoster: HIRED_ROSTER_RESOURCE` so
-`discover` reads the collections seat-hire writes. When `hiredRoster` is set, a roster row with
-no file is the declared half, so a runtime hire is listed the same way a file-declared seat is.
-Omit it and only the boot-resolved file tree is declared.
+`inventory: { seats: SEAT_INVENTORY_RESOURCE }` plus `hiredRoster: HIRED_ROSTER_RESOURCE`.
+Pass both keys so `discover` lists a runtime hire the same way it lists a file-declared seat.
+Omit `hiredRoster` and it lists only file-declared seats.
 
 ## The live inventory
 
@@ -1634,9 +1630,9 @@ membershipPrefix("");
 | `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. |
 | `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
-| `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources (file-declared workers plus, when `hiredRoster` is set, hired-roster rows, each joined to the live inventory) plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Omit `hiredRoster` and only the boot-resolved file tree is declared. |
-| `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and channel sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` as `createWorkforceCapability`, which is the ordinary door and calls this. |
-| `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat names those tools in `tools:` or cannot call them. Writes the hired roster and `inventory/seats/*`. Org comes from the verified principal, never from the body. |
+| `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
+| `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and channel sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
+| `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat names those tools in `tools:` or cannot call them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. |
 | `SEAT_HIRE_CAPABILITY` | The capability name, `"seat-hire"`. |
 | `HIRED_ROSTER_RESOURCE` | Registry key the seat-hire capability installs the hired roster under, `"hiredRoster"`. Pass it as `hiredRoster` on `createWorkforceCapability` so `discover` reads the same collection. |
 | `SEAT_INVENTORY_RESOURCE` | Registry key the seat-hire capability installs the seat inventory under, `"seatInventory"`. Pass it as `inventory.seats` on `createWorkforceCapability`. |
@@ -1652,7 +1648,7 @@ membershipPrefix("");
 | `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, every `resources/` folder the convention reads, and every `blocks/` folder inside the team tree, returning what they hold on `files`, `resourceModules` and `seatBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules, seatBlocks?)` | Render a discovery's `files`, `resourceModules` and `seatBlocks` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `seatBlocks` and `resourceModules`. Pass all three: the third parameter defaults to `[]`, so omitting it renders an empty `seatBlocks` map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(manifests, { kinds, seatBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, the per-seat tree wall is derived against it, and a kind holding references it was not given refuses the whole roster. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
-| `unattendedBoardWarnings(boardIds, seats)` | The unattended-board warning strings `hireWorkforce` prints. Hire does not attach boards. The `hire` tool puts the same sentences on `warning` when a named ledger has no seat in the call that declares it. |
+| `unattendedBoardWarnings(boardIds, seats)` | The unattended-board warning strings `hireWorkforce` prints. The `hire` tool puts the same sentences on `warning` when a named board has no seat that declares it. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills` and `seatTools`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
 | `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
