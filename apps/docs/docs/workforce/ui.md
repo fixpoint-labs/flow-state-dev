@@ -64,16 +64,39 @@ export const shell = defineFlow({
 ```tsx
 import { useMemo } from "react";
 import { createResourceClient } from "@flow-state-dev/client";
+import { BoardColumns, Roster } from "@flow-state-dev/react";
 
-// Built once, and wired to however your deployment authenticates (a
-// `fetcher` that attaches your bearer token or cookie).
-const resourceClient = useMemo(() => createResourceClient({ baseUrl: "" }), []);
+type ShellPanelsProps = {
+  sessionId: string;
+  bootProblems: readonly string[];
+  // Your app's way of getting the signed-in user's token. Keep its identity
+  // stable across renders, or the client is rebuilt and the panels re-read.
+  getToken: () => Promise<string>;
+};
 
-<Roster sessionId={sessionId} problems={bootProblems} resourceClient={resourceClient} />
-<BoardColumns sessionId={sessionId} boardRef="support.desk.followups" resourceClient={resourceClient} />
+export function ShellPanels({ sessionId, bootProblems, getToken }: ShellPanelsProps) {
+  const resourceClient = useMemo(
+    () =>
+      createResourceClient({
+        fetcher: async (input, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set("Authorization", `Bearer ${await getToken()}`);
+          return fetch(input, { ...init, headers });
+        },
+      }),
+    [getToken],
+  );
+
+  return (
+    <>
+      <Roster sessionId={sessionId} problems={bootProblems} resourceClient={resourceClient} />
+      <BoardColumns sessionId={sessionId} boardRef="support.desk.followups" resourceClient={resourceClient} />
+    </>
+  );
+}
 ```
 
-Pass the same `resourceClient` to both. Leave it out and each panel builds its own unauthenticated one instead, which works with no sign-in configured but gets a 401 the moment your resource routes require a credential.
+Pass the same `resourceClient` to both, built once. Leave it out and each panel builds its own client with the plain browser `fetch`. That sends a same-origin cookie but no `Authorization` header, so once your [resolver](../server/authentication.md) expects a bearer token, the panels' reads get a 401.
 
 `problems` is the list of seats your last boot could not bring back. It comes from `reloadHiredSeats` on the server, so your app has to hand it to the browser itself, for example by writing it to an organization-scoped collection the same flow declares. See [Hiring while the app runs](./durable-hire).
 
