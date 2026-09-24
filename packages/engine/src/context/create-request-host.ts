@@ -51,7 +51,7 @@
  *   a sender)
  * - a cross-flow address in a process with no flow registry wired, or naming a
  *   flow it has not registered → `flow-not-found`
- * - an address naming a hired instance whose pin the running request's
+ * - an address naming an owner-pinned instance whose pin the running request's
  *   principal is outside → `flow-not-found`, the same answer, before anything
  *   is written
  * - the liveness gate refused → `livenessOf` is **absent from the bundle**
@@ -80,7 +80,7 @@ import { deriveDispatchRunSessionId, evaluateAdoption } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
 import type { DispatchOperation } from "./dispatch-operation";
 import { purgeStaleResourceState } from "./ensure-session-record";
-import { pinRejectsCaller } from "./hire-plane";
+import { pinRejectsCaller } from "./instance-pin";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
 

@@ -67,7 +67,7 @@ import type { InboundTransportHost, PrincipalResolver } from "../transports/type
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { createDispatchOperation } from "../context/dispatch-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
-import { pinRejectsCaller } from "../context/hire-plane";
+import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
@@ -715,7 +715,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 /**
  * Catalog rows for this caller.
  *
- * Unpinned flows are always listed. A hired instance is listed only when the
+ * Unpinned flows are always listed. A pinned instance is listed only when the
  * caller, resolved the way that instance's own doors resolve it
  * (`createInstanceCallerResolver`), matches its pin. Resolution runs only when
  * the registry holds a pin, so a catalog of shared flows does not start
