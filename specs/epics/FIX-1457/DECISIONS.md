@@ -7,7 +7,9 @@ The calls above any single issue in W5: what was chosen, what lost, what each lo
 set. [D6](#d6) was rewritten: W5 is **release QA**, and the done condition is **three named exit
 proofs**. [D8](#d8) and [D9](#d9) are new and both are reversals of standing fences.
 [D7](#d7), [D2](#d2), [D3](#d3) stand unchanged; [D4](#d4) is restated and **its ship fence still
-stands**; [D5](#d5)'s arithmetic changed again.
+stands**; [D5](#d5)'s arithmetic changed again. **[D10](#d10) and [D11](#d11) are new on
+2026-09-24**, both owner answers: row 5 is built in W5, and row 6's live read waits for the first
+real hire with a sealed document. [Open](#open) is empty.
 
 ## The tree
 
@@ -31,6 +33,10 @@ flowchart TD
   D4 -.->|"rejected"| X4["nest W5 under W4 · or hold the polish too"]
   E --> D5["D5 · started as the fourth active epic"]
   D5 -.->|"rejected"| X5["force an epic to wrap to free a slot"]
+  E --> D10["D10 · row 5 is a channel session's view of the org<br/>built in W5"]
+  D10 -.->|"rejected"| X10["an org-level surface apart from sessions · exit on five rows of six"]
+  E --> D11["D11 · row 6 proved by automated checks<br/>its live read waits for a real hire"]
+  D11 -.->|"rejected"| X11["kind code whose only job is the inspection · hold ER-Devtool open"]
 ```
 
 <a name="d6"></a>
@@ -46,7 +52,7 @@ flowchart TD
 |---|---|
 | **Instead of** | The three *surfaces* — reference app, live view, real configuration — whose first leg has now left the set · or a "polish" epic with no pass/fail bar, which is how *looks good* becomes a done condition |
 | **Because** | A QA epic's whole product is **evidence**, and evidence has to be falsifiable. Three named proofs each say what must pass and on what: the inspector is green on a live hire, a Lab shipped something real, two seats collaborated. Each can fail; *polished* cannot |
-| **Locks in** | **[ER-Devtool](BUSINESS-RULES.md#er-devtool), [ER-DevForce](BUSINESS-RULES.md#er-devforce), [ER-Collab](BUSINESS-RULES.md#er-collab)** replace ER-19, which is retired. Every proof runs against a **live hired Workforce** ([ER-3](BUSINESS-RULES.md)) and composes rather than extends ([ER-4](BUSINESS-RULES.md)). **The set is open** ([ER-23](BUSINESS-RULES.md)) — and **as of 2026-09-22 all three have a producer and none has been run**, which is what [ER-26](BUSINESS-RULES.md#er-26) now sequences |
+| **Locks in** | **[ER-Devtool](BUSINESS-RULES.md#er-devtool), [ER-DevForce](BUSINESS-RULES.md#er-devforce), [ER-Collab](BUSINESS-RULES.md#er-collab)** replace ER-19, which is retired. Every proof runs against a **live hired Workforce** ([ER-3](BUSINESS-RULES.md)) and composes rather than extends ([ER-4](BUSINESS-RULES.md)). **The set is open** ([ER-23](BUSINESS-RULES.md)) — and **as of 2026-09-24 ER-DevForce and ER-Collab have passed**, while ER-Devtool stands at row 4 passed live, row 5 in spec ([D10](#d10)) and row 6 proved by automated checks with its live read carried ([D11](#d11)) |
 
 **What would change my mind:** a ship date inside this cycle that the three proofs cannot fit. Then
 the bar is cut deliberately to one proof and the other two become named launch follow-ups — not
@@ -108,9 +114,13 @@ belongs to FIX-1455. Its `goals/` labs half stands on its own. Routing is the ow
 | **Locks in** | Every proof composes existing pieces. A proof that needs new L1 has found a **gap in W3 or W4** and comments up ([ER-5](BUSINESS-RULES.md), [ER-17](BUSINESS-RULES.md), [ER-25](BUSINESS-RULES.md) new) |
 
 **What would change my mind:** the Devtool checklist finding that inventory or parked-row reasons
-cannot be rendered without a new L1 type. Two of its six rows fail today and
-[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481) is the child that will hit them, so this
-is live, not theoretical — and [ER-8](BUSINESS-RULES.md) says a failing row is never passed with a status value.
+cannot be rendered without a new L1 type. Two of its six rows failed when this was written and
+[FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481) was the child that would hit them, so this
+was live, not theoretical — and [ER-8](BUSINESS-RULES.md) says a failing row is never passed with a status value.
+**It did not fire:** FIX-1481 rendered both rows without an L1 type
+([#2032](https://github.com/fixpoint-labs/flow-state-dev/pull/2032),
+[#2039](https://github.com/fixpoint-labs/flow-state-dev/pull/2039)), and its V6 asserts the status
+union unchanged.
 
 **And on 2026-09-22 it half-fired, on a third row — then a settlement took half of that back.**
 Checklist row 5 looked to need not a new L1 type but **a way to *select* an org, which does not
@@ -118,8 +128,8 @@ exist** — an org-scoped read always answers with the org its session already c
 can choose another** ([FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) supplies the axis;
 the mechanism is worked through in [BUSINESS-RULES.md](BUSINESS-RULES.md#devtool-checklist)). The
 [settlement](#settled-org-read) then showed the read itself already served on the production route,
-so row 5 needs that axis only under one reading of the row ([Open 1](#open)). Under that reading it
-is the same shape as the condition above — a QA row today's substrate cannot render — and the card
+so row 5 needs that axis only under one reading of the row — and on 2026-09-24 the owner took the
+other ([D10](#d10)). Under the reading not taken it would have been the same shape as the condition above — a QA row today's substrate cannot render — and the card
 holds either way:
 W5 **did not build it**, it filed [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) and
 raised the substrate up ([ER-25](BUSINESS-RULES.md), [ER-17](BUSINESS-RULES.md#er-17)). One row
@@ -163,19 +173,63 @@ finding a gap is D1 working. Three would be the objective being wrong.
 |---|---|
 | **Instead of** | Forcing W3 ([#1718](https://github.com/fixpoint-labs/flow-state-dev/pull/1718)), W4 ([#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905)) or LAB-162 ([#1612](https://github.com/fixpoint-labs/flow-state-dev/pull/1612)) to wrap to free a slot |
 | **Because** | The board was already at three open epic PRs when W5 opened. The owner chose the breach on 2026-09-19 rather than wrap an epic early and cost it real closure quality |
-| **Locks in** | The cap is knowingly breached, not forgotten. **The arithmetic moved again, and this time upward**: as of 2026-09-22 the set is one child Done, **two in spec review** (FIX-1481, FIX-1496) and **five** in Backlog (FIX-1468, FIX-1469, FIX-1474, FIX-1497, FIX-1502). *Implementation* in flight is still **zero**, but two direction gates are now open at once, so the slot has stopped being free |
+| **Locks in** | The cap is knowingly breached, not forgotten. **The arithmetic moved again, and this time upward**: as of 2026-09-22 the set is one child Done, **two in spec review** (FIX-1481, FIX-1496) and **five** in Backlog (FIX-1468, FIX-1469, FIX-1474, FIX-1497, FIX-1502). *Implementation* in flight is still **zero**, but two direction gates are now open at once, so the slot has stopped being free. **As of 2026-09-24:** four Done (FIX-1467, FIX-1481, FIX-1496, FIX-1497), FIX-1502 in spec, [FIX-1547](https://linear.app/fixpoint-labs/issue/FIX-1547) in development, three Backlog (FIX-1468, FIX-1469, FIX-1474) |
+
+<a name="d10"></a>
+## D10 · Row 5 is a channel session's view of the whole organization — build it in W5
+
+> **Owner answer, 2026-09-24, to what was [Open 1](#open): (a).** Row 5 is satisfied by a channel
+> session's view of the whole organization, not by an org-level surface independent of sessions.
+> Build row 5 in W5. Recorded on [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) the
+> same day.
+
+| | |
+|---|---|
+| **Instead of** | Reading row 5 as an org-level surface that stands apart from any session, which needs org **selection** ([FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)) · and so exiting W5 on five checklist rows of six, with row 5 tracked to FIX-1502 |
+| **Because** | A channel session already declares the three inventory collections, so reading through one shows every seat, every channel and who is in which from a single place — which is what row 5's *Today* column said the session-scoped Resources panel cannot do. And the read is already served on the production route (the evidence below) |
+| **Locks in** | **[FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) builds row 5 inside W5**, at the cost the settlement priced: `openInventory` wiring so rows exist, a `client` read on the three inventory collection factories — a shared L2 contract, so raised under [ER-17](BUSINESS-RULES.md#er-17) — and a DevTool reader. **FIX-1502 is no longer blocked by FIX-1486**: the Linear relation is now *related*, because FIX-1486 is org selection, which a one-user, one-org deployment ([D7](#d7)) does not need. **Org selection stays out of W5** ([ER-25](BUSINESS-RULES.md)) |
+
+**The evidence it rested on** — the [settlement](#settled-org-read) recorded below. A throwaway flow
+with one org-scoped collection (`client: { state: { read: true } }`) and a `resolvePrincipal`,
+driven through the real `createFlowApiRouter` with real requests — two sessions on two
+organizations, one flow — then read on the **production** `list_collection_state` route,
+`FSDEV_DEBUG_ENDPOINTS` asserted unset:
+
+```
+GET sess-org-a -> 200 {"items":[{"topic":"w1","clientData":{"label":"A's widget"}}]}
+GET sess-org-b -> 200 {"items":[{"topic":"w1","clientData":{"label":"B's widget"}}]}
+```
+
+Each session saw **only its own organization's row** — cross-org isolation, not merely a 200.
+**Negative control:** the same shape with `client.state.read` removed returns
+`403 {"error":"State read not permitted for \"widgets\""}`. The gate fires, so the green is not a
+check that could only pass. The run was one session reading its own org's rows. That would not
+have satisfied the reading the owner declined; it is exactly the mechanism of the one taken.
+
+<a name="d11"></a>
+## D11 · Row 6 is proved by automated checks; its live read waits for a real hire with a sealed document
+
+> **Owner decision, 2026-09-24.** Row 6 — a sealed `references/` document is visibly marked
+> read-only, a writable one is not — is proved by FIX-1481's automated checks. Its live read is
+> deferred.
+
+| | |
+|---|---|
+| **Instead of** | Giving a hired tree a sealed document so row 6 has something to show — every working route needs kind code whose only job is the inspection, which [ER-Devtool](BUSINESS-RULES.md#er-devtool) forbids · or holding ER-Devtool open until some hire happens to declare one |
+| **Because** | **No hired tree in the repository declares a sealed document**: no `references/` file and no `ro` grant. The row-6 code is not in doubt — [FIX-1481](https://linear.app/fixpoint-labs/issue/FIX-1481)'s **V2, V3 and V5** prove it through the real snapshot and the real tree view ([#2039](https://github.com/fixpoint-labs/flow-state-dev/pull/2039)). What is missing is a subject, and inventing one is the special wrapper the checklist exists to refuse |
+| **Locks in** | **The live read moves to the first real hire with a `references/` document or an `ro` grant**, noted on [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) on 2026-09-24. **The mitigation is [FIX-1547](https://linear.app/fixpoint-labs/issue/FIX-1547)**: a test that a hired team's reference reaches the debug snapshot as `writable: false`. [ER-Devtool](BUSINESS-RULES.md#er-devtool)'s row-6 status says exactly this. **Row 6 has not gone green live**, and no surface in this set may say it has |
 
 ## Who owns what
 
-![Who owns what: a matrix of seven cross-cutting rules against the three exit-proof columns of the set plus a fourth column for the finished exploration FIX-1467. All three proof columns now carry a named child — the Devtool checklist held jointly by FIX-1481 and FIX-1502, the DevForce proof path by FIX-1496, and the multi-seat collab scenario by FIX-1497. ER-1's owner is FIX-1497; ER-2's is FIX-1481; ER-3's is FIX-1496, which stands the live hired Workforce up; ER-4 is marked builds it in all three proof columns now that all three are filed; ER-18 is marked MET by FIX-1467; ER-26, new on 2026-09-22, is discharged by FIX-1496 and consumed by the other two for their runs. The done condition splits into three rules, each in its own column, and all three read HELD rather than NO CHILD. Notes record that FIX-1481 holds checklist rows 4 and 6 and verifies all six while FIX-1502 holds row 5 and is blocked by FIX-1486 outside W5, that rows 1 to 3 ride FIX-1320, that ER-1, ER-2 and ER-3 gained names rather than roles, and that ER-26 fences the runs and never the code PRs. The figure's aria-label carries every cell.](figures/ownership.svg)
+![Who owns what: a matrix of seven cross-cutting rules against the three exit-proof columns of the set plus a fourth column for the finished exploration FIX-1467. As of 2026-09-24 two proof columns read PASS — the DevForce proof path, FIX-1496, and the multi-seat collab scenario, FIX-1497 — and the Devtool checklist, held jointly by FIX-1481 and FIX-1502, still reads HELD. ER-1's owner is FIX-1497; ER-2's is FIX-1481; ER-3's is FIX-1496, which stood the live hired Workforce up; ER-4 is marked builds it in all three proof columns; ER-18 is marked MET by FIX-1467; ER-26 is marked MET, discharged by FIX-1496, and consumed by the other two for their runs. Notes record that on the Devtool checklist row 4 passed live, row 5 is FIX-1502's to build in W5 under D10, row 6 is proved by FIX-1481's automated checks with its live read carried to the first real hire with a sealed document and FIX-1547 as the mitigation under D11, and rows 1 to 3 ride FIX-1320. The figure's aria-label carries every cell.](figures/ownership.svg)
 
-**No cell on the diagonal is empty any more, and not one of them is green.** Each exit proof is its
-own rule in its own column, and all three now read **HELD** — the done condition is owned in three
-parts of three, and proved in none. **Held is not passed**, and it is worth reading each one's
-cost: ER-Devtool is split across FIX-1481 and FIX-1502 with rows 1–3 riding FIX-1320, and row 5
-blocked by FIX-1486 **under one reading of the row** ([Open 1](#open)), so **at least half** of it
-sits on epics W5 does not run; ER-DevForce and ER-Collab are a
-spec in review and a Backlog ticket with no spec.
+**Two of the three proof cells are green, and the third is held.** ER-DevForce passed on
+[#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051) and ER-Collab on
+[#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065), both run after #2051 stood the
+live hire up, which is what met [ER-26](BUSINESS-RULES.md#er-26). ER-Devtool is **held, not
+passed**: row 4 passed live ([#2066](https://github.com/fixpoint-labs/flow-state-dev/pull/2066)),
+row 5 is FIX-1502's to build in W5 ([D10](#d10)), row 6 is proved by automated checks and has
+**not** been read live ([D11](#d11)), and rows 1–3 still ride FIX-1320, an epic W5 does not run.
 
 **Three owners moved when kitchen-sink left, and all three now have names** ([D9](#d9)). ER-1 →
 [FIX-1497](https://linear.app/fixpoint-labs/issue/FIX-1497), ER-2 →
@@ -219,8 +273,8 @@ multi-user or sign-off pain is real**.
   returning only its own org's row; **negative control** with `client.state.read` removed returns
   `403 State read not permitted`. So the route is real, it is not debug-gated, and the gate fires.
   **Recorded so no child re-argues it.** Two limits travel with it: the run was **one session
-  reading its own org**, so it says nothing about an across-sessions or org-wide view, which is the
-  hinge of [Open 1](#open); and the three inventory factories are option-free today, so enabling
+  reading its own org**, so it says nothing about an across-sessions or org-wide view, which was the
+  hinge of Open 1, answered as [D10](#d10); and the three inventory factories are option-free today, so enabling
   the read is a change inside `packages/workforce`, not app configuration. **Cost this set zero
   review rounds** — a settlement is not a review round.
 - **A producer per leg is not enough; the leg's *rows* need one too.** The same discipline applied
@@ -255,6 +309,10 @@ workforce FIX-1496 stands up, which is a dependency the earlier draft did not ha
 ER-Devtool's six rows survive being split, now across **three** owners rather than two. A rough
 end-state is what falsifies either. **Nothing should start building until it is run or deliberately
 skipped.**
+
+**Overtaken, as of 2026-09-24.** It was neither run nor recorded as skipped, and the children built
+regardless: FIX-1496 and FIX-1497 passed their graded runs on 2026-09-22, and FIX-1481's row 4 the
+same day. Recorded rather than deleted, because the instruction above was not followed.
 
 ## How it got here
 
@@ -312,91 +370,32 @@ skipped.**
   its prose, ER-1/ER-2/ER-3's owners, all three *proved by* cells, D5's arithmetic and D6's
   *locks in*. **[Open 1](#open) was replaced**, not answered: the staffing gap closed and
   five-of-six took its place. **Not review feedback and not a review round.**
+- **Open 1 answered, row 6 carried, two proofs passed (Sep 24)** — the second post-merge amendment,
+  on its own PR from `main`; [#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033) stays
+  the merged record of the first. **[D10](#d10)**: the owner answered Open 1 with reading (a), so
+  row 5 is built in W5 and FIX-1502's Linear relation to FIX-1486 is now *related*, not *blocked by*.
+  **[D11](#d11)**: row 6's live read is deferred to the first real hire with a sealed document, with
+  [FIX-1547](https://linear.app/fixpoint-labs/issue/FIX-1547) as the mitigation. **ER-DevForce
+  passed** ([#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051)), **ER-Collab passed**
+  ([#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065)), **row 4 passed live**
+  ([#2066](https://github.com/fixpoint-labs/flow-state-dev/pull/2066)), and
+  **[ER-26](BUSINESS-RULES.md#er-26) is met**. Every surface that still read *Backlog, no spec*,
+  *in spec review*, *not run* or *row 5 blocked on FIX-1486* was re-derived, the three figures
+  included. **Not review feedback and not a review round.**
 
 <a name="open"></a>
 ## Open
 
-**One, and it is a scope call the owner owns.** The structural gap that stood here — *two exit
-proofs have no producer* — **closed on 2026-09-22** when FIX-1496 and FIX-1497 were filed. What
-replaced it is narrower, and a POC settlement has since moved it again: the question is no longer
-whether row 5 is *affordable*, it is what row 5 *asks for*.
-
-1. ### Does W5 exit with five of the six Devtool checklist rows green, or does it wait?
-
-   **Plain terms.** The Devtool proof is a six-row checklist. Row 5 is *"open Devtool and see
-   everything in this organization — every seat, every channel, who is in which."* Until
-   2026-09-22 this document said row 5 was blocked on substrate W5 may not build
-   ([FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486), org **selection**). **A POC
-   settlement disproved that.** What is left is a judgment about the row's own words, and it is
-   yours: **does row 5 mean an org-level surface that stands apart from any one session, or is it
-   satisfied by opening one session that already sees the whole organization?**
-
-   **What the settlement showed.** A throwaway flow with one org-scoped collection
-   (`client: { state: { read: true } }`) and a `resolvePrincipal`, driven through the real
-   `createFlowApiRouter` with real requests — two sessions on two organizations, one flow — then
-   read on the **production** `list_collection_state` route, `FSDEV_DEBUG_ENDPOINTS` asserted unset:
-
-   ```
-   GET sess-org-a -> 200 {"items":[{"topic":"w1","clientData":{"label":"A's widget"}}]}
-   GET sess-org-b -> 200 {"items":[{"topic":"w1","clientData":{"label":"B's widget"}}]}
-   ```
-
-   Each session saw **only its own organization's row** — cross-org isolation, not merely a 200.
-   **Negative control:** the same shape with `client.state.read` removed returns
-   `403 {"error":"State read not permitted for \"widgets\""}`. The gate fires, so the green is not
-   a check that could only pass.
-
-   **What it did not settle, and this is the hinge.** The run was **one session reading its own
-   org's rows**. It says nothing about an across-sessions or org-wide aggregated view — and this
-   set already records under [Decided in review](#decided-in-review-recorded-so-no-child-reopens-them)
-   that **rows 3 and 5 need inventory readable across sessions**, while the *distinct value* argued
-   below is *across the org in one place rather than per session*. There is a real reading in which
-   the POC satisfies that: a **channel** session already declares the inventory collections, so
-   reading through one shows the whole organization's seats and channels from a single place —
-   exactly what row 5's *Today* column says the session-scoped Resources panel cannot do. And a real
-   reading in which it does not: one session's view is still one session's view, and the row may
-   mean a surface that does not hang off a session at all. **That is a judgment about the row, not
-   a fact about the code, so it is not mine to make.**
-
-   **The trade-off, now measured rather than assumed.** Building row 5 inside W5 costs: calling
-   `openInventory` so rows exist (**app wiring**, documented, no framework change); **three lines**
-   adding a `client` read to the three collection factories — small, but inside a shared L2 package
-   whose own docstrings call that surface *"the contract other layers join against, not app
-   settings"*, so [ER-17](BUSINESS-RULES.md#er-17) territory; and a reader. **It does not cost
-   waiting on FIX-1486**, whose subject is **selection among organizations** — which a one-user,
-   one-org deployment ([D7](#d7), and it is on the box figure) does not need. Against that, exiting
-   at five buys a launch claim on time and ships a proof with a known hole in it.
-
-   **My recommendation, revised on the evidence.** **Exit on five-of-six *only if* you read row 5 as
-   requiring an org-level surface beyond a single session. Otherwise row 5 is buildable in W5, and
-   should be built.** I previously recommended exiting at five outright, on the belief that the
-   alternative was substrate growth this epic must refuse. The settlement removed that belief: this
-   is no longer *blocked on substrate we may not build*, it is *a judgment call about what the row
-   asks for*, and the honest thing is to hand you the judgment rather than keep a recommendation
-   that rested on a premise that turned out to be false.
-
-   **What would change my mind — concrete now, in your answer rather than in the world.** If you
-   read row 5 as satisfied by a channel session's view of the whole organization, it is ordinary
-   work and W5 should do it; that is the reading I lean to, because it is what the row's *Today*
-   column was complaining about. If you read it as requiring a genuine org-level surface independent
-   of any session, my original recommendation stands intact and untouched — exit at five, track row
-   5 to FIX-1502.
-
-   **What being wrong costs, both ways.** Exit at five when row 5 was in fact cheap: W5 ships an
-   incomplete proof for no reason, and the DevTool cannot answer *"what is open across the whole
-   organization"* at launch when it could have. Build it when the row meant something larger: you
-   get a surface that does not satisfy the row anyway, **plus** a change to a shared package's
-   deliberately-closed contract, bought for nothing. The second is the worse error, which is why the
-   recommendation is conditional rather than a flat *build it*.
-
-   **Not asked:** whether FIX-1502 is correctly filed (it is, and it holds the row either way), or
-   whether FIX-1486 is the right home for org **selection** (it is). What changed is only whether
-   row 5 *needs* selection.
+**None.** Open 1 — *does W5 exit with five of the six Devtool checklist rows green, or does it
+wait?* — was answered by the owner on 2026-09-24 and is recorded as [D10](#d10), with the evidence
+it rested on. Row 6's live read was decided the same day, as [D11](#d11).
 
 **Not open, deliberately.** Of the recalibration's *Still open* items, **which DevForce artifact
 counts is now cut** by [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) — one automated
-leg, the credentialed pull-request leg documented as the human release run — and that cut is
-FIX-1496's own direction gate to approve, not a question this document carries. The exact Devtool
+leg, the credentialed pull-request leg documented as the human release run — approved at FIX-1496's
+own direction gate ([#2023](https://github.com/fixpoint-labs/flow-state-dev/pull/2023)) and run
+([#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051)), not a question this document
+carries. The exact Devtool
 checklist rows are [drafted](BUSINESS-RULES.md#devtool-checklist) as the EM's work. Whether
 CyberForce gets a parallel thin proof is marked by the owner as **not blocking**; carrying it here
 would invite a child to answer it.

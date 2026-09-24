@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 496" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: a matrix of seven cross-cutting rules against four columns. Three columns are the exit proofs and all three now have named children: the Devtool checklist held jointly by FIX-1481 and FIX-1502, the DevForce proof path held by FIX-1496, and the multi-seat collab scenario held by FIX-1497. The fourth column is FIX-1467, the exploration that is Done. ER-1's owner is FIX-1497; ER-2's is FIX-1481; ER-3's is FIX-1496, which stands the live hired Workforce up; ER-4 is marked builds it in all three proof columns, since all three are now filed; ER-18 is marked MET by FIX-1467 and consumed by the Devtool column at row 6; ER-26, new on September 22, is discharged by FIX-1496 and consumed by the other two for their runs. The bottom row splits the done condition into three rules, each in its own column, and all three read HELD rather than NO CHILD, because each has a filed child and none has been run. Notes record that FIX-1481 holds checklist rows 4 and 6 and verifies all six while FIX-1502 holds row 5 and is blocked by FIX-1486 outside W5, that rows 1 to 3 ride FIX-1320, that ER-1, ER-2 and ER-3 were re-owned when kitchen-sink FIX-1455 left the set and gained names on September 22, that ER-26 fences the runs and never the code PRs, that ER-15 was rewritten and ER-19 retired, and that nineteen further rules need no column.">
+<svg viewBox="0 0 940 514" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: a matrix of seven cross-cutting rules against four columns. Three columns are the exit proofs, each with named children: the Devtool checklist held jointly by FIX-1481 and FIX-1502, the DevForce proof path by FIX-1496, and the multi-seat collab scenario by FIX-1497. The fourth column is FIX-1467, the exploration that is Done. ER-1's owner is FIX-1497; ER-2's is FIX-1481; ER-3's is FIX-1496, which stood the live hired Workforce up; ER-4 is marked builds it in all three proof columns; ER-18 is marked MET by FIX-1467 and consumed by the Devtool column at row 6; ER-26 is marked MET, discharged by FIX-1496, and consumed by the other two for their runs. The bottom row splits the done condition into three rules, each in its own column: as of September 24, ER-DevForce and ER-Collab read PASS, and ER-Devtool reads HELD, because it is owned and not yet green. Notes record that on the Devtool checklist row 4 passed live, row 5 is FIX-1502's and built in W5 under D10, rows 1 to 3 ride FIX-1320, and row 6 is proved by FIX-1481's automated checks and not read live, its live read waiting for a real hire with FIX-1547 as the mitigation under D11; that ER-1, ER-2 and ER-3 were re-owned when kitchen-sink FIX-1455 left the set and gained names on September 22; that ER-26 was met on September 22 and fenced the runs, never the code PRs; that ER-15 was rewritten and ER-19 retired; and that nineteen further rules need no column.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -32,7 +32,7 @@
              font-size:9px; letter-spacing:.06em; }
   </style>
 
-  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ALL THREE EXIT PROOFS ARE HELD, NONE IS PASSED &#183; SEP 22</text>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; TWO EXIT PROOFS PASSED, ONE HELD &#183; SEP 24</text>
 
   <g id="columns">
     <text class="t-col" x="296" y="44">1481 + 1502 &#183; Devtool</text>
@@ -60,7 +60,7 @@
   <g id="r3">
     <text class="t-row" x="16" y="140">ER-3 &#183; a live hired Workforce, not a mock</text>
     <rect class="use" x="296" y="122" width="150" height="30"/><text class="t-use" x="336" y="141">consumes</text>
-    <rect class="own" x="454" y="122" width="150" height="30"/><text class="t-own" x="468" y="141">1496 &#183; STANDS IT UP</text>
+    <rect class="own" x="454" y="122" width="150" height="30"/><text class="t-own" x="468" y="141">1496 &#183; STOOD IT UP</text>
     <rect class="use" x="612" y="122" width="150" height="30"/><text class="t-use" x="652" y="141">consumes</text>
     <rect class="cell" x="770" y="122" width="150" height="30"/>
   </g>
@@ -84,7 +84,7 @@
   <g id="r6">
     <text class="t-row" x="16" y="242">ER-26 &#183; a run is graded only on a live hire</text>
     <rect class="use" x="296" y="224" width="150" height="30"/><text class="t-use" x="316" y="243">consumes &#183; the run</text>
-    <rect class="own" x="454" y="224" width="150" height="30"/><text class="t-own" x="468" y="243">1496 &#183; DISCHARGES IT</text>
+    <rect class="met" x="454" y="224" width="150" height="30"/><text class="t-met" x="462" y="243">MET &#183; 1496 DISCHARGED</text>
     <rect class="use" x="612" y="224" width="150" height="30"/><text class="t-use" x="632" y="243">consumes &#183; the run</text>
     <rect class="cell" x="770" y="224" width="150" height="30"/>
   </g>
@@ -92,8 +92,8 @@
   <g id="r7">
     <text class="t-row" x="16" y="276">the done condition &#8212; three rules</text>
     <rect class="held" x="296" y="258" width="150" height="30"/><text class="t-hld" x="320" y="277">ER-DEVTOOL &#183; HELD</text>
-    <rect class="held" x="454" y="258" width="150" height="30"/><text class="t-hld" x="476" y="277">ER-DEVFORCE &#183; HELD</text>
-    <rect class="held" x="612" y="258" width="150" height="30"/><text class="t-hld" x="642" y="277">ER-COLLAB &#183; HELD</text>
+    <rect class="met" x="454" y="258" width="150" height="30"/><text class="t-met" x="476" y="277">ER-DEVFORCE &#183; PASS</text>
+    <rect class="met" x="612" y="258" width="150" height="30"/><text class="t-met" x="642" y="277">ER-COLLAB &#183; PASS</text>
     <rect class="cell" x="770" y="258" width="150" height="30"/>
   </g>
 
@@ -103,15 +103,16 @@
     <rect class="use" x="380" y="306" width="16" height="14"/>
     <text class="t-use" x="404" y="318">consumes it, and must not re-decide it &#8212; not a wait</text>
     <rect class="met" x="16" y="328" width="16" height="14"/>
-    <text class="t-use" x="40" y="340">MET &#8212; satisfied, with what satisfied it recorded</text>
+    <text class="t-use" x="40" y="340">MET / PASS &#8212; satisfied, with what satisfied it recorded</text>
     <rect class="held" x="380" y="328" width="16" height="14"/>
-    <text class="t-use" x="404" y="340">HELD &#8212; a child is filed, nothing has run yet</text>
-    <text class="t-use" x="16" y="364">A blank cell is different: the row does not touch that rule. No cell on the bottom diagonal is empty any more, and none is green &#8212; held is not passed.</text>
-    <text class="t-use" x="16" y="382">ER-Devtool has TWO owners since Sep 22: FIX-1481 holds rows 4 and 6 and verifies all six; FIX-1502 holds row 5, blocked by FIX-1486. Rows 1&#8211;3 ride FIX-1320.</text>
-    <text class="t-use" x="16" y="400">ER-1, ER-2 and ER-3 were re-owned when kitchen-sink left the set (D9); on Sep 22 all three gained names rather than roles. FIX-1455 and FIX-1458 have no column.</text>
-    <text class="t-use" x="16" y="418">ER-26 is new on Sep 22 and earns a column because its whole content is which child hands which other child its subject. It fences the RUNS, never the code PRs.</text>
-    <text class="t-use" x="16" y="436">ER-15 was rewritten (this epic drives no child epic) and ER-19 retired, replaced by the three rules on the bottom row.</text>
-    <text class="t-use" x="16" y="454">Nineteen further rules need no column and bind every row equally: 13 prohibitions (ER-5&#8211;14, 22, 24, 25), 4 run-the-set (ER-15&#8211;17, 23), 2 further proofs (ER-20, 21).</text>
-    <text class="t-use" x="16" y="472">The set is open (ER-23) &#8212; filing against a proof is normal course, as it was for all three. A ticket is not a pass, and none of these three has been run.</text>
+    <text class="t-use" x="404" y="340">HELD &#8212; owned, not yet passed</text>
+    <text class="t-use" x="16" y="364">A blank cell is different: the row does not touch that rule. Two cells on the bottom row are green; ER-Devtool is held &#8212; held is not passed.</text>
+    <text class="t-use" x="16" y="382">ER-Devtool, Sep 24: row 4 PASS live (FIX-1481) &#183; row 5 is FIX-1502&#8217;s, built in W5 (D10) &#183; rows 1&#8211;3 ride FIX-1320.</text>
+    <text class="t-use" x="16" y="400">Row 6 is proved by FIX-1481&#8217;s automated checks and NOT read live: the live read waits for a real hire; FIX-1547 mitigates (D11).</text>
+    <text class="t-use" x="16" y="418">ER-1, ER-2 and ER-3 were re-owned when kitchen-sink left the set (D9); on Sep 22 all three gained names rather than roles. FIX-1455 and FIX-1458 have no column.</text>
+    <text class="t-use" x="16" y="436">ER-26 earns a column: its whole content is which child hands which other child its subject. MET Sep 22 (#2051). It fenced the RUNS, never the code PRs.</text>
+    <text class="t-use" x="16" y="454">ER-15 was rewritten (this epic drives no child epic) and ER-19 retired, replaced by the three rules on the bottom row.</text>
+    <text class="t-use" x="16" y="472">Nineteen further rules need no column and bind every row equally: 13 prohibitions (ER-5&#8211;14, 22, 24, 25), 4 run-the-set (ER-15&#8211;17, 23), 2 further proofs (ER-20, 21).</text>
+    <text class="t-use" x="16" y="490">The set is open (ER-23) &#8212; filing against a proof is normal course. A ticket is not a pass: two of these three have passed, ER-Devtool has not.</text>
   </g>
 </svg>
