@@ -571,7 +571,10 @@ one status. Three things run the sweep that clears the third case:
    tenant matches the request's (`tenantMatches`, the rule retry and continue
    apply), before it reports or writes anything; a caller with no tenant header
    sweeps only entries that have no tenant. The startup and periodic sweeps
-   pass no caller filter and cover every tenant.
+   pass no caller filter and cover every tenant. Its `staleThresholdMs` query
+   is floored at the host's resolved threshold: a caller can widen the
+   heartbeat window, never tighten it, so a poke cannot reap a run the
+   server still considers alive.
 
 All three converge on the same write — re-read the record, check
 `status === "in_progress"`, write `interrupted` — so running them together is

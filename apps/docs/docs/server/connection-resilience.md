@@ -52,7 +52,7 @@ export const flowstate = createFlowState({
 });
 ```
 
-Both sweep bounds — `staleSweepThresholdMs` and `queuedGraceMs` — apply to every sweep: the periodic one, the pass that runs when the server starts, and the on-demand `check-interrupted` call. A restart reaps on the same clock the running server used.
+Both sweep bounds — `staleSweepThresholdMs` and `queuedGraceMs` — apply to every sweep: the periodic one, the pass that runs when the server starts, and the on-demand `check-interrupted` call. A restart reaps on the same clock the running server used. To use a longer threshold for one on-demand sweep, pass `staleThresholdMs` to [`recovery.checkInterrupted`](../api/client.md#createrecoveryclientoptions). The call uses whichever is larger, your value or `staleSweepThresholdMs`. A smaller value, including 0, sweeps exactly as if you'd left it out.
 
 ### Queued jobs and `queuedGraceMs`
 

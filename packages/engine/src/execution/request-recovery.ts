@@ -15,6 +15,13 @@ import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./l
 import { runAction } from "./runAction";
 import { resolveRecordOwner } from "../context/record-owner";
 
+/**
+ * The heartbeat-age threshold {@link detectInterruptedRequests} applies when its
+ * caller passes none. Exported so the `check-interrupted` route can hold a
+ * caller-supplied threshold to the same floor on a host that configures none.
+ */
+export const DEFAULT_DETECTION_STALE_THRESHOLD_MS = 30_000;
+
 export type InterruptedRequestInfo = {
   entry: ActiveRequestEntry;
   requestRecord?: RequestRecord;
@@ -61,7 +68,7 @@ export async function detectInterruptedRequests(options: {
   logger?: RuntimeLogger;
 }): Promise<InterruptedRequestInfo[]> {
   const { stores, userId, ownedBy, logger = DEFAULT_RUNTIME_LOGGER } = options;
-  const staleThresholdMs = options.staleThresholdMs ?? 30_000;
+  const staleThresholdMs = options.staleThresholdMs ?? DEFAULT_DETECTION_STALE_THRESHOLD_MS;
   const queuedGraceMs = options.queuedGraceMs ?? DEFAULT_QUEUED_GRACE_MS;
 
   const allStale = await stores.activeRequests.listStale(staleThresholdMs);

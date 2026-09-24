@@ -22,7 +22,13 @@ export type CreateRecoveryClientOptions = {
 export type CheckInterruptedOptions = {
   /** User whose stale active-request entries should be swept. Required. */
   userId: string;
-  /** Override the server's stale threshold. Default: the host's configured one. */
+  /**
+   * How long, in milliseconds, a request may go without a heartbeat before
+   * this sweep treats it as stale. It can only lengthen the server's
+   * `staleSweepThresholdMs`: the server uses whichever is larger, so a smaller
+   * value (including zero or a negative value) sweeps exactly as leaving it
+   * out does. Default: the server's `staleSweepThresholdMs`.
+   */
   staleThresholdMs?: number;
 };
 

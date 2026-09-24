@@ -207,11 +207,11 @@ describe("the resolved stale threshold reaches startup detection (FIX-999)", () 
 
 /**
  * The DevTool's on-demand sweep is the third path that reaps, and it carried a
- * private 30-second fallback of its own. The query parameter stays
- * caller-tunable — that was a deliberate decision, since the threshold only
- * widens or narrows which heartbeat-governed entries are considered — but a
- * caller that supplies nothing must not reap on a tighter clock than the
- * server's own sweeper, or a DevTool refresh marks healthy work `interrupted`.
+ * private 30-second fallback of its own. A caller that supplies nothing must
+ * not reap on a tighter clock than the server's own sweeper, or a DevTool
+ * refresh marks healthy work `interrupted`. The same holds for a caller that
+ * supplies a smaller value: the query parameter can only widen the window
+ * (`recovery-routes.test.ts` covers the widening side).
  */
 describe("the check-interrupted route defaults to the host's threshold (FIX-999)", () => {
   async function poke(router: FlowApiRouter, query = ""): Promise<Response> {
@@ -243,7 +243,7 @@ describe("the check-interrupted route defaults to the host's threshold (FIX-999)
     expect(await statusOf(stores)).toBe("in_progress");
   });
 
-  it("an EXPLICIT query param still overrides the host's threshold", async () => {
+  it("an EXPLICIT query param below the host's threshold cannot tighten it", async () => {
     const stores = createInMemoryStores();
     await seedBeatingRequest(stores, FORTY_FIVE_SECONDS_MS);
 
@@ -255,10 +255,12 @@ describe("the check-interrupted route defaults to the host's threshold (FIX-999)
       staleSweepThresholdMs: CONFIGURED_THRESHOLD_MS
     });
 
-    // The caller narrows the window deliberately: to them 45s of silence is stale.
+    // To this caller 45s of silence is stale, but the server says the row is
+    // healthy, and the server's clock is the one that decides.
     const res = await poke(activeRouter, "?staleThresholdMs=1000");
 
     expect(res.status).toBe(200);
-    expect(await statusOf(stores)).toBe("interrupted");
+    expect(await res.json()).toEqual({ interrupted: [] });
+    expect(await statusOf(stores)).toBe("in_progress");
   });
 });
