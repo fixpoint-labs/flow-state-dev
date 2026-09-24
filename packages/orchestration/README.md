@@ -436,10 +436,10 @@ arrives, the entry re-reads the row and runs the worker only if the claim is sti
 current: same attempt, same row (not deleted and recreated under the same id), still
 `in_progress`, still routed to this seat. Otherwise it throws
 `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing, so the row is
-left exactly as it was. A row still `in_progress` (a newer attempt holds it, or it is
-now routed to another seat) stays that way until its lease runs out and the next
-drain reclaims it; a row that was deleted, recreated, or already settled or parked
-has no outstanding claim, so there is nothing to reclaim. On the drain
+left exactly as it was. If the row is still `in_progress`, whether a newer attempt,
+another seat, or a row recreated under the same id holds it, that claim runs until its
+lease runs out and the next drain reclaims it; a row that was deleted, or is already
+settled or parked, has no outstanding claim, so there is nothing to reclaim. On the drain
 side the hand-off block returns `{ handedOff: true, taskId, sessionId, requestId,
 adopted }`, and a refused dispatch fails the row through the board's ordinary
 error path, throwing the same `DispatchRefusedError` (with its `refused` code)
