@@ -154,10 +154,13 @@ export {
   type BoardColumnsSlots,
   type BoardStatus,
   type PanelRowSource,
+  type PanelItemSource,
   type RosterProps,
   type RosterSeat,
   type RosterSeatRow,
-  type RosterSlots
+  type RosterSlots,
+  SeatDetail,
+  type SeatDetailProps
 } from "./components/panels";
 
 export {

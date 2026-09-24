@@ -29,6 +29,9 @@ import { useReadFence } from "../../hooks/useReadFence";
  */
 export type PanelRowSource = Pick<ResourceClient, "listCollectionItems">;
 
+/** `SeatDetail`'s read is one item, not a page — the method name says which (FIX-1500 BR-27). */
+export type PanelItemSource = Pick<ResourceClient, "getCollectionItemState">;
+
 /** One row as a panel receives it: its topic, and the collection's projection of its state. */
 export type PanelRow<TClient = unknown> = {
   readonly topic: string;
@@ -130,6 +133,82 @@ export function usePanelRows<TClient = unknown>(
 
   return {
     rows: holdsCurrent ? rows : EMPTY,
+    isLoading: holdsCurrent ? isLoading : true,
+    error: holdsCurrent ? error : null,
+    refresh: () => void read()
+  };
+}
+
+/** One collection item, plus the state of reading it — the single-item counterpart of {@link PanelRows}. */
+export type PanelItem<TClient = unknown> = {
+  /** `null` while loading AND when the topic is absent — see `isLoading`. */
+  readonly item: TClient | null;
+  readonly isLoading: boolean;
+  readonly error: string | null;
+  /** Re-read the item. Safe to call from a host affordance. */
+  readonly refresh: () => void;
+};
+
+/**
+ * One collection item, for one session — the single-item counterpart of
+ * {@link usePanelRows}, sharing its fence and abort semantics (FIX-1500 S5).
+ *
+ * Not exported for the same reason `usePanelRows` is not: it exists so a host
+ * cannot mount the same read twice and pay for it twice. `SeatDetail` is the
+ * one caller, and it mounts this hook only while there is a topic to read —
+ * "mounting is the gate" (see `flow-navigator/FlowNavigator.ts`'s
+ * `LeafSessionList`), so a seat with no public roster row makes no call at
+ * all rather than calling and discarding a `null`.
+ *
+ * `item` is `null` for both "still loading" and "the topic is not present in
+ * the collection" — `isLoading` is what tells them apart; a caller checks
+ * that first; this matches the shape `usePanelRows` already has read/render
+ * split into.
+ */
+export function usePanelItem<TClient = unknown>(
+  source: PanelItemSource,
+  sessionId: string,
+  ref: string,
+  topic: string,
+  failureMessage: string
+): PanelItem<TClient> {
+  const [item, setItem] = useState<TClient | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
+
+  const fence = useReadFence([source, sessionId, ref, topic], () => {
+    setItem(null);
+    setError(null);
+    setIsLoading(true);
+    setHeldIdentity(null);
+  });
+  const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
+
+  const read = useCallback(async () => {
+    const stillCurrent = fence.begin();
+    if (stillCurrent === null) return;
+    setIsLoading(true);
+    setError(null);
+    setHeldIdentity(fence.identity);
+    try {
+      const result = await source.getCollectionItemState(sessionId, ref, topic);
+      if (!stillCurrent()) return;
+      setItem(result === null || result.clientData === undefined ? null : (result.clientData as TClient));
+    } catch (err) {
+      if (!stillCurrent()) return;
+      setError(describe(err, failureMessage));
+    } finally {
+      if (stillCurrent()) setIsLoading(false);
+    }
+  }, [fence, source, sessionId, ref, topic, failureMessage]);
+
+  useEffect(() => {
+    void read();
+  }, [read]);
+
+  return {
+    item: holdsCurrent ? item : null,
     isLoading: holdsCurrent ? isLoading : true,
     error: holdsCurrent ? error : null,
     refresh: () => void read()

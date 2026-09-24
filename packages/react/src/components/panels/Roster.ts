@@ -120,7 +120,8 @@ export const rosterPropNames = [
 /** The conventional key a flow declares the roster under. */
 const DEFAULT_ROSTER_REF = "roster";
 
-function isSeat(value: unknown): value is RosterSeat {
+/** Shared with `SeatDetail` (FIX-1500 S5), so a list read and a single-item read agree on what a seat row is. */
+export function isSeat(value: unknown): value is RosterSeat {
   if (value === null || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
   return typeof row.seatId === "string" && typeof row.flow === "string";
@@ -136,8 +137,12 @@ function isSeat(value: unknown): value is RosterSeat {
  * write `if (seat.instructions !== null) seat.instructions.trim()` and throw
  * on the oldest rows in the store. Normalising here means the type is true of
  * every row a consumer can be handed, rather than true of recent ones.
+ *
+ * Shared with `SeatDetail` (FIX-1500 S5) so the list and the detail agree on
+ * how a missing `instructions` value is treated, rather than each deciding it
+ * independently.
  */
-function normalizeSeat(row: RosterSeat): RosterSeat {
+export function normalizeSeat(row: RosterSeat): RosterSeat {
   return row.instructions === undefined ? { ...row, instructions: null } : row;
 }
 
