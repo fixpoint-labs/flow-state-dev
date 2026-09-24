@@ -157,7 +157,7 @@ function escapeRegex(s: string): string {
  */
 export function encodeUserSegment(userId: string): string {
   if (userId.length === 0) {
-    throw new Error("a user id must not be empty — it is part of a seat's address");
+    throw new Error("a user id must not be empty — it is part of a storage key");
   }
   let out = "";
   for (const char of userId) {

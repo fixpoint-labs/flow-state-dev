@@ -78,13 +78,14 @@ export type ScheduleResolutionContext = {
    */
   stores: ScheduleResolutionStores;
   /**
-   * The owner pin of the registered instance this dispatch addresses, when it
-   * is a hired seat; absent for every other flow. Taken from the registry,
-   * never from the request. A seat keeps its shared user data — a
-   * resource-backed schedule collection included — in the cell for the pin's
-   * organization and the person, so a resolver that reads user-scoped storage
-   * derives its key from this (see `resolveUserStorageKey` in
-   * `@flow-state-dev/engine`) rather than from the person's id alone.
+   * The owner pin of the registered instance this dispatch addresses, when
+   * that instance is pinned to an owner; absent for every other flow. Taken
+   * from the registry, never from the request. A pinned instance keeps its
+   * shared user data — a resource-backed schedule collection included — in
+   * the per-(org, user) cell for the pin's organization and the user, so a
+   * resolver that reads user-scoped storage derives its key from this (see
+   * `resolveUserStorageKey` in `@flow-state-dev/engine`) rather than from the
+   * user's id alone.
    */
   ownerPin?: InstanceOwnerPin;
 };

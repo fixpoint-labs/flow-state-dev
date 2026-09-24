@@ -175,18 +175,18 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   /**
    * Cross-flow sharing intent. Default `false`:
    *   - `user` / `org` scope: stored at `(scopeId, ref)` — shared across
-   *     every flow the same `userId` / `orgId` touches. Exception: on a hired
-   *     seat (an instance registered with an owner pin), a user-scoped
-   *     resource is stored per organization and person, shared only with
-   *     that person's other seats in the same organization.
+   *     every flow the same `userId` / `orgId` touches. Exception: on an
+   *     instance registered with an owner pin, a user-scoped resource is
+   *     stored in a per-(org, user) cell, shared only with that user's other
+   *     owner-pinned instances in the same organization.
    *   - `session` scope: sessions are intrinsically flow-bound; the field
    *     has no semantic meaning and `true` is rejected at build time.
    *
    * Set `true` to opt user/org-scoped resources into per-flow isolation —
    * stored at `(scopeId, flowInstanceId, ref)`. The coordinate is the
    * resolved **instance** id, not the kind (FIX-1323): two registered copies
-   * of one `collection` definition each get their own cell. A seat minted by
-   * `hireWorkforce` is one instance, so this keys per seat.
+   * of one `collection` definition each get their own cell. An instance
+   * registered at runtime is one instance too, so this keys per instance.
    *
    * A singleton's instance id is its kind, so its keys are normally unchanged
    * — with one exception: each key component is escaped before joining, so an
