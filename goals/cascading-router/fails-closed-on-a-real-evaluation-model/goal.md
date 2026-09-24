@@ -12,5 +12,5 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-09-24 | COMMIT | typesafe-ai/jev (gateway); openai/gpt-5.4-mini via @ai-sdk/openai on the gateway's OpenAI-compatible endpoint | PASS | Jev: T-1042 → root:billing (confidence 1) → root/billing:high (confidence 1) → escalate received the ticket. OpenAI: T-1042 chose billing, T-1043 technical, T-1044 billing; each `no-confidence` at root → review, level 2 never asked. |
-| 2026-09-24 | COMMIT | same | FAIL (expected) | `GOAL_CONTROL=open-on-missing`: o1/o2 for all three tickets (routed to escalate, tech-queue, billing-queue on confidence 1), o3 for the two billing tickets. No j or o0 failure. |
+| 2026-09-24 | 53b50f0 | typesafe-ai/jev (gateway); openai/gpt-5.4-mini via @ai-sdk/openai on the gateway's OpenAI-compatible endpoint | PASS | Jev: T-1042 → root:billing (confidence 1) → root/billing:high (confidence 1) → escalate received the ticket. OpenAI: T-1042 chose billing, T-1043 technical, T-1044 billing; each `no-confidence` at root → review, level 2 never asked. |
+| 2026-09-24 | 53b50f0 | same | FAIL (expected) | `GOAL_CONTROL=open-on-missing`: o1/o2 for all three tickets (routed to escalate, tech-queue, billing-queue on confidence 1), o3 for the two billing tickets. No j or o0 failure. |
