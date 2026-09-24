@@ -41,7 +41,7 @@ three remaining issues are polish.
 |---|---|
 | **Instead of** | Re-keying the engine's user scope to (user, org) for every flow · or a Workforce-side copy of the data in a second store |
 | **Because** | The product owner decided a private team is not portable. The Architect separates three planes: the person's cross-org data, org-bound data, and a hired seat's private data. Only the third is this epic's. Re-keying every flow would decide the first plane too, which the product owner has not decided. A second store is invent-killed |
-| **Locks in** | FIX-1538 changes where a pinned instance resolves user-scoped data, and nothing else. It owns the migration: a person in one org sees no change, and data already written under the bare user id is named, not silently moved or dropped ([ER-5](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | FIX-1538 changes where a pinned instance resolves user-scoped data, and nothing else. It owns the upgrade: a person in one org keeps what their seats saved once the operator runs its copy step, a seat stops reading their app-wide data, and nothing is silently moved or dropped ([ER-5](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 The change is narrow enough to skip an end-state POC: only the shared user bucket leaks
 ([EVOLUTION.md](EVOLUTION.md), third row). The file-level evidence moves to FIX-1538's spec.
