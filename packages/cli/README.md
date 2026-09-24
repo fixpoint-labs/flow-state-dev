@@ -64,9 +64,10 @@ Every run executes as a user in an organization, the same as a request to your s
 - A resolver that checks a credential refuses the terminal, which carries none. The run stops before it writes anything, exits `2`, and the message names the flow and `--org`.
 - `--org <id>` skips the resolver and runs as `--user` (default `cli-user`) in that organization. It may not be blank or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag.
 - `--user` alone keeps the organization the resolver gives and replaces only the user.
-- `--session` / `--seed-session` on a session another user or organization owns is refused before anything is written, including the seed. Sessions keep the identity they were created with.
+- `--session` / `--seed-session` on a session another user or organization owns is refused before anything is written, including the seed. Sessions keep the identity they were created with. A session stored before organizations were required is refused with the migration message.
+- A seat pinned to an owner refuses any identity outside its pin, before anything is written.
 
-One stderr line names the identity, e.g. `[fsdev] running as devuser in organization acme (from the app's resolver)`.
+One stderr line names the identity, e.g. `[fsdev] running as devuser in organization acme (from the app's resolver)`; a user given with `--user` is marked `(named by --user)`. In the capture, `principal.from` names where the **organization** came from.
 
 #### Stderr runtime logs
 

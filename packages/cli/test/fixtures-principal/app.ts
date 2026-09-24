@@ -10,6 +10,10 @@
  *   - `admin`       checks a bearer credential (the CLI carries none)
  *   - `digest`      wraps the framework default for non-scheduled callers
  *   - `placeholder` a resolver that claims the reserved development org
+ *   - `bodyorg`     a resolver that reads the action body's `input`, as a
+ *                   resolver keyed on a request field would
+ * and one hired-seat-shaped instance, `acme-dev.desk`, pinned to the app's
+ * own user, so a terminal outside the pin has something to be refused by.
  *
  * Every instance shares one in-memory store registry, so a test can read what
  * a run wrote after the CLI disposes its FlowState.
@@ -95,11 +99,39 @@ const placeholderFlow = defineFlow({
   actions: respond,
 })();
 
+/** Names its organization from the HTTP body's `input.message`. */
+const bodyOrgFlow = defineFlow({
+  kind: "bodyorg",
+  authentication: {
+    resolvePrincipal: (ctx) => {
+      const body = ctx.envelope.metadata?.body as { input?: { message?: unknown } } | undefined;
+      const message = body?.input?.message;
+      return typeof message === "string" ? { userId: "body-user", orgId: `org-${message}` } : null;
+    },
+  },
+  actions: respond,
+})();
+
+/** A collection kind, so an instance can be registered under a pin. */
+const seatKind = defineFlow({ kind: "seat", cardinality: "collection", actions: respond });
+
+/** The seat's address and its owner: the app's own user in the app's own org. */
+export const SEAT_ID = `${APP_ORG}.desk`;
+
 /** Assemble the app the way its `fsdev.config.ts` does. */
 export function makeApp() {
-  return createFlowState({
-    flows: { echo: echoFlow, admin: adminFlow, digest: digestFlow, placeholder: placeholderFlow },
+  const app = createFlowState({
+    flows: {
+      echo: echoFlow,
+      admin: adminFlow,
+      digest: digestFlow,
+      placeholder: placeholderFlow,
+      bodyorg: bodyOrgFlow,
+    },
     stores: { default: { primary: sharedAdapter } },
     resolvePrincipal: () => ({ userId: APP_USER, orgId: APP_ORG }),
   });
+  // A fresh instance per app: registering stamps the pin onto the instance.
+  app.register(seatKind({ id: SEAT_ID }), { pin: { orgId: APP_ORG, userId: APP_USER } });
+  return app;
 }

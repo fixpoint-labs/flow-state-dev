@@ -182,6 +182,10 @@ export {
   type OwnerResolution,
   type OwnerResolutionRefusal
 } from "./context/record-owner";
+// The rules an in-process caller (`fsdev run`, `fsdev chat`) applies before it
+// writes, so it refuses exactly what the transport host refuses (FIX-1551).
+export { pinRejectsCaller, type InstancePinCaller } from "./context/hire-plane";
+export { isOrgAttributed, UnattributedOrgError } from "./context/org-attribution";
 
 export {
   createSentenceBuffer,

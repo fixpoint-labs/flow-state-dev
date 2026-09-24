@@ -149,7 +149,7 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
     );
   });
 
-  it("hands the resolver a terminal's question: source cli, no request, the caller-named user", async () => {
+  it("hands the resolver a terminal's question: source cli, no request, an HTTP-shaped body", async () => {
     const seen: PrincipalResolutionContext[] = [];
     const app = createFlowState({
       flows: { echo: flow("echo") },
@@ -163,9 +163,37 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       source: "cli",
-      envelope: { flowKind: "echo", action: "respond", input: { message: "hi" }, metadata: { body: { userId: "bob" } } }
+      envelope: { flowKind: "echo", action: "respond", input: { message: "hi" } }
     });
+    // The body an HTTP action request carries: the caller-named user and the
+    // input. A resolver reading `body.input` sees what it would over HTTP.
+    expect(seen[0]!.envelope.metadata).toEqual({ body: { userId: "bob", input: { message: "hi" } } });
     expect(seen[0]!.request).toBeUndefined();
+  });
+
+  it("hands the resolver a frozen context, so a kept reference cannot be rewritten and replayed", async () => {
+    let seen: PrincipalResolutionContext | undefined;
+    const app = createFlowState({
+      flows: { echo: flow("echo") },
+      stores: { default: { primary: inMemoryStores() } },
+      resolvePrincipal: (ctx) => {
+        seen = ctx;
+        return { userId: "u", orgId: "o" };
+      }
+    });
+    await app.resolveInProcessPrincipal(question("echo", "bob"));
+    const body = (seen!.envelope.metadata as { body: object }).body;
+    expect([seen, seen!.envelope, seen!.envelope.metadata, body].map((o) => Object.isFrozen(o))).toEqual([
+      true,
+      true,
+      true,
+      true
+    ]);
+    // Module code is strict, so a write throws rather than silently landing.
+    expect(() => {
+      (seen!.envelope as { flowKind: string }).flowKind = "admin";
+    }).toThrow(TypeError);
+    expect(seen!.envelope.flowKind).toBe("echo");
   });
 });
 
@@ -231,18 +259,32 @@ describe("source \"cli\" is reserved for the in-process entry point", () => {
     await app.dispose();
   });
 
-  it("no engine route calls the in-process entry point", () => {
-    const routesDir = resolve(import.meta.dirname, "../../src/routes");
+  it("no engine route, transport or adapter package references the in-process entry point", () => {
+    const engineSrc = resolve(import.meta.dirname, "../../src");
+    const packages = resolve(import.meta.dirname, "../../..");
+    // Everything that faces a network: the engine's routes, its transports
+    // (minus `host/`, which defines the entry point, and the barrel that
+    // re-exports it), and every adapter package's source.
+    const roots = [
+      join(engineSrc, "routes"),
+      join(engineSrc, "transports"),
+      ...["mcp", "scheduled", "node", "next", "vercel", "bullmq", "voice-openai"].map((pkg) =>
+        join(packages, pkg, "src")
+      )
+    ];
+    const excluded = new Set([join(engineSrc, "transports", "host"), join(engineSrc, "transports", "index.ts")]);
     const files: string[] = [];
-    const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        const path = join(dir, name);
-        if (statSync(path).isDirectory()) walk(path);
-        else if (path.endsWith(".ts")) files.push(path);
+    const walk = (path: string) => {
+      if (excluded.has(path)) return;
+      if (statSync(path).isDirectory()) {
+        for (const name of readdirSync(path)) walk(join(path, name));
+      } else if (/\.(ts|tsx|mts)$/.test(path)) {
+        files.push(path);
       }
     };
-    walk(routesDir);
-    expect(files.length).toBeGreaterThan(0);
+    for (const root of roots) walk(root);
+    // Every root was actually scanned, so an empty result is not a missing directory.
+    for (const root of roots) expect(files.some((f) => f.startsWith(root)), root).toBe(true);
     const callers = files.filter((f) => readFileSync(f, "utf-8").includes("resolveInProcessPrincipal"));
     expect(callers).toEqual([]);
   });

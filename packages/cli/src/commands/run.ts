@@ -33,6 +33,7 @@ import {
   resolveCliPrincipal,
   type AskPrincipal,
   type CliPrincipal,
+  type PinOf,
 } from "../principal";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 
@@ -226,6 +227,7 @@ export async function executeRunCommand(
     let stores: StoreRegistry;
     let baseRuntimeConfig: RuntimeConfig | undefined;
     let askPrincipal: AskPrincipal;
+    let pinOf: PinOf;
 
     if (resolved.source === "config") {
       // --- config path: take the app's registry/stores/runtimeConfig ---
@@ -254,6 +256,7 @@ export async function executeRunCommand(
       stores = options.stores ?? runtime.stores;
       baseRuntimeConfig = runtime.runtimeConfig;
       askPrincipal = askFlowState(resolved.flowState, resolved.configPath);
+      pinOf = (id) => runtime.registry.pinOf(id);
     } else {
       // --- discovery path: scan conventional directories, CLI defaults ---
       const found = resolved.flows.find((f) => f.id === flowKind);
@@ -271,6 +274,7 @@ export async function executeRunCommand(
       const registry = createFlowRegistry();
       registry.register(flow);
       askPrincipal = (question) => resolveInProcessPrincipal({ registry }, question);
+      pinOf = (id) => registry.pinOf(id);
       // `fsdev run` is a local one-shot runner, so the filesystem store is
       // acknowledged development-only (FIX-406 6A).
       stores =
@@ -297,6 +301,7 @@ export async function executeRunCommand(
       askPrincipal,
       { flowKind, action: actionName, input: input ?? {} },
       { org: options.org, user: options.user },
+      pinOf,
     );
 
     // 5. Check an existing session against that identity, then apply seed state.
@@ -316,11 +321,11 @@ export async function executeRunCommand(
           EXIT_INVALID_ARGS,
         );
       }
-      const refusal = await checkSessionOwner(stores, sessionId, principal);
+      const refusal = checkSessionOwner(existing, sessionId, principal);
       if (refusal !== undefined) throw new CliError(refusal, EXIT_INVALID_ARGS);
     }
 
-    if (!options.quiet) process.stderr.write(describePrincipal(principal) + "\n");
+    if (!options.quiet) process.stderr.write(describePrincipal(principal, { org: options.org, user: options.user }) + "\n");
 
     if (seedData !== undefined) {
       if (existing !== undefined) {

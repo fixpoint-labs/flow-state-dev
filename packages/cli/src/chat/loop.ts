@@ -171,7 +171,7 @@ export async function runChatLoop(params: ChatLoopParams): Promise<number> {
         state.principals.set(target.flowKind, principal);
 
         // A session another user or organization owns is never run against.
-        const ownerRefusal = await checkSessionOwner(stores, sessionId, principal);
+        const ownerRefusal = checkSessionOwner(await stores.session.get(sessionId), sessionId, principal);
         if (ownerRefusal !== undefined) {
           const fresh = newSessionId();
           state.sessions.set(target.flowKind, fresh);

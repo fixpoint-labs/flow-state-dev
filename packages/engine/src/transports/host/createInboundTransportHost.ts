@@ -393,8 +393,9 @@ export interface InProcessPrincipal extends ResolvedPrincipal {
  * user fallback, and the organization rules. `fsdev run` and `fsdev chat` ask
  * this before they write anything.
  *
- * The resolver sees `source: "cli"`, no `request`, and the question's `userId`
- * as the body's. That source is reserved: only this function can produce a
+ * The resolver sees `source: "cli"`, no `request`, and `metadata.body` as an
+ * HTTP action body: `{ userId, input }` from the question. The context is
+ * frozen. That source is reserved: only this function can produce a
  * context the host accepts it on. Refusals are the host's own
  * `PrincipalResolutionError`s (or whatever the resolver threw), unchanged — a
  * resolver that needs a credential refuses here exactly as it refuses an HTTP
@@ -412,15 +413,25 @@ export async function resolveInProcessPrincipal(
     registry: options.registry,
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver
   });
-  const context: PrincipalResolutionContext = {
+  // `metadata.body` has the shape of the JSON body an HTTP action request
+  // carries (`{ userId, input }`), so a resolver that reads the body sees the
+  // same data from a terminal as from the equivalent HTTP caller.
+  //
+  // Frozen before it is marked, so a resolver that keeps the context cannot
+  // later change what a marked context says (its flow, action or named user)
+  // and pass it back through a host. The input is the caller's own object and
+  // is not frozen: it goes on to run the action.
+  const context: PrincipalResolutionContext = Object.freeze({
     source: CLI_SOURCE,
-    envelope: {
+    envelope: Object.freeze({
       flowKind: question.flowKind,
       action: question.action,
       input: question.input,
-      metadata: { body: { userId: question.userId } }
-    }
-  };
+      metadata: Object.freeze({
+        body: Object.freeze({ userId: question.userId, input: question.input })
+      })
+    })
+  });
   inProcessAsks.add(context);
   const { principal, isDevelopmentDefault } = await resolution(context);
   return {

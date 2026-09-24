@@ -22,7 +22,7 @@ import { registerServeCommand } from "../src/commands/serve";
 import { registerDevCommand } from "../src/commands/dev";
 import { CliError } from "../src/resolve-block";
 import { EXIT_INVALID_ARGS } from "../src/exit-codes";
-import { APP_ORG, APP_USER, makeApp, resetSharedStores, sharedStores } from "./fixtures-principal/app";
+import { APP_ORG, APP_USER, SEAT_ID, makeApp, resetSharedStores, sharedStores } from "./fixtures-principal/app";
 
 const appDir = resolve(import.meta.dirname, "fixtures-principal");
 const discoveryDir = resolve(import.meta.dirname, "fixtures");
@@ -156,7 +156,7 @@ describe("V3 · the terminal's outcome equals the app's action route, flow by fl
   it("same identity, or the same refusal, for every resolver shape", async () => {
     const { router, stores } = await appRouter();
     const rows: Record<string, { cli: string; http: string }> = {};
-    for (const flow of ["echo", "admin", "digest", "placeholder"]) {
+    for (const flow of ["echo", "admin", "digest", "placeholder", "bodyorg"]) {
       const cli = await run(flow, { session: `v3-${flow}` });
       let cliOutcome: string;
       if (cli.ok) {
@@ -189,6 +189,8 @@ describe("V3 · the terminal's outcome equals the app's action route, flow by fl
     }
 
     expect(rows.echo!.cli).toBe(`ok ${APP_USER}@${APP_ORG}`);
+    // A resolver that reads the action body's input sees the same body both ways.
+    expect(rows.bodyorg!.cli).toBe("ok body-user@org-hi");
     for (const flow of Object.keys(rows)) expect(rows[flow]!.cli, flow).toBe(rows[flow]!.http);
     // Every refused row really is a refusal, so the equality above is not two
     // empty strings agreeing.
@@ -304,6 +306,96 @@ describe("V6 · an existing session is checked before any write", () => {
     if (outcome.ok) return;
     expect(outcome.error.exitCode).toBe(EXIT_INVALID_ARGS);
     expect(outcome.error.message).toContain(`user ${owner} in organization ${org}`);
+  });
+});
+
+describe("a pinned seat refuses an identity outside its pin before any write", () => {
+  it.each([
+    ["--user names another user in the owning org", { user: "alice" }],
+    ["--org names another org", { org: "acme", user: APP_USER }],
+  ])("fsdev run: %s — no session, request or seed is written", async (_label, flags) => {
+    const outcome = await run(SEAT_ID, { session: "pin-run", seedSession: '{"seeded":true}', ...flags });
+    expect(await session(sharedStores(), "pin-run")).toBeUndefined();
+    expect(await sharedStores().request.list({ sessionId: "pin-run" })).toEqual([]);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.error.exitCode).toBe(EXIT_INVALID_ARGS);
+    expect(outcome.error.message).toContain(`Flow "${SEAT_ID}" refused this terminal`);
+    expect(outcome.error.message).toContain("Nothing was written");
+  });
+
+  it("fsdev run as the seat's owner runs (the pin admits its own identity)", async () => {
+    const outcome = await run(SEAT_ID, { session: "pin-owner" });
+    expect(outcome.ok).toBe(true);
+    expect(await session(sharedStores(), "pin-owner")).toMatchObject({ userId: APP_USER, orgId: APP_ORG });
+  });
+
+  it("fsdev chat: the turn fails and writes nothing", async () => {
+    let out = "";
+    const output = new Writable({
+      write(chunk, _enc, cb) {
+        out += chunk.toString();
+        cb();
+      },
+    });
+    const stores = createInMemoryStores();
+    await executeChatCommand(SEAT_ID, "respond", {
+      cwd: appDir,
+      stores,
+      user: "alice",
+      input: Readable.from(["hi\n/exit\n"]) as Readable & { isTTY?: boolean },
+      output: output as unknown as NodeJS.WritableStream,
+    });
+    expect(out).toContain(`Flow "${SEAT_ID}" refused this terminal`);
+    expect(await stores.session.list()).toEqual([]);
+    expect(await stores.request.list({})).toEqual([]);
+  });
+});
+
+describe("a session stored before organizations were required", () => {
+  it("is refused with the engine's migration message and left unchanged", async () => {
+    const stores = sharedStores();
+    const legacy = {
+      id: "legacy",
+      flowKind: "echo",
+      flowId: "echo",
+      userId: APP_USER,
+      state: {},
+      version: 0,
+      createdAt: 1,
+      updatedAt: 1,
+      journal: [],
+    };
+    await stores.session.set("legacy", legacy as never, "any");
+    const before = JSON.stringify(await session(stores, "legacy"));
+    const outcome = await run("echo", { session: "legacy", seedSession: '{"tampered":true}' });
+    expect(JSON.stringify(await session(stores, "legacy"))).toBe(before);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.error.exitCode).toBe(EXIT_INVALID_ARGS);
+    expect(outcome.error.message).toContain("stored before an organization was required");
+    expect(outcome.error.message).toContain("persistence guide");
+    expect(outcome.error.message).not.toContain("(none)");
+  });
+});
+
+describe("--user alone", () => {
+  it("names --user as the user's source on stderr; the capture's from stays the organization's", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "fsdev-principal-"));
+    try {
+      const capture = join(dir, "run.json");
+      await run("echo", { session: "user-alone", user: "bob", capture });
+      expect(stderrLines.filter((l) => l.startsWith("[fsdev] running as"))).toEqual([
+        `[fsdev] running as bob (named by --user) in organization ${APP_ORG} (from the app's resolver)`,
+      ]);
+      expect(JSON.parse(readFileSync(capture, "utf-8")).command.principal).toEqual({
+        userId: "bob",
+        orgId: APP_ORG,
+        from: "resolver",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

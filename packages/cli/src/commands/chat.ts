@@ -319,6 +319,7 @@ export async function executeChatCommand(
           askPrincipal,
           { flowKind: target.flowKind, action: target.actionName, input: { message: text } },
           principalFlags,
+          (id) => registry.pinOf(id),
         ),
       runtime: runtimeSnapshot,
       validateSessionForTarget,
