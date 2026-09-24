@@ -279,7 +279,7 @@ A non-zero count on an installation that has ever authenticated its callers is a
 
    The `schedule_index` table carries an `org_id` column, added for you on the next schema init. There is no DDL of your own to write here.
 
-   User-scope storage does not move. A user id is keyed globally, across all organizations.
+   User-scope storage does not move. A user id is keyed globally, across all organizations, except the data a [hired seat](#upgrading-moving-hired-seats-stored-data) keeps per organization and person.
 4. **Read back.** Re-run the inventory and check the blob agrees with the column, as above with `$.orgId` / `data->>'orgId'`. Every count should be zero, or be a row you deliberately left quarantined. Confirm the reserved-id check is still clean. Then restart the schedulers, bring the writers back, and read a session and an org-scoped resource through each organization before you admit traffic.
 
 Rollback is the backup, and only before the converted store has taken new writes.

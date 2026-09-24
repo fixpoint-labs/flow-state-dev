@@ -94,6 +94,12 @@ export function createResourceCollectionScheduleResolver(
     // seat reads its (org, person) cell and never the person's cross-org
     // one. The schedule collection is shared (it declares no
     // `flowIsolation`), which is the non-isolated key.
+    // A user-owned seat serves one person. A schedule id naming anyone else
+    // answers exactly like a missing row, before any store is read, so the
+    // route cannot be used to learn whether another person's row exists.
+    if (ctx.ownerPin?.userId !== undefined && parsed.userId !== ctx.ownerPin.userId) {
+      return null;
+    }
     const resourceKey = `${prefix}${parsed.collectionKey}`;
     const scopeId = resolveUserStorageKey(parsed.userId, {
       id: ctx.flowKind,

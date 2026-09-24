@@ -102,7 +102,7 @@ export async function handleDispatch(
         // The registered instance's pin, so a hired seat's schedules resolve
         // from the seat's own (org, person) cell (FIX-1538). From the
         // registry, never the request.
-        ...(flow.ownerPin === undefined ? {} : { ownerPin: flow.ownerPin })
+        ownerPin: flow.ownerPin
       });
       schedule = resolved ?? null;
       origin = "dynamic";

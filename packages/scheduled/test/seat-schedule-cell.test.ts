@@ -123,8 +123,10 @@ describe("a hired seat's dynamic schedules (BR-17)", () => {
       expect(await h.stores.resourceState.get("user", "alice:~org:acme", "schedules/weekly")).toBeDefined();
       expect(await h.stores.resourceState.get("user", "alice", "schedules/weekly")).toBeUndefined();
 
-      // The resolver reads the row's serialized form from the content store,
-      // as its own unit tests do; planted in the same cell the run wrote.
+      // This PR routes the key only. A row the run creates is not yet
+      // resolvable: the resolver reads the content store and needs `orgId` in
+      // the state (FIX-1545). Until then, plant the resolvable content-store
+      // row in the same cell; FIX-1545 replaces this with the run's own row.
       await h.plant("alice:~org:acme", "weekly");
       const response = await h.dispatch("acme.~alice.research", "alice/weekly");
       expect(response.status).toBe(202);
@@ -163,6 +165,20 @@ describe("a hired seat's dynamic schedules (BR-17)", () => {
         JSON.stringify({ orgId: "globex", cron: "0 9 * * MON", kind: "ping", enabled: true })
       );
       const response = await h.dispatch("acme.~alice.research", "alice/moved");
+      expect(response.status).toBe(404);
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
+  it("does not tell another person's schedule apart from a missing one on a private seat", async () => {
+    const h = boot();
+    h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
+    try {
+      // Bob's row really exists in his own (acme, bob) cell. Addressed through
+      // Alice's private seat it must answer exactly like a missing row.
+      await h.plant("bob:~org:acme", "weekly");
+      const response = await h.dispatch("acme.~alice.research", "bob/weekly");
       expect(response.status).toBe(404);
     } finally {
       await disposeFlowApiRouter(h.router);

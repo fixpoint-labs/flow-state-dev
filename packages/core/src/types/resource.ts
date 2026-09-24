@@ -175,7 +175,10 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   /**
    * Cross-flow sharing intent. Default `false`:
    *   - `user` / `org` scope: stored at `(scopeId, ref)` — shared across
-   *     every flow the same `userId` / `orgId` touches.
+   *     every flow the same `userId` / `orgId` touches. Exception: on a hired
+   *     seat (an instance registered with an owner pin), a user-scoped
+   *     resource is stored per organization and person, shared only with
+   *     that person's other seats in the same organization.
    *   - `session` scope: sessions are intrinsically flow-bound; the field
    *     has no semantic meaning and `true` is rejected at build time.
    *

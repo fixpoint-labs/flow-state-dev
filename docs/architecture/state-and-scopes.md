@@ -542,7 +542,7 @@ Isolation promotes a user/org-scope storage cell to an **instance**-namespaced k
 - **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Two roles: (1) it keys the **scope record** — the scope's single `state` blob (`ctx.user.state` / `ctx.org.state`) — and (2) it is the default `flowIsolation` for resources at that scope that don't declare their own. A flow that isolates a scope contributes no `stateSchema` to the registry schema merge for it, but still participates for any resource that opts back out.
 - **Resource-level** (FIX-435): `defineResource({ scope: "user", flowIsolation: true })`. Decides **that resource's** storage key, and always wins over the flow default — in both directions. A library can ship a flow-private user-scoped resource without consumers flipping the flow flag, and a resource declared `flowIsolation: false` stays shared even when a sibling on the same flow is isolated.
 
-Resources key **per resource**, not per flow. A flow may hold both shared and isolated user-scoped resources at once: each `flowIsolation: false` resource lives at the bare `{id}`, each `flowIsolation: true` resource at `{id}:{flow.id}`. The scope record's own `state` keys independently, on the flow-level flag alone.
+Resources key **per resource**, not per flow. A flow may hold both shared and isolated user-scoped resources at once: each `flowIsolation: false` resource lives at the bare `{id}` (at user scope on a hired seat, the `{userId}:~org:{orgId}` cell instead), each `flowIsolation: true` resource at `{id}:{flow.id}`. The scope record's own `state` keys independently, on the flow-level flag alone.
 
 **The isolation coordinate is the instance, not the kind** (FIX-1323). A singleton's `id` is its `kind`, so its keys are byte-identical to what it wrote before and there is nothing to migrate. Two registered copies of a `collection` definition occupy two buckets, which is the point: they are two flows for every purpose except their shared schema, and a kind coordinate made what each called private a cell they both wrote. There is no kind fallback on read — a runtime cannot discover which copy owned a legacy key from the key alone. A collection deployment with pre-instance history is attributed by the one offline cutover in `apps/docs/docs/persistence/overview.md`, whose stop condition is the same named `migration-required` outcome the runtime raises on a record with no owner.
 
@@ -570,6 +570,8 @@ export function resolveUserStorageKey(userId, flow): string {
   return flow.ownerPin ? `${userId}:~org:${flow.ownerPin.orgId}` : userId; // hired seat: FIX-1538
 }
 ```
+
+The sketch omits escaping: every real component goes through `encodeScopeKeyComponent` (the shared form through `sharedUserKey`), so don't reimplement keys from it.
 
 The exported helpers take an instance-bearing shape: a caller holding only `{ kind, isolateUserState }` passes `{ id: flow.id, isolateUserState }` instead. Each component is escaped before the two are joined, so the `(identity, instance)` pair is recoverable from the key — instance ids are arbitrary caller-supplied strings, and concatenating them raw let two different pairs name one cell. A component carrying neither `:` nor `\` encodes to itself, so every ordinary id keys byte-identically to what it already wrote.
 
