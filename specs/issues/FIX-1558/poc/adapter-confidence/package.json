@@ -1,0 +1,15 @@
+{
+  "name": "fix-1558-poc-adapter-confidence",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway POC for FIX-1558: which evaluation adapters report confidence. Not a workspace member.",
+  "scripts": {
+    "check": "node check.mjs"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.63",
+    "@ai-sdk/openai": "4.0.75",
+    "@ai-sdk/provider-utils": "5.0.47",
+    "@ai-sdk/typesafe-ai": "3.0.6"
+  }
+}
