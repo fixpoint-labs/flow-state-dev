@@ -149,44 +149,6 @@ function escapeRegex(s: string): string {
 }
 
 /**
- * The org roster's browser collection. One segment, so a nested
- * `workforce/roster/~user/seat` key never matches it.
- */
-export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
-
-/**
- * Server-side writer for a user-owned roster row. Two segments, no browser
- * read. `defineHiredRosterPrivateCollection` declares it owner-private on its
- * `owner` parameter, which is what keeps each row with the user it belongs to.
- */
-export const HIRED_ROSTER_PRIVATE_PATTERN = "workforce/roster/[owner]/[seat]";
-
-/**
- * Brand on the workforce-owned private roster writer.
- *
- * Non-enumerable, so copying the config with a spread drops it. Nothing in the
- * framework sets or reads it: the private roster is an owner-private
- * collection (`ownerPrivate`), and that declaration is what Engine enforces.
- */
-export const HIRED_ROSTER_PRIVATE_BRAND: symbol = Symbol.for(
-  "@flow-state-dev/hired-roster-private",
-);
-
-/** Stamp `collection` with {@link HIRED_ROSTER_PRIVATE_BRAND}. */
-export function markHiredRosterPrivateCollection<T extends object>(collection: T): T {
-  Object.defineProperty(collection, HIRED_ROSTER_PRIVATE_BRAND, {
-    value: true,
-    enumerable: false,
-  });
-  return collection;
-}
-
-/** Whether `value` carries {@link HIRED_ROSTER_PRIVATE_BRAND}. */
-export function isHiredRosterPrivateCollection(value: object): boolean {
-  return Reflect.get(value, HIRED_ROSTER_PRIVATE_BRAND) === true;
-}
-
-/**
  * A user id as one path segment.
  *
  * Opaque ids may contain `/` or `.`. Those are percent-encoded, and `%` is

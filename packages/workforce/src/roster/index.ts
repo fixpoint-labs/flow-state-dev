@@ -8,7 +8,9 @@
  */
 
 export {
+  HIRED_ROSTER_BROWSER_PATTERN,
   HIRED_ROSTER_PREFIX,
+  HIRED_ROSTER_PRIVATE_PATTERN,
   defineHiredRosterCollection,
   defineHiredRosterPrivateCollection,
   hiredSeatRowSchema,

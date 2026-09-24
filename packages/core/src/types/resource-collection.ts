@@ -21,11 +21,6 @@ export {
   validatePattern,
   encodeUserSegment,
   ownerSegment,
-  isHiredRosterPrivateCollection,
-  markHiredRosterPrivateCollection,
-  HIRED_ROSTER_BROWSER_PATTERN,
-  HIRED_ROSTER_PRIVATE_PATTERN,
-  HIRED_ROSTER_PRIVATE_BRAND,
 } from "./collection-patterns";
 
 // ---------------------------------------------------------------------------
