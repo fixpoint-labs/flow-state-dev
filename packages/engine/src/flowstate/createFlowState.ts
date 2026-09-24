@@ -355,7 +355,7 @@ class InternalFlowState<TSettings extends object>
     return {
       // The REGISTRY, not the construction options. `flowKeys` is a
       // diagnostic answer to "what does this app serve", and the options map
-      // stopped being that the moment `register` existed: a seat hired at
+      // stopped being that the moment `register` existed: a flow registered at
       // runtime would be served and absent from this list, and a flow that was
       // unregistered would be listed and unreachable. Reading the registry
       // also changes what the strings ARE — instance ids rather than the

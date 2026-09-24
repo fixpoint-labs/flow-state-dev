@@ -364,9 +364,9 @@ export interface FlowState<TSettings extends object = FlowStateSettings> {
   resolveInProcessPrincipal(question: InProcessPrincipalQuestion): Promise<InProcessPrincipal>;
 
   /**
-   * Admit one flow instance after construction — the door an app hires a seat
-   * through while it is running, and the same door a boot-time reload of a
-   * stored roster comes through.
+   * Admit one flow instance after construction — the door an app adds a flow
+   * through while it is running, with or without an owner pin, and the same
+   * door an app's boot-time reload of instances it stored comes through.
    *
    * Runs exactly the checks construction runs: a duplicate id is refused, so
    * is a singleton under a custom id, and so is a flow whose user- or
