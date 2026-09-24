@@ -1,21 +1,13 @@
 /**
- * `createSeatHireBlocks` — the seat-hire sequence itself, with no model in
- * front of it.
+ * `createSeatHireBlocks` — `hire` and `fire` as blocks, with no model in
+ * front of them.
  *
- * `hire` and `fire` used to be local to `createSeatHireCapability`, reachable
- * only as catalog tools a model calls. That left no way to mount either as an
- * action's block directly. This module is that door: it returns the same two
- * handlers, unchanged, so `createSeatHireCapability` can build its tools
- * preset from this factory instead of defining them itself, and a caller that
- * needs the sequence with no model in the loop — an action on a flow, a test
- * harness that wants to intercept it — can call it directly (FIX-1500 E1).
+ * `createSeatHireCapability` mounts these handlers as its catalog tools. An
+ * action mounts the same handlers directly.
  *
- * **Moved verbatim.** Every name, description, schema, refusal, write order
- * and compensation here is byte-for-byte what shipped in
- * `createSeatHireCapability` (FIX-1525 / FIX-1526). Two gaps are inherited,
- * not fixed: the inventory write after registration sits outside the
- * compensation (BR-11), and `fire` leaves the inventory row
- * ([FIX-1540](https://linear.app/fixpoint-labs/issue/FIX-1540)).
+ * Registration failure deletes the roster row written for that hire. The
+ * inventory write sits after that compensation, and `fire` does not delete
+ * the inventory row.
  */
 
 import { handler } from "@flow-state-dev/core";
@@ -194,18 +186,10 @@ export interface SeatHireBlocks {
 }
 
 /**
- * Build the seat-hire sequence's two handlers, with no model in front of
- * them.
+ * Build `{ hire, fire }`.
  *
- * `createSeatHireCapability` builds its tools preset from this call; an
- * action that wants to mount `hire` (or `fire`) directly — no catalog, no
- * model — calls it the same way.
- *
- * @param options The kinds map, register/unregister, and the optional
- *   allowlist / board ids — the same options `createSeatHireCapability`
- *   takes. Org is never an option — it comes from the principal at the call.
- * @returns `{ hire, fire }`, the same two handlers
- *   `createSeatHireCapability` mounts as catalog tools.
+ * @param options Kinds, register/unregister, and the optional allowlist.
+ *   Org comes from the principal at the call, not from options.
  */
 export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHireBlocks {
   const kinds = options.kinds ?? {};
