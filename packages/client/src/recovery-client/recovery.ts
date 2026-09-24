@@ -24,10 +24,10 @@ export type CheckInterruptedOptions = {
   userId: string;
   /**
    * How long, in milliseconds, a request may go without a heartbeat before
-   * this sweep treats it as stale. It can only lengthen the server's own
-   * threshold: the server uses whichever is larger, so a smaller value
-   * (including zero or a negative) sweeps exactly as leaving it out does.
-   * Default: the server's configured threshold.
+   * this sweep treats it as stale. It can only lengthen the server's
+   * `staleSweepThresholdMs`: the server uses whichever is larger, so a smaller
+   * value (including zero or a negative value) sweeps exactly as leaving it
+   * out does. Default: the server's `staleSweepThresholdMs`.
    */
   staleThresholdMs?: number;
 };
