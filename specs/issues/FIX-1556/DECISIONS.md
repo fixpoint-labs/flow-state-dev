@@ -15,7 +15,7 @@ flowchart TD
   D1 -.->|"rejected · an app mid-rebuild"| X1["a kitchen-sink page"]
   I --> D2["D2 · the no-confidence case is its own action"]
   D2 -.->|"rejected · the surprise stays in prose"| X2["Jev only, with a caveat"]
-  I --> D3["D3 · the assembled goal fails closed on a missing leg"]
+  I --> D3["D3 · an unwired leg is a failure naming its owner"]
   D3 -.->|"rejected · done on four of six"| X3["pass on the legs that are wired"]
 ```
 
@@ -44,16 +44,16 @@ FIX-1455.
 | **Locks in** | Running every action needs two credentials: the gateway for Jev, and whatever the adapter model needs. The README and the guide label that action as the no-confidence case up front, so nobody runs it first and concludes the router is broken |
 
 <a name="d3"></a>
-## D3 · The assembled goal fails closed: a leg not yet wired reports pending, and pending is not a pass
+## D3 · The assembled goal fails closed: an unwired leg is a failure naming its owner, on the shared verdict protocol
 
 | | |
 |---|---|
-| **Instead of** | A goal that passes on whichever legs are wired, and lists the rest as a note |
-| **Because** | The epic may only wrap when all six legs hold ([epic ER-15](../../epics/FIX-1553/BUSINESS-RULES.md#the-proof)). Legs (e) and (f) belong to FIX-1557 and FIX-1555, which are not blocking this issue and may land weeks later ([epic PLAN](../../epics/FIX-1553/PLAN.md#what-each-issue-entails)). A goal that says PASS with two legs missing is the same soft-fail the whole epic forbids for routing: missing evidence read as good evidence |
-| **Locks in** | The full goal is red from this issue's merge until both siblings wire their legs. This issue's own merge bar is legs (a) to (d), run as a named subset that exits on those legs alone. The epic's lead measure is the count of passing legs, read off the per-leg report, not the exit code |
+| **Instead of** | A goal that passes on whichever legs are wired, and lists the rest as a note · or a bespoke PASS/FAIL/PENDING per-leg report with a `GOAL_LEGS` subset selector (the first draft of this decision) |
+| **Because** | The epic may only wrap when all six legs hold ([epic ER-15](../../epics/FIX-1553/BUSINESS-RULES.md#the-proof)). Legs (e) and (f) belong to FIX-1557 and FIX-1555, which are not blocking this issue and may land weeks later ([epic PLAN](../../epics/FIX-1553/PLAN.md#what-each-issue-entails)). A goal that says PASS with two legs missing is the same soft-fail the whole epic forbids for routing: missing evidence read as good evidence. The repo already has the mechanism: `goals/lib/verdict.mts`'s `runGoal`/`pass`/`fail` is the one verdict shape every goal uses, and `goals/hire-plane/keeps-a-hired-seat-with-its-owner` is an assembled goal grown across several PRs with leg-tagged failures. An unwired leg is one placeholder, `fail('e', 'not yet wired — owned by FIX-1557')` and `fail('f', 'not yet wired — owned by FIX-1555')`, so the run is FAIL until each owner replaces it. No new CLI surface and no third verdict state |
+| **Locks in** | The full goal is red from this issue's merge until both siblings replace their placeholders. This issue's merge bar is legs (a) to (d) showing no failures: no `[a]` to `[d]` line in the failure list. The epic's lead measure is the count of legs with no failure line, read off that list, not the exit code. Running only some legs means reading the list; there is no subset flag |
 
 **What would change my mind:** FIX-1555 being cut. The epic already says its leg then leaves by
-amendment, and the goal's leg list shrinks with it rather than staying pending forever.
+amendment, and its placeholder is deleted rather than failing forever.
 
 ## Decided, not asked
 
@@ -89,5 +89,10 @@ amendment, and the goal's leg list shrinks with it rather than staying pending f
 
 - **Draft** — framed as the epic's teach and proof child; the demo is a guide companion example,
   the no-confidence case is runnable, and the assembled goal fails closed on a missing leg.
+- **Review round 1** — D3 kept its fail-closed premise but dropped its own PENDING report and
+  `GOAL_LEGS` selector for the shared `runGoal` protocol with leg-tagged placeholder failures
+  (second-look finding, EM call). BR-16 to BR-18 became one rule. Leg (d) now proves no evaluator
+  code loads at the load boundary; the import fence allows relative imports inside the example and
+  covers `fsdev.config.ts`; the excerpt rule covers source snippets only.
 
 **Open: none.**

@@ -50,7 +50,7 @@ flowchart LR
 ```
 
 Solid edges are this issue's. Dashed ones are slots the facets and memory children fill; until
-they do, the goal reports those legs as pending and does not pass.
+they do, each is a placeholder failure naming its owner, and the goal does not pass.
 
 ## What stays as it is
 
@@ -65,8 +65,8 @@ they do, the goal reports those legs as pending and does not pass.
 
 ## Sign off
 
-1. **[D3](DECISIONS.md#d3) · The assembled goal fails closed: a leg not yet wired is pending, and
-   pending is not a pass.** This issue merges on legs (a) to (d) run as a subset; the full goal
+1. **[D3](DECISIONS.md#d3) · The assembled goal fails closed: a leg not yet wired is a failure
+   naming its owner.** This issue merges when legs (a) to (d) show no failures; the full goal
    stays red until facets and memory land. If wrong: a goal sits red in the sweep for weeks, or,
    the other way, the epic reports done on four legs of six.
 2. **[D2](DECISIONS.md#d2) · The example runs the no-confidence case as its own action, so readers

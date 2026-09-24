@@ -14,8 +14,8 @@ only after FIX-1558 and FIX-1559 merge (and FIX-1554 through them).
 | S2 | same · the `classify` action | One `evaluator` asking a choice, a score and a boolean about a support ticket, on `typesafe-ai/jev` | BR-10 |
 | S3 | same · the `route` and `routeWithoutConfidence` actions | One two-level `cascadingRouter` tree built by one function that takes the model. `route` passes Jev; `routeWithoutConfidence` passes an evaluation adapter that reports no confidence. Leaves are plain handlers; `ambiguous` is a review leaf ([D2](DECISIONS.md#d2)) | BR-11 BR-12 |
 | S4 | same · the activator action | A small `SKILL.md` catalog (two or three skills) and `createSkillActivator` with an evaluator passed for tier 3, per FIX-1559's shipped option | BR-13 |
-| S5 | same · tests | Vitest on FIX-1554's mock evaluation model: S2 to S4's behaviour, the no-evaluator activator (BR-14), and an import-boundary test (V1) | BR-8 BR-9 BR-13 BR-14 |
-| S6 | `goals/evaluator/holds-as-an-assembled-set/` | The assembled goal: `goal.md`, `run.mts`, `fixtures/`. Legs (a) to (d) drive the example through `runFsdev`; (e) and (f) are named slots their owners fill. Leg subset selector, the `fake-confidence` control, and fail-closed pending ([D3](DECISIONS.md#d3)) | BR-16 to BR-21 |
+| S5 | same · tests | Vitest on FIX-1554's mock evaluation model: S2 to S4's behaviour, the no-evaluator activator (BR-14) with the evaluator load boundary instrumented, and an import-boundary test (V1) | BR-8 BR-9 BR-13 BR-14 |
+| S6 | `goals/evaluator/holds-as-an-assembled-set/` | The assembled goal: `goal.md`, `run.mts`, `fixtures/`, on `goals/lib/verdict.mts`'s `runGoal`, with leg-tagged failures as in `goals/hire-plane/keeps-a-hired-seat-with-its-owner`. Legs (a) to (d) drive the example through `runFsdev`; (e) and (f) ship as placeholders, `fail('e', 'not yet wired — owned by FIX-1557')` and `fail('f', 'not yet wired — owned by FIX-1555')`, which their owners replace. Plus the `fake-confidence` control ([D3](DECISIONS.md#d3)) | BR-16 BR-19 to BR-21 |
 | S7 | `goals/lib` · paths | One repo-anchored constant for the example's directory, beside `HELLO_CHAT` | — |
 | S8 | `apps/docs/guides/routing-with-evaluators.md` + `apps/docs/sidebarsGuides.ts` | Publish the guide from [DOCS.md](DOCS.md), snippets reconciled to S2 to S4; sidebar entry before `adding-skills-to-your-app` | BR-1 to BR-7 |
 | S9 | Cross-links | The evaluator section of `fundamentals/blocks.md`, `skills/activation.md`, and the `cascadingRouter` reference page each gain one line pointing at the guide ([DOCS.md](DOCS.md)) | BR-7 |
@@ -43,12 +43,12 @@ S8 waits on S5 so every snippet is cut from tested code. S6 and S8 can run side 
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S1 | An import-boundary test walks every file under the example's `src/` and fails on an import outside BR-8's list. **Negative control:** a planted `import … from "../../../apps/kitchen-sink/…"` fails it, then is removed |
+| V1 | S1 | An import-boundary test walks every runtime TS/JS file in the example, root `fsdev.config.ts` included, skipping only generated and vendor code (`node_modules`, build output), and fails on an import outside BR-8's list. A relative import passes only if it resolves inside the example directory. **Negative controls:** a planted `import … from "../../../apps/kitchen-sink/…"` in `src/` fails it, and so does a planted `labs/` import in `fsdev.config.ts`; a sibling `./route` import passes. Each is then removed |
 | V2 | S3 | On the mock: `classify` returns typed answers, with `confidence` present only when the mock scripted it (assert with `in`). `route` lands on the gated leaf when the mock gives choice and confidence; on review when it gives the choice with no confidence, and with confidence under the edge's minimum. Checks [D2](DECISIONS.md#d2) |
-| V3 | S4 | Slash wins over the evaluator; keyword wins over the evaluator; the evaluator picks by description when neither resolves; an `ambiguous` or throwing evaluator activates nothing and no generator classifier runs. With none passed, no evaluator row appears in the trace |
+| V3 | S4 | Slash wins over the evaluator; keyword wins over the evaluator; the evaluator picks by description when neither resolves; an `ambiguous` or throwing evaluator activates nothing and no generator classifier runs. With none passed, no evaluator code loads, proved at the load and construction boundary: a spy on the evaluator module's import, the evaluator's construction and its model resolution records zero calls. A trace with no evaluator row is not enough on its own. **Negative control:** eagerly constructing the evaluator in the no-evaluator path fails the check |
 | V4 | S1 to S4 | Each command in the example README runs from its directory. The no-key commands run in CI through the tests; the model-backed ones are run by hand and recorded in the PR |
-| V5 | S8 | The docs site builds with no broken links. Every code block in the guide names an example file and matches a region of it. A grep over the page finds no issue or PR ids and none of BR-6's names. The refusal text matches the shipped error |
-| VG | S6 | **Goal, real models** (ER-13): `GOAL_LEGS=a,b,c,d pnpm tsx goals/evaluator/holds-as-an-assembled-set/run.mts` PASSES, and the full run reports (e) and (f) PENDING with owners and exits FAIL. **Control:** `GOAL_CONTROL=fake-confidence` must FAIL leg (c) and only leg (c). Checks [D3](DECISIONS.md#d3) |
+| V5 | S8 | The docs site builds with no broken links. Every source code block in the guide names an example file in its title and matches a region of it. Command fences are exempt from that and are run instead (V4); the refusal output fence matches the shipped error. A grep over the page finds no issue or PR ids and none of BR-6's names. The refusal text matches the shipped error |
+| VG | S6 | **Goal, real models** (ER-13): `pnpm tsx goals/evaluator/holds-as-an-assembled-set/run.mts` exits FAIL, and its failure list holds only the `[e]` and `[f]` placeholders, each naming its owner. No failure tagged `[a]` to `[d]` is this issue's merge bar. Leg (d)'s no-evaluator half asserts at the load boundary, as V3 does. **Control:** `GOAL_CONTROL=fake-confidence` must FAIL leg (c) and only leg (c). Checks [D3](DECISIONS.md#d3) |
 
 One check per decision: D1 is V1, D2 is V2's no-confidence case and VG's control, D3 is VG's full
 run. The second path (BP-035) is the no-evaluator activator (V3) and the no-confidence tree (V2).
@@ -61,7 +61,7 @@ run. The second path (BP-035) is the no-evaluator activator (V3) and the no-conf
 | Example | `examples/guides/routing-with-evaluators`, flow `routing-with-evaluators` | The guide and the goal both name it |
 | Actions | `classify`, `route`, `routeWithoutConfidence` | The guide's commands and the goal's legs call them |
 | Goal | `goals/evaluator/holds-as-an-assembled-set/`, leg letters (a) to (f) as in ER-15 | FIX-1557 and FIX-1555 wire their legs into it by letter |
-| Goal knobs | `GOAL_LEGS` (comma-separated letters), `GOAL_CONTROL=fake-confidence` | Siblings and the wrap run them |
+| Goal knobs | `GOAL_CONTROL=fake-confidence`. No leg selector: every run runs every leg, and failures are tagged by leg letter | Siblings and the wrap run them |
 
 The activator action's name, file layout and test names are yours.
 
@@ -71,7 +71,7 @@ The activator action's name, file layout and test names are yours.
 |---|---|
 | The example uses only what the siblings shipped. If teaching needs something they didn't ship, stop and raise it to the epic | A demo-only helper is the "kitchen-sink-only API" the owner killed, just in a different folder |
 | Build the tree once, with the model as a parameter | Two copies of the tree would let the Jev and no-confidence runs drift, and the comparison is the lesson |
-| A leg's slot is a small, documented seam in `run.mts`: a leg letter, an owner, and a function. The owner adds a function; nothing else in the goal changes | FIX-1557 and FIX-1555 wire legs later, in their own PRs. A goal they have to restructure will get forked |
+| A leg's slot is a small, documented seam in `run.mts`: one placeholder `fail(<letter>, 'not yet wired — owned by <issue>')`. The owner replaces that line with the leg's assertions; nothing else in the goal changes | FIX-1557 and FIX-1555 wire legs later, in their own PRs. A goal they have to restructure will get forked |
 | Assert what a user sees: the leaf the output names, the activated skill in session state, the refusal error. Never the router's internal path | An internal path can report the gated leaf while the output is review |
 | Snippets are cut from the example, never written on the page | A snippet no test compiles drifts from the API it teaches |
 | No confidence is supplied anywhere in the example, mock setups aside | The example would teach the exact thing the epic forbids (ER-9) |
@@ -100,7 +100,8 @@ flow actions:
 the goal:
     legs = { a: classify on Jev, b: refused generate-only model, c: route + routeWithoutConfidence,
              d: activate with and without an evaluator, e: slot (facets), f: slot (memory) }
-    run the selected legs; an empty slot reports PENDING; any PENDING or FAIL fails the run
+    runGoal over every leg; an unwired leg is a placeholder fail naming its owner;
+    any failure fails the run, each line tagged with its leg letter
 ```
 
 **POC:** none. The end-state POC on #1903 already showed the pieces compose

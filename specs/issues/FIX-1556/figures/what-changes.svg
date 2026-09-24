@@ -83,8 +83,8 @@
     <text class="t-a" x="668" y="290">e · facets slot</text>
     <rect class="n-slot" x="780" y="266" width="118" height="40" rx="4"/>
     <text class="t-a" x="792" y="290">f · memory slot</text>
-    <text class="t-s" x="656" y="330">a missing leg is pending,</text>
-    <text class="t-s" x="656" y="344">and pending is not a pass</text>
+    <text class="t-s" x="656" y="330">an unwired leg is a failure</text>
+    <text class="t-s" x="656" y="344">naming its owner</text>
   </g>
 
   <g id="arrows">
