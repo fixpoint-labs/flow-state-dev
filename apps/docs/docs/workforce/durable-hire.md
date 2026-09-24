@@ -506,7 +506,7 @@ A read the store will not complete throws the same way. Nothing is loaded in any
 
 One row per seat in the organization's scope: at `workforce/roster/<seatId>`, or at `workforce/roster/~<user>/<seatId>` for a user-owned seat. It is read through the same storage adapter as everything else the app persists, so a Postgres-backed app keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.
 
-The roster is not the [live inventory](./inventory.md). An inventory row means *was registered in this organization* and is never removed. A roster row is removed when the seat is fired. A seat hired through [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) or the `seat-hire` tools gets both rows. A seat hired by a handler you wrote gets only the rows it writes: the `hire-seat` handler in [Hiring a seat](#hiring-a-seat) writes a roster row and no inventory row. Anything that wants one list of every seat, declared and hired, joins the two itself.
+The roster is not the [inventory](./inventory.md). An inventory row means *was registered in this organization* and is never removed. A roster row is removed when the seat is fired. A seat hired through [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) or the `seat-hire` tools gets both rows. A seat hired by a handler you wrote gets only the rows it writes: the `hire-seat` handler in [Hiring a seat](#hiring-a-seat) writes a roster row and no inventory row. Anything that wants one list of every seat, declared and hired, joins the two itself.
 
 ### What a seat saves for a person
 
