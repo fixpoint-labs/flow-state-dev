@@ -587,8 +587,23 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           },
           body: JSON.stringify({ userId: LAB_USER_ID, input: {} }),
         });
-        const response = await (router as any).POST(request, { params: { path: segments } });
-        const text: string = await response.text();
+        // The facts arrive only on the handler's block_trace item, and the
+        // engine captures none under NODE_ENV=production or
+        // FSDEV_TRACE_OBSERVABILITY=false. The gate reads the env per request,
+        // so it is forced on for this one request (read to its end, so the
+        // run is over) and restored — the goal then grades the door, not the
+        // ambient env.
+        const priorTrace = process.env.FSDEV_TRACE_OBSERVABILITY;
+        process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+        let response: Response;
+        let text: string;
+        try {
+          response = await (router as any).POST(request, { params: { path: segments } });
+          text = await response.text();
+        } finally {
+          if (priorTrace === undefined) delete process.env.FSDEV_TRACE_OBSERVABILITY;
+          else process.env.FSDEV_TRACE_OBSERVABILITY = priorTrace;
+        }
         if (response.status >= 400) {
           const json = text.length > 0 ? JSON.parse(text) : undefined;
           return { error: `${response.status}: ${JSON.stringify(json)}` };
@@ -603,17 +618,23 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
                 patch?: { output?: { kind?: string; value?: unknown } };
               },
           );
+        // "Last inline output" is the root block's only because INSPECT_ENTRY
+        // is a single leaf handler (BP-011): make it a sequencer and revisit
+        // this. The wire can't say which block it is — the patch carries no
+        // provenance, and this block's own item.added/item.done are dropped by
+        // the client filter (a trace item), leaving only its item.updated.
         const output = events
           .map((event) => event.patch?.output)
           .filter((out) => out?.kind === "inline")
           .at(-1)?.value;
-        return events.some((event) => event.type === "request.completed") && output !== undefined
-          ? { facts: output as Record<string, unknown> }
-          : {
-              error:
-                `${response.status}, but no completed output came back: ` +
-                events.map((event) => event.type).join(", "),
-            };
+        const completed = events.some((event) => event.type === "request.completed");
+        if (completed && output !== undefined) return { facts: output as Record<string, unknown> };
+        const seen = events.map((event) => event.type).join(", ");
+        return {
+          error: completed
+            ? `request.completed fired with no inline block output (events: ${seen})`
+            : `request.completed never fired (events: ${seen})`,
+        };
       }
 
       const result = await act(seatId, INSPECT_ENTRY, {});

@@ -695,7 +695,7 @@ await runGoal(async () => {
       const landed = await org.lab.inspect(fixture.coordinatorSeat, { door: "bearer" });
       const expected = fixture.seats[fixture.coordinatorSeat];
       if (landed.error !== undefined) {
-        note(`the same read carrying a verified bearer was refused too — ${landed.error}`);
+        note(`the same read carrying a verified bearer did not land — ${landed.error}`);
       } else if (
         landed.facts?.seat !== fixture.coordinatorSeat ||
         landed.facts?.documentRef !== expected?.document
