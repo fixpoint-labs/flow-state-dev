@@ -5,7 +5,7 @@ title: "Debug vs client state"
 
 # Debug vs client state
 
-The DevTool shows you the full server-side state of a session. Your production clients see only what you let them see. This page explains the difference and how to control it.
+The DevTool shows you the server-side state of a session, apart from other users' private workforce seats. Your production clients see only what you let them see. This page explains the difference and how to control it.
 
 ## Two views of the same session
 

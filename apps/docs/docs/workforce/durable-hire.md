@@ -169,6 +169,14 @@ export default workforceAdmin();
 
 The seats these handlers and the `seat-hire` tools hire are always org-visible: every member of the organization can call one, and its roster row, `instructions` included, is readable by a browser in that organization. For a seat only one member can reach, write the hire yourself as in [Hiring a seat only one member can reach](#hiring-a-seat-only-one-member-can-reach).
 
+Both handlers take the organization from the principal your `resolvePrincipal` returns for the session, as [above](#the-organization-has-to-come-from-the-credential). A session whose principal names no organization, which includes every session on a flow with no `resolvePrincipal`, belongs to the framework's default organization. That id can't start a seat address, so every hire there is refused before anything is written:
+
+```text
+Organization id "__fsd_default_org__" must be lowercase letters, digits, and single hyphens (not at the start or end) — it becomes the leading segment of a hired seat's address, which is joined with a "."
+```
+
+Mount these handlers only on a flow whose resolver names a real organization.
+
 ### Hiring
 
 `hire` takes `{ seatId, flow, settings?, instructions? }`. Any other key is refused, except `orgId`, which is accepted and ignored. It returns the seat id and the address the seat answers on:
@@ -186,14 +194,6 @@ A hire runs in this order:
 3. It writes the roster row with `create()`. A second hire of the same seat id fails here with `Resource instance "workforce/roster/support.ada" already exists`, including two hires arriving at once.
 4. It calls your `register`. If that throws, the row from step 3 is deleted and the error is passed on.
 5. It writes an inventory row at `inventory/seats/<address>`. If this write fails, the seat is hired and answering but has no inventory row.
-
-Both handlers take the organization from the principal your `resolvePrincipal` returns for the session, as [above](#the-organization-has-to-come-from-the-credential). A session whose principal names no organization, which includes every session on a flow with no `resolvePrincipal`, belongs to the framework's default organization. That id can't start a seat address, so every hire there is refused before anything is written:
-
-```text
-Organization id "__fsd_default_org__" must be lowercase letters, digits, and single hyphens (not at the start or end) — it becomes the leading segment of a hired seat's address, which is joined with a "."
-```
-
-Mount these handlers only on a flow whose resolver names a real organization.
 
 ### Firing
 
@@ -453,7 +453,7 @@ const orgIds = [...new Set((await runtime.stores.org.list()).map((r) => r.orgId)
 const { seats, problems } = await reloadHiredSeats({
   stores: runtime.stores,
   orgIds,
-  kinds, // the same map the hire action uses
+  kinds, // the map the hire action uses: exported from flow.ts or hire.ts, whichever path you took
 });
 
 for (const seat of seats) {
@@ -500,11 +500,11 @@ The roster is not the [live inventory](./inventory.md). An inventory row means *
 
 ### What a seat saves for a person
 
-What a seat saves for a person stays with its organization and its person. It is stored apart from the roster, in a cell: a user-scope key for the seat's organization and that person, `<person>:~org:<organization>`. The cell holds the user record a seat reads as `ctx.user.state` and every user-scoped resource the seat's kind declares without `flowIsolation: true`.
+A seat keeps what it saves for a person in a cell of its own, apart from the roster: a user-scope key for the seat's organization and that person, `<person>:~org:<organization>`. The cell holds the seat's shared user data. That is the user record a seat reads as `ctx.user.state`, unless the kind sets `isolateUserState: true`, and every user-scoped resource that isn't flow-isolated. A resource's own `flowIsolation` decides whether it is isolated; a resource that doesn't set it follows the kind's `isolateUserState`.
 
-Anything a seat stores for Alice while she works in Acme stays in Acme and stays hers. Her Globex seat of the same kind cannot read it, and neither can Bob's. Her other seats in Acme can, if they declare the same resource. A seat does not move between organizations, and there is no setting that makes it move.
+Say Alice uses seats in two organizations, Acme and Globex. Anything a seat stores for her while she works in Acme stays in Acme and stays hers. Her Globex seat of the same kind cannot read it, and neither can a seat belonging to Bob, another member of Acme. Her other seats in Acme can, if they declare the same resource. A seat does not move between organizations, and there is no setting that makes it move.
 
-The person's own data outside hired seats, such as preferences your app's other flows keep, is a different cell, keyed by the person's id alone. A hired seat does not read it and cannot write to it. A seat whose kind isolates its user data per flow keeps that data under the seat's own address instead.
+The person's own data outside hired seats, such as preferences your app's other flows keep, is a different cell, keyed by the person's id alone. A hired seat does not read it and cannot write to it. Flow-isolated data is not in either cell: it is keyed by the person and the seat's own address. That covers the user record when the kind sets `isolateUserState: true`, and any user-scoped resource that is isolated, by its own `flowIsolation: true` or by following the kind's `isolateUserState: true`.
 
 A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the person's id and the organization, so key its rows by `orgId` as well, or a seat in one organization reads what was saved in another.
 
