@@ -2,14 +2,21 @@
  * Reference resolver for resource-collection-backed dynamic schedules.
  *
  * Parses the dispatch URL id into `(userId, collectionKey)`, reads the
- * resource via `stores.content.get("user", userId, ...)`, and
+ * resource via `stores.content.get("user", <user key>, ...)`, and
  * synthesizes `principal: { userId }` so the action runs as the
  * schedule's owner. The user-scoped storage key acts as the
- * impersonation guard: a URL like `evil/key` looks up
- * `("user", "evil", ...)` which won't find a resource owned by another
- * user.
+ * impersonation guard: a URL like `evil/key` looks up the cell of user
+ * `evil`, which won't find a resource owned by another user.
+ *
+ * The user key comes from the engine's own derivation, so it is the cell
+ * the flow's runs wrote: the person's cross-org cell for an ordinary flow,
+ * and the (org, person) cell for a hired seat, whose pin the dispatch route
+ * passes in (FIX-1538). A seat's schedule therefore never resolves from the
+ * person's cross-org cell, and a row in its cell that names another
+ * organization than the pin resolves as missing.
  */
 import { isValidOrgId } from "@flow-state-dev/core";
+import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import type {
   BlockDefinition,
   ScheduleConfig,
@@ -83,8 +90,17 @@ export function createResourceCollectionScheduleResolver(
     // The parsed userId is both the action's principal AND the storage
     // scope, so a URL aimed at another user's data reads from a scope
     // that doesn't contain it. No separate ownership check is needed.
+    // Derived the way every other user-scoped read derives it, so a hired
+    // seat reads its (org, person) cell and never the person's cross-org
+    // one. The schedule collection is shared (it declares no
+    // `flowIsolation`), which is the non-isolated key.
     const resourceKey = `${prefix}${parsed.collectionKey}`;
-    const raw = await ctx.stores.content.get("user", parsed.userId, resourceKey);
+    const scopeId = resolveUserStorageKey(parsed.userId, {
+      id: ctx.flowKind,
+      isolateUserState: false,
+      ownerPin: ctx.ownerPin
+    });
+    const raw = await ctx.stores.content.get("user", scopeId, resourceKey);
     if (raw === undefined) return null;
 
     let state: ScheduleResourceState;
@@ -114,6 +130,10 @@ export function createResourceCollectionScheduleResolver(
     // target to validate, so it does not dispatch at all — it is quarantined
     // until an operator attributes it, exactly like any other legacy record.
     if (!isValidOrgId(state.orgId)) return null;
+    // A seat's schedule fires only into the seat's own organization. The cell
+    // is already the pin's, so a row naming another one was not written by
+    // this seat's runs, and does not dispatch (FIX-1538).
+    if (ctx.ownerPin !== undefined && state.orgId !== ctx.ownerPin.orgId) return null;
 
     const config: ScheduleConfig = {
       cron: state.cron,

@@ -156,7 +156,7 @@ async function setupCtx(opts: {
     // FIX-735: `accountsCollection` declares `flowIsolation: true`, so its
     // instances key per-resource at the isolated bucket `{userId}:{flow.id}` —
     // independent of the (flow-flag) scope-record key above.
-    const accountsScopeId = resolveResourceScopeId(userId, flow.id, true);
+    const accountsScopeId = resolveResourceScopeId(userId, flow, "user", true);
     for (const [topic, state] of Object.entries(opts.accounts)) {
       await stores.resourceState.set("user", accountsScopeId, `accounts/${topic}`, state as JsonObject, "any");
     }

@@ -98,7 +98,11 @@ export async function handleDispatch(
         flowKind,
         gatewayPrincipal,
         request: req,
-        stores: host.stores as ScheduleResolutionStores
+        stores: host.stores as ScheduleResolutionStores,
+        // The registered instance's pin, so a hired seat's schedules resolve
+        // from the seat's own (org, person) cell (FIX-1538). From the
+        // registry, never the request.
+        ...(flow.ownerPin === undefined ? {} : { ownerPin: flow.ownerPin })
       });
       schedule = resolved ?? null;
       origin = "dynamic";

@@ -196,10 +196,10 @@ describe("isolation-key encoding", () => {
     const flowIds = ["flow-a", "reviewer-a", "reviewer", "some_instance"];
     for (const identityId of ordinary) {
       for (const flowId of flowIds) {
-        expect(resolveResourceScopeId(identityId, flowId, true)).toBe(
+        expect(resolveResourceScopeId(identityId, { id: flowId }, "user", true)).toBe(
           legacyKey(identityId, flowId, true)
         );
-        expect(resolveResourceScopeId(identityId, flowId, false)).toBe(
+        expect(resolveResourceScopeId(identityId, { id: flowId }, "user", false)).toBe(
           legacyKey(identityId, flowId, false)
         );
         expect(resolveUserStorageKey(identityId, { id: flowId, isolateUserState: true })).toBe(
@@ -221,8 +221,8 @@ describe("isolation-key encoding", () => {
   it("does not let two different (identity, instance) pairs name one cell", () => {
     // Codex's case on #1646: raw concatenation gave both of these `u:a:b`, so
     // user `u` on instance `a:b` read and overwrote user `u:a`'s isolated data.
-    expect(resolveResourceScopeId("u", "a:b", true)).not.toBe(
-      resolveResourceScopeId("u:a", "b", true)
+    expect(resolveResourceScopeId("u", { id: "a:b" }, "user", true)).not.toBe(
+      resolveResourceScopeId("u:a", { id: "b" }, "user", true)
     );
     expect(legacyKey("u", "a:b", true)).toBe(legacyKey("u:a", "b", true));
 
@@ -237,8 +237,8 @@ describe("isolation-key encoding", () => {
   it("does not let a shared identity collide with someone else's isolated cell", () => {
     // The same bug one component down: user `u:a`'s SHARED bucket was the exact
     // key user `u` isolated to instance `a` wrote. The bare form is encoded too.
-    expect(resolveResourceScopeId("u:a", "anything", false)).not.toBe(
-      resolveResourceScopeId("u", "a", true)
+    expect(resolveResourceScopeId("u:a", { id: "anything" }, "user", false)).not.toBe(
+      resolveResourceScopeId("u", { id: "a" }, "user", true)
     );
     expect(legacyKey("u:a", "anything", false)).toBe(legacyKey("u", "a", true));
   });
@@ -249,7 +249,7 @@ describe("isolation-key encoding", () => {
     for (const identityId of hostile) {
       for (const flowId of hostile) {
         for (const isolated of [true, false]) {
-          const key = `${resolveResourceScopeId(identityId, flowId, isolated)}`;
+          const key = `${resolveResourceScopeId(identityId, { id: flowId }, "user", isolated)}`;
           // A shared bucket ignores the instance, so it is one cell per identity.
           const pair = isolated ? `iso(${identityId},${flowId})` : `shared(${identityId})`;
           const prior = seen.get(key);

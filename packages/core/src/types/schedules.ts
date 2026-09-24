@@ -17,7 +17,7 @@
 
 import { CronExpressionParser } from "cron-parser";
 import type { ResolvedPrincipal } from "./auth";
-import type { ActionCore } from "./flow";
+import type { ActionCore, InstanceOwnerPin } from "./flow";
 
 /**
  * Subset of `StoreRegistry` exposed to dynamic resolvers. Defined
@@ -64,6 +64,16 @@ export type ScheduleResolutionContext = {
    * live in core; resolvers receive the full `StoreRegistry` at runtime.
    */
   stores: ScheduleResolutionStores;
+  /**
+   * The owner pin of the registered instance this dispatch addresses, when it
+   * is a hired seat; absent for every other flow. Taken from the registry,
+   * never from the request. A seat keeps its shared user data — a
+   * resource-backed schedule collection included — in the cell for the pin's
+   * organization and the person, so a resolver that reads user-scoped storage
+   * derives its key from this (see `resolveUserStorageKey` in
+   * `@flow-state-dev/engine`) rather than from the person's id alone.
+   */
+  ownerPin?: InstanceOwnerPin;
 };
 
 /**
