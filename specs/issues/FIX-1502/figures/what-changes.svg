@@ -1,0 +1,93 @@
+<svg viewBox="0 0 940 390" role="img" aria-label="Checklist row 5, today beside after. Today the app hires seats and opens its channel but never opens the inventory, so the organization's store holds no inventory rows; a channel session in the DevTool asking the production read route is refused with 403, and the only other way in is the debug Resources panel, which is off outside fsdev dev. After, the app's boot also opens the inventory, so the store holds one row per seat, per channel and per membership; the DevTool's Inventory tab on the channel session reads them through the production route and shows every seat, every channel and who is in which, for that session's organization only. Rows another organization wrote in the same store sit behind a dashed fence and are never shown."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-ok  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-off { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-far { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .fence { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; fill:none; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .arr-ok { stroke:var(--code); stroke-width:1.5; fill:none; }
+    .arr-no { stroke:var(--gone); stroke-width:1.5; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .head-ok { fill:var(--code); }
+    .head-no { fill:var(--gone); }
+    .t-lane { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; letter-spacing:.14em; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-no  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="390"/>
+
+  <g id="today">
+    <text class="t-lane" x="16" y="24">TODAY</text>
+    <rect class="n-box" x="16" y="36" width="209" height="72" rx="5"/>
+    <text class="t-lbl" x="30" y="56">APP BOOT</text>
+    <text class="t-b" x="30" y="76">hire · open channel</text>
+    <text class="t-s" x="30" y="95">inventory never opened</text>
+    <path class="arrow" d="M225 72 H238"/>
+    <path class="head" d="M238 67 L248 72 L238 77 Z"/>
+    <rect class="n-off" x="249" y="36" width="209" height="72" rx="5"/>
+    <text class="t-lbl" x="263" y="56">ORG STORE · INVENTORY</text>
+    <text class="t-b" x="263" y="76">no rows</text>
+    <text class="t-s" x="263" y="95">nothing for a reader</text>
+    <rect class="n-box" x="482" y="36" width="209" height="72" rx="5"/>
+    <text class="t-lbl" x="496" y="56">DEVTOOL · CHANNEL SESSION</text>
+    <text class="t-b" x="496" y="76">production read</text>
+    <text class="t-no" x="496" y="95">403 · not permitted</text>
+    <rect class="n-off" x="715" y="36" width="209" height="72" rx="5"/>
+    <text class="t-lbl" x="729" y="56">DEBUG RESOURCES PANEL</text>
+    <text class="t-b" x="729" y="76">the only way in</text>
+    <text class="t-no" x="729" y="95">off outside fsdev dev</text>
+  </g>
+
+  <path class="fence" d="M16 132 H924" opacity=".45"/>
+
+  <g id="after">
+    <text class="t-lane" x="16" y="162">AFTER</text>
+    <rect class="n-new" x="16" y="174" width="209" height="72" rx="5"/>
+    <text class="t-lbl" x="30" y="194">APP BOOT · DOCUMENTED</text>
+    <text class="t-b" x="30" y="214">+ open the inventory</text>
+    <text class="t-s" x="30" y="233">after the channel opens</text>
+    <path class="arr-ok" d="M225 210 H238"/>
+    <path class="head-ok" d="M238 205 L248 210 L238 215 Z"/>
+    <rect class="n-ok" x="249" y="174" width="209" height="72" rx="5"/>
+    <text class="t-lbl" x="263" y="194">ORG STORE · INVENTORY</text>
+    <text class="t-b" x="263" y="214">seats and channels</text>
+    <text class="t-s" x="263" y="233">and who is in which</text>
+    <path class="arr-ok" d="M482 210 H469"/>
+    <path class="head-ok" d="M469 205 L459 210 L469 215 Z"/>
+    <rect class="n-new" x="482" y="174" width="209" height="72" rx="5"/>
+    <text class="t-lbl" x="496" y="194">DEVTOOL · INVENTORY TAB</text>
+    <text class="t-b" x="496" y="214">the whole org</text>
+    <text class="t-ok" x="496" y="233">200 · this org only</text>
+    <rect class="n-box" x="715" y="174" width="209" height="72" rx="5"/>
+    <text class="t-lbl" x="729" y="194">DEBUG RESOURCES PANEL</text>
+    <text class="t-b" x="729" y="214">unchanged</text>
+    <text class="t-s" x="729" y="233">not what row 5 reads</text>
+  </g>
+
+  <g id="other-org">
+    <text class="t-lbl" x="249" y="276">THE SESSION'S OWN ORGANIZATION ABOVE · ANY OTHER BELOW</text>
+    <path class="fence" d="M249 284 H691"/>
+    <rect class="n-far" x="249" y="298" width="209" height="72" rx="5"/>
+    <text class="t-lbl" x="263" y="318">ANOTHER ORG'S ROWS</text>
+    <text class="t-b" x="263" y="338">same store</text>
+    <text class="t-s" x="263" y="357">written by its own boot</text>
+    <path class="arr-no" d="M482 334 H469"/>
+    <path class="head-no" d="M469 329 L459 334 L469 339 Z"/>
+    <text class="t-no" x="496" y="330">never shown</text>
+    <text class="t-s" x="496" y="346">the read resolves the session's org</text>
+  </g>
+</svg>
