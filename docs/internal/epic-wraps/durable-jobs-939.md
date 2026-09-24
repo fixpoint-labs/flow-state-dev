@@ -1,6 +1,6 @@
 # Epic wrap detail — durable jobs & detached-task substrate (FIX-939)
 
-Per-instance evidence behind [cycle 4 of the cycle ledger](../cycle-ledger.md#cycle-4--durable-jobs-epic-wrap-fix-939-2026-08-11).
+Per-instance evidence behind [cycle 4 of the cycle ledger](../cycle-ledger/cycle-04.md).
 The ledger carries the counts and the conclusion; the enumeration lives here so the
 instrument stays scannable.
 

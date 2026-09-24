@@ -127,8 +127,8 @@ export function vercelPostgresStores(
     upsert: (row: ScheduleIndexRow) => (realIndex ?? NOOP_INDEX).upsert(row),
     claimDue: (now: number, limit?: number) =>
       (realIndex ?? NOOP_INDEX).claimDue(now, limit),
-    remove: (userId: string, key: string) =>
-      (realIndex ?? NOOP_INDEX).remove(userId, key)
+    remove: (id: { cell: string; key: string }) =>
+      (realIndex ?? NOOP_INDEX).remove(id)
   };
 
   return {

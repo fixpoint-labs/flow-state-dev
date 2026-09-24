@@ -52,7 +52,7 @@ Anything after `/` that no built-in claims is sent to the flow unchanged. That's
 
 Each flow kind gets its own session within a run, so conversation history and state don't bleed across a `/use` switch. Switch away and back, and the first flow's session resumes where it left off. History persists in the engine's stores — the same SQLite database (`.fsdev/data/fsdev.db`) the DevTool reads in the discovery path — so a conversation survives restarts of the session.
 
-Turns and the engine identity that owns them default to `cli-user`. The DevTool defaults to `devuser`. If you want a chat session to show up in the DevTool's session list, or to resume a session across the two surfaces, align them — pass `--user devuser` to `fsdev chat`, or set the DevTool's user to `cli-user`.
+Turns run as whoever your app's resolver says, asked once per turn for that turn's flow. With no resolver, that is `cli-user` in the development organization, `DEFAULT_ORG_ID` (`__fsd_default_org__` in output), while the DevTool defaults to the user `devuser`. To see a chat session in the DevTool's session list, or resume one across the two, align them with `--user devuser`. If a flow's resolver refuses the CLI, that turn fails and the chat keeps going. Pass `--org` to get past it. `/status` shows the organization the current flow's last turn ran in. See [Who a run is](./configuration.md#who-a-run-is) for how the resolver is asked and what `--org` and `--user` change.
 
 `--session <id>` resumes a specific session for the initially bound flow. A session that belongs to a different flow is rejected rather than silently reused, since the engine routes state by the session's flow.
 
@@ -76,6 +76,7 @@ Your name is Ada.
 Target:  hello-chat · chat
 Session: sess_a1b2c3
 Turns:   2
+Org:     __fsd_default_org__ (user cli-user, development-default)
 Source:  config (fsdev.config.ts)
 Store:   app-configured stores
 ❯ /exit

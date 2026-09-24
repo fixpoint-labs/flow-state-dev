@@ -149,12 +149,8 @@ async function hireTwoSeatsOver(root: string) {
       userId: "one-human",
       orgId: ORG_ID,
       stores,
-      // Supplied so the context never builds the default resolver, which reads
-      // `process.env` and fails fast when a shell exports `FSDEV_DEFAULT_MODEL`
-      // at a flow declaring no intents — as the remote dev containers do. This
-      // flow is one handler and resolves no model, so the stub is never called;
-      // passing it keeps the fence's evidence independent of the shell it runs
-      // in, without scrubbing globals other suites in this package share.
+      // This flow is one handler and resolves no model, so the stub is never
+      // called; a model reached here would be a bug in the fence.
       modelResolver: () => {
         throw new Error("the fence's evidence reaches no model");
       },

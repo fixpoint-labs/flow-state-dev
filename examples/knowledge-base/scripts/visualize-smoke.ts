@@ -11,13 +11,6 @@
 // the link graph resolves. Exits non-zero on any conformance failure.
 // ---------------------------------------------------------------------------
 
-// The dev container sets FSDEV_INTENT_* / FSDEV_DEFAULT_MODEL for `fsdev`; the
-// model-free collection here doesn't need them, and they make the default model
-// resolver throw. Drop them before building the execution context.
-for (const key of Object.keys(process.env)) {
-  if (key.startsWith("FSDEV_INTENT_") || key === "FSDEV_DEFAULT_MODEL") delete process.env[key];
-}
-
 import { promises as fs } from "node:fs";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import * as os from "node:os";

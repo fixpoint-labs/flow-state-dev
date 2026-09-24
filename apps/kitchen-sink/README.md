@@ -97,9 +97,9 @@ curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
 
 Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
 
-Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.bo`), and is still there after `pnpm build && pnpm start`.
+Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.bo`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
 
-The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no working hire path. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
+The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set. The variable takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names, never what the request body says:
 
 ```bash
 export WORKFORCE_ADMIN_TOKENS="kitchen-sink:dev-token"
@@ -110,9 +110,13 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
   -d '{"userId":"you","input":{"seatId":"support.bo","flow":"desk-clerk","settings":{"desk":"back"},"instructions":"You work the back desk."}}'
 ```
 
-Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
+The rail's **Hire another** and mara's `hire` tool don't need a token.
+
+Over HTTP, because the admin flow checks a token and the CLI carries none.
 
 The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
+
+The admin flow also has a `fire` action. It removes any seat hired while the app runs: from the web app's rail, by a seat's own `hire` tool (see [A seat that hires](#a-seat-that-hires)), or by the admin action itself. Seats the admin action hires don't show in the rail.
 
 The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. A request with no token gets `401`:
 
@@ -140,11 +144,11 @@ tools: [hire, fire]
 
 The tools come from `createSeatHireCapability`, which `workforce/hire.ts` adds to the built-in agent kind next to the team's own capability. Adding it to a kind puts `hire` and `fire` in that kind's catalog, and a seat still has to name them. Iris and otto run the same kind and can't hire, because their files don't ask for it. The same file also adds `discover`, so any agent seat can ask which seats this organization has hired.
 
-A hire names a kind this app already carries (`agent`, `desk-clerk` or `followup-runner`, the same list the admin action offers) and a seat id. It can't invent a kind. The seat answers straight away at `<org>.<seatId>`, and it's written to the same roster the admin action writes. So it comes back after a restart, and the admin action's `fire` can remove it. Mara can fire only the seats she, or another seat, hired this way. A seat declared in a folder is removed by editing the folder, and a seat the admin action hired belongs to the operator who hired it.
+A hire names a kind this app already carries (`agent`, `desk-clerk` or `followup-runner`, the same list the admin action offers) and a seat id. It can't invent a kind. The seat answers straight away at `<org>.<seatId>`, and it's written to the same roster the admin action writes. So on a persistent store it comes back after a restart. Mara can fire only the seats she, or another seat, hired this way. A seat declared in a folder is removed by editing the folder, and a seat the admin action hired belongs to the operator who hired it.
 
 Firing releases the address, and `discover` stops listing the seat. The seat's row in the live inventory stays, because that list records what was ever registered.
 
-**From the CLI, mara can't hire.** A hired seat's address starts with its organization. In the app she runs as `kitchen-sink`, like every seat, so a hire through the app lands there. `fsdev run` doesn't use the app's resolver: it runs every seat under the framework's development organization, and that name is deliberately not a legal address, so the hire is refused and nothing is written. Ask her from the CLI anyway and she tells you the hire was refused, quoting the refusal, which names the organization:
+**From the CLI, mara hires too.** A hired seat's address starts with its organization. In the app she runs as `kitchen-sink`, like every seat, and `fsdev run` asks the app's resolver the same question, so it runs as the same `devuser` in `kitchen-sink` and the hire lands where the app's pages see it:
 
 ```bash
 pnpm fsdev run support.mara run -i '{"message":"Hire support.pat, an agent seat that takes refunds."}'
@@ -155,6 +159,7 @@ The wiring is the part to copy: in an app whose seats run under an organization 
 ## Web Application (`app/`)
 
 - Three-column layout: a `FlowNavigator` rail over channels, seats and the assistant's conversations; the stream; and a standing panel with the roster and the channel boards (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too
+- **Seats**: Open a seat to see its kind. A seat hired while the app runs also shows its instructions. A seat declared in a folder doesn't. **Hire another** adds a seat of the same kind to the app's organization. It appears in the rail and the roster without a reload (the rail collapses briefly while it refreshes), and it is still there after a restart on a persistent store. Hires run on a conversation of their own, listed as **Seat hires**, so they never land in yours
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
 - **Client data bar**: Live display of mode status, request count, user preferences

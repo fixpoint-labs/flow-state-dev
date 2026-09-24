@@ -44,10 +44,23 @@ export type CollectionHookContext = {
    * The identifier of the concrete scope instance the hook fired in:
    * `userId` for `scope:"user"`, `orgId` for `scope:"org"`,
    * `sessionId` for `scope:"session"`. Lets hooks correlate collection
-   * mutations back to the entity that owns them (e.g. mirroring a row
-   * into a per-user schedule index).
+   * mutations back to the entity that owns them. Not where the row is
+   * stored — see `cell` for that.
    */
   scopeId: string;
+  /**
+   * The storage cell this instance is persisted under: the exact scope key
+   * the engine writes the instance at. Resolved per instance key, so when a
+   * narrower overlapping collection owns the key, it is that collection's cell
+   * even if a broader handle did the write. It differs from `scopeId`
+   * whenever storage is partitioned below the bare identity — a flow-isolated
+   * collection (`<id>:<flow>`), a hired seat's (org, person) cell
+   * (`<person>:~org:<org>`), or an identity whose id needs escaping. Two
+   * instances with the same key are the same row exactly when they share a
+   * cell, so a hook mirroring rows elsewhere (a schedule index) keys on
+   * `cell` + key. Opaque: store and compare it, never parse it.
+   */
+  cell: string;
   /**
    * The organization the execution that fired this hook was admitted under
    * (FIX-1442). Server-derived, never the caller's — a hook that persists a

@@ -85,6 +85,18 @@ across crashes. See [Action forms](./action-forms.md).
 an open string; the documented known-set is `http`, `mcp`, `webhook`,
 `scheduled`, `notification`. Custom transports pick their own.
 
+`cli` is reserved, and it is a principal-resolution source only: it appears
+on the `PrincipalResolutionContext` a resolver sees, never on a request record.
+Only the engine's in-process entry point (`resolveInProcessPrincipal`, which
+`FlowState.resolveInProcessPrincipal` calls) produces it, for `fsdev run` and
+`fsdev chat`, which then execute through `runAction` without a `source`, so
+their requests are recorded under `runAction`'s default. The host refuses
+`source: "cli"` on any context that entry point did not build, before any
+resolver runs, whatever source the adapter itself declared. The mark is a
+module-private set in the host module, never exported and never on the host
+adapters receive, so a resolver may safely branch on `source === "cli"`
+(FIX-1551).
+
 ### The address is an instance id, and admission precedes materialization
 
 `envelope.flowKind` is the exact instance address. Every producer — the HTTP
@@ -338,7 +350,9 @@ flow X over MCP") lives on the flow definition, not the adapter shape.
 | `scheduled` | Scheduled dispatch (`@flow-state-dev/scheduled`, FIX-440) |
 | `notification` | Cross-flow event subscribers |
 
-Custom transports pick their own string. DevTool renders known sources
+Custom transports pick their own string, except `cli`, which is reserved for
+principal resolution and never recorded on a request (see "The envelope").
+DevTool renders known sources
 with affordances (icon, label) and falls back to the raw value for
 anything else.
 

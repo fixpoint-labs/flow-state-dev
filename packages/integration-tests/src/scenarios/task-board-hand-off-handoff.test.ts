@@ -76,10 +76,8 @@ const TASK_SOURCE = "task";
 const USER_ID = "u_handoff";
 
 /**
- * No block here calls a model, but `createExecutionContext` still builds a
- * resolver — and it throws when the ambient `FSDEV_DEFAULT_MODEL` has no
- * declared intent to apply to. A mock resolver keeps that env-dependent failure
- * out of a scenario that is about the drain's exit question.
+ * No block here calls a model. A mock resolver keeps the scenario independent
+ * of whatever model env the shell carries.
  */
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 

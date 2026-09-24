@@ -39,7 +39,12 @@ import {
 } from "../context/dispatch-operation";
 import type { InboundTransportHost } from "../transports/types";
 import type { StoreRegistry } from "../stores/types";
-import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
+import {
+  createInboundTransportHost,
+  resolveInProcessPrincipal,
+  type InProcessPrincipal,
+  type InProcessPrincipalQuestion
+} from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
 import { createConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
@@ -375,6 +380,15 @@ class InternalFlowState<TSettings extends object>
 
   getRuntime(): Promise<FlowStateRuntime> {
     return this.#runtime();
+  }
+
+  resolveInProcessPrincipal(question: InProcessPrincipalQuestion): Promise<InProcessPrincipal> {
+    // The same registry and host resolver the router's host is built from
+    // (`#doInit`), so the answer is the one an HTTP request would get.
+    return resolveInProcessPrincipal(
+      { registry: this.#registry, resolvePrincipal: this.#options.resolvePrincipal },
+      question
+    );
   }
 
   async dispose(): Promise<void> {

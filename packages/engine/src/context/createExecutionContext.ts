@@ -2289,10 +2289,20 @@ export async function createExecutionContext<
     signal: options.signal,
   });
 
+  // The cell a collection hook reports is the one the concrete instance key
+  // persists under: the same per-key ownership resolution the persisters use
+  // (longest declared prefix wins), never a second one. Every scope is present
+  // on every request (BR-12), so it always resolves.
+  const collectionCellOf =
+    (scope: ContentScopeType) =>
+    (storageKey: string): string =>
+      resolveResourceStorageScopeId(scope, storageKey)!;
+
   const userResources = createScopeResourceRegistry({
     orgId: resolvedOrgId,
     scope: "user",
     scopeId: userId,
+    cellOf: collectionCellOf("user"),
     configs: userResourceConfigs,
     readResources: readUserResources,
     readResourceContent: readUserResourceContent,
@@ -2310,6 +2320,7 @@ export async function createExecutionContext<
     orgId: resolvedOrgId,
     scope: "session",
     scopeId: sessionKey,
+    cellOf: collectionCellOf("session"),
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
     readResourceContent: readSessionResourceContent,
@@ -2330,6 +2341,7 @@ export async function createExecutionContext<
           orgId: resolvedOrgId,
           scope: "org",
           scopeId: orgRef.current!.orgId,
+          cellOf: collectionCellOf("org"),
           configs: orgResourceConfigs,
           readResources: readProjectResources,
           readResourceContent: readProjectResourceContent,

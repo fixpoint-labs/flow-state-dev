@@ -28,9 +28,10 @@ import {
 export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex {
   const warnBadCron = createBadCronWarner("[flow-state/store-sqlite]");
   const upsertStmt = db.prepare(
-    `INSERT INTO schedule_index (user_id, key, org_id, cron, timezone, next_fire_at)
-     VALUES (@userId, @key, @orgId, @cron, @timezone, @nextFireAt)
-     ON CONFLICT (user_id, key) DO UPDATE SET
+    `INSERT INTO schedule_index (cell, key, user_id, org_id, cron, timezone, next_fire_at)
+     VALUES (@cell, @key, @userId, @orgId, @cron, @timezone, @nextFireAt)
+     ON CONFLICT (cell, key) DO UPDATE SET
+       user_id = excluded.user_id,
        org_id = excluded.org_id,
        cron = excluded.cron,
        timezone = excluded.timezone,
@@ -38,11 +39,11 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
   );
 
   const removeStmt = db.prepare(
-    "DELETE FROM schedule_index WHERE user_id = ? AND key = ?"
+    "DELETE FROM schedule_index WHERE cell = ? AND key = ?"
   );
 
   const selectDueStmt = db.prepare(
-    `SELECT user_id, key, org_id, cron, timezone, next_fire_at
+    `SELECT cell, key, user_id, org_id, cron, timezone, next_fire_at
        FROM schedule_index
       WHERE next_fire_at <= ?
       ORDER BY next_fire_at
@@ -50,7 +51,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
   );
 
   const advanceStmt = db.prepare(
-    "UPDATE schedule_index SET next_fire_at = ? WHERE user_id = ? AND key = ?"
+    "UPDATE schedule_index SET next_fire_at = ? WHERE cell = ? AND key = ?"
   );
 
   // `.immediate` wraps the callback in BEGIN IMMEDIATE / COMMIT (with
@@ -61,6 +62,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
   // the SELECT before either escalates to a write lock.
   const claimDueTx = db.transaction((now: number, limit: number): ScheduleIndexRow[] => {
     const rows = selectDueStmt.all(now, limit) as Array<{
+      cell: string;
       user_id: string;
       key: string;
       org_id: string | null;
@@ -78,6 +80,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
         continue;
       }
       claimed.push({
+        cell: row.cell,
         userId: row.user_id,
         key: row.key,
         // A row written before schedules carried one reads back NULL, which the
@@ -87,7 +90,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
         timezone,
         nextFireAt: row.next_fire_at
       });
-      advanceStmt.run(next, row.user_id, row.key);
+      advanceStmt.run(next, row.cell, row.key);
     }
     return claimed;
   }).immediate;
@@ -95,6 +98,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
   return {
     async upsert(row: ScheduleIndexRow): Promise<void> {
       upsertStmt.run({
+        cell: row.cell,
         userId: row.userId,
         key: row.key,
         orgId: row.orgId ?? null,
@@ -104,8 +108,8 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
       });
     },
 
-    async remove(userId: string, key: string): Promise<void> {
-      removeStmt.run(userId, key);
+    async remove({ cell, key }: { cell: string; key: string }): Promise<void> {
+      removeStmt.run(cell, key);
     },
 
     async claimDue(now: number, limit = 100): Promise<ScheduleIndexRow[]> {

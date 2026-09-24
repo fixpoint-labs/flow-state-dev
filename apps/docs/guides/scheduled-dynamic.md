@@ -194,8 +194,9 @@ export const schedules = defineScheduleCollection({
 });
 ```
 
-Each row in the index carries `(userId, key, cron, timezone,
-nextFireAt)`. `nextFireAt` is ms since epoch; cron parsing happens at
+Each row in the index carries `(cell, key, userId, orgId, cron,
+timezone, nextFireAt)`, identified by the storage cell the schedule
+lives in plus its key. `nextFireAt` is ms since epoch; cron parsing happens at
 write time. Rows with `enabled: false` are removed from the index, so
 toggling a schedule off stops it firing without deleting the record.
 

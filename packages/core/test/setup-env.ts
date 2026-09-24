@@ -3,9 +3,9 @@
  * provider-detection tests run against a clean, deterministic environment.
  *
  * `createModelResolver` reads `process.env` by default. The `FSDEV_INTENT_*`
- * and `FSDEV_DEFAULT_MODEL` flow-debugging overrides trip its fail-fast
- * "unknown intent" guard against the fixture intents tests declare, and the
- * provider / gateway API keys change `detectAvailableProviders` results. A
+ * and `FSDEV_DEFAULT_MODEL` flow-debugging overrides replace the models tests
+ * declare, and the provider / gateway API keys change
+ * `detectAvailableProviders` results. A
  * developer shell or CI container that sets any of these would make unit tests
  * fail (or pass) for reasons unrelated to the code under test. Tests that
  * exercise the override / detection paths pass an explicit `env`, so they are
