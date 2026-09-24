@@ -422,7 +422,7 @@ Once registered, the seat answers its owner only. Any other member gets `404 Unk
 
 ## Calling a hired seat
 
-The seat answers immediately, on the same route as any other flow. Its address carries the organization that hired it. With `registerSeat` as written, it answers the admin token that hired it:
+The seat answers immediately, on the same route as any other flow. Its address carries the organization that hired it. With `registerSeat` as written, it answers any admin token configured for that organization, since each resolves to the same principal the seat is pinned to:
 
 ```bash
 curl -X POST localhost:3000/api/flows/acme.support.ada/actions/answer \

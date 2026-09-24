@@ -108,7 +108,7 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
 
 Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
 
-The seat answers the same token that hired it. It belongs to the token's organization and to the admin user, so its address carries both. Another organization's token gets the `404` an unknown address would, and a request with no token gets `401`:
+The seat answers any admin token configured for its organization, not only the one that hired it: every such token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. Another organization's token gets the `404` an unknown address would, and a request with no token gets `401`:
 
 ```bash
 curl -X POST localhost:3000/api/flows/acme.~workforce-admin.support.bo/actions/answer \
