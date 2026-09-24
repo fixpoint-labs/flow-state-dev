@@ -683,19 +683,32 @@ await runGoal(async () => {
     // BR-17, at the door the rule names.
     const org = await open("org");
     try {
-      const refused = await org.lab.inspect(fixture.coordinatorSeat, { omitOrg: true });
+      const refused = await org.lab.inspect(fixture.coordinatorSeat, { door: "org-less" });
       if (refused.error === undefined) {
         note(`an org-less read of ${fixture.coordinatorSeat} was answered rather than refused`);
       } else if (!refused.error.includes("org")) {
         note(`the org-less refusal does not say what was missing: ${refused.error}`);
       }
-      const landed = await org.lab.inspect(fixture.coordinatorSeat);
+      // The positive half through the SAME door, with its org coming only from
+      // the verified bearer. Graded on the seat's own facts, not just on the
+      // absence of a refusal.
+      const landed = await org.lab.inspect(fixture.coordinatorSeat, { door: "bearer" });
+      const expected = fixture.seats[fixture.coordinatorSeat];
       if (landed.error !== undefined) {
-        note(`the same read WITH an org was refused too — ${landed.error}`);
+        note(`the same read carrying a verified bearer did not land — ${landed.error}`);
+      } else if (
+        landed.facts?.seat !== fixture.coordinatorSeat ||
+        landed.facts?.documentRef !== expected?.document
+      ) {
+        note(
+          `the bearer read landed without ${fixture.coordinatorSeat}'s own facts: ` +
+            JSON.stringify({ seat: landed.facts?.seat, documentRef: landed.facts?.documentRef }),
+        );
       }
       evidence.push(
         `a boards/ folder loads as nothing while the channels/ folder beside it loads, and an ` +
-          `org-less read is refused at the transport door while the same read with an org lands`,
+          `org-less read is refused at the transport door while the same read through the same ` +
+          `door, carrying a verified bearer, lands with the seat's own facts`,
       );
     } finally {
       await org.lab.dispose();
