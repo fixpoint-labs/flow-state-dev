@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="Three columns, read to run to prove. Today: a lab teaching page on an unmerged branch, no runnable demo, and no assembled check. After: a published guide, a tested companion example with classify, route, routeWithoutConfidence and the activator, and an assembled goal with six legs: a to d driven through the example, e and f as slots the facets and memory issues fill. A fence under the example says it imports only published packages, never a lab or the kitchen-sink." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-old { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-slot{ fill:var(--surface); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-o   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-a   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .fence { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 4; fill:none; }
+    .head  { fill:var(--ink-3); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="columns">
+    <text class="t-lbl" x="40" y="26">READ</text>
+    <text class="t-lbl" x="340" y="26">RUN</text>
+    <text class="t-lbl" x="640" y="26">PROVE</text>
+  </g>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="52">TODAY</text>
+    <rect class="n-old" x="40" y="60" width="260" height="56" rx="5"/>
+    <text class="t-o" x="56" y="84">A lab page on an unmerged branch</text>
+    <text class="t-s" x="56" y="102">imports a package that never ships</text>
+    <rect class="n-old" x="340" y="60" width="260" height="56" rx="5"/>
+    <text class="t-o" x="356" y="92">Nothing to run</text>
+    <rect class="n-old" x="640" y="60" width="280" height="56" rx="5"/>
+    <text class="t-o" x="656" y="84">Six children, six separate proofs</text>
+    <text class="t-s" x="656" y="102">nothing runs them together</text>
+  </g>
+
+  <g id="after-guide">
+    <text class="t-lbl" x="16" y="152">AFTER</text>
+    <rect class="n-new" x="40" y="160" width="260" height="200" rx="5"/>
+    <text class="t-b" x="56" y="184">Routing with evaluators</text>
+    <text class="t-s" x="56" y="202">apps/docs/guides · Guides sidebar</text>
+    <text class="t-o" x="56" y="232">1  ask the questions</text>
+    <text class="t-o" x="56" y="254">2  route on the answers</text>
+    <text class="t-o" x="56" y="276">3  let the activator use one</text>
+    <text class="t-s" x="56" y="306">no confidence → every edge</text>
+    <text class="t-s" x="56" y="320">goes to ambiguous, said plainly</text>
+    <text class="t-s" x="56" y="344">snippets cut from the example</text>
+  </g>
+
+  <g id="after-example">
+    <rect class="n-new" x="340" y="160" width="260" height="200" rx="5"/>
+    <text class="t-b" x="356" y="184">Companion example</text>
+    <text class="t-s" x="356" y="202">examples/guides/routing-with-evaluators</text>
+    <text class="t-o" x="356" y="232">classify</text>
+    <text class="t-o" x="356" y="254">route · on Jev</text>
+    <text class="t-o" x="356" y="276">routeWithoutConfidence · review</text>
+    <text class="t-o" x="356" y="298">the activator, evaluator passed</text>
+    <text class="t-s" x="356" y="330">tests on a mock evaluation model</text>
+    <text class="t-s" x="356" y="344">no API key in CI</text>
+  </g>
+
+  <g id="after-goal">
+    <rect class="n-new" x="640" y="160" width="280" height="200" rx="5"/>
+    <text class="t-b" x="656" y="184">Assembled goal</text>
+    <text class="t-s" x="656" y="202">goals/evaluator · real models</text>
+    <rect class="n-box" x="656" y="216" width="56" height="40" rx="4"/>
+    <text class="t-b" x="678" y="241">a</text>
+    <rect class="n-box" x="718" y="216" width="56" height="40" rx="4"/>
+    <text class="t-b" x="740" y="241">b</text>
+    <rect class="n-box" x="780" y="216" width="56" height="40" rx="4"/>
+    <text class="t-b" x="802" y="241">c</text>
+    <rect class="n-box" x="842" y="216" width="56" height="40" rx="4"/>
+    <text class="t-b" x="864" y="241">d</text>
+    <rect class="n-slot" x="656" y="266" width="118" height="40" rx="4"/>
+    <text class="t-a" x="668" y="290">e · facets slot</text>
+    <rect class="n-slot" x="780" y="266" width="118" height="40" rx="4"/>
+    <text class="t-a" x="792" y="290">f · memory slot</text>
+    <text class="t-s" x="656" y="330">an unwired leg is a failure</text>
+    <text class="t-s" x="656" y="344">naming its owner</text>
+  </g>
+
+  <g id="arrows">
+    <path class="arrow" d="M300 260 L336 260"/>
+    <path class="head" d="M338 260 l-7 -4 v8 z"/>
+    <path class="arrow" d="M600 260 L636 260"/>
+    <path class="head" d="M638 260 l-7 -4 v8 z"/>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M340 386 L600 386"/>
+    <text class="t-g" x="340" y="406">IMPORTS PUBLISHED PACKAGES ONLY</text>
+    <text class="t-g" x="340" y="422">never labs/ · never the kitchen-sink</text>
+  </g>
+</svg>
