@@ -484,6 +484,32 @@ check('RETENTION: merging the epic spec PR is approval, with no label or comment
   assert.equal(next.result.epicApproved, true, 'nor the approval the merge carried')
 })
 
+check('RETENTION: a merge with no known head waits for one instead of approving', async () => {
+  // A merge approves the head that merged. An epic recorded merged with no head (the older rule), seen
+  // by a dead gate scout, must neither crash the wake nor release children without provenance.
+  const legacy = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic({ specMerged: true, approved: false, approvedHeadSha: null }),
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({ nulls: ['gate:epic'], fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.equal(legacy.result.epicApproved, false, 'a dead scout recovers no head, so nothing is approved')
+  assert.deepEqual(workerLabels(legacy.calls), [])
+  const headless = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic({ specMerged: false, approved: false, approvedHeadSha: null }),
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({
+      approved: false, gateSpecMerged: true, gateHeadSha: null, gateApprovedHeadSha: null,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+    }),
+  })
+  assert.equal(headless.result.epicApproved, false, 'a live scan that names no head approves nothing')
+  assert.deepEqual(workerLabels(headless.calls), [])
+})
+
 check('RETENTION: a closed-unmerged epic spec PR is still not approval', async () => {
   // The negative control for the rule above: it is the MERGE that approves, not the PR leaving review.
   const { result, calls } = await run('epic-wake.js', {

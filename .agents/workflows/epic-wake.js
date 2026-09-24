@@ -1642,7 +1642,10 @@ function historicalSpecFor(row) {
  */
 function specApprovalFor(row, fresh, refreshedLive) {
   if (historicalSpecFor(row)) return true
-  if (specMergedFor(row, fresh, refreshedLive)) return true
+  // The merge approves the head that merged, so it needs a live scan that names that head. A merge
+  // recorded with no head (by the older rule, or a headless scan) waits for one rather than releasing
+  // work with no provenance.
+  if (refreshedLive && fresh.headSha && specMergedFor(row, fresh, refreshedLive)) return true
   if (!refreshedLive || (fresh.humanChangesRequested && !specMergedFor(row, fresh, refreshedLive))) return false
   const currentHeadApproved = !!fresh.headSha && fresh.approvedHeadSha === fresh.headSha
   return (currentHeadApproved && !!(fresh.specApproved || fresh.specApprovedByLabel)) ||
@@ -2688,9 +2691,8 @@ const refreshed = [...rows, ...discovered].map((row) => {
   const resolvedSpecPr = row.specMerged || fresh.specPr == null ? row.specPr : fresh.specPr
   const route = routeFor(row, li, observedInLinear, resolvedSpecPr)
   const specMerged = specMergedFor(row, fresh, refreshedLive)
-  // A merge observed on an earlier wake whose scout has since died keeps the head it recorded.
   const approvedHeadSha = scanApproved
-    ? historicalSpecFor(row) ? row.approvedHeadSha : fresh.headSha || row.approvedHeadSha || null
+    ? historicalSpecFor(row) ? row.approvedHeadSha : fresh.headSha
     : null
   return {
     ...row,
