@@ -568,8 +568,26 @@ describe("FIX-1529 hire plane", () => {
     expect(globex.status).toBe(201);
   });
 
-  it("refuses a flow that declares workforce/roster/** even if definition was bypassed", () => {
+  const writerFlow = (kind: string) =>
+    defineFlow({
+      kind,
+      resources: { privateRoster },
+      actions: {
+        ping: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: `${kind}-ping`,
+            inputSchema: z.object({}),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: () => ({ ok: true }),
+          }),
+        },
+      },
+    })();
+
+  it("a registry holding the writer refuses a flow that declares workforce/roster/**", () => {
     const registry = createFlowRegistry();
+    registry.register(writerFlow("writer"));
     const leak = defineFlow({
       kind: "leak",
       actions: {
@@ -654,6 +672,36 @@ describe("FIX-1529 hire plane", () => {
       })();
       expect(() => registry.register(wide)).toThrow(/user-owned roster/);
     }
+  });
+
+  it("the writer is refused when an overlapping flow was registered first", () => {
+    const registry = createFlowRegistry();
+    const wide = defineFlow({
+      kind: "wide-first",
+      resources: {
+        wide: defineResourceCollection({
+          pattern: "workforce/roster/**",
+          scope: "org",
+          stateSchema: z.object({}).passthrough(),
+        }),
+      },
+      actions: {
+        ping: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "ping-wide-first",
+            inputSchema: z.object({}),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: () => ({ ok: true }),
+          }),
+        },
+      },
+    })();
+    registry.register(wide);
+    expect(() => registry.register(writerFlow("writer-late"))).toThrow(
+      /"workforce\/roster\/\*\*" can read user-owned roster rows[\s\S]*Flow "wide-first" declares it/
+    );
+    expect(registry.list().map((flow) => flow.id)).toEqual(["wide-first"]);
   });
 
   it("a shared app flow stays open to another org", async () => {
@@ -762,5 +810,296 @@ describe("FIX-1535 debug listing keeps the hire plane", () => {
       expect(items.status).toBe(200);
       expect(items.json.items).toEqual([]);
     }
+  });
+});
+
+/**
+ * The key fence: a user-owned roster row is readable only through the branded
+ * writer, by its owner, in every process. Nothing here registers the writer,
+ * so the registry never arms and every overlapping collection is admitted.
+ * Alice's row is planted store-direct, the way a row written by another
+ * process, an earlier deployment, or another app over the same store sits.
+ * Each read path must answer as if the row were not there.
+ */
+describe("key fence · a process that never registered the writer", () => {
+  const ALICE_KEY = "workforce/roster/~alice/research";
+  const aliceParams = { a: "workforce", b: "roster", c: "~alice", d: "research" };
+  const passthrough = z.object({}).passthrough();
+  const browsable = {
+    client: { state: { read: true }, content: { read: true } },
+    prefetchWindow: 10,
+  } as const;
+  const open = {
+    wide: defineResourceCollection({
+      pattern: "[a]/[b]/[c]/[d]",
+      scope: "org",
+      flowIsolation: false,
+      stateSchema: passthrough,
+      ...browsable,
+    }),
+    tenantWide: defineResourceCollection({
+      pattern: "[tenant]/**",
+      scope: "org",
+      flowIsolation: false,
+      stateSchema: passthrough,
+      ...browsable,
+    }),
+    workforceWide: defineResourceCollection({
+      pattern: "workforce/**",
+      scope: "org",
+      flowIsolation: false,
+      stateSchema: passthrough,
+      ...browsable,
+    }),
+    copy: defineResourceCollection({
+      pattern: HIRED_ROSTER_PRIVATE_PATTERN,
+      scope: "org",
+      flowIsolation: false,
+      stateSchema: passthrough,
+    }),
+    sessionWide: defineResourceCollection({
+      pattern: "workforce/**",
+      scope: "session",
+      stateSchema: passthrough,
+      client: { state: { read: true }, content: { read: true, create: true, update: true, delete: true } },
+    }),
+    probes: defineResourceCollection({
+      pattern: "probes/*",
+      scope: "org",
+      stateSchema: z.object({ seen: z.string() }),
+    }),
+  };
+
+  const attempt = async (run: () => Promise<unknown>): Promise<string> => {
+    try {
+      const value = await run();
+      return `ok:${JSON.stringify(value ?? null)}`;
+    } catch (error) {
+      return `threw:${(error as Error).message}`;
+    }
+  };
+
+  const probe = handler({
+    name: "probe-open",
+    inputSchema: tagInput,
+    outputSchema: z.object({ ok: z.boolean() }),
+    resources: open,
+    execute: async (input, ctx) => {
+      const ref = (name: keyof typeof open) => ctx.resources[name] as unknown as ResourceCollectionRef;
+      const wide = ref("wide");
+      const workforce = ref("workforceWide");
+      const copy = ref("copy");
+      const seen = {
+        wideList: (await wide.list()).map((row) => row.path),
+        wideCount: await wide.count(),
+        tenantList: (await ref("tenantWide").list()).map((row) => row.path),
+        workforceList: (await workforce.list()).map((row) => row.path),
+        workforceCount: await workforce.count(),
+        copyList: (await copy.list()).map((row) => row.path),
+        getOptional: await attempt(async () => (await wide.getOptional(aliceParams))?.state),
+        getOptionalWorkforce: await attempt(
+          async () => (await workforce.getOptional("roster/~alice/research"))?.state
+        ),
+        get: await attempt(async () => (await wide.get(aliceParams)).state),
+        getCopy: await attempt(async () => (await copy.get({ owner: "~alice", seat: "research" })).state),
+        create: await attempt(async () => (await wide.create(aliceParams, { forged: true })).state),
+        upsert: await attempt(async () => (await workforce.upsert("roster/~alice/research", { forged: true })).state),
+        getOrCreate: await attempt(async () => (await copy.getOrCreate({ owner: "~alice", seat: "other" }, {})).state),
+        delete: await attempt(() => wide.delete(aliceParams)),
+      };
+      await (ctx.resources.probes as unknown as ResourceCollectionRef).create(input.tag, {
+        seen: JSON.stringify(seen),
+      });
+      return { ok: true };
+    },
+  });
+
+  const openFlow = defineFlow({
+    kind: "open",
+    resources: open,
+    org: {
+      client: {
+        derived: {
+          wideSeen: (ctx: { resources: Record<string, unknown> }) => {
+            const wide = ctx.resources.wide as {
+              list(): Array<{ path: string }>;
+              count(): number;
+              getOptional(key: Record<string, string>): unknown;
+              get(key: Record<string, string>): unknown;
+            };
+            let get: string;
+            try {
+              wide.get(aliceParams);
+              get = "present";
+            } catch (error) {
+              get = (error as Error).message;
+            }
+            return {
+              list: wide.list().map((row) => row.path),
+              count: wide.count(),
+              byName: wide.getOptional(aliceParams) === undefined ? "absent" : "present",
+              get,
+            };
+          },
+        },
+      },
+    },
+    actions: { probe: { inputSchema: tagInput, block: probe } },
+    authentication: verified,
+  });
+
+  async function bootOpen() {
+    const stores = inMemoryStores();
+    const primary = await stores.resolve(["primary"]);
+    await primary.resourceState!.set("org", "acme", ALICE_KEY, { instructions: ALICE_PROMPT }, "any");
+    await primary.content!.set("org", "acme", ALICE_KEY, ALICE_PROMPT);
+    await primary.resourceState!.set("org", "acme", "workforce/roster/eng.lead", { seatId: "eng.lead" }, "any");
+    const state = createFlowState({
+      flows: { open: openFlow() },
+      resolvePrincipal: verified.resolvePrincipal,
+      stores: { default: { primary: stores } },
+      modelResolver: createMockModelResolver({}),
+      debugEndpointsEnabled: true,
+    });
+    const router = (await state.getRouter()) as Record<
+      string,
+      (request: Request, ctx: { params: { path: string[] } }) => Promise<Response>
+    >;
+    const runtime = await state.getRuntime();
+    const call = async (method: string, path: string[], body?: unknown) => {
+      const response = await router[method]!(
+        new Request(`http://test/api/flows/${path.join("/")}`, {
+          method,
+          headers: { "content-type": "application/json", "x-verified-user": "bob", "x-verified-org": "acme" },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        }),
+        { params: { path } }
+      );
+      const text = await response.text();
+      let json: unknown;
+      try {
+        json = text.length > 0 ? JSON.parse(text) : undefined;
+      } catch {
+        json = undefined;
+      }
+      return { status: response.status, json: json as any, text };
+    };
+    const opened = await call("POST", ["open", "sessions"], { userId: "bob" });
+    expect(opened.status).toBe(201);
+    const sessionId = opened.json.session.id as string;
+    const aliceRow = async () => ({
+      state: (await runtime.stores.resourceState.get("org", "acme", ALICE_KEY))?.state,
+      content: await runtime.stores.content.get("org", "acme", ALICE_KEY),
+    });
+    return { call, sessionId, runtime, aliceRow };
+  }
+
+  it("admits every overlapping collection, because nothing armed the registry", async () => {
+    const h = await bootOpen();
+    expect(h.sessionId).toBeTruthy();
+  });
+
+  it("the resource handle lists, counts and reads without the row, and refuses writes", async () => {
+    const h = await bootOpen();
+    const posted = await h.call("POST", ["open", h.sessionId, "actions", "probe"], {
+      userId: "bob",
+      input: { tag: "bob" },
+    });
+    expect(posted.status).toBe(202);
+    let row: { state?: { seen?: string } } | undefined;
+    for (let i = 0; i < 100 && row === undefined; i++) {
+      row = await h.runtime.stores.resourceState.get("org", "acme", "probes/bob");
+      if (row === undefined) await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const seen = JSON.parse(row!.state!.seen!);
+    const refused = `threw:${"A hired-seat row is readable only by the user it belongs to."}`;
+    expect(seen).toEqual({
+      wideList: [],
+      wideCount: 0,
+      tenantList: [],
+      workforceList: ["workforce/roster/eng.lead"],
+      workforceCount: 1,
+      copyList: [],
+      getOptional: "ok:null",
+      getOptionalWorkforce: "ok:null",
+      get: refused,
+      getCopy: refused,
+      create: refused,
+      upsert: refused,
+      getOrCreate: refused,
+      delete: refused,
+    });
+    expect(JSON.stringify(seen)).not.toContain("ALICE-PRIVATE");
+    expect(await h.aliceRow()).toEqual({ state: { instructions: ALICE_PROMPT }, content: ALICE_PROMPT });
+  });
+
+  it("the browser resource routes answer as if the row were absent, and refuse writes", async () => {
+    const h = await bootOpen();
+    const resources = ["sessions", h.sessionId, "resources"];
+
+    for (const ref of ["wide", "workforceWide"]) {
+      const listed = await h.call("GET", [...resources, ref]);
+      expect(listed.status).toBe(200);
+      expect(listed.json.items.map((item: { storageKey: string }) => item.storageKey)).not.toContain(ALICE_KEY);
+
+      const item = await h.call("GET", [...resources, ref, ...ALICE_KEY.split("/")]);
+      expect(item.status).toBe(200);
+      expect(item.json).toBeNull();
+
+      const content = await h.call("GET", [...resources, ref, ...ALICE_KEY.split("/"), "content"]);
+      expect(content.status).toBe(404);
+      expect(content.text).not.toContain("ALICE-PRIVATE");
+    }
+
+    const created = await h.call("POST", [...resources, "sessionWide"], { topic: "roster/~alice/research" });
+    expect(created).toMatchObject({ status: 403, json: { error: "A hired-seat row is readable only by the user it belongs to." } });
+    const patched = await h.call("PATCH", [...resources, "sessionWide", ...ALICE_KEY.split("/"), "content"], {
+      content: "FORGED",
+    });
+    expect(patched.status).toBe(403);
+    const deleted = await h.call("DELETE", [...resources, "sessionWide", ...ALICE_KEY.split("/")]);
+    expect(deleted.status).toBe(403);
+    const sessionList = await h.call("GET", [...resources, "sessionWide"]);
+    expect(sessionList.json.items).toEqual([]);
+
+    expect(await h.aliceRow()).toEqual({ state: { instructions: ALICE_PROMPT }, content: ALICE_PROMPT });
+  });
+
+  it("the session state snapshot counts, prefetches and derives without the row", async () => {
+    const h = await bootOpen();
+    const snapshot = await h.call("GET", ["sessions", h.sessionId, "state"]);
+    expect(snapshot.status).toBe(200);
+    expect(snapshot.text).not.toContain("ALICE-PRIVATE");
+    expect(snapshot.text).not.toContain("~alice");
+    expect(snapshot.json.resources.org.wide.count).toBe(0);
+    expect(snapshot.json.resources.org.workforceWide.count).toBe(1);
+    expect(snapshot.json.clientData.org.wideSeen).toEqual({
+      list: [],
+      count: 0,
+      byName: "absent",
+      get: "A hired-seat row is readable only by the user it belongs to.",
+    });
+  });
+
+  it("the debug endpoints list, count and read without the row", async () => {
+    const h = await bootOpen();
+    const debug = (...rest: string[]) => h.call("GET", ["sessions", h.sessionId, "debug", "resources", ...rest]);
+    for (const ref of ["wide", "tenantWide", "workforceWide", "copy"]) {
+      const items = await debug(ref, "items");
+      expect(items.status).toBe(200);
+      expect(JSON.stringify(items.json)).not.toContain("ALICE-PRIVATE");
+      const content = await debug(ref, ...ALICE_KEY.split("/"), "content");
+      expect(content.status).toBe(404);
+      expect(content.text).not.toContain("ALICE-PRIVATE");
+    }
+    const tree = await debug();
+    expect(tree.status).toBe(200);
+    expect(JSON.stringify(tree.json)).not.toContain("ALICE-PRIVATE");
+    const count = (name: string) =>
+      (tree.json.resources as Array<{ primaryName: string; itemCount?: number }>).find(
+        (row) => row.primaryName === name,
+      )?.itemCount;
+    expect(count("wide")).toBe(0);
+    expect(count("workforceWide")).toBe(1);
   });
 });

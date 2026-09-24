@@ -33,6 +33,12 @@
  * {@link collectScopeDeclaration}): the scope record is a single blob per
  * scope, so its `stateSchema` drops out under the flow-level flag, while each
  * resource carries its own `flowIsolation` override and drops out on that.
+ *
+ * The registry also keeps the roster fence (`admitRosterCollections` in
+ * `context/hire-plane.ts`). It arms when a flow carrying Workforce's branded
+ * private roster writer is admitted, checks every held flow at that moment,
+ * then checks each later one, and never disarms. A registry that never holds
+ * the writer refuses nothing on the roster's account.
  */
 import type {
   DeclaredResourceEntry,
@@ -40,10 +46,7 @@ import type {
   FlowInstance,
   InstanceOwnerPin
 } from "@flow-state-dev/core/types";
-import {
-  assertRosterCollectionIsNotDeep,
-  isProjectedResourceCollection
-} from "@flow-state-dev/core/types";
+import { isProjectedResourceCollection } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -54,6 +57,7 @@ import {
   type ConflictScope
 } from "./errors";
 import { compareZodSchemas } from "./schema-compat";
+import { admitRosterCollections } from "../context/hire-plane";
 
 /**
  * Registry contract used by server routing/execution layers.
@@ -62,8 +66,9 @@ export interface FlowRegistry {
   /**
    * Admit one instance. Throws {@link FlowIdentityConflictError} for a
    * duplicate id, a singleton under a custom id, or a mixed-cardinality kind,
-   * and {@link CrossFlowSchemaConflictError} for a schema conflict — in every
-   * case before any registry state is touched.
+   * {@link CrossFlowSchemaConflictError} for a schema conflict, and an `Error`
+   * when the roster fence refuses a collection (see the file header) — in
+   * every case before any registry state is touched.
    *
    * `options.pin` is the owner pin for a hired instance. Omitted, a pin already
    * on the instance is kept; otherwise the instance is shared. A second pin
@@ -144,6 +149,15 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   };
 
   /**
+   * Whether this registry has admitted a flow carrying Workforce's branded
+   * private roster writer. Once set it is never cleared, even across
+   * unregister, for the reason the participants map above is kept: the rows
+   * outlive the registration, so the constraint has to as well. While set,
+   * every registration is checked by {@link admitRosterCollections}.
+   */
+  private rosterFenceArmed = false;
+
+  /**
    * Registers a single flow instance. Identity is validated first (see the
    * file header), then cross-flow schemas; a failure of either leaves every
    * internal map untouched.
@@ -151,7 +165,11 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   register(input: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
     const flow = admitIdentity(input, this.flowsById);
     adoptPin(flow, options?.pin);
-    assertFlowRosterPatterns(flow);
+    const rosterFenceArmed = admitRosterCollections(
+      flow,
+      this.flowsById.values(),
+      this.rosterFenceArmed
+    );
 
     // Validate both scopes before mutating any state. If the org-scope
     // check throws after the user-scope check passes, no participant entry
@@ -171,6 +189,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     this.flowsById.set(flow.id, flow);
     this.indexParticipant("user", flow.kind, userDecl);
     this.indexParticipant("org", flow.kind, orgDecl);
+    this.rosterFenceArmed = rosterFenceArmed;
   }
 
   /**
@@ -636,20 +655,6 @@ function adoptPin(
 
 function samePin(left: InstanceOwnerPin, right: InstanceOwnerPin): boolean {
   return left.orgId === right.orgId && left.userId === right.userId;
-}
-
-/**
- * No admitted flow may declare a collection that reads user-owned roster rows.
- * The browser pattern and the private writer are the only roster patterns.
- */
-function assertFlowRosterPatterns(flow: FlowInstance): void {
-  const resources = flow.resources;
-  if (resources === undefined) return;
-  for (const entry of Object.values(resources)) {
-    const pattern = (entry as { pattern?: unknown }).pattern;
-    if (typeof pattern !== "string") continue;
-    assertRosterCollectionIsNotDeep(entry as { pattern: string; client?: { state?: { read?: boolean } } }, "register");
-  }
 }
 
 function admitIdentity(

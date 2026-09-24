@@ -147,6 +147,28 @@ describe("defineResourceCollection", () => {
     ).toThrow("non-empty");
   });
 
+  it("applies no roster policy: any valid pattern defines, whatever package it names", () => {
+    // Which collections may reach Workforce's user-owned roster rows is
+    // Engine's call at registration and on every read, not a definition rule.
+    for (const pattern of [
+      "workforce/roster/**",
+      "workforce/**",
+      "**",
+      "workforce/roster/[owner]/notes",
+      "workforce/roster/*/*",
+      "workforce/roster/[owner]/[seat]",
+    ]) {
+      expect(() =>
+        defineResourceCollection({
+          pattern,
+          scope: "org",
+          stateSchema: z.object({}).passthrough(),
+          client: { state: { read: true } },
+        })
+      ).not.toThrow();
+    }
+  });
+
   it("throws when ** is not the last segment", () => {
     expect(() =>
       defineResourceCollection({

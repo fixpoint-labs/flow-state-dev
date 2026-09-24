@@ -161,10 +161,12 @@ export function defineHiredRosterCollection() {
  *
  * Same store, nested key `~user/seat`. The browser collection's single
  * segment does not match it, and this collection has no browser read. The
- * returned object is branded. Registration admits this pattern only from
- * that brand. A block that holds the ref still only reaches the session
- * user's own rows. A deep `workforce/roster/**`, or any other two-segment
- * pattern under the roster, is refused.
+ * returned object is branded, and in every process only the branded
+ * collection reads or writes a key under `workforce/roster/~`. A block that
+ * holds the ref still only reaches the session user's own rows. Registering
+ * it arms a check on the whole registry: another collection whose pattern can
+ * reach those rows, such as `workforce/roster/**` or an unbranded copy of this
+ * pattern, is refused, whichever of the two flows registers first.
  */
 export function defineHiredRosterPrivateCollection() {
   return markHiredRosterPrivateCollection(

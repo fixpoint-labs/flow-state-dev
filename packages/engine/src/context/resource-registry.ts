@@ -32,12 +32,15 @@ import {
   getPatternPrefix,
   extractBareTopic,
   isProjectedResourceCollection,
-  isHiredRosterPrivateCollection,
   readProjectedRecord,
   searchProjectedRecords,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
-import { privateRosterAdmits } from "./hire-plane";
+import {
+  collectionReachesUserOwnedRows,
+  HIRED_SEAT_ROW_REFUSAL,
+  privateRosterAdmits,
+} from "./hire-plane";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
@@ -743,25 +746,27 @@ export function filterFlowLevelEager(
 }
 
 /**
- * Limit the private roster writer to the session user's own rows.
+ * Fence user-owned roster rows on a collection handle, by key.
  *
- * The brand admits the collection onto a flow. It does not let that flow list
- * every user. A key outside `workforce/roster/~<escaped user>/` is absent for
- * get and refused for write. The user id is escaped the same way the stored
- * key is, so `bob` is not a prefix of `bob/x`. The message does not say
- * whether another user's row exists.
+ * The branded private roster writer sees only the session user's own rows.
+ * Every other collection whose pattern can reach a user-owned key sees none of
+ * them, whatever this process registered. A fenced key is absent for list,
+ * count and `getOptional`, and refused for `get` and every write. The message
+ * does not say whether the row exists. A collection that cannot reach a
+ * user-owned key is returned unwrapped. The decision is
+ * {@link privateRosterAdmits}.
  */
 function scopePrivateRosterToCaller(
   handle: ResourceCollectionRef<JsonObject>,
   userId: string | undefined,
 ): ResourceCollectionRef<JsonObject> {
-  if (!isHiredRosterPrivateCollection(handle.config)) return handle;
+  if (!collectionReachesUserOwnedRows(handle.config)) return handle;
   const admits = (storageKey: string): boolean =>
     privateRosterAdmits(handle.config, storageKey, userId);
   const own = (key: string | Record<string, string>): boolean =>
     admits(resolveCollectionKey(handle.pattern, key));
   const refuse = (): never => {
-    throw new Error("A hired-seat row is readable only by the user it belongs to.");
+    throw new Error(HIRED_SEAT_ROW_REFUSAL);
   };
   return {
     ...handle,

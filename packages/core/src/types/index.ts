@@ -237,7 +237,6 @@ export {
   isParameterizedPattern,
   extractBareTopic,
   extractPatternParams,
-  assertRosterCollectionIsNotDeep,
   encodeUserSegment,
   isHiredRosterPrivateCollection,
   markHiredRosterPrivateCollection,
