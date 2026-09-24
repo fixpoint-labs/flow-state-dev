@@ -76,8 +76,9 @@ epic taught; if the implementation exports them from elsewhere, reconcile the im
 > | `uses` | capability list | — | Resources, state and helpers. Capabilities don't supply an evaluator's model. |
 >
 > Scope schemas, `resources`, and the [shared fields](#shared-fields) work the same as on a
-> handler. There is no `retry`: one call per run. To retry, wrap the block with `.rescue` in a
-> sequencer.
+> handler. There is no `retry`: one call per run. When the call fails, the block fails like any
+> other. To recover, use `.rescue` in a sequencer. It runs a recovery block you supply and uses
+> that block's output in place of the failed one. It doesn't rerun the evaluator.
 
 ## UPDATE · `apps/docs/docs/fundamentals/models.md` · new `## Evaluation models` after "Gateways and fallback"
 
@@ -124,6 +125,17 @@ epic taught; if the implementation exports them from elsewhere, reconcile the im
 > ```
 >
 > Evaluation doesn't use intents, fallback arrays or `selectModel`. An evaluator names one model.
+>
+> ### With a custom model resolver
+>
+> If you pass your own `modelResolver` to `createFlowState`, it resolves evaluator strings too,
+> but only if it implements the optional `resolveEvaluationModel(modelId, blockName?)` method.
+> Return an evaluation model from it, or throw to refuse the string.
+>
+> Without that method, an evaluator with a model string fails before any call, and the error
+> names the missing method. flow-state.dev doesn't fall back to its own resolver, because that
+> would use keys and gateways your app never configured. Passing an evaluation model instance
+> still works, since there is nothing to resolve. Generators on your resolver are unaffected.
 
 ## UPDATE · `packages/core/README.md` · Exports → Main, and Types
 
@@ -134,6 +146,8 @@ epic taught; if the implementation exports them from elsewhere, reconcile the im
 >   — question builders for `evaluator`.
 > - `EvaluatorAnswer`, `EvaluatorAnswers<Q>` — the answer types, for code that consumes an
 >   evaluator's output.
+> - `ModelResolver` gains an optional `resolveEvaluationModel(modelId, blockName?)`. A custom
+>   resolver needs it only to resolve evaluator model strings.
 
 The `BlockKind` line becomes `"handler" | "generator" | "evaluator" | "sequencer" | "router"`.
 
@@ -148,12 +162,14 @@ The epic's rule, run as V8 in [PLAN.md](PLAN.md#checks). No page is copied here.
 
 > `minor` for `@flow-state-dev/contracts`, `core`, `engine`, `testing`, `devtool`, `fsdev`.
 >
-> New core block kind: `evaluator`. It asks an evaluation model typed questions (`choice`,
+> New core block kind: `evaluator` (FIX-1554). It asks an evaluation model typed questions (`choice`,
 > `score`, `boolean`) and returns typed answers, with the model's confidence when it reports one.
 > Model strings resolve through your existing providers and gateways; models that can only
 > generate are refused before any call. `BlockKind` and the trace's `blockKind` gain
 > `"evaluator"`: code that switches on block kind should handle it. `ai` minimum raised to the
-> first release with evaluation. `@ai-sdk/typesafe-ai` is an optional peer.
+> first release with evaluation. `@ai-sdk/typesafe-ai` is an optional peer. `ModelResolver` gains
+> an optional `resolveEvaluationModel`; a custom resolver without it runs generators as before
+> and refuses evaluator model strings.
 
 ## Ownership
 

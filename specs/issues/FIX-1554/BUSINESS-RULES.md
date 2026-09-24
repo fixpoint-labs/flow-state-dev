@@ -30,6 +30,8 @@ cited as ER-n ([epic rules](../../epics/FIX-1553/BUSINESS-RULES.md)).
 | BR-13 | No key or gateway can serve the string | The resolver's existing "no provider available" error, before any call | V2 |
 | BR-14 | A gateway accepts the id but its server can't evaluate that model | An ordinary provider error from the one call. Never a second call to another model or a generate call (ER-2) | V9 |
 | BR-15 | Nothing on action input, headers or metadata can choose the model or its key | The model and credentials come only from the block config and the app's resolver (BP-031) | V2 |
+| BR-29 | The app passes its own `modelResolver` without the optional `resolveEvaluationModel` hook, and an evaluator's `model` is a string | Refused at first execution, **before any provider call**, with an error that names the block and the missing `resolveEvaluationModel` hook. FSD's default resolver is never consulted, so no key or gateway the app didn't configure is read ([D4](DECISIONS.md#d4)). Generators on that resolver run unchanged | V10 |
+| BR-30 | The same resolver, and the evaluator's `model` is an evaluation model instance | Used as given, as in BR-9. The missing hook doesn't matter because nothing is resolved | V10 |
 
 ## Answers
 
@@ -39,14 +41,14 @@ cited as ER-n ([epic rules](../../epics/FIX-1553/BUSINESS-RULES.md)).
 | BR-17 | The model reports no confidence (the popular adapters; Jev for booleans) | The answer has **no** `confidence` key. Not `0`, not `null`, not a probability (ER-3) | V3 · VG |
 | BR-18 | The model returns a distribution | `probabilities` is passed through unchanged: option keys for a choice, level indices for a score. Absent when the model returned none | V3 |
 | BR-19 | A boolean question is answered | `probability` is P(true), always present because the SDK requires it. It is never copied into `confidence` | V3 |
-| BR-20 | The SDK rejects the provider's result (a missing answer, a distribution that doesn't sum) | The block fails with that error. No partial answers are returned | V9 |
+| BR-20 | The SDK rejects the provider's result (a missing answer, a distribution that doesn't sum) | The block fails with that error. No partial answers are returned | V11 |
 
 ## Failures and cost
 
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-21 | The provider call fails (a 5xx, a 429, a timeout) | Exactly one call was made. The block fails with an FSD error carrying the provider's message; `.rescue` in a sequencer catches it like any block error | V9 |
-| BR-22 | The request is cancelled mid-call | The abort reaches the provider call; the block ends as cancelled, not failed | V9 |
+| BR-22 | The request is cancelled mid-call | The abort reaches the provider call; the block ends as cancelled, not failed | V12 |
 | BR-23 | An evaluator runs, top-level or nested in a sequencer | Its trace row carries the token usage and the model identity that ran, the same two fields a generator's row carries | V5 |
 
 ## Observability and compatibility
@@ -71,7 +73,7 @@ falls back to another model or a generate call, and nothing fills a missing fiel
 
 | FIX-1560 acceptance (verbatim) | Met by |
 |---|---|
-| Public API + capability contract documented (strings + instances; refuse generate-only) | [SPEC.md → What changes](SPEC.md#what-changes), BR-6 to BR-13, [DOCS.md](DOCS.md) |
+| Public API + capability contract documented (strings + instances; refuse generate-only) | [SPEC.md → What changes](SPEC.md#what-changes), BR-6 to BR-13, BR-29, BR-30, [DOCS.md](DOCS.md) |
 | Prefer-Jev (Gateway + optional direct peer/API key) + any evaluation-capable model spelled clearly; adapters cited, not a second stack | [D1](DECISIONS.md#d1), [D2](DECISIONS.md#d2), BR-7 to BR-9, [DOCS.md → Evaluation models](DOCS.md) |
 | Explicit “no generateObject fallback” and “cascade lives in utility” fences | [Failure taxonomy](#failure-taxonomy), BR-14, BR-21, [SPEC.md → What stays](SPEC.md#what-stays-as-it-is), [PLAN.md → Guardrails](PLAN.md#guardrails) |
 | Spec ready for [fixpoint-labs/flow-state-dev#2151](https://linear.app/fixpoint-labs/issue/FIX-1554/impl-core-evaluator-block) without re-opening parent invent-kills | This set: every card sits inside the epic's locks and none reopens one ([DECISIONS.md](DECISIONS.md)) |

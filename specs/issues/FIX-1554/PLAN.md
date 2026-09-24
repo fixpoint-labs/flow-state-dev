@@ -11,13 +11,13 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
 | S1 | `contracts` · the trace item's kind union | Add `"evaluator"`. Add a trace field for the requested model and the question set, sibling of the generator one | BR-24 BR-27 |
-| S2 | `core` · the block-kind union and the block context | Add `"evaluator"` to `BlockKind` (and its JSDoc). Give the context an evaluation-model resolver beside `resolveModel` | BR-6 to BR-13 |
-| S3 | `core` · the model resolver | An evaluation path with the generator precedence (direct, else gateway), calling `evaluationModel(id)` on the provider, gateway or explicit `providers` instance. Refuses intents, arrays and providers without evaluation before any call. Never the SDK's global default ([D1](DECISIONS.md#d1)) | BR-6 to BR-8 BR-11 to BR-13 BR-15 |
+| S2 | `core` · the block-kind union, the block context and the `ModelResolver` type | Add `"evaluator"` to `BlockKind` (and its JSDoc). Give the context an evaluation-model resolver beside `resolveModel`. Add the **optional** `resolveEvaluationModel` member to the public `ModelResolver` type, documented ([D4](DECISIONS.md#d4)) | BR-6 to BR-13 BR-29 BR-30 |
+| S3 | `core` · the model resolver | An evaluation path with the generator precedence (direct, else gateway), calling `evaluationModel(id)` on the provider, gateway or explicit `providers` instance. Refuses intents, arrays and providers without evaluation before any call. Never the SDK's global default ([D1](DECISIONS.md#d1)). `createModelResolver` exposes this path as its `resolveEvaluationModel` | BR-6 to BR-8 BR-11 to BR-13 BR-15 |
 | S4 | `core` · the SDK seam (new, one module) | The only importer of the SDK's experimental evaluation types. Calls `experimental_evaluate` with `maxRetries: 0` and the request's abort signal; maps the result into FSD's answer type, lifting `providerMetadata.typesafe.confidence[id]` into `confidence` and nothing else ([D3](DECISIONS.md#d3)); reports usage and model identity | BR-1 BR-5 BR-14 BR-16 to BR-22 |
 | S5 | `core` · the `evaluator()` factory and question builders | Kind `evaluator`: validates questions, refuses a language or generator model instance at build, resolves a string at execution, derives state, calls S4, returns `{ answers }` typed from static or function questions. Shared fields and scope schemas as on a handler. Exported with the answer types | BR-1 to BR-4 BR-9 BR-10 BR-12 |
 | S6 | `core` · the sequencer kernel | Capture model usage for `evaluator` as it does for `generator`, on success and failure | BR-23 |
-| S7 | `engine` · block dispatch and the execution context | Dispatch `evaluator` (today an unknown kind throws); capture usage and model identity onto the trace row; wire the context's evaluation resolver from the flow's model resolver; widen the two local `blockKind` unions | BR-23 BR-24 BR-27 |
-| S8 | `testing` · mocks and trace snapshots | A mock evaluation model (scripted answers, optional confidence, call counter). Widen the snapshot kind union | V1 to V5 |
+| S7 | `engine` · block dispatch and the execution context | Dispatch `evaluator` (today an unknown kind throws); capture usage and model identity onto the trace row; wire the context's evaluation resolver from the flow's model resolver's `resolveEvaluationModel`. When the app's resolver lacks it, the context resolver throws the BR-29 error; it never substitutes `createModelResolver()` for a resolver the app supplied ([D4](DECISIONS.md#d4)). Widen the two local `blockKind` unions | BR-23 BR-24 BR-27 BR-29 |
+| S8 | `testing` · mocks and trace snapshots | A mock evaluation model (scripted answers, optional confidence, call counter, and modes that return a malformed result or hold the call open until its signal aborts). Widen the snapshot kind union. `createMockModelResolver` gains the hook only if a test needs it; the V10 negative case needs a resolver without it | V1 to V5 V10 to V12 |
 | S9 | `devtool` · trace tree and detail | Kind indicator for `evaluator`; the detail view shows questions and answers; inference accepts the new kind | BR-25 |
 | S10 | `fsdev` · block loader | Accept `evaluator` as a valid kind | BR-26 |
 | S11 | `core/package.json` | Raise the `ai` floor (see *Pinned*). Add `@ai-sdk/typesafe-ai` as an **optional peer** and a dev dependency for V3. No other package lists it ([D2](DECISIONS.md#d2), ER-9, ER-11) | BR-9 |
@@ -57,11 +57,14 @@ S8 grows alongside S4 and S5, since their tests need it. S11 lands with S4.
 | V6 | S9 | DevTool trace-tree test: an evaluator row renders with its kind and its questions and answers |
 | V7 | S10 | `fsdev block` runs a file exporting an evaluator against the mock |
 | V8 | S12 | The sweep: the epic's patterns, plus any line naming all four kinds, find no live hit outside dated history (blog, `CHANGELOG.md`, `docs/internal/`, `specs/`). **Negative control:** a planted untracked "four block kinds" file fails it |
-| V9 | S4 | A throwing mock: one call, block fails, no generate call anywhere (BR-14, BR-21). BR-20, BR-22 |
+| V9 | S4 | A throwing mock: one call, block fails, no generate call anywhere (BR-14, BR-21) |
+| V10 | S7 | A flow on a custom `modelResolver` **without** `resolveEvaluationModel`: an evaluator string fails before any call, error names the hook, and a spy default resolver and every provider spy record zero calls (BR-29). A generator on the same resolver still runs. The same flow with an evaluation model instance answers (BR-30). **Control:** add the hook to that resolver and the string resolves through it, called once ([D4](DECISIONS.md#d4)) |
+| V11 | S4 | A mock that returns a **successful** but malformed result (an answer missing for one question, and separately a distribution that doesn't sum): the block fails with the SDK's validation error, and the output and trace carry no partial `answers` (BR-20). Distinct from V9: the call succeeds, the result doesn't |
+| V12 | S4 · S7 | A signal-aware mock that holds its call pending until its signal aborts. Cancel the request mid-call: the mock observes the abort on the signal it was given, the call settles, and the block ends **cancelled**, not failed. **Control:** the same mock rejected with an ordinary error ends **failed** (BR-22) |
 | VG | S13 | **Goal, real model** (ER-13): `pnpm tsx goals/evaluator/answers-on-a-real-evaluation-model/run.mts`. Jev via the gateway answers a held-out ticket; choice and score carry `confidence`, the boolean none; the choice is a declared key. The block with `openai("gpt-5.4-mini")` is refused before any call. **Anti-game:** assert shape and presence, never a specific option. **Control:** `GOAL_CONTROL=synthetic-confidence` defaults a confidence in the seam and must fail |
 
 One check per decision: D1 is V2's control, D2 is V2's library-not-loaded assertion plus V3, D3
-is V3.
+is V3, D4 is V10.
 
 ## Pinned names
 
@@ -72,8 +75,9 @@ is V3.
 | Question builders | `choice`, `score`, `boolean` | The epic's approved docs draft teaches them. Where they are exported from (root, or a namespace to avoid a bare `boolean` export) is yours; reconcile [DOCS.md](DOCS.md) to it |
 | Answer fields | `type`, `choice`, `score`, `probability`, `probabilities`, `confidence` | Four consumers read them ([D3](DECISIONS.md#d3)) |
 | Output | `{ answers }` | Same |
+| Resolver hook | `resolveEvaluationModel`, optional on `ModelResolver` | Public on an app-facing contract, and BR-29's error names it ([D4](DECISIONS.md#d4)) |
 | Optional peer | `@ai-sdk/typesafe-ai` on `@flow-state-dev/core`, `optional: true` in `peerDependenciesMeta` | One place (ER-11); the codex package is the precedent |
-| `ai` floor | the lowest release V1 to V9 pass on, no lower than `7.0.103` | The first release exporting `experimental_evaluate` |
+| `ai` floor | the lowest release V1 to V12 pass on, no lower than `7.0.103` | The first release exporting `experimental_evaluate` |
 
 Everything else is yours to name.
 
@@ -82,7 +86,8 @@ Everything else is yours to name.
 | Rule | Because |
 |---|---|
 | Only S4 imports the SDK's experimental evaluation types; the public answer type is FSD's | The SDK says the contract may change in patch releases. One module absorbs that, and four consumers never see it ([D3](DECISIONS.md#d3)) |
-| Every evaluation resolution goes through S3, including the goal's and the tests' | One place decides which model answers (tenet 5). A second path is how an evaluator ends up billed to a different account |
+| Every evaluation resolution goes through the flow's resolver (S3, or an app's own `resolveEvaluationModel`), including the goal's and the tests' | One place decides which model answers (tenet 5). A second path is how an evaluator ends up billed to a different account |
+| An app-supplied resolver is the only resolver for its flows, for evaluation too | Falling back to the default resolver when the hook is missing reads credentials the app never configured ([D4](DECISIONS.md#d4)) |
 | No number enters an answer that the model didn't return. No default, no `0`, no copy of `probability` | ER-3 and the owner's invent-kill. FIX-1558's fail-closed gate is only as honest as this seam |
 | One provider call per execution, no fallback, no generate call on any path | ER-2, ER-9. A refusal that quietly generates is the failure the kind exists to prevent |
 | Every reader that switches on kind is updated in this PR; grep for `"router"` literals, not just the two unions | A closed union that widens in one place and not another throws at run time, not at compile time |
