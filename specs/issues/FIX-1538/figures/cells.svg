@@ -1,0 +1,89 @@
+<svg viewBox="0 0 940 340" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels with the same four callers: Alice's seat in Acme, Bob's seat in Acme, Alice's seat in Globex, and the app's own chat flow acting for Alice. Today, Alice's two seats and the chat flow all store into one cell named alice, so her Globex seat reads what her Acme seat wrote; Bob's seat has its own cell. After, each seat stores into a cell for its organization and person, drawn inside the Acme and Globex boxes: alice in acme, bob in acme, alice in globex. The chat flow still stores into the person's own cell, outside both organizations, and a fence separates it from the seats.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .who   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .app   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .cell  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .leak  { fill:var(--surface); stroke:var(--gone); stroke-width:1.6; }
+    .own   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .org   { fill:none; stroke:var(--ink-3); stroke-width:1; stroke-dasharray:5 3; }
+    .wire  { stroke:var(--ink-2); stroke-width:1.2; }
+    .wbad  { stroke:var(--gone); stroke-width:1.4; }
+    .head  { fill:var(--ink-2); }
+    .hbad  { fill:var(--gone); }
+    .fence { stroke:var(--code); stroke-width:2; stroke-dasharray:6 4; }
+    .split { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-d   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="340"/>
+  <path class="split" d="M469 16 L469 324"/>
+
+  <g id="today">
+    <text class="t-lbl" x="28" y="36">TODAY &#183; A SEAT STORES FOR A PERSON IN ONE CELL, EVERY ORG</text>
+    <rect class="who" x="28" y="56" width="98" height="46" rx="4"/>
+    <text class="t-b" x="38" y="76">Alice's seat</text><text class="t-d" x="38" y="92">in Acme</text>
+    <rect class="who" x="136" y="56" width="98" height="46" rx="4"/>
+    <text class="t-b" x="146" y="76">Bob's seat</text><text class="t-d" x="146" y="92">in Acme</text>
+    <rect class="who" x="244" y="56" width="98" height="46" rx="4"/>
+    <text class="t-b" x="254" y="76">Alice's seat</text><text class="t-d" x="254" y="92">in Globex</text>
+    <rect class="app" x="352" y="56" width="98" height="46" rx="4"/>
+    <text class="t-b" x="362" y="76">App's chat</text><text class="t-d" x="362" y="92">flow, as Alice</text>
+
+    <path class="wire" d="M185 102 L185 176"/><path class="head" d="M181 175 L189 175 L185 182 Z"/>
+    <rect class="cell" x="136" y="182" width="98" height="40" rx="4"/>
+    <text class="t-b" x="146" y="206">bob</text>
+
+    <path class="wbad" d="M77 102 L77 240"/><path class="hbad" d="M73 239 L81 239 L77 246 Z"/>
+    <path class="wbad" d="M293 102 L293 240"/><path class="hbad" d="M289 239 L297 239 L293 246 Z"/>
+    <path class="wire" d="M401 102 L401 240"/><path class="head" d="M397 239 L405 239 L401 246 Z"/>
+    <rect class="leak" x="28" y="246" width="422" height="44" rx="4"/>
+    <text class="t-b" x="40" y="266">alice</text>
+    <text class="t-go" x="40" y="281">one cell &#183; her Globex seat reads what her Acme seat wrote</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="496" y="36">AFTER &#183; ONE CELL PER ORGANIZATION AND PERSON</text>
+    <rect class="who" x="496" y="56" width="98" height="46" rx="4"/>
+    <text class="t-b" x="506" y="76">Alice's seat</text><text class="t-d" x="506" y="92">in Acme</text>
+    <rect class="who" x="604" y="56" width="98" height="46" rx="4"/>
+    <text class="t-b" x="614" y="76">Bob's seat</text><text class="t-d" x="614" y="92">in Acme</text>
+    <rect class="who" x="712" y="56" width="98" height="46" rx="4"/>
+    <text class="t-b" x="722" y="76">Alice's seat</text><text class="t-d" x="722" y="92">in Globex</text>
+    <rect class="app" x="820" y="56" width="98" height="46" rx="4"/>
+    <text class="t-b" x="830" y="76">App's chat</text><text class="t-d" x="830" y="92">flow, as Alice</text>
+
+    <rect class="org" x="488" y="126" width="222" height="112" rx="6"/>
+    <text class="t-lbl" x="498" y="144">ACME</text>
+    <rect class="org" x="716" y="126" width="98" height="112" rx="6"/>
+    <text class="t-lbl" x="724" y="144">GLOBEX</text>
+
+    <path class="wire" d="M545 102 L545 176"/><path class="head" d="M541 175 L549 175 L545 182 Z"/>
+    <rect class="cell" x="496" y="182" width="98" height="44" rx="4"/>
+    <text class="t-b" x="506" y="201">alice</text><text class="t-ok" x="506" y="216">in acme</text>
+    <path class="wire" d="M653 102 L653 176"/><path class="head" d="M649 175 L657 175 L653 182 Z"/>
+    <rect class="cell" x="604" y="182" width="98" height="44" rx="4"/>
+    <text class="t-b" x="614" y="201">bob</text><text class="t-ok" x="614" y="216">in acme</text>
+    <path class="wire" d="M761 102 L761 176"/><path class="head" d="M757 175 L765 175 L761 182 Z"/>
+    <rect class="cell" x="722" y="182" width="86" height="44" rx="4"/>
+    <text class="t-b" x="730" y="201">alice</text><text class="t-ok" x="730" y="216">in globex</text>
+
+    <path class="fence" d="M817 112 L817 300"/>
+    <path class="wire" d="M869 102 L869 240"/><path class="head" d="M865 239 L873 239 L869 246 Z"/>
+    <rect class="own" x="822" y="246" width="96" height="44" rx="4"/>
+    <text class="t-b" x="830" y="265">alice</text><text class="t-d" x="830" y="281">unchanged</text>
+    <text class="t-ok" x="496" y="264">a seat's cell is chosen by the hire row's org</text>
+    <text class="t-ok" x="496" y="280">no seat reaches the cell right of the fence</text>
+  </g>
+</svg>
