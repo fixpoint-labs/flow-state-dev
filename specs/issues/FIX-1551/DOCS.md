@@ -2,8 +2,7 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-Written to F1 and F2's recommendations. If the owner answers differently, the `--org` rows and
-the "when the resolver wants a credential" paragraph change with them. Implementation reconciles
+Written to F1 and F2 as the owner answered them. Implementation reconciles
 this against the shipped messages, then runs it through `docs-writer` and `docs-editor` before
 publishing.
 

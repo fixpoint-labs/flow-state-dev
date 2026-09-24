@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The cases, as rules. *Proved by* names the check in [PLAN.md](PLAN.md). Rules marked **(F1)** or
-**(F2)** are written to the recommended answer and change with it.
+**(F2)** carry the owner's answers to those forks.
 
 ## Who a terminal run is
 

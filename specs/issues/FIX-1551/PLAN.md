@@ -3,8 +3,8 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
-(BR-n) and [DECISIONS.md](DECISIONS.md) (D1, F1, F2). `tdd`. One PR. Build F1 and F2 to the
-owner's answers; the rows below assume the recommendations.
+(BR-n) and [DECISIONS.md](DECISIONS.md) (D1, F1, F2). `tdd`. One PR. F1 and F2 are answered
+(the owner took both recommendations); the rows below build to them.
 
 ## Surfaces
 

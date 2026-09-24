@@ -22,8 +22,8 @@ flows, so a CLI that can't reach the app's organization can't verify anything or
 
 ![Two panels. Today a browser request goes through the app's resolver into kitchen-sink while fsdev run skips it into the placeholder org. After, fsdev run asks the same resolver and lands in kitchen-sink; --org acme lands in acme, invisible to the app's callers.](figures/what-changes.svg)
 
-The top rows are the fix: the CLI stops skipping the app's resolver. The bottom row is fork F1's
-recommendation, a developer-named organization that the app's own callers never see.
+The top rows are the fix: the CLI stops skipping the app's resolver. The bottom row is F1, as the
+owner answered it: a developer-named organization that the app's own callers never see.
 
 **In a terminal, against kitchen-sink after FIX-1500's PR-B:**
 
@@ -72,12 +72,12 @@ app's HTTP answer for every flow shape, and each planted divergence turned it re
 
 ## Sign off
 
-**Two open forks, asked in full in [DECISIONS.md](DECISIONS.md#open):**
+**Answered by the owner on 2026-09-24** ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2158#issuecomment-5820173185)):
 
-- **[F1](DECISIONS.md#f1) · Can a developer name any organization locally with `--org`?**
-  Recommendation: yes, on `fsdev run` and `fsdev chat` only.
-- **[F2](DECISIONS.md#f2) · When the app's check wants a credential, stop or fall back?**
-  Recommendation: stop, and name `--org`.
+- **[F1](DECISIONS.md#f1) · A developer can name any organization locally with `--org`.**
+  On `fsdev run` and `fsdev chat` only, with `--user` on `run`.
+- **[F2](DECISIONS.md#f2) · When the app's check wants a credential, the run stops** before
+  writing anything, and names `--org`.
 
 **Ratify:**
 
@@ -85,4 +85,4 @@ app's HTTP answer for every flow shape, and each planted divergence turned it re
    gets.** If wrong: the CLI and the app disagree about who a caller is in some case nobody
    tested, which is the bug this issue exists to close.
 
-D1 is the one to weigh. The cases are in [BUSINESS-RULES.md](BUSINESS-RULES.md).
+**Open: none.** D1 is what's left to weigh. The cases are in [BUSINESS-RULES.md](BUSINESS-RULES.md).

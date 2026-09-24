@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-One decision to ratify and two forks to answer. The rest was decided here so the implementer
-doesn't re-derive it.
+One decision to ratify. Two forks the owner has answered. The rest was decided here so the
+implementer doesn't re-derive it.
 
 ## The tree
 
@@ -12,13 +12,13 @@ flowchart TD
   I["FIX-1551"] --> D1["D1 · the CLI asks the app's own resolver<br/>through the answer HTTP gets"]
   D1 -.->|"rejected"| X1["a flag only<br/>every developer retypes what the app already knows"]
   D1 -.->|"rejected"| X2["a CLI copy of the resolution rules<br/>two answers drift"]
-  I --> F1["F1 · open · --org on run and chat"]
-  F1 -.->|"alternative"| Y1["no flag<br/>credentialed apps can't run from the CLI"]
-  I --> F2["F2 · open · stop when a credential is needed"]
-  F2 -.->|"alternative"| Y2["fall back to the placeholder<br/>the bug, with a warning"]
+  I --> F1["F1 · answered · --org on run and chat, local only"]
+  F1 -.->|"rejected"| Y1["no flag<br/>credentialed apps can't run from the CLI"]
+  I --> F2["F2 · answered · stop when a credential is needed"]
+  F2 -.->|"rejected"| Y2["fall back to the placeholder<br/>the bug, with a warning"]
 ```
 
-Solid edges are what you're signing or answering. Dashed edges lost or are the alternative.
+Solid edges are what you're signing or what the owner answered. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
 ## D1 · The CLI asks the app's own resolver, through the same answer the app's HTTP host gives
@@ -33,53 +33,31 @@ Solid edges are what you're signing or answering. Dashed edges lost or are the a
 a browser and can't tell them apart. It can: the resolver sees `source: "cli"`, which no network
 transport sends. If that proves too subtle for app authors, the flag becomes the default path.
 
-<a name="open"></a>
-## Open
+<a name="answered"></a>
+## Answered by the owner
+
+Both forks were put to the owner in full on the review PR, and the owner took both
+recommendations on 2026-09-24 ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2158#issuecomment-5820173185)). The alternatives that lost stay in the tree.
 
 <a name="f1"></a>
-### F1 · Can a developer name any organization locally with `--org`, or does the CLI only ever get the app's answer?
+### F1 · A developer can name any organization locally with `--org` — answered: yes
 
-**Plain terms.** Some apps can't be asked from a terminal: their check wants a login or a token.
-Others serve many customers, and a developer debugging one of them wants to run as that customer.
-`--org` lets the person at the keyboard name the organization and skips the app's check. It exists
-only on the two commands that run in the developer's own process, never on one that serves a network.
-
-**The trade-off.** With the flag, anyone who can run `fsdev` against an app's database can write
-records into any organization in it. They already can: that person holds the database password.
-Without it, apps whose check wants a credential can't be run from a terminal at all under F2's
-recommendation, and multi-tenant debugging means editing the app's resolver.
-
-**My recommendation.** Add `--org` to `fsdev run` and `fsdev chat`, and `--user` to `fsdev run`
-(`fsdev chat` has it). It grants nothing the operator lacks, records written under it stay invisible
-to other organizations' callers (POC P5), and every run records whether a flag chose its organization.
-
-**What would change my mind:** a deployment where people run `fsdev` against production stores
-without holding the store credentials themselves, such as a shared bastion that injects them. Then
-the flag is an escalation, and it should be refused when the production profile is active.
-
-**What being wrong costs.** Low and reversible. Removing a flag before 1.0 is a patch release.
+| | |
+|---|---|
+| **Answer** | `--org` on `fsdev run` and `fsdev chat`, and `--user` on `fsdev run` (`fsdev chat` already has it). Local-only: never on `fsdev serve`, `fsdev dev` or any route |
+| **Instead of** | No flag, where the CLI only ever gets the app's answer |
+| **Because** | Apps whose check wants a credential have no other terminal path under F2, and multi-tenant debugging would mean editing the app's resolver. The flag grants nothing the operator lacks, since they hold the store credentials the CLI uses. Records written under it stay invisible to other organizations' callers (POC P5), and every run records whether a flag chose its organization |
+| **Reopen if** | People run `fsdev` against production stores without holding the store credentials themselves, such as a bastion that injects them. Then the flag is an escalation and is refused on the production profile |
 
 <a name="f2"></a>
-### F2 · When the app's check wants a credential the CLI doesn't have, stop, or keep running in the placeholder organization?
+### F2 · When the app's check wants a credential the CLI doesn't have — answered: stop
 
-**Plain terms.** Some flows check for a bearer token or a signed header, as kitchen-sink's
-operator flow and the knowledge-base example do when their secret is set. A terminal run carries
-no such thing. Today those runs work, but they land in the placeholder organization, which the
-app never serves. Their output is somewhere nobody using the app will look.
-
-**The trade-off.** Stopping breaks scripts that run such flows from the terminal today. Each one
-gets an error naming the fix, `--org <id>`. Falling back keeps those scripts green and keeps
-writing records nobody can read, which is this issue's bug with a warning attached.
-
-**My recommendation.** Stop, before anything is written, with a message naming the flow and
-`--org`. The app's HTTP host refuses the same caller, so the CLI now agrees with it (POC P3). The
-fallback is the behaviour that sent FIX-1527's success check off the CLI.
-
-**What would change my mind:** a team running credentialed flows from the terminal in CI that
-can't add a flag, such as a pinned third-party script. Then fall back, with a warning on every run.
-
-**What being wrong costs.** Moderate. Choosing stop wrongly breaks a script once, loudly, with the
-fix in the message. Choosing fallback wrongly repeats FIX-1527's detour for the next app.
+| | |
+|---|---|
+| **Answer** | Stop before anything is written. The message names the flow and `--org` |
+| **Instead of** | Keep running in the placeholder organization with a warning |
+| **Because** | The app's HTTP host refuses the same caller, so the CLI now agrees with it (POC P3). The fallback writes records nobody using the app can read, which is this issue's bug with a warning attached, and it is what sent FIX-1527's success check off the CLI. Stopping breaks such a script once, loudly, with the fix in the message |
+| **Reopen if** | A CI job runs credentialed flows from the terminal and can't take a flag. Then fall back, warning on every run |
 
 ## Decided, not asked
 
@@ -123,5 +101,7 @@ fix in the message. Choosing fallback wrongly repeats FIX-1527's detour for the 
 - **Draft** — framed as the CLI answering for itself where the app already has an answer; chose
   asking the app through the host's own answer, with a local-only `--org` and a stop on
   credentials as two forks; one PR, engine read plus CLI.
+- **Owner answer** (2026-09-24) — F1 and F2 closed on their recommendations ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2158#issuecomment-5820173185)).
+  No shape moved; the plan was already built to them.
 
-**Open: F1, F2.**
+**Open: none.**
