@@ -28,8 +28,21 @@ import type { ActionCore, InstanceOwnerPin } from "./flow";
  */
 export type ScheduleResolutionStores = {
   /**
-   * Content store — the canonical entry point for resolvers backed by a
-   * resource collection. Key shape is `(scopeType, scopeId, resourceKey)`.
+   * Resource state store — where a resource collection's `create` / `setState`
+   * / `patchState` persist each instance's state, so the canonical entry point
+   * for resolvers backed by one. Key shape is `(scopeType, scopeId,
+   * resourceKey)`; a missing (or deleted) instance reads as `undefined`.
+   */
+  readonly resourceState: {
+    get(
+      scopeType: "session" | "user" | "org",
+      scopeId: string,
+      resourceKey: string
+    ): Promise<{ state: Record<string, unknown> } | undefined>;
+  };
+  /**
+   * Content store — an instance's content body (`writeContent`), which is
+   * separate from its state. Key shape is `(scopeType, scopeId, resourceKey)`.
    */
   readonly content: {
     get(

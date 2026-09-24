@@ -22,17 +22,28 @@ const followUp = handler({
 });
 const blocks = { sendDigest, followUp };
 
+/**
+ * `records` are resource-state rows (JSON for brevity), keyed
+ * `scopeType:scopeId:resourceKey`; `content` are content-store bodies.
+ */
 function buildCtx(
-  records: Map<string, string>
+  records: Map<string, string>,
+  content: Map<string, string> = new Map()
 ): ScheduleResolutionContext {
   return {
     flowKind: "reminders",
     gatewayPrincipal: { userId: "system" },
     request: new Request("https://example.com/dispatch"),
     stores: {
+      resourceState: {
+        async get(scopeType, scopeId, resourceKey) {
+          const raw = records.get(`${scopeType}:${scopeId}:${resourceKey}`);
+          return raw === undefined ? undefined : { state: JSON.parse(raw) as Record<string, unknown> };
+        }
+      },
       content: {
         async get(scopeType, scopeId, resourceKey) {
-          return records.get(`${scopeType}:${scopeId}:${resourceKey}`);
+          return content.get(`${scopeType}:${scopeId}:${resourceKey}`);
         }
       }
     }
@@ -127,10 +138,18 @@ describe("createResourceCollectionScheduleResolver", () => {
     expect(config).toBeNull();
   });
 
-  it("returns null when the persisted state is not valid JSON", async () => {
-    const records = new Map([["user:u_1:schedules/weekly-digest", "not json"]]);
+  it("reads the row from resource state, not from the instance's content body", async () => {
+    // A collection's `create` writes the row to resource state; the content
+    // store holds an instance's content body. A row-shaped body with no state
+    // behind it is not a schedule.
+    const content = new Map([
+      [
+        "user:u_1:schedules/weekly-digest",
+        JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "sendDigest" })
+      ]
+    ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
-    const config = await resolve("u_1/weekly-digest", buildCtx(records));
+    const config = await resolve("u_1/weekly-digest", buildCtx(new Map(), content));
     expect(config).toBeNull();
   });
 

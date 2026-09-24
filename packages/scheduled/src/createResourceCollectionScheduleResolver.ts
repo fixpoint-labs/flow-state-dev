@@ -2,7 +2,7 @@
  * Reference resolver for resource-collection-backed dynamic schedules.
  *
  * Parses the dispatch URL id into `(userId, collectionKey)`, reads the
- * resource via `stores.content.get("user", <user key>, ...)`, and
+ * row's state via `stores.resourceState.get("user", <user key>, ...)`, and
  * synthesizes `principal: { userId }` so the action runs as the
  * schedule's owner. The user-scoped storage key acts as the
  * impersonation guard: a URL like `evil/key` looks up the cell of user
@@ -106,15 +106,12 @@ export function createResourceCollectionScheduleResolver(
       isolateUserState: false,
       ownerPin: ctx.ownerPin
     });
-    const raw = await ctx.stores.content.get("user", scopeId, resourceKey);
-    if (raw === undefined) return null;
-
-    let state: ScheduleResourceState;
-    try {
-      state = JSON.parse(raw) as ScheduleResourceState;
-    } catch {
-      return null;
-    }
+    // Resource state, where the collection's `create` wrote the row — not the
+    // content store, which holds an instance's content body and never a
+    // schedule row (FIX-1545).
+    const row = await ctx.stores.resourceState.get("user", scopeId, resourceKey);
+    if (row === undefined) return null;
+    const state = row.state as Partial<ScheduleResourceState>;
 
     if (state.enabled === false) return null;
     if (typeof state.cron !== "string" || typeof state.kind !== "string") {

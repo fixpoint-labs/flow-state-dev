@@ -269,12 +269,14 @@ describe("defineScheduleCollection", () => {
    * mirrors that key space exactly rather than collapsing anything.
    *
    * What that leaves is not a key collision but an ATTRIBUTION one, and only
-   * for a row whose state names no organization. The stamp lands on the index
-   * row and never on the state (the hook fires after the write commits), so
-   * the state stays org-less forever, `indexOrgFor` returns the writing
-   * execution's org every time, and BR-19's disagreement check — the whole
-   * enforcement of the binding — never engages for that row. These tests pin
-   * that, so the gap is visible rather than inferred.
+   * for a row whose state names no organization. `create` now stamps the
+   * state and updates keep it (`stampOrgId`), so that is a row written before
+   * the stamp. The hook's own stamp lands on the index row and never
+   * on the state (it fires after the write commits), so such a state stays
+   * org-less, `indexOrgFor` returns the writing execution's org every time,
+   * and BR-19's disagreement check — the whole enforcement of the binding —
+   * never engages for that row. These tests pin that, so the gap is visible
+   * rather than inferred.
    */
   describe("cross-organization writes at one (userId, key)", () => {
     /** A second execution: same user, a different organization. */
@@ -283,8 +285,8 @@ describe("defineScheduleCollection", () => {
     it("re-stamps an org-less row with whichever organization last wrote it", async () => {
       const index = createFakeIndex();
       const coll = defineScheduleCollection({ pattern: "schedules/*", index });
-      // The documented create path: `schedules.create(key, {cron,kind,enabled})`
-      // names no organization.
+      // A row whose state names no organization (written before `create`
+      // stamped one).
       const state = { cron: "0 0 * * 0", kind: "send-digest", enabled: true };
       await coll.onInstanceCreated!("schedules/digest", state, HOOK_CTX);
       expect(index.rows.get("user-1/digest")?.orgId).toBe(EXEC_ORG);

@@ -715,6 +715,154 @@ describe("schema validation on create", () => {
 // Lifecycle hooks
 // ---------------------------------------------------------------------------
 
+describe("stampOrgId", () => {
+  // A collection that records which organization created each instance takes
+  // it from the execution, never from the caller: the caller's `create` names
+  // none, and the stored row still carries the org the run was admitted under.
+  const stamped = defineResourceCollection({
+    scope: "user",
+    pattern: "stamped/*",
+    stateSchema: z.object({ orgId: z.string().optional(), label: z.string() }),
+    stampOrgId: true,
+  });
+
+  it("writes the execution's organization onto an instance created without one", async () => {
+    const { ctx, stores } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+
+    const ref = await ns.create("a", { label: "a" });
+
+    expect(ref.state.orgId).toBe(DEFAULT_ORG_ID);
+    expect((await stores.resourceState.get("user", "user_1", "stamped/a"))?.state.orgId).toBe(DEFAULT_ORG_ID);
+  });
+
+  it("refuses a create that names another organization, and writes nothing", async () => {
+    const { ctx, stores } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+
+    await expect(ns.create("b", { label: "b", orgId: "org-other" })).rejects.toThrow(
+      `names organization "org-other", but this execution runs in organization "${DEFAULT_ORG_ID}"`
+    );
+    expect(await stores.resourceState.get("user", "user_1", "stamped/b")).toBeUndefined();
+  });
+
+  it("accepts a create that restates the execution's own organization", async () => {
+    const { ctx } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+
+    const ref = await ns.create("b2", { label: "b2", orgId: DEFAULT_ORG_ID });
+
+    expect(ref.state.orgId).toBe(DEFAULT_ORG_ID);
+  });
+
+  /** A second execution for the same user, admitted under another organization. */
+  async function otherOrgCtx(stores: ReturnType<typeof createInMemoryStores>) {
+    return createExecutionContext({
+      orgId: "org-updater",
+      flow: makeFlow({ stamped }),
+      actionName: "run",
+      requestId: "req_2",
+      sessionId: "sess_2",
+      userId: "user_1",
+      stores,
+    });
+  }
+
+  it("keeps the stored organization through a setState that omits it, and never stamps the updater's", async () => {
+    const { ctx, stores } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+    await ns.create("d", { label: "d" });
+
+    const other = await otherOrgCtx(stores);
+    const theirs = other.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+    const ref = await theirs.get("d");
+    await ref.setState({ label: "renamed" });
+
+    const stored = (await stores.resourceState.get("user", "user_1", "stamped/d"))?.state;
+    expect(stored?.label).toBe("renamed");
+    expect(stored?.orgId).toBe(DEFAULT_ORG_ID);
+  });
+
+  it("keeps the stored organization when create replaces a live instance", async () => {
+    const { ctx, stores } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+    await ns.create("e", { label: "e" });
+
+    const other = await otherOrgCtx(stores);
+    const theirs = other.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+    await theirs.create("e", { label: "replaced" }, { replace: true });
+
+    const stored = (await stores.resourceState.get("user", "user_1", "stamped/e"))?.state;
+    expect(stored?.label).toBe("replaced");
+    expect(stored?.orgId).toBe(DEFAULT_ORG_ID);
+  });
+
+  it("refuses an update that names another organization than the stored one, on every write path", async () => {
+    const { ctx, stores } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+    await ns.create("f", { label: "f" });
+
+    // The updater names its own org: still not the row's.
+    const other = await otherOrgCtx(stores);
+    const theirs = other.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+    const ref = await theirs.get("f");
+    const refused = `names organization "org-updater", but it belongs to organization "${DEFAULT_ORG_ID}"`;
+    await expect(ref.setState({ label: "moved", orgId: "org-updater" })).rejects.toThrow(refused);
+    await expect(ref.updateState((s) => ({ ...s, label: "moved", orgId: "org-updater" }))).rejects.toThrow(refused);
+    await expect(ref.patchState({ orgId: "org-updater" })).rejects.toThrow(refused);
+    await expect(theirs.upsert("f", { orgId: "org-updater" })).rejects.toThrow(refused);
+    await expect(theirs.create("f", { label: "moved", orgId: "org-updater" }, { replace: true })).rejects.toThrow(refused);
+
+    expect((await stores.resourceState.get("user", "user_1", "stamped/f"))?.state).toEqual({ label: "f", orgId: DEFAULT_ORG_ID });
+  });
+
+  it("accepts an update that restates the stored organization", async () => {
+    const { ctx, stores } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+    const ref = await ns.create("g", { label: "g" });
+
+    await ref.setState({ label: "g2", orgId: DEFAULT_ORG_ID });
+
+    expect((await stores.resourceState.get("user", "user_1", "stamped/g"))?.state).toEqual({ label: "g2", orgId: DEFAULT_ORG_ID });
+  });
+
+  it("on a legacy row with no organization, allows only none or the executing run's own", async () => {
+    const stores = createInMemoryStores();
+    await stores.resourceState.set("user", "user_1", "stamped/legacy", { label: "old" }, "any");
+    const other = await otherOrgCtx(stores);
+    const ref = await (other.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>).get("legacy");
+    const read = async () => (await stores.resourceState.get("user", "user_1", "stamped/legacy"))?.state;
+
+    // Omitting it does not back-stamp the row.
+    await ref.setState({ label: "still-legacy" });
+    expect(await read()).toEqual({ label: "still-legacy" });
+
+    // Any org but the executing run's is refused, and nothing is written.
+    await expect(ref.setState({ label: "x", orgId: "org-third" })).rejects.toThrow(
+      `names organization "org-third", but this execution runs in organization "org-updater"`
+    );
+    expect(await read()).toEqual({ label: "still-legacy" });
+
+    // The executing run may attribute it to itself.
+    await ref.setState({ label: "attributed", orgId: "org-updater" });
+    expect(await read()).toEqual({ label: "attributed", orgId: "org-updater" });
+  });
+
+  it("writes nothing when the collection does not ask for it", async () => {
+    const plain = defineResourceCollection({
+      scope: "user",
+      pattern: "plain/*",
+      stateSchema: z.object({ orgId: z.string().optional(), label: z.string() }),
+    });
+    const { ctx } = await createCtx({ plain });
+    const ns = ctx.resources.plain as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+
+    const ref = await ns.create("c", { label: "c" });
+
+    expect(ref.state.orgId).toBeUndefined();
+  });
+});
+
 describe("lifecycle hooks with context", () => {
   it("onInstanceCreated receives populated context", async () => {
     let receivedCtx: any = null;
