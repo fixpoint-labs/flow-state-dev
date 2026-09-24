@@ -1,0 +1,85 @@
+<svg viewBox="0 0 940 400" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two tier-3 pipelines side by side. Today: when slash and keyword don't resolve, a generator classifier reads the skill descriptions and returns zero or more skills, each kept only above a 0.65 self-reported confidence. After, with an evaluator passed: the activator reads the catalog once, hands the skills to the app's evaluator block as options plus a no-skill option, and the evaluator picks one. A skill pick activates that skill; no skill activates nothing; an error fails the activator. A dashed fence shows the generator classifier is not reached on that path. A band under both says that with no evaluator passed, after is today.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:none; stroke:var(--rule); stroke-width:1.2; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .new   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .app   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 3; }
+    .band  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .wire  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .wire-a { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .wire-g { stroke:var(--gone); stroke-width:1.4; fill:none; stroke-dasharray:4 3; }
+    .head  { fill:var(--ink-3); }
+    .head-a { fill:var(--accent); }
+    .head-g { fill:var(--gone); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="360" height="316" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · TIER 3</text>
+    <rect class="keep" x="56" y="56" width="280" height="40" rx="4"/>
+    <text class="t-b" x="72" y="81">slash · keyword · no match</text>
+    <path class="wire" d="M196 96 V124"/>
+    <polygon class="head" points="191,122 201,122 196,130"/>
+    <rect class="keep" x="56" y="130" width="280" height="54" rx="4"/>
+    <text class="t-b" x="72" y="152">generator classifier</text>
+    <text class="t-s" x="72" y="170">reads skill descriptions · free text</text>
+    <path class="wire" d="M196 184 V212"/>
+    <polygon class="head" points="191,210 201,210 196,218"/>
+    <rect class="keep" x="56" y="218" width="280" height="54" rx="4"/>
+    <text class="t-b" x="72" y="240">zero or more skills</text>
+    <text class="t-s" x="72" y="258">each kept above 0.65 · self-reported</text>
+    <text class="t-s" x="72" y="306">a failure fails the activator</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="396" y="16" width="528" height="316" rx="6"/>
+    <text class="t-lbl" x="412" y="38">AFTER · AN EVALUATOR PASSED</text>
+    <rect class="keep" x="416" y="56" width="236" height="40" rx="4"/>
+    <text class="t-b" x="432" y="81">slash · keyword · no match</text>
+    <path class="wire" d="M534 96 V124"/>
+    <polygon class="head" points="529,122 539,122 534,130"/>
+    <rect class="new" x="416" y="130" width="236" height="54" rx="4"/>
+    <text class="t-b" x="432" y="152">read the catalog once</text>
+    <text class="t-s" x="432" y="170">allowed · enabled · capped</text>
+    <path class="wire-a" d="M534 184 V212"/>
+    <polygon class="head-a" points="529,210 539,210 534,218"/>
+    <text class="t-s" x="544" y="203">skills + no skill</text>
+    <rect class="app" x="416" y="218" width="236" height="54" rx="4"/>
+    <text class="t-b" x="432" y="240">the app's evaluator</text>
+    <text class="t-s" x="432" y="258">one call · one pick</text>
+    <path class="wire-a" d="M652 236 H700"/>
+    <polygon class="head-a" points="698,231 698,241 706,236"/>
+    <rect class="new" x="706" y="206" width="202" height="30" rx="4"/>
+    <text class="t-s" x="718" y="225">a skill → activates it</text>
+    <rect class="new" x="706" y="242" width="202" height="30" rx="4"/>
+    <text class="t-s" x="718" y="261">no skill → activates none</text>
+    <path class="wire-g" d="M534 272 V296"/>
+    <polygon class="head-g" points="529,294 539,294 534,302"/>
+    <text class="t-go" x="546" y="300">error → activator fails</text>
+    <rect class="gone" x="706" y="70" width="202" height="54" rx="4"/>
+    <text class="t-b" x="722" y="92">generator classifier</text>
+    <text class="t-go" x="722" y="110">not built · never a fallback</text>
+  </g>
+
+  <g id="band">
+    <rect class="band" x="16" y="346" width="908" height="38" rx="5"/>
+    <text class="t-s" x="32" y="369">NO EVALUATOR PASSED → the after pipeline is the today pipeline, call for call. The built-in agent kind is untouched.</text>
+  </g>
+</svg>
