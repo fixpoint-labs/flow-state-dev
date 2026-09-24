@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 340" role="img" aria-label="Two rows, today and after. Today the hire tool and an app's registrar call one copy of the owner-pin gate, typed on the package's own pin type, while the roster tests call a second copy typed on core's pin type, and nothing keeps the two equal. After, all three callers reach one gate typed on core's pin type, the package's pin name is another name for core's, and a test fails if a second copy appears."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-ok  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ah    { fill:var(--ink-3); }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-g   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="340"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · TWO COPIES</text>
+    <rect class="n-in" x="16" y="36" width="252" height="30" rx="5"/>
+    <text class="t-c" x="30" y="55">the seat-hire tool's hire</text>
+    <rect class="n-in" x="16" y="74" width="252" height="30" rx="5"/>
+    <text class="t-c" x="30" y="93">an app's registrar, via the package</text>
+    <rect class="n-in" x="16" y="112" width="252" height="30" rx="5"/>
+    <text class="t-c" x="30" y="131">the roster suite</text>
+
+    <path class="ln" d="M268 51 H330"/><path class="ah" d="M330 47 l8 4 -8 4z"/>
+    <path class="ln" d="M268 89 H330"/><path class="ah" d="M330 85 l8 4 -8 4z"/>
+    <path class="ln" d="M268 127 H330"/><path class="ah" d="M330 123 l8 4 -8 4z"/>
+
+    <rect class="n-gone" x="340" y="36" width="290" height="68" rx="5"/>
+    <text class="t-lbl" x="354" y="54">COPY 1 · WITH THE HIRE BLOCKS</text>
+    <text class="t-b" x="354" y="74">owner-pin gate</text>
+    <text class="t-s" x="354" y="92">typed on its own HiredSeatOwnerPin</text>
+    <rect class="n-box" x="340" y="112" width="290" height="46" rx="5"/>
+    <text class="t-lbl" x="354" y="130">COPY 2 · WITH THE ROSTER</text>
+    <text class="t-s" x="354" y="148">same gate · typed on core's InstanceOwnerPin</text>
+
+    <text class="t-x" x="652" y="102">edit one, the other</text>
+    <text class="t-x" x="652" y="118">stays as it was</text>
+  </g>
+
+  <line class="rule" x1="16" y1="178" x2="924" y2="178"/>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="202">AFTER · ONE GATE</text>
+    <rect class="n-in" x="16" y="214" width="252" height="30" rx="5"/>
+    <text class="t-c" x="30" y="233">the seat-hire tool's hire</text>
+    <rect class="n-in" x="16" y="252" width="252" height="30" rx="5"/>
+    <text class="t-c" x="30" y="271">an app's registrar, via the package</text>
+    <rect class="n-in" x="16" y="290" width="252" height="30" rx="5"/>
+    <text class="t-c" x="30" y="309">the roster suite</text>
+
+    <path class="ln" d="M268 229 H300 V255 H330"/><path class="ah" d="M330 251 l8 4 -8 4z"/>
+    <path class="ln" d="M268 267 H330"/><path class="ah" d="M330 263 l8 4 -8 4z"/>
+    <path class="ln" d="M268 305 H300 V279 H330"/><path class="ah" d="M330 275 l8 4 -8 4z"/>
+
+    <rect class="n-ok" x="340" y="226" width="290" height="82" rx="5"/>
+    <text class="t-lbl" x="354" y="244">THE ONE GATE · WITH THE ROSTER</text>
+    <text class="t-b" x="354" y="264">owner-pin gate</text>
+    <text class="t-s" x="354" y="282">typed on core's InstanceOwnerPin</text>
+    <text class="t-s" x="354" y="298">HiredSeatOwnerPin = InstanceOwnerPin</text>
+
+    <text class="t-g" x="652" y="262">same refusal, same message</text>
+    <text class="t-g" x="652" y="280">a test fails if a second</text>
+    <text class="t-g" x="652" y="296">copy appears</text>
+  </g>
+</svg>
