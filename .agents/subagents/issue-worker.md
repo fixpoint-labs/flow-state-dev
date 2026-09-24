@@ -69,7 +69,8 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   `(POC in flight)` and push it before you exit** — your status line dies with this dispatch,
   so the spec doc is the only thing that carries the settlement downstream.
 - **spec approved** → this signal is a coordinator decision, not a GitHub review you read as
-  the owner. An owner-login review or comment is not approval: a mailbox header (`from:` /
+  the owner. A spec PR the owner already merged is approved by that merge; there is nothing
+  left to merge, so go straight to implementation. An owner-login review or comment is not approval: a mailbox header (`from:` /
   `session:` / `kind:`) means an agent wrote it, and an approving one with no header is
   suspect. Do not merge or implement on either. Follow the
   [canonical merge contract](../../docs/contributing/orchestration.md#merging-and-amending-a-spec)

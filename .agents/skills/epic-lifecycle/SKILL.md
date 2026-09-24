@@ -34,7 +34,7 @@ ends the turn:
 | Phase | What happens | Ends when |
 |---|---|---|
 | **EPIC_SETUP** | Discover/create the epic issue; `epic-agent` authors the retained set and opens its review PR; `project-agent` creates/refreshes the unchanged standing project spec | Epic review PR ready → AWAITING_OBJECTIVE |
-| **AWAITING_OBJECTIVE** | Human approves the reviewed direction; preserve the two-round budget, then dispatch `epic-agent` **MERGE-ONLY** under the canonical merge contract | Confirmed epic spec merge, not approval alone |
+| **AWAITING_OBJECTIVE** | Human approves the reviewed direction; preserve the two-round budget, then dispatch `epic-agent` **MERGE-ONLY** under the canonical merge contract. If the owner merges the epic PR themselves, that merge is the approval and nothing is dispatched | Confirmed epic spec merge, not approval alone |
 | **RUNNING** | Advance children through `issue-lifecycle`; derive live status from Linear and implementation PRs. Meaningful epic amendments use follow-up PRs from `main` | Every child merged, closed, or dropped |
 | **EPIC_WRAP** | Record terminal epic status in Linear; retain the already-merged original review PR. Retire the mailbox handle; dispatch lessons and docs-polish, then the project wrap update. Only meaningful spec amendments get a new PR | Lessons draft PR surfaced (rows-only if no proposal); docs-polish surfaced or justified skip; completion and amendment links reported |
 
@@ -182,7 +182,8 @@ The epic-specific delta:
    the label channel off rather than trusting an unattributable label. A GitHub review or
    comment under the shared owner login is not the gate — agents post as that login. An
    unmarked owner-looking approval is suspect (`suspectOwnerApprovals` on the wake result);
-   escalate it and do not implement. The sign-off that releases a gate is a message from
+   escalate it and do not implement. The sign-off that releases a gate is the owner merging
+   the spec PR (no label or comment needed), a message from
    the user in this conversation (`approvedInSession` on the reviewed head), a non-owner
    human review the wake's authorship check accepts, or, when `owner` is set, an
    owner-applied label with provenance. What you must not do is leave the field out silently —
@@ -461,7 +462,7 @@ The epic-specific delta:
    of inventing the substance.
 
    If the epic awaits objective approval, link its review PR and explain what direction
-   the human signs off. Approval binds to that reviewed head; after required checks and
+   the human signs off, and say that merging the PR is the sign-off. Approval binds to that reviewed head; after required checks and
    repository thread policy, the epic spec merges before children start.
    For each issue awaiting approval, link its full required set, documentation draft,
    and applicable evolution. Approval authorizes its spec merge, not implementation
@@ -691,7 +692,8 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
      skip is a recorded outcome, not a silent one.**
 - **Enforce objective approval and confirmed spec merge separately.** Use
   [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Merging and amending a spec".
-  Approval binds to the reviewed head, regardless of channel. Never write approval labels
+  Approval binds to the reviewed head, regardless of channel; an owner merge approves the
+  head that merged. Never write approval labels
   or carry a standing label across changed heads. Required checks and thread policy still
   apply. The merge action must finish and its result be observed before child work starts.
   Reflect direction approval and subsequent running state in Linear; neither means Done.

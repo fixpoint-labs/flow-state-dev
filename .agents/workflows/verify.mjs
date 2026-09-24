@@ -251,7 +251,7 @@ function product(spec) {
 // ---------------------------------------------------------------------------
 
 // Most lifecycle scenarios run after the epic spec has landed. Merge-wait scenarios override
-// specMerged explicitly; approval remains a separate flag and cannot be inferred from this fixture.
+// specMerged explicitly. An unapproved gate defaults to unmerged, since a merge is itself approval.
 /** A non-owner, non-author APPROVED review. The comment/review channel's positive case. */
 const qualifyingHumanReview = () => ({
   channel: 'review',
@@ -296,7 +296,7 @@ function rawLinear(entries) {
 }
 
 /** Build an epic-wake responder from per-issue fresh PR state and per-issue worker results. */
-function epicResponder({ approved = true, approvedByLabel = false, gateChangesRequested = false, gateHeadSha = 'abc', gateApprovedHeadSha = gateHeadSha, gateSpecMerged = true, epicReviewEvents = false, gateArtifacts, fresh = {}, worker = {}, poc = {}, fold = {}, refresh = {}, linear = {}, nulls = [] } = {}) {
+function epicResponder({ approved = true, approvedByLabel = false, gateChangesRequested = false, gateHeadSha = 'abc', gateApprovedHeadSha = gateHeadSha, gateSpecMerged = approved || approvedByLabel, epicReviewEvents = false, gateArtifacts, fresh = {}, worker = {}, poc = {}, fold = {}, refresh = {}, linear = {}, nulls = [] } = {}) {
   return (prompt, opts) => {
     const label = opts.label || ''
     // `nulls` names labels whose agent "died" — the harness returns null for those.
@@ -358,9 +358,10 @@ const freshRow = (over = {}) => ({
   specApproved: false,
   specApprovedByLabel: false,
   approvalArtifacts: over.specApproved ? [qualifyingHumanReview()] : [],
-  // A retained spec is the ordinary implementation fixture. Open-spec merge tests say false;
-  // this observation alone still cannot authorize an unapproved spec or one without a PR.
-  specMerged: true,
+  // A retained spec is the ordinary implementation fixture, so an approved scan defaults to merged.
+  // An unapproved one defaults to open: a merged spec PR IS approval, so defaulting it to merged
+  // would approve every fixture that means "not approved".
+  specMerged: !!(over.specApproved || over.specApprovedByLabel),
   approvedHeadSha: over.headSha === undefined ? 'abc' : over.headSha,
   humanChangesRequested: false,
   newSpecReviewEvents: false,
@@ -475,49 +476,95 @@ check('RETENTION: an approved but unmerged epic is not ready to wrap', async () 
   assert.equal(result.mayWrap, false, 'an empty child set cannot turn approval into a completed spec merge')
 })
 
-check('RETENTION: observing a merge records the fact without manufacturing direction approval', async () => {
+check('RETENTION: merging the epic spec PR is approval, with no label or comment', async () => {
+  // The owner signs a spec off by merging it. Before this rule a merge with no label or approving
+  // comment recorded the fact and released nothing, which parked the epic on bookkeeping.
   const first = await run('epic-wake.js', {
     args: epicArgs({
-      epic: retainedEpic({ specMerged: false }),
+      epic: retainedEpic({ specMerged: false, approved: false, approvedHeadSha: null }),
       issues: [row('FIX-2')],
     }),
     respond: epicResponder({
-      approved: false, gateSpecMerged: true, gateHeadSha: 'unreviewed', gateApprovedHeadSha: null,
+      approved: false, approvedByLabel: false, gateSpecMerged: true, gateHeadSha: 'merged-head', gateApprovedHeadSha: null,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+      nulls: ['spec:FIX-2'],
+    }),
+  })
+  assert.equal(first.result.epic.specMerged, true)
+  assert.equal(first.result.epicApproved, true, 'the merge alone approves the objective')
+  assert.equal(first.result.epic.approvedHeadSha, 'merged-head', 'the approved head is the head that merged')
+  assert.ok(workerLabels(first.calls).includes('spec:FIX-2'), 'children ramp on the merge')
+  assert.ok(!first.result.gates.some((g) => g.kind === 'epic-objective'), 'no approval is asked for a merged spec')
+  const next = await run('epic-wake.js', {
+    args: epicArgs({ epic: first.result.epic, issues: first.result.issues }),
+    respond: epicResponder({ nulls: ['gate:epic', 'spec:FIX-2'], fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.equal(next.result.epic.specMerged, true, 'a dead scout does not erase an observed merge')
+  assert.equal(next.result.epicApproved, true, 'nor the approval the merge carried')
+})
+
+check('RETENTION: a merge with no known head waits for one instead of approving', async () => {
+  // A merge approves the head that merged. An epic recorded merged with no head (the older rule), seen
+  // by a dead gate scout, must neither crash the wake nor release children without provenance.
+  const legacy = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic({ specMerged: true, approved: false, approvedHeadSha: null }),
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({ nulls: ['gate:epic'], fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.equal(legacy.result.epicApproved, false, 'a dead scout recovers no head, so nothing is approved')
+  assert.deepEqual(workerLabels(legacy.calls), [])
+  const headless = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic({ specMerged: false, approved: false, approvedHeadSha: null }),
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({
+      approved: false, gateSpecMerged: true, gateHeadSha: null, gateApprovedHeadSha: null,
       fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
     }),
   })
-  assert.equal(first.result.epic.specMerged, true, 'observed merge and approval are independent facts')
-  assert.equal(first.result.epicApproved, false)
-  assert.equal(first.result.epic.approvedHeadSha, null, 'an older approval cannot become provenance for the unreviewed merge')
-  assert.deepEqual(workerLabels(first.calls), [])
-  const next = await run('epic-wake.js', {
-    args: epicArgs({ epic: first.result.epic, issues: first.result.issues }),
-    respond: epicResponder({ nulls: ['gate:epic'], fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
-  })
-  assert.equal(next.result.epic.specMerged, true, 'a dead scout does not erase an observed merge')
-  assert.equal(next.result.epicApproved, false, 'the merge cannot turn into historical approval next wake')
-  assert.deepEqual(workerLabels(next.calls), [])
+  assert.equal(headless.result.epicApproved, false, 'a live scan that names no head approves nothing')
+  assert.deepEqual(workerLabels(headless.calls), [])
 })
 
-check('RETENTION: first observed epic merge recovers approval without waiving the source-head bind', async () => {
-  for (const approvedHeadSha of ['abc', 'stale']) {
-    const { result, calls } = await run('epic-wake.js', {
-      args: epicArgs({
-        epic: retainedEpic({ specMerged: false, approvedHeadSha: null }),
-        issues: [row('FIX-2')],
-      }),
-      respond: epicResponder({
-        approved: true, gateSpecMerged: true, gateChangesRequested: true,
-        gateHeadSha: 'abc', gateApprovedHeadSha: approvedHeadSha,
-        fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
-        nulls: ['spec:FIX-2'],
-      }),
-    })
-    const approved = approvedHeadSha === 'abc'
-    assert.equal(result.epicApproved, approved)
-    assert.equal(result.epic.approvedHeadSha, approved ? 'abc' : null)
-    assert.equal(workerLabels(calls).includes('spec:FIX-2'), approved)
-  }
+check('RETENTION: a closed-unmerged epic spec PR is still not approval', async () => {
+  // The negative control for the rule above: it is the MERGE that approves, not the PR leaving review.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic({ specMerged: false, approved: false, approvedHeadSha: null }),
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({
+      approved: false, gateSpecMerged: false, gateHeadSha: 'abc', gateApprovedHeadSha: null,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+    }),
+  })
+  assert.equal(result.epicApproved, false)
+  assert.deepEqual(workerLabels(calls), [])
+})
+
+check('RETENTION: an issue spec PR merged with no label or comment releases implementation', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: retainedEpic(),
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specMerged: false })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: false, specApprovedByLabel: false,
+          approvedHeadSha: null, specMerged: true, headSha: 'merged-head',
+        },
+      },
+      nulls: ['implement:FIX-2'],
+    }),
+  })
+  assert.equal(result.issues[0].specApproved, true, 'the merge is the approval')
+  assert.equal(result.issues[0].approvedHeadSha, 'merged-head')
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'])
+  assert.ok(!result.gates.some((g) => ['spec-approval', 'spec-merge'].includes(g.kind)), 'nothing is asked of the owner')
 })
 
 check('RETENTION: a worker cannot cross into implementation review without a spec-merge receipt', async () => {
@@ -1641,6 +1688,7 @@ check('FIX-1418: the wake will not implement on an owner-looking GitHub approval
     }),
     respond: epicResponder({
       approved: true,
+      gateSpecMerged: false,
       gateArtifacts: [ownerReview],
       fresh: {
         'FIX-2': {
@@ -7903,13 +7951,13 @@ check('a scan-derived spec approval needs a head to approve', async () => {
   // two, which is backwards — it is the one with no human in the loop this wake.
   const { calls } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: null } } }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, specMerged: false, headSha: null } } }),
   })
   assert.deepEqual(workerLabels(calls), [], 'a headless approval implements nothing')
 
   const withHead = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'def' } } }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, specMerged: false, headSha: 'def' } } }),
   })
   assert.deepEqual(workerLabels(withHead.calls), ['implement:FIX-2'], 'and with one it releases')
 })
