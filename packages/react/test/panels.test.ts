@@ -184,6 +184,20 @@ describe("Roster", () => {
     expect(rosterPropNames.filter((name) => /org|tenant|filter/i.test(name))).toEqual([]);
   });
 
+  it("counts a row with a non-string, non-null instructions as unreadable rather than rendering it (FIX-1500 bug 2)", async () => {
+    // `isSeat` now checks `instructions` too — a shape this version cannot
+    // cast to `RosterSeat` (and would otherwise throw handing to React as a
+    // child) is dropped like any other unreadable row, same as `Roster`
+    // already does for a row missing `seatId`/`flow`.
+    const badRow = { topic: "bad.row", clientData: { seatId: "bad.row", flow: "agent", instructions: {} } };
+    render(createElement(Roster, { sessionId: "s1", resourceClient: fakeSource([seat("support.ada"), badRow]) }));
+
+    await waitFor(() => expect(screen.getByText("support.ada")).toBeTruthy());
+    expect(screen.queryByText("bad.row")).toBeNull();
+    expect(document.querySelector("[data-roster-seats]")?.getAttribute("data-roster-seats")).toBe("1");
+    expect(document.querySelector("[data-roster-problems]")?.getAttribute("data-roster-problems")).toBe("1");
+  });
+
   it("reads every page of the roster, not only the first (BR-19, V11)", async () => {
     // 51 rows past the route's default 50-row page (resource-routes.ts:388) —
     // a panel that reads page one and stops truncates the last seat silently.

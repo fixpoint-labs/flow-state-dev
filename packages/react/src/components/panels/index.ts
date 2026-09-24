@@ -15,6 +15,8 @@ export {
   type RosterSlots
 } from "./Roster";
 
+export { SeatDetail, type SeatDetailProps } from "./SeatDetail";
+
 export {
   BoardColumns,
   boardColumnsPropNames,
@@ -28,4 +30,4 @@ export {
   type BoardStatus
 } from "./BoardColumns";
 
-export type { PanelRowSource } from "./reads";
+export type { PanelRowSource, PanelItemSource } from "./reads";
