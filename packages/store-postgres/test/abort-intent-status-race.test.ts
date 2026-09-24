@@ -18,16 +18,15 @@
  * one connection, so an interposed write between two statements IS the
  * concurrent commit — no second connection needed to make it real.
  */
-import { PGlite } from "@electric-sql/pglite";
-import { afterEach, describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { describe, expect, it } from "vitest";
+import { freshPglite } from "./shared-pglite";
 import {
   createPostgresRequestStore,
   initializeSchema,
   type QueryExecutor
 } from "../src";
 import type { RequestRecord, RequestStatus } from "@flow-state-dev/engine";
-
-const pglites: PGlite[] = [];
 
 /**
  * A `QueryExecutor` that runs `afterQuery` once each statement has completed,
@@ -67,16 +66,8 @@ function makeRecord(requestId: string, status: RequestStatus): RequestRecord {
 }
 
 describe("PostgresRequestStore — the status a failed predicate reports", () => {
-  afterEach(async () => {
-    while (pglites.length > 0) {
-      const pglite = pglites.pop();
-      await pglite?.close();
-    }
-  });
-
   it("reports the status that failed the predicate, not one a continuation set afterwards", async () => {
-    const pglite = new PGlite();
-    pglites.push(pglite);
+    const pglite = await freshPglite();
     const requestId = "req_status_race";
 
     let armed = false;
@@ -125,8 +116,7 @@ describe("PostgresRequestStore — the status a failed predicate reports", () =>
   });
 
   it("still reports a terminal status the predicate genuinely failed on", async () => {
-    const pglite = new PGlite();
-    pglites.push(pglite);
+    const pglite = await freshPglite();
     const requestId = "req_status_terminal";
 
     const executor = hookedExecutor(pglite, async () => {});
@@ -146,8 +136,7 @@ describe("PostgresRequestStore — the status a failed predicate reports", () =>
   });
 
   it("reports no status for a request that does not exist", async () => {
-    const pglite = new PGlite();
-    pglites.push(pglite);
+    const pglite = await freshPglite();
 
     const executor = hookedExecutor(pglite, async () => {});
     await initializeSchema(executor);

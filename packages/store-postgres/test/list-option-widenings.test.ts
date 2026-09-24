@@ -23,7 +23,8 @@
  * suite.
  */
 import { describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { freshPglite } from "./shared-pglite";
 import type { RequestRecord, SessionRecord } from "@flow-state-dev/engine";
 import { createPostgresStores, initializeSchema, type PostgresStoreRegistry } from "../src";
 import type { QueryExecutor } from "../src";
@@ -41,7 +42,7 @@ function pgliteExecutor(pglite: PGlite): QueryExecutor {
 }
 
 async function freshStores(): Promise<PostgresStoreRegistry> {
-  const pglite = new PGlite();
+  const pglite = await freshPglite();
   await initializeSchema(pgliteExecutor(pglite));
   return createPostgresStores({ executor: pgliteExecutor(pglite) });
 }
@@ -362,7 +363,7 @@ describe("Postgres cost property — examined work does not grow with history", 
     addSession: (o: Record<string, unknown>) => Promise<void>;
     measure: (shape: ShapeName) => Promise<Measurement>;
   }> {
-    const db = new PGlite();
+    const db = await freshPglite();
     await initializeSchema(pgliteExecutor(db));
 
     // Record what the store sends so the gate explains the store's own SQL.
@@ -486,7 +487,6 @@ describe("Postgres cost property — examined work does not grow with history", 
         ...before[shape]
       });
     }
-    await h.db.close();
   });
 
   /**
@@ -508,7 +508,6 @@ describe("Postgres cost property — examined work does not grow with history", 
     }
 
     expect(await h.measure("read1")).toEqual(before);
-    await h.db.close();
   });
 
   /**
@@ -571,7 +570,6 @@ describe("Postgres cost property — examined work does not grow with history", 
 
     const after = await h.measure("listingBound");
     expect(after.rows + after.removed).toBe(before.rows + before.removed);
-    await h.db.close();
   }, 60_000);
 
   it("axis 2: the boundary costs at most one examined row each, never more", async () => {
@@ -592,6 +590,5 @@ describe("Postgres cost property — examined work does not grow with history", 
 
     expect(examinedAfter).toBeGreaterThanOrEqual(examinedBefore);
     expect(examinedAfter - examinedBefore).toBeLessThanOrEqual(added);
-    await h.db.close();
   }, 60_000);
 });

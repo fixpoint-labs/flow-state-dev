@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
 import type {
   OrgRecord,
   RequestRecord,
@@ -8,6 +8,7 @@ import type {
 } from "@flow-state-dev/engine";
 import { createPostgresStores, initializeSchema, type PostgresStoreRegistry } from "../src";
 import type { QueryExecutor } from "../src";
+import { freshPglite } from "./shared-pglite";
 
 /** Wrap PGlite to match the QueryExecutor interface */
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
@@ -121,11 +122,10 @@ describe("PostgreSQL store adapter", () => {
 
   afterEach(async () => {
     await stores?.close();
-    await pglite?.close();
   });
 
   async function freshStores(): Promise<PostgresStoreRegistry> {
-    pglite = new PGlite();
+    pglite = await freshPglite();
     const executor = pgliteExecutor(pglite);
     stores = await createPostgresStores({ executor });
     return stores;
@@ -892,7 +892,7 @@ describe("PostgreSQL store adapter", () => {
       // doesn't yield long enough for the race to materialize. Wrap the
       // executor in a delay-on-INSERT shim so the UPSERT genuinely
       // suspends — that's what real Postgres does.
-      pglite = new PGlite();
+      pglite = await freshPglite();
       const raw = pgliteExecutor(pglite);
       let upsertCount = 0;
       let releaseFirstUpsert!: () => void;

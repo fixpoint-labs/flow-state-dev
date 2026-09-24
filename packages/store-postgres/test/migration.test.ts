@@ -4,7 +4,8 @@
  * `initializeSchema` upgrades it in place without dropping data.
  */
 import { describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { freshPglite } from "./shared-pglite";
 import { initializeSchema } from "../src/schema";
 import type { QueryExecutor } from "../src";
 
@@ -48,7 +49,7 @@ async function tableExists(pglite: PGlite, table: string): Promise<boolean> {
 
 describe("project → org schema migration (postgres)", () => {
   it("renames projects table to orgs and preserves rows", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await pglite.exec(`
       CREATE TABLE projects (
         id          TEXT PRIMARY KEY,
@@ -73,11 +74,10 @@ describe("project → org schema migration (postgres)", () => {
       `SELECT id, user_id FROM orgs WHERE id = 'proj_1'`
     );
     expect(result.rows[0]).toEqual({ id: "proj_1", user_id: "alice" });
-    await pglite.close();
   });
 
   it("renames project_id columns on sessions/requests/active_requests and preserves data", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await pglite.exec(`
       CREATE TABLE sessions (
         id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
@@ -113,20 +113,18 @@ describe("project → org schema migration (postgres)", () => {
       `SELECT org_id FROM sessions WHERE id = 'sess_1'`
     );
     expect(session.rows[0]?.org_id).toBe("proj_1");
-    await pglite.close();
   });
 
   it("is a no-op on a fresh database", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await initializeSchema(pgliteExecutor(pglite));
 
     expect(await tableExists(pglite, "orgs")).toBe(true);
     expect(await columnExists(pglite, "sessions", "org_id")).toBe(true);
-    await pglite.close();
   });
 
   it("FIX-682: adds tenant_id to existing sessions/requests/active_requests", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await pglite.exec(`
       CREATE TABLE sessions (
         id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
@@ -161,11 +159,10 @@ describe("project → org schema migration (postgres)", () => {
       `SELECT tenant_id FROM sessions WHERE id = 'sess_legacy'`
     );
     expect(row.rows[0]?.tenant_id).toBeNull();
-    await pglite.close();
   });
 
   it("adds a nullable flow_id owner column to existing sessions/requests/active_requests, with no backfill", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await pglite.exec(`
       CREATE TABLE sessions (
         id TEXT PRIMARY KEY, flow_kind TEXT NOT NULL, user_id TEXT NOT NULL,
@@ -200,11 +197,10 @@ describe("project → org schema migration (postgres)", () => {
       `SELECT flow_id FROM sessions WHERE id = 'sess_legacy'`
     );
     expect(row.rows[0]?.flow_id).toBeNull();
-    await pglite.close();
   });
 
   it("is idempotent — second call is a no-op", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await pglite.exec(`
       CREATE TABLE projects (
         id TEXT PRIMARY KEY, user_id TEXT, version INTEGER NOT NULL,
@@ -213,6 +209,5 @@ describe("project → org schema migration (postgres)", () => {
     `);
     await initializeSchema(pgliteExecutor(pglite));
     await expect(initializeSchema(pgliteExecutor(pglite))).resolves.not.toThrow();
-    await pglite.close();
   });
 }, { timeout: 30000 });

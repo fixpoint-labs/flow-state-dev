@@ -8,7 +8,8 @@
  * comes back.
  */
 import { describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { freshPglite } from "./shared-pglite";
 import { createPostgresStores } from "../src";
 import type { QueryExecutor } from "../src";
 
@@ -37,16 +38,15 @@ async function tableExists(pglite: PGlite, table: string): Promise<boolean> {
 
 describe("createPostgresStores — skipSchemaInit", () => {
   it("creates tables when skipSchemaInit is omitted (default)", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     const stores = await createPostgresStores({ executor: pgliteExecutor(pglite) });
     expect(await tableExists(pglite, "sessions")).toBe(true);
     expect(await tableExists(pglite, "orgs")).toBe(true);
     await stores.close();
-    await pglite.close();
   });
 
   it("does NOT create tables when skipSchemaInit is true", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     const stores = await createPostgresStores({
       executor: pgliteExecutor(pglite),
       skipSchemaInit: true
@@ -54,6 +54,5 @@ describe("createPostgresStores — skipSchemaInit", () => {
     expect(await tableExists(pglite, "sessions")).toBe(false);
     expect(await tableExists(pglite, "orgs")).toBe(false);
     await stores.close();
-    await pglite.close();
   });
 });

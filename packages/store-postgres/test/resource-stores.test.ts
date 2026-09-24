@@ -6,7 +6,8 @@
  * scoped reads, last-write-wins, literal prefix matching, and scope isolation.
  */
 import { describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { freshPglite } from "./shared-pglite";
 import {
   createPostgresContentStore,
   createPostgresResourceStateStore,
@@ -24,8 +25,6 @@ import type {
 } from "@flow-state-dev/engine";
 import type { JsonObject } from "@flow-state-dev/core/types";
 
-const pglites: PGlite[] = [];
-
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
   return {
     async query(text: string, values?: unknown[]) {
@@ -39,30 +38,20 @@ function pgliteExecutor(pglite: PGlite): QueryExecutor {
 }
 
 async function freshExecutor(): Promise<QueryExecutor> {
-  const pglite = new PGlite();
-  pglites.push(pglite);
+  const pglite = await freshPglite();
   const executor = pgliteExecutor(pglite);
   await initializeSchema(executor);
   return executor;
 }
 
-async function cleanupAll(): Promise<void> {
-  while (pglites.length > 0) {
-    const pglite = pglites.pop();
-    await pglite?.close();
-  }
-}
-
 createContentStoreConformanceTests({
   name: "PostgresContentStore",
-  createStore: async () => createPostgresContentStore(await freshExecutor()),
-  cleanup: cleanupAll
+  createStore: async () => createPostgresContentStore(await freshExecutor())
 });
 
 createResourceStateStoreConformanceTests({
   name: "PostgresResourceStateStore",
-  createStore: async () => createPostgresResourceStateStore(await freshExecutor()),
-  cleanup: cleanupAll
+  createStore: async () => createPostgresResourceStateStore(await freshExecutor())
 });
 
 /**
@@ -73,7 +62,7 @@ createResourceStateStoreConformanceTests({
  */
 describe("Postgres resource state: revive fences on the tombstone it observed", () => {
   it("does not reuse a version when a revive races another revive plus delete", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await initializeSchema(pgliteExecutor(pglite));
 
     let park: (() => void) | null = null;
@@ -122,7 +111,6 @@ describe("Postgres resource state: revive fences on the tombstone it observed", 
     // version 2 a second time — and a version naming two generations is
     // exactly the ABA the retained tombstone exists to prevent.
     expect(a.ok).toBe(false);
-    await pglite.close();
   });
 });
 
@@ -149,7 +137,7 @@ describe("Postgres resource state: a recreate racing a blind delete's re-read", 
     expectedVersion: ExpectedVersion,
     deleteVersion: ExpectedVersion
   ): Promise<{ result: SetResult<JsonObject>; live: VersionedResourceState | undefined }> {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     const plain = pgliteExecutor(pglite);
     await initializeSchema(plain);
 
@@ -195,7 +183,6 @@ describe("Postgres resource state: a recreate racing a blind delete's re-read", 
     release!();
     const result = await slowDelete;
     const live = await fast.get("session", "s1", "k");
-    await pglite.close();
     return { result, live };
   }
 
