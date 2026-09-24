@@ -482,8 +482,9 @@ function validateOverrideValue(value: string | undefined, envKey: string): void 
  * validate each value, and map them back to declared intent names. An
  * `FSDEV_INTENT_<NAME>` that doesn't match a declared intent is warned-and-
  * skipped (env is ambient — an app must not crash because its environment names
- * an intent it doesn't declare). `FSDEV_DEFAULT_MODEL` with no declared intents
- * still throws (it would silently have no effect — a real misconfiguration).
+ * an intent it doesn't declare). `FSDEV_DEFAULT_MODEL` replaces `defaultModel`
+ * whether or not intents are declared — a host that resolves no model just
+ * never reads it, so an ambient value must not crash it.
  *
  * Iterates `env` (not declared intents) so a typo in an intent the app DOES use
  * surfaces as a warning rather than being silently ignored.
@@ -504,11 +505,6 @@ function readIntentEnvOverrides(
 
   for (const [envKey, envValue] of Object.entries(env)) {
     if (envKey === DEFAULT_MODEL_ENV_VAR) {
-      if (declared.size === 0) {
-        throw new Error(
-          `createModelResolver: ${DEFAULT_MODEL_ENV_VAR} was set, but no intents are declared; the override has no effect.`
-        );
-      }
       validateOverrideValue(envValue, envKey);
       result.defaultModelOverride = (envValue as string).trim();
       continue;
