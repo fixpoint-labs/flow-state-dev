@@ -1,0 +1,13 @@
+{
+  "devUser": "dev",
+  "devHireSeatId": "eng.ada",
+  "fileSeatId": "eng.lead",
+  "fileSeatPurpose": "Breaks incoming requests into tasks and hands them out.",
+  "namedOrg": "acme",
+  "namedUser": "alice",
+  "namedSeatId": "support.ada",
+  "namedSeatInstructions": "You take the support queue.",
+  "tildeSeatId": "~support.bo",
+  "strayOrg": "globex",
+  "straySeatId": "stray"
+}

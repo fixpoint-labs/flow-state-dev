@@ -26,10 +26,115 @@ All from `@flow-state-dev/workforce`:
 | `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, with the user escaped, so two people can hire the same seat id. Throws when the organization id is not a single address segment, or when the seat id starts with `~`. |
 | `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
 | `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems, byOrg }`. It registers nothing. |
+| `createSeatHireBlocks(options)` | Returns `{ hire, fire }`, two handlers that run the whole hire and fire sequence. Mount them as a flow's actions. See [the ready-made handlers](#the-ready-made-hire-and-fire-handlers). |
 
 Two smaller helpers appear in the example below: `toHiredSeatRow` builds a stored row out of what a hire supplied, and `hiredSeatManifest` turns a row back into the record `hireWorkforce` takes.
 
-What you write around all of them: the action that hires, the credential that decides who may call it and which organization they hire into, the call to `flowstate.register()` that puts a minted seat on the air, and the policy for which organizations a start reloads.
+What you write around all of them: the flow that carries the hire action, the credential that decides who may call it and which organization they hire into, the call to `flowstate.register()` that puts a minted seat on the air, and the policy for which organizations a start reloads.
+
+## The ready-made hire and fire handlers
+
+`createSeatHireBlocks` gives you the hire and fire sequence this page builds by hand, as two handlers you mount as actions. They are the same handlers the `seat-hire` capability gives a worker kind as its `hire` and `fire` tools. Use them when a person or your own code does the hiring, from a screen or an admin route, with no model in front of the call.
+
+With them, the admin flow needs no `hire.ts` or `fire.ts` of its own:
+
+```ts title="src/flows/workforce-admin/flow.ts"
+import { defineFlow } from "@flow-state-dev/core";
+import {
+  createSeatHireBlocks,
+  defineHiredRosterCollection,
+  defineSeatInventoryCollection,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE,
+} from "@flow-state-dev/workforce";
+
+import { deskClerkFlow } from "../desk-clerk/flow";
+import { adminAuthentication } from "./authentication";
+import { registerSeat, releaseSeat } from "./registry-access";
+
+/** The kinds a hire may name. Pass this same map to `reloadHiredSeats`. */
+export const kinds = { "desk-clerk": deskClerkFlow };
+
+const seatHire = createSeatHireBlocks({
+  kinds,
+  register: registerSeat,
+  unregister: releaseSeat,
+});
+
+const workforceAdmin = defineFlow({
+  kind: "workforce-admin",
+  requireUser: true,
+  authentication: adminAuthentication,
+  // The handlers read both collections under exactly these keys.
+  resources: {
+    [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
+    [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection(),
+  },
+  actions: {
+    hire: { block: seatHire.hire },
+    fire: { block: seatHire.fire },
+  },
+});
+
+export default workforceAdmin();
+```
+
+`registerSeat` and `releaseSeat` are the two functions in [`registry-access.ts`](#hiring-a-seat), further down. `adminAuthentication` is the `authentication` block from the [admin flow](#the-organization-has-to-come-from-the-credential), exported from a file of its own as an `AuthenticationConfig` (from `@flow-state-dev/core/types`).
+
+**Declare both collections on the flow, under `HIRED_ROSTER_RESOURCE` and `SEAT_INVENTORY_RESOURCE`.** The handlers look them up by those keys. Without them every hire fails with `Cannot read properties of undefined (reading 'create')`, before a row is written or a seat registered.
+
+`createSeatHireBlocks` takes these options:
+
+| Option | What it's for |
+| --- | --- |
+| `kinds` | The flow kinds a hire may name, the same map you pass to `hireWorkforce` and `reloadHiredSeats`. The built-in `agent` kind is always hireable too, unless `allowKinds` leaves it out. |
+| `register(seat, pin)` | Puts a minted seat on the air. `pin` is `{ orgId, userId? }` for the organization the hire ran under. |
+| `unregister(address)` | Releases an address in this process and returns whether anything held it. |
+| `kindAt?(address)` | The kind serving an address right now, if any. Lets `hire` refuse an address that is already served before writing anything, and lets `fire` leave an address registered when a different kind holds it. |
+| `allowKinds?` | The subset of `kinds` these handlers may mint. |
+| `channelBoards?` | Channel board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
+
+### Hiring
+
+`hire` takes `{ seatId, flow, settings?, instructions? }`. Any other key is refused, except `orgId`, which is accepted and ignored. It returns the seat id and the address the seat answers on:
+
+```json
+{ "seatId": "support.ada", "address": "acme.support.ada" }
+```
+
+`warning` is added when the new seat doesn't declare one of the `channelBoards`.
+
+A hire runs in this order:
+
+1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served.
+2. It mints the seat, which runs the kind's settings schema.
+3. It writes the roster row with `create()`. A second hire of the same seat id fails here with `Resource instance "workforce/roster/support.ada" already exists`, including two hires arriving at once.
+4. It calls your `register`. If that throws, the row from step 3 is deleted and the error is passed on.
+5. It writes an inventory row at `inventory/seats/<address>`. If this write fails, the seat is hired and answering but has no inventory row.
+
+The seats these handlers hire are org-visible: every member of the organization can call one, and its roster row, `instructions` included, is readable by a browser in that organization. For a seat only one member can reach, write the hire yourself as in [Hiring a seat only one member can reach](#hiring-a-seat-only-one-member-can-reach).
+
+### Firing
+
+`fire` takes `{ seatId }` (again, `orgId` is accepted and ignored) and returns `{ seatId, address, released }`.
+
+It refuses a seat id this organization never hired with `This organization hired no seat "support.ada".` Otherwise it deletes the roster row, then calls your `unregister` on the address, and `released` is what that returned. If `kindAt` reports a different kind at the address than the row names, the row is still deleted but the address stays registered and `released` is `false`. Without `kindAt`, `fire` releases whatever holds the address, the same as the [hand-written fire](#firing-a-seat).
+
+The inventory row stays after a fire. It records that the seat was registered, not that it is still hired, so read the roster when you want the seats an organization has now.
+
+### Which organization a hire lands in
+
+Both handlers take the organization from the principal your `resolvePrincipal` returns for the session, as described in [The organization has to come from the credential](#the-organization-has-to-come-from-the-credential). A caller can't hire into another organization by naming it in the input.
+
+A session whose principal names no organization, which includes every session on a flow with no `resolvePrincipal`, belongs to the framework's default organization. That id can't start a seat address, so every hire there is refused before anything is written:
+
+```text
+Organization id "__fsd_default_org__" must be lowercase letters, digits, and single hyphens (not at the start or end) — it becomes the leading segment of a hired seat's address, which is joined with a "."
+```
+
+Mount these handlers only on a flow whose resolver names a real organization.
+
+A `Roster` panel lists the roster of the organization its own session belongs to. For a seat to show up on a screen, the screen's session has to resolve the same organization the hire did.
 
 ## Hiring a seat
 
@@ -356,7 +461,7 @@ The private collection reaches only the calling user's own rows. `create`, `get`
 
 Once registered, the seat answers its owner only. Any other member gets `404 Unknown flow`. The row has no browser read at all, so a roster panel reading the browser collection does not show it, not even to its owner.
 
-The `seat-hire` capability, `createSeatHireCapability`, gives a worker kind ready-made `hire` and `fire` tools, and it always hires org-visible seats. For a user-owned hire, write the action yourself as above.
+The `seat-hire` capability, `createSeatHireCapability`, gives a worker kind ready-made `hire` and `fire` tools. It and [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) always hire org-visible seats. For a user-owned hire, write the action yourself as above.
 
 ## Who can reach a hired seat
 
@@ -384,7 +489,7 @@ What a seat saves for a person is stored separately from the roster, in a cell: 
 
 A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the person's id and the organization, so key its rows by `orgId` as well, or a seat in one organization reads what was saved in another.
 
-The roster is not the [live inventory](./inventory.md). An inventory row means *was registered in this organization* and is never removed. A roster row is removed when the seat is fired. A seat hired at runtime gets a roster row and no inventory row, so anything that wants one list of every seat, declared and hired, joins the two itself.
+The roster is not the [live inventory](./inventory.md). An inventory row means *was registered in this organization* and is never removed. A roster row is removed when the seat is fired. A seat hired through [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) or the `seat-hire` tools gets both rows. A seat hired by a handler you wrote gets only the rows it writes: the `hire-seat` handler in [Hiring a seat](#hiring-a-seat) writes a roster row and no inventory row. Anything that wants one list of every seat, declared and hired, joins the two itself.
 
 ## Limits worth knowing before you build on this
 

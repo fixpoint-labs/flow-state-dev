@@ -455,15 +455,37 @@ A board with no rows renders an empty state rather than a spinner.
 
 A card is labelled with the task's `title`, falling back to its `goal`, then to its `id`. It carries the `assignee` beside that label when the row has one. Its status is the column it sits in.
 
-### Transport and theming for both panels
+### SeatDetail
 
-Both read through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, with no auth headers.
+`SeatDetail` shows one seat: its kind, and its instructions when the organization's roster publishes them.
 
-Each reads every page of its collection, following the list route's cursor rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders — a collection larger than `limit` still renders in full.
+```tsx
+import { SeatDetail } from "@flow-state-dev/react";
+
+<SeatDetail
+  sessionId={sessionId}
+  kind={row.kind}
+  seatId={seatId}
+  collectionRef="roster"
+  resourceClient={resourceClient}
+/>
+```
+
+Pass `kind` from the row you already have — a navigator row carries it — so showing it costs no request. For the instructions it reads one item, `seatId`, from the roster collection your session's flow declares under `collectionRef` (defaults to `roster`, the same default `Roster` uses). Pass `seatId` only for a seat hired into the whole organization; leave it out for a seat declared in a worker file, or one a user hired for themselves, and the component says the instructions are not published without reading anything. Never derive `seatId` by hand-splitting a full seat address — a user-owned address's trailing segment can coincidentally equal an org-visible seat's own id, and reading with it would show that other seat's instructions.
+
+The instructions area keeps five states apart: the instructions, *none given*, *not published*, still reading, and could not be read. A read that failed says so rather than looking like a seat with nothing to show.
+
+It reads through `resourceClient` the same way `Roster` and `BoardColumns` do, and with the same fallback: left out, it builds a client with no auth headers. Pass your own when your API needs them.
+
+### Transport and theming for the panels
+
+Each panel reads through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, with no auth headers.
+
+`Roster` and `BoardColumns` read every page of their collection, following the list route's cursor rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders — a collection larger than `limit` still renders in full. `SeatDetail` reads one item and has no `limit`.
 
 A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 
-Style them by setting the `--fsd-panel-*` CSS custom properties on any ancestor. Fill in your own affordances through `slots`: `rowTrailing` and `empty` on `Roster`; `card`, `columnHeader` and `empty` on `BoardColumns`.
+Style them by setting the `--fsd-panel-*` CSS custom properties on any ancestor. Fill in your own affordances through `slots`: `rowTrailing` and `empty` on `Roster`; `card`, `columnHeader` and `empty` on `BoardColumns`. `SeatDetail` has no slots.
 
 `BoardColumns` renders the `<li>` around every card and puts the task's id on it, so a `card` slot returns the body that goes inside one rather than a list item of its own.
 

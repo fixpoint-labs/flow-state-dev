@@ -50,7 +50,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration";
 import type { ChannelManifest, WorkerManifest } from "./manifest";
 import type { ChannelInventoryRow, SeatInventoryRow } from "./inventory/collections";
-import { hiredSeatManifest, parseHiredSeatRow } from "./roster/rows";
+import { hiredSeatManifestFromStored } from "./roster/rows";
 
 /**
  * The declared half, as the sources need it — a structural subset of
@@ -193,9 +193,10 @@ function seatsSource(
         const orgId = orgOf(ctx);
         if (orgId !== undefined) {
           for (const stored of await listRows<unknown>(ctx, hiredRosterKey, "hired roster")) {
-            const parsed = parseHiredSeatRow(stored.state);
-            if ("problem" in parsed) continue;
-            const record = hiredSeatManifest(orgId, parsed.row);
+            // One bad row is one skip, as in `reloadHiredSeats` — which names
+            // each skipped row in its `problems`. Discover skips silently: a
+            // row it cannot list is simply not a seat here.
+            const record = hiredSeatManifestFromStored(orgId, stored.state);
             if ("problem" in record) continue;
             if (!declared.has(record.manifest.id)) {
               declared.set(record.manifest.id, record.manifest);

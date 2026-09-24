@@ -13,6 +13,7 @@
  * should be found: a run where both vanish proves nothing.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core/types";
 import { workforceManifestSources } from "../src/manifest-sources";
 import type { DeclaredWorkforce } from "../src/manifest-sources";
 import type { ChannelManifest, WorkerManifest } from "../src/manifest";
@@ -160,6 +161,71 @@ describe("the seats source", () => {
 
     const [entry] = await seats!.entries(ctx);
     expect(entry!.purpose).toBe("Declared on disk.");
+  });
+
+  it("a dev-org session still lists its seats when a runtime hire there cannot be addressed", async () => {
+    // An app with no principal resolver runs as DEFAULT_ORG_ID, and a runtime
+    // hire there leaves a roster row whose org is not a legal address segment.
+    // That row can never become a seat, but it must cost only itself: the
+    // file-declared seat beside it still has to be listed, rather than the
+    // whole seats domain degrading to a problem.
+    const roster: DeclaredWorkforce = {
+      workers: [worker("eng.lead", "Declared on disk.")],
+      channels: [],
+    };
+    const { seats } = sourcesOf(roster, { seats: "seatRows" }, "hiredRows");
+    const ctx = ctxWith(
+      {
+        seatRows: [
+          { id: "eng.lead", kind: "agent" },
+          { id: "eng.ada", kind: "agent" },
+        ],
+        hiredRows: [
+          { seatId: "eng.ada", flow: "agent", settings: {}, owningOrgId: DEFAULT_ORG_ID },
+        ],
+      },
+      DEFAULT_ORG_ID,
+    );
+
+    expect((await seats!.entries(ctx)).map((entry) => entry.id)).toEqual(["eng.lead"]);
+  });
+
+  it("skips a roster row whose seat id cannot be an address, and lists its siblings", async () => {
+    // `~` marks a user-owned seat's address, so a stored seat id starting with
+    // it cannot be minted. Same failure as the dev-org row, one segment later.
+    const { seats } = sourcesOf(EMPTY, { seats: "seatRows" }, "hiredRows");
+    const ctx = ctxWith(
+      {
+        seatRows: [{ id: "acme.eng.ada", kind: "agent" }],
+        hiredRows: [
+          { seatId: "~eng.bo", flow: "agent", settings: {} },
+          { seatId: "eng.ada", flow: "agent", settings: {}, instructions: "You take support tickets." },
+        ],
+      },
+      "acme",
+    );
+
+    expect((await seats!.entries(ctx)).map((entry) => entry.id)).toEqual(["acme.eng.ada"]);
+  });
+
+  it("withholds a roster row stamped for another organization", async () => {
+    // The owning-org fence: a row that says it belongs to acme is never minted
+    // under the globex session it was read from. Both inventory rows exist, so
+    // a fence that re-bound the row to the reading org would list
+    // `globex.eng.ada` and fail here.
+    const { seats } = sourcesOf(EMPTY, { seats: "seatRows" }, "hiredRows");
+    const ctx = ctxWith(
+      {
+        seatRows: [
+          { id: "acme.eng.ada", kind: "agent" },
+          { id: "globex.eng.ada", kind: "agent" },
+        ],
+        hiredRows: [{ seatId: "eng.ada", flow: "agent", settings: {}, owningOrgId: "acme" }],
+      },
+      "globex",
+    );
+
+    expect(await seats!.entries(ctx)).toEqual([]);
   });
 });
 
