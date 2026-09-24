@@ -40,7 +40,7 @@ import { withTimeout } from "@flow-state-dev/core/helpers";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { hireWorkforce, type HireOptions } from "../hire";
 import { HIRED_ROSTER_PREFIX } from "./collections";
-import { hiredSeatManifest, parseHiredSeatRow } from "./rows";
+import { hiredSeatManifestFromStored } from "./rows";
 
 /**
  * The slice of a runtime's resource-state store this reads through.
@@ -218,11 +218,12 @@ export async function reloadHiredSeats(
       const stored = rowsByKey[key]!;
       const where = `organization "${orgId}", row "${key}"`;
 
-      const parsed = parseHiredSeatRow(stored.state);
-      if ("problem" in parsed) {
-        // Left on disk exactly as it is. A boot that repaired a row it did not
-        // understand would destroy the evidence of why it did not.
-        org.problems.push(`${where} — ${parsed.problem}`);
+      // Unreadable, stamped for another org, or unaddressable: one named skip.
+      // Left on disk exactly as it is. A boot that repaired a row it did not
+      // understand would destroy the evidence of why it did not.
+      const record = hiredSeatManifestFromStored(orgId, stored.state);
+      if ("problem" in record) {
+        org.problems.push(`${where} — ${record.problem}`);
         continue;
       }
 
@@ -236,11 +237,6 @@ export async function reloadHiredSeats(
       // three; this covers all of them, and reuses the refusal wording that is
       // already the careful one.
       try {
-        const record = hiredSeatManifest(orgId, parsed.row);
-        if ("problem" in record) {
-          problems.push(`${where} — ${record.problem}`);
-          continue;
-        }
         const hired = hireWorkforce([record.manifest], { kinds: options.kinds });
         org.seats.push(...hired);
       } catch (error) {

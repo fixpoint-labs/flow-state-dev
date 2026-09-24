@@ -6,13 +6,16 @@
  * single answer to two questions a reader will otherwise find answered twice:
  * what a row means, and what a runtime-hired seat is called.
  *
- * **Nothing here throws over a bad row, and nothing here repairs one.** A row
- * this version cannot read comes back as a reason. That is not politeness: a
- * stored row was written by a past runtime against code that has since moved,
- * so the boot that finds it must be able to skip it and serve, and a boot that
- * rewrote data it did not understand would destroy the evidence of why it did
- * not. The one thing that DOES throw is a bad org id, because that is this
- * deploy's mistake rather than a past one — see {@link seatAddress}.
+ * **Nothing here throws over a bad stored row, and nothing here repairs one.**
+ * A row this version cannot read comes back as a reason. That is not
+ * politeness: a stored row was written by a past runtime against code that has
+ * since moved, so the boot that finds it must be able to skip it and serve,
+ * and a boot that rewrote data it did not understand would destroy the
+ * evidence of why it did not. The one thing that DOES throw is a bad org id,
+ * because that is this deploy's mistake rather than a past one — see
+ * {@link seatAddress}. A reader walking stored rows calls
+ * {@link hiredSeatManifestFromStored}, which turns that throw into a reason
+ * too.
  *
  * The import of `validateSegment` reaches into `../loader/` and is safe:
  * `loader/segments.ts` imports nothing at all. The package's root/loader split
@@ -205,8 +208,9 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  * @returns the record, or a reason when the row's owning organization is
  * not `orgId`. A row that predates the stamp binds `orgId` — the cell it
  * was read from — rather than refusing. A bad ORG still throws, via
- * {@link seatAddress}; a caller walking stored rows catches that per row, as
- * `reloadHiredSeats` does, so one unaddressable row is one skip.
+ * {@link seatAddress}; a caller walking stored rows reads through
+ * {@link hiredSeatManifestFromStored}, which turns that throw into one row's
+ * reason, so one unaddressable row is one skip.
  */
 export function hiredSeatManifest(
   orgId: string,
@@ -241,6 +245,35 @@ export function hiredSeatManifest(
       ownerPin: hiredSeatOwnerPin(owningOrgId, row),
     },
   };
+}
+
+/**
+ * A stored value, read under `orgId`, as the record a seat is minted from —
+ * or the one reason it cannot be.
+ *
+ * The per-row walk every reader of stored rows needs: parse, apply the
+ * owning-org fence, and build the address. The address throws when the org or
+ * the seat id cannot be one (a row under `DEFAULT_ORG_ID`, a seat id starting
+ * with `~`); here that throw is one row's reason, so a caller walking a roster
+ * skips it and keeps the rest. `reloadHiredSeats` and the seats manifest
+ * source both read through this, so they agree on which rows count.
+ *
+ * @returns the record, or a reason. Never throws.
+ */
+export function hiredSeatManifestFromStored(
+  orgId: string,
+  stored: unknown
+): { manifest: WorkerManifest } | RowProblem {
+  const parsed = parseHiredSeatRow(stored);
+  if ("problem" in parsed) return parsed;
+  try {
+    return hiredSeatManifest(orgId, parsed.row);
+  } catch (error) {
+    // Only the address can throw in there today (`seatAddress`). A new throw
+    // added to `hiredSeatManifest` becomes a skipped row here, so make it a
+    // reason there instead if it is not about the address.
+    return { problem: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /**

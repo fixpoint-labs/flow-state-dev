@@ -441,6 +441,24 @@ describe("the reload, partitioned by organization", () => {
     expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada", "beta.support.ada"]);
     expect(problems).toEqual(acme!.problems);
   });
+
+  it("files a row stamped for another organization under the org whose cell held it", async () => {
+    // Refused by the owning-org fence, not by the kind — a different reason
+    // from the case above, and it has to land in the same slice. A report
+    // published per organization would otherwise never show it.
+    const { byOrg, problems } = await reloadHiredSeats({
+      stores: storeHolding({
+        acme: { stray: { seatId: "stray", flow: "desk-clerk", settings: {}, owningOrgId: "globex" } },
+      }),
+      orgIds: ["acme"],
+      kinds,
+    });
+
+    expect(byOrg[0]!.problems).toHaveLength(1);
+    expect(byOrg[0]!.problems[0]).toContain('organization "acme", row "workforce/roster/stray"');
+    expect(byOrg[0]!.problems[0]).toContain("cannot be registered under");
+    expect(problems).toEqual(byOrg[0]!.problems);
+  });
 });
 
 describe("V6 · a store that never answers fails the boot inside its bound", () => {
