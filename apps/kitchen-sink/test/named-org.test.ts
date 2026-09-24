@@ -77,6 +77,11 @@ vi.mock("@/test/mock-flowstate", async () => {
   };
 });
 
+// Each case imports the whole app afresh. The first import is cold (about 4.8s
+// on its own), and beside another file doing the same it outruns vitest's 5s
+// default.
+vi.setConfig({ testTimeout: 30_000 });
+
 const ORG = "kitchen-sink";
 const RAIL = "rail-standin";
 const ADDR = (seatId: string) => `${ORG}.${seatId}`;

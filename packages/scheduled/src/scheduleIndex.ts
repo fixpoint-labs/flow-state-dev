@@ -1,7 +1,7 @@
 /**
  * `ScheduleIndex` — opt-in store-adapter interface that mirrors schedule
  * rows for due-row scanning. Store packages (Postgres, SQLite) implement
- * it as a small table keyed by `(userId, key)`. The tick handler in
+ * it as a small table keyed by `(cell, key)`. The tick handler in
  * `@flow-state-dev/vercel/schedules` calls `claimDue` once per cron beat
  * to atomically read + advance due rows, then POSTs them to the
  * scheduled-actions dispatch endpoint.
@@ -21,8 +21,22 @@
  * A single row in the schedule index. `key` is the collection-relative
  * key (no leading collection prefix). `nextFireAt` is the next fire
  * time in milliseconds since epoch.
+ *
+ * A row is identified by `(cell, key)` — the same address as the schedule
+ * it mirrors — so one schedule is always exactly one row. `userId` is who
+ * the schedule runs as, and is data, not identity: one person holds several
+ * rows with one key when they have schedules in several storage cells (a
+ * hired seat per organization, and their own app-wide cell).
  */
 export interface ScheduleIndexRow {
+  /**
+   * The storage cell the schedule is persisted in. With `key`, the row's
+   * identity. Filled by `defineScheduleCollection` from the engine's own
+   * derivation (`CollectionHookContext.cell`). Opaque: store and compare it,
+   * never parse it.
+   */
+  cell: string;
+  /** Who the schedule runs as. */
   userId: string;
   /**
    * The organization this schedule fires into (FIX-1442).
@@ -54,7 +68,7 @@ export interface ScheduleIndexRow {
 export interface ScheduleIndex {
   /**
    * Insert or update a schedule row. Idempotent on primary key
-   * `(userId, key)`. The caller passes the freshly-computed
+   * `(cell, key)`. The caller passes the freshly-computed
    * `nextFireAt` — implementations do not parse cron themselves.
    */
   upsert(row: ScheduleIndexRow): Promise<void>;
@@ -74,6 +88,9 @@ export interface ScheduleIndex {
    */
   claimDue(now: number, limit?: number): Promise<ScheduleIndexRow[]>;
 
-  /** Remove a schedule row. No-op when the row does not exist. */
-  remove(userId: string, key: string): Promise<void>;
+  /**
+   * Remove the row for `(cell, key)`. No-op when the row does not exist.
+   * Never touches another cell's row with the same key.
+   */
+  remove(id: { cell: string; key: string }): Promise<void>;
 }

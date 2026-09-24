@@ -51,6 +51,8 @@ On each invocation, reconstruct the phase from a **small** read:
   self-approval or later human changes requested. Attribute an owner's label to its
   application event and reviewed revision; its presence alone never approves a changed
   head. Comments and in-session approval also need revision binding.
+  The owner merging the spec PR is itself approval: no label or comment needed, and the
+  merged head is the approved head.
   The coordinator never writes approval labels or mechanically merges. After approval,
   dispatch an existing `issue-worker` with the canonical **MERGE-ONLY** assignment,
   exact PR and reviewed head. Confirm its evidence before releasing implementation.
@@ -116,7 +118,7 @@ generic approval request. Implementation PR merge remains the user's separate ga
 | Phase (derived) | Next bounded action | Then |
 |---|---|---|
 | **NEEDS_SPEC** — spec route, no spec yet | Dispatch `issue-spec`: author `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`, conditional `EVOLUTION.md`, and owned artifacts under `specs/issues/<ISSUE-ID>/`; open ready for review. | Surface the direction ask and PR; record handles → AWAITING_SPEC_APPROVAL. |
-| **AWAITING_SPEC_APPROVAL** — spec PR not yet merged | On review events within the existing budget, dispatch Step 6.5 and preserve its reported counters. Human approval binds to the reviewed head. After approval, dispatch `issue-worker` **MERGE-ONLY** under the canonical merge contract with the PR and reviewed head. Observe merge; never infer it from approval or closure. | If blocked, report the actual approval/check/merge wait, not another approval ask. Resume implementation on the next wake after observed merge; an authorized implement backstop may continue in the same wake. |
+| **AWAITING_SPEC_APPROVAL** — spec PR not yet merged | On review events within the existing budget, dispatch Step 6.5 and preserve its reported counters. Human approval binds to the reviewed head. After approval, dispatch `issue-worker` **MERGE-ONLY** under the canonical merge contract with the PR and reviewed head. Observe merge; never infer it from approval or closure. If the owner merged the spec PR themselves, that merge is the approval: skip MERGE-ONLY and go straight to implementation. | If blocked, report the actual approval/check/merge wait, not another approval ask. Resume implementation on the next wake after observed merge; an authorized implement backstop may continue in the same wake. |
 | **NEEDS_IMPLEMENTATION** — spec confirmed merged, or direct-route bug | Dispatch `issue-implement` on a base containing the merged spec. Direct-route `specRequired` re-routes to NEEDS_SPEC. Multi-PR plans advance via `issue-multi-pr` only after the same spec merge gate. | Record implementation PRs; subscribe → PR_FEEDBACK. |
 | **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR, *and only while the round cap allows* (see below): dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit; add the rounds it reports spent to `prFeedbackRounds`. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
 | **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
@@ -488,9 +490,10 @@ transitions webhooks *don't* cover — CI success and merge — schedule a check
 (`send_later`, ~30–60 min) and re-arm it while the issue is
 live; stop once the impl PR is merged or closed. On each wake, re-read the spec-PR
 approval signal rather than trusting a webhook arrived: in AWAITING_SPEC_APPROVAL, the go-ahead
-is a message from the user in this conversation (`approvedInSession` on the reviewed head),
+is **the owner merging the spec PR** (no label or comment needed — the merge alone is the
+sign-off), a message from the user in this conversation (`approvedInSession` on the reviewed head),
 a non-owner human approving comment or review with no agent header, **or the `spec approved`
-label** — check comments, reviews *and* labels, all small reads. An agent-mailbox header
+label** — check merge state, comments, reviews *and* labels, all small reads. An agent-mailbox header
 (`from:` / `session:` / `kind:`, then a blank line) means the review or comment is
 agent-authored and is not the gate. An approving review or comment under the owner login
 with no such header is **suspect**: escalate it, do not treat it as sign-off, do not

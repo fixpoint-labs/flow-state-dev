@@ -3,6 +3,7 @@
  * one engine session id per flow kind, and the turn counter. Pure — no I/O.
  */
 import type { FlowActionTarget } from "./targets";
+import type { CliPrincipal } from "../principal";
 
 export interface HarnessState {
   /** The target free text routes to, or undefined when nothing is bound. */
@@ -16,11 +17,13 @@ export interface HarnessState {
   sessions: Map<string, string>;
   /** Number of turns dispatched (successful or not) this run. */
   turns: number;
+  /** The identity each flow kind's last turn ran under, for `/status`. */
+  principals: Map<string, CliPrincipal>;
 }
 
 /** Fresh, unbound harness state. */
 export function createHarnessState(): HarnessState {
-  return { defaultTarget: undefined, sessions: new Map(), turns: 0 };
+  return { defaultTarget: undefined, sessions: new Map(), turns: 0, principals: new Map() };
 }
 
 /** Mint a stable engine session id — the same `sess_…` shape `fsdev run` uses. */

@@ -33,16 +33,18 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
   return {
     async upsert(row: ScheduleIndexRow): Promise<void> {
       await executor.query(
-        `INSERT INTO schedule_index (user_id, key, org_id, cron, timezone, next_fire_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (user_id, key) DO UPDATE SET
+        `INSERT INTO schedule_index (cell, key, user_id, org_id, cron, timezone, next_fire_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (cell, key) DO UPDATE SET
+           user_id = EXCLUDED.user_id,
            org_id = EXCLUDED.org_id,
            cron = EXCLUDED.cron,
            timezone = EXCLUDED.timezone,
            next_fire_at = EXCLUDED.next_fire_at`,
         [
-          row.userId,
+          row.cell,
           row.key,
+          row.userId,
           row.orgId ?? null,
           row.cron,
           row.timezone ?? null,
@@ -51,10 +53,10 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
       );
     },
 
-    async remove(userId: string, key: string): Promise<void> {
+    async remove({ cell, key }: { cell: string; key: string }): Promise<void> {
       await executor.query(
-        "DELETE FROM schedule_index WHERE user_id = $1 AND key = $2",
-        [userId, key]
+        "DELETE FROM schedule_index WHERE cell = $1 AND key = $2",
+        [cell, key]
       );
     },
 
@@ -62,7 +64,7 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
       const tx = await executor.beginTx!();
       try {
         const sel = await tx.query(
-          `SELECT user_id, key, org_id, cron, timezone, next_fire_at
+          `SELECT cell, key, user_id, org_id, cron, timezone, next_fire_at
              FROM schedule_index
             WHERE next_fire_at <= $1
             ORDER BY next_fire_at
@@ -72,9 +74,10 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
         );
 
         const claimed: ScheduleIndexRow[] = [];
-        const advances: Array<{ userId: string; key: string; next: number }> = [];
+        const advances: Array<{ cell: string; key: string; next: number }> = [];
 
         for (const row of sel.rows) {
+          const cell = row.cell as string;
           const userId = row.user_id as string;
           const key = row.key as string;
           const cron = row.cron as string;
@@ -90,13 +93,13 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
             continue;
           }
 
-          claimed.push({ userId, orgId, key, cron, timezone, nextFireAt: fired });
-          advances.push({ userId, key, next });
+          claimed.push({ cell, userId, orgId, key, cron, timezone, nextFireAt: fired });
+          advances.push({ cell, key, next });
         }
 
         if (advances.length > 0) {
           // Batched UPDATE via a VALUES table. Placeholders: each row
-          // consumes 3 params (user_id, key, next).
+          // consumes 3 params (cell, key, next).
           const valueRows: string[] = [];
           const params: unknown[] = [];
           for (let i = 0; i < advances.length; i++) {
@@ -104,12 +107,12 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
             // Cast the bigint to ensure the VALUES table column types
             // match the target column (otherwise Postgres may infer text).
             valueRows.push(`($${base + 1}, $${base + 2}, $${base + 3}::bigint)`);
-            params.push(advances[i].userId, advances[i].key, advances[i].next);
+            params.push(advances[i].cell, advances[i].key, advances[i].next);
           }
           const sql = `UPDATE schedule_index AS s
              SET next_fire_at = v.next
-             FROM (VALUES ${valueRows.join(", ")}) AS v(user_id, key, next)
-             WHERE s.user_id = v.user_id AND s.key = v.key`;
+             FROM (VALUES ${valueRows.join(", ")}) AS v(cell, key, next)
+             WHERE s.cell = v.cell AND s.key = v.key`;
           await tx.query(sql, params);
         }
 

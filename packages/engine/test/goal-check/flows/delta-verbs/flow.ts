@@ -17,10 +17,6 @@
  *
  * Pass criteria: the result reports `single` as `{calls:1, errors:["<note>"]}`
  * and `instance` as `{calls:2, errors:["<note>"]}`.
- *
- * If your shell exports `FSDEV_DEFAULT_MODEL` / `FSDEV_INTENT_*`, unset them
- * first: this flow declares no intents (it needs no model), and the resolver
- * rejects a default-model override that could have no effect.
  */
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { z } from "zod";

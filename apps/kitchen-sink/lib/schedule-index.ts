@@ -34,5 +34,5 @@ export function setScheduleIndexImpl(next: ScheduleIndex): void {
 export const scheduleIndex: ScheduleIndex = {
   upsert: (row: ScheduleIndexRow) => impl.upsert(row),
   claimDue: (now: number, limit?: number) => impl.claimDue(now, limit),
-  remove: (userId: string, key: string) => impl.remove(userId, key),
+  remove: (id: { cell: string; key: string }) => impl.remove(id),
 };

@@ -32,6 +32,9 @@ export const DOCUMENT_KEY = "document";
 /** The public entry a check reads a seat's own configuration through. */
 export const INSPECT_ENTRY = "inspect";
 
+/** The component item that entry puts its facts on, for a caller reading the stream. */
+export const SEAT_FACTS_COMPONENT = "devforce-seat-facts";
+
 /**
  * What a seat of either kind configures.
  *
@@ -88,6 +91,13 @@ export type SeatFacts = z.infer<typeof seatFactsSchema>;
  *
  * It is a DIRECT read: it writes nothing anywhere, which is what lets the
  * never-woken `reviewer` seat be both silent and evidenced.
+ *
+ * The facts are also put on the request's stream as a **stream-only**
+ * `component` item. An HTTP caller has no other way to read them: the engine
+ * carries a handler's return value only on trace items, which a client never
+ * sees and which are not captured at all when trace observability is off.
+ * `transient: true` means the item is never persisted, so the paragraph above
+ * still holds.
  */
 export const readOwnFacts = handler({
   name: "devforce-seat-facts",
@@ -107,7 +117,7 @@ export const readOwnFacts = handler({
     const document = await (ref as { readContent(): Promise<string | null> }).readContent();
     const skills = config.seatSkills ?? [];
 
-    return {
+    const facts: SeatFacts = {
       seat,
       instructions: config.instructions ?? "",
       documentRef: config.document,
@@ -115,5 +125,7 @@ export const readOwnFacts = handler({
       skillNames: skills.map((skill) => skill.name),
       skillBodies: Object.fromEntries(skills.map((skill) => [skill.name, skill.skillMd])),
     };
+    ctx.emit.component(SEAT_FACTS_COMPONENT, facts, { transient: true });
+    return facts;
   },
 });

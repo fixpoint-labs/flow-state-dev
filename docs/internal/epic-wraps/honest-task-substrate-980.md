@@ -1,6 +1,6 @@
 # Epic wrap detail — honest task substrate (FIX-980)
 
-Per-instance evidence behind [cycle 11 of the cycle ledger](../cycle-ledger.md#cycle-11--honest-task-substrate-epic-wrap-fix-980-2026-09-10).
+Per-instance evidence behind [cycle 11 of the cycle ledger](../cycle-ledger/cycle-11.md).
 The ledger carries the counts and the conclusion; the enumeration, the round
 reconstruction and the reproduced instrument failure live here so the instrument
 stays scannable.

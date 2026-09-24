@@ -44,6 +44,7 @@ import { createScopeStateOps, createStateContainer } from "../stores/state-conta
 import { createScopePersist } from "../stores/scope-persist";
 import { toBareState, toBareStates, toVersions } from "../stores/resource-state-views";
 import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
+import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import {
   ConcurrentModificationError,
   ResourceAlreadyExistsError
@@ -2288,10 +2289,20 @@ export async function createExecutionContext<
     signal: options.signal,
   });
 
+  // The cell a collection hook reports is the one the concrete instance key
+  // persists under: the same per-key ownership resolution the persisters use
+  // (longest declared prefix wins), never a second one. Every scope is present
+  // on every request (BR-12), so it always resolves.
+  const collectionCellOf =
+    (scope: ContentScopeType) =>
+    (storageKey: string): string =>
+      resolveResourceStorageScopeId(scope, storageKey)!;
+
   const userResources = createScopeResourceRegistry({
     orgId: resolvedOrgId,
     scope: "user",
     scopeId: userId,
+    cellOf: collectionCellOf("user"),
     configs: userResourceConfigs,
     readResources: readUserResources,
     readResourceContent: readUserResourceContent,
@@ -2309,6 +2320,7 @@ export async function createExecutionContext<
     orgId: resolvedOrgId,
     scope: "session",
     scopeId: sessionKey,
+    cellOf: collectionCellOf("session"),
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
     readResourceContent: readSessionResourceContent,
@@ -2329,6 +2341,7 @@ export async function createExecutionContext<
           orgId: resolvedOrgId,
           scope: "org",
           scopeId: orgRef.current!.orgId,
+          cellOf: collectionCellOf("org"),
           configs: orgResourceConfigs,
           readResources: readProjectResources,
           readResourceContent: readProjectResourceContent,
@@ -2488,6 +2501,50 @@ export async function createExecutionContext<
   ) as UserScopeHandle<TUserState>;
 
   const sessionOpsEmitting = emitWrap("session", sessionOps, sessionContainer);
+
+  /**
+   * Read-modify-write of a session record field outside `state` (journal,
+   * title/description/tags/metadata). The write replaces the whole record, so
+   * it re-reads the stored record and commits at that version under a bounded
+   * retry (same budget and backoff as `runWithCAS`, from `flow.session.cas`):
+   * a stale `sessionRef` snapshot would otherwise revert `state` (or a
+   * journal entry) another request committed in the meantime. When this
+   * request's state container was at the version just read, it is advanced to
+   * the new version — its state is unchanged by this write, so its next state
+   * persist must not trip a conflict against our own bump.
+   */
+  const writeSessionRecord = async (
+    mutate: (current: SessionRecord) => SessionRecord
+  ): Promise<void> => {
+    const maxAttempts = 1 + casMaxRetries(flow.session?.cas);
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (attempt > 0) await waitForCASRetry(attempt, flow.session?.cas);
+      const stored = await stores.session.get(sessionRef.current.id);
+      if (stored !== undefined) ensureJournalDefaults(stored);
+      const current = stored ?? sessionRef.current;
+      const next: SessionRecord = {
+        ...mutate(current),
+        version: current.version + 1,
+        updatedAt: Date.now()
+      };
+      const result = await stores.session.set(
+        next.id,
+        next,
+        stored === undefined ? "absent" : stored.version
+      );
+      if (result.ok) {
+        if (sessionContainer.getVersion() === current.version) {
+          sessionContainer.commit(sessionContainer.read() as TSessionState, result.version);
+        }
+        sessionRef.current = result.record ?? next;
+        return;
+      }
+    }
+    throw new ConcurrentModificationError(
+      `Session "${sessionId}" record update failed due to concurrent modifications`,
+      maxAttempts
+    );
+  };
   const sessionHandle = defineStateProperty(
     {
       identity: {
@@ -2529,17 +2586,10 @@ export async function createExecutionContext<
       }),
       appendJournal: async (entry: JournalEntryInput): Promise<void> => {
         const journalEntry = buildJournalEntry(entry);
-        sessionRef.current = {
-          ...sessionRef.current,
-          journal: [...sessionRef.current.journal, journalEntry],
-          updatedAt: Date.now()
-        };
-        // Journal is append-only and not part of the state CAS path.
-        await stores.session.set(
-          sessionRef.current.id,
-          sessionRef.current,
-          "any"
-        );
+        await writeSessionRecord((current) => ({
+          ...current,
+          journal: [...current.journal, journalEntry]
+        }));
       },
       getJournal: async (query?: {
         limit?: number;
@@ -2556,23 +2606,15 @@ export async function createExecutionContext<
         return list.slice(0, Math.max(0, query.limit));
       },
       setMetadata: async (input: SessionMetadataInput): Promise<void> => {
-        const now = Date.now();
-        sessionRef.current = {
-          ...sessionRef.current,
+        await writeSessionRecord((current) => ({
+          ...current,
           ...(input.title !== undefined ? { title: input.title } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.tags !== undefined ? { tags: input.tags } : {}),
           ...(input.metadata !== undefined
-            ? { metadata: { ...sessionRef.current.metadata, ...input.metadata } }
-            : {}),
-          updatedAt: now
-        };
-        // Session metadata (title/description/tags/metadata) is non-CAS today.
-        await stores.session.set(
-          sessionRef.current.id,
-          sessionRef.current,
-          "any"
-        );
+            ? { metadata: { ...current.metadata, ...input.metadata } }
+            : {})
+        }));
 
         await response.emit({
           type: "session.metadata.changed",

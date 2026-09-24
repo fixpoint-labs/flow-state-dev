@@ -1,6 +1,6 @@
 # Epic wrap detail — declared surface (FIX-1127)
 
-Per-instance evidence behind [cycle 5 of the cycle ledger](../cycle-ledger.md#cycle-5--declared-surface-epic-wrap-fix-1127-2026-08-12).
+Per-instance evidence behind [cycle 5 of the cycle ledger](../cycle-ledger/cycle-05.md).
 The ledger carries the counts and the conclusion; the enumeration, the branch-head rescoring and
 the correction narrative live here so the instrument stays scannable.
 

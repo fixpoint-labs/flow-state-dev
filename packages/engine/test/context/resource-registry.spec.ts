@@ -191,6 +191,7 @@ function makeRegistry(options: {
   return createScopeResourceRegistry({
     scope: "session",
     scopeId: "sess_1",
+    cellOf: () => "sess_1",
     configs: options.configs ?? {},
     readResources: () => state,
     readResourceContent: () => content,
@@ -209,6 +210,7 @@ describe("concurrent resource writes", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      cellOf: () => "sess_1",
       configs: {
         spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
       },
@@ -240,6 +242,7 @@ describe("concurrent resource writes", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      cellOf: () => "sess_1",
       configs: {
         spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
       },
@@ -268,6 +271,7 @@ describe("concurrent resource writes", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      cellOf: () => "sess_1",
       configs: {
         spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
       },
@@ -844,6 +848,7 @@ describe("delta-verb refusal against a rewriting schema (FIX-1269)", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      cellOf: () => "sess_1",
       configs: options.configs,
       readResources: () => state,
       readResourceContent: () => content,
@@ -1249,6 +1254,7 @@ describe("createScopeResourceRegistry — collections", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
       readResourceContent: () => ({}),
@@ -1290,6 +1296,7 @@ describe("createScopeResourceRegistry — collections", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
       readResourceContent: () => ({}),
@@ -1483,6 +1490,7 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
       readResourceContent: () => ({}),
@@ -1526,6 +1534,7 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
       readResourceContent: () => ({}),

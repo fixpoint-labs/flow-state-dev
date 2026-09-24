@@ -1,11 +1,10 @@
 /**
  * The intent-ladder env strip — one correct implementation.
  *
- * A goal that builds its own bare `createModelResolver()` (no declared intents)
- * throws at construction if the ambient environment pins the intent ladder:
- * `FSDEV_DEFAULT_MODEL` set with no intents declared is an error, and so is any
- * `FSDEV_INTENT_*` that can't be matched against the declared set. Containers
- * routinely set both, so ten goal runners have to clear them.
+ * Ambient `FSDEV_DEFAULT_MODEL` / `FSDEV_INTENT_*` no longer crash a bare
+ * `createModelResolver()`, but they still REPLACE the models a goal would
+ * otherwise resolve. Containers routinely set both, so a goal that must run on
+ * its own ladder (or on none) clears them here.
  *
  * They previously did it three different ways, and two of them deleted only
  * `FSDEV_INTENT_PLAN` / `FSDEV_INTENT_REASON` by name — leaving those goals to

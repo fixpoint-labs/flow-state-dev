@@ -1,14 +1,14 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
-import { ensureSessionRecord, ownsRecord } from "@flow-state-dev/engine";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { createFlowRegistry, ensureSessionRecord, ownsRecord } from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   runAction,
+  resolveInProcessPrincipal,
   createInMemoryStores,
   createFilesystemStores,
   createModelResolver,
@@ -26,6 +26,15 @@ import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
 import { collectValues } from "../cli-options";
+import {
+  askFlowState,
+  checkSessionOwner,
+  describePrincipal,
+  resolveCliPrincipal,
+  type AskPrincipal,
+  type CliPrincipal,
+  type PinOf,
+} from "../principal";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_CONFIG_ERROR, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
 
 /** NDJSON event types emitted to stdout during flow execution. */
@@ -92,6 +101,8 @@ export function registerRunCommand(program: Command): void {
     .option("-f, --input-file <path>", "Path to JSON input file")
     .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("-s, --session <id>", "Session ID for reuse across invocations")
+    .option("--org <id>", "Run in this organization and skip the app's resolver")
+    .option("-u, --user <id>", "Run as this user. The organization comes from the app's resolver unless you also pass --org. Default: the user your app's resolver returns, or cli-user if the app has none or you pass --org")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
@@ -123,6 +134,10 @@ export interface RunCommandOptions {
   model?: string;
   session?: string;
   seedSession?: string;
+  /** `--org`: run in this organization; the app's resolver is not asked. */
+  org?: string;
+  /** `--user`: run as this user. The organization comes from the app's resolver unless `--org` is also given. */
+  user?: string;
   flowDir?: string[];
   /** Explicit `--dotenv <path>` entries to load before the cwd `.env.local` walk-up. */
   dotenv?: string[];
@@ -148,6 +163,8 @@ interface CapturePayload {
     model: string | null;
     session: string | null;
     seedSession: unknown;
+    /** Who the run was, and whether the resolver, a flag, or the development default chose it. */
+    principal: CliPrincipal;
   };
   events: FlowEvent[];
   result: FlowRunResult & { exitCode: number };
@@ -209,6 +226,8 @@ export async function executeRunCommand(
     let flow: FlowInstance;
     let stores: StoreRegistry;
     let baseRuntimeConfig: RuntimeConfig | undefined;
+    let askPrincipal: AskPrincipal;
+    let pinOf: PinOf;
 
     if (resolved.source === "config") {
       // --- config path: take the app's registry/stores/runtimeConfig ---
@@ -236,6 +255,8 @@ export async function executeRunCommand(
       flow = found;
       stores = options.stores ?? runtime.stores;
       baseRuntimeConfig = runtime.runtimeConfig;
+      askPrincipal = askFlowState(resolved.flowState, resolved.configPath);
+      pinOf = (id) => runtime.registry.pinOf(id);
     } else {
       // --- discovery path: scan conventional directories, CLI defaults ---
       const found = resolved.flows.find((f) => f.id === flowKind);
@@ -249,6 +270,11 @@ export async function executeRunCommand(
         );
       }
       flow = found;
+      // No app, so no host resolver: the flow's own, else the development default.
+      const registry = createFlowRegistry();
+      registry.register(flow);
+      askPrincipal = (question) => resolveInProcessPrincipal({ registry }, question);
+      pinOf = (id) => registry.pinOf(id);
       // `fsdev run` is a local one-shot runner, so the filesystem store is
       // acknowledged development-only (FIX-406 6A).
       stores =
@@ -269,22 +295,40 @@ export async function executeRunCommand(
     // 3. Parse input
     const input = parseInputArg({ input: options.input, inputFile: options.inputFile });
 
-    // 4. Parse and apply seed state
-    const sessionId = options.session ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    // 4. Who this run is — one identity per invocation, asked of the app the
+    // way its HTTP routes ask, before anything is written. A refusal stops here.
+    const principal = await resolveCliPrincipal(
+      askPrincipal,
+      { flowKind, action: actionName, input: input ?? {} },
+      { org: options.org, user: options.user },
+      pinOf,
+    );
 
-    if (options.seedSession !== undefined) {
-      const seedData = parseSeedArg(options.seedSession, "session") as JsonObject;
-      const existing = await stores.session.get(sessionId);
+    // 5. Check an existing session against that identity, then apply seed state.
+    // Both checks are reads: `runAction` refuses a foreign session too, but a
+    // seed written first would already have rewritten its owner's state.
+    const sessionId = options.session ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const seedData =
+      options.seedSession !== undefined
+        ? (parseSeedArg(options.seedSession, "session") as JsonObject)
+        : undefined;
+    const existing = options.session !== undefined ? await stores.session.get(sessionId) : undefined;
+    if (existing !== undefined) {
+      if (!ownsRecord(flow, existing)) {
+        throw new CliError(
+          `Session "${sessionId}" belongs to flow instance "${existing.flowId ?? existing.flowKind}", ` +
+            `not "${flow.id}"; nothing was written`,
+          EXIT_INVALID_ARGS,
+        );
+      }
+      const refusal = checkSessionOwner(existing, sessionId, principal);
+      if (refusal !== undefined) throw new CliError(refusal, EXIT_INVALID_ARGS);
+    }
+
+    if (!options.quiet) process.stderr.write(describePrincipal(principal, { org: options.org, user: options.user }) + "\n");
+
+    if (seedData !== undefined) {
       if (existing !== undefined) {
-        // `runAction` refuses a session another instance owns, but only after
-        // this seed would have rewritten its state. Refuse first.
-        if (!ownsRecord(flow, existing)) {
-          throw new CliError(
-            `Session "${sessionId}" belongs to flow instance "${existing.flowId ?? existing.flowKind}", ` +
-              `not "${flow.id}"; --seed-session was not applied`,
-            EXIT_INVALID_ARGS,
-          );
-        }
         await stores.session.set(sessionId, {
           ...existing,
           state: { ...existing.state, ...seedData },
@@ -297,11 +341,10 @@ export async function executeRunCommand(
           id: sessionId,
           flowKind: flow.kind,
           flowId: flow.id,
-          userId: "cli-user",
-          // The CLI is a trusted local caller, so it names the organization
-          // rather than writing a record the run would then refuse (FIX-1442).
-          // The same one `runAction` below executes under.
-          orgId: DEFAULT_ORG_ID,
+          // The identity the run below executes under, so the run accepts the
+          // record it seeded.
+          userId: principal.userId,
+          orgId: principal.orgId,
           state: seedData,
           version: 0,
           createdAt: Date.now(),
@@ -311,7 +354,7 @@ export async function executeRunCommand(
       }
     }
 
-    // 5. Resolve the effective model resolver. With a config, `--model` wraps
+    // 6. Resolve the effective model resolver. With a config, `--model` wraps
     // the app's resolver so its gateways/providers still apply; without one it
     // wraps a bare default resolver. No `--model` leaves the config's resolver
     // (or undefined in the discovery path).
@@ -323,7 +366,7 @@ export async function executeRunCommand(
       modelResolver = forceModelResolver(createModelResolver(), options.model);
     }
 
-    // 6. Create response emitter with NDJSON streaming.
+    // 7. Create response emitter with NDJSON streaming.
     //    When --capture is set, also collect every emitted event for the on-disk payload.
     const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const captureEnabled = options.capture !== undefined && options.capture !== "";
@@ -342,7 +385,7 @@ export async function executeRunCommand(
       },
     });
 
-    // 6b. Construct the stderr runtime logger (suppressible via --quiet, level via --log-level).
+    // 7b. Construct the stderr runtime logger (suppressible via --quiet, level via --log-level).
     const logLevel = resolveLogLevel(options, "info");
     const logger = createCliLogger(logLevel);
 
@@ -355,7 +398,7 @@ export async function executeRunCommand(
       baseRuntimeConfig.logger = logger;
     }
 
-    // 7. Execute the flow action. With a config, forward the app's runtimeConfig
+    // 8. Execute the flow action. With a config, forward the app's runtimeConfig
     // (durability, settings, ...), overriding only the logger (CLI
     // stderr discipline) and the model resolver (per --model).
     const runtimeConfig: RuntimeConfig =
@@ -370,11 +413,11 @@ export async function executeRunCommand(
 
     try {
       result = await runAction({
-    orgId: DEFAULT_ORG_ID,
         flow,
         actionName,
         input: input ?? {},
-        userId: "cli-user",
+        userId: principal.userId,
+        orgId: principal.orgId,
         sessionId,
         stores,
         responseEmitter,
@@ -399,7 +442,7 @@ export async function executeRunCommand(
 
     const durationMs = Date.now() - startMs;
 
-    // 8. Emit terminal NDJSON event
+    // 9. Emit terminal NDJSON event
     if (success) {
       recordEvent({
         type: "flow_complete",
@@ -424,7 +467,7 @@ export async function executeRunCommand(
 
     const exitCode = success ? EXIT_SUCCESS : EXIT_EXECUTION_ERROR;
 
-    // 9. Optional --capture: write structured run payload to disk.
+    // 10. Optional --capture: write structured run payload to disk.
     //    Capture failures are surfaced on stderr but don't override the run's exit code.
     if (captureEnabled) {
       try {
@@ -436,6 +479,7 @@ export async function executeRunCommand(
             model: options.model ?? null,
             session: options.session ?? null,
             seedSession: options.seedSession ?? null,
+            principal,
           },
           events: capturedEvents,
           result: { ...runResult, exitCode },

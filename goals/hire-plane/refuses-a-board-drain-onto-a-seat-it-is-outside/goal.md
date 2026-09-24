@@ -11,7 +11,7 @@
 
 **Anti-game:** a hollow pass would assert only that the seat's marker is absent. That holds without this fix: admission refuses the child before any block, so the seat never ran even when the row was stranded. The check MUST grade the row (`errored`, unheld) and the absence of a minted session, MUST see the owner's drain write the marker so absence means refusal, and MUST see the teammate's org seat run so the refusal is by pin and not by board.
 **Model:** n/a — handlers only. The property is which rows a board may hand to which seat, not model output.
-**Run:** `pnpm tsx goals/hire-plane/refuses-a-board-drain-onto-a-seat-it-is-outside/run.mts` (with no `FSDEV_DEFAULT_MODEL` / `FSDEV_INTENT_*` in the env: this goal declares no intents, and the model resolver refuses an override that has nothing to apply to)
+**Run:** `pnpm tsx goals/hire-plane/refuses-a-board-drain-onto-a-seat-it-is-outside/run.mts`
 **Controls:** none in the runner. The red state is a source revert, so it fails for the reason a missing check fails and not because the runner skipped a leg.
 - Revert the pin check in the dispatch seam, `packages/engine/src/context/create-request-host.ts`. Must FAIL legs (b), (c) and (d), and leave (a) green.
 

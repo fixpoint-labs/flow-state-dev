@@ -3,8 +3,7 @@
  *
  * Filesystem `dev` profile, zero generators — the coding run goes through the
  * Claude Code Agent SDK, which resolves its own model, so an explicit throwing
- * resolver skips the ambient `FSDEV_DEFAULT_MODEL` scan that would otherwise
- * fire on a model-using environment.
+ * resolver makes any model resolution here fail loudly.
  *
  *   pnpm fsdev run conductor seed   -i '{"issue":"FIX-1219","phase":"implement"}'
  *   pnpm fsdev run conductor wake   -i '{}'

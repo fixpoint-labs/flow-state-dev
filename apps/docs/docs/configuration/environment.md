@@ -43,7 +43,7 @@ These override `createModelResolver` / `models` at construction. They do not cha
 
 Construction throws when two declared intents normalize to the same env name (`my-custom` and `my_custom`). An `FSDEV_INTENT_*` for an intent this resolver does not declare is warned and ignored. A typo in a declared intent's override is warned and the resolver falls back to `default`.
 
-`FSDEV_DEFAULT_MODEL` with no declared intents is a configuration error: the override would have nothing to apply to.
+`FSDEV_DEFAULT_MODEL` applies whether or not intents are declared. An app that never resolves a model ignores it, so one environment can set it for every app it runs.
 
 ```bash title=".env.local"
 FSDEV_INTENT_CHAT=openai/gpt-5.4-mini

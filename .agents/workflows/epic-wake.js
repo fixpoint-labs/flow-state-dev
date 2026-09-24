@@ -1635,9 +1635,17 @@ function historicalSpecFor(row) {
   return !!(row.specMerged && row.approvedHeadSha && row.specPr)
 }
 
-/** Direction approval is head-bound; merge completion is a separate observation. */
+/**
+ * Direction approval is head-bound. Merging the spec PR is itself approval: the owner signs off by
+ * merging, with no label or comment needed, and the merged head is the approved head. The other
+ * channels still approve an open spec, which a MERGE-ONLY worker then merges.
+ */
 function specApprovalFor(row, fresh, refreshedLive) {
   if (historicalSpecFor(row)) return true
+  // The merge approves the head that merged, so it needs a live scan that names that head. A merge
+  // recorded with no head (by the older rule, or a headless scan) waits for one rather than releasing
+  // work with no provenance.
+  if (refreshedLive && fresh.headSha && specMergedFor(row, fresh, refreshedLive)) return true
   if (!refreshedLive || (fresh.humanChangesRequested && !specMergedFor(row, fresh, refreshedLive))) return false
   const currentHeadApproved = !!fresh.headSha && fresh.approvedHeadSha === fresh.headSha
   return (currentHeadApproved && !!(fresh.specApproved || fresh.specApprovedByLabel)) ||
@@ -1844,10 +1852,23 @@ const GATE_SCHEMA = {
     },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
-    approvedHeadSha: { type: ['string', 'null'], description: 'Source commit the human actually reviewed and approved, not the current head inferred from label presence. For merged originals recover the historical approved source commit.' },
+    approvedHeadSha: { type: ['string', 'null'], description: 'Source commit the human actually reviewed and approved, not the current head inferred from label presence. For a merged PR, the head it was merged at (merging is approval).' },
     specMerged: { type: 'boolean', description: 'Observed this original spec PR merged; never infer from approval, closure, or an implementation PR.' },
     newReviewEvents: { type: 'boolean', description: 'Review activity STRICTLY NEWER than the activity cursor it was given' },
     latestActivityAt: { type: ['string', 'null'], description: 'ISO timestamp of the newest comment/review seen — the real cursor, since comments never move the head SHA' },
+  },
+}
+
+// The issue at the far end of a relation edge. Its `state.type` is REQUIRED: a blocker outside the
+// epic's read has no entry of its own, so the edge is the only place its state can come from, and
+// without it `openBlockers` could never see an external prerequisite land.
+const FAR_ISSUE = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['identifier', 'state'],
+  properties: {
+    identifier: { type: 'string' },
+    state: { type: 'object', additionalProperties: false, required: ['type'], properties: { type: { type: 'string' } } },
   },
 }
 
@@ -1861,14 +1882,47 @@ const LINEAR_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        // `blockedBy` is REQUIRED. It gates admission to the active set, and the code reads a present
-        // row as authoritative — so an omission meant "no blockers" and dispatched an issue
-        // concurrently with the prerequisite it is waiting on. An unblocked issue says `[]`.
-        required: ['id', 'state', 'blockedBy'],
+        // RAW edges, never a derived `blockedBy`. Asked for the derived list, the scout inverted it
+        // even with the field to read named in its prompt — a prerequisite reported as blocked by its
+        // own dependents — and nothing downstream can see an inversion (it forms no cycle). So the
+        // scout copies both sides verbatim and the script computes the direction (`blockedByOf`) and
+        // cross-checks one side against the other. The node keys are Linear's own — `relatedIssue`
+        // on `relations`, `issue` on `inverseRelations` — so a list pasted under the other's name
+        // fails the schema rather than flipping every edge.
+        //
+        // Both are REQUIRED. They gate admission to the active set, and the code reads a present row
+        // as authoritative — so an omission would mean "no blockers" and dispatch an issue
+        // concurrently with the prerequisite it is waiting on. An issue with no relations says `[]`.
+        required: ['id', 'state', 'relations', 'inverseRelations'],
         properties: {
           id: { type: 'string' },
           state: { type: 'string' },
-          blockedBy: { type: 'array', items: { type: 'string' }, description: 'Identifiers of the open issues that block THIS one, from inverseRelations of type "blocks" (field issue), never from relations; [] when there are none' },
+          relations: {
+            type: 'array',
+            description: "This issue's `relations.nodes`, verbatim and unfiltered — the issues THIS one points at",
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['type', 'relatedIssue'],
+              properties: {
+                type: { type: 'string' },
+                relatedIssue: FAR_ISSUE,
+              },
+            },
+          },
+          inverseRelations: {
+            type: 'array',
+            description: "This issue's `inverseRelations.nodes`, verbatim and unfiltered — the issues that point at THIS one",
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['type', 'issue'],
+              properties: {
+                type: { type: 'string' },
+                issue: FAR_ISSUE,
+              },
+            },
+          },
           // The ROUTE's input → orchestration.md § "Which issues get a spec". Deliberately NOT
           // required: an omission (or a null) keeps the carried route and otherwise defaults to
           // `spec`, which is the safe direction. Requiring it would make a scout that cannot read
@@ -1934,7 +1988,7 @@ const PR_STATE_SCHEMA = {
         'Every review on the spec PR, plus every comment you would treat as approving. The wake classifies these. Copy each body from its first character. Empty means no comment/review approval.',
       items: APPROVAL_ARTIFACT_SCHEMA,
     },
-    approvedHeadSha: { type: ['string', 'null'], description: 'The source head actually approved by the human. For an already merged spec, recover its historical approval, not an implementation head.' },
+    approvedHeadSha: { type: ['string', 'null'], description: 'The source head actually approved by the human. For a merged spec, the head it was merged at (merging is approval), not an implementation head.' },
     specMerged: { type: 'boolean', description: 'The SPEC PR was observed merged. Separate from merged, which describes implementation.' },
     specApprovedByLabel: {
       type: 'boolean',
@@ -2297,7 +2351,7 @@ if (carriedForward.size) {
 const [gate, linear, prScan] = await parallel([
   () =>
     agent(
-      `Scan epic PR #${epic.prNumber} for objective approval AND spec merge. Report specMerged from actual PR merge metadata, never closure or labels. Report approvedHeadSha as the exact source revision a human approval names. A later push invalidates an open-spec approval. For an already merged original, recover the historical human approval and source head from its review record even if labels or the source branch were deleted. Never substitute main's current SHA or the merge commit for the reviewed source head. Never infer approval from merge alone or from body prose.\n` +
+      `Scan epic PR #${epic.prNumber} for objective approval AND spec merge. Report specMerged from actual PR merge metadata, never closure or labels. A merge of the epic PR IS approval — no label or comment is needed. Report approvedHeadSha as the exact source revision a human approval names; for a merged PR with no earlier approval, that is the PR's head at merge. A later push invalidates an open-spec approval. For an already merged original, recover the source head even if labels or the source branch were deleted. Never substitute main's current SHA or the merge commit for the reviewed source head. Never infer approval from closure or from body prose.\n` +
         authorshipScan +
         (approvalOwner
           ? `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL **and \`${approvalOwner}\` applied it**. Two independent checks, and conflating them is the bug this wording exists to prevent:\n` +
@@ -2311,10 +2365,10 @@ const [gate, linear, prScan] = await parallel([
     ),
   () =>
     agent(
-      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's human identifier, current state name, its CATEGORY label, and the identifiers of the issues that block it. Do not fetch them individually.\n` +
-        `IDENTIFIERS, NEVER UUIDs — Linear has two ids per issue and only one is usable here. \`id\` is the human identifier (\`LAB-152\`, \`FIX-150\` — Linear's \`identifier\` field), never the UUID \`id\` field: the wake matches your entries against the tracked ids above by identifier, so a UUID matches nothing and every issue reads as unobserved. \`blockedBy\` is the list of the BLOCKING ISSUES' identifiers — for each open \`blocks\` relation where this issue is the blocked side, the blocking issue's \`identifier\` — never the relation's own id, which nothing can resolve.\n` +
-        `DIRECTION — blockedBy is the issues that block THIS one, and Linear stores it on the other side from where it looks. Read it from \`inverseRelations{nodes{type issue{identifier state{type}}}}\`, keeping only nodes whose \`type\` is \`blocks\`, and report each node's \`issue.identifier\`. NEVER read \`relations\` for this: an issue's \`relations\` of type \`blocks\` are the issues THIS issue blocks (it is the blocker there), and reporting them as blockedBy inverts the dependency — the prerequisite gets parked and its dependents dispatched first. An issue that only blocks others has blockedBy [].\n` +
-        `\`category\` is the label from the category label group, verbatim. A correct entry: {"id":"LAB-150","state":"Backlog","blockedBy":["LAB-141"],"category":"Bug"}.\n` +
+      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's human identifier, current state name, its CATEGORY label, and its raw relation edges. Do not fetch them individually.\n` +
+        `IDENTIFIERS, NEVER UUIDs — Linear has two ids per issue and only one is usable here. \`id\` and every relation node's \`identifier\` are the human identifier (\`LAB-152\`, \`FIX-150\` — Linear's \`identifier\` field), never a UUID \`id\` field: the wake matches your entries against the tracked ids above by identifier, so a UUID matches nothing and every issue reads as unobserved.\n` +
+        `RELATIONS, RAW — select \`relations{nodes{type relatedIssue{identifier state{type}}}} inverseRelations{nodes{type issue{identifier state{type}}}}\` on each issue and copy both \`nodes\` arrays VERBATIM into \`relations\` and \`inverseRelations\`: every node, every type, same keys, nothing filtered, reordered, moved between the two lists, or interpreted. Do not work out which issue blocks which — the wake computes that from these edges and cross-checks the two sides, so a derived or tidied list is worse than useless. An issue with no relations has \`[]\` for both.\n` +
+        `\`category\` is the label from the category label group, verbatim. A correct entry: {"id":"LAB-150","state":"Backlog","relations":[{"type":"related","relatedIssue":{"identifier":"LAB-160","state":{"type":"started"}}}],"inverseRelations":[{"type":"blocks","issue":{"identifier":"LAB-141","state":{"type":"completed"}}}],"category":"Bug"}.\n` +
         `The category is what ROUTES the issue: "Bug" sends it straight to implementation with no spec. Report the label verbatim; report null if the issue genuinely carries no category label, and never infer one from the title — an unread category safely keeps the issue on the spec route, an invented one can send a feature to implementation ungated.\n` +
         `The carried ids matter separately from the children: orchestration.md keeps an existing functional parent and links such a member to the epic with relates-to, so it is NEVER in the parent→children set. Omitting it froze its Linear state at whatever was last cached — a blocked member never noticed its prerequisite merge, and a cancelled one kept being dispatched.`,
       { label: 'linear:epic-children', phase: 'Refresh', schema: LINEAR_SCHEMA, agentType: 'scout' },
@@ -2365,7 +2419,7 @@ const [gate, linear, prScan] = await parallel([
                 )
                 .join('') +
               `\nFor EVERY issue above:\n` +
-              `Read PR comments, reviews, check-runs and merge metadata. Report specMerged for the SPEC PR, separately from merged for implementation. headSha is the SPEC source head whenever a spec exists, not the implementation head. Report approvedHeadSha as the source revision a human approval names. Any human's latest CHANGES_REQUESTED vetoes open-spec approval — a bot or an agent-marked review does not. For merged originals recover historical approval and source-head provenance even after branch deletion or label removal. Never infer approval from merge alone or from body prose.\n` +
+              `Read PR comments, reviews, check-runs and merge metadata. Report specMerged for the SPEC PR, separately from merged for implementation. headSha is the SPEC source head whenever a spec exists, not the implementation head. A merge of the spec PR IS approval — no label or comment is needed. Report approvedHeadSha as the source revision a human approval names; for a merged spec PR with no earlier approval, that is the PR's head at merge. Any human's latest CHANGES_REQUESTED vetoes open-spec approval — a bot or an agent-marked review does not. For merged originals recover source-head provenance even after branch deletion or label removal. Never infer approval from closure or from body prose.\n` +
               authorshipScan +
               (approvalOwner
                 ? `SEPARATELY report specApprovedByLabel:true only for a \`spec approved\` label that \`${approvalOwner}\` applied to the reviewed source head. Read the most recent labeling event and require that exact owner's login, not merely any human. Establish approvedHeadSha from the event and PR timeline; a label left on a later push is stale. Unreadable provenance or an unknown reviewed revision means FALSE, not inherited approval.\n`
@@ -2419,8 +2473,9 @@ if (gate) {
   gate.suspectOwnerApproval = rewritten.suspectOwnerApproval
 }
 
-// Approval authorizes the coordinator to dispatch spec merge under the canonical worker contract.
-// It does not release children until that merge is observed. Landed originals are historical
+// Approval on an open spec authorizes the coordinator to dispatch spec merge under the canonical
+// worker contract; a merge the owner made themselves is approval and merge at once. Children are not
+// released until a merge is observed. Landed originals are historical
 // provenance: labels or a deleted source branch cannot revoke the intent already on main.
 const scanned = !!gate
 const gateUsable = !!(gate && gate.headSha)
@@ -2459,18 +2514,46 @@ const epicHead = historicalEpic ? epic.approvedHeadSha : (gate && gate.headSha) 
 // or not it can be tied to a carried row — the safe direction, since the alternative is silently
 // closing over an issue that never got a chance to be discovered.
 const ISSUE_IDENTIFIER = /^[A-Z]+-\d+$/
+// The scout returns raw edges (see LINEAR_SCHEMA); direction is computed here, never by the model.
+// Only `blocks` edges are dependencies. `blockedByOf` is the ONE place blockedBy is derived: the
+// issues naming this one in `inverseRelations`, i.e. the blocking side of each relation.
+const blocksTo = (li) => (li.relations || []).filter((n) => n.type === 'blocks').map((n) => n.relatedIssue.identifier)
+const blockedByOf = (li) => (li.inverseRelations || []).filter((n) => n.type === 'blocks').map((n) => n.issue.identifier)
 const reportedLinear = (linear && linear.issues) || []
-const linearIssues = reportedLinear.filter(
-  (li) => ISSUE_IDENTIFIER.test(li.id) && (li.blockedBy || []).every((b) => ISSUE_IDENTIFIER.test(b)),
+const wellFormedLinear = reportedLinear.filter(
+  (li) => ISSUE_IDENTIFIER.test(li.id) && [...blocksTo(li), ...blockedByOf(li)].every((b) => ISSUE_IDENTIFIER.test(b)),
 )
-const droppedLinearEntries = reportedLinear.filter((li) => !linearIssues.includes(li))
-if (droppedLinearEntries.length) {
+const malformedLinear = reportedLinear.filter((li) => !wellFormedLinear.includes(li))
+if (malformedLinear.length) {
   log(
-    `The Linear refresh reported ${droppedLinearEntries.length} entr${droppedLinearEntries.length === 1 ? 'y' : 'ies'} with a UUID where an issue identifier (LAB-152) was asked for — ` +
-      `${droppedLinearEntries.map((li) => `${li.id} blockedBy [${(li.blockedBy || []).join(', ')}]`).join('; ')}. ` +
+    `The Linear refresh reported ${malformedLinear.length} entr${malformedLinear.length === 1 ? 'y' : 'ies'} with a UUID where an issue identifier (LAB-152) was asked for — ` +
+      `${malformedLinear.map((li) => `${li.id} blockedBy [${blockedByOf(li).join(', ')}]`).join('; ')}. ` +
       `Discarded rather than guessed at: each such issue reads as unobserved this wake (carried state stands, no blocker clears, nothing is discovered), and the next wake retries.`,
   )
 }
+// Every relation is stored once and reported from both ends: A's `relations` name B exactly when B's
+// `inverseRelations` name A. Checked for every edge whose far end is in this read (an edge to an issue
+// outside it has no second side to compare). A disagreement means at least one side was misreported
+// and nothing here can tell which — it is the signature of a scout flipping direction — so the WHOLE
+// read is voided, exactly as if the scout had died (invariant 1): every row keeps its carried
+// `blockedBy`, and the drop holds the wrap like any other. Trusting the half that looks right is a guess.
+const wellFormedById = new Map(wellFormedLinear.map((li) => [li.id, li]))
+const relationContradictions = wellFormedLinear.flatMap((a) => [
+  ...blocksTo(a)
+    .filter((b) => wellFormedById.has(b) && !blockedByOf(wellFormedById.get(b)).includes(a.id))
+    .map((b) => `${a.id} blocks ${b} per ${a.id}'s relations, but ${b}'s inverseRelations do not name ${a.id}`),
+  ...blockedByOf(a)
+    .filter((b) => wellFormedById.has(b) && !blocksTo(wellFormedById.get(b)).includes(a.id))
+    .map((b) => `${b} blocks ${a.id} per ${a.id}'s inverseRelations, but ${b}'s relations do not name ${a.id}`),
+])
+if (relationContradictions.length) {
+  log(
+    `The Linear refresh contradicts itself on ${relationContradictions.length} blocks edge(s) — ${relationContradictions.join('; ')}. ` +
+      `The whole read is discarded this wake: every row's carried blockedBy stands, no Linear state refreshes, nothing is discovered, and the next wake retries.`,
+  )
+}
+const linearIssues = relationContradictions.length ? [] : wellFormedLinear.map((li) => ({ ...li, blockedBy: blockedByOf(li) }))
+const droppedLinearEntries = relationContradictions.length ? reportedLinear : malformedLinear
 
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
@@ -2552,9 +2635,10 @@ if (discovered.length) {
  * cannot correct it from `args` either. One over-reported id is enough to strand an issue for the
  * rest of the epic.
  *
- * Only blockers this epic can SEE are dropped — `linearById` covers the epic's children, so a
- * blocker outside the epic is unresolvable here and is kept. That fails closed: a stale block
- * costs a wake, an incorrectly cleared one runs an issue concurrently with its prerequisite.
+ * Only blockers this epic can SEE are dropped — `linearById` covers the epic's children, and a
+ * blocker outside the epic is seen only through the state type on the edge that names it, so it
+ * clears on `completed` and on nothing else. Anything unresolvable is kept. That fails closed: a
+ * stale block costs a wake, an incorrectly cleared one runs an issue concurrently with its prerequisite.
  *
  * FINISHED, not merely terminal. `TERMINAL_LINEAR` also matches cancelled / duplicate / dropped —
  * states where the work is GONE rather than done. Clearing those would admit a dependent whose
@@ -2567,10 +2651,24 @@ const cancelledBlockers = new Set()
 const unmergedBlockers = new Set()
 // Carried rows only — `discovered` rows are new this wake and carry no handles to fall back on.
 const carriedById = new Map(rows.map((r) => [r.id, r]))
+// A blocker OUTSIDE this read has no entry of its own, but every `blocks` edge that names it carries
+// its Linear state TYPE. Built from `linearIssues`, so a voided read (contradiction) contributes nothing.
+const edgeBlockerStateType = new Map(
+  linearIssues.flatMap((li) => (li.inverseRelations || []).filter((n) => n.type === 'blocks').map((n) => [n.issue.identifier, n.issue.state.type])),
+)
 const openBlockers = (ids) =>
   (ids || []).filter((b) => {
     const bs = linearById.get(b)
-    if (!bs) return true
+    if (!bs) {
+      // Only for a blocker this epic does not carry as a row: a carried one must clear through the
+      // live-merge check below, which a missing entry of its own (a dropped or UUID'd read) cannot reach
+      // — so it keeps blocking this wake, as before. Only `completed` clears; `canceled` never landed and
+      // keeps blocking, logged, the same rule applied to blockers inside the epic.
+      const edgeState = carriedById.has(b) ? undefined : edgeBlockerStateType.get(b)
+      if (edgeState === 'completed') return false
+      if (edgeState === 'canceled') cancelledBlockers.add(`${b} (canceled)`)
+      return true
+    }
     const state = (bs.state || '').trim()
     if (!TERMINAL_LINEAR.test(state)) return true
     if (CANCELLED_LINEAR.test(state)) {
@@ -3674,7 +3772,7 @@ const wrapReadyButForDrops =
   plan.queuedClaims.length + unsettled.length + newRequests.length === 0
 if (wrapReadyButForDrops && droppedLinearEntries.length) {
   log(
-    `Holding the epic's wrap this wake: ${droppedLinearEntries.length} Linear refresh entr${droppedLinearEntries.length === 1 ? 'y was' : 'ies were'} dropped for a UUID identifier, so the carried table cannot confirm nothing was omitted — the epic would otherwise read as fully done. The next wake retries the Linear refresh.`,
+    `Holding the epic's wrap this wake: ${droppedLinearEntries.length} Linear refresh entr${droppedLinearEntries.length === 1 ? 'y was' : 'ies were'} dropped (a UUID identifier, or relations that contradict each other), so the carried table cannot confirm nothing was omitted — the epic would otherwise read as fully done. The next wake retries the Linear refresh.`,
   )
 }
 

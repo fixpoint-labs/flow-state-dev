@@ -112,6 +112,7 @@ describe("createScheduleTickHandler", () => {
   }
 
   const ROW: ScheduleIndexRow = {
+    cell: "u1",
     userId: "u1",
     key: "weekly",
     cron: "0 0 * * 0",
@@ -145,7 +146,7 @@ describe("createScheduleTickHandler", () => {
   it("dispatches each due row with the correct URL + bearer", async () => {
     const handler = createScheduleTickHandler({
       flowKind: "f",
-      index: fakeIndex([ROW, { ...ROW, userId: "u2", key: "daily" }]),
+      index: fakeIndex([ROW, { ...ROW, cell: "u2", userId: "u2", key: "daily" }]),
       baseUrl: BASE,
       secret: SECRET
     });
