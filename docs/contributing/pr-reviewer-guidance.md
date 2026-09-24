@@ -146,6 +146,10 @@ instance of each body is the template's:
 [`spec-template.md`](spec-template.md) → "The PR body" and
 [`epic-spec-template.md`](epic-spec-template.md) → "The PR body".
 
+**A spec-backed implementation PR reuses the spec's figure** under its mechanism sentences,
+pinned to the `main` commit that holds it, so the code is reviewed against the picture that was
+approved. Any diagram of its own meets the bar above.
+
 ## 3. What's asked of you
 
 **This is the last block written for the product owner, and it is the one they came for.**
