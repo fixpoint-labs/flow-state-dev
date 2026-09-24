@@ -14,6 +14,11 @@
  * `lib/workforce-registrar.ts`. The three "hiring credential" cases go red
  * (`404 Unknown flow` on the open, the run, and the run after a restart); the
  * refusals stay green, because they were refused before the fix too.
+ *
+ * The catalog legs lean on the engine resolving each pinned instance's caller
+ * with that instance's own resolver. Revert `flowsForCaller` in the engine's
+ * `routes/http-handlers.ts` to the host resolver alone and only "is listed in
+ * the catalog" goes red.
  */
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -81,6 +86,18 @@ async function boot(stores = inMemoryStores()) {
     return { status: response.status, json: text.length > 0 ? JSON.parse(text) : undefined };
   };
 
+  /** `GET /api/flows` — the catalog — as `token`: the status and the listed ids. */
+  const catalog = async (token: string | undefined) => {
+    const headers: Record<string, string> = {};
+    if (token !== undefined) headers.authorization = `Bearer ${token}`;
+    const response = await router.GET(
+      new Request("http://kitchen-sink.local/api/flows", { headers }),
+      { params: { path: [] } }
+    );
+    const json = (await response.json()) as { flows?: { id: string }[] };
+    return { status: response.status, ids: (json.flows ?? []).map((flow) => flow.id) };
+  };
+
   /** Post an action and wait for its request to settle. */
   const act = async (flowId: string, action: string, input: unknown, token: string | undefined) => {
     const posted = await call([flowId, "actions", action], token, { userId: ADMIN_USER_ID, input });
@@ -111,7 +128,7 @@ async function boot(stores = inMemoryStores()) {
     return seats.map((seat) => seat.id);
   };
 
-  return { call, act, reload };
+  return { call, act, catalog, reload };
 }
 
 /** Boot, and hire `support.bo` into acme with acme's admin credential. */
@@ -150,6 +167,15 @@ describe("a seat hired over workforce-admin, reached with the hiring credential"
     expect(ran).toEqual({ http: 202, outcome: "completed" });
   });
 
+  it("is listed in the catalog for the operator who hired it", async () => {
+    const app = await bootWithHire();
+
+    const listed = await app.catalog(ACME);
+
+    expect(listed.status).toBe(200);
+    expect(listed.ids).toContain(SEAT);
+  });
+
   it("still answers the operator after a restart brings it back from its row", async () => {
     const stores = inMemoryStores();
     await bootWithHire(stores);
@@ -171,6 +197,19 @@ describe("a seat hired over workforce-admin stays closed to everyone else", () =
 
     expect(opened).toEqual({ status: 404, json: { error: `Unknown flow "${SEAT}"` } });
     expect(ran).toEqual({ http: 404, error: `Unknown flow "${SEAT}"` });
+  });
+
+  it("is left out of the catalog for another organization and for a caller with no credential", async () => {
+    const app = await bootWithHire();
+
+    const bravo = await app.catalog(BRAVO);
+    const anonymous = await app.catalog(undefined);
+
+    expect(bravo.status).toBe(200);
+    expect(bravo.ids).not.toContain(SEAT);
+    // The catalog route stays exempt: no credential is a shorter list, not a 401.
+    expect(anonymous.status).toBe(200);
+    expect(anonymous.ids).not.toContain(SEAT);
   });
 
   it("refuses a caller with no credential, even one naming the org and user in the body", async () => {
