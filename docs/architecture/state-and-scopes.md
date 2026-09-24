@@ -560,6 +560,13 @@ A run refused at the pin writes no user record: `createExecutionContext` creates
 
 The `UserRecord.id` / `OrgRecord.id` field holds the scope-record's (possibly namespaced) key so lookups by record id are consistent. The `userId` / `orgId` fields remain the bare identity — list APIs that filter by `userId` continue to return both shared and isolated records for a given user, which is useful for admin and devtool views.
 
+### User-owned roster rows
+
+Workforce stores a user-owned hired seat's row at org scope under `workforce/roster/~<escaped user>/<seat>`. Two rules in Engine's hire-plane module (`packages/engine/src/context/hire-plane.ts`) keep it private, and nothing in Core knows about them.
+
+- **The key fence, always on.** A key under `workforce/roster/~` is served only through the collection carrying Workforce's private-roster brand, and only to the user it encodes. Every other collection lists without it, reads it as absent and is refused on write, through the resource handle, the browser resource routes, the session state snapshot and the debug endpoints. All of them ask one predicate, `privateRosterAdmits`. It depends on nothing registered, so it holds in every process over the store.
+- **The startup fence, armed by the writer.** Once `FlowRegistry` holds a flow declaring the branded collection, it refuses any flow declaring a collection whose pattern can reach a user-owned key, checking the flows it already holds and every one that follows. When the writer arrives after an overlapping flow, the writer's registration is the one refused, and the message names the earlier flow. Like the cross-flow schema registry's participant entries, which a kind keeps after its last instance unregisters, the armed state is never cleared: the rows outlive the registration. A registry that never holds the writer refuses nothing on this account.
+
 ### Storage-key derivation
 
 Key resolution is centralized in `packages/engine/src/stores/scope-keys.ts`. The **scope record** keys on the flow-level flag:

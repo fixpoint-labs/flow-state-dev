@@ -13,6 +13,7 @@ import {
   createSeatHireCapability,
   defineAgentWorkerFlow,
   defineHiredRosterCollection,
+  defineHiredRosterPrivateCollection,
   encodeUserSegment,
   hireWorkforce,
   reloadHiredSeats,
@@ -121,9 +122,12 @@ const seatKind = defineFlow({
   authentication: verified,
 });
 
+// The app hires user-owned seats, so it installs the private roster writer
+// beside the browser roster. Holding it is what arms registration's roster
+// check, which leg (f) grades.
 const appFlow = defineFlow({
   kind: "app",
-  resources,
+  resources: { ...resources, rosterPrivate: defineHiredRosterPrivateCollection() },
   actions: {
     whoami: { inputSchema: tagInput, block: whoami },
     peekBrowser: { inputSchema: tagInput, block: peekBrowser },

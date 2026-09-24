@@ -418,6 +418,12 @@ The owner comes from the credential, so your resolver has to name the member mak
 
 The private collection reaches only the calling user's own rows. `create`, `get` and `delete` on a key naming another user throw `A hired-seat row is readable only by the user it belongs to.`, `getOptional` on one returns `undefined`, and `list` leaves such rows out. Firing a user-owned seat reads and deletes through the same collection and key, then releases `seatAddress(orgId, seatId, userId)`. `reloadHiredSeats` needs no change: it reads these rows with the rest, and each seat's `ownerPin` carries the user.
 
+Installing the private collection also closes the rows to every other collection in your app. Once a flow that declares it is registered, the app refuses to start if any flow declares a collection whose pattern could reach a user-owned row: `workforce/roster/**`, `workforce/roster/[owner]/notes`, a copy of `workforce/roster/[owner]/[seat]`, or a wide parameterised pattern such as `[tenant]/**`. It doesn't matter which of the two flows registers first. The error names the pattern, and says it can read user-owned roster rows.
+
+An app that never installs the private collection has no such rows, and none of these patterns are refused there.
+
+The rows are closed even where that check doesn't run. A user-owned row is stored under `workforce/roster/~<user>/<seat>`, and no collection except the private one can read or write a key there, in any process. A queue worker that never registers the private collection, or a second app over the same store, can declare `[tenant]/**` and start, but its lists never show those rows and a write to one is refused.
+
 Once registered, the seat answers its owner only. Any other member gets `404 Unknown flow`. The row has no browser read at all, so a roster panel reading the browser collection does not show it, not even to its owner.
 
 ## Calling a hired seat
