@@ -108,8 +108,19 @@ The components ship with no CSS framework and no icon set. Style them with:
 
 - **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator,
   `--fsd-panel-*` for the roster and the board columns. Set them on any ancestor.
-  `--fsd-nav-guide` colours the dashed lines that show the navigator's tree.
 - **Slots** for the parts that are yours, such as what a row shows beside its name, what sits in a section header, or what an empty section says.
+
+The navigator draws a dashed line down from each open row, past the rows under it, and indents each level by one column. `--fsd-nav-guide` sets the line colour. Set it to `transparent` to hide the lines.
+
+```css
+.sidebar {
+  --fsd-nav-guide: rgba(148, 163, 184, 0.5);
+}
+```
+
+A navigator row's actions, whatever its `rowTrailing` and `leafToolbar` slots return, are hidden until the row is hovered or has keyboard focus, and stay shown on the selected row. On a touch screen with no hover they're always shown. Hidden actions keep their space and stay reachable with Tab.
+
+You can't pin an action visible, so anything that must always show goes in the row's label. On a session row the label is the session's title, which you set when you [create or update the session](../client/overview.md#session-management). A session with no title shows a shortened id; hover it for the full id. For a control that belongs to a whole section, use the `sectionHeader` slot, which is always shown.
 
 ## Where each component reads from
 
@@ -119,7 +130,7 @@ What a component reads decides what it shows and when it updates.
 
 **A standing collection.** The roster and the board columns read a collection that lives outside any one session. Everyone in the organization sees the same rows. They read it when they mount and don't watch it afterwards, so a change somebody else makes appears the next time the panel mounts. To read again on demand, change the component's React `key`.
 
-**The flow list.** The navigator reads your server's flow list, plus a session list for each leaf you open. A leaf is a row whose sessions you can open: a single-instance flow's row, or one copy of a flow that has many. Like the panels, it reads on mount and doesn't watch. The `leafToolbar` slot draws on an open leaf's own row, shown when the row is pointed at or focused, and is handed a `refresh` function that re-reads that leaf's sessions, so a refresh button sits right next to the thing it refreshes.
+**The flow list.** The navigator reads your server's flow list, plus a session list for each leaf you open. Like the panels, it reads on mount and doesn't watch. To re-read a leaf's sessions on demand, use the `leafToolbar` slot. It's handed a `refresh` function, and what it returns sits on the open leaf's own row, after any `rowTrailing` content.
 
 ## Limits
 
