@@ -68,6 +68,7 @@ simplification & cleanup.
 | `BlockKind` in `packages/core/src/types/block.ts` and `blockKind` in `packages/contracts/src/items/types.ts` | FIX-1554 and every reader | FIX-1554 widens both in one change. No other child touches the union |
 | The answer type (answers, optional confidence and probabilities) | FIX-1554 and the four consumers | FIX-1554 owns it. Consumers import it; none adds a field |
 | The `ai` range in `packages/core/package.json` | FIX-1554 and the rest | One bump, in FIX-1554. No package pins its own |
+| Jev's provider library as an optional peer | FIX-1554 and the rest | FIX-1554 declares it, optional, in one place. No consumer lists it (ER-9, ER-11) |
 | `packages/orchestration/src/skills/skill-activator.ts` and `packages/workforce/src/agent-worker-flow.ts` | FIX-1559 and the stock agent kind | FIX-1559 edits the activator only. The stock kind's `enableLlmClassifier` keeps its behavior |
 | `apps/docs/docs/fundamentals/blocks.md` | FIX-1554 and FIX-1556 | FIX-1554 writes the kind's section. FIX-1556's guide links to it |
 | The kitchen-sink host for the demo | FIX-1556 and [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) | FIX-1556 agrees placement with FIX-1455's rebuild, or uses the smallest surface that boots |

@@ -51,7 +51,9 @@ stays as written. Each hit says five and names `evaluator`; no page is copied he
 > });
 > ```
 >
-> Any model that supports AI SDK evaluation works, including `openai.evaluationModel(...)`. A
+> Any model that supports AI SDK evaluation works, including `openai.evaluationModel(...)`. If you
+> have your own Jev key, install Jev's provider library and pass its evaluation model directly;
+> flow-state.dev doesn't install it for you. A
 > model that can only generate is refused before the block makes any call, with a message
 > saying which kind of model to pass.
 >
@@ -82,6 +84,6 @@ stays as written. Each hit says five and names `evaluator`; no page is copied he
 
 The teaching page waits for the router, because its central promise is the `ambiguous` branch.
 The count changes with the kind, not before: a doc that says five while four ship is the same
-defect as the reverse. Nothing here mentions Jev as required, a System One package, or a
+defect as the reverse. Nothing here mentions Jev as required (its library is optional, ER-2), a System One package, or a
 generator fallback (ER-9). Code in the published pages uses the model strings current at
 publication; the `provider:model` rewrite is FIX-1495's.

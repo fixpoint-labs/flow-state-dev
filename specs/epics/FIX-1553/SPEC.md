@@ -34,7 +34,7 @@ on 2026-09-24. Out of cycle and off the W4 path: side work.
 
 ## What's in the box
 
-![What's in the box: the evaluator block kind and the cascadingRouter utility, fenced by no gating, no retry and no fallback inside the block. Composed in by the app: the model, the tree, and the evaluator handed to skill activation, index-time facets or memory. Replaced in one line: the skill activator's third tier and the model. Not built: a System One package, OpenRouter Decisions, a generator fallback, cascade in the block, a dispatcher kind, RAG as core search, the kitchen-sink thinking-style router.](figures/end-state.svg)
+![What's in the box: the evaluator block kind and the cascadingRouter utility, fenced by no gating, no retry and no fallback inside the block. Composed in by the app: the model (Jev via Gateway preferred, Jev's own library as an optional peer, or any evaluation adapter), the tree, and the evaluator handed to skill activation, index-time facets or memory. Replaced in one line: the skill activator's third tier and the model. Not built: a System One package, OpenRouter Decisions, a generator fallback, cascade in the block, a dispatcher kind, RAG as core search, the kitchen-sink thinking-style router.](figures/end-state.svg)
 
 The block answers; code decides. Everything that gates or routes sits outside the fence, so a
 model that gives no confidence can't be read as a confident one ([D2](DECISIONS.md#d2)).

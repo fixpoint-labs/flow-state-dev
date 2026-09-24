@@ -11,7 +11,7 @@ where it is checked. The "no child may" rules restate the owner's invent-kills o
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | `evaluator` is a block kind beside `handler`, `generator`, `sequencer` and `router`. It takes state and a map of questions (choice, score, boolean) and returns typed answers. It composes, traces and shows in the DevTool under its own kind | FIX-1554 | Its tests · leg (a) |
-| ER-2 | A model that cannot evaluate is refused with an error naming the fix, before any call. Strings and evaluation-model instances both go through `experimental_evaluate`. Nothing falls through to a generate call | FIX-1554 | Its tests · leg (b) |
+| ER-2 | A model that cannot evaluate is refused with an error naming the fix, before any call. Strings and evaluation-model instances both go through `experimental_evaluate`. Nothing falls through to a generate call. Jev is reachable via Gateway (preferred) or through its own library as an optional peer with the author's key; neither makes Jev a hard dependency of any package | FIX-1554 | Its tests, including the direct-Jev path · leg (b) |
 | ER-3 | An answer carries confidence and per-option probabilities only when the model returned them. The block never supplies a number the model did not ([D2](DECISIONS.md#d2)) | FIX-1554 decides · FIX-1555, FIX-1557, FIX-1558, FIX-1559 consume | Each consumer's spec review |
 | ER-4 | In `cascadingRouter` an edge opens only when the choice matches, the model returned confidence, and, where the author set a floor, that confidence reaches it. Absent confidence fails every edge, floor or not; low fails a floored one. Either lands on the author's `ambiguous` leaf, visibly in the trace, never on a sibling ([D2](DECISIONS.md#d2)) | FIX-1558 | Its tests · leg (c) |
 | ER-5 | The skill activator takes an optional evaluator for tier 3. With none, slash, keyword and today's classifier run unchanged. With one, its answer is final ([D3](DECISIONS.md#d3), [D4](DECISIONS.md#d4)) | FIX-1559 | Its tests · leg (d) |
@@ -23,7 +23,7 @@ where it is checked. The "no child may" rules restate the owner's invent-kills o
 
 | # | Rule | Because |
 |---|---|---|
-| ER-9 | Ship or depend on `@flow-state-dev/system-one`, promote `labs/typesafe-jev`, add an OpenRouter Decisions client, fall back to a generator with Zod, auto-retry, or invent confidence | Owner invent-kills |
+| ER-9 | Ship or depend on `@flow-state-dev/system-one`, promote `labs/typesafe-jev`, make Jev's library a required (non-optional) dependency, add an OpenRouter Decisions client, fall back to a generator with Zod, auto-retry, or invent confidence | Owner invent-kills |
 | ER-10 | Put a gate, a tree, a facet or a confidence floor inside the `evaluator` block | [D2](DECISIONS.md#d2). One place gates |
 | ER-11 | Make orchestration, memory or a resource host import Jev or the lab, build its own evaluator, or name a model. Edit the stock agent kind's skill loop | [D3](DECISIONS.md#d3). The stock fence from FIX-1362 and FIX-1363 holds |
 | ER-12 | Nest under [FIX-202](https://linear.app/fixpoint-labs/issue/FIX-202), re-parent a related issue, turn a child into the model-string demo ([FIX-1495](https://linear.app/fixpoint-labs/issue/FIX-1495)), treat [FIX-1482](https://linear.app/fixpoint-labs/issue/FIX-1482) as a consumer, or add an API only the kitchen-sink can use | Related, not owned. A demo teaches the surface authors copy |

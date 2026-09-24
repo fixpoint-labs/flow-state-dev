@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 376" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, shipped from core: the evaluator block kind, which turns state and questions into typed answers and refuses generate-only models, and the cascadingRouter utility, which gates on choice and confidence and lands on ambiguous when confidence is missing or low. A fence says no gate, no retry and no fallback inside the evaluator. Composed in by the app: the model, the tree with its ambiguous leaf, and an evaluator handed to skill activation, index-time facets or memory. Replaced in one line: the skill activator's third tier and the model. Not built: a System One package, an OpenRouter Decisions client, a generator fallback, cascade inside the block, a dispatcher block kind, RAG or search as core, the kitchen-sink thinking-style router.">
+     aria-label="What's in the box. In the box, shipped from core: the evaluator block kind, which turns state and questions into typed answers and refuses generate-only models, and the cascadingRouter utility, which gates on choice and confidence and lands on ambiguous when confidence is missing or low. A fence says no gate, no retry and no fallback inside the evaluator. Composed in by the app: the model (Jev via Gateway preferred, Jev's own library as an optional peer, or any evaluation adapter), the tree with its ambiguous leaf, and an evaluator handed to skill activation, index-time facets or memory. Replaced in one line: the skill activator's third tier and the model. Not built: a System One package, an OpenRouter Decisions client, a generator fallback, cascade inside the block, a dispatcher block kind, RAG or search as core, the kitchen-sink thinking-style router.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -48,8 +48,8 @@
   <g id="composed-in">
     <rect class="app" x="592" y="16" width="332" height="206" rx="6"/>
     <text class="t-lbl" x="608" y="38">COMPOSED IN BY THE APP</text>
-    <text class="t-d" x="608" y="62">the model: Jev via Gateway preferred,</text>
-    <text class="t-d" x="608" y="78">or any evaluationModel(...) adapter</text>
+    <text class="t-d" x="608" y="62">the model: Jev via Gateway preferred, or</text>
+    <text class="t-d" x="608" y="78">Jev direct (optional peer), or any adapter</text>
     <text class="t-d" x="608" y="102">the tree, and its ambiguous leaf</text>
     <text class="t-s" x="608" y="126">an evaluator handed to an optional slot:</text>
     <rect class="slot" x="608" y="136" width="300" height="22" rx="3"/>

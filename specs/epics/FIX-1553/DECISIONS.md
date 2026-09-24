@@ -82,6 +82,10 @@ Owner locks on FIX-1553 and its children (Architect chat, Jake, 2026-09-20 to 24
 - **Prefer Jev via Gateway; accept any evaluation-capable model.** Strings and instances both go
   through evaluate. Generate-only models are refused. No generator plus Zod fallback, no
   OpenRouter Decisions client, no auto-retry.
+- **Jev's own library is a first-class second path** (2026-09-24): an author who holds a Jev key
+  can use it directly, as an optional peer dependency they install. It is never a hard dependency
+  of any FSD package, and only the kind's model path may reach it; consumers still take a block
+  ([D3](#d3)). Where the peer is declared and how the kind resolves it is FIX-1554's spec.
 - **No `@flow-state-dev/system-one`**, and `labs/typesafe-jev` is not promoted. #1903 stays DNM.
 - **Consumers are prefer-when-available**, in order: skill activator, facets, memory. Facets are
   a separate child; query-time classify is an escape hatch only.
@@ -127,6 +131,13 @@ Round 1 on #2166 (second look, Codex, FSD Architect triage).
   at execution; ER-2 already said "before any call", and the docs draft now matches.
 - **The five-kinds doc update is a sweep, not a list** ([DOCS.md](DOCS.md)).
 
+Round 2 on #2166 (owner lock relayed by the FSD Architect).
+
+- **Direct Jev joins the model path** ([Decided before this spec](#decided-before-this-spec),
+  ER-2, ER-9). Gateway stays the preferred path and leg (a) still runs on it; the direct path is
+  proved in FIX-1554's own tests, so the wrap gate does not grow. Rejected: a hard dependency, or
+  a consumer reaching Jev itself (ER-11 unchanged).
+
 ## How it got here
 
 - **Lab (Sep 18 to 22)** — #1903 moved from OpenRouter Decisions to `experimental_evaluate`.
@@ -134,5 +145,6 @@ Round 1 on #2166 (second look, Codex, FSD Architect triage).
 - **Filed (Sep 24)** — FIX-1553 and seven children under Core Blocks.
 - **Drafted (Sep 24)** — FIX-1560 folded; four cards.
 - **Review round 1 (Sep 24)** — every cascade edge fails closed; leg (f) scoped; the kind's case recorded.
+- **Review round 2 (Sep 24)** — owner adds direct Jev as an optional peer beside Gateway.
 
 **Open: none.**
