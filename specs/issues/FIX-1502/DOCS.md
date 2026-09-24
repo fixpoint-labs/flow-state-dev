@@ -52,13 +52,21 @@ removed when a seat is fired or leaves a channel.
 
 If your app opens its [live inventory](../workforce/inventory.md), the DevTool can show the whole
 organization from one place. Open any channel's session and pick the **Inventory** tab. The tab
-only appears on a session whose flow declares the inventory.
+appears on any session whose flow declares at least one of the inventory collections.
 
-It lists two things:
+A channel's session shows all of it:
 
 - **Seats**: every seat registered in the organization, with its kind and the channels it is in.
 - **Channels**: every channel registered in the organization, with its kind, its members, and when
   it registered.
+
+Some flows declare only part of the inventory. A seat that can hire other seats, for example,
+carries only the seat collection. On those sessions the tab shows what the flow declares and marks
+the rest *not installed on this flow*. That is different from an empty section, which means the
+collection is there and nothing is registered in it yet.
+
+If your app authenticates with a bearer token, set it in the DevTool's settings as you would for
+any other panel; the tab sends it on every request.
 
 Everything on the tab is labelled *registered* on purpose. The inventory keeps a row once it is
 written, so a seat fired yesterday still appears, and a channel's members are the ones it had when

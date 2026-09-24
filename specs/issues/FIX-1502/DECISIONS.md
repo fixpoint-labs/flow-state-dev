@@ -60,7 +60,12 @@ Then row 5 waits on FIX-1485, and this spec ships the read with the label and no
   a framework gap and goes up, not into the lab.
 - **The view lives in the DevTool only.** No new public component.
 - **The DevTool finds the collections by their three published key patterns** in the session's
-  manifest, with no dependency on the workforce package. The tab appears only where one is readable.
+  manifest, with no dependency on the workforce package. The tab appears where **any** one is
+  readable and shows one section per collection declared; a collection the flow does not carry
+  reads *not installed on this flow*, never as an empty list. A seat carrying the hire tools
+  installs only the seat collection, so this shape is real.
+- **The tab reads through the DevTool's shared credential-aware client seam**, as every other
+  DevTool client does, so an app that authenticates with a bearer token still gets its rows.
 - **Named fields, not the whole row** ([BP-015](../../../docs/contributing/best-practices/resources.md)).
 - **Every page is read**; an organization bigger than one page is shown whole.
 - **The view names no organization.** Showing which one is

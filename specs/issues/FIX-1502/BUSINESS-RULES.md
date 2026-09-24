@@ -21,8 +21,10 @@ browser; the rest run in CI.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-7 | A session's manifest lists at least one readable inventory collection | An Inventory tab appears on that session. On any other session it does not | V3 |
-| BR-8 | The tab is open | **Seats:** one row per seat, with its kind and the channels its membership rows name. **Channels:** one row per channel, with its kind, its members and when it registered. Nothing is inside an expander | V3 · VG |
+| BR-7 | A session's manifest lists **any** readable inventory collection — all three on a channel, only the seat collection on a flow carrying the hire tools | An Inventory tab appears on that session. On any other session it does not | V3 |
+| BR-8 | The tab is open | **One section per collection the flow declares.** Seats: one row per seat, with its kind, and the channels its membership rows name when the membership collection is declared. Channels: one row per channel, with its kind, its members and when it registered. Nothing is inside an expander | V3 · VG |
+| BR-24 | The flow does **not** declare one of the three collections | That section reads *not installed on this flow*. **Never an empty list**: a collection that is absent and one that holds no rows look different to a reader | V3 |
+| BR-25 | The tab makes any request — the manifest, and every page of every collection | Through the DevTool's shared client seam, so an app that authenticates with a bearer token gets it on each request. A reader built on a bare client would return 401 in any app with a principal resolver | V3 |
 | BR-9 | There are more rows than one page | Every page is read; nothing is silently cut. A read that fails partway says how far it got | V3 |
 | BR-10 | The read is refused (403) or the collection is unknown (404) | The tab says so in words, with the status. **Never shown as an empty organization** | V3 |
 | BR-11 | The organization has no inventory rows | The tab says nothing is registered and that an app registers rows by opening its inventory at boot | V3 |
@@ -51,7 +53,8 @@ browser; the rest run in CI.
 
 ## Failure taxonomy
 
-A refused or failed read is **named in the view and never degrades to empty** (BR-10). A boot that
+A refused or failed read is **named in the view and never degrades to empty** (BR-10), and
+neither does a collection the flow never declared (BR-24). A boot that
 could not register its inventory is **fatal for the lab** (BR-18), because a checklist graded on
 half an organization proves nothing. Nothing retries. An empty organization is not a failure; it is
 stated (BR-11).
