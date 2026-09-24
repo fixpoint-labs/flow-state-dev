@@ -28,16 +28,13 @@
  *       `discover` lists it. Red: remove `resolvePrincipal` from
  *       `fsdev.config.ts` — every session binds to `__fsd_default_org__` and
  *       the hire is refused (`Organization id "__fsd_default_org__" …`).
- *   V19 Over a store written before the app named its organization, the boot
- *       completes and every file-declared channel's session is bound to
- *       `kitchen-sink` and readable (200), with one of its boards. Earlier
- *       history is left behind: not in the new channel, not listed under it,
- *       and still in the store. Red: drop the set-aside step — the boot throws
- *       `channel "support.ada-wren" could not be opened — Request failed (403)`.
- *       Red: swallow that throw — the boot completes, the channel is still
- *       `__fsd_default_org__`, and its read is 403. Red (history): move the
- *       session and not its requests — the old channel's runs are listed under
- *       the new one.
+ *   V19 A store written before the app named its organization is not
+ *       upgraded: it is wiped (the owner's call on #2159). The boot over one
+ *       refuses to start, names every channel stored under another
+ *       organization, and says to delete the store. The guard only reads: no
+ *       channel is moved, rebound or deleted. Red: remove the guard in `fsdev.config.ts` — the boot fails with the
+ *       bare `channel "support.ada-wren" could not be opened — Request failed
+ *       (403)`, which names neither the cause nor the fix.
  *   V22 With `acme:t1,kitchen-sink:t2`, the `acme` token is refused (401) and
  *       named in the boot log, and the `kitchen-sink` token's `fire` releases a
  *       rail hire and a mara hire. Red: accept the `acme` binding — its token
@@ -52,7 +49,6 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFilesystemStores, createFlowState, filesystemStores, type FlowState } from "@flow-state-dev/engine";
 import { createSessionClient } from "@flow-state-dev/client";
 import {
-  channelBoardIds,
   createSeatHireBlocks,
   defineHiredRosterCollection,
   defineSeatInventoryCollection,
@@ -160,17 +156,6 @@ async function call(
     { params: { path: segments } },
   );
   return { status: res.status, text: await res.text() };
-}
-
-/** Wait for something a background run writes. Fails with the last value seen. */
-async function until<T>(read: () => Promise<T>, done: (value: T) => boolean, what: string): Promise<T> {
-  let value = await read();
-  for (let attempt = 0; attempt < 100 && !done(value); attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    value = await read();
-  }
-  if (!done(value)) throw new Error(`${what} never happened; last saw ${JSON.stringify(value)}`);
-  return value;
 }
 
 /** An out-of-band handle on a filesystem store: not the booted runtime's. */
@@ -286,8 +271,7 @@ describe("V19 · a store written before the app named its organization", () => {
    * The boot the app ran before it named its organization, for the part that
    * matters here: the same channel kinds and the same channel open, through a
    * router with no resolver, so every channel session lands in the
-   * development organization. Then one post and one board row, so the channel
-   * has history to leave behind.
+   * development organization.
    */
   async function preChangeBoot(dataDir: string) {
     const { hireKitchenSinkWorkforce } = await import("@/workforce/hire");
@@ -306,87 +290,38 @@ describe("V19 · a store written before the app named its organization", () => {
       },
     });
     await openChannels(workforce.channels, { client, userId: "devuser" });
-    const runtime = await flowstate.getRuntime();
-    await act(router, "channel", "post", "support.desk", { body: "PRE-CHANGE post" }, { userId: "devuser" });
-    await until(
-      () => runtime.stores.session.get("support.desk"),
-      (session) => JSON.stringify(session?.state).includes("PRE-CHANGE post"),
-      "the pre-change post",
-    );
-    await act(router, "channel", "fileTask", "support.desk", { board: "followups", goal: "PRE-CHANGE row" }, { userId: "devuser" });
-    await until(
-      () => runtime.stores.resourceState.getByPrefix("org", DEFAULT_ORG_ID, "support.desk.followups/"),
-      (rows) => JSON.stringify(rows).includes("PRE-CHANGE row"),
-      "the pre-change board row",
-    );
-    await until(
-      () => runtime.stores.request.list({ sessionId: "support.desk" }),
-      (runs) => runs.length > 0 && runs.every((run) => run.status === "completed"),
-      "the pre-change runs settling",
-    );
-    const desk = await runtime.stores.session.get("support.desk");
     await flowstate.dispose();
-    return { channels: workforce.channels, desk };
+    return workforce.channels.map((channel) => channel.id).sort();
   }
 
-  it("opens every file-declared channel in kitchen-sink and leaves the old history behind", async () => {
+  it("refuses to boot, names every stale channel and the fix, and moves no channel", async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "ks-named-org-"));
     cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
+    const channelIds = await preChangeBoot(dataDir);
+    expect(channelIds.length).toBeGreaterThan(0);
 
-    const before = await preChangeBoot(dataDir);
-    expect(before.desk?.orgId).toBe(DEFAULT_ORG_ID);
-    expect(JSON.stringify(before.desk?.state)).toContain("PRE-CHANGE post");
+    const boot = bootApp({ dataDir });
+    await expect(boot).rejects.toThrow(/written before kitchen-sink ran as organization "kitchen-sink"/);
+    await expect(boot).rejects.toThrow(/Delete the store and restart: .*remove \.fsdev\/data/);
+    const message = await boot.catch((error: Error) => error.message);
+    for (const id of channelIds) expect(message).toContain(`"${id}" (organization "${DEFAULT_ORG_ID}")`);
 
-    const { router } = await bootApp({ dataDir });
-
-    // Out of band: a fresh handle over the same location, not the booted runtime.
+    // Nothing was migrated or deleted: every channel is still where the old boot left it.
+    // (The guard only reads. The boot step before it still writes its per-organization
+    // roster report, as it does on every boot.)
     const store = storeAt(dataDir);
-    const boards = channelBoardIds(before.channels);
-    expect(before.channels.length).toBeGreaterThan(0);
-    for (const channel of before.channels) {
-      const stored = await store.session.get(channel.id);
-      expect(stored?.orgId, channel.id).toBe(ORG);
-      const read = await call(router, "GET", ["sessions", channel.id]);
-      expect(read.status, `${channel.id}: ${read.text}`).toBe(200);
-      for (const board of boards.filter((id) => id.startsWith(`${channel.id}.`))) {
-        const rows = await call(router, "GET", ["sessions", channel.id, "resources", board]);
-        expect(rows.status, `${board}: ${rows.text}`).toBe(200);
-        // A board starts empty in the new organization: the old row stays with the old one.
-        expect(rows.text, board).not.toContain("PRE-CHANGE row");
-      }
-    }
-
-    // H1 · left behind: the new channel carries none of it, and lists none of it…
-    const desk = await store.session.get("support.desk");
-    expect(JSON.stringify(desk?.state)).not.toContain("PRE-CHANGE post");
-    const listed = await call(router, "GET", ["sessions", "support.desk", "requests"]);
-    expect(listed.status, listed.text).toBe(200);
-    expect(json(listed.text).requests).toEqual([]);
-    // …and deleted none of it: the old session, its runs and its board row are all still stored.
-    const setAside = await store.session.get(`support.desk~${DEFAULT_ORG_ID}`);
-    expect(setAside?.orgId).toBe(DEFAULT_ORG_ID);
-    expect(JSON.stringify(setAside?.state)).toContain("PRE-CHANGE post");
-    const oldRuns = await store.request.list({ sessionId: `support.desk~${DEFAULT_ORG_ID}` });
-    expect(oldRuns.map((run) => run.actionName)).toEqual(expect.arrayContaining(["post", "fileTask"]));
-    expect(oldRuns.every((run) => run.orgId === DEFAULT_ORG_ID)).toBe(true);
-    const oldRows = await store.resourceState.getByPrefix("org", DEFAULT_ORG_ID, "support.desk.followups/");
-    expect(JSON.stringify(oldRows)).toContain("PRE-CHANGE row");
-    // Unreachable from the app: it is another organization's session.
-    const oldRead = await call(router, "GET", ["sessions", `support.desk~${DEFAULT_ORG_ID}`]);
-    expect(oldRead.status).toBe(403);
+    for (const id of channelIds) expect((await store.session.get(id))?.orgId, id).toBe(DEFAULT_ORG_ID);
   });
 
-  it("does nothing on the next boot over the same store", async () => {
+  it("boots over the same location once the store is wiped", async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "ks-named-org-"));
     cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
     await preChangeBoot(dataDir);
-    await bootApp({ dataDir });
-    const store = storeAt(dataDir);
-    const first = await store.session.get("support.desk");
+    await rm(path.join(dataDir, ".fsdev", "data"), { recursive: true, force: true });
 
     const { router } = await bootApp({ dataDir });
-    const again = await store.session.get("support.desk");
-    expect(again?.lineageId).toBe(first?.lineageId);
-    expect((await call(router, "GET", ["sessions", "support.desk"])).status).toBe(200);
+    const desk = await call(router, "GET", ["sessions", "support.desk"]);
+    expect(desk.status, desk.text).toBe(200);
+    expect(json(desk.text).session.orgId).toBe(ORG);
   });
 });

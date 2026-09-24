@@ -81,7 +81,7 @@ Which organization the channel sessions land in comes from the caller's verified
 
 This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both are set in `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request. It applies to every flow that doesn't bring its own resolver, which means every page, seat and channel, so nobody calling the app can pick another organization. It is a stand-in for real sign-in, and it means **anyone who can open a deployed copy of this app can hire and fire its seats**. If you deploy it somewhere other people can reach, put sign-in in front of it or remove the hire paths first.
 
-A store this app wrote before it named its organization holds its channels under the framework's default organization. The first boot over it moves each of those channel sessions aside, with their history, and opens the channel again under `kitchen-sink`. The channels work, but they start empty: earlier conversations, channel posts and board rows are still in the store, and the app doesn't show them.
+**If you ran this app with a persistent store before it ran as `kitchen-sink`, wipe the store and start fresh.** Earlier data isn't carried over. For the local filesystem profile, delete `.fsdev/data` (or the whole `.fsdev` folder). For Postgres, point `FSD_DB_URL` at an empty database. Until you do, the app refuses to start and names the channels it found under another organization.
 
 Each seat is addressed by its own id, so a seat answers on the same route as any other flow:
 

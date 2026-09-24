@@ -28,8 +28,11 @@ import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { setWorkforceRegistrarImpl, workforceRegistrar } from "@/lib/workforce-registrar";
 import { admitReloadedSeats } from "@/lib/roster-reload-report";
 import { adminCredentialConfigured } from "@/lib/workforce-admin-auth";
-import { KITCHEN_SINK_USER_ID, resolveKitchenSinkPrincipal } from "@/lib/kitchen-sink-principal";
-import { setAsideOtherOrgChannelSessions } from "@/lib/channel-org-upgrade";
+import {
+  KITCHEN_SINK_ORG_ID,
+  KITCHEN_SINK_USER_ID,
+  resolveKitchenSinkPrincipal,
+} from "@/lib/kitchen-sink-principal";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
@@ -381,20 +384,31 @@ const channelSessions = createSessionClient({
   },
 });
 
-// A store written before this app named its organization holds every channel
-// session in the development organization, and opening one from here is
-// refused. Move those out of the channels' ids first, with their history, so
-// the open below creates each channel in this app's organization. Earlier
-// history stays in the store, unread (`lib/channel-org-upgrade.ts`).
-for (const moved of await setAsideOtherOrgChannelSessions(
-  runtime.stores,
-  workforce.channels.map((channel) => channel.id),
-)) {
-  console.log(
-    `[workforce] channel "${moved.channelId}" belonged to organization "${moved.fromOrgId}"; ` +
-      `its earlier history was set aside as "${moved.setAsideAs}" (${moved.requests} request(s)) ` +
-      `and the channel is reopened in this app's organization`,
-  );
+// A store written before this app named its organization holds its channel
+// sessions under the framework's development organization, and this app can
+// neither open nor read them. There is no upgrade path: the store is wiped and
+// the app starts fresh. So the boot stops here and says so, naming every such
+// channel, instead of failing on the first one with a bare 403 from the open
+// below. It only reads: it writes, moves and deletes nothing, so two processes
+// booting over the same store at once cannot race each other here.
+{
+  const stale: string[] = [];
+  for (const channel of workforce.channels) {
+    const stored = await runtime.stores.session.get(channel.id);
+    // A session stored with no organization at all (BP-030) is not this app's either.
+    if (stored !== undefined && stored.orgId !== KITCHEN_SINK_ORG_ID) {
+      stale.push(`"${channel.id}" (organization "${stored.orgId ?? "none"}")`);
+    }
+  }
+  if (stale.length > 0) {
+    throw new Error(
+      `[workforce] this store was written before kitchen-sink ran as organization ` +
+        `"${KITCHEN_SINK_ORG_ID}", and its channels belong to another organization: ` +
+        `${stale.join(", ")}. Earlier data is not carried over. Delete the store and restart: ` +
+        `for the dev profile (STORE_TYPE=filesystem) remove .fsdev/data; for the prod profile, ` +
+        `point FSD_DB_URL at an empty database.`,
+    );
+  }
 }
 
 await openChannels(workforce.channels, {
