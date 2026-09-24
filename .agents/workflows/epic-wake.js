@@ -1861,14 +1861,47 @@ const LINEAR_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        // `blockedBy` is REQUIRED. It gates admission to the active set, and the code reads a present
-        // row as authoritative — so an omission meant "no blockers" and dispatched an issue
-        // concurrently with the prerequisite it is waiting on. An unblocked issue says `[]`.
-        required: ['id', 'state', 'blockedBy'],
+        // RAW edges, never a derived `blockedBy`. Asked for the derived list, the scout inverted it
+        // even with the field to read named in its prompt — a prerequisite reported as blocked by its
+        // own dependents — and nothing downstream can see an inversion (it forms no cycle). So the
+        // scout copies both sides verbatim and the script computes the direction (`blockedByOf`) and
+        // cross-checks one side against the other. The node keys are Linear's own — `relatedIssue`
+        // on `relations`, `issue` on `inverseRelations` — so a list pasted under the other's name
+        // fails the schema rather than flipping every edge.
+        //
+        // Both are REQUIRED. They gate admission to the active set, and the code reads a present row
+        // as authoritative — so an omission would mean "no blockers" and dispatch an issue
+        // concurrently with the prerequisite it is waiting on. An issue with no relations says `[]`.
+        required: ['id', 'state', 'relations', 'inverseRelations'],
         properties: {
           id: { type: 'string' },
           state: { type: 'string' },
-          blockedBy: { type: 'array', items: { type: 'string' }, description: 'Identifiers of the open issues that block THIS one, from inverseRelations of type "blocks" (field issue), never from relations; [] when there are none' },
+          relations: {
+            type: 'array',
+            description: "This issue's `relations.nodes`, verbatim and unfiltered — the issues THIS one points at",
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['type', 'relatedIssue'],
+              properties: {
+                type: { type: 'string' },
+                relatedIssue: { type: 'object', additionalProperties: false, required: ['identifier'], properties: { identifier: { type: 'string' } } },
+              },
+            },
+          },
+          inverseRelations: {
+            type: 'array',
+            description: "This issue's `inverseRelations.nodes`, verbatim and unfiltered — the issues that point at THIS one",
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['type', 'issue'],
+              properties: {
+                type: { type: 'string' },
+                issue: { type: 'object', additionalProperties: false, required: ['identifier'], properties: { identifier: { type: 'string' } } },
+              },
+            },
+          },
           // The ROUTE's input → orchestration.md § "Which issues get a spec". Deliberately NOT
           // required: an omission (or a null) keeps the carried route and otherwise defaults to
           // `spec`, which is the safe direction. Requiring it would make a scout that cannot read
@@ -2311,10 +2344,10 @@ const [gate, linear, prScan] = await parallel([
     ),
   () =>
     agent(
-      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's human identifier, current state name, its CATEGORY label, and the identifiers of the issues that block it. Do not fetch them individually.\n` +
-        `IDENTIFIERS, NEVER UUIDs — Linear has two ids per issue and only one is usable here. \`id\` is the human identifier (\`LAB-152\`, \`FIX-150\` — Linear's \`identifier\` field), never the UUID \`id\` field: the wake matches your entries against the tracked ids above by identifier, so a UUID matches nothing and every issue reads as unobserved. \`blockedBy\` is the list of the BLOCKING ISSUES' identifiers — for each open \`blocks\` relation where this issue is the blocked side, the blocking issue's \`identifier\` — never the relation's own id, which nothing can resolve.\n` +
-        `DIRECTION — blockedBy is the issues that block THIS one, and Linear stores it on the other side from where it looks. Read it from \`inverseRelations{nodes{type issue{identifier state{type}}}}\`, keeping only nodes whose \`type\` is \`blocks\`, and report each node's \`issue.identifier\`. NEVER read \`relations\` for this: an issue's \`relations\` of type \`blocks\` are the issues THIS issue blocks (it is the blocker there), and reporting them as blockedBy inverts the dependency — the prerequisite gets parked and its dependents dispatched first. An issue that only blocks others has blockedBy [].\n` +
-        `\`category\` is the label from the category label group, verbatim. A correct entry: {"id":"LAB-150","state":"Backlog","blockedBy":["LAB-141"],"category":"Bug"}.\n` +
+      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's human identifier, current state name, its CATEGORY label, and its raw relation edges. Do not fetch them individually.\n` +
+        `IDENTIFIERS, NEVER UUIDs — Linear has two ids per issue and only one is usable here. \`id\` and every relation node's \`identifier\` are the human identifier (\`LAB-152\`, \`FIX-150\` — Linear's \`identifier\` field), never a UUID \`id\` field: the wake matches your entries against the tracked ids above by identifier, so a UUID matches nothing and every issue reads as unobserved.\n` +
+        `RELATIONS, RAW — select \`relations{nodes{type relatedIssue{identifier}}} inverseRelations{nodes{type issue{identifier}}}\` on each issue and copy both \`nodes\` arrays VERBATIM into \`relations\` and \`inverseRelations\`: every node, every type, same keys, nothing filtered, reordered, moved between the two lists, or interpreted. Do not work out which issue blocks which — the wake computes that from these edges and cross-checks the two sides, so a derived or tidied list is worse than useless. An issue with no relations has \`[]\` for both.\n` +
+        `\`category\` is the label from the category label group, verbatim. A correct entry: {"id":"LAB-150","state":"Backlog","relations":[{"type":"related","relatedIssue":{"identifier":"LAB-160"}}],"inverseRelations":[{"type":"blocks","issue":{"identifier":"LAB-141"}}],"category":"Bug"}.\n` +
         `The category is what ROUTES the issue: "Bug" sends it straight to implementation with no spec. Report the label verbatim; report null if the issue genuinely carries no category label, and never infer one from the title — an unread category safely keeps the issue on the spec route, an invented one can send a feature to implementation ungated.\n` +
         `The carried ids matter separately from the children: orchestration.md keeps an existing functional parent and links such a member to the epic with relates-to, so it is NEVER in the parent→children set. Omitting it froze its Linear state at whatever was last cached — a blocked member never noticed its prerequisite merge, and a cancelled one kept being dispatched.`,
       { label: 'linear:epic-children', phase: 'Refresh', schema: LINEAR_SCHEMA, agentType: 'scout' },
@@ -2459,18 +2492,46 @@ const epicHead = historicalEpic ? epic.approvedHeadSha : (gate && gate.headSha) 
 // or not it can be tied to a carried row — the safe direction, since the alternative is silently
 // closing over an issue that never got a chance to be discovered.
 const ISSUE_IDENTIFIER = /^[A-Z]+-\d+$/
+// The scout returns raw edges (see LINEAR_SCHEMA); direction is computed here, never by the model.
+// Only `blocks` edges are dependencies. `blockedByOf` is the ONE place blockedBy is derived: the
+// issues naming this one in `inverseRelations`, i.e. the blocking side of each relation.
+const blocksTo = (li) => (li.relations || []).filter((n) => n.type === 'blocks').map((n) => n.relatedIssue.identifier)
+const blockedByOf = (li) => (li.inverseRelations || []).filter((n) => n.type === 'blocks').map((n) => n.issue.identifier)
 const reportedLinear = (linear && linear.issues) || []
-const linearIssues = reportedLinear.filter(
-  (li) => ISSUE_IDENTIFIER.test(li.id) && (li.blockedBy || []).every((b) => ISSUE_IDENTIFIER.test(b)),
+const wellFormedLinear = reportedLinear.filter(
+  (li) => ISSUE_IDENTIFIER.test(li.id) && [...blocksTo(li), ...blockedByOf(li)].every((b) => ISSUE_IDENTIFIER.test(b)),
 )
-const droppedLinearEntries = reportedLinear.filter((li) => !linearIssues.includes(li))
-if (droppedLinearEntries.length) {
+const malformedLinear = reportedLinear.filter((li) => !wellFormedLinear.includes(li))
+if (malformedLinear.length) {
   log(
-    `The Linear refresh reported ${droppedLinearEntries.length} entr${droppedLinearEntries.length === 1 ? 'y' : 'ies'} with a UUID where an issue identifier (LAB-152) was asked for — ` +
-      `${droppedLinearEntries.map((li) => `${li.id} blockedBy [${(li.blockedBy || []).join(', ')}]`).join('; ')}. ` +
+    `The Linear refresh reported ${malformedLinear.length} entr${malformedLinear.length === 1 ? 'y' : 'ies'} with a UUID where an issue identifier (LAB-152) was asked for — ` +
+      `${malformedLinear.map((li) => `${li.id} blockedBy [${blockedByOf(li).join(', ')}]`).join('; ')}. ` +
       `Discarded rather than guessed at: each such issue reads as unobserved this wake (carried state stands, no blocker clears, nothing is discovered), and the next wake retries.`,
   )
 }
+// Every relation is stored once and reported from both ends: A's `relations` name B exactly when B's
+// `inverseRelations` name A. Checked for every edge whose far end is in this read (an edge to an issue
+// outside it has no second side to compare). A disagreement means at least one side was misreported
+// and nothing here can tell which — it is the signature of a scout flipping direction — so the WHOLE
+// read is voided, exactly as if the scout had died (invariant 1): every row keeps its carried
+// `blockedBy`, and the drop holds the wrap like any other. Trusting the half that looks right is a guess.
+const wellFormedById = new Map(wellFormedLinear.map((li) => [li.id, li]))
+const relationContradictions = wellFormedLinear.flatMap((a) => [
+  ...blocksTo(a)
+    .filter((b) => wellFormedById.has(b) && !blockedByOf(wellFormedById.get(b)).includes(a.id))
+    .map((b) => `${a.id} blocks ${b} per ${a.id}'s relations, but ${b}'s inverseRelations do not name ${a.id}`),
+  ...blockedByOf(a)
+    .filter((b) => wellFormedById.has(b) && !blocksTo(wellFormedById.get(b)).includes(a.id))
+    .map((b) => `${b} blocks ${a.id} per ${a.id}'s inverseRelations, but ${b}'s relations do not name ${a.id}`),
+])
+if (relationContradictions.length) {
+  log(
+    `The Linear refresh contradicts itself on ${relationContradictions.length} blocks edge(s) — ${relationContradictions.join('; ')}. ` +
+      `The whole read is discarded this wake: every row's carried blockedBy stands, no Linear state refreshes, nothing is discovered, and the next wake retries.`,
+  )
+}
+const linearIssues = relationContradictions.length ? [] : wellFormedLinear.map((li) => ({ ...li, blockedBy: blockedByOf(li) }))
+const droppedLinearEntries = relationContradictions.length ? reportedLinear : malformedLinear
 
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
@@ -3674,7 +3735,7 @@ const wrapReadyButForDrops =
   plan.queuedClaims.length + unsettled.length + newRequests.length === 0
 if (wrapReadyButForDrops && droppedLinearEntries.length) {
   log(
-    `Holding the epic's wrap this wake: ${droppedLinearEntries.length} Linear refresh entr${droppedLinearEntries.length === 1 ? 'y was' : 'ies were'} dropped for a UUID identifier, so the carried table cannot confirm nothing was omitted — the epic would otherwise read as fully done. The next wake retries the Linear refresh.`,
+    `Holding the epic's wrap this wake: ${droppedLinearEntries.length} Linear refresh entr${droppedLinearEntries.length === 1 ? 'y was' : 'ies were'} dropped (a UUID identifier, or relations that contradict each other), so the carried table cannot confirm nothing was omitted — the epic would otherwise read as fully done. The next wake retries the Linear refresh.`,
   )
 }
 
