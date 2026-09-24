@@ -715,6 +715,51 @@ describe("schema validation on create", () => {
 // Lifecycle hooks
 // ---------------------------------------------------------------------------
 
+describe("stampOrgId", () => {
+  // A collection that records which organization created each instance takes
+  // it from the execution, never from the caller: the caller's `create` names
+  // none, and the stored row still carries the org the run was admitted under.
+  const stamped = defineResourceCollection({
+    scope: "user",
+    pattern: "stamped/*",
+    stateSchema: z.object({ orgId: z.string().optional(), label: z.string() }),
+    stampOrgId: true,
+  });
+
+  it("writes the execution's organization onto an instance created without one", async () => {
+    const { ctx, stores } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+
+    const ref = await ns.create("a", { label: "a" });
+
+    expect(ref.state.orgId).toBe(DEFAULT_ORG_ID);
+    expect((await stores.resourceState.get("user", "user_1", "stamped/a"))?.state.orgId).toBe(DEFAULT_ORG_ID);
+  });
+
+  it("keeps an organization the caller named, for the collection's own checks to judge", async () => {
+    const { ctx } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+
+    const ref = await ns.create("b", { label: "b", orgId: "org-other" });
+
+    expect(ref.state.orgId).toBe("org-other");
+  });
+
+  it("writes nothing when the collection does not ask for it", async () => {
+    const plain = defineResourceCollection({
+      scope: "user",
+      pattern: "plain/*",
+      stateSchema: z.object({ orgId: z.string().optional(), label: z.string() }),
+    });
+    const { ctx } = await createCtx({ plain });
+    const ns = ctx.resources.plain as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+
+    const ref = await ns.create("c", { label: "c" });
+
+    expect(ref.state.orgId).toBeUndefined();
+  });
+});
+
 describe("lifecycle hooks with context", () => {
   it("onInstanceCreated receives populated context", async () => {
     let receivedCtx: any = null;

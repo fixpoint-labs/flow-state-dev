@@ -145,7 +145,7 @@ helper. Compose with HTTP auth by branching on `ctx.source`.
 
 No new store query primitives. The adapter uses
 `host.registry.get`, `activeRequests.listAll` (via
-`findScheduledRequest`), `content.get` inside the resource-collection
+`findScheduledRequest`), `resourceState.get` inside the resource-collection
 resolver, and `host.dispatch`. It never lists resources across users
 — the host scheduler tracks which ids to fire.
 

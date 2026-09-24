@@ -256,6 +256,7 @@ Config options:
 - `writable?: boolean` — whether blocks can modify instance state (`patchState` / `setState` / `updateState` / `incState` / `pushState` / `upsert` on an existing key), overwrite an existing instance with `create(..., { replace: true })`, delete an instance (`delete`, including when the key is absent), and write instance content (`writeContent`). Default `true`. Independent of `llmWritable`. `create` and `getOrCreate` of a missing key succeed; `getOrCreate` of an existing key returns the instance and does not write
 - `llmReadable?: boolean` — exposes every instance's content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`). Default `false`
 - `llmWritable?: boolean` — lets `writeResourceContentTool()` overwrite an instance body. Default `false`; independent of `llmReadable` and of `writable`
+- `stampOrgId?: boolean` — when `true`, creating an instance whose initial state has no `orgId` writes the organization the run belongs to into it. An `orgId` the caller passes is kept; updates never stamp. The `stateSchema` must declare `orgId`, or `defineResourceCollection` throws. Default `false`
 - `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
 - `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
 - `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook

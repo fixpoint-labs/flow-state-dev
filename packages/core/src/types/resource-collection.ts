@@ -146,6 +146,18 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    */
   prefetchWindow?: number;
 
+  /**
+   * Record which organization created each instance. When `true`, `create`
+   * (and the create branch of `getOrCreate` / `upsert`) writes the organization
+   * the execution was admitted under into the new instance's `orgId` field
+   * when the caller's initial state names none — so the stored row carries a
+   * server-derived org without the caller passing one. A caller-supplied
+   * `orgId` is kept as written, for the collection's own checks to judge. Later
+   * updates never stamp. The `stateSchema` must declare `orgId`, or the parse
+   * strips it. Default `false`.
+   */
+  stampOrgId?: boolean;
+
   /** Fires when a specific instance is created (e.g., files/utils.ts). */
   onInstanceCreated?: (key: string, state: JsonObject, ctx: CollectionHookContext) => void | Promise<void>;
   /** Fires when a specific instance's state is updated. */
@@ -371,6 +383,16 @@ export function defineResourceCollection<
   });
 
   validateReactTo("defineResourceCollection()", config.reactTo);
+
+  if (
+    config.stampOrgId === true &&
+    config.stateSchema instanceof z.ZodObject &&
+    !("orgId" in config.stateSchema.shape)
+  ) {
+    throw new Error(
+      `defineResourceCollection() stampOrgId on "${config.pattern}" requires the stateSchema to declare orgId — otherwise the stamp is stripped on write`
+    );
+  }
 
   // Edge slot injection (FIX-745): when a collection declares `edges`, extend
   // each instance's state schema with an `edges: Edge[]` field — the same way

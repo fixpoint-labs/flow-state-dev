@@ -12,6 +12,9 @@
  *    deleting the underlying resource.
  *  - Cron parsing happens here (the index never parses); rows hand off
  *    a pre-computed `nextFireAt`.
+ *  - Every created row records the organization its run was admitted
+ *    under (`stampOrgId`), index or not — the resolver refuses a row
+ *    without one.
  *  - When `index` is omitted, the collection behaves exactly like a
  *    plain `defineResourceCollection` — the same schema, no hooks. This
  *    lets test setups skip the index without restructuring code.
@@ -37,14 +40,13 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
   /**
    * The organization this schedule fires into (FIX-1442).
    *
-   * Not a caller's choice. A row naming a DIFFERENT organization than the
-   * execution writing it is refused from the index below and therefore never
-   * fires. A row naming NONE is not refused — it makes no claim to contradict,
-   * so the index stamps the writing execution's own (server-derived)
-   * organization on it. Optional on the schema because a row created through
-   * the ordinary `schedules.create({ cron, kind, enabled })` names none, and
-   * because a pre-attribution row has to stay readable to be diagnosed
-   * (BP-030).
+   * Not a caller's choice. `create` writes the creating execution's own
+   * (server-derived) organization here when the caller names none, which is
+   * what the ordinary `schedules.create({ cron, kind, enabled })` does. A row
+   * naming a DIFFERENT organization than the execution writing it is refused
+   * from the index below and therefore never fires. Optional on the schema
+   * because callers omit it and because a pre-attribution row has to stay
+   * readable to be diagnosed (BP-030).
    */
   orgId: z.string().optional(),
   cron: z.string(),
@@ -86,7 +88,11 @@ export function defineScheduleCollection(
   const base = {
     pattern: opts.pattern,
     scope: "user" as const,
-    stateSchema: SCHEDULE_RESOURCE_SCHEMA
+    stateSchema: SCHEDULE_RESOURCE_SCHEMA,
+    // A row created without an organization records the one its run was
+    // admitted under, so the resolver has the stored target it requires and
+    // the schedule fires (BR-19, FIX-1545).
+    stampOrgId: true
   };
 
   const { index } = opts;
@@ -180,17 +186,18 @@ function stripPrefix(storageKey: string, pattern: string): string {
  *    contradict. `executionOrgId` is server-derived — the organization this
  *    execution was admitted under, never a caller-supplied field — so stamping
  *    it is the server recording what it already knows, not a guess about who
- *    the row belongs to. This is the state every
- *    `schedules.create(key, { cron, kind, enabled })` produces, which is the
- *    documented way to create a schedule: refusing it indexed nothing, returned
- *    success, and left the caller with a schedule that never fired.
+ *    the row belongs to. `create` now stamps the state itself (`stampOrgId`),
+ *    so this is a row written before that, or one whose `setState` dropped the
+ *    field: refusing it indexed nothing, returned success, and left the caller
+ *    with a schedule that never fired.
  *  - **Stores a DIFFERENT organization.** That is a claim, and it disagrees
  *    with the execution writing it. Indexing under either organization would
  *    point a standing instruction somewhere nobody authorised, so the row stays
  *    out until it is written from the organization it names (BR-19).
  *
- * The stamp lives on the index row rather than the resource state because this
- * runs in a lifecycle hook, which fires after the write has already committed.
+ * This stamp lives on the index row only, because this runs in a lifecycle
+ * hook, which fires after the write has already committed. The state's own
+ * stamp is written before the write, by `create`.
  */
 function indexOrgFor(
   state: ScheduleCollectionState,

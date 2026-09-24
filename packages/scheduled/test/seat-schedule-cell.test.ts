@@ -1,11 +1,17 @@
 /**
- * A hired seat's dynamic schedules resolve from the seat's own cell.
+ * A schedule a run creates through the documented collection API fires.
  *
- * A seat registered with a pin keeps its shared user data — its schedule
- * collection included — in the (org, person) cell. The dispatch route hands
- * the resolver the pin of the instance it addresses, so a schedule the seat
- * wrote resolves, and a row found only in the person's cross-org cell does
- * not. An app flow with no pin resolves from the person's cell, as before.
+ * `schedules.create(key, { cron, kind, enabled })` names no organization, and
+ * the row lands in resource state. The resolver reads the row where the
+ * collection wrote it and finds on it the organization the creating run was
+ * admitted under, so the dispatch fires into that organization — not into the
+ * scheduler gateway's.
+ *
+ * A hired seat keeps its shared user data — its schedule collection included —
+ * in the (org, person) cell. The dispatch route hands the resolver the pin of
+ * the instance it addresses, so a schedule the seat wrote resolves, and a row
+ * found only in the person's cross-org cell does not. An app flow with no pin
+ * resolves from the person's cell.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -36,15 +42,17 @@ const ping = handler({
   execute: () => ({ ok: true }),
 });
 
-/** A run writes one schedule row, the way an agent would set a reminder. */
+/**
+ * A run writes one schedule row, the way an agent would set a reminder: the
+ * documented call, which names no organization.
+ */
 const plan = handler({
   name: "plan",
-  inputSchema: z.object({ key: z.string(), orgId: z.string() }),
+  inputSchema: z.object({ key: z.string() }),
   outputSchema: z.object({ ok: z.boolean() }),
   resources: { schedules },
   execute: async (input, ctx) => {
     await (ctx.resources.schedules as unknown as ResourceCollectionRef).create(input.key, {
-      orgId: input.orgId,
       cron: "0 9 * * MON",
       kind: "ping",
       enabled: true,
@@ -59,6 +67,8 @@ const kind = (name: string, cardinality: "collection" | "singleton") =>
     cardinality,
     resources: { schedules },
     authentication: {
+      // The scheduler gateway authenticates into acme. A dynamic schedule must
+      // not borrow that organization.
       resolvePrincipal: createBearerSecretPrincipalResolver({
         secret: SECRET,
         principal: { userId: "system", orgId: "acme" },
@@ -68,7 +78,7 @@ const kind = (name: string, cardinality: "collection" | "singleton") =>
     schedules: {
       resolve: createResourceCollectionScheduleResolver({ collection: schedules, blocks: { ping } }),
     },
-    actions: { plan: { inputSchema: z.object({ key: z.string(), orgId: z.string() }), block: plan } },
+    actions: { plan: { inputSchema: z.object({ key: z.string() }), block: plan } },
   });
 
 const seatKind = kind("research", "collection");
@@ -95,46 +105,80 @@ function boot() {
       }),
       { params: { path: [flowId, "schedules", scheduleId, "dispatch"] } }
     );
-  const plant = (scopeId: string, key: string) =>
-    stores.content.set(
-      "user",
-      scopeId,
-      `schedules/${key}`,
-      JSON.stringify({ orgId: "acme", cron: "0 9 * * MON", kind: "ping", enabled: true })
-    );
-  return { router, stores, register, dispatch, plant };
+  /** Alice runs `plan` on `flow` while admitted under `orgId`. */
+  const runPlan = (flow: FlowInstance, key: string, orgId: string) =>
+    runAction({
+      flow,
+      actionName: "plan",
+      input: { key },
+      userId: "alice",
+      orgId,
+      stores,
+      runtimeConfig: { modelResolver: createMockModelResolver({}) },
+    });
+  /**
+   * A row no run of this flow created — a legacy or foreign one — written
+   * where the collection keeps its rows.
+   */
+  const plant = (scopeId: string, key: string, state: Record<string, unknown>) =>
+    stores.resourceState.set("user", scopeId, `schedules/${key}`, { cron: "0 9 * * MON", kind: "ping", enabled: true, ...state }, "any");
+  /** The scheduled request the dispatch started, once it is recorded. */
+  const fired = async () => {
+    for (let i = 0; i < 200; i++) {
+      const found = (await stores.request.list({ limit: 10 })).find((r) => r.source === "scheduled");
+      if (found !== undefined) return found;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    return undefined;
+  };
+  return { router, stores, register, dispatch, runPlan, plant, fired };
 }
 
+describe("a schedule created through the collection fires", () => {
+  it("fires an unpinned flow's schedule into the organization its run was in", async () => {
+    const h = boot();
+    const app = h.register(appKind());
+    try {
+      // The run is in globex; the gateway that fires the beat is acme.
+      await h.runPlan(app, "digest", "globex");
+      expect(await h.stores.resourceState.get("user", "alice", "schedules/digest")).toBeDefined();
+
+      const response = await h.dispatch("reminders", "alice/digest");
+      expect(response.status).toBe(202);
+      const fired = await h.fired();
+      expect(fired?.userId).toBe("alice");
+      expect(fired?.orgId).toBe("globex");
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
+  it("does not fire a row that stores no organization", async () => {
+    const h = boot();
+    h.register(appKind());
+    try {
+      await h.plant("alice", "legacy", {});
+      const response = await h.dispatch("reminders", "alice/legacy");
+      expect(response.status).toBe(404);
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+});
+
 describe("a hired seat's dynamic schedules (BR-17)", () => {
-  it("resolves a schedule row in the seat's cell, through the seat's dispatch route", async () => {
+  it("fires a schedule the seat's own run created, from the seat's cell", async () => {
     const h = boot();
     const seat = h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
     try {
+      await h.runPlan(seat, "weekly", "acme");
       // A seat run's schedule collection lives in the seat's cell.
-      await runAction({
-        flow: seat,
-        actionName: "plan",
-        input: { key: "weekly", orgId: "acme" },
-        userId: "alice",
-        orgId: "acme",
-        stores: h.stores,
-        runtimeConfig: { modelResolver: createMockModelResolver({}) },
-      });
       expect(await h.stores.resourceState.get("user", "alice:~org:acme", "schedules/weekly")).toBeDefined();
       expect(await h.stores.resourceState.get("user", "alice", "schedules/weekly")).toBeUndefined();
 
-      // This PR routes the key only. A row the run creates is not yet
-      // resolvable: the resolver reads the content store and needs `orgId` in
-      // the state (FIX-1545). Until then, plant the resolvable content-store
-      // row in the same cell; FIX-1545 replaces this with the run's own row.
-      await h.plant("alice:~org:acme", "weekly");
       const response = await h.dispatch("acme.~alice.research", "alice/weekly");
       expect(response.status).toBe(202);
-      let fired: { userId: string; orgId?: string } | undefined;
-      for (let i = 0; i < 200 && fired === undefined; i++) {
-        fired = (await h.stores.request.list({ limit: 10 })).find((r) => r.source === "scheduled");
-        if (fired === undefined) await new Promise((resolve) => setTimeout(resolve, 5));
-      }
+      const fired = await h.fired();
       expect(fired?.userId).toBe("alice");
       expect(fired?.orgId).toBe("acme");
     } finally {
@@ -146,7 +190,7 @@ describe("a hired seat's dynamic schedules (BR-17)", () => {
     const h = boot();
     h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
     try {
-      await h.plant("alice", "legacy");
+      await h.plant("alice", "legacy", { orgId: "acme" });
       const response = await h.dispatch("acme.~alice.research", "alice/legacy");
       expect(response.status).toBe(404);
     } finally {
@@ -158,12 +202,7 @@ describe("a hired seat's dynamic schedules (BR-17)", () => {
     const h = boot();
     h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
     try {
-      await h.stores.content.set(
-        "user",
-        "alice:~org:acme",
-        "schedules/moved",
-        JSON.stringify({ orgId: "globex", cron: "0 9 * * MON", kind: "ping", enabled: true })
-      );
+      await h.plant("alice:~org:acme", "moved", { orgId: "globex" });
       const response = await h.dispatch("acme.~alice.research", "alice/moved");
       expect(response.status).toBe(404);
     } finally {
@@ -177,21 +216,9 @@ describe("a hired seat's dynamic schedules (BR-17)", () => {
     try {
       // Bob's row really exists in his own (acme, bob) cell. Addressed through
       // Alice's private seat it must answer exactly like a missing row.
-      await h.plant("bob:~org:acme", "weekly");
+      await h.plant("bob:~org:acme", "weekly", { orgId: "acme" });
       const response = await h.dispatch("acme.~alice.research", "bob/weekly");
       expect(response.status).toBe(404);
-    } finally {
-      await disposeFlowApiRouter(h.router);
-    }
-  });
-
-  it("still resolves an unpinned flow's schedule from the person's cell", async () => {
-    const h = boot();
-    h.register(appKind());
-    try {
-      await h.plant("alice", "digest");
-      const response = await h.dispatch("reminders", "alice/digest");
-      expect(response.status).toBe(202);
     } finally {
       await disposeFlowApiRouter(h.router);
     }

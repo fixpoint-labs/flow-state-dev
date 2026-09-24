@@ -204,6 +204,9 @@ is rarely the one the schedule belongs to.
 `createResourceCollectionScheduleResolver` reads it for you and refuses to go
 without it. A stored schedule with no organization makes it return `null`, so
 the dispatch 404s and the schedule stays put until an operator attributes it.
+A collection made with `defineScheduleCollection` records the organization
+for you: `schedules.create(key, { cron, kind, enabled })` stores the
+organization the creating run belongs to.
 See [Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to)
 for the attribution recipe.
 
@@ -222,8 +225,8 @@ userId? }`, absent for any other flow). Pass it to `resolveUserStorageKey` from
 resolve: async (scheduleId, ctx) => {
   const [userId, key] = scheduleId.split("/");
   const scopeId = resolveUserStorageKey(userId, { id: ctx.flowKind, isolateUserState: false, ownerPin: ctx.ownerPin });
-  const raw = await ctx.stores.content.get("user", scopeId, `schedules/${key}`);
-  // parse `raw`, map its `kind` to a block, return the config as above
+  const row = await ctx.stores.resourceState.get("user", scopeId, `schedules/${key}`);
+  // read `row?.state`, map its `kind` to a block, return the config as above
 }
 ```
 

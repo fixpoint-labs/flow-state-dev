@@ -1497,9 +1497,15 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           // Defaults declared on the schema (e.g. `.nullable().default(null)`,
           // per BP-023) fill missing fields on both the create and replace
           // branches, so callers only supply the non-nullable scaffold.
+          // `stampOrgId`: the org comes from the execution (server-derived),
+          // never the caller, and only fills an absent one (FIX-1545).
+          const seed: Partial<JsonObject> =
+            nsConfig.stampOrgId === true && initial?.orgId == null
+              ? { ...(initial ?? {}), orgId: options.orgId }
+              : (initial ?? {});
           const state = parseResourceWriteState(
             nsConfig.stateSchema,
-            initial ?? {},
+            seed,
             storageKey
           );
 
