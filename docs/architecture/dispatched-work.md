@@ -564,7 +564,14 @@ one status. Three things run the sweep that clears the third case:
    on: at `staleSweepIntervalMs <= 0` the factory returns a no-op handle and
    nothing periodic ever runs.
 3. **A client poke** — `POST .../check-interrupted`, which the DevTool calls on
-   mount and on every session-list refresh.
+   mount and on every session-list refresh. It is the only one of the three
+   scoped to a caller. Besides the path's `userId` and the caller's
+   organization (or, reached anonymously in a mixed app, the open instances;
+   see [Authentication](./authentication.md)), it admits only entries whose
+   tenant matches the request's (`tenantMatches`, the rule retry and continue
+   apply), before it reports or writes anything; a caller with no tenant header
+   sweeps only entries that have no tenant. The startup and periodic sweeps
+   pass no caller filter and cover every tenant.
 
 All three converge on the same write — re-read the record, check
 `status === "in_progress"`, write `interrupted` — so running them together is

@@ -578,6 +578,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           runtimeConfig,
+          tenantId,
           principal,
           anonymousFlowIds
         });

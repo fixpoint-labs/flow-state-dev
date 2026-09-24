@@ -207,7 +207,9 @@ const recovery = createRecoveryClient({ baseUrl: "/api" });
 // records whose heartbeat went stale as `interrupted` and returns the
 // transitioned ones. Long-running dev servers and serverless deployments
 // (which disable startup detection) call this on demand — for example, on
-// devtool mount and on session-list refresh.
+// devtool mount and on session-list refresh. Only entries in the caller's
+// tenant are swept. A call with no tenant id (the `x-tenant-id` header by
+// default) sweeps only entries that have no tenant.
 const interrupted = await recovery.checkInterrupted({ userId: "user_1" });
 
 // Re-dispatch a previously interrupted or failed request. The server creates
