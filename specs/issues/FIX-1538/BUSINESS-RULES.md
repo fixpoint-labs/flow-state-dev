@@ -27,15 +27,17 @@ column names the check in [PLAN.md](PLAN.md#checks).
 | BR-10 | Every read-side view of a seat session (state route, resource routes, debug snapshot, a sibling transport) | Resolves the same cell the run wrote. No view reads the person's cross-org cell for a seat | CI, one per view family |
 | BR-11 | An org id or a person id contains `:` or `\` | The cell key stays unambiguous. No (org, person) pair can name another pair's cell, a cross-org cell, or a flow-isolated cell | CI, collision table |
 | BR-12 | A seat calls another flow that has no pin | That flow keeps its own cell. The seat does not lend it its org | CI |
+| BR-17 | A seat's dynamic schedule fires | It resolves from the seat's cell. A schedule row found only in the person's cross-org cell does not resolve for a seat; an unpinned flow's schedules resolve as today | CI |
 
 ## Upgrading a deployment that already has seats
 
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-13 | A seat wrote shared user data before this release | After upgrade, the seat does not read it. It is still in the person's cross-org cell, untouched | CI |
-| BR-14 | The operator runs the documented step for a person whose seats ran in one org | The seat's declared keys are copied into that org's cell, versions and deletion markers kept. The originals stay | Docs procedure, walked once on SQLite |
+| BR-14 | The operator runs the documented step for a person whose seats ran in one org | Keys a seat kind declares and no other flow declares are copied into that org's cell, collection patterns expanded to their stored rows, state and content together, versions and deletion markers kept. The originals stay | Docs procedure, walked once on SQLite |
 | BR-15 | The person's seats ran in two or more orgs | The step names the person and copies nothing | Docs procedure |
-| BR-16 | A key the seat declares is also declared by an app flow | Copied, never moved. The app flow still reads its original | Docs procedure |
+| BR-16 | A key the seat declares is also declared by an app flow, or the data is the person's user-state record | Not copied: nobody recorded which flow wrote it. The seat starts with it empty, unless the operator has their own record of who wrote it | Docs procedure |
+| BR-18 | The seat's new cell already holds a row for a key the step would copy | The step stops and names the conflicting keys. Nothing is overwritten or merged | Docs procedure |
 
 ## Failure taxonomy
 

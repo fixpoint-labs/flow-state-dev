@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Feature · `engine` + docs + one goal · medium · 1 PR · epic [FIX-1528](../../epics/FIX-1528/SPEC.md) (its last child, and its proof)
+Feature · `engine` + `scheduled` + docs + one goal · medium · 1 PR · epic [FIX-1528](../../epics/FIX-1528/SPEC.md) (its last child, and its proof)
 
 ## Five people, before and after
 
@@ -11,7 +11,7 @@ Feature · `engine` + docs + one goal · medium · 1 PR · epic [FIX-1528](../..
 | **works in Acme and Globex, with a private research seat in each** | Her Globex seat reads the notes her Acme seat saved about her | Each seat sees only what was saved in its own org. Globex's starts empty |
 | **is Bob, Alice's teammate in Acme, with his own research seat** | His seat stores in his own cell. Alice's notes never reach it | Unchanged, and now proved by the same check |
 | **runs an app where a seat and the app's chat flow share what they know about a person** | The seat reads the person's app-wide data, and writes into it | The seat keeps its own per-org copy. The app's flows keep theirs. Neither sees the other |
-| **upgrades an app that already has hired seats in production** | n/a | Seats open with an empty cell until the operator runs a documented copy step. Nothing is moved or deleted without them |
+| **upgrades an app that already has hired seats in production** | n/a | Seats open with an empty cell until the operator runs a documented copy step, which copies only what provably belonged to a seat. Nothing is moved or deleted without them |
 | **reviews the epic's promise** | Each door is proved by its own issue's check. No check walks one seat through all of them, and none covers stored data | One check walks Alice's private seat through every door and both halves of the cell |
 
 A hired seat already refuses callers outside its organization and person. What it saved for a
@@ -64,9 +64,10 @@ shared user data gets an org in its key; a flow with no pin is untouched.
 1. **[D1](DECISIONS.md#d1) · A hired seat stores a person's data in one cell per (org, person),
    and reads none of the person's app-wide data.** If wrong: a seat built to read a person's
    app-wide preferences stops seeing them, until an opt-in exists.
-2. **[D2](DECISIONS.md#d2) · Existing seat data moves only by an operator step, and data two
-   orgs' seats both wrote is never copied into either.** If wrong: an upgraded seat looks like
-   it forgot what it knew about each person until someone runs the step.
+2. **[D2](DECISIONS.md#d2) · Existing seat data moves only by an operator step, and only data
+   that provably belonged to a seat: never the person's shared user state, never a resource an
+   app flow also declares, never data from two orgs.** If wrong: an upgraded seat looks like it
+   forgot what it knew about each person until the step runs, and its user state stays empty.
 
 **Open: none.** Number 1 is the one to weigh. The goal is the epic's assembled proof, decided by
 the epic ([D1](../../epics/FIX-1528/DECISIONS.md#d1)), and is not re-asked. Reasoning and what lost:

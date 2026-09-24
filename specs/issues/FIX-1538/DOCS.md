@@ -99,11 +99,14 @@ sentences about hired seats, from "A hired seat is listed only" to "listed the s
 > organization it came from. Until you copy it, each seat starts empty for each person.
 >
 > Copying is optional and offline, with writers quiesced and a backup taken, as in the procedure
-> above.
+> above. It copies only data you can show a seat wrote.
 >
-> 1. **List the keys.** For each seat kind, the user-scoped resources it declares without
->    `flowIsolation: true`, and whether its user state is isolated. A key an app flow also
->    declares is copied, never moved.
+> 1. **List the keys.** For each seat kind, the user-scoped resources and collections it declares
+>    without `flowIsolation: true`. Strike any that a flow which is not a hired seat also
+>    declares. Those, and the person's user-state record (the `users` row), are one cell your
+>    other flows wrote to as well, with no record of which flow wrote what. They are not copied,
+>    so a seat's user state starts empty. Copy one only if you have your own record of who wrote
+>    it.
 > 2. **List the people and their organizations.** Hired seat addresses start with their
 >    organization (`acme.research`, `acme.~alice.research`). Include seats you have since fired.
 >
@@ -115,22 +118,39 @@ sentences about hired seats, from "A hired seat is listed only" to "listed the s
 >
 >    On Postgres, use `string_agg(DISTINCT org_id, ',')` in place of `GROUP_CONCAT`.
 >
-> 3. **Copy, for people with one organization only.** SQLite, for Alice in Acme:
+> 3. **List the rows.** A collection is declared as a pattern such as `notes/**`, but its rows
+>    are stored under concrete keys such as `notes/a`. Read the raw rows, not the server's reads,
+>    so deletion markers and content-only rows show up. SQLite, for Alice:
+>
+>    ```sql
+>    SELECT resource_key FROM resource_state
+>    WHERE scope_type = 'user' AND scope_id = 'alice'
+>      AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%')
+>    UNION
+>    SELECT resource_key FROM resource_content
+>    WHERE scope_type = 'user' AND scope_id = 'alice'
+>      AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%');
+>    ```
+>
+> 4. **Check the destination.** Run the same query with `scope_id = 'alice:~org:acme'`. A seat
+>    that ran after the upgrade may already have written there. If any key from step 3 is there,
+>    stop for that person, write the keys down, and resolve them by hand. Do not overwrite, and do
+>    not merge.
+> 5. **Copy, for people with one organization and an empty destination.** In one transaction:
 >
 >    ```sql
 >    INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
 >    SELECT scope_type, 'alice:~org:acme', resource_key, state, version, lifecycle
 >    FROM resource_state
->    WHERE scope_type = 'user' AND scope_id = 'alice' AND resource_key IN (/* step 1 */);
+>    WHERE scope_type = 'user' AND scope_id = 'alice' AND resource_key IN (/* step 3 */);
 >    ```
 >
->    Do the same for `resource_content`, keeping the content as it is. If the seat kind does not
->    isolate user state, copy the `users` row too, with the new id in both the column and the
->    `id` inside `data`. A scope record is one blob, so it is copied whole.
-> 4. **Leave everything else.** A person with seats in two or more organizations has one mixed
+>    Do the same for `resource_content`, keeping the content as it is. State and content for one
+>    key move together, deletion markers included.
+> 6. **Leave everything else.** A person with seats in two or more organizations has one mixed
 >    copy of their seats' data. Copying it into either organization would hand that organization
 >    what the other one's seats saved, so it stays where it is, and those seats start empty. Note
->    each such person in your record of the upgrade.
+>    each such person, and each key you struck in step 1, in your record of the upgrade.
 >
 > Ids containing `:` or `\` are escaped in the new key the same way as in the other keys on this
 > page. The original rows stay; remove them only for keys no other flow declares, and only after

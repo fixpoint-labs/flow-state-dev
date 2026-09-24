@@ -38,13 +38,13 @@ itself saved, once the operator runs D2's step. It does not hold for app-wide da
 read. The fence makes that unavoidable, and this card is where it is signed.
 
 <a name="d2"></a>
-## D2 · Existing seat data moves only by an operator step, and data two orgs' seats both wrote is never copied into either
+## D2 · Existing seat data moves only by an operator step, and only data that provably belonged to a seat
 
 | | |
 |---|---|
 | **Instead of** | A read that falls back to the person's old cell · an automatic copy for people who used seats in one org only |
 | **Because** | A fallback is the leak itself: Alice's Globex seat would read what her Acme seat saved. Only the operator's records say which org a person's old data came from; the framework cannot tell a one-org person from a person whose other org has not signed in yet. The same call was made for per-copy data, with the same offline procedure (`apps/docs/docs/persistence/overview.md` → "Who owns a record") |
-| **Locks in** | After upgrading, each hired seat opens with an empty cell for each person until the operator runs the documented step. The old data is never moved or deleted by the framework. For a person whose seats ran in two orgs, the old data is already mixed, and the step leaves it where it is |
+| **Locks in** | After upgrading, each hired seat opens with an empty cell for each person until the operator runs the documented step. The step copies only resources a seat kind declares and no other flow in the app declares, for people whose seats ran in one org. The person's user-state record and any resource an app flow also declares are one shared blob with no record of who wrote them, so they are not copied: a seat's user state starts empty and stays empty unless the operator has their own record of who wrote it. Data from two orgs' seats stays where it is. A seat that already wrote to its new cell stops the step on those keys: nothing is overwritten or merged. The framework never moves or deletes the old data |
 
 **What would change my mind:** a deployment large enough that the operator step is impractical.
 Then a framework-shipped inventory command earns its place, still with no runtime fallback.
@@ -57,8 +57,8 @@ Then a framework-shipped inventory command earns its place, still with no runtim
 - **The key is a third, distinct shape**: three escaped parts, so it cannot collide with a
   person's cross-org key or a flow-isolated key ([PLAN → Pinned names](PLAN.md#pinned-names)).
 - **A refused run writes nothing into the cell**, not even an empty record (BR-9).
-- **The scheduled-actions resolver keeps reading the person's own cell.** It fails closed for a
-  seat and is a follow-up, not part of this fence.
+- **The dynamic-schedule resolver derives its key like every other reader.** Its dispatch route
+  hands it the seat's pin, so a seat's schedules resolve from the seat's cell (BR-17).
 - **Roster keys do not move.** The Linear implementer note assumed they would; they are org-scoped
   and untouched, so the core caller-prefix helper stays a separate cleanup.
 - **The goal is the epic's assembled proof**, one scenario through every door, with Alice signed
@@ -75,12 +75,17 @@ Then a framework-shipped inventory command earns its place, still with no runtim
 ## What the POC showed
 
 `poc/cell-sites/` counts every place a user-scoped key is built or used. Three files derive one,
-all with the flow in hand; one production reader bypasses the derivation and fails closed. The
-premise that this is a narrow change held. Its negative control failed as it should.
+all with the flow in hand; one production reader, the dynamic-schedule resolver, bypasses the
+derivation and now joins it. The premise that this is a narrow change held. Its negative control
+failed as it should.
 
 ## How it got here
 
 - **Draft** — framed as the storage half of "not portable"; the seat's pin picks an (org, person)
   cell at the one key derivation; one PR carrying the epic's assembled goal and the operator step.
+- **Review round 1** — D2's step narrowed to data that provably belonged to a seat (no user-state
+  record, no key an app flow shares), expands collection patterns, and stops on a destination a
+  seat already wrote to; the schedule resolver moved from a follow-up into the read side, because
+  review showed a seat's dynamic schedules would otherwise resolve as missing.
 
 **Open: none.**

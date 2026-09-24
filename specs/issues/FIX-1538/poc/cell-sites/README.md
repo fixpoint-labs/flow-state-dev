@@ -30,8 +30,9 @@ node specs/issues/FIX-1538/poc/cell-sites/check.mjs --plant   # negative control
 
 `--plant` adds one unclassified `content.get("user", …)` call and the check reported
 `UNCLASSIFIED … derive=0 store=1`, exit 1. **The premise held**: three deriving files, all holding
-the registered flow, and one production bypass that fails closed (it reads the person's own cell,
-which no longer holds a seat's data).
+the registered flow, and one production bypass: the dynamic-schedule resolver, which builds a bare
+user key. Left alone it would miss a seat's new schedules, so the plan routes it through the
+derivation (S3).
 
 Throwaway. Not wired into CI or any default discovery. A grep can miss a call written through an
 alias; the typed guardrail in `PLAN.md` (the pin as a required key on the isolation shape) is what
