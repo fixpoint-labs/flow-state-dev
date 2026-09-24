@@ -18,32 +18,34 @@ owns.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-3 | New messages exist and the evaluator answers **remember** | The observer runs on those same messages and memory is written as today | CI, mock evaluation model · VG2 |
-| BR-4 | The evaluator answers **skip** | The observer is not called. Nothing is written to working, episodic or semantic memory. The turn is marked read, so no later capture observes it. The clock tick runs | CI: observer call count 0 and stores unchanged. An implementation that ignores the evaluator fails here · VG2 |
+| BR-4 | The evaluator answers **skip** | The observer is not called. No entry, episode or fact is added to working, episodic or semantic memory. The turn is marked read, so no later capture observes it. The clock tick runs, and advances the turn counter and salience as it does on every capture | CI: observer call count 0 and nothing added. An implementation that ignores the evaluator fails here · VG2 |
 | BR-5 | Nothing new since the last capture | The evaluator is not called | CI, mock call count 0 |
 | BR-6 | The evaluator throws, or its model is refused at first run | That capture fails as an observer failure does today. The turn stays unread and the next capture's evaluator sees it. The observer is never called in its place | CI, a throwing mock |
 | BR-7 | The answer carries no confidence | Same outcome as the same answer with confidence. Memory reads the choice only | CI, both shapes, one outcome |
 | BR-8 | The app's evaluator declares more questions than memory's | Memory reads its own answer and ignores the rest | CI |
-| BR-9 | The app set a `source` override | The evaluator reads the `source` text, the same text the observer would | CI |
+| BR-9 | The app set a `source` override | The evaluator reads the `source` text, the same text the observer would, even when new session messages exist: `source` overrides the session, as it does for the observer today | CI |
 | BR-10 | The app's evaluator lacks memory's question | A type error where the questions are static. At run time, a missing answer fails the capture as in BR-6, with an error naming `captureQuestions` | Type test · CI |
 | BR-11 | Someone reads the trace of a skipped turn | The evaluator row shows its answer, and no observer row follows it | CI, trace assertion |
+| BR-14 | The app writes `captureEvaluator(model)` | It gets core's evaluator block asking memory's one question on that model, and it behaves exactly as the same block built by hand. Memory passes the model through untouched; core resolves it when the block runs, through the app's resolver ([D4](DECISIONS.md#d4)) | CI, identity and outcome checks |
 
 ## The fence
 
 ```mermaid
 flowchart LR
-  A["app · built evaluator block"] -->|"passed in through the option"| M["memory capture"]
+  A["app · evaluator block<br/>hand-built, or captureEvaluator(its model)"] -->|"passed in through the option"| M["memory capture"]
   J["Jev · the lab · a provider package"] -.->|"never imported"| M
   N["a model name"] -.->|"never named by memory"| M
 ```
 
 One arrow crosses: the finished block, passed in. Everything that names or reaches a model stays
-on the app's side, which is BR-12.
+on the app's side, which is BR-12. `captureEvaluator` runs on the app's side of that arrow: the
+app calls it, with a model it chose.
 
 ## What memory never does
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-12 | The package is built and published | It depends on core alone for the evaluator's types. It imports no Jev, no lab, no provider package, builds no evaluator and names no evaluation model (ER-9, ER-11) | CI, a dependency and import check |
+| BR-12 | The package is built and published | It depends on core alone for the evaluator's types. It imports no Jev, no lab, no provider package, and names, defaults or resolves no evaluation model. Capture never builds an evaluator; `captureEvaluator` builds one only from the model the app passes (ER-9, ER-11, [D4](DECISIONS.md#d4)) | CI, a dependency and import check |
 | BR-13 | Any answer, any model | Memory supplies no number the model didn't: no threshold, no default confidence (ER-3) | Code review against V5 |
 
 ## Failure taxonomy

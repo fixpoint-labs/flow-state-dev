@@ -5,7 +5,7 @@
 The owner's locks on [FIX-1553](https://linear.app/fixpoint-labs/issue/FIX-1553), the epic's
 cards ([D1–D4](../../epics/FIX-1553/DECISIONS.md)) and the Linear acceptance on FIX-1555 (sketch
 and seam, never a hard dependency, no second classifier) are decided input. The three cards are
-the calls those leave to this issue.
+the calls those leave to this issue; D4 is the owner's call from review, recorded here.
 
 ## The tree
 
@@ -19,6 +19,8 @@ flowchart TD
   D2 -.->|"rejected · epic D3"| X2b["run the observer when the evaluator fails"]
   I --> D3["D3 · read the bare answer<br/>confidence never consulted"]
   D3 -.->|"rejected · memory goes silent on popular models"| X3["fail closed on absent confidence"]
+  I --> D4["D4 · no model option on memory<br/>captureEvaluator(model) builds the block · owner"]
+  D4 -.->|"rejected · owner · memory would resolve models"| X4["an evaluatorModel option on system()"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -60,14 +62,26 @@ sense in hindsight). Then skip leaves the turn unread, as a separate answer, not
 **What would change my mind:** apps asking for "observe when unsure" on Jev. Then a floor that
 turns a low-confidence skip into remember is the addition, still never the reverse.
 
+<a name="d4"></a>
+## D4 · No `evaluatorModel` option. A `captureEvaluator(model)` helper builds the block, so the common case is one line (owner, review round 1)
+
+| | |
+|---|---|
+| **Instead of** | An `evaluatorModel` option on `system()` that builds the evaluator when set (floated by the owner in review) · or only the slot, leaving every app to write the four-line `evaluator({...})` call |
+| **Because** | A model option would make memory the place a model is chosen and checked, which [epic D3](../../epics/FIX-1553/DECISIONS.md#d3) and ER-11 keep in core: one resolver, one refusal message. The helper keeps that: it passes the app's model to core's `evaluator()` untouched and resolves nothing, and core resolves it at run time through the flow's resolver. Most apps only choose the model, so the one-liner is what the docs lead with |
+| **Locks in** | Two public exports, `captureEvaluator` and `captureQuestions`, and one slot. The slot takes any evaluator block, so an app that wants its own wording or settings still hand-builds one. ER-11's "build its own evaluator" is read as memory building one unasked; a helper the app calls with its own model is not that. If the epic owner reads it otherwise, the helper moves to the docs as a recipe, and nothing else changes |
+
+**What would change my mind:** decided by the owner; not reopened here.
+
 ## Decided, not asked
 
 - **The option is on `system()` only.** `createMemoryCapability` builds no capture.
 - **One question, published by memory.** `captureQuestions` carries its wording and two options;
-  the app builds the evaluator and picks the model ([epic D3](../../epics/FIX-1553/DECISIONS.md#d3)).
+  the app picks the model, and builds the evaluator itself or through `captureEvaluator` ([epic D3](../../epics/FIX-1553/DECISIONS.md#d3)).
   Extra questions on the app's evaluator are ignored.
 - **The option's name follows FIX-1559's slot.** `evaluator` unless that seam shipped otherwise.
-- **The evaluator reads the observer's window**, computed once, `source` override included.
+- **The evaluator reads the observer's window**, computed once, in the shipped order: the
+  `source` override, else the new session messages, else the block input.
 - **No new messages, no evaluator call.**
 - **On a skip, the clock tick, consolidation checks and hygiene run as today.**
 - **Nothing is added to the returned system.** The lab's `mem.classifier` is not carried.
@@ -79,6 +93,7 @@ turns a low-confidence skip into remember is the addition, still never the rever
 | Alternative | Why not |
 |---|---|
 | A docs recipe: the app wraps capture in its own sequencer behind an evaluator, and memory ships nothing | Needs no API, and loses: the app would own when a turn counts as read. Getting that wrong observes a turn twice or never. One place decides (tenet 5) |
+| An `evaluatorModel` option on `system()` | The owner ruled it out in review ([D4](DECISIONS.md#d4)): memory would resolve models |
 | A yes/no question read as "remember when P(true) ≥ 0.5" | Memory would pick the threshold, a number of its own. Two named options need none |
 | Storing the evaluator's answers on memories as facets | That is [FIX-1557](https://linear.app/fixpoint-labs/issue/FIX-1557)'s shape; memory can adopt it later |
 | Evaluator decisions in consolidation or prune | Bigger than a seam, and neither is a known-options question today |
@@ -89,5 +104,9 @@ turns a low-confidence skip into remember is the addition, still never the rever
 - **Draft** — framed as a gate before the observer rather than a capture rewrite; skip is final,
   errors leave the turn unread, confidence unread; one PR in `memory`, with leg (f) and a
   real-model seam goal.
+- **Review round 1** — the owner chose `captureEvaluator(model)` over an `evaluatorModel` option
+  (D4); the docs lead with it. The window order was corrected to the shipped one (`source` first).
+  The skip check now asserts nothing is added, since the clock tick changes the turn counter and
+  salience. The changeset is `patch`.
 
 **Open: none.**

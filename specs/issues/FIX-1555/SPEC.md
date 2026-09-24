@@ -31,24 +31,21 @@ path, and everything when no evaluator is passed, is today's pipeline unchanged.
 **What an app writes:**
 
 ```diff
-+ import { evaluator } from "@flow-state-dev/core";
 - import { system } from "@flow-state-dev/memory";
-+ import { system, captureQuestions } from "@flow-state-dev/memory";
-+
-+ const worthRemembering = evaluator({
-+   name: "memory-gate",
-+   model: "typesafe-ai/jev",          // or openai.evaluationModel("gpt-5.4-mini")
-+   questions: captureQuestions,       // memory's one question; the model is yours
-+ });
++ import { system, captureEvaluator } from "@flow-state-dev/memory";
 
   const mem = system({
     model: "openai/gpt-5.4-mini",
     working: true,
     episodic: true,
     semantic: true,
-+   evaluator: worthRemembering,
++   evaluator: captureEvaluator("typesafe-ai/jev"),   // or openai.evaluationModel("gpt-5.4-mini")
   });
 ```
+
+`captureEvaluator(model)` builds core's evaluator block with memory's one question and the model
+the app names ([D4](DECISIONS.md#d4)). An app that wants its own wording or settings builds the
+block itself from `captureQuestions` and passes that instead; the slot takes either.
 
 ## How a turn reaches the stores
 
@@ -63,8 +60,9 @@ flowchart LR
 ```
 
 The evaluator reads exactly the messages the observer would, so the two never disagree about
-which turn they judged. Memory builds no evaluator and names no model. It takes the block the
-app built.
+which turn they judged. Capture never builds an evaluator and memory never names or resolves a
+model: it takes the block the app built, or the one `captureEvaluator` built from the model the
+app passed. Core resolves that model when the block runs.
 
 ## What stays as it is
 
@@ -87,6 +85,9 @@ app built.
    skip loses that turn's facts for good.
 3. **[D3](DECISIONS.md#d3) · Memory reads the bare answer and never consults confidence.** If
    wrong: on a model that reports confidence, a hesitant skip still drops the turn.
+
+Already decided by you in review, not asked again: **[D4](DECISIONS.md#d4) · no `evaluatorModel`
+option; a `captureEvaluator(model)` helper makes the common case one line.**
 
 **Open: none.** Number 2 is the one to weigh: it is where a bad evaluator costs an app data. The
 reasoning and what lost are in [DECISIONS.md](DECISIONS.md); the cases in
