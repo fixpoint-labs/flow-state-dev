@@ -76,7 +76,38 @@ function kindWith(resources: DeclaredResources) {
   });
 }
 
+/**
+ * The slice of the engine's `DebugResourceEntry` this reads. Local because the
+ * engine does not export that type through any path this package depends on.
+ */
 type SnapshotEntry = { primaryName: string; aliases: string[]; writable?: boolean };
+
+const SETTLE_POLLS = 200;
+
+/**
+ * Wait for the seat's run to finish, and throw unless it `completed`. A run
+ * still in flight, or one that ended any other way (`failed`, `aborted`, …),
+ * has not proved the seat was served, so the snapshot read must not go ahead
+ * on it.
+ */
+async function completed(
+  stores: ReturnType<typeof createInMemoryStores>,
+  requestId: string,
+): Promise<void> {
+  let record = await stores.request.get(requestId);
+  for (let i = 1; i < SETTLE_POLLS && (record === undefined || record.status === "in_progress"); i += 1) {
+    await new Promise((r) => setTimeout(r, 10));
+    record = await stores.request.get(requestId);
+  }
+  if (record === undefined || record.status === "in_progress") {
+    throw new Error(
+      `the seat's run did not settle within ${SETTLE_POLLS} polls; last status: ${record?.status ?? "no record"}`,
+    );
+  }
+  if (record.status !== "completed") {
+    throw new Error(`the seat's run ended "${record.status}", not "completed"`);
+  }
+}
 
 /** Disk → loader → install → hire → router → one real action → the debug tree. */
 async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
@@ -104,11 +135,7 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
   );
   expect(run.status).toBe(202);
   const { request } = (await run.json()) as { request: { id: string } };
-  for (let i = 0; i < 100; i += 1) {
-    const record = await stores.request.get(request.id);
-    if (record !== undefined && record.status !== "in_progress") break;
-    await new Promise((r) => setTimeout(r, 10));
-  }
+  await completed(stores, request.id);
 
   const res = await router.GET(
     new Request(`http://localhost/api/flows/sessions/${SESSION}/debug/resources`),
