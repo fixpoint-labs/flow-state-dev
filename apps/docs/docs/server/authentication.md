@@ -145,7 +145,7 @@ defineFlow({
   kind: "billing",
   authentication: {
     resolvePrincipal: async (ctx) => {
-      // ctx.source: 'http' | 'mcp' | 'webhook' | 'scheduled' | ...
+      // ctx.source: 'http' | 'mcp' | 'webhook' | 'scheduled' | 'cli' | ...
       // ctx.request — present for HTTP-shaped transports
       // ctx.envelope — flowKind, action, sessionId, metadata, input
       // ctx.rawBody — preserved by HTTP for signature verification
@@ -337,6 +337,11 @@ export const flowstate = createFlowState({
 ```
 
 Per-flow `defineFlow({ authentication })` always wins over this fallback.
+
+`fsdev run` and `fsdev chat` ask these resolvers too, with `source: "cli"` and no `request`.
+Only those two commands produce that source. A request from any transport that claims it,
+including a custom adapter, is refused with 401 before your resolver runs, so a resolver can
+branch on it. See [Who a run is](/docs/cli/configuration#who-a-run-is).
 
 ## What a resolver protects
 

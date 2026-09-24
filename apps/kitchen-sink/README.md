@@ -110,7 +110,7 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
   -d '{"userId":"you","input":{"seatId":"support.bo","flow":"desk-clerk","settings":{"desk":"back"},"instructions":"You work the back desk."}}'
 ```
 
-Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
+Over HTTP, because the admin flow checks a token and the CLI carries none.
 
 The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
 
@@ -144,7 +144,7 @@ A hire names a kind this app already carries (`agent`, `desk-clerk` or `followup
 
 Firing releases the address, and `discover` stops listing the seat. The seat's row in the live inventory stays, because that list records what was ever registered.
 
-**From the CLI, mara can't hire.** A hired seat's address starts with its organization. In the app she runs as `kitchen-sink`, like every seat, so a hire through the app lands there. `fsdev run` doesn't use the app's resolver: it runs every seat under the framework's development organization, and that name is deliberately not a legal address, so the hire is refused and nothing is written. Ask her from the CLI anyway and she tells you the hire was refused, quoting the refusal, which names the organization:
+**From the CLI, mara hires too.** A hired seat's address starts with its organization. In the app she runs as `kitchen-sink`, like every seat, and `fsdev run` asks the app's resolver the same question, so it runs as the same `devuser` in `kitchen-sink` and the hire lands where the app's pages see it:
 
 ```bash
 pnpm fsdev run support.mara run -i '{"message":"Hire support.pat, an agent seat that takes refunds."}'
