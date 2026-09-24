@@ -151,13 +151,13 @@ stops at kind → instances and a seat's sessions are reached from the panel, wh
 level and costs the card nothing else: the depth is still derived, and it is still one component.
 
 <a name="d9"></a>
-## D9 · Kitchen-sink's host names one organization, and every caller runs under it
+## D9 · Kitchen-sink's host names one organization, the fallback for every flow without a resolver of its own
 
 | | |
 |---|---|
 | **Instead of** | **B** · leave kitchen-sink on the framework's default organization, where every hire is refused · **C** · wait for [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503), verified identity by default, which will replace this resolver anyway |
 | **Because** | A hired seat's address begins with its organization, and `seatAddress` refuses `__fsd_default_org__`: it is not a legal address segment (`packages/workforce/src/roster/rows.ts`, `validateSegment` in `packages/workforce/src/loader/segments.ts`). Kitchen-sink authenticates nobody, so every principal resolved to that default and **every hire in the stock app was refused**: FIX-1500's rail hire and FIX-1527's mara alike. B ships a reference whose headline action fails. C holds both rows on an epic still in spec review in another project |
-| **Locks in** | Kitchen-sink's host resolves every principal to **one named, non-default organization**, set by host code and never read from caller input (BP-031). **An anonymous visitor to a kitchen-sink deployment can hire and fire seats in that organization.** The mechanism is specced in the FIX-1500 and FIX-1527 amendment (branch `spec/FIX-1500-1527-amend-named-org`), not here. FIX-1503 replaces the resolver when it lands |
+| **Locks in** | Kitchen-sink's host resolves every principal of a flow without its own resolver to **one named, non-default organization**, set by host code and never read from caller input (BP-031). `workforce-admin` keeps its own credential check, and its tokens are pinned to that same organization. `weekly-digest`'s scheduled path is the one exception: it runs as `org_test`, and it never hires or reads the roster. **An anonymous visitor to a kitchen-sink deployment can hire and fire seats in that organization.** The mechanism is specced in the FIX-1500 and FIX-1527 amendment (branch `spec/FIX-1500-1527-amend-named-org`), not here. FIX-1503 replaces the resolver when it lands |
 
 Decided by the product owner on 2026-09-24, choosing A.
 

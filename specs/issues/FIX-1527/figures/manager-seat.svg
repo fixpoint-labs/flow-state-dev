@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels over kitchen-sink's agent kind. Today the kind carries the team's research capability and the desk-note block, its seats iris and otto name what they use, and no seat can hire; hiring happens only through the operator's token-guarded admin action. After, the same kind also carries seat-hire and discover. A new seat, mara, names hire and fire; iris and otto are unchanged and still cannot hire. Mara's hire writes a row to the same org roster the boot reload and the operator's fire already read, plus an inventory row discover lists. The hire passes an organization gate: under a named organization it goes through, under the development default organization every kitchen-sink seat request runs under today it is refused and nothing is written.">
+     aria-label="Two panels over kitchen-sink's agent kind. Today the kind carries the team's research capability and the desk-note block, its seats iris and otto name what they use, and no seat can hire; hiring happens only through the operator's token-guarded admin action. After, the same kind also carries seat-hire and discover. A new seat, mara, names hire and fire; iris and otto are unchanged and still cannot hire. Mara's hire writes a row to the same org roster the boot reload and the operator's fire already read, plus an inventory row discover lists. The hire passes an organization gate. Under the development default organization it is refused and nothing is written; kitchen-sink's seat requests run under it until FIX-1500's PR-B, and fsdev run always does. Under a named organization, which PR-B makes kitchen-sink's own, it goes through.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -76,8 +76,8 @@
     <line class="gate" x1="540" y1="206" x2="760" y2="206"/>
     <text class="t-gone" x="400" y="203">org gate ·</text>
     <text class="t-gone" x="400" y="216">default org refused</text>
-    <text class="t-gone" x="770" y="203">named org</text>
-    <text class="t-gone" x="770" y="216">passes</text>
+    <text class="t-gone" x="770" y="203">kitchen-sink's</text>
+    <text class="t-gone" x="770" y="216">org · passes</text>
 
     <rect class="n-old" x="388" y="232" width="260" height="58" rx="5"/>
     <text class="t-b" x="400" y="252">org roster · workforce/roster/*</text>
