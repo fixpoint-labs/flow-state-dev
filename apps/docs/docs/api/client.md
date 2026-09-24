@@ -191,7 +191,9 @@ import { createRecoveryClient } from "@flow-state-dev/client";
 const recovery = createRecoveryClient();
 
 // Sweep stale entries for one user; returns the requests this call
-// transitioned from `in_progress` to `interrupted`.
+// transitioned from `in_progress` to `interrupted`. Only entries in the
+// caller's tenant are swept. A call with no tenant header sweeps only
+// entries that have no tenant.
 await recovery.checkInterrupted({ userId: "user_1" });
 
 // Re-dispatch a previously interrupted or failed request. Returns the
