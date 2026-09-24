@@ -173,9 +173,9 @@ test("VG · open a declared seat, hire another of its kind, and open the hire wi
   await declared.getByLabel("Instructions").fill(instructions);
   await declared.getByRole("button", { name: "Hire", exact: true }).click();
 
-  // The rail and the roster are remounted, so the form is gone and the hire is listed.
-  await expect(rail(page).getByRole("form")).toHaveCount(0);
+  // The rail and the roster are remounted: the hire is listed, and the form is gone.
   await expect(page.getByTestId("roster-panel")).toContainText(seatId);
+  await expect(rail(page).getByRole("form")).toHaveCount(0);
   await row(page, "agent").click();
   await row(page, address).click();
 
