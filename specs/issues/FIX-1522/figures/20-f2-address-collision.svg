@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 316" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Probe A. On pull request 2091, alice's and bob's private hires both named research mint the same address, acme.research, because the address is org dot seatId. The second is refused: the reload says already registered, and the hire refusal names the holder's kind, which tells bob alice's private seat exists; that part was read, not run. Proposed: put the escaped user in a user-owned address, acme.tilde-alice.research and acme.tilde-bob.research, each pinned to its own org and user. Both hire and neither sees the other. The pin still comes from the row; the address only has to be unique.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .box   { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .acme  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .usr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .no    { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .warn  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .pin   { fill:var(--code); }
+    .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .gap   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .div   { stroke:var(--rule); stroke-width:1.2; }
+    .a     { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .a-x   { fill:none; stroke:var(--gone); stroke-width:1.8; }
+    .a-ok  { fill:none; stroke:var(--code); stroke-width:1.6; }
+    .a-d   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-w   { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-pin { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; font-weight:700; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/></marker>
+    <marker id="hx" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/></marker>
+    <marker id="ho" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/></marker>
+    <marker id="hd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="316"/>
+  <text class="t-lbl" x="16" y="26">PROBE A · ONE ADDRESS PER ORG AND SEAT NAME</text>
+  <text class="t-h" x="16" y="78">01b29f0d</text>
+  <rect class="usr" x="120" y="44" width="220" height="44" rx="5"/>
+  <text class="t-b" x="132" y="62">~alice/research</text>
+  <text class="t-s" x="132" y="78">alice's private hire</text>
+  <rect class="usr" x="120" y="100" width="220" height="44" rx="5"/>
+  <text class="t-b" x="132" y="118">~bob/research</text>
+  <text class="t-s" x="132" y="134">bob's private hire</text>
+  <path class="a" d="M340 66 L 440 94" marker-end="url(#h)"/>
+  <path class="a-x" d="M340 122 L 440 100" marker-end="url(#hx)"/>
+  <rect class="warn" x="444" y="74" width="170" height="44" rx="5"/>
+  <text class="t-b" x="456" y="94">acme.research</text>
+  <text class="t-s" x="456" y="110">&lt;org&gt;.&lt;seatId&gt;</text>
+  <rect class="no" x="640" y="44" width="284" height="100" rx="6"/>
+  <text class="t-x" x="652" y="66">second is refused</text>
+  <text class="t-s" x="652" y="86">reload: “already registered”</text>
+  <text class="t-s" x="652" y="104">hire: “already served by a flow</text>
+  <text class="t-s" x="652" y="118">of kind …” tells bob alice's</text>
+  <text class="t-s" x="652" y="132">private seat exists (read, not run)</text>
+  <text class="t-h" x="16" y="230">fdca49fd</text>
+  <rect class="usr" x="120" y="196" width="220" height="44" rx="5"/>
+  <text class="t-b" x="132" y="214">~alice/research</text>
+  <text class="t-s" x="132" y="230">alice's private hire</text>
+  <rect class="usr" x="120" y="252" width="220" height="44" rx="5"/>
+  <text class="t-b" x="132" y="270">~bob/research</text>
+  <text class="t-s" x="132" y="286">bob's private hire</text>
+  <path class="a-ok" d="M340 218 H 440" marker-end="url(#ho)"/>
+  <path class="a-ok" d="M340 274 H 440" marker-end="url(#ho)"/>
+  <rect class="ok" x="444" y="196" width="170" height="44" rx="5"/>
+  <text class="t-b" x="456" y="214">acme.~alice.research</text>
+  <rect class="pin" x="456" y="221" width="85.39999999999999" height="15" rx="7"/>
+  <text class="t-pin" x="461" y="232">pin acme/alice</text>
+  <rect class="ok" x="444" y="252" width="170" height="44" rx="5"/>
+  <text class="t-b" x="456" y="270">acme.~bob.research</text>
+  <rect class="pin" x="456" y="277" width="74.19999999999999" height="15" rx="7"/>
+  <text class="t-pin" x="461" y="288">pin acme/bob</text>
+  <rect class="ok" x="640" y="196" width="284" height="100" rx="6"/>
+  <text class="t-ok" x="652" y="218">both hire, neither sees the other</text>
+  <text class="t-s" x="652" y="238">user segment escaped, as in the</text>
+  <text class="t-s" x="652" y="252">owner-planes POC (A4)</text>
+  <text class="t-s" x="652" y="272">the pin still comes from the row;</text>
+  <text class="t-s" x="652" y="286">the address only has to be unique</text>
+</svg>

@@ -1,0 +1,84 @@
+<svg viewBox="0 0 940 340" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Where the checks sit, as a pipeline for one request. One: the verifier resolves the principal, user and org. Two: the route guard checks that the principal owns the session or request the URL names, by user and by org. Three: admission re-checks the session's bound user and org before the run; a mismatch is refused, after a 202 ack. Four: resources resolve to the session's own user and org cells. Underneath, four things no stage checks: that an instance belongs to the caller's org, that the catalog is scoped, that the tenant header is genuine, and that the user is a member of the org, which is left entirely to the verifier.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .miss  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .a     { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="340"/>
+
+  <text class="t-lbl" x="16" y="26">WHAT ONE REQUEST PASSES THROUGH</text>
+  <path class="a" d="M226 94 H 238 M456 94 H 468 M686 94 H 698" marker-end="url(#h)"/>
+
+  <g id="stages">
+    <rect class="gate" x="16" y="44" width="210" height="100" rx="6"/>
+    <text class="t-b" x="28" y="66">1 · verifier</text>
+    <text class="t-s" x="28" y="86">resolvePrincipal → user, org</text>
+    <text class="t-s" x="28" y="102">no org, blank org → 401</text>
+    <text class="t-s" x="28" y="118">body userId / orgId ignored</text>
+    <text class="t-s" x="28" y="134">host code, called by route-auth.ts</text>
+
+    <rect class="gate" x="242" y="44" width="214" height="100" rx="6"/>
+    <text class="t-b" x="254" y="66">2 · route guard</text>
+    <text class="t-s" x="254" y="86">principal owns the session or</text>
+    <text class="t-s" x="254" y="102">request in the URL? user + org</text>
+    <text class="t-s" x="254" y="118">no → 403 (M3, C2)</text>
+    <text class="t-s" x="254" y="134">list_flows is exempt</text>
+
+    <rect class="gate" x="472" y="44" width="214" height="100" rx="6"/>
+    <text class="t-b" x="484" y="66">3 · admission</text>
+    <text class="t-s" x="484" y="86">session's bound user + org</text>
+    <text class="t-s" x="484" y="102">match the principal?</text>
+    <text class="t-s" x="484" y="118">no → refused after 202 (M3)</text>
+    <text class="t-s" x="484" y="134">createExecutionContext.ts</text>
+
+    <rect class="gate" x="702" y="44" width="222" height="100" rx="6"/>
+    <text class="t-b" x="714" y="66">4 · resource resolution</text>
+    <text class="t-s" x="714" y="86">user cell = session's user</text>
+    <text class="t-s" x="714" y="102">org cell = session's org</text>
+    <text class="t-s" x="714" y="118">never from the request (C1)</text>
+    <text class="t-s" x="714" y="134">resources/internal.ts</text>
+  </g>
+
+  <text class="t-lbl" x="16" y="186">WHAT NO STAGE CHECKS</text>
+  <g id="missing">
+    <rect class="miss" x="16" y="198" width="210" height="76" rx="6"/>
+    <text class="t-b" x="28" y="220">instance ↔ org</text>
+    <text class="t-s" x="28" y="240">any caller may open a session</text>
+    <text class="t-s" x="28" y="256">on any instance (F2)</text>
+
+    <rect class="miss" x="242" y="198" width="214" height="76" rx="6"/>
+    <text class="t-b" x="254" y="220">the catalog</text>
+    <text class="t-s" x="254" y="240">every instance id, to everyone,</text>
+    <text class="t-s" x="254" y="256">from any org (F1, C8)</text>
+
+    <rect class="miss" x="472" y="198" width="214" height="76" rx="6"/>
+    <text class="t-b" x="484" y="220">the tenant header</text>
+    <text class="t-s" x="484" y="240">caller-set, unverified; it only</text>
+    <text class="t-s" x="484" y="256">namespaces sessions (T1)</text>
+
+    <rect class="miss" x="702" y="198" width="222" height="76" rx="6"/>
+    <text class="t-b" x="714" y="220">membership</text>
+    <text class="t-s" x="714" y="240">left wholly to the verifier;</text>
+    <text class="t-s" x="714" y="256">the framework has no list (M2)</text>
+  </g>
+
+  <text class="t-c" x="16" y="306">The data path is gated end to end: a session is only ever its owner's, and its cells are only ever its own.</text>
+  <text class="t-c" x="16" y="324">The code path is not: which instance runs, and with whose configuration, is the caller's choice.</text>
+</svg>

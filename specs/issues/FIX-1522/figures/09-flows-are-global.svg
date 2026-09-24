@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 390" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Flows are global. One registry per server process holds every registered flow instance for every org: the app flow, a singleton everyone shares, and two hired seats, acme.eng.lead with acme's instructions, tools and model, and globex.ops.pager with globex's. The flow catalog lists all of them to every caller. Mallory, verified as a globex user, opens a session on acme.eng.lead and runs it. The run takes its config from the instance, which is acme's, and its data from the session's org, which is globex. Nothing binds an instance to an org. Code and config are global, data follows the session.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .reg   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .inst  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .acme  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .usr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ses   { fill:var(--surface); stroke:var(--accent); stroke-width:1.2; }
+    .cell  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .a     { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .a-x   { fill:none; stroke:var(--gone); stroke-width:1.8; }
+    .a-ok  { fill:none; stroke:var(--code); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/></marker>
+    <marker id="hx" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/></marker>
+    <marker id="ho" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="390"/>
+
+  <g id="registry">
+    <text class="t-lbl" x="16" y="26">ONE REGISTRY PER SERVER PROCESS — NO ORG ON ANY ENTRY</text>
+    <rect class="reg" x="16" y="40" width="330" height="236" rx="6"/>
+    <rect class="inst" x="30" y="56" width="302" height="52" rx="4"/>
+    <text class="t-b" x="42" y="78">app</text><text class="t-s" x="42" y="96">singleton · one instance, every org uses it</text>
+    <rect class="acme" x="30" y="118" width="302" height="68" rx="4"/>
+    <text class="t-b" x="42" y="140">acme.eng.lead</text><text class="t-s" x="42" y="158">hired by acme · collection instance</text>
+    <text class="t-s" x="42" y="174">config: acme's instructions, tools, model</text>
+    <rect class="inst" x="30" y="196" width="302" height="68" rx="4"/>
+    <text class="t-b" x="42" y="218">globex.ops.pager</text><text class="t-s" x="42" y="236">hired by globex · collection instance</text>
+    <text class="t-s" x="42" y="252">config: globex's instructions, tools, model</text>
+  </g>
+
+  <g id="catalog">
+    <text class="t-c" x="16" y="300">GET /api/flows lists all three to every caller, from any org (F1)</text>
+  </g>
+
+  <g id="mallory">
+    <rect class="usr" x="646" y="40" width="278" height="46" rx="6"/>
+    <text class="t-b" x="660" y="60">mallory</text><text class="t-s" x="660" y="76">verified · org globex</text>
+    <path class="a" d="M720 86 V 124" marker-end="url(#h)"/>
+    <text class="t-s" x="728" y="110">opens a session on acme.eng.lead</text>
+    <rect class="ses" x="646" y="128" width="278" height="46" rx="6"/>
+    <text class="t-b" x="660" y="148">session · mallory @ globex</text><text class="t-s" x="660" y="164">on instance acme.eng.lead · F2</text>
+  </g>
+
+  <g id="config">
+    <path class="a-x" d="M642 150 C 520 150, 440 150, 336 150" marker-end="url(#hx)"/>
+    <text class="t-x" x="380" y="138">config comes from the instance</text>
+    <text class="t-s" x="380" y="170">acme's prompt, tools and model run for mallory</text>
+  </g>
+
+  <g id="data">
+    <rect class="cell" x="646" y="222" width="278" height="54" rx="6"/>
+    <text class="t-b" x="660" y="244">globex's org cell</text><text class="t-s" x="660" y="262">acme's data is not reachable · F3</text>
+    <path class="a-ok" d="M785 174 V 218" marker-end="url(#ho)"/>
+    <text class="t-s" x="793" y="202">data follows the session</text>
+  </g>
+
+  <g id="verdict">
+    <text class="t-b" x="16" y="342">Code and config are global. Data follows the session's org.</text>
+    <text class="t-s" x="16" y="362">Everyone shares one set of flows. Per-org variation is a separately registered instance, and nothing binds it to its org.</text>
+    <text class="t-s" x="16" y="378">What leaks across orgs is the instance's configuration: its prompt, its tools and whatever those tools can reach.</text>
+  </g>
+</svg>

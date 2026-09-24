@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 290" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels. Left, the key separates but the read does not: alice's single user cell holds rows under acme/ and under globex/. The boot reload reads the acme/ prefix and gets only acme's seat. The browser read route, from alice's session in globex, reads the whole cell and gets acme's seat too (C7). Right, the catalog: the process-wide flow registry holds every registered seat address from every org and plane, and GET /api/flows is auth-exempt and unfiltered, so bob and mallory from globex both see acme.~alice.research.scout (C8).">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-usr { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-row { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .n-ok  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-bad { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; }
+    .a-ok  { fill:none; stroke:var(--code); stroke-width:1.4; }
+    .a-bad { fill:none; stroke:var(--gone); stroke-width:1.6; }
+    .div   { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-p   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <defs>
+    <marker id="ho" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/></marker>
+    <marker id="hb" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="290"/>
+
+  <g id="left">
+    <text class="t-lbl" x="16" y="26">C7 · THE KEY SEPARATES, THE READ DOES NOT</text>
+    <rect class="n-usr" x="16" y="44" width="220" height="126" rx="6"/>
+    <text class="t-b" x="30" y="66">alice's user cell</text>
+    <text class="t-s" x="30" y="82">one per person, not per org</text>
+    <rect class="n-row" x="30" y="94" width="192" height="26" rx="4"/><text class="t-c" x="40" y="111">acme/research.scout</text>
+    <rect class="n-row" x="30" y="128" width="192" height="26" rx="4"/><text class="t-c" x="40" y="145">globex/…</text>
+
+    <rect class="n-ok" x="300" y="44" width="160" height="52" rx="6"/>
+    <text class="t-b" x="312" y="66">boot reload</text>
+    <text class="t-s" x="312" y="84">prefix acme/ → acme only</text>
+    <path class="a-ok" d="M296 70 H 240" marker-end="url(#ho)"/>
+
+    <rect class="n-bad" x="300" y="118" width="160" height="52" rx="6"/>
+    <text class="t-b" x="312" y="140">browser read</text>
+    <text class="t-s" x="312" y="158">from globex → whole cell</text>
+    <path class="a-bad" d="M296 144 H 240" marker-end="url(#hb)"/>
+
+    <text class="t-p" x="16" y="202">The engine has no (user × org) cell. A user plane keyed by</text>
+    <text class="t-p" x="16" y="218">org in the key stays per-org only on paths that read by prefix.</text>
+  </g>
+
+  <line class="div" x1="486" y1="20" x2="486" y2="244"/>
+
+  <g id="right">
+    <text class="t-lbl" x="506" y="26">C8 · THE CATALOG IS EVERYONE'S</text>
+    <rect class="n-box" x="506" y="44" width="220" height="126" rx="6"/>
+    <text class="t-b" x="520" y="66">flow registry</text>
+    <text class="t-s" x="520" y="82">process-wide, every org</text>
+    <text class="t-c" x="520" y="106">acme.eng.lead</text>
+    <text class="t-c" x="520" y="124">acme.~alice.research.scout</text>
+    <text class="t-c" x="520" y="142">globex.ops.pager</text>
+    <text class="t-c" x="520" y="160">…</text>
+
+    <path class="a-bad" d="M730 96 H 814" marker-end="url(#hb)"/>
+    <text class="t-s" x="734" y="86">GET /api/flows</text>
+    <rect class="n-bad" x="820" y="60" width="104" height="30" rx="4"/><text class="t-c" x="830" y="79">bob@acme</text>
+    <rect class="n-bad" x="820" y="100" width="104" height="30" rx="4"/><text class="t-c" x="830" y="119">mallory@globex</text>
+
+    <text class="t-p" x="506" y="202">The route is auth-exempt and lists every registered instance.</text>
+    <text class="t-p" x="506" y="218">A seat is a registered instance, so its address is public — for</text>
+    <text class="t-p" x="506" y="234">org seats today, and for any user plane built the same way.</text>
+  </g>
+
+  <g id="footer">
+    <text class="t-s" x="16" y="272">Both are engine surfaces, not Workforce ones. C8 is the listing half of FIX-1486; C7 needs a scope coordinate the engine does not have.</text>
+  </g>
+</svg>

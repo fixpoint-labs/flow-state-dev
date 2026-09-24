@@ -1,0 +1,134 @@
+<svg viewBox="0 0 940 566" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Scoreboard of the F2 experiments. Before on main d8d4c26, after on pull request 2091 at 01b29f0d. E1 foreign org opens or posts: 202 and runs, then 404 before the ack. E2 roster peer runs a private seat: runs, then 404. E3 wrong-org restart resumed: runs acme's prompt, then refused at admission. E4 private key versus browser read: not listed before and after; it decided option 1. E5 row naming another org: stripped and reloads, then a named reload problem. E6 pin versus address: no pin exists, then the pin decides. E7 cross-org internal dispatch: runs acme's prompt, then never runs. E8 catalog per caller: everything to all, then per pin with anonymous seeing shared only. E9 rebind after release: the old session runs the new config, then is refused. Probes on pull request 2091, first head then second: A two users' private seats with the same name share one address, the second is refused and the name leaks; B the private writer can be declared by any flow and bob reads alice's private row; C a deep pattern missing the probe key is admitted. All three closed on fdca49fd. B4, a note: with debug endpoints on, the debug listing shows alice's row to bob.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1E1C; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .box   { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; }
+    .acme  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .usr   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .no    { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .warn  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .pin   { fill:var(--code); }
+    .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .gap   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .div   { stroke:var(--rule); stroke-width:1.2; }
+    .a     { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .a-x   { fill:none; stroke:var(--gone); stroke-width:1.8; }
+    .a-ok  { fill:none; stroke:var(--code); stroke-width:1.6; }
+    .a-d   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-w   { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-pin { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; font-weight:700; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/></marker>
+    <marker id="hx" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--gone)"/></marker>
+    <marker id="ho" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--code)"/></marker>
+    <marker id="hd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-3)"/></marker>
+  </defs>
+  <rect class="bg" width="940" height="566"/>
+  <text class="t-lbl" x="16" y="26">LEG</text>
+  <text class="t-lbl" x="70" y="26">QUESTION</text>
+  <text class="t-lbl" x="340" y="26">BEFORE · MAIN d8d4c26</text>
+  <text class="t-lbl" x="640" y="26">AFTER · #2091 fdca49fd</text>
+  <text class="t-b" x="16" y="58">E1</text>
+  <text class="t-c" x="70" y="58">foreign org opens or posts</text>
+  <rect class="no" x="340" y="38" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="58">202, runs</text>
+  <rect class="ok" x="640" y="38" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="58">404 before the ack</text>
+  <text class="t-b" x="16" y="94">E2</text>
+  <text class="t-c" x="70" y="94">roster peer runs a private seat</text>
+  <rect class="no" x="340" y="74" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="94">runs</text>
+  <rect class="ok" x="640" y="74" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="94">404 before the ack</text>
+  <text class="t-b" x="16" y="130">E3</text>
+  <text class="t-c" x="70" y="130">wrong-org restart, resumed</text>
+  <rect class="no" x="340" y="110" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="130">runs acme's prompt</text>
+  <rect class="ok" x="640" y="110" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="130">refused at admission</text>
+  <text class="t-b" x="16" y="166">E4</text>
+  <text class="t-c" x="70" y="166">private key vs browser read</text>
+  <rect class="warn" x="340" y="146" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="166">not listed (decides)</text>
+  <rect class="ok" x="640" y="146" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="166">not listed</text>
+  <text class="t-b" x="16" y="202">E5</text>
+  <text class="t-c" x="70" y="202">row names another org</text>
+  <rect class="no" x="340" y="182" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="202">stripped, reloads</text>
+  <rect class="ok" x="640" y="182" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="202">named reload problem</text>
+  <text class="t-b" x="16" y="238">E6</text>
+  <text class="t-c" x="70" y="238">pin vs address</text>
+  <rect class="warn" x="340" y="218" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="238">no pin exists</text>
+  <rect class="ok" x="640" y="218" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="238">pin decides</text>
+  <text class="t-b" x="16" y="274">E7</text>
+  <text class="t-c" x="70" y="274">cross-org internal dispatch</text>
+  <rect class="no" x="340" y="254" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="274">runs acme's prompt</text>
+  <rect class="ok" x="640" y="254" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="274">never runs</text>
+  <text class="t-b" x="16" y="310">E8</text>
+  <text class="t-c" x="70" y="310">catalog per caller</text>
+  <rect class="no" x="340" y="290" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="310">everything, to all</text>
+  <rect class="ok" x="640" y="290" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="310">per pin; anon = shared</text>
+  <text class="t-b" x="16" y="346">E9</text>
+  <text class="t-c" x="70" y="346">rebind after release</text>
+  <rect class="no" x="340" y="326" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="346">old session runs new</text>
+  <rect class="ok" x="640" y="326" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="346">old session refused</text>
+  <text class="t-lbl" x="16" y="380">PROBES · OUTSIDE THE PLAN'S PATHS</text>
+  <text class="t-lbl" x="340" y="380">#2091 01b29f0d</text>
+  <text class="t-lbl" x="640" y="380">#2091 fdca49fd</text>
+  <text class="t-b" x="16" y="410">A</text>
+  <text class="t-c" x="70" y="410">two users' private seats, same name</text>
+  <rect class="no" x="340" y="390" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="410">one address; second refused</text>
+  <rect class="ok" x="640" y="390" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="410">acme.~alice / acme.~bob, both run</text>
+  <text class="t-b" x="16" y="446">B</text>
+  <text class="t-c" x="70" y="446">private writer declared by any flow</text>
+  <rect class="no" x="340" y="426" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="446">bob reads ALICE-PRIVATE</text>
+  <rect class="ok" x="640" y="426" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="446">branded; each run sees own rows</text>
+  <text class="t-b" x="16" y="482">C</text>
+  <text class="t-c" x="70" y="482">deep pattern missing the probe key</text>
+  <rect class="no" x="340" y="462" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="482">admitted: …/[owner]/notes</text>
+  <rect class="ok" x="640" y="462" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="482">refused by structural guard</text>
+  <text class="t-b" x="16" y="518">B4</text>
+  <text class="t-c" x="70" y="518">debug listing, debug endpoints on</text>
+  <rect class="box" x="340" y="498" width="280" height="30" rx="4"/>
+  <text class="t-c" x="352" y="518">(not probed)</text>
+  <rect class="warn" x="640" y="498" width="284" height="30" rx="4"/>
+  <text class="t-c" x="652" y="518">bob sees alice's row: keep debug off</text>
+  <text class="t-c" x="16" y="550">Every plan leg flips, and A, B and C closed on the second head. B4 is a debug-mode note, not an F2 path.</text>
+</svg>
