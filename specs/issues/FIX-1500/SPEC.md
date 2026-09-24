@@ -118,10 +118,10 @@ with the options object mara's tools use too:
    who can open a deployed kitchen-sink has been hiring and firing seats in an organization every
    visitor shares.
 
-**Open: [H1](DECISIONS.md#h1) · on a deployment that already has data, carry earlier
-conversations into the new organization, or leave them behind?** Channels work again either way
-(V19). This question is only about history. The recommendation is to leave it behind: unread,
-not deleted, so a migration can still come later. Cost of being wrong: low.
+**[H1](DECISIONS.md#h1) · A deployment that already has data is wiped, not upgraded.** Decided by
+the product owner, 2026-09-24, in review of PR-B. A boot over a store written before PR-B
+refuses to start and says to delete the store. Nothing is carried over. Cost of being wrong:
+low, and only for the team's own persistent deployments.
 2. **[D1](DECISIONS.md#d1) · The rail's hire door is an action on the flow the rail's own session
    already runs on, not the operator's credentialed flow reached from a browser.** Approved. If
    wrong: anybody who can open a kitchen-sink deployment can hire a seat into its one
@@ -134,14 +134,14 @@ not deleted, so a migration can still come later. Cost of being wrong: low.
 **What this amendment asks.** Approve the record of D6 by merging it. It also records the
 engineering calls that follow from D6: one fallback resolver for every flow without its own, the
 operator's door pinned to the same organization, a constant user ([E3](DECISIONS.md#e3)), and a
-new PR-B that carries them. Answer H1.
+new PR-B that carries them. H1 has since been answered: wipe.
 **Newly locked in:** an anonymous visitor to a kitchen-sink deployment can hire and fire seats
 in its one organization. **News a reader would not look for:** the spec used to say that an app
 authenticating nobody could hire. It could not, because the development organization is not a
 legal seat address. Every place that claim was made has been corrected
 ([EVOLUTION.md](EVOLUTION.md#amendment-named-org)). A persistent deployment written before PR-B
-fails its first boot unless PR-B handles it. PR-B's plan requires its channels to be open and
-readable afterwards (V19). A boot that merely stops failing does not pass. FIX-1475's BR-35 is still overtaken in
+is wiped: its first boot refuses to start and says so (V19,
+[EVOLUTION.md](EVOLUTION.md#amendment-wipe-store)). FIX-1475's BR-35 is still overtaken in
 code ([EVOLUTION.md](EVOLUTION.md#br35-overtaken)).
 
 The reasoning, what each rejected and what each locks in is in [DECISIONS.md](DECISIONS.md); the
