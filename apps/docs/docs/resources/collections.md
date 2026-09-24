@@ -187,7 +187,7 @@ Collection pattern "[tenant]/**" can reach the rows of owner-private collection
 
 Declaring the same owner-private collection on several flows is fine, and so is a collection in another scope, which can't reach these rows.
 
-**Limits.** The pattern must declare the named parameter exactly once and must not use `**`. An owner-private collection has no browser read: `client.state.read`, `client.content.read` and `client.content.prefetch` are each refused when it is defined, so the browser routes never return its rows. A key's first segment starting with `~` is its owner, so no segment before the owner parameter may start with `~`; segments after it may. Don't use `~` at the start of a key segment anywhere else.
+**Limits.** The pattern must declare the named parameter exactly once and must not use `**`. An owner-private collection has no browser read: `client.state.read`, `client.content.read` and `client.content.prefetch` are each refused when it is defined, so the browser routes never return its rows. A key's first segment starting with `~` is its owner, so no segment before the owner parameter may start with `~`; segments after it may. Don't use `~` at the start of a key segment anywhere else. A single resource whose `ref`, or accessor name when it has no `ref`, has such a segment is refused when its flow registers, in every app.
 
 ## Eviction
 

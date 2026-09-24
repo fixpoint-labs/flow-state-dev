@@ -10,10 +10,20 @@
  * pin Engine's contract without any package's key shape. Messages are
  * asserted whole: a wording change is a behaviour change for anyone matching
  * on it.
+ *
+ * Every registry, armed or not, refuses a single resource whose storage key
+ * has a segment beginning `~`: that segment names an owner, and a single
+ * resource's key is the same for every caller.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineCapability, defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import {
+  defineCapability,
+  defineFlow,
+  defineResource,
+  defineResourceCollection,
+  handler,
+} from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowRegistry } from "../src";
 
@@ -236,5 +246,76 @@ describe("owner-private admission · armed", () => {
     const registry = createFlowRegistry();
     registry.register(flow);
     expect(refusal(() => registry.register(overlapping("wide", "notes/**")))).toBe(overlap("notes/**"));
+  });
+});
+
+describe("owner-private admission · a single resource keyed with a segment beginning ~", () => {
+  const marked = (accessor: string, key: string): string =>
+    `Resource "${accessor}" has storage key "${key}", with a segment beginning "~". ` +
+    `That segment is reserved for the user an owner-private collection's row belongs to, ` +
+    `and a single resource's key is the same for every user.`;
+
+  const single = (scope: "org" | "user" | "session", ref?: string) =>
+    defineResource({
+      ...(ref === undefined ? {} : { ref }),
+      scope,
+      stateSchema: z.object({}).passthrough(),
+      default: {},
+    });
+
+  const SCOPES = ["org", "user", "session"] as const;
+
+  it.each(SCOPES)("refuses one at %s scope in a registry that never held an owner-private collection", (scope) => {
+    const registry = createFlowRegistry();
+    const thrown = refusal(() =>
+      registry.register(flowWith("forger", { seat: single(scope, "notes/~bob/seat") })),
+    );
+    expect(thrown).toBe(marked("seat", "notes/~bob/seat"));
+    expect(registry.list()).toEqual([]);
+  });
+
+  it.each(SCOPES)("refuses one at %s scope in an armed registry", (scope) => {
+    const registry = createFlowRegistry();
+    registry.register(flowWith("private", { notes: ownerPrivate({ scope: scope === "session" ? "org" : scope }) }));
+    const thrown = refusal(() =>
+      registry.register(flowWith("forger", { seat: single(scope, "notes/~bob/seat") })),
+    );
+    expect(thrown).toBe(marked("seat", "notes/~bob/seat"));
+    expect(registry.list().map((flow) => flow.id)).toEqual(["private"]);
+  });
+
+  it("refuses one with no ref whose accessor, and so its key, begins ~", () => {
+    const registry = createFlowRegistry();
+    expect(refusal(() => registry.register(flowWith("forger", { "~x": single("user") })))).toBe(marked("~x", "~x"));
+    expect(registry.list()).toEqual([]);
+  });
+
+  it("refuses one that reaches the flow through a block's capability", () => {
+    const forging = defineCapability({ name: "forging", resources: { seat: single("org", "notes/~bob/seat") } });
+    const block = handler({
+      name: "uses-forging",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      uses: [forging],
+      execute: () => ({ ok: true }),
+    });
+    const flow = defineFlow({ kind: "capable-forger", actions: { go: { inputSchema: z.object({}), block } } })();
+    const registry = createFlowRegistry();
+    expect(refusal(() => registry.register(flow))).toBe(marked("seat", "notes/~bob/seat"));
+  });
+
+  it("admits a key with no segment beginning ~, wherever else a ~ sits, and reads the key the runtime writes", () => {
+    const registry = createFlowRegistry();
+    registry.register(
+      flowWith("ordinary", {
+        plain: single("org", "notes/bob/seat"),
+        inner: single("user", "a~b"),
+        trailing: single("org", "notes/bob~"),
+        bare: single("session"),
+        // The accessor is not the key when a ref is set.
+        "~alias": single("org", "aliased"),
+      }),
+    );
+    expect(registry.get("ordinary")).toBeDefined();
   });
 });

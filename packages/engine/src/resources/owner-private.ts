@@ -22,9 +22,15 @@
  * pattern can reach those keys, checking the flows already held and every
  * later one, and it never disarms. A registry that never holds one refuses
  * nothing on this account.
+ *
+ * Every registry, armed or not, also refuses a single resource whose storage
+ * key has a segment beginning `~` ({@link refuseOwnerMarkedSingleResources}).
+ * A single resource's key is the same for every caller, so it can never be
+ * the owner's own, and the key fence above only guards collections.
  */
 import { ownerSegment } from "@flow-state-dev/core/types";
 import { isCollectionConfig } from "./is-collection-config";
+import { resourceStorageKeys } from "./storage-keys";
 
 /**
  * The refusal a fenced key gets on a write or a by-name `get`. It does not say
@@ -145,6 +151,32 @@ function refuseReach(entry: CollectionEntry, declarations: readonly OwnerPrivate
       `Collection pattern "${entry.pattern}" can reach the rows of owner-private collection "${declaration.pattern}". ` +
         `Only that collection reads or writes them, each for the user it belongs to.` +
         (heldBy === undefined ? "" : ` Flow "${heldBy}" declares it and is already registered.`)
+    );
+  }
+}
+
+/**
+ * Refuse a flow declaring a single resource whose storage key has a segment
+ * beginning `~`, in every registry, whether or not it holds an owner-private
+ * collection.
+ *
+ * Such a segment names the user an owner-private collection's row belongs to.
+ * A single resource's key is the same for every user, so it cannot hold one
+ * legitimately, and one that did would read and write that row for anyone.
+ * The key is the one the runtime writes ({@link resourceStorageKeys}): the
+ * `ref`, else the first accessor the definition is declared under. Throws
+ * before the caller mutates anything.
+ */
+export function refuseOwnerMarkedSingleResources(incoming: { resources?: Record<string, unknown> }): void {
+  const storageKeys = resourceStorageKeys(incoming.resources);
+  for (const [accessor, entry] of Object.entries(incoming.resources ?? {})) {
+    if (isCollectionConfig(entry)) continue;
+    const key = storageKeys[accessor] ?? accessor;
+    if (ownerSegmentOf(key) === undefined) continue;
+    throw new Error(
+      `Resource "${accessor}" has storage key "${key}", with a segment beginning "~". ` +
+        `That segment is reserved for the user an owner-private collection's row belongs to, ` +
+        `and a single resource's key is the same for every user.`
     );
   }
 }

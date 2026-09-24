@@ -39,7 +39,8 @@
  * when a flow declaring an owner-private collection is admitted, checks every
  * held flow against each declaration as it arrives, checks every later flow,
  * and never disarms. A registry that never holds one refuses nothing on that
- * account.
+ * account. Every registry, armed or not, refuses a single resource whose
+ * storage key has a segment beginning `~` (`refuseOwnerMarkedSingleResources`).
  */
 import type {
   DeclaredResourceEntry,
@@ -60,6 +61,7 @@ import {
 import { compareZodSchemas } from "./schema-compat";
 import {
   admitOwnerPrivateCollections,
+  refuseOwnerMarkedSingleResources,
   type OwnerPrivateDeclaration
 } from "../resources/owner-private";
 
@@ -71,8 +73,9 @@ export interface FlowRegistry {
    * Admit one instance. Throws {@link FlowIdentityConflictError} for a
    * duplicate id, a singleton under a custom id, or a mixed-cardinality kind,
    * {@link CrossFlowSchemaConflictError} for a schema conflict, and an `Error`
-   * when the owner-private fence refuses a collection (see the file header) —
-   * in every case before any registry state is touched.
+   * when the owner-private fence refuses a collection or a single resource
+   * keyed with a segment beginning `~` (see the file header) — in every case
+   * before any registry state is touched.
    *
    * `options.pin` is the owner pin for a hired instance. Omitted, a pin already
    * on the instance is kept; otherwise the instance is shared. A second pin
@@ -168,6 +171,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   register(input: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
     const flow = admitIdentity(input, this.flowsById);
     adoptPin(flow, options?.pin);
+    refuseOwnerMarkedSingleResources(flow);
     const ownerPrivate = admitOwnerPrivateCollections(
       flow,
       this.flowsById.values(),
