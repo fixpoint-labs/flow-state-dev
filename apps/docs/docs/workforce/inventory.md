@@ -199,7 +199,7 @@ The patterns are `inventory/seats/*`, `inventory/channels/*` and `inventory/memb
 
 **What each row carries:** the fields in [What each row holds](#what-each-row-holds), and no others.
 
-**Paging:** pass `nextCursor` back as `cursor` until it comes back empty. `limit` takes 1 to 200 and defaults to 50.
+**Paging:** pass `nextCursor` back as `cursor` until `nextCursor` is undefined. `limit` takes 1 to 200 and defaults to 50.
 
 **When the ref is wrong:** the call rejects with a `ClientHttpError` whose `status` is 404.
 
