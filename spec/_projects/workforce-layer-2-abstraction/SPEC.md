@@ -13,7 +13,7 @@ epics that establish it.
 |---|---|
 | **Winning when** | Someone stands up a working team of agents from files alone — no TypeScript to declare a channel, a resource, or a skill — and Layer 1 stays fully available to anyone who wants past the conventions |
 | **The read** | Layer 2 nouns that still require code to declare. Five at the start, and the count only moves when a convention ships with a reader and a proof |
-| **Now** | **6 epics done** · 1 in flight · 1 not started. The floor is down: W3 and W4 both wrapped on Sep 20, so **every epic here that fenced its ship work on "after W4's first cut" is released**. Plane isolation wrapped on Sep 24, 8 of 8. **W5 wrapped the same day with all three exit proofs met**, so the release evidence this outcome is read against exists: a live hired Workforce read in Devtool, a DevForce path handing back a real artifact, two seats collaborating across a channel. The kitchen-sink rebuild is the one epic still running. 164 work issues, of which **84 have no parent**: the vocabulary era this project began in, now joined by the follow-ups two wraps left behind |
+| **Now** | **7 epics done** · 0 in flight · 1 not started. Three wrapped on Sep 24: plane isolation, 8 of 8; **W5, with all three exit proofs met**, so the release evidence exists (a live hired Workforce read in Devtool, a DevForce path handing back a real artifact, two seats collaborating across a channel); and **the kitchen-sink rebuild**, 14 of 15, so the one app people copy now hires and shows seats from its own rail, and a manager seat hires and fires them. **No epic is running.** W1 is the only one not done. 173 work issues, of which **90 have no parent**: the vocabulary era this project began in, now joined by the follow-ups three wraps left behind |
 | **Kill line** | If real apps turn out to want to assemble Layer 2 themselves, this project is mis-shaped rather than unfinished: what changes is that the conventions become examples, not the remaining epic list |
 
 ![The territory](figures/territory.svg)
@@ -22,7 +22,7 @@ Above the fence is what this project owns; below it is the substrate it assemble
 own. The fence is one question — *is there exactly one of it?* — and it is the test every epic
 under this project is checked against.
 
-## The epics — derived live 2026-09-24 19:40 UTC
+## The epics — derived live 2026-09-24 23:50 UTC
 
 | Epic | What it owns | State | Issues |
 |---|---|---|---|
@@ -30,20 +30,20 @@ under this project is checked against.
 | [FIX-1359](https://linear.app/fixpoint-labs/issue/FIX-1359) · **default agent flow** | OOTB replaceable `agent` flow kind | **done** | 8/11 |
 | [FIX-1351](https://linear.app/fixpoint-labs/issue/FIX-1351) · **W3 file surface** | Channels, resources, skills + a thin pentest lab | **done** | 19/20 |
 | [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) · **W4 routing** | Work routing & package cohesion | **done** | 9/9 |
-| [FIX-1457](https://linear.app/fixpoint-labs/issue/FIX-1457) · **W5 release QA** | Three exit proofs that Layer 2 is ready to ship — Devtool reads a live hired Workforce, a DevForce Lab ships a real artifact, two seats collaborate | **done** — wrapped Sep 24 | 6/6 |
-| [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) · **kitchen-sink rebuild** | The always-on reference consumer — durable hire, channels, shipped UI | **in flight** | 7/13 |
+| [FIX-1457](https://linear.app/fixpoint-labs/issue/FIX-1457) · **W5 release QA** | Three exit proofs that Layer 2 is ready to ship — Devtool reads a live hired Workforce, a DevForce Lab ships a real artifact, two seats collaborate | **done** — wrapped Sep 24 | 7/7 |
+| [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) · **kitchen-sink rebuild** | The always-on reference consumer — durable hire, channels, shipped UI | **done** — wrapped Sep 24 | 14/15 |
 | [FIX-1528](https://linear.app/fixpoint-labs/issue/FIX-1528) · **plane isolation** | A private team stays in the org and with the person it was built for — every door into a hired seat | **done** — wrapped Sep 24 | 8/8 |
 | [FIX-1333](https://linear.app/fixpoint-labs/issue/FIX-1333) · **W1 MCP door** | Client door over intake, boards, dispatcher | *not started* — **scope disputed** | — |
 
-6 done · 1 in flight · 1 not started. Every number above is re-derived from Linear
+7 done · 0 in flight · 1 not started. Every number above is re-derived from Linear
 and the child implementation PRs each refresh; none is carried forward.
 
 **The two halves now agree on every wrapped epic but one, and that one is by sequence.** W4's
-Linear state caught up with its wrap on Sep 24 at 18:02 UTC, 9 of 9, after reading *In Review*
-since [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905) closed on Sep 20. **W5
-still reads *In Development* in Linear at this derivation**: the coordinator moves it to Done once
-this update lands. Its six children are all Done and its wrap record is below, so the row reads
-done on the wrap, not on the spec PR, which merged at direction approval.
+Linear state caught up with its wrap on Sep 24 at 18:02 UTC, and W5's at 21:05 UTC, when its
+seventh child, FIX-1564, closed. **The kitchen-sink rebuild still reads *In Development* in Linear
+at this derivation**: the coordinator moves it to Done once this update lands. Fourteen of its
+fifteen children are Done and its wrap record is below, so the row reads done on the wrap, not on
+the spec PR, which merged at direction approval.
 
 **Plane isolation wrapped on Sep 24, all eight children merged.** Linear reads *Done*. The last
 two children merged that day: FIX-1538, a hired seat's data per (org, person), with the assembled
@@ -63,28 +63,36 @@ it, kept separate on purpose: an unratified operating default, three items named
 and a door whose owning issue reads Done while the code does not carry it. A wrap that recorded
 those as answers would have manufactured four ratifications nobody gave.
 
-**W5 wrapped on Sep 24 with all three exit proofs met**, six of six children Done (FIX-1467,
-FIX-1481, FIX-1496, FIX-1497, FIX-1502, FIX-1547). **ER-DevForce** passed on
+**W5 wrapped on Sep 24 with all three exit proofs met**, seven of seven children Done (FIX-1467,
+FIX-1481, FIX-1496, FIX-1497, FIX-1502, FIX-1547, and FIX-1564, which attached late and closed at
+21:05 UTC). **ER-DevForce** passed on
 [#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051) and was re-proved by FIX-1515
 ([#2073](https://github.com/fixpoint-labs/flow-state-dev/pull/2073)). **ER-Collab** passed on
 [#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065). **ER-Devtool** is met on its
 defined terms, which are narrower than *six rows green live*: row 4 live
 ([#2066](https://github.com/fixpoint-labs/flow-state-dev/pull/2066)), row 5 live with the debug
 endpoints off (FIX-1502, [#2147](https://github.com/fixpoint-labs/flow-state-dev/pull/2147), merged
-19:00 UTC), row 6 by automated checks with its live read carried to the kitchen-sink rebuild, and
+19:00 UTC), row 6 by automated checks with its live read carried to the kitchen-sink rebuild (still unread; below), and
 rows 1–3 riding FIX-1320 in another project. No W5 PR touched `core` or `contracts`. What W5
 settled for its siblings is in [Decisions](DECISIONS.md) → *decided once*, and its follow-ups are
-in [Plan](PLAN.md) → *Follow-ups with no epic*. The retained spec is `specs/epics/FIX-1457/`.
+in [Plan](**The kitchen-sink rebuild wrapped on Sep 24, 14 of 15.** It became an epic in its own right by
+the owner's call on Sep 20: the reference consumer is the always-on Proof this project's outcome is
+read against, one app someone copies, standing up a team from files. Its spec was approved Sep 21
+([#1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978)). Durable hire (FIX-1475) came
+first; the last children merged on Sep 24: the CLI running as the app's own principal (FIX-1551,
+[#2170](https://github.com/fixpoint-labs/flow-state-dev/pull/2170)), visitors reaching seats hired
+in-app (FIX-1563, [#2169](https://github.com/fixpoint-labs/flow-state-dev/pull/2169) and
+[#2191](https://github.com/fixpoint-labs/flow-state-dev/pull/2191)), "Hire another" from the rail
+(FIX-1500 PR-D, [#2193](https://github.com/fixpoint-labs/flow-state-dev/pull/2193)), and the rail
+navigator (FIX-1561, [#2203](https://github.com/fixpoint-labs/flow-state-dev/pull/2203)). The
+hiring manager seat (FIX-1527) and the rail's org and seat path (FIX-1500) both shipped inside
+PR-7's fence rather than adding one of their own. What it settled for its siblings, five calls, is
+in [Decisions](DECISIONS.md) → *decided once*. **One child and one debt did not close.** FIX-1469,
+the deferred S7 of FIX-1467, sits in Backlog under the wrapped epic, and it now carries W5's row 6:
+no kitchen-sink seat on `main` declares a `references/` document, so Devtool's row 6 has still not
+been read live. The retained spec is `specs/epics/FIX-1455/`.
 
-**The kitchen-sink rebuild is an epic in its own right, by the owner's call on Sep 20.** FIX-1455
-was filed Sep 19 as W5's child and un-parented the next day: the reference consumer is the
-always-on Proof this project's outcome is read against — one app someone copies, standing up a
-team from files. Its spec was approved Sep 21 ([#1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978)),
-and seven of thirteen children are done, including **durable hire** (FIX-1475), the roster row plane
-isolation fenced. FIX-1527 (a manager seat that hires) and FIX-1500 (the human rail's org and seat
-path) are in development, and both are where PR-7 bites. It was the second epic released by the floor coming down
-([Decisions](DECISIONS.md) → *decided once*). **It now carries one of W5's debts**: the first real
-hire declaring a `references/` document or an `ro` grant reads Devtool's row 6 live, and FIX-1469
+ grant reads Devtool's row 6 live, and FIX-1469
 moved under it from W5 at the wrap.
 
 **W4 now reads 9 of 9.** The ratified five are done; FIX-1451 and FIX-1381 attached after the
@@ -116,10 +124,10 @@ flowchart LR
   KS -->|"the durable hire row · FIX-1475"| PI["FIX-1528 · plane isolation"]
   W2 --> W1["FIX-1333 · W1 MCP door"]
   classDef done stroke-width:2px
-  class W2,AF,W3,W4,W5,PI done
+  class W2,AF,W3,W4,W5,KS,PI done
 ```
 
-Six heavy borders and one live node, the kitchen-sink rebuild. **Plane isolation fences the hire row the kitchen-sink
+Seven heavy borders and no live node: W1 is the only epic not done. **Plane isolation fences the hire row the kitchen-sink
 rebuild made durable**: it kept FIX-1475's org-scoped roster row and added the owner pin to it,
 with no second store. FIX-1536, the reload fix under
 FIX-1455, is related there, not re-parented.

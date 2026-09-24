@@ -36,13 +36,16 @@ is a wish.
   agent owns and parked), a per-app config store beside the shipped persistence, or a seat
   assembled through `@flow-state-dev/patterns` factories rather than hired as a kind. Each is a
   second of something PD-1 says there is one of.
+- Add a **`FlowNavigator` slot** without the owner. Row actions go in `leafToolbar`, content under
+  an open leaf in `leafDetail`, and that exception was the owner's (FIX-1561 D1)
+  ([Decisions](DECISIONS.md) → *decided once*).
 - Put a concept here **because it is convenient**. PR-1 is a test, not a preference.
 
-**PR-7 was FIX-1528's ER-12, promoted at its wrap** because two live siblings are bound by it.
-The kitchen-sink rebuild is building a manager seat that hires (FIX-1527) and an org and seat path
-in its human rail (FIX-1500). W5's proofs ran Labs against a live hired Workforce until W5 wrapped
-on Sep 24, so the kitchen-sink rebuild is the live sibling it binds now. Each is where a local
-fence would be the quick fix.
+**PR-7 was FIX-1528's ER-12, promoted at its wrap** because two live siblings were bound by it.
+Both have wrapped, W5 and then the kitchen-sink rebuild. The kitchen-sink rebuild shipped a manager seat that hires (FIX-1527) and an org and seat path in
+its rail (FIX-1500) with no local fence; where it had to touch access, FIX-1563 changed only **who
+the caller is** and left reaching the seat to the pin ([Decisions](DECISIONS.md) → *decided once*).
+No epic is running now, so PR-7 binds whichever comes next.
 
 ---
 
