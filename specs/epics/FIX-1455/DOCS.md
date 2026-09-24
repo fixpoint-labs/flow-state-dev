@@ -221,6 +221,8 @@ reader will find in it, not by what it used to host.
 | `durable-hire.md`, and the durability limits it states | FIX-1475 | Its `DOCS.md` |
 | `ui.md`, the `packages/react/README.md` exports, the kitchen-sink README rewrite | FIX-1477 | Its `DOCS.md` |
 | The patterns line in the kitchen-sink README, and any `@flow-state-dev/patterns` mention the audit retires | FIX-1478 | Its PR, with its *keep because…* notes |
+| A hire-from-the-rail section in `durable-hire.md`, `SeatDetail` in `packages/react/README.md`, `createSeatHireBlocks` in `packages/workforce/README.md` | FIX-1500, linking FIX-1475's and FIX-1477's material rather than repeating it | [Its `DOCS.md`](../../issues/FIX-1500/DOCS.md) |
+| The manager seat in the kitchen-sink README | FIX-1527, beside FIX-1477's rewrite | [Its `DOCS.md`](../../issues/FIX-1527/DOCS.md) |
 
 **The navigator page's organization limit is tracked as
 [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486)** — flow and session listing carry no
