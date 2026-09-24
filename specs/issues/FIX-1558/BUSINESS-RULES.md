@@ -72,7 +72,8 @@ observably, never a sibling (BR-3 to BR-8, BR-25); the utility is separate from 
 cascade knobs on the block (ER-10, [PLAN.md → Guardrails](PLAN.md#guardrails)). The teach path is
 FIX-1556's.
 
-From the epic: **ER-4** (BR-1 to BR-8), and **leg (c)** of ER-15, which this issue proves as VG: a
-two-level cascade lands on the gated leaf with Jev, and on `ambiguous` with an adapter that
-reports no confidence. **ER-16's** sentence about `ambiguous` is in this issue's docs too
+From the epic: **ER-4** (BR-1 to BR-8), and **leg (c)** of ER-15, whose shape this issue's VG
+proves for the issue itself: a two-level cascade lands on the gated leaf with Jev, and on
+`ambiguous` with an adapter that reports no confidence. The epic's lead measure reads only
+FIX-1556's assembled goal, which runs leg (c) itself. **ER-16's** sentence about `ambiguous` is in this issue's docs too
 ([DOCS.md](DOCS.md)).

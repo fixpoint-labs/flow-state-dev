@@ -12,13 +12,13 @@ only after FIX-1558 and FIX-1559 merge (and FIX-1554 through them).
 |---|---|---|---|
 | S1 | `examples/guides/routing-with-evaluators` · package scaffold | New private workspace package, shaped like `examples/guides/research-team`: `package.json`, `fsdev.config.ts`, `tsconfig.json`, `vitest.config.ts`, README. Dependencies: published `@flow-state-dev/*` packages only | BR-8 BR-15 |
 | S2 | same · the `classify` action | One `evaluator` asking a choice, a score and a boolean about a support ticket, on `typesafe-ai/jev` | BR-10 |
-| S3 | same · the `route` and `routeWithoutConfidence` actions | One two-level `cascadingRouter` tree built by one function that takes the model. `route` passes Jev; `routeWithoutConfidence` passes an evaluation adapter that reports no confidence. Leaves are plain handlers; `ambiguous` is a review leaf ([D2](DECISIONS.md#d2)) | BR-11 BR-12 |
+| S3 | same · the `route` and `routeWithoutConfidence` actions | One two-level `utility.cascadingRouter` tree built by `triage(model)`, in FIX-1558's shape ([FIX-1558 D1](../FIX-1558/DECISIONS.md#d1)): `triage` builds each level's evaluator with that model and passes it as the level's `ask` (`{ ask, on, branches }`); the cascade itself never takes a model. The first level may reuse S2's `team` question. `route` passes Jev; `routeWithoutConfidence` passes an evaluation adapter that reports no confidence. Leaves are plain handlers; the required `ambiguous` is a review leaf ([D2](DECISIONS.md#d2)) | BR-11 BR-12 |
 | S4 | same · the activator action | A small `SKILL.md` catalog (two or three skills) and `createSkillActivator` with `evaluator: skillEvaluator(model)` for tier 3, per FIX-1559's shipped option | BR-13 |
 | S5 | same · tests | Vitest on FIX-1554's mock evaluation model: S2 to S4's behaviour, the no-evaluator activator (BR-14) with the evaluator construction and resolution boundary instrumented, and an import-boundary test (V1) | BR-8 BR-9 BR-13 BR-14 |
 | S6 | `goals/evaluator/holds-as-an-assembled-set/` | The assembled goal: `goal.md`, `run.mts`, `fixtures/`, on `goals/lib/verdict.mts`'s `runGoal`, with leg-tagged failures as in `goals/hire-plane/keeps-a-hired-seat-with-its-owner`. Legs (a) to (d) drive the example through `runFsdev`; (e) and (f) ship as placeholders, `fail('e', 'not yet wired — owned by FIX-1557')` and `fail('f', 'not yet wired — owned by FIX-1555')`, which their owners replace. Plus the `fake-confidence` control ([D3](DECISIONS.md#d3)) | BR-16 BR-19 to BR-21 |
 | S7 | `goals/lib` · paths | One repo-anchored constant for the example's directory, beside `HELLO_CHAT` | — |
 | S8 | `apps/docs/guides/routing-with-evaluators.md` + `apps/docs/sidebarsGuides.ts` | Publish the guide from [DOCS.md](DOCS.md), snippets reconciled to S2 to S4; sidebar entry before `adding-skills-to-your-app` | BR-1 to BR-7 |
-| S9 | Cross-links | The evaluator section of `fundamentals/blocks.md`, `skills/activation.md`, and the `cascadingRouter` reference page each gain one line pointing at the guide ([DOCS.md](DOCS.md)) | BR-7 |
+| S9 | Cross-links | The evaluator section of `fundamentals/blocks.md`, `skills/activation.md`, and FIX-1558's `#cascadingrouter` section on `patterns/utility-blocks/core.md` each gain one line pointing at the guide ([DOCS.md](DOCS.md)) | BR-7 |
 
 **Removed:** nothing. The kitchen-sink is not touched ([D1](DECISIONS.md#d1)).
 
@@ -86,7 +86,8 @@ stand. No changeset.
 
 ```
 the tree, built once:
-    tree(model) = cascadingRouter over "which team?"
+    triage(model) = utility.cascadingRouter; each level's `ask` is an evaluator built with model
+        root level: "which team?"
         billing, gated  → next question "how urgent?"
             urgent, gated → urgent-billing leaf
             routine, gated → billing-queue leaf
@@ -94,8 +95,8 @@ the tree, built once:
         ambiguous → review leaf
 flow actions:
     classify               → one evaluator, three questions
-    route                  → tree(Jev via gateway)
-    routeWithoutConfidence → tree(an evaluation adapter with no confidence)
+    route                  → triage(Jev via gateway)
+    routeWithoutConfidence → triage(an evaluation adapter with no confidence)
     activate               → skill activator, skillEvaluator(model) for tier 3
 the goal:
     legs = { a: classify on Jev, b: refused generate-only model, c: route + routeWithoutConfidence,

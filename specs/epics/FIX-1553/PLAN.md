@@ -22,11 +22,15 @@ order to it.
 |---|---|---|---|---|---|---|
 | **FIX-1554** evaluator kind | spec → impl PR | — | The #1903 lab · the owner locks · FIX-1560's acceptance list ([D1](DECISIONS.md#d1)) | The kind, resolver, capability refusal, answer shape (ER-3), the `ai` floor bump, the five-kinds docs (ER-8), a changeset | Every other child | Medium to large: the kind reaches core, contracts, engine, testing and the DevTool |
 | **FIX-1560** direction | none, folded | — | — | Nothing separate; its acceptance is FIX-1554's spec | — | Close as duplicate |
-| **FIX-1558** `cascadingRouter` | spec → impl PR | FIX-1554 | The block · the answer shape | The utility beside the kind, fail-closed gates (ER-4), leg (c) | FIX-1556 | Medium |
-| **FIX-1559** skill activator | spec → impl PR | FIX-1554 | The block · [D3](DECISIONS.md#d3) · [D4](DECISIONS.md#d4) | The optional evaluator slot on tier 3 (ER-5), leg (d) | FIX-1556 · the inject shape FIX-1555 copies | Small |
-| **FIX-1557** facets | spec → impl PR | FIX-1554 | The block · D3 | Classify at write, deterministic read (ER-6), leg (e) | The proof | Medium: storage shape is open for its spec |
-| **FIX-1555** memory seam | spec → impl PR | FIX-1554 | The block · FIX-1559's seam shape, preferred | The seam, proved by its own tests (ER-7); leg (f), memory with none | The proof | Small |
+| **FIX-1558** `cascadingRouter` | spec → impl PR | FIX-1554 | The block · the answer shape | The utility beside the kind, fail-closed gates (ER-4), its own goal. Leg (c) is run in FIX-1556's assembled goal | FIX-1556 | Medium |
+| **FIX-1559** skill activator | spec → impl PR | FIX-1554 | The block · [D3](DECISIONS.md#d3) · [D4](DECISIONS.md#d4) | The optional evaluator slot on tier 3 (ER-5), its own goal. Leg (d) is run in FIX-1556's assembled goal | FIX-1556 · the inject shape FIX-1555 copies | Small |
+| **FIX-1557** facets | spec → impl PR | FIX-1554 | The block · D3 | Classify at write, deterministic read (ER-6), its own goal, wired into the assembled goal as leg (e) | The proof | Medium: storage shape is open for its spec |
+| **FIX-1555** memory seam | spec → impl PR | FIX-1554 | The block · FIX-1559's seam shape, preferred | The seam, proved by its own tests (ER-7), its own goals; VG1 (memory with none) wired into the assembled goal as leg (f) | The proof | Small |
 | **FIX-1556** docs and teach | spec → impl PR | FIX-1558 · FIX-1559 | Every shipped surface above | The teaching page, one demo, the assembled goal (ER-15, ER-16) | Wrap | Medium |
+
+**Each child's goal proves its own issue. The epic's lead measure reads only FIX-1556's
+assembled goal** (ER-15): it runs legs (a) to (d) itself, and FIX-1557 and FIX-1555 wire (e) and
+(f) into it from their own goals. Both kinds of goal stay.
 
 **The hard edges to wire in Linear as blocked-by:** FIX-1558, FIX-1559, FIX-1557 and FIX-1555
 are each blocked by FIX-1554. FIX-1556 is blocked by FIX-1558 and FIX-1559 (and by FIX-1554
