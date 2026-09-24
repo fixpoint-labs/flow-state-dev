@@ -6,7 +6,7 @@ Feature · `contracts` + `core` + `engine` + `testing` + `devtool` + `fsdev` · 
 [FIX-1553](../../epics/FIX-1553/SPEC.md) · carries [FIX-1560](https://linear.app/fixpoint-labs/issue/FIX-1560)
 (folded, [epic D1](../../epics/FIX-1553/DECISIONS.md#d1))
 
-## Six people, before and after
+## Seven people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
@@ -14,6 +14,7 @@ Feature · `contracts` + `core` + `engine` + `testing` + `devtool` + `fsdev` · 
 | **has Jev on Vercel's gateway** | Hand-rolls `experimental_evaluate` in a handler that reads its own keys | Writes `model: "typesafe-ai/jev"`. The string resolves through the same keys and gateways the app's generators already use ([D1](DECISIONS.md#d1)) |
 | **holds their own Jev key** | Same hand-rolled handler | Installs Jev's library and passes `typeSafeAi.evaluationModel("jev-latest")`. FSD never installs it for them ([D2](DECISIONS.md#d2)) |
 | **uses OpenAI or Anthropic** | Same | Passes `openai.evaluationModel(...)` or the string `openai/gpt-5.4-mini`. Same block, same answers, no confidence |
+| **supplies their own model resolver** | Their resolver serves generators only | Adds the optional `resolveEvaluationModel` hook to use evaluator strings. Without it, a string is refused before any call and the error names the hook; an evaluation model instance works either way ([D4](DECISIONS.md#d4)) |
 | **passes a model that can only generate** | Would get a generate call, or a confusing provider error | Is refused before any call, with an error that says which kind of model to pass. Nothing falls back to a generate call |
 | **debugs a flow in the DevTool** | Sees a handler with an opaque output | Sees an `evaluator` node: the questions, the answers, the model that ran and its token usage |
 
@@ -99,6 +100,13 @@ FSD's answer type. Nothing downstream of the seam imports the SDK's experimental
 3. **[D2](DECISIONS.md#d2) · Direct Jev is an instance the author builds from Jev's library; the
    string `typesafe-ai/jev` always means the gateway.** If wrong: an author with only a Jev key
    writes one import where a string would do.
+
+4. **[D4](DECISIONS.md#d4) · An app with its own model resolver resolves evaluator strings only
+   by adding an optional hook; without it, those strings fail before any call, and nothing falls
+   back to FSD's default resolver.** Added by amendment 1 after Codex's review of
+   [#2190](https://github.com/fixpoint-labs/flow-state-dev/pull/2190); owner-approved in session.
+   If wrong: an app with a custom resolver has to write one method before its evaluator strings
+   work, where a fallback would have run them on credentials it never configured.
 
 **Open: none.** Number 2 is the one to weigh: it is the contract the rest of the epic reads. The
 reasoning and what lost are in [DECISIONS.md](DECISIONS.md); the cases in
