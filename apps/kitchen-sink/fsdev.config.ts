@@ -28,6 +28,8 @@ import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { setWorkforceRegistrarImpl, workforceRegistrar } from "@/lib/workforce-registrar";
 import { admitReloadedSeats } from "@/lib/roster-reload-report";
 import { adminCredentialConfigured } from "@/lib/workforce-admin-auth";
+import { KITCHEN_SINK_USER_ID, resolveKitchenSinkPrincipal } from "@/lib/kitchen-sink-principal";
+import { setAsideOtherOrgChannelSessions } from "@/lib/channel-org-upgrade";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
@@ -210,6 +212,12 @@ const flowstate = createFlowState({
   // runtime the router uses.
   worker: bullmqDispatch ? bullmq : undefined,
   adapters: [createScheduledTransportAdapter()],
+  // Who every caller is, for every flow that brings no resolver of its own:
+  // the assistant's flow, every seat, every channel. One organization and one
+  // user, both constants, read from nothing on the request
+  // (`lib/kitchen-sink-principal.ts`). `workforce-admin` and `weekly-digest`
+  // keep their own.
+  resolvePrincipal: resolveKitchenSinkPrincipal,
   onError: (error, ctx) => {
     console.error(`[flowstate] ${ctx.method} ${ctx.path}:`, error.message);
   },
@@ -342,22 +350,14 @@ export const hiredRosterReload: { seats: string[]; problems: string[]; reportErr
 // ---------------------------------------------------------------------------
 
 /**
- * Who every channel session belongs to.
+ * Who every channel session belongs to: the app's one user.
  *
- * A session belongs to one user, so a channel does too — and sessions are
- * per-user, so this value decides who can SEE the channels at all. It has to be
- * the id this app's callers use: `app/page.tsx` and `app/devtool/page.tsx` both
- * call as `devuser` (overridden per test by `?e2eUserId=`), so a channel opened
- * under any other id is one the app ships and none of its own pages can list.
- * That is a reachability rule rather than an authentication one, and it binds
- * here, where nothing is verified. An app that authenticates should open its
- * channels as an identity its callers actually resolve to.
- *
- * Deliberately a literal rather than an import from `app/`: this module is the
- * runtime assembly and the pages are its consumers, so importing upward would
- * invert the dependency. V13 of the goal check reads both and fails on drift.
+ * A session belongs to one user, so a channel does too. The session route takes
+ * its owner from the resolved principal, which is `KITCHEN_SINK_USER_ID` for
+ * every caller, so opening the channels as anyone else would make the binder
+ * refuse its own sessions on the next boot.
  */
-const CHANNEL_OWNER = "devuser";
+const CHANNEL_OWNER = KITCHEN_SINK_USER_ID;
 
 // The session client, over this app's own router rather than over the network:
 // the app is the server, so a loopback fetcher hands the request straight to
@@ -380,6 +380,22 @@ const channelSessions = createSessionClient({
     return await router[method](new Request(url, init), { params: { path } });
   },
 });
+
+// A store written before this app named its organization holds every channel
+// session in the development organization, and opening one from here is
+// refused. Move those out of the channels' ids first, with their history, so
+// the open below creates each channel in this app's organization. Earlier
+// history stays in the store, unread (`lib/channel-org-upgrade.ts`).
+for (const moved of await setAsideOtherOrgChannelSessions(
+  runtime.stores,
+  workforce.channels.map((channel) => channel.id),
+)) {
+  console.log(
+    `[workforce] channel "${moved.channelId}" belonged to organization "${moved.fromOrgId}"; ` +
+      `its earlier history was set aside as "${moved.setAsideAs}" (${moved.requests} request(s)) ` +
+      `and the channel is reopened in this app's organization`,
+  );
+}
 
 await openChannels(workforce.channels, {
   client: channelSessions,

@@ -2,10 +2,10 @@ import { test, expect, openKitchenSink, byTestId } from "./fixtures";
 
 test("mode switching: build mode round-trip works after switching", async ({
   page,
-  userId,
+  sessionId,
   consoleErrors: _consoleErrors,
 }) => {
-  await openKitchenSink(page, userId);
+  await openKitchenSink(page, sessionId);
 
   await byTestId(page, "mode-selector").click();
   await page.getByRole("menuitemradio", { name: /Build/ }).click();

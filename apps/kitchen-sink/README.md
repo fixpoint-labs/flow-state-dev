@@ -77,7 +77,11 @@ That is the one failure a declared board can produce in silence: rows filed ther
 
 Channels are opened at boot and opening is idempotent, so restarting over an unchanged tree does nothing. But re-opening is not a migration: a channel that is already open keeps the members and the charter it was opened with, and editing those files does not reach it. `boards:` is the exception — the board list is rebuilt from the files on every boot, so a board added to an open channel's file is usable after a restart.
 
-Which organization the channel sessions land in comes from the caller's verified identity, not from anything a file declares. This app opens its channels as one caller named in `fsdev.config.ts` and configures no authentication, so they land in the framework's default. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a channel runs in](../docs/docs/workforce/channels.md#which-organization-a-channel-runs-in).
+Which organization the channel sessions land in comes from the caller's verified identity, not from anything a file declares. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a channel runs in](../docs/docs/workforce/channels.md#which-organization-a-channel-runs-in).
+
+This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both are set in `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request. It applies to every flow that doesn't bring its own resolver, which means every page, seat and channel, so nobody calling the app can pick another organization. It is a stand-in for real sign-in, and it means **anyone who can open a deployed copy of this app can hire and fire its seats**. If you deploy it somewhere other people can reach, put sign-in in front of it or remove the hire paths first.
+
+A store this app wrote before it named its organization holds its channels under the framework's default organization. The first boot over it moves each of those channel sessions aside, with their history, and opens the channel again under `kitchen-sink`. The channels work, but they start empty: earlier conversations, channel posts and board rows are still in the store, and the app doesn't show them.
 
 Each seat is addressed by its own id, so a seat answers on the same route as any other flow:
 
@@ -93,12 +97,12 @@ curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
 
 Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
 
-Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization (`acme.support.ada`), and is still there after `pnpm build && pnpm start`.
+Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the operator who hired it (`kitchen-sink.~workforce-admin.support.ada`), and is still there after `pnpm build && pnpm start`.
 
 The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no working hire path. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
 
 ```bash
-export WORKFORCE_ADMIN_TOKENS="acme:dev-token"
+export WORKFORCE_ADMIN_TOKENS="kitchen-sink:dev-token"
 
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
   -H 'content-type: application/json' \
@@ -107,6 +111,8 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
 ```
 
 Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
+
+The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
 
 Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
 
@@ -129,7 +135,7 @@ A hire names a kind this app already carries (`agent`, `desk-clerk` or `followup
 
 Firing releases the address, and `discover` stops listing the seat. The seat's row in the live inventory stays, because that list records what was ever registered.
 
-**Out of the box, mara can't hire.** A hired seat's address starts with its organization, and this app authenticates nobody, so every seat request runs under the framework's development organization. That name is deliberately not a legal address, so the hire is refused and nothing is written. Ask her anyway and she tells you the hire was refused, quoting the refusal, which names the organization:
+**From the CLI, mara can't hire.** A hired seat's address starts with its organization. In the app she runs as `kitchen-sink`, like every seat, so a hire through the app lands there. `fsdev run` doesn't use the app's resolver: it runs every seat under the framework's development organization, and that name is deliberately not a legal address, so the hire is refused and nothing is written. Ask her from the CLI anyway and she tells you the hire was refused, quoting the refusal, which names the organization:
 
 ```bash
 pnpm fsdev run support.mara run -i '{"message":"Hire support.pat, an agent seat that takes refunds."}'

@@ -16,10 +16,10 @@ import { test, expect, openKitchenSink, byTestId } from "./fixtures";
 
 test("background work runs in its own session and renders outside the conversation", async ({
   page,
-  userId,
+  sessionId,
   consoleErrors: _consoleErrors,
 }) => {
-  await openKitchenSink(page, userId);
+  await openKitchenSink(page, sessionId);
 
   // Pick the style that dispatches the message instead of answering it.
   await page.getByRole("button", { name: /Default/ }).first().click();
