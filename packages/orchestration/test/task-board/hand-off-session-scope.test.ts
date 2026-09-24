@@ -13,7 +13,7 @@
  * applies to a lineage-rooted board exactly as it does to a user- or org-scoped
  * one, and nothing here claims otherwise.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
@@ -42,18 +42,6 @@ function boardFor(collection: ReturnType<typeof defineTaskCollection>) {
 }
 
 describe("FIX-1068: session-scoped hand-off boards", () => {
-  // This flow's worker is a handler, so it declares no model intents — and
-  // `createModelResolver` refuses a `FSDEV_DEFAULT_MODEL` override that can have
-  // no effect. That guard is right; it just makes the test depend on whoever's
-  // shell it runs in, so pin the variable rather than inherit it.
-  const priorDefaultModel = process.env.FSDEV_DEFAULT_MODEL;
-  beforeAll(() => {
-    delete process.env.FSDEV_DEFAULT_MODEL;
-  });
-  afterAll(() => {
-    if (priorDefaultModel !== undefined) process.env.FSDEV_DEFAULT_MODEL = priorDefaultModel;
-  });
-
   it("still refuses a session-scoped ledger that does not reach the child session", () => {
     // The loop is real for this one: the child would resolve its own empty
     // ledger and never find the row.

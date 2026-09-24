@@ -2,9 +2,8 @@
  * Served-path setup failures must settle the request.
  *
  * The HTTP 202 path awaits acceptance (`onRegistered`), not `finished`.
- * `createExecutionContext` can still throw after that write — ambient
- * `FSDEV_DEFAULT_MODEL` with no declared intents, or a session/user
- * mismatch — and `finished` is then swallowed so it is not an unhandled
+ * `createExecutionContext` can still throw after that write — a malformed
+ * ambient `FSDEV_DEFAULT_MODEL`, or a session/user mismatch — and `finished` is then swallowed so it is not an unhandled
  * rejection. If the already-written `in_progress` row is not marked
  * terminal, a client polling `GET …/requests/:id/status` hangs forever
  * (FIX-1511).
@@ -25,6 +24,9 @@ import {
 } from "../src";
 
 const DEFAULT_MODEL_ENV = "FSDEV_DEFAULT_MODEL";
+// An `intent/*` value is rejected at resolver construction — a reliable
+// setup failure that happens after the request row is written.
+const MALFORMED_DEFAULT_MODEL = "intent/chat";
 
 function pingFlow(options: { userMessage?: () => string } = {}) {
   return defineFlow({
@@ -108,8 +110,8 @@ describe("served setup failure (FIX-1511)", () => {
     else process.env[DEFAULT_MODEL_ENV] = previousDefaultModel;
   });
 
-  it("settles a request when createModelResolver throws on ambient FSDEV_DEFAULT_MODEL", async () => {
-    process.env[DEFAULT_MODEL_ENV] = "openai/gpt-5-mini";
+  it("settles a request when createModelResolver throws on a malformed ambient FSDEV_DEFAULT_MODEL", async () => {
+    process.env[DEFAULT_MODEL_ENV] = MALFORMED_DEFAULT_MODEL;
 
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
@@ -131,7 +133,7 @@ describe("served setup failure (FIX-1511)", () => {
     expect(record?.items?.some((item) =>
       item.type === "error" &&
       typeof item.message === "string" &&
-      item.message.includes("FSDEV_DEFAULT_MODEL was set, but no intents are declared")
+      item.message.includes("FSDEV_DEFAULT_MODEL must be a")
     )).toBe(true);
   });
 
@@ -188,7 +190,7 @@ describe("served setup failure (FIX-1511)", () => {
   });
 
   it("writes the failed record before publishing request.failed", async () => {
-    process.env[DEFAULT_MODEL_ENV] = "openai/gpt-5-mini";
+    process.env[DEFAULT_MODEL_ENV] = MALFORMED_DEFAULT_MODEL;
 
     const order: string[] = [];
     const stores = createInMemoryStores();
@@ -236,7 +238,7 @@ describe("served setup failure (FIX-1511)", () => {
   });
 
   it("keeps earlier items on a filesystem-backed failed record", async () => {
-    process.env[DEFAULT_MODEL_ENV] = "openai/gpt-5-mini";
+    process.env[DEFAULT_MODEL_ENV] = MALFORMED_DEFAULT_MODEL;
 
     const rootDir = await mkdtemp(path.join(tmpdir(), "fsd-setup-fail-"));
     const stores = createFilesystemStores({ rootDir, developmentOnly: true });
@@ -263,7 +265,7 @@ describe("served setup failure (FIX-1511)", () => {
     expect(record?.items?.some((item) =>
       item.type === "error" &&
       typeof item.message === "string" &&
-      item.message.includes("FSDEV_DEFAULT_MODEL was set, but no intents are declared")
+      item.message.includes("FSDEV_DEFAULT_MODEL must be a")
     )).toBe(true);
   });
 });

@@ -99,9 +99,9 @@ You can replace which model a declared intent (or `defaultModel`) resolves to pe
 **What happens if it's wrong.** Most failure modes are construction-time errors, not silent fallbacks:
 
 - malformed value for a declared intent (`intent/foo`, `preset/fast`, empty, garbage)
-- `FSDEV_DEFAULT_MODEL` set when no intents are declared (the override would have no effect)
+- malformed `FSDEV_DEFAULT_MODEL`
 
-One case is deliberately **not** fatal: an `FSDEV_INTENT_<NAME>` that names an intent the resolver doesn't declare is warned and ignored, not thrown. Env vars are ambient — a shared or CI environment may pin an intent override for some other app, and your app must not crash because of it. A typo in an intent you *do* declare still surfaces as a warning and falls back to `defaultModel`.
+Two cases are deliberately **not** fatal. An `FSDEV_INTENT_<NAME>` that names an intent the resolver doesn't declare is warned and ignored, not thrown. And `FSDEV_DEFAULT_MODEL` applies whether or not the app declares intents, so an app that never resolves a model simply never reads it. Env vars are ambient — a shared or CI environment may pin an intent override for some other app, and your app must not crash because of it. A typo in an intent you *do* declare still surfaces as a warning and falls back to `defaultModel`.
 
 **Confirming it took effect.** Each applied override emits one dev-only log at construction (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`). Example: `[flow-state-dev] Intent "chat" overridden by FSDEV_INTENT_CHAT; resolves to "openai/gpt-5.4-mini".`
 

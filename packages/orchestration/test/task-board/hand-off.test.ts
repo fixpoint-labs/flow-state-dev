@@ -89,9 +89,7 @@ describe("a handed-off seat routes to the dispatch seam, not to the worker", () 
       sessionId: "s_parent",
       stores: createInMemoryStores(),
       runtimeConfig: {
-        // This worker is a handler, not a generator — it declares no model
-        // intents, so a real model resolver has nothing to resolve and
-        // `FSDEV_DEFAULT_MODEL` in the ambient shell would otherwise throw.
+        // This worker is a handler, not a generator — it resolves no model.
         modelResolver: createMockModelResolver({}),
         requestHost: {
           dispatchOperation: async (spec) => {
