@@ -283,15 +283,23 @@ const gateRes = (over = {}) => {
  * sides, never a derived `blockedBy` — built from readable `{ id, state, blockedBy, category }`
  * fixtures. Each `blockedBy` edge lands on both ends, so the pair is consistent and the wake's
  * cross-check accepts it; a check that wants a contradiction writes the raw shape by hand.
+ *
+ * Each edge carries the far issue's state TYPE, as Linear reports it. An issue in the read gets the
+ * type its state name implies; one outside it is `unstarted`, so an external blocker stays open
+ * unless a check says otherwise by writing the edge by hand.
  */
 function rawLinear(entries) {
   const edges = entries.flatMap((e) => (e.blockedBy || []).map((b) => [b, e.id]))
+  const stateName = new Map(entries.map((e) => [e.id, e.state || '']))
+  const stateOf = (id) => ({
+    type: !stateName.has(id) ? 'unstarted' : /^done$/i.test(stateName.get(id)) ? 'completed' : /^cancell?ed$/i.test(stateName.get(id)) ? 'canceled' : 'started',
+  })
   return entries.map(({ id, state, category }) => ({
     id,
     state,
     ...(category !== undefined ? { category } : {}),
-    relations: edges.filter(([from]) => from === id).map(([, to]) => ({ type: 'blocks', relatedIssue: { identifier: to } })),
-    inverseRelations: edges.filter(([, to]) => to === id).map(([from]) => ({ type: 'blocks', issue: { identifier: from } })),
+    relations: edges.filter(([from]) => from === id).map(([, to]) => ({ type: 'blocks', relatedIssue: { identifier: to, state: stateOf(to) } })),
+    inverseRelations: edges.filter(([, to]) => to === id).map(([from]) => ({ type: 'blocks', issue: { identifier: from, state: stateOf(from) } })),
   }))
 }
 
@@ -6137,13 +6145,13 @@ check('the Linear refresh covers carried members, not just parent children', asy
 // FIX-1556 — and the wake dispatched the dependents first. So the scout returns the raw edges and the
 // script computes the direction.
 const FIX_1554_IDS = ['FIX-1554', 'FIX-1555', 'FIX-1556', 'FIX-1557', 'FIX-1558', 'FIX-1559']
-const blocks = (to) => ({ type: 'blocks', relatedIssue: { identifier: to } })
-const blockedByNode = (from) => ({ type: 'blocks', issue: { identifier: from } })
+const blocks = (to) => ({ type: 'blocks', relatedIssue: { identifier: to, state: { type: 'unstarted' } } })
+const blockedByNode = (from, stateType = 'unstarted') => ({ type: 'blocks', issue: { identifier: from, state: { type: stateType } } })
 const FIX_1554_RAW = [
   { id: 'FIX-1554', state: 'Todo', relations: ['FIX-1555', 'FIX-1557', 'FIX-1558', 'FIX-1559'].map(blocks), inverseRelations: [] },
   { id: 'FIX-1555', state: 'Todo', relations: [], inverseRelations: [blockedByNode('FIX-1554')] },
   { id: 'FIX-1556', state: 'Todo', relations: [], inverseRelations: [blockedByNode('FIX-1558'), blockedByNode('FIX-1559')] },
-  { id: 'FIX-1557', state: 'Todo', relations: [{ type: 'related', relatedIssue: { identifier: 'FIX-1556' } }], inverseRelations: [blockedByNode('FIX-1554')] },
+  { id: 'FIX-1557', state: 'Todo', relations: [{ type: 'related', relatedIssue: { identifier: 'FIX-1556', state: { type: 'unstarted' } } }], inverseRelations: [blockedByNode('FIX-1554')] },
   { id: 'FIX-1558', state: 'Todo', relations: [blocks('FIX-1556')], inverseRelations: [blockedByNode('FIX-1554')] },
   { id: 'FIX-1559', state: 'Todo', relations: [blocks('FIX-1556')], inverseRelations: [blockedByNode('FIX-1554')] },
 ]
@@ -6181,7 +6189,7 @@ check('contradictory Linear relations void the whole observation and the carried
   // so the script believes neither — the Linear read is unusable this wake, exactly as if the scout
   // had died (invariant 1), and the row keeps what it carried.
   const contradicted = FIX_1554_RAW.map((li) =>
-    li.id === 'FIX-1554' ? { ...li, inverseRelations: ['FIX-1555', 'FIX-1557', 'FIX-1558', 'FIX-1559'].map(blockedByNode) } : li,
+    li.id === 'FIX-1554' ? { ...li, inverseRelations: ['FIX-1555', 'FIX-1557', 'FIX-1558', 'FIX-1559'].map((b) => blockedByNode(b)) } : li,
   )
   const carried = {
     'FIX-1554': [],
@@ -6202,6 +6210,44 @@ check('contradictory Linear relations void the whole observation and the carried
   assert.match(logs.join('\n'), /carried blockedBy stands/)
 })
 
+// A blocker OUTSIDE the epic's read — not a child, not a carried row — has no entry of its own, so the
+// edge's state type is the only evidence of whether it landed. Ignoring it kept such a blocker open
+// forever: the dependent stayed parked long after the external prerequisite was Done.
+const externalBlockerRun = (stateType) =>
+  run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['OPS-9'] })] }),
+    respond: fix1554Responder([{ id: 'FIX-2', state: 'Todo', relations: [], inverseRelations: [blockedByNode('OPS-9', stateType)] }]),
+  })
+
+check('an external blocker that Linear reports completed releases its dependent', async () => {
+  const { result, calls } = await externalBlockerRun('completed')
+  assert.deepEqual(result.issues.find((r) => r.id === 'FIX-2').blockedBy, [], 'the completed external prerequisite no longer blocks')
+  assert.deepEqual(workerLabels(calls), ['spec:FIX-2'], 'and the dependent is dispatched')
+})
+
+check('an external blocker that is still open, or was cancelled, keeps its dependent parked', async () => {
+  // The control for the check above: only `completed` clears. A cancelled prerequisite never landed —
+  // the same rule `openBlockers` applies to blockers inside the epic — so it keeps blocking and is logged.
+  for (const stateType of ['started', 'unstarted', 'canceled']) {
+    const { result, calls, logs } = await externalBlockerRun(stateType)
+    assert.deepEqual(result.issues.find((r) => r.id === 'FIX-2').blockedBy, ['OPS-9'], `a ${stateType} external blocker still blocks`)
+    assert.deepEqual(workerLabels(calls), [], `nothing is dispatched behind a ${stateType} blocker`)
+    if (stateType === 'canceled') assert.match(logs.join('\n'), /Blocker\(s\) cancelled, not completed: OPS-9/)
+  }
+})
+
+check('an edge state never clears a CARRIED blocker whose own Linear entry is missing', async () => {
+  // A blocker the epic carries as a row clears only through its live merge. When its own entry is
+  // missing from the read (dropped, or the scout skipped it), the edge's `completed` must not stand in
+  // for that check — Linear state is a mirror a human can move while the PR is still open.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-3'] }), row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 12 })] }),
+    respond: fix1554Responder([{ id: 'FIX-2', state: 'Todo', relations: [], inverseRelations: [blockedByNode('FIX-3', 'completed')] }]),
+  })
+  assert.deepEqual(result.issues.find((r) => r.id === 'FIX-2').blockedBy, ['FIX-3'])
+  assert.ok(!workerLabels(calls).includes('spec:FIX-2'), 'the dependent is not dispatched on the edge state alone')
+})
+
 check('the Linear scout schema asks for raw relation edges, not a derived blockedBy', async () => {
   // A derived `blockedBy` put the direction in the model's hands, and it inverted it. The node keys
   // are Linear's own (`relatedIssue` on `relations`, `issue` on `inverseRelations`), so a scout that
@@ -6215,7 +6261,14 @@ check('the Linear scout schema asks for raw relation edges, not a derived blocke
   assert.ok(!('blockedBy' in item.properties), 'the scout is no longer asked to derive blockedBy')
   assert.deepEqual(item.properties.relations.items.required, ['type', 'relatedIssue'])
   assert.deepEqual(item.properties.inverseRelations.items.required, ['type', 'issue'])
-  assert.match(linear.prompt, /relations\{nodes\{type relatedIssue\{identifier\}\}\} inverseRelations\{nodes\{type issue\{identifier\}\}\}/, 'the exact fields to copy are named')
+  // The far issue's state type rides on the edge: for a blocker outside the read it is the only state there is.
+  assert.deepEqual(item.properties.inverseRelations.items.properties.issue.required, ['identifier', 'state'])
+  assert.deepEqual(item.properties.relations.items.properties.relatedIssue.required, ['identifier', 'state'])
+  assert.match(
+    linear.prompt,
+    /relations\{nodes\{type relatedIssue\{identifier state\{type\}\}\}\} inverseRelations\{nodes\{type issue\{identifier state\{type\}\}\}\}/,
+    'the exact fields to copy are named',
+  )
 })
 
 check('the repair worker bases its fix on fresh origin/main', async () => {
@@ -8873,7 +8926,7 @@ check('INVARIANT: every gating field is schema-required', async () => {
       // therefore read as "no blockers" and dispatched an issue alongside its prerequisite. The wake
       // now derives it from the raw edges, so those edges — and the node keys that carry their
       // direction — are what must be required.
-      LINEAR_SCHEMA: ['relations', 'inverseRelations', 'type', 'relatedIssue', 'issue', 'identifier'],
+      LINEAR_SCHEMA: ['relations', 'inverseRelations', 'type', 'relatedIssue', 'issue', 'identifier', 'state'],
     },
     'issue-multi-pr.js': {
       GAP_SCHEMA: ['issueFiled', 'ready'],
