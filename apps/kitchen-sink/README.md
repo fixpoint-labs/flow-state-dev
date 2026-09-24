@@ -93,7 +93,7 @@ curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
 
 Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
 
-Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization (`acme.support.ada`), and is still there after `pnpm build && pnpm start`.
+Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`acme.~workforce-admin.support.ada`), and is still there after `pnpm build && pnpm start`.
 
 The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no working hire path. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
 
@@ -107,6 +107,15 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
 ```
 
 Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
+
+The seat answers the same token that hired it. It belongs to the token's organization and to the admin user, so its address carries both. Another organization's token gets the `404` an unknown address would, and a request with no token gets `401`:
+
+```bash
+curl -X POST localhost:3000/api/flows/acme.~workforce-admin.support.bo/actions/answer \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer dev-token" \
+  -d '{"userId":"you","input":{"note":"Where is my order?"}}'
+```
 
 Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
 

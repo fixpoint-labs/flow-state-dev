@@ -20,6 +20,16 @@
 import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { registerHiredSeat } from "@flow-state-dev/workforce";
 
+import { adminPrincipalResolver, withAdminAuthentication } from "./workforce-admin-auth";
+
+/**
+ * The resolver every roster-hired seat answers with — the admin flow's own,
+ * read from the same env at the same point in the boot, so the seat resolves
+ * a caller exactly as the hire that pinned it did. `undefined` when no admin
+ * credential is configured.
+ */
+const hiredSeatResolver = adminPrincipalResolver();
+
 /**
  * **Provenance lives here, not in the installed door.** `fire` may release only
  * an address this app registered *from a roster row* (BR-28). Nothing on a
@@ -119,8 +129,12 @@ export const workforceRegistrar: WorkforceRosterRegistrar = {
     // A roster hire with no pin — neither the argument nor the pin the row
     // stamped onto the instance — refuses here, before the address is marked.
     // App and kind flows do not come through this door, so they stay shared.
+    //
+    // Every seat through here is pinned, so it resolves its callers with the
+    // admin credential: without it the seat hears every request as the
+    // default organization and its own pin refuses the operator who hired it.
     registerHiredSeat(
-      (seat, pin) => impl.register(seat, { pin }),
+      (seat, pin) => impl.register(withAdminAuthentication(seat, hiredSeatResolver), { pin }),
       flow,
       options?.pin ?? flow.ownerPin,
     );
