@@ -1,0 +1,61 @@
+<svg viewBox="0 0 940 268" role="img" aria-label="Three answer kinds side by side: choice, score and boolean. Each shows the fields the SDK returns: the chosen option and optional probabilities; the score and optional probabilities; the probability of yes, always present. Below a dividing line, a confidence row: filled only from the model's own report, otherwise absent. For boolean, the probability of yes sits above the line because it is an answer, not a certainty."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-sdk { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-opt { fill:none; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .line  { stroke:var(--ink-3); stroke-width:1; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="268"/>
+  <text class="t-lbl" x="16" y="24">WHAT THE MODEL ANSWERED · FROM THE SDK, UNCHANGED</text>
+
+  <g id="choice">
+    <rect class="n-box" x="16" y="36" width="290" height="200" rx="6"/>
+    <text class="t-b" x="32" y="58">choice</text>
+    <rect class="n-sdk" x="32" y="70" width="258" height="30" rx="4"/>
+    <text class="t-s" x="44" y="89">choice: one of your option keys</text>
+    <rect class="n-sdk" x="32" y="106" width="258" height="30" rx="4"/>
+    <text class="t-s" x="44" y="125">probabilities? · when given</text>
+    <rect class="n-opt" x="32" y="176" width="258" height="44" rx="4"/>
+    <text class="t-acc" x="44" y="195">confidence? · Jev reports it</text>
+    <text class="t-s" x="44" y="210">otherwise absent, never 0</text>
+  </g>
+
+  <g id="score">
+    <rect class="n-box" x="325" y="36" width="290" height="200" rx="6"/>
+    <text class="t-b" x="341" y="58">score</text>
+    <rect class="n-sdk" x="341" y="70" width="258" height="30" rx="4"/>
+    <text class="t-s" x="353" y="89">score: 0 … levels − 1, fractional</text>
+    <rect class="n-sdk" x="341" y="106" width="258" height="30" rx="4"/>
+    <text class="t-s" x="353" y="125">probabilities? · keyed by level index</text>
+    <rect class="n-opt" x="341" y="176" width="258" height="44" rx="4"/>
+    <text class="t-acc" x="353" y="195">confidence? · Jev reports it</text>
+    <text class="t-s" x="353" y="210">otherwise absent, never 0</text>
+  </g>
+
+  <g id="boolean">
+    <rect class="n-box" x="634" y="36" width="290" height="200" rx="6"/>
+    <text class="t-b" x="650" y="58">boolean</text>
+    <rect class="n-sdk" x="650" y="70" width="258" height="30" rx="4"/>
+    <text class="t-s" x="662" y="89">probability: P(yes), always present</text>
+    <text class="t-s" x="662" y="125">an answer, not a certainty</text>
+    <rect class="n-opt" x="650" y="176" width="258" height="44" rx="4"/>
+    <text class="t-acc" x="662" y="195">confidence? · Jev does not report it</text>
+    <text class="t-s" x="662" y="210">for booleans, so it is absent</text>
+  </g>
+
+  <line class="line" x1="16" y1="158" x2="924" y2="158"/>
+  <text class="t-lbl" x="16" y="256">DASHED: THE MODEL'S OWN CERTAINTY · PRESENT ONLY WHEN THE MODEL REPORTED IT</text>
+</svg>
