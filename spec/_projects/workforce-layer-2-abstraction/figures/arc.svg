@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 444" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: eight epic lanes against seventeen days. W2 ran Sep 8 to Sep 12 and is done. The default agent flow ran Sep 12 to Sep 16 and is done. W3 ran Sep 16 to Sep 20 and is done. W4 ran Sep 18 to Sep 20 and is done. W5 was filed on Sep 19, re-cut as release QA on Sep 20 and is in flight. The kitchen-sink rebuild became its own epic on Sep 20, had its spec approved on Sep 21 and is in flight. Plane isolation's children began shipping on Sep 22; the epic was filed, passed its gate and had its spec merged on Sep 23, and wrapped on Sep 24 with all eight children done. W1 was created Sep 8 and has not started. The now line is the end of Sep 24.">
+     aria-label="The arc: eight epic lanes against seventeen days. W2 ran Sep 8 to Sep 12 and is done. The default agent flow ran Sep 12 to Sep 16 and is done. W3 ran Sep 16 to Sep 20 and is done. W4 ran Sep 18 to Sep 20 and is done. W5 was filed on Sep 19, re-cut as release QA on Sep 20, and wrapped on Sep 24 at 19:00 UTC with all three exit proofs met and all six children done. The kitchen-sink rebuild became its own epic on Sep 20, had its spec approved on Sep 21 and is the one epic still in flight. Plane isolation's children began shipping on Sep 22; the epic was filed, passed its gate and had its spec merged on Sep 23, and wrapped on Sep 24 with all eight children done. W1 was created Sep 8 and has not started. The now line is Sep 24, 19:40 UTC.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -20,7 +20,7 @@
     .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
   </style>
 
-  <!-- 43.5px per day: x = 180 + 43.5 * (day - 8); Sep 24 00:00 = 876; now = Sep 25 00:00 = 919.5 -->
+  <!-- 43.5px per day: x = 180 + 43.5 * (day - 8); Sep 24 00:00 = 876; W5 wrap = Sep 24 19:00 = 910.4; now = Sep 24 19:40 = 911.7 -->
   <g id="axis">
     <text class="t-lbl" x="16" y="20">EPIC</text>
     <text class="t-lbl" x="180" y="20">SEP 8</text>
@@ -54,22 +54,22 @@
 
   <g id="w4">
     <text class="t-lane" x="16" y="200">W4 · routing</text>
-    <text class="t-s"    x="16" y="214">FIX-1407 · 7/9</text>
+    <text class="t-s"    x="16" y="214">FIX-1407 · 9/9</text>
     <rect class="done" x="615" y="186" width="87" height="26" rx="4"/>
     <text class="t-s" x="607" y="203" text-anchor="end">spec Sep 18 · gate Sep 19 · wrapped Sep 20</text>
   </g>
 
   <g id="w5">
     <text class="t-lane" x="16" y="248">W5 · release QA</text>
-    <text class="t-s"    x="16" y="262">FIX-1457 · 4/9</text>
-    <rect class="flight" x="658.5" y="234" width="261" height="26" rx="4"/>
-    <text class="t-s" x="650.5" y="251" text-anchor="end">filed Sep 19 · re-cut as release QA Sep 20</text>
+    <text class="t-s"    x="16" y="262">FIX-1457 · 6/6</text>
+    <rect class="done" x="658.5" y="234" width="251.9" height="26" rx="4"/>
+    <text class="t-s" x="650.5" y="251" text-anchor="end">filed Sep 19 · re-cut Sep 20 · wrapped Sep 24</text>
   </g>
 
   <g id="kitchen-sink">
     <text class="t-lane" x="16" y="296">kitchen-sink rebuild</text>
-    <text class="t-s"    x="16" y="310">FIX-1455 · 6/8</text>
-    <rect class="flight" x="702" y="282" width="217.5" height="26" rx="4"/>
+    <text class="t-s"    x="16" y="310">FIX-1455 · 7/13</text>
+    <rect class="flight" x="702" y="282" width="209.7" height="26" rx="4"/>
     <text class="t-s" x="694" y="299" text-anchor="end">own epic Sep 20 · spec approved Sep 21</text>
   </g>
 
@@ -87,7 +87,7 @@
   </g>
 
   <g id="now">
-    <path class="now" d="M919.5 30 V424"/>
-    <text class="t-now" x="913.5" y="28" text-anchor="end">NOW · SEP 24</text>
+    <path class="now" d="M911.7 30 V424"/>
+    <text class="t-now" x="905.7" y="28" text-anchor="end">NOW · SEP 24 19:40</text>
   </g>
 </svg>

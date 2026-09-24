@@ -40,8 +40,9 @@ is a wish.
 
 **PR-7 was FIX-1528's ER-12, promoted at its wrap** because two live siblings are bound by it.
 The kitchen-sink rebuild is building a manager seat that hires (FIX-1527) and an org and seat path
-in its human rail (FIX-1500). W5's proofs run Labs against a live hired Workforce. Each is where a
-local fence would be the quick fix.
+in its human rail (FIX-1500). W5's proofs ran Labs against a live hired Workforce until W5 wrapped
+on Sep 24, so the kitchen-sink rebuild is the live sibling it binds now. Each is where a local
+fence would be the quick fix.
 
 ---
 
