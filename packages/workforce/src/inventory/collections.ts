@@ -1,20 +1,21 @@
 /**
- * The live inventory's three org-scoped collections — what is actually open
- * right now, as opposed to what the tree declares.
+ * The inventory's three org-scoped collections — what was registered in this
+ * organization, as opposed to what the tree declares. A row means *was
+ * registered*, not *is open now*.
  *
  * The declared layer answers "what did somebody write down": a folder of
  * `WORKER.md` and `CHANNEL.md` files, read at boot. It cannot answer "which
  * channels is this seat in", because a block does not walk folders, and it
- * cannot answer "which of these are open", because a file has no idea. These
- * rows are that second answer. The two layers join on one thing, the record's
+ * cannot answer "which of these were registered", because a file has no idea.
+ * These rows are that second answer. The two layers join on one thing, the record's
  * `id`, and nothing else — no mapping table, no second identity.
  *
  * Three collections rather than one, because they answer three questions, and a
  * question that cannot be expressed as a key prefix ends up as a loop over
  * everything:
  *
- *   inventory/seats/<seatId>                which seats exist in this org
- *   inventory/channels/<channelId>          which channels are open, and who is in them
+ *   inventory/seats/<seatId>                which seats were registered in this org
+ *   inventory/channels/<channelId>          which channels were registered, and who was in them
  *   inventory/members/<seatId>/<channelId>  which channels one seat is in
  *
  * The third is the second one indexed the other way round. Its key shape is the
@@ -82,8 +83,8 @@ export const seatInventoryRowSchema = z.object({
 export type SeatInventoryRow = z.infer<typeof seatInventoryRowSchema>;
 
 /**
- * One open channel: its identity, the kind that minted it, who is in it, and
- * when it opened.
+ * One registered channel: its identity, the kind that minted it, who was in it
+ * when it registered, and when it first registered.
  *
  * `members` is the live set — read from the channel's own session state by the
  * channel itself, never copied from the tree. A member list taken from the
@@ -178,7 +179,7 @@ export function defineSeatInventoryCollection() {
 }
 
 /**
- * The channel inventory — one row per open channel, at `inventory/channels/*`.
+ * The channel inventory — one row per registered channel, at `inventory/channels/*`.
  *
  * Install it under any block's `resources` map. Org-scoped and option-free on
  * the same terms as {@link defineSeatInventoryCollection}.

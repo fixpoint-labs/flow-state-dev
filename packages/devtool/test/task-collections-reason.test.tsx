@@ -110,28 +110,11 @@ describe("the reason on a task row", () => {
     expect(reasonCellOf("task-b").textContent).toBe("—");
   });
 
-  it("BR-3 · leaves an earlier attempt's text on a row parked with no reason", () => {
-    // TODAY'S BEHAVIOUR, asserted deliberately. `awaitReview` writes
-    // `feedback` only when given one, so parking after a failed attempt does
-    // not clear the failure text — the row genuinely still says that. The
-    // clearing is an orchestration defect, not a view defect, and the view
-    // renders what the row carries rather than papering over it.
-    //
-    // THE DEFECT IS FIX-1505. When it lands this test goes red, and the red
-    // is the fix working, not a regression: update the expectation to the
-    // cleared value and move the assertion to orchestration, which is where
-    // the behaviour will then live. Do not re-add a view-side workaround.
-    renderBoard({
-      id: "task-c",
-      goal: "retry then park",
-      status: "parked",
-      feedback: "TypeError: cannot read property of undefined",
-    });
-
-    expect(
-      screen.getByText("TypeError: cannot read property of undefined")
-    ).toBeInTheDocument();
-  });
+  // BR-3's stale-note case (a task that failed, retried, then parked with no
+  // reason) is no longer a view concern: parking with no reason now clears the
+  // note, and that is asserted where it lives, in the orchestration
+  // collection tests ("awaitReview with no reason clears a failed attempt's
+  // note"). The view still renders the field exactly as the row carries it.
 
   it("BR-4 · shows the note on a `pending` row that failed and was retried", () => {
     // The case that forbids keying the column on `parked`. `fail` patches the
@@ -197,7 +180,7 @@ describe("the reason on a task row", () => {
   it("BR-3 · whitespace · renders a note's surrounding spaces as stored", () => {
     // BR-3: "the field is rendered as the row carries it." Trimming here
     // would be a silent rewrite of a stored value — the same smoothing BR-3
-    // forbids one case over, arriving as a display convenience.
+    // forbids, arriving as a display convenience.
     renderBoard({ ...parkedWithReason, feedback: "  see the thread  " });
 
     expect(reasonCellOf("task-a").textContent).toBe("  see the thread  ");

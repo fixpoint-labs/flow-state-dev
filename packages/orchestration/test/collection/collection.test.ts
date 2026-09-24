@@ -302,6 +302,22 @@ describe.each([
       expect(events.at(-1)?.kind).toBe("review_requested");
     });
 
+    it("awaitReview with no reason clears a failed attempt's note", async () => {
+      // A retry that parks without a reason must not leave the earlier failure
+      // text on `feedback`, where a reader (and the DevTool's Reason column)
+      // would take it for the reason the task is waiting on them.
+      await collection.addTask({ id: "t", goal: "t", maxAttempts: 2 });
+      await collection.claim("w");
+      await collection.fail("t", "TypeError: boom");
+      expect(collection.get("t")?.feedback).toBe("TypeError: boom");
+
+      await collection.claim("w");
+      await collection.awaitReview("t");
+      const t = collection.get("t")!;
+      expect(t.status).toBe("parked");
+      expect(t.feedback).toBeUndefined();
+    });
+
     it("unpark returns to pending without incrementing attempts", async () => {
       await collection.addTask({ id: "t", goal: "t" });
       await collection.claim("w");

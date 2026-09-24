@@ -29,7 +29,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { extractBearerToken, PrincipalResolutionError } from "@flow-state-dev/engine";
-import type { FlowInstance, ResolvePrincipalFn } from "@flow-state-dev/core/types";
+import type { FlowInstance, InstanceOwnerPin, ResolvePrincipalFn } from "@flow-state-dev/core/types";
 
 import { KITCHEN_SINK_ORG_ID } from "@/lib/kitchen-sink-principal";
 
@@ -176,14 +176,21 @@ export function adminPrincipalResolver(): ResolvePrincipalFn | undefined {
 }
 
 /**
- * A seat hired from a roster row, resolving its callers with the admin
- * credential that hired it.
+ * A seat the admin credential hired, resolving its callers with that
+ * credential.
  *
- * A roster hire pins the seat to the organization and user the admin
- * credential resolved, and every request to the seat is checked against that
- * pin. So the seat has to resolve its callers the same way. With no resolver
- * of its own it falls to the framework default, which names the default
- * organization, and the pin refuses even the operator who just hired it.
+ * `workforce-admin` pins its seat to the organization the credential resolved
+ * and to {@link ADMIN_USER_ID}, and every request to the seat is checked
+ * against that pin. So the seat has to resolve its callers the same way. With
+ * no resolver of its own it falls to the framework default, which names the
+ * default organization, and the pin refuses even the operator who just hired it.
+ *
+ * **Only a seat pinned to {@link ADMIN_USER_ID}.** A seat hired from inside the
+ * app, by a seat's `hire` tool, is pinned to the organization alone: any member
+ * of it may open the seat, the way they open any other. Giving that seat the
+ * admin resolver would demand the operator's token from every visitor. So the
+ * decision is read from the pin, which the hire set on the server, and never
+ * from anything on a request (BP-031).
  *
  * **On the seat instance, and nowhere wider.** A host-level resolver would put
  * every open flow in this app (`chat-agent`, the channels, the file-declared
@@ -195,15 +202,21 @@ export function adminPrincipalResolver(): ResolvePrincipalFn | undefined {
  * token. Whether that caller may reach the seat is still the pin's call, so
  * another organization's credential is refused as before.
  *
- * Returned unchanged when no credential is configured — nothing can resolve
- * the pinned organization, so the pin refuses everyone — and when the seat's
- * kind names a resolver of its own, which is that kind's decision to make.
+ * Returned unchanged when the pin names no user or another user, when no
+ * credential is configured — nothing can resolve the pinned organization, so
+ * the pin refuses everyone — and when the seat's kind names a resolver of its
+ * own, which is that kind's decision to make.
  */
 export function withAdminAuthentication(
   seat: FlowInstance,
+  pin: InstanceOwnerPin,
   resolvePrincipal: ResolvePrincipalFn | undefined
 ): FlowInstance {
-  if (resolvePrincipal === undefined || seat.authentication?.resolvePrincipal !== undefined) {
+  if (
+    pin.userId !== ADMIN_USER_ID ||
+    resolvePrincipal === undefined ||
+    seat.authentication?.resolvePrincipal !== undefined
+  ) {
     return seat;
   }
   return { ...seat, authentication: { ...seat.authentication, resolvePrincipal } };
