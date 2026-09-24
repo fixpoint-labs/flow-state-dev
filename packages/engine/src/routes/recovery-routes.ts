@@ -13,6 +13,7 @@ import { isPublicReentryAllowed } from "./public-reentry";
 import { SCHEDULED_SOURCE } from "../execution/transport-sources";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
+import { ownResolverVerdict, type InstanceCallerResolver } from "./instance-caller";
 
 type RecoveryRouteContext = {
   registry: FlowRegistry;
@@ -287,17 +288,24 @@ export async function handleContinueRequest(
 
 export async function handleListActiveRequests(
   _request: Request,
-  ctx: RecoveryRouteContext
+  ctx: RecoveryRouteContext & {
+    /**
+     * The caller as each instance's own doors resolve it. An entry owned by
+     * an instance with a resolver of its own is judged by that resolver, not
+     * by `principal` or `anonymousFlowIds` (see `instance-caller.ts`).
+     */
+    callerFor: InstanceCallerResolver;
+  }
 ): Promise<Response> {
   const all = await ctx.stores.activeRequests.listAll();
   // This listing spans every flow and user, so an authenticated caller sees
   // only their own in-flight requests — otherwise it enumerates other users'
   // request and session ids. Reached anonymously in a mixed app, it withholds
-  // the entries of any flow that authenticates instead.
+  // the entries of any instance that is not open instead.
   const callerId = ctx.principal?.userId;
   const callerOrgId = ctx.principal?.orgId;
   const allowed = ctx.anonymousFlowIds;
-  const entries = all.filter((entry) => {
+  const hostRuleAdmits = (entry: ActiveRequestEntry): boolean => {
     // Both axes, for the reason BR-8 gives on the addressed routes: one person
     // in two organizations passes the user check while looking at the other
     // organization's in-flight work. An entry with no organization at all is a
@@ -312,7 +320,19 @@ export async function handleListActiveRequests(
     // an authenticated instance must not make the latter's runs visible.
     const owner = resolveRecordOwner(ctx.registry, entry);
     return owner.ok && allowed.has(owner.flow.id);
-  });
+  };
+  // An entry owned by an instance with a resolver of its own is judged on that
+  // resolver's word instead, the one its request routes take.
+  //
+  // Both verdicts judge the caller's identity, and one identity can hold rows
+  // in several tenants, so the tenant is checked first and on its own
+  // (FIX-682). `listAll` spans every tenant; nothing upstream narrows it.
+  const entries: ActiveRequestEntry[] = [];
+  for (const entry of all) {
+    if (!tenantMatches(entry.tenantId, ctx.tenantId)) continue;
+    const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, entry);
+    if (own ?? hostRuleAdmits(entry)) entries.push(entry);
+  }
   const now = Date.now();
 
   return jsonResponse(200, {

@@ -58,10 +58,9 @@ against what the ledger holds.
 
 ## What it works around
 
-- **The intent overrides.** `FSDEV_DEFAULT_MODEL` or any `FSDEV_INTENT_*` in the environment makes
-  every request on the served path stall at `in_progress` for a flow with no model in it
-  (FIX-1511). The driver spawns the server through `goals/lib/env`'s `intentFreeEnv`; by hand,
-  unset them.
+- **The intent overrides.** The driver spawns the server through `goals/lib/env`'s
+  `intentFreeEnv`, so an ambient `FSDEV_DEFAULT_MODEL` / `FSDEV_INTENT_*` cannot swap the models
+  the lab resolves. A malformed value would fail every served request at setup.
 - **A refusal that never settles.** An action sent to a seat's session as a different user is
   admitted (`202`) and then never advances — no items, nothing logged, still `in_progress`. It
   does not land, which is all the proof asks, but it is the same silent shape as FIX-1511 with a

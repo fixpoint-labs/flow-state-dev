@@ -25,9 +25,15 @@ import {
 } from "./route-utils";
 import {
   resolveSessionStorageKey,
+  tenantMatches,
   toBareSessionId
 } from "../stores/scope-keys";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
+import {
+  flowAuthenticates,
+  ownResolverVerdict,
+  type InstanceCallerResolver
+} from "./instance-caller";
 
 type SessionRouteContext = {
   registry: FlowRegistry;
@@ -94,14 +100,51 @@ function resolveSessionInclude(
   return tokens.length === 0 ? {} : { parentage: "all" };
 }
 
+/** What the session listing needs beyond an addressed route's context. */
+type ListingRouteContext = SessionRouteContext & {
+  /**
+   * The caller as each instance's own doors resolve it. A row owned by an
+   * instance with a resolver of its own is judged by that resolver, not by
+   * `principal` or `anonymousFlowIds` (see `instance-caller.ts`).
+   */
+  callerFor: InstanceCallerResolver;
+};
+
+/**
+ * Whether an instance with a resolver of its own resolves this caller as
+ * someone other than `principal`. When one does, a store query scoped to
+ * `principal` would leave out the rows that instance shows them.
+ */
+async function ownResolverNamesAnotherCaller(
+  ctx: ListingRouteContext,
+  principal: ResolvedPrincipal
+): Promise<boolean> {
+  for (const flow of ctx.registry.list()) {
+    if (!flowAuthenticates(flow)) continue;
+    const caller = await ctx.callerFor(flow);
+    if (caller === undefined) continue;
+    if (caller.userId !== principal.userId || caller.orgId !== principal.orgId) return true;
+  }
+  return false;
+}
+
 export async function handleListSessions(
   request: Request,
   _route: Extract<ParsedFlowRoute, { kind: "list_sessions" }>,
-  ctx: SessionRouteContext
+  ctx: ListingRouteContext
 ): Promise<Response> {
   const url = new URL(request.url);
   const include = resolveSessionInclude(url.searchParams.get("include"));
   if ("error" in include) return jsonResponse(400, include);
+  const principal = ctx.principal;
+  // The principal the store query is scoped to. When an instance with its own
+  // resolver names this caller as somebody else, one query cannot be scoped to
+  // both, so it runs unscoped and each row is judged below instead. A page can
+  // then come back shorter than `limit`, as the anonymous listing's can.
+  const scope =
+    principal !== undefined && !(await ownResolverNamesAnotherCaller(ctx, principal))
+      ? principal
+      : undefined;
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
     // Exact owner: one instance of a collection flow. A record with no owner
@@ -111,7 +154,7 @@ export async function handleListSessions(
     // query param is a convenience filter, never a way to widen the result
     // set past the principal. Without a principal (framework default
     // resolver) the param is the only filter there is, unchanged.
-    userId: ctx.principal?.userId ?? getString(url.searchParams.get("userId")),
+    userId: scope?.userId ?? getString(url.searchParams.get("userId")),
     // The same rule on the organization axis (BR-9, FIX-1442), and for the
     // same reason: one person in two organizations must not see one
     // organization's rows while acting for the other. There is deliberately no
@@ -122,7 +165,7 @@ export async function handleListSessions(
     // "`orgId` in options" as the filter being ACTIVE, so passing an explicit
     // `undefined` would filter the listing down to rows that have no
     // organization — the exact legacy rows BR-14 withholds.
-    ...(ctx.principal?.orgId === undefined ? {} : { orgId: ctx.principal.orgId }),
+    ...(scope?.orgId === undefined ? {} : { orgId: scope.orgId }),
     // Always pass the tenant (present, possibly undefined) so listing isolates
     // to the calling tenant's sessions (FIX-682).
     tenantId: ctx.tenantId,
@@ -136,21 +179,24 @@ export async function handleListSessions(
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });
 
-  // Anonymous cross-flow listing in a mixed app: withhold rows belonging to a
-  // flow that authenticates. Filtered after the query, so a page can come back
+  // Anonymous cross-flow listing in a mixed app: withhold rows whose owner is
+  // not an open instance (a row of an instance with its own resolver is judged
+  // by that resolver below, not here). Filtered after the query, so a page can come back
   // shorter than `limit` — the alternative is one query per allowed kind, which
   // is not worth it for a path that only exists when a host-level
   // `resolvePrincipal` is absent.
   // Judged per row under its OWNER, not its kind, so an open peer of an
   // authenticated instance does not make that instance's sessions visible.
   const allowed = ctx.anonymousFlowIds;
-  const flowVisible =
-    allowed === undefined
-      ? sessions
-      : sessions.filter((s) => {
-          const owner = resolveRecordOwner(ctx.registry, s);
-          return owner.ok && allowed.has(owner.flow.id);
-        });
+  const flowVisible = (s: SessionRecord): boolean => {
+    if (principal !== undefined) {
+      // Scoped by the query, unless it had to run unscoped.
+      return scope !== undefined || (s.userId === principal.userId && s.orgId === principal.orgId);
+    }
+    if (allowed === undefined) return true;
+    const owner = resolveRecordOwner(ctx.registry, s);
+    return owner.ok && allowed.has(owner.flow.id);
+  };
 
   // Records stored before organizations were required are withheld (BR-14),
   // on EVERY path to this listing and not only the authenticated one.
@@ -171,10 +217,26 @@ export async function handleListSessions(
   // OTHER organization predates the upgrade and is refused by the addressed
   // read, so it is withheld here for the same reason (BR-10) — the store query
   // above could not scope it, because there was no principal to scope it by.
-  const visible = flowVisible.filter(
-    (s) =>
-      isOrgAttributed(s) && (allowed === undefined || s.orgId === DEFAULT_ORG_ID)
-  );
+  const hostRuleAdmits = (s: SessionRecord): boolean =>
+    flowVisible(s) &&
+    isOrgAttributed(s) &&
+    (allowed === undefined || s.orgId === DEFAULT_ORG_ID);
+
+  // Everything above is the host-level rule. A row owned by an instance with a
+  // resolver of its own is judged on that resolver's word instead, the one its
+  // session and action doors take: in a mixed app `allowed` would withhold it
+  // from everyone, and with a host resolver `principal` may not be who that
+  // instance says the caller is.
+  //
+  // The store query is tenant-scoped on every path, scoped or not. The check
+  // is repeated per row so neither verdict can admit a row from another tenant
+  // (FIX-682) if that ever stops being true.
+  const visible: SessionRecord[] = [];
+  for (const s of sessions) {
+    if (!tenantMatches(s.tenantId, ctx.tenantId)) continue;
+    const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, s);
+    if (own ?? hostRuleAdmits(s)) visible.push(s);
+  }
 
   return jsonResponse(200, {
     // Surface bare session ids — the stored `id` is the namespaced storage key.

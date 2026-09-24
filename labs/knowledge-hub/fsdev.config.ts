@@ -13,27 +13,11 @@
  */
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
-import type { ModelResolver } from "@flow-state-dev/core";
 import knowledgeHubFlow from "./src/flow";
 import path from "node:path";
 
-/**
- * The capture flow has no generator actions — `logActivity` / `listInbox` are
- * pure resource CRUD, no model calls. Passing an explicit throwing resolver
- * skips the ambient `FSDEV_DEFAULT_MODEL` / `FSDEV_INTENT_*` env scan (mirrors
- * the knowledge-base example's config), which would otherwise throw on a
- * model-using env here.
- */
-function neverResolvesAModel(): never {
-  throw new Error("knowledge-hub: no generator actions are configured yet; this flow never resolves a model.");
-}
-const modelResolver = Object.assign(neverResolvesAModel, {
-  resolveId: neverResolvesAModel,
-}) as ModelResolver;
-
 export default createFlowState({
   flows: { "knowledge-hub": knowledgeHubFlow },
-  modelResolver,
   // Fail closed: mount the MCP endpoint (POST /mcp/knowledge-hub) only
   // when the bearer secret is set — belt-and-suspenders on top of the flow's
   // throwing resolver. No secret ⇒ no MCP endpoint at all, CLI-only.
