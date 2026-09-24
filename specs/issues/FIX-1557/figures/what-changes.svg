@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="Two panels. Today: a search for billing tickets either calls a model to classify the query on every lookup or greps words and misses synonyms. After: writing a document's body triggers the collection's reaction, which clears old facets, asks the app's evaluator its questions, and stores the answers on the document's state. A search then filters those stored answers, behind a fence that says no model call." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-code { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-acc { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .arr { stroke:var(--ink-2); stroke-width:1.3; fill:none; }
+    .arr-g { stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:4 3; }
+    .fence { stroke:var(--code); stroke-width:2; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-c { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .hd { fill:var(--ink-2); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="today">
+    <rect class="panel" x="12" y="12" width="330" height="336" rx="6"/>
+    <text class="t-lbl" x="28" y="36">TODAY</text>
+    <rect class="n-box" x="28" y="56" width="298" height="46" rx="5"/>
+    <text class="t-b" x="42" y="76">search: "open billing tickets"</text>
+    <text class="t-s" x="42" y="92">every lookup, one of two ways</text>
+    <path class="arr" d="M100,102 L100,146"/>
+    <path class="arr" d="M254,102 L254,146"/>
+    <rect class="n-gone" x="28" y="148" width="146" height="70" rx="5"/>
+    <text class="t-b" x="40" y="170">classify the query</text>
+    <text class="t-g" x="40" y="188">a model call</text>
+    <text class="t-g" x="40" y="202">per search</text>
+    <rect class="n-gone" x="184" y="148" width="142" height="70" rx="5"/>
+    <text class="t-b" x="196" y="170">grep for words</text>
+    <text class="t-g" x="196" y="188">misses "charged</text>
+    <text class="t-g" x="196" y="202">twice"</text>
+    <text class="t-s" x="28" y="256">or a second classify stack</text>
+    <text class="t-s" x="28" y="272">built just for search</text>
+  </g>
+
+  <g id="after-write">
+    <rect class="panel" x="356" y="12" width="572" height="336" rx="6"/>
+    <text class="t-lbl" x="372" y="36">AFTER · WRITE PATH, ONCE PER BODY</text>
+    <rect class="n-box" x="372" y="56" width="150" height="46" rx="5"/>
+    <text class="t-b" x="384" y="76">body written</text>
+    <text class="t-s" x="384" y="92">action, tool or agent</text>
+    <path class="arr" d="M522,79 L556,79"/>
+    <rect class="n-acc" x="558" y="56" width="354" height="118" rx="5"/>
+    <text class="t-lbl" x="570" y="74">COLLECTION REACTION</text>
+    <text class="t-s" x="570" y="94">1  clear facets            (blocking)</text>
+    <text class="t-s" x="570" y="112">2  app's evaluator         (side chain)</text>
+    <text class="t-s" x="570" y="130">3  store answers if the body is current</text>
+    <text class="t-g" x="570" y="156">fails → no facets, save still succeeds</text>
+    <path class="arr" d="M735,174 L735,200"/>
+    <rect class="n-code" x="558" y="202" width="354" height="42" rx="5"/>
+    <text class="t-b" x="570" y="222">document state · facets</text>
+    <text class="t-c" x="570" y="237">topic: billing · status: open · confidence if given</text>
+  </g>
+
+  <g id="after-search">
+    <text class="t-lbl" x="372" y="276">AFTER · SEARCH PATH</text>
+    <path class="fence" d="M372,286 L912,286"/>
+    <text class="t-c" x="780" y="280">no model call</text>
+    <rect class="n-box" x="372" y="296" width="170" height="40" rx="5"/>
+    <text class="t-b" x="384" y="320">search</text>
+    <path class="arr" d="M542,316 L556,316"/>
+    <rect class="n-code" x="558" y="296" width="354" height="40" rx="5"/>
+    <text class="t-b" x="570" y="320">filter stored facets</text>
+    <path class="arr" d="M735,296 L735,246"/>
+  </g>
+  <g id="arrowheads">
+    <path class="hd" d="M96,140 L104,140 L100,147 z"/>
+    <path class="hd" d="M250,140 L258,140 L254,147 z"/>
+    <path class="hd" d="M550,75 L550,83 L557,79 z"/>
+    <path class="hd" d="M731,194 L739,194 L735,201 z"/>
+    <path class="hd" d="M550,312 L550,320 L557,316 z"/>
+    <path class="hd" d="M731,252 L739,252 L735,245 z"/>
+  </g>
+</svg>
