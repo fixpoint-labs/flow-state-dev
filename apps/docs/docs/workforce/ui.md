@@ -108,9 +108,9 @@ The components ship with no CSS framework and no icon set. Style them with:
 
 - **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator,
   `--fsd-panel-*` for the roster and the board columns. Set them on any ancestor.
-- **Slots** for the parts that are yours, such as what a row shows beside its name, what sits in a section header, or what an empty section says.
+- **Slots** for the parts that are yours. The navigator's are `rowTrailing` at the end of a row, `leafToolbar` on an open leaf's row, `sectionHeader` beside a section label, and `emptySection` for a section whose kinds your server doesn't have.
 
-The navigator draws a dashed line down from each open row, past the rows under it, and indents each level by one column. `--fsd-nav-guide` sets the line colour. Set it to `transparent` to hide the lines.
+The navigator draws a dashed line down from each open row, past the rows under it, and indents each level by the width of the expand arrow. `--fsd-nav-guide` sets the line colour. Set it to `transparent` to hide the lines.
 
 ```css
 .sidebar {
@@ -120,7 +120,7 @@ The navigator draws a dashed line down from each open row, past the rows under i
 
 A navigator row's actions, whatever its `rowTrailing` and `leafToolbar` slots return, are hidden until the row is hovered or has keyboard focus, and stay shown on the selected row. On a touch screen with no hover they're always shown. Hidden actions keep their space and stay reachable with Tab.
 
-You can't pin an action visible, so anything that must always show goes in the row's label. On a session row the label is the session's title, which you set when you [create or update the session](../client/overview.md#session-management). A session with no title shows a shortened id; hover it for the full id. For a control that belongs to a whole section, use the `sectionHeader` slot, which is always shown.
+You can't pin an action visible. Only a session row's label is yours to set: it shows the session's title, which you set when you [create or update the session](../client/overview.md#session-management). Put a status your users need at a glance there. A session with no title shows its id, shortened when the server generated it; hover the row for the full id. Kind and instance rows always show the kind name and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
 
 ## Where each component reads from
 
