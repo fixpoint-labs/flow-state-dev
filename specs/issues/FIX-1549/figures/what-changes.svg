@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 330" role="img" aria-label="Two rows, today and after. Today every app, with or without Workforce, passes through a roster check at definition and again at registration. After, definition runs no roster check, and registration runs the roster fence only in a registry that holds Workforce's private roster writer."
+<svg viewBox="0 0 940 330" role="img" aria-label="Two rows, today and after. Today every app, with or without Workforce, passes through a roster check at definition and again at registration. After, definition runs no roster check, registration refuses overlapping patterns only in a registry that holds Workforce's private roster writer, and in every app a user-owned roster key is served only through that writer, to its owner."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -60,8 +60,11 @@
     <path class="ln" d="M492 196 H538"/><path class="ah" d="M538 192 l8 4 -8 4z"/>
     <rect class="n-box" x="548" y="166" width="250" height="60" rx="5"/>
     <text class="t-lbl" x="562" y="184">ENGINE · REGISTER</text>
-    <text class="t-b" x="562" y="206">fence not armed</text>
-    <text class="t-g" x="812" y="200">admitted</text>
+    <text class="t-b" x="562" y="203">startup fence not armed</text>
+    <text class="t-s" x="562" y="219">user-owned keys: owner via writer only</text>
+    <text class="t-g" x="812" y="192">admitted</text>
+    <text class="t-s" x="812" y="208">cannot read a</text>
+    <text class="t-s" x="812" y="220">user-owned row</text>
 
     <rect class="n-in" x="16" y="246" width="194" height="60" rx="5"/>
     <text class="t-b" x="30" y="270">app with Workforce's</text>
@@ -73,7 +76,8 @@
     <path class="ln" d="M492 276 H538"/><path class="ah" d="M538 272 l8 4 -8 4z"/>
     <rect class="n-on" x="548" y="246" width="250" height="60" rx="5"/>
     <text class="t-lbl" x="562" y="264">ENGINE · HIRE PLANE</text>
-    <text class="t-b" x="562" y="286">fence armed · same rules</text>
+    <text class="t-b" x="562" y="283">startup fence armed</text>
+    <text class="t-s" x="562" y="299">user-owned keys: owner via writer only</text>
     <text class="t-x" x="812" y="280">overlap refused</text>
   </g>
 </svg>
