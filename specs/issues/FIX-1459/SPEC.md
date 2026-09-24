@@ -76,6 +76,15 @@ The text and the code travel separately because they are found differently: Mark
 when the app starts, code is found by the build step. The hire step is the one place they meet,
 and the only place a tool is granted.
 
+## Package or skill?
+
+![One question decides it: does the guidance need a tool the worker can't already call? No means a skill, yes means a package. Five rows compare them. A skill is SKILL.md plus reference files, arrives when something activates it, uses the tools the worker already has, is held by every worker in a team or org folder, and is copied to the worker and refreshed. A package is PACKAGE.md plus blocks, is in the prompt every turn, brings its tools and grants them unless tools: [] is written, reaches only a worker that names it from a shared folder, and is read from the file at start](figures/package-or-skill.svg)
+
+The tool is the whole difference. A skill can already be always on, through the worker's `active:`
+list, but it can never bring a tool. That is why a shared folder treats them differently: a skill
+in a team folder costs nothing until it activates, while a package would hand its tools to every
+worker on the team, so a worker has to name it.
+
 ## What stays as it is
 
 - Skills, `WORKER.md`, `TEAM.md` and TypeScript capabilities. Nothing moves onto the new format.

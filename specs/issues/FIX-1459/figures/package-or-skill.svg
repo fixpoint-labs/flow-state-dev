@@ -1,0 +1,87 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Package or skill. One question decides it: does the guidance need a tool the worker can't already call? If yes, write a package; if no, write a skill. Then five rows compare them. In the folder: a skill is SKILL.md plus reference files and can delegate to agents; a package is PACKAGE.md plus blocks, which are its tools. In the prompt: a skill arrives when something activates it (a slash, the active list, the activate tool, the classifier); a package's text is there on every turn. Tools: a skill uses what the worker can already call, and its allowed-tools grants nothing; a package brings its tools and holding it grants them, unless the worker writes tools: []. In a team or org folder: every worker there holds a skill; a package reaches only a worker that names it in packages:. Changing it: a worker keeps its own copy of a skill and pulls edits with a refresh; a package is read from the file at start, so an edit lands on restart."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; } }
+    .bg    { fill:var(--surface); }
+    .ask   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .skill { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .pkg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .arrow { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--accent); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-q   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-a   { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="the-question">
+    <rect class="ask" x="200" y="14" width="724" height="40" rx="6"/>
+    <text class="t-q" x="562" y="39" text-anchor="middle">Does the guidance need a tool the worker can't already call?</text>
+    <path class="arrow" d="M 380 54 L 380 76"/>
+    <path class="head" d="M 375 70 L 380 78 L 385 70 Z"/>
+    <text class="t-a" x="390" y="70">no</text>
+    <path class="arrow" d="M 748 54 L 748 76"/>
+    <path class="head" d="M 743 70 L 748 78 L 753 70 Z"/>
+    <text class="t-a" x="758" y="70">yes</text>
+  </g>
+
+  <g id="columns">
+    <rect class="skill" x="200" y="80" width="360" height="40" rx="5"/>
+    <text class="t-h" x="216" y="105">Skill</text>
+    <text class="t-s" x="262" y="105">guidance the worker pulls in when it applies</text>
+    <rect class="pkg" x="572" y="80" width="352" height="40" rx="5"/>
+    <text class="t-h" x="588" y="105">Package</text>
+    <text class="t-s" x="672" y="105">guidance and the tools it needs, always on</text>
+  </g>
+
+  <g id="rows">
+    <text class="t-lbl" x="16" y="152">IN THE FOLDER</text>
+    <text class="t-c" x="216" y="150">SKILL.md  + reference files</text>
+    <text class="t-s" x="216" y="168">can delegate to agents it names</text>
+    <text class="t-c" x="588" y="150">PACKAGE.md  + blocks/*.ts</text>
+    <text class="t-s" x="588" y="168">each block is a tool the package brings</text>
+    <line class="row" x1="16" y1="184" x2="924" y2="184"/>
+
+    <text class="t-lbl" x="16" y="210">IN THE PROMPT</text>
+    <text class="t-b" x="216" y="208">When something activates it</text>
+    <text class="t-s" x="216" y="226">a slash, the active: list, the activate tool, the classifier</text>
+    <text class="t-b" x="588" y="208">Every turn</text>
+    <text class="t-s" x="588" y="226">no activation; its text always costs its length</text>
+    <line class="row" x1="16" y1="242" x2="924" y2="242"/>
+
+    <text class="t-lbl" x="16" y="268">ITS TOOLS</text>
+    <text class="t-b" x="216" y="266">Uses what the worker can already call</text>
+    <text class="t-s" x="216" y="284">allowed-tools grants nothing</text>
+    <text class="t-b" x="588" y="266">Brings them; holding it grants them</text>
+    <text class="t-s" x="588" y="284">unless the worker writes tools: []</text>
+    <line class="row" x1="16" y1="300" x2="924" y2="300"/>
+
+    <text class="t-lbl" x="16" y="326">IN A TEAM OR</text>
+    <text class="t-lbl" x="16" y="340">ORG FOLDER</text>
+    <text class="t-b" x="216" y="324">Every worker there holds it</text>
+    <text class="t-s" x="216" y="342">holding costs nothing until it activates</text>
+    <text class="t-b" x="588" y="324">Only a worker that names it</text>
+    <text class="t-s" x="588" y="342">packages: [name], because holding grants tools</text>
+    <line class="row" x1="16" y1="358" x2="924" y2="358"/>
+
+    <text class="t-lbl" x="16" y="384">CHANGING IT</text>
+    <text class="t-b" x="216" y="382">The worker keeps its own copy</text>
+    <text class="t-s" x="216" y="400">edits reach it through a refresh</text>
+    <text class="t-b" x="588" y="382">Read from the file at start</text>
+    <text class="t-s" x="588" y="400">an edit lands on restart; a new block needs fsdev gen</text>
+    <line class="row" x1="16" y1="416" x2="924" y2="416"/>
+  </g>
+
+  <text class="t-s" x="16" y="446">Instructions with no tool, needed on every turn: a skill in the worker's active: list does that today. A package is for when the tool travels with the words.</text>
+</svg>
