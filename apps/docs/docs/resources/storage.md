@@ -61,7 +61,7 @@ A resource's `scope` says which identity it hangs off. For user- and org-scoped 
 
 | Setting | Reachable by |
 |---|---|
-| `flowIsolation: false` (the default at user and org scope) | every flow on the server, for that user or org. A [hired seat](/docs/workforce/durable-hire)'s user-scoped resources are shared only with that person's other seats in the same organization |
+| `flowIsolation: false` (the default at user and org scope) | every flow on the server, for that user or org. A [hired seat](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person)'s user-scoped resources are shared only with that person's other seats in the same organization |
 | `flowIsolation: true` | only the flow copy that wrote it |
 | `scope: "session"` | only that session — flow isolation doesn't apply, and setting it is an error |
 

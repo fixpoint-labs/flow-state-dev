@@ -116,7 +116,7 @@ A refusal at run time throws `DispatchRefusedError`, with `code:
 | `refused` | Meaning |
 |---|---|
 | `no-entry` | The addressed flow declares no entry at that address |
-| `flow-not-found` | A `flowKind` names a flow this server has not registered, or a [hired seat](../workforce/durable-hire.md) the sending session may not open: one pinned to another organization, or a user-owned seat that belongs to another user. The refusal is the same in both cases, so `flow-not-found` doesn't tell you which one you hit |
+| `flow-not-found` | A `flowKind` names a flow this server has not registered, or a [hired seat](../workforce/durable-hire.md#who-can-reach-a-hired-seat) the sending session may not open: one pinned to another organization, or a user-owned seat that belongs to another user. The refusal is the same in both cases, so `flow-not-found` doesn't tell you which one you hit |
 | `session-not-found` | An `id` names a session that does not exist, or one that belongs to another user |
 | `session-not-addressable` | An `id` names a session on a flow other than the one addressed |
 | `key-occupied` | The `key` derived a session id already held by a record that is not this conversation's run |

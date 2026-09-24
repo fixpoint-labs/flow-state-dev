@@ -114,7 +114,7 @@ const row = await ctx.stores.resourceState.get("user", scopeId, `schedules/${key
 ```
 
 `isolateUserState: false` is right for a schedule collection declared without
-`flowIsolation: true`, which is the default. The helper reads the same storage.
+`flowIsolation: true`, which is the default.
 
 **Durable dynamic schedules don't recover across crashes.** A dynamic
 schedule's action core is produced by the resolver at dispatch time and carried

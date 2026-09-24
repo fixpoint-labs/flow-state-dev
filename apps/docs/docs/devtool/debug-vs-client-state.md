@@ -5,7 +5,7 @@ title: "Debug vs client state"
 
 # Debug vs client state
 
-The DevTool shows you the full server-side state of a session, with one exception on the workforce roster. Your production clients see only what you let them see. This page explains the difference and how to control it.
+The DevTool shows you the server-side state of a session, apart from other users' private workforce seats. Your production clients see only what you let them see. This page explains the difference and how to control it.
 
 ## Two views of the same session
 
@@ -25,13 +25,11 @@ For each storage key the session touches, the debug response includes:
 - A second copy showing the projection your `client.data` would produce
 - Whether the resource may be written, and whether a model is offered a write tool for its content. Either can be absent; [Read-only resources](#read-only-resources) covers what that means
 
-It does not apply `prefetchWindow`: a collection lists all of its items, not a window of them.
+It does not apply `prefetchWindow`: a collection lists all of its items, not a window of them. It does not apply `client.data` to the storage view either; that projection is shown alongside the raw state, not in place of it.
 
-The workforce roster is the exception. A [user-owned seat](../workforce/durable-hire.md) that belongs to a user other than the session's user doesn't appear in the collection's item list or its item count, and fetching its content returns 404.
+The workforce roster is the exception to the full listing. A [user-owned seat](../workforce/durable-hire.md#hiring-a-seat-only-one-member-can-reach) that belongs to a user other than the session's user doesn't appear in the collection's item list or its item count, and fetching its content returns 404.
 
 On any collection, fetching content for a topic that doesn't match the collection's pattern also returns 404.
-
-It does not apply `client.data` to the storage view; that projection is shown alongside the raw state, not in place of it.
 
 The endpoint is read-only. You can't mutate state through it.
 
