@@ -29,6 +29,7 @@ import { encodeUserSegment, type InstanceOwnerPin } from "@flow-state-dev/core/t
 import { validateSegment } from "../loader/segments";
 import type { WorkerManifest } from "../manifest";
 import { hiredSeatRowSchema, type HiredSeatRow } from "./collections";
+import { hiredSeatOwnerPinFromRosterOwner } from "./register-hired-seat";
 
 export { encodeUserSegment };
 
@@ -154,11 +155,17 @@ export function hiredRosterStorageKey(row: {
   return row.seatId;
 }
 
-/** The pin a row registers under. `userId` is omitted when the row is org-visible. */
+/**
+ * The pin a row registers under. `userId` is omitted when the row is org-visible.
+ *
+ * Derived by the registration gate, {@link hiredSeatOwnerPinFromRosterOwner},
+ * so a row and a direct registration get one answer.
+ *
+ * @throws when `orgId` is missing or empty. An unpinned hired seat is refused
+ * rather than admitted as shared.
+ */
 export function hiredSeatOwnerPin(orgId: string, row: HiredSeatRow): InstanceOwnerPin {
-  const pin: InstanceOwnerPin = { orgId };
-  if (row.ownerUserId != null && row.ownerUserId.length > 0) pin.userId = row.ownerUserId;
-  return pin;
+  return hiredSeatOwnerPinFromRosterOwner({ orgId, userId: row.ownerUserId });
 }
 
 /** What a row could not be read as, when it could not be read. */
@@ -269,9 +276,10 @@ export function hiredSeatManifestFromStored(
   try {
     return hiredSeatManifest(orgId, parsed.row);
   } catch (error) {
-    // Only the address can throw in there today (`seatAddress`). A new throw
-    // added to `hiredSeatManifest` becomes a skipped row here, so make it a
-    // reason there instead if it is not about the address.
+    // Only a bad org or seat id can throw in there today: the address
+    // (`seatAddress`), and the owner pin behind it (`hiredSeatOwnerPin`). A new
+    // throw added to `hiredSeatManifest` becomes a skipped row here, so make
+    // it a reason there instead if it is not about the address or the pin.
     return { problem: error instanceof Error ? error.message : String(error) };
   }
 }
