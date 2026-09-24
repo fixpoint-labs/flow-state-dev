@@ -60,8 +60,10 @@ produce, don't add ceremony.
   whether the design was flagged "felt off" (by a reviewer or the challenger), and one
   line: "what upstream change would have prevented this." Write the cycle as a new file,
   `docs/internal/cycle-ledger/cycle-NN.md` (next number, two digits; one row per PR), and add
-  its row to the index table in `docs/internal/cycle-ledger.md`. Read the index first, then
-  only the earlier cycle files you are scoring against: the whole ledger is too large to load.
+  its row to the index table in `docs/internal/cycle-ledger.md`. The whole ledger is too large
+  to load. Read the index first. For recurrence, search every cycle file for the class and
+  label names (`rg -c 'stale-restatement' docs/internal/cycle-ledger/`) instead of reading them,
+  then open the cycles the search hits and the ones you are scoring against.
 - **Sample the epic PR, not only its children.** An epic-spec is a coordination artifact
   reviewed on its own PR, and it carries a rework class its child specs don't (cycle 2's
   `stale-restatement`, 11 of 18 findings, was entirely epic-PR review). Collect the epic PR
