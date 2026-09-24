@@ -141,6 +141,9 @@ test("expanded all the way in the 256px rail, three levels still indent inside o
  *   - Reload the page after the hire: the no-reload marker is gone.
  *   - Hire through a user-owned path (the operator's `workforce-admin` door):
  *     the hired seat never appears.
+ *   - Hire on the conversation's own session: that session holds the request.
+ *   - Let the page open on the most recent session: a fresh load opens on
+ *     the hire session.
  */
 test("VG · open a declared seat, hire another of its kind, and open the hire without a reload", async ({
   page,
@@ -195,6 +198,19 @@ test("VG · open a declared seat, hire another of its kind, and open the hire wi
   // every API call is the framework's own `/api/flows` surface, none of it debug.
   const apiPaths = requests.map((r) => new URL(r.url()).pathname).filter((path) => path.startsWith("/api/"));
   expect(apiPaths.filter((path) => !/^\/api\/flows(\/|$)/.test(path) || path.includes("/debug/"))).toEqual([]);
+
+  // The hire ran on a session of its own: the conversation it was made from
+  // holds no request, and a fresh load does not open on the hire session.
+  const conversation = (await (await page.request.get(`/api/flows/sessions/${sessionId}`)).json()) as {
+    session: { latestRequestId?: string };
+  };
+  expect(conversation.session.latestRequestId).toBeUndefined();
+  await page.goto("/");
+  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+  await row(page, "chat-agent").click();
+  const opened = rail(page).locator('ul[data-leaf="chat-agent"] [aria-current="true"]');
+  await expect(opened).toHaveCount(1);
+  await expect(opened).not.toHaveText("Seat hires");
 });
 
 for (const { width, rail: railShown, panel: panelShown } of [

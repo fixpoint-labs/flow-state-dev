@@ -48,7 +48,15 @@ function rosterWithPat() {
 function open(address: string, client: PanelItemSource): HTMLElement {
   const { container } = render(
     <FlowProvider flowKind="chat-agent" userId="devuser" baseUrl="http://test">
-      <SeatPane sessionId="s-1" orgId={ORG} kind="agent" address={address} resourceClient={client} onHired={() => {}} />
+      <SeatPane
+        sessionId="s-1"
+        orgId={ORG}
+        kind="agent"
+        address={address}
+        resourceClient={client}
+        hireSessionId={async () => "hire-session"}
+        onHired={() => {}}
+      />
     </FlowProvider>,
   );
   return container;

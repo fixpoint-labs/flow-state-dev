@@ -16,7 +16,7 @@ import {
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
-import { createResourceClient } from "@flow-state-dev/client";
+import { createResourceClient, createSessionClient } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
 
@@ -57,7 +57,14 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
-import { CHANNEL_KINDS, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
+import {
+  CHANNEL_KINDS,
+  SEAT_HIRES_TAG,
+  SEAT_HIRES_TITLE,
+  SEAT_KINDS,
+  SHELL_FLOW_KIND,
+  isSeatHiresSession,
+} from "@/lib/workforce-shell";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
@@ -74,9 +81,11 @@ type MobilePanel = "chat" | "artifacts";
 /**
  * Whether the rail lists hired seats.
  *
- * The seat rows come from the server's flow list, which carries no
- * organization and is answered without a credential, so every organization's
- * hired seats are listed to anyone who can load this page. Set this to
+ * The seat rows come from the server's flow list. A hired seat is pinned to
+ * its owner, and the list shows it only to a caller that seat's own resolver
+ * accepts as that owner: a visitor here sees the seats hired into this app's
+ * organization, and not an operator's own. A seat declared in a worker file is
+ * pinned to nobody and is listed to anyone who can load this page. Set this to
  * `false` to ship the rail with channels only; the roster panel on the right
  * is organization-scoped either way.
  */
@@ -163,12 +172,30 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   // only one selected: the hook neither picks the latest nor creates another.
   const flow = useFlow({
     autoCreateSession: e2eSessionId === null,
-    autoSelectSession: e2eSessionId === null,
+    // Chosen below instead: the most recent session can be the one hires run on.
+    autoSelectSession: false,
   });
-  const { selectSession } = flow;
+  const { selectSession, createSession } = flow;
+  // The conversation the stream opens on: the test's own when one is named;
+  // otherwise the most recent that is not the hire session, and a new one when
+  // there is none. An empty list is `useFlow`'s to fill.
+  const isCreatingSession = useRef(false);
   useEffect(() => {
-    if (e2eSessionId !== null) selectSession(e2eSessionId);
-  }, [e2eSessionId, selectSession]);
+    if (e2eSessionId !== null) {
+      selectSession(e2eSessionId);
+      return;
+    }
+    if (flow.activeSessionId !== undefined || flow.sessions.length === 0 || isCreatingSession.current) return;
+    const latest = flow.sessions.find((listed) => !isSeatHiresSession(listed));
+    if (latest !== undefined) {
+      selectSession(latest.id);
+      return;
+    }
+    isCreatingSession.current = true;
+    void createSession().finally(() => {
+      isCreatingSession.current = false;
+    });
+  }, [e2eSessionId, flow.activeSessionId, flow.sessions, selectSession, createSession]);
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
   const [message, setMessage] = useState("");
@@ -183,7 +210,7 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   const [picked, setPicked] = useState<PickedSession | null>(null);
   // Hires made from the rail. The rail and the roster panel are keyed on it:
   // neither publishes a refresh, so a hire remounts both, and each reads the
-  // seats again on mount.
+  // seats again on mount. A remount also clears any other open hire form.
   const [hires, setHires] = useState(0);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
@@ -234,6 +261,35 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   const panelSessionId = flow.activeSessionId;
   const panelOrgId = session.detail?.orgId;
   const handleHired = useCallback(() => setHires((n) => n + 1), []);
+
+  // The session "Hire another" runs on: one of the assistant's flow, tagged so
+  // it is never the conversation opened by default. Found in the listing, or
+  // created on the first hire, and reused after that.
+  const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
+  const hireSession = useRef<Promise<string> | null>(null);
+  const listedSessions = flow.sessions;
+  const hireSessionId = useCallback(() => {
+    if (hireSession.current === null) {
+      const listed = listedSessions.find(isSeatHiresSession);
+      const pending =
+        listed !== undefined
+          ? Promise.resolve(listed.id)
+          : sessionClient
+              .createSession({
+                flowKind: SHELL_FLOW_KIND,
+                userId: KITCHEN_SINK_USER_ID,
+                title: SEAT_HIRES_TITLE,
+                tags: [SEAT_HIRES_TAG],
+              })
+              .then((created) => created.id);
+      hireSession.current = pending;
+      // A failed create is not remembered, so the next hire tries again.
+      pending.catch(() => {
+        if (hireSession.current === pending) hireSession.current = null;
+      });
+    }
+    return hireSession.current;
+  }, [listedSessions, sessionClient]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
@@ -375,12 +431,13 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
               kind={leaf.kind}
               address={leaf.address}
               resourceClient={resourceClient}
+              hireSessionId={hireSessionId}
               onHired={handleHired}
             />
           )
         ) : null,
     }),
-    [handleNewSession, flow.isLoading, panelSessionId, panelOrgId, resourceClient, handleHired]
+    [handleNewSession, flow.isLoading, panelSessionId, panelOrgId, resourceClient, hireSessionId, handleHired]
   );
 
   const handleSelectedModelChange = useCallback(

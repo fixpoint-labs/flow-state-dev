@@ -260,7 +260,7 @@ describe("V14 · a rail hire outlives the process that made it", () => {
     // The control: the same boot over an empty location has no such seat.
     const empty = await bootApp({ dataDir: emptyDir });
     expect(empty.runtime.registry.get(ADDR("support.pat"))).toBeUndefined();
-  }, 30_000); // Three boots of the whole app.
+  });
 });
 
 describe("V22 · every admin token is bound to kitchen-sink", () => {

@@ -33,6 +33,21 @@ export const CHANNEL_KINDS = ["channel", "digest"] as const;
  */
 export const SEAT_KINDS = ["agent", "desk-clerk", "followup-runner"] as const;
 
+/**
+ * The tag on the session of the shell's flow that the rail's "Hire another"
+ * runs on, so a hire never lands in a conversation. Kept apart by tag, not by
+ * flow: every session of the flow binds to the same organization.
+ */
+export const SEAT_HIRES_TAG = "seat-hires";
+
+/** That session's title, as the rail lists it among the assistant's conversations. */
+export const SEAT_HIRES_TITLE = "Seat hires";
+
+/** Whether a listed session is the one hires run on, and so never the conversation opened by default. */
+export function isSeatHiresSession(session: { readonly tags?: readonly string[] }): boolean {
+  return session.tags?.includes(SEAT_HIRES_TAG) ?? false;
+}
+
 /** The key the shell's flow declares the boot's skipped-seat report under. */
 export const ROSTER_BOOT_REPORT_REF = "rosterBootReport";
 

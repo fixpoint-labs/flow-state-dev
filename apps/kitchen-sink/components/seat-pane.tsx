@@ -12,14 +12,22 @@
  * address would open the other seat's row. Both are handed over with no topic,
  * so the detail says their instructions are not published and reads nothing.
  *
- * "Hire another" runs the rail's flow's `hireSeat` action on the rail's own
- * session, so the seat lands in the organization that session is bound to,
- * the one every rail read uses. It is posted on its own request rather than
- * through the assistant's `useSession`, whose `sendAction` would close the
- * assistant's live stream; the POST's own event stream says how the hire ended.
+ * "Hire another" runs the rail's flow's `hireSeat` action on a session of that
+ * flow kept for hires (the host's `hireSessionId`), not on the conversation the
+ * person is chatting in. Every session of the flow binds to the same one
+ * organization, so the seat lands where every rail read looks. A hire is its
+ * own request, followed to its end: inline when the server streams the answer
+ * to the POST, or through the request's own stream when it queues the action
+ * and answers 202.
  */
-import { useState, type FormEvent } from "react";
-import { createClient, createSSEClientFromResponse } from "@flow-state-dev/client";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  createClient,
+  createSSEClient,
+  createSSEClientFromResponse,
+  type ExecuteActionResponse,
+  type RequestSSECallbacks,
+} from "@flow-state-dev/client";
 import { SeatDetail, type PanelItemSource } from "@flow-state-dev/react";
 import { HIRED_ROSTER_RESOURCE, splitSeatAddress } from "@flow-state-dev/workforce";
 
@@ -30,7 +38,7 @@ import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { SHELL_FLOW_KIND } from "@/lib/workforce-shell";
 
 export interface SeatPaneProps {
-  /** The rail's session: every read and the hire go through it. */
+  /** The rail's session: the instructions are read through it. */
   sessionId: string;
   /** The organization that session is bound to, from its own record. */
   orgId: string;
@@ -40,6 +48,11 @@ export interface SeatPaneProps {
   address: string;
   /** The host's resource client, so the read carries the host's transport. Stable. */
   resourceClient: PanelItemSource;
+  /**
+   * The session a hire runs on, a session of the rail's flow kept apart from
+   * the conversations. Called when a hire starts; the host creates it once.
+   */
+  hireSessionId: () => Promise<string>;
   /** Called once a hire has succeeded. The host refreshes what lists seats. */
   onHired: () => void;
 }
@@ -50,7 +63,7 @@ function publicRosterTopic(orgId: string, address: string): string | undefined {
   return splitSeatAddress(orgId, address);
 }
 
-export function SeatPane({ sessionId, orgId, kind, address, resourceClient, onHired }: SeatPaneProps) {
+export function SeatPane({ sessionId, orgId, kind, address, resourceClient, hireSessionId, onHired }: SeatPaneProps) {
   const [isHiring, setIsHiring] = useState(false);
   return (
     <div className="space-y-2 pb-1 text-xs" data-testid="seat-pane">
@@ -62,7 +75,7 @@ export function SeatPane({ sessionId, orgId, kind, address, resourceClient, onHi
         resourceClient={resourceClient}
       />
       {isHiring ? (
-        <HireForm sessionId={sessionId} kind={kind} onCancel={() => setIsHiring(false)} onHired={onHired} />
+        <HireForm hireSessionId={hireSessionId} kind={kind} onCancel={() => setIsHiring(false)} onHired={onHired} />
       ) : (
         <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setIsHiring(true)}>
           Hire another
@@ -73,12 +86,12 @@ export function SeatPane({ sessionId, orgId, kind, address, resourceClient, onHi
 }
 
 function HireForm({
-  sessionId,
+  hireSessionId,
   kind,
   onCancel,
   onHired,
 }: {
-  sessionId: string;
+  hireSessionId: () => Promise<string>;
   kind: string;
   onCancel: () => void;
   onHired: () => void;
@@ -87,22 +100,38 @@ function HireForm({
   const [instructions, setInstructions] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The hire in flight, if any. Cancel and unmount stop waiting on it, and an
+  // ending that arrives after that is ignored.
+  const inFlight = useRef<Hire | null>(null);
+  useEffect(() => () => inFlight.current?.cancel(), []);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    const hire = startHire(hireSessionId, {
+      seatId: seatId.trim(),
+      flow: kind,
+      ...(instructions.trim().length > 0 ? { instructions } : {}),
+    });
+    inFlight.current = hire;
     try {
-      await hireSeat(sessionId, {
-        seatId: seatId.trim(),
-        flow: kind,
-        ...(instructions.trim().length > 0 ? { instructions } : {}),
-      });
+      await hire.done;
+      if (inFlight.current !== hire) return;
+      inFlight.current = null;
       onHired();
     } catch (reason) {
+      if (inFlight.current !== hire) return;
+      inFlight.current = null;
       setError(reason instanceof Error ? reason.message : String(reason));
       setIsSubmitting(false);
     }
+  };
+
+  const cancel = () => {
+    inFlight.current?.cancel();
+    inFlight.current = null;
+    onCancel();
   };
 
   return (
@@ -117,7 +146,7 @@ function HireForm({
       />
       <Textarea
         aria-label="Instructions"
-        placeholder="What this seat is for"
+        placeholder="What this seat is for (optional)"
         className="min-h-16 text-xs"
         value={instructions}
         onChange={(event) => setInstructions(event.target.value)}
@@ -131,7 +160,7 @@ function HireForm({
         <Button type="submit" size="sm" className="h-7 text-xs" disabled={isSubmitting || seatId.trim().length === 0}>
           {isSubmitting ? "Hiring…" : "Hire"}
         </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onCancel} disabled={isSubmitting}>
+        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={cancel}>
           Cancel
         </Button>
       </div>
@@ -139,33 +168,80 @@ function HireForm({
   );
 }
 
+/** A hire in flight: `done` settles when its request ends; `cancel` stops waiting on it. */
+interface Hire {
+  done: Promise<void>;
+  cancel: () => void;
+}
+
+/** The request statuses that end a hire without it. `suspended` does not end a request. */
+const FAILED = new Set(["failed", "incomplete", "interrupted", "aborted"]);
+
 /**
- * Post the hire and wait for its request to end.
+ * Post the hire on the hire session and follow its request to the end.
  *
- * @throws With the sequence's own refusal (an id already hired, a kind this app
- *   does not carry) when the request fails.
+ * `done` rejects with the sequence's own refusal (an id already hired, a kind
+ * this app does not carry) when the request fails, and with "The hire did not
+ * complete." when its stream ends with no terminal status.
  */
-async function hireSeat(
-  sessionId: string,
+function startHire(
+  hireSessionId: () => Promise<string>,
   input: { seatId: string; flow: string; instructions?: string },
-): Promise<void> {
-  const client = createClient({ flowKind: SHELL_FLOW_KIND, userId: KITCHEN_SINK_USER_ID, baseUrl: "" });
-  const response = await client.sendActionStream("hireSeat", input, { sessionId });
-  await new Promise<void>((resolve, reject) => {
-    let refusal: string | undefined;
-    const fail = () => reject(new Error(refusal ?? "The hire did not complete."));
-    createSSEClientFromResponse({
-      response,
-      onItemAdded: (event) => {
-        if (event.item.type === "error") refusal = event.item.message;
-      },
-      onRequestStatus: (event) => {
-        if (event.status === "completed") resolve();
-        else if (event.status !== "in_progress") fail();
-      },
-      onError: reject,
-      // A stream that ends without saying the request completed did not hire.
-      onClose: fail,
+): Hire {
+  const aborter = new AbortController();
+  let stream: { close: () => void } | undefined;
+  const cancel = () => {
+    aborter.abort();
+    stream?.close();
+  };
+
+  const done = (async () => {
+    const client = createClient({
+      flowKind: SHELL_FLOW_KIND,
+      userId: KITCHEN_SINK_USER_ID,
+      baseUrl: "",
+      fetcher: (url, init) => fetch(url, { ...init, signal: aborter.signal }),
     });
-  });
+    const response = await client.sendActionStream("hireSeat", input, { sessionId: await hireSessionId() });
+    // A queued action answers 202 with the request's id instead of its stream.
+    const queued = response.headers.get("content-type")?.includes("text/event-stream")
+      ? undefined
+      : ((await response.json()) as ExecuteActionResponse).request.id;
+
+    await new Promise<void>((resolve, reject) => {
+      let refusal: string | undefined;
+      let ended = false;
+      const end = (error?: Error) => {
+        if (ended) return;
+        ended = true;
+        stream?.close();
+        if (error === undefined) resolve();
+        else reject(error);
+      };
+      const notCompleted = () => new Error(refusal ?? "The hire did not complete.");
+      const callbacks: RequestSSECallbacks = {
+        onItemAdded: (event) => {
+          if (event.item.type === "error") refusal = event.item.message;
+        },
+        onRequestStatus: (event) => {
+          if (event.status === "completed") end();
+          else if (FAILED.has(event.status)) end(notCompleted());
+        },
+        onError: (error) => end(error),
+        // A stream that ends without saying the request completed did not hire.
+        onClose: () => end(notCompleted()),
+      };
+      stream =
+        queued === undefined
+          ? createSSEClientFromResponse({ response, ...callbacks })
+          : createSSEClient({
+              url: `/api/flows/${encodeURIComponent(SHELL_FLOW_KIND)}/requests/${encodeURIComponent(queued)}/stream`,
+              baseUrl: "",
+              ...callbacks,
+            });
+      if (ended) stream.close();
+    });
+  })();
+
+  return { done, cancel };
 }
