@@ -1,0 +1,76 @@
+<svg viewBox="0 0 940 376" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, shipped from core: the evaluator block kind, which turns state and questions into typed answers and refuses generate-only models, and the cascadingRouter utility, which gates on choice and confidence and lands on ambiguous when confidence is missing or low. A fence says no gate, no retry and no fallback inside the evaluator. Composed in by the app: the model (Jev via Gateway preferred, Jev's own library as an optional peer, or any evaluation adapter), the tree with its ambiguous leaf, and an evaluator handed to skill activation, index-time facets or memory. Replaced in one line: the skill activator's third tier and the model. Not built: a System One package, an OpenRouter Decisions client, a generator fallback, cascade inside the block, a dispatcher block kind, RAG or search as core, the kitchen-sink thinking-style router.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .out   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .door  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .slot  { fill:var(--surface); stroke:var(--accent); stroke-width:1; }
+    .fence { stroke:var(--code); stroke-width:2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-d   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-ac  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="376"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="560" height="206" rx="6"/>
+    <text class="t-lbl" x="32" y="38">IN THE BOX &#183; SHIPPED FROM CORE</text>
+    <rect class="door" x="32" y="52" width="260" height="84" rx="4"/>
+    <text class="t-b" x="44" y="74">evaluator</text>
+    <text class="t-d" x="44" y="94">fifth block kind, peer of generator</text>
+    <text class="t-s" x="44" y="112">state + questions &#8594; typed answers</text>
+    <text class="t-ok" x="44" y="127">refuses generate-only &#183; FIX-1554</text>
+    <rect class="door" x="300" y="52" width="260" height="84" rx="4"/>
+    <text class="t-b" x="312" y="74">cascadingRouter</text>
+    <text class="t-d" x="312" y="94">utility, a tree of evaluate calls</text>
+    <text class="t-s" x="312" y="112">gate: choice and confidence &#8805; floor</text>
+    <text class="t-ok" x="312" y="127">absent or low &#8594; ambiguous &#183; FIX-1558</text>
+    <path class="fence" d="M32 158 L560 158"/>
+    <text class="t-ok" x="32" y="178">THE FENCE &#183; inside evaluator: no gate, no retry, no fallback, no invented confidence</text>
+    <text class="t-s" x="32" y="198">answers carry confidence and probabilities only when the model returned them</text>
+    <text class="t-s" x="32" y="212">docs say five kinds everywhere they said four &#183; FIX-1554</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="592" y="16" width="332" height="206" rx="6"/>
+    <text class="t-lbl" x="608" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-d" x="608" y="62">the model: Jev via Gateway preferred, or</text>
+    <text class="t-d" x="608" y="78">Jev direct (optional peer), or any adapter</text>
+    <text class="t-d" x="608" y="102">the tree, and its ambiguous leaf</text>
+    <text class="t-s" x="608" y="126">an evaluator handed to an optional slot:</text>
+    <rect class="slot" x="608" y="136" width="300" height="22" rx="3"/>
+    <text class="t-ac" x="618" y="151">skill activator tier 3 &#183; FIX-1559</text>
+    <rect class="slot" x="608" y="162" width="300" height="22" rx="3"/>
+    <text class="t-ac" x="618" y="177">index-time facets &#183; FIX-1557</text>
+    <rect class="slot" x="608" y="188" width="300" height="22" rx="3"/>
+    <text class="t-ac" x="618" y="203">memory capture seam, sketch &#183; FIX-1555</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="app" x="16" y="236" width="908" height="50" rx="6"/>
+    <text class="t-lbl" x="32" y="256">REPLACED IN ONE LINE</text>
+    <text class="t-d" x="32" y="276">tier 3: pass an evaluator, or omit it and today's generator classifier runs</text>
+    <text class="t-d" x="620" y="276">the model: one string or one instance</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="out" x="16" y="300" width="908" height="60" rx="6"/>
+    <text class="t-lbl" x="32" y="320">NOT BUILT</text>
+    <text class="t-go" x="32" y="338">@flow-state-dev/system-one &#183; OpenRouter Decisions &#183; generator+Zod fallback &#183; cascade inside the block</text>
+    <text class="t-go" x="32" y="352">dispatcher block kind &#183; RAG or search as core &#183; kitchen-sink thinking-style router &#183; wholesale migration</text>
+  </g>
+</svg>

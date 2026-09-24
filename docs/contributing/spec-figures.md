@@ -225,6 +225,18 @@ Three facts decide that form:
 - **The blob URL doesn't render; the raw URL does.** `…/blob/<branch>/<path>` is a link to a page.
 - **A relative path resolves against the repo root and 404s.** Absolute, always.
 
+**On an implementation PR, read the figures from a fresh `main`.** An amendment may have
+redrawn, renamed or dropped a figure since the branch was cut, and fetching does not update the
+branch's own copy of the spec:
+
+```bash
+git fetch origin main
+git show origin/main:specs/issues/<ISSUE-ID>/SPEC.md           # the figure list and each alt text
+git log -1 --format=%H origin/main -- specs/issues/<ISSUE-ID>/figures/<name>.svg   # the SHA to pin
+```
+
+If an amendment redraws a figure while the implementation PR is still open, re-pin it there too.
+
 **Light and dark.** The SVG's media query follows the reader's OS. A PNG pair with GitHub's
 `#gh-light-mode-only` / `#gh-dark-mode-only` suffixes follows GitHub's theme instead, and is the
 one reason to render PNGs for a body. Default to the SVG.

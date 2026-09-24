@@ -1,0 +1,77 @@
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The chosen reveal: the same rail with every row's actions hidden until the row is pointed at or focused. On the left, only support.otto, under the pointer, shows its copy, refresh and new-session icons; every other row shows none. On the right, one row in four states: at rest the actions are invisible but still reachable by Tab, under the pointer they show, with keyboard focus in the row they show, and on a touch screen with no hover they always show. A selected row also keeps its actions shown. The accepted cost: the Assistant row's only New session is hidden until that row is pointed at or focused.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --prose:#A8761C; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --prose:#D9A44B; } }
+    .bg    { fill:var(--surface); }
+    .rail  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .hov   { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .t     { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:14px; }
+    .id    { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }
+    .muted { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .lbl   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .ico   { fill:none; stroke:var(--ink-2); stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+    .tree  { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:3 3; }
+    .ghost { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:2 2; }
+    .ring  { fill:none; stroke:var(--accent); stroke-width:2; }
+    .ptr   { fill:var(--ink); stroke:var(--surface); stroke-width:1; }
+    .warn  { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-size:13px; }
+  </style>
+  <rect class="bg" width="940" height="360"/>
+  <text class="lbl" x="24" y="24">THE CHOSEN REVEAL · HOVER OR FOCUS · ONE ROW, FOUR STATES</text>
+
+  <g id="rail">
+    <rect class="rail" x="24" y="36" width="500" height="250" rx="6"/>
+    <text class="lbl" x="40" y="58">FLOWS</text>
+    <text class="t" x="40" y="86">▾</text><text class="t" x="72" y="86">agent</text>
+    <text class="t" x="72" y="116">▾</text><text class="t" x="104" y="116">support.iris</text>
+    <text class="id" x="136" y="146">sess_…3df102</text>
+    <rect class="hov" x="30" y="158" width="488" height="26" rx="4"/>
+    <text class="t" x="72" y="176">▾</text><text class="t" x="104" y="176">support.otto</text>
+    <g class="ico" transform="translate(428 164)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g><g class="ico" transform="translate(457 164)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g><g class="ico" transform="translate(485 164)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
+    <path class="ptr" d="M300 170 l0 16 l4 -4 l3 7 l3 -1 l-3 -7 l6 0 z"/>
+    <text class="muted" x="136" y="206">No sessions yet</text>
+    <text class="t" x="40" y="236">▾</text><text class="t" x="72" y="236">digest</text>
+    <text class="t" x="104" y="266">support.noticeboard</text>
+    <line class="tree" x1="45" y1="96" x2="45" y2="214"/>
+    <line class="tree" x1="77" y1="126" x2="77" y2="154"/>
+    <line class="tree" x1="77" y1="186" x2="77" y2="214"/>
+    <line class="tree" x1="45" y1="246" x2="45" y2="274"/>
+  </g>
+
+  <g id="states">
+    <text class="lbl" x="560" y="58">ONE ROW, FOUR STATES</text>
+    <g id="rest">
+      <rect class="rail" x="560" y="68" width="356" height="30" rx="4"/>
+      <text class="t" x="574" y="88">▾ support.otto</text>
+      <rect class="ghost" x="826" y="75" width="80" height="16" rx="3"/>
+      <text class="muted" x="560" y="114">At rest: invisible, still reachable with Tab</text>
+    </g>
+    <g id="pointer">
+      <rect class="rail" x="560" y="128" width="356" height="30" rx="4"/>
+      <text class="t" x="574" y="148">▾ support.otto</text>
+      <g class="ico" transform="translate(836 136)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g><g class="ico" transform="translate(865 136)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g><g class="ico" transform="translate(893 136)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
+      <path class="ptr" d="M720 140 l0 16 l4 -4 l3 7 l3 -1 l-3 -7 l6 0 z"/>
+      <text class="muted" x="560" y="174">Pointer over the row: shown</text>
+    </g>
+    <g id="focus">
+      <rect class="rail" x="560" y="188" width="356" height="30" rx="4"/>
+      <text class="t" x="574" y="208">▾ support.otto</text>
+      <g class="ico" transform="translate(836 196)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g><g class="ico" transform="translate(865 196)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g><g class="ico" transform="translate(893 196)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
+      <rect class="ring" x="861" y="193" width="19" height="19" rx="3"/>
+      <text class="muted" x="560" y="234">Keyboard focus anywhere in the row: shown</text>
+    </g>
+    <g id="touch">
+      <rect class="rail" x="560" y="248" width="356" height="30" rx="4"/>
+      <text class="t" x="574" y="268">▾ support.otto</text>
+      <g class="ico" transform="translate(836 256)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g><g class="ico" transform="translate(865 256)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g><g class="ico" transform="translate(893 256)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
+      <text class="muted" x="560" y="294">A touch screen, no hover: always shown</text>
+    </g>
+  </g>
+
+  <text class="warn" x="24" y="322">Accepted cost: kitchen-sink's only "New session" is on the Assistant row, so a first-time</text>
+  <text class="warn" x="24" y="340">visitor with a mouse doesn't see it until they point at that row.</text>
+</svg>

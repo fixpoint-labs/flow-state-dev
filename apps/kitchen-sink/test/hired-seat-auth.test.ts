@@ -14,6 +14,16 @@
  * `lib/workforce-registrar.ts`. The three "hiring credential" cases go red
  * (`404 Unknown flow` on the open, the run, and the run after a restart); the
  * refusals stay green, because they were refused before the fix too.
+ *
+ * The catalog legs lean on the engine resolving each pinned instance's caller
+ * with that instance's own resolver. Revert `flowsForCaller` in the engine's
+ * `routes/http-handlers.ts` to the host resolver alone and only "is listed in
+ * the catalog" goes red.
+ *
+ * Every admin token names `kitchen-sink`, the one organization this app runs
+ * as (`lib/workforce-admin-auth.ts`). A token naming any other organization is
+ * refused when the credentials are read, so the "another organization" case
+ * below is that token being refused at the seat, not a pin miss.
  */
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -25,7 +35,7 @@ import { reloadHiredSeats, seatAddress } from "@flow-state-dev/workforce";
 // the credential once, at module scope, exactly as they do at boot.
 const previousTokens = vi.hoisted(() => {
   const previous = process.env.WORKFORCE_ADMIN_TOKENS;
-  process.env.WORKFORCE_ADMIN_TOKENS = "acme:tok-acme,bravo:tok-bravo";
+  process.env.WORKFORCE_ADMIN_TOKENS = "kitchen-sink:tok-ks,elsewhere:tok-elsewhere";
   return previous;
 });
 
@@ -33,10 +43,13 @@ import { ADMIN_USER_ID } from "../lib/workforce-admin-auth";
 import { setWorkforceRegistrarImpl, workforceRegistrar } from "../lib/workforce-registrar";
 import workforceAdminFlow from "../flows/workforce-admin/flow";
 import { kitchenSinkKinds } from "../workforce/hire";
+import { KITCHEN_SINK_ORG_ID } from "../lib/kitchen-sink-principal";
 
-const ACME = "tok-acme";
-const BRAVO = "tok-bravo";
-const SEAT = seatAddress("acme", "support.bo", ADMIN_USER_ID);
+/** The configured kitchen-sink admin token. */
+const TOKEN = "tok-ks";
+/** A token whose entry named another organization, refused when the credentials were read. */
+const OTHER_ORG_TOKEN = "tok-elsewhere";
+const SEAT = seatAddress(KITCHEN_SINK_ORG_ID, "support.bo", ADMIN_USER_ID);
 
 type Router = {
   GET: (request: Request, ctx: { params: { path: string[] } }) => Promise<Response>;
@@ -81,6 +94,18 @@ async function boot(stores = inMemoryStores()) {
     return { status: response.status, json: text.length > 0 ? JSON.parse(text) : undefined };
   };
 
+  /** `GET /api/flows` — the catalog — as `token`: the status and the listed ids. */
+  const catalog = async (token: string | undefined) => {
+    const headers: Record<string, string> = {};
+    if (token !== undefined) headers.authorization = `Bearer ${token}`;
+    const response = await router.GET(
+      new Request("http://kitchen-sink.local/api/flows", { headers }),
+      { params: { path: [] } }
+    );
+    const json = (await response.json()) as { flows?: { id: string }[] };
+    return { status: response.status, ids: (json.flows ?? []).map((flow) => flow.id) };
+  };
+
   /** Post an action and wait for its request to settle. */
   const act = async (flowId: string, action: string, input: unknown, token: string | undefined) => {
     const posted = await call([flowId, "actions", action], token, { userId: ADMIN_USER_ID, input });
@@ -103,7 +128,7 @@ async function boot(stores = inMemoryStores()) {
   const reload = async () => {
     const { seats, problems } = await reloadHiredSeats({
       stores: runtime.stores,
-      orgIds: ["acme", "bravo"],
+      orgIds: [KITCHEN_SINK_ORG_ID],
       kinds: kitchenSinkKinds,
     });
     expect(problems).toEqual([]);
@@ -111,17 +136,17 @@ async function boot(stores = inMemoryStores()) {
     return seats.map((seat) => seat.id);
   };
 
-  return { call, act, reload };
+  return { call, act, catalog, reload };
 }
 
-/** Boot, and hire `support.bo` into acme with acme's admin credential. */
+/** Boot, and hire `support.bo` into kitchen-sink with its admin credential. */
 async function bootWithHire(stores = inMemoryStores()) {
   const app = await boot(stores);
   const hired = await app.act(
     "workforce-admin",
     "hire",
     { seatId: "support.bo", flow: "desk-clerk", settings: { desk: "back" } },
-    ACME
+    TOKEN
   );
   // If the hire itself did not land, everything below is about nothing.
   expect(hired).toEqual({ http: 202, outcome: "completed" });
@@ -137,7 +162,7 @@ describe("a seat hired over workforce-admin, reached with the hiring credential"
   it("opens a session for the operator who hired it", async () => {
     const app = await bootWithHire();
 
-    const opened = await app.call([SEAT, "sessions"], ACME, { userId: ADMIN_USER_ID });
+    const opened = await app.call([SEAT, "sessions"], TOKEN, { userId: ADMIN_USER_ID });
 
     expect(opened.status).toBe(201);
   });
@@ -145,9 +170,18 @@ describe("a seat hired over workforce-admin, reached with the hiring credential"
   it("runs an action for the operator who hired it", async () => {
     const app = await bootWithHire();
 
-    const ran = await app.act(SEAT, "answer", { note: "where is my order?" }, ACME);
+    const ran = await app.act(SEAT, "answer", { note: "where is my order?" }, TOKEN);
 
     expect(ran).toEqual({ http: 202, outcome: "completed" });
+  });
+
+  it("is listed in the catalog for the operator who hired it", async () => {
+    const app = await bootWithHire();
+
+    const listed = await app.catalog(ACME);
+
+    expect(listed.status).toBe(200);
+    expect(listed.ids).toContain(SEAT);
   });
 
   it("still answers the operator after a restart brings it back from its row", async () => {
@@ -156,26 +190,41 @@ describe("a seat hired over workforce-admin, reached with the hiring credential"
 
     const restarted = await boot(stores);
     expect(await restarted.reload()).toEqual([SEAT]);
-    const ran = await restarted.act(SEAT, "answer", { note: "still there?" }, ACME);
+    const ran = await restarted.act(SEAT, "answer", { note: "still there?" }, TOKEN);
 
     expect(ran).toEqual({ http: 202, outcome: "completed" });
   });
 });
 
 describe("a seat hired over workforce-admin stays closed to everyone else", () => {
-  it("answers another organization's admin credential as an address it does not serve", async () => {
+  it("refuses a token configured for another organization, which was refused at boot", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const app = await bootWithHire();
 
-    const opened = await app.call([SEAT, "sessions"], BRAVO, { userId: ADMIN_USER_ID });
-    const ran = await app.act(SEAT, "answer", { note: "hello" }, BRAVO);
+    const opened = await app.call([SEAT, "sessions"], OTHER_ORG_TOKEN, { userId: ADMIN_USER_ID });
+    const ran = await app.act(SEAT, "answer", { note: "hello" }, OTHER_ORG_TOKEN);
 
-    expect(opened).toEqual({ status: 404, json: { error: `Unknown flow "${SEAT}"` } });
-    expect(ran).toEqual({ http: 404, error: `Unknown flow "${SEAT}"` });
+    expect(opened.status).toBe(401);
+    expect(opened.json?.error).toMatch(/Invalid workforce-admin credential/);
+    expect(ran).toEqual({ http: 401, error: "Invalid workforce-admin credential." });
+  });
+
+  it("is left out of the catalog for another organization and for a caller with no credential", async () => {
+    const app = await bootWithHire();
+
+    const bravo = await app.catalog(BRAVO);
+    const anonymous = await app.catalog(undefined);
+
+    expect(bravo.status).toBe(200);
+    expect(bravo.ids).not.toContain(SEAT);
+    // The catalog route stays exempt: no credential is a shorter list, not a 401.
+    expect(anonymous.status).toBe(200);
+    expect(anonymous.ids).not.toContain(SEAT);
   });
 
   it("refuses a caller with no credential, even one naming the org and user in the body", async () => {
     const app = await bootWithHire();
-    const claimed = { userId: ADMIN_USER_ID, orgId: "acme" };
+    const claimed = { userId: ADMIN_USER_ID, orgId: KITCHEN_SINK_ORG_ID };
 
     const opened = await app.call([SEAT, "sessions"], undefined, claimed);
     const ran = await app.call([SEAT, "actions", "answer"], undefined, {

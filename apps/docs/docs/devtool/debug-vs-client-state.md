@@ -107,9 +107,9 @@ defineResource({
 
 `llmWritable` decides something narrower: whether a model is offered a tool to overwrite the resource's content. It has no bearing on what your own blocks may do.
 
-The panel marks a resource read-only when `writable` is `false`, and on no other condition. The mark means this handle refuses state and content writes, from your code and from a model alike. It is not a claim about the data: a shared `org` or `user` cell can still be written through another flow that declares it writable, and on a collection the mark leaves `create`, `getOrCreate` and `delete` open. A row without it is not reported read-only, which is not a guarantee that a write will land.
+The panel marks a resource read-only when `writable` is `false`. The mark means this handle refuses state and content writes, from your code and from a model alike. It is not a claim about the data: a shared `org` or `user` cell can still be written through another flow that declares it writable, and on a collection the mark leaves `create`, `getOrCreate` and `delete` open. A row without it is not reported read-only, which is not a guarantee that a write will land.
 
-Omit `writable` and the resource can be written, so a resource that declares nothing carries no mark. A [projected collection](../resources/projected-collections.md#writes-stay-on-the-app) has no `writable` field. The panel marks it read-only.
+Omit `writable` and the resource can be written, so a resource that declares nothing carries no mark. A [projected collection](../resources/projected-collections.md#writes-stay-on-the-app) is the one exception: it has no `writable` field, and the panel marks it read-only anyway.
 
 Omit `llmWritable` and no model is offered a write tool for it. Most resources never set it, so that is the ordinary case, and it is not a read-only mark. The panel shows both settings at the top of a resource's detail, so expand the row when you need to tell them apart.
 
