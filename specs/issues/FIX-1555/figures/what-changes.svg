@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two capture pipelines side by side. Today: new messages go to the observer model on every turn, then to the working, episodic and semantic stores. After, with an evaluator passed: the same new messages go first to the evaluator, which asks one question. Remember sends them on to the observer and the stores, exactly as today. Skip marks the messages read and writes nothing. A band under both says that with no evaluator passed, the after pipeline is the today pipeline, call for call.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:none; stroke:var(--rule); stroke-width:1.2; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .new   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .skip  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 3; }
+    .band  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .wire  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .wire-a { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .wire-g { stroke:var(--gone); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .head-a { fill:var(--accent); }
+    .head-g { fill:var(--gone); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-ac  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="360" height="296" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n-box" x="56" y="56" width="280" height="40" rx="4"/>
+    <text class="t-b" x="72" y="81">new messages since last capture</text>
+    <path class="wire" d="M196 96 V190"/>
+    <polygon class="head" points="191,188 201,188 196,196"/>
+    <text class="t-s" x="206" y="150">every turn</text>
+    <rect class="keep" x="56" y="196" width="280" height="40" rx="4"/>
+    <text class="t-b" x="72" y="221">observer model</text>
+    <path class="wire" d="M196 236 V252"/>
+    <polygon class="head" points="191,250 201,250 196,258"/>
+    <rect class="keep" x="56" y="258" width="280" height="40" rx="4"/>
+    <text class="t-b" x="72" y="283">working · episodic · semantic</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="396" y="16" width="528" height="296" rx="6"/>
+    <text class="t-lbl" x="412" y="38">AFTER · AN EVALUATOR PASSED</text>
+    <rect class="n-box" x="516" y="56" width="288" height="40" rx="4"/>
+    <text class="t-b" x="532" y="81">new messages since last capture</text>
+    <path class="wire" d="M660 96 V112"/>
+    <polygon class="head" points="655,110 665,110 660,118"/>
+    <rect class="new" x="530" y="118" width="260" height="44" rx="4"/>
+    <text class="t-b" x="546" y="138">evaluator · one question</text>
+    <text class="t-s" x="546" y="154">worth remembering? · the app's block</text>
+    <path class="wire-a" d="M600 162 L536 190"/>
+    <polygon class="head-a" points="533,184 541,192 530,196"/>
+    <text class="t-ac" x="486" y="180">remember</text>
+    <path class="wire-g" d="M720 162 L784 190"/>
+    <polygon class="head-g" points="779,192 787,184 790,196"/>
+    <text class="t-go" x="760" y="180">skip</text>
+    <rect class="keep" x="412" y="196" width="244" height="40" rx="4"/>
+    <text class="t-b" x="428" y="221">observer model · as today</text>
+    <path class="wire" d="M530 236 V252"/>
+    <polygon class="head" points="525,250 535,250 530,258"/>
+    <rect class="keep" x="412" y="258" width="244" height="40" rx="4"/>
+    <text class="t-b" x="428" y="283">working · episodic · semantic</text>
+    <rect class="skip" x="680" y="196" width="220" height="40" rx="4"/>
+    <text class="t-b" x="696" y="215">mark read</text>
+    <text class="t-go" x="696" y="230">nothing written · final</text>
+  </g>
+
+  <g id="off-path">
+    <rect class="band" x="16" y="324" width="908" height="36" rx="4"/>
+    <text class="t-lbl" x="32" y="346">NO EVALUATOR PASSED</text>
+    <text class="t-s" x="190" y="346">the after pipeline is the today pipeline, call for call · no evaluator step exists</text>
+  </g>
+</svg>
