@@ -7,11 +7,11 @@ deliberately not next. Each epic's own plan owns its checks.
 
 ![The arc](figures/arc.svg)
 
-Sixteen days, not three months. The project opened in June, but every epic here was filed from
-**Sep 8** onward, and 74 issues still sit under no epic. **W4 and W3 wrapped
+Seventeen days, not three months. The project opened in June, but every epic here was filed from
+**Sep 8** onward, and 75 issues still sit under no epic. **W4 and W3 wrapped
 three minutes apart on Sep 20**, and three bars now cross the now line: W5, the kitchen-sink
-rebuild, and plane isolation, whose children were shipping a day before the epic was filed. Eight
-lanes — four closed, three open, and one that never opened.
+rebuild, and plane isolation, which passed its gate on Sep 23 with six of eight children already
+done. Eight lanes — four closed, three open, and one that never opened.
 
 ## What each epic consumes and releases
 
@@ -22,13 +22,14 @@ lanes — four closed, three open, and one that never opened.
 | **W3** · FIX-1351 | W2's walk primitives; the agent flow as a consumer | The file surface — channels, resources, skills — and the pentest lab that proves PR-3 |
 | **W1** · FIX-1333 | W2's conventions; Layer 1 boards + dispatcher | The MCP client door over intake, boards and dispatch |
 | **W4** · FIX-1407 | W3's file surface; the settled vocabulary | Work routing, proved on the real path (ER-20), and the **ratified** package format — whose build left the set as FIX-1459. **Not** the PR-5 propagation pass, which it named out unowned |
-| **W5** · FIX-1457 | W3's file surface; W4's routing, for its ship half only | Living assemblies — channels, seats, boards and inventory composed into one runnable shape. **No longer humans in seats**: that explore is canceled, and only its invent-kill survives (PR list) |
+| **W5** · FIX-1457 | W3's file surface; W4's boards, inventory, dispatch and org identity, composed and never extended; Devtool's instance surfaces from FIX-1320 and org selection from FIX-1486, both outside this project | **Release QA** — three graded exit proofs on a live hired Workforce: Devtool reads it without a special wrapper, a DevForce path ships a real artifact, two seats collaborate across a channel. The evidence the project's *ready to ship* claim rests on. **Not** humans in seats: that explore is canceled, and only its invent-kill survives (PR list) |
 | **kitchen-sink** · FIX-1455 | W3's file surface; W4's first cut, for its ship half only; the existing Postgres persistence | The always-on reference consumer — durable hire that survives a redeploy, channels, and the inline-vs-resource-backed UI split, shipped in client packages rather than in the app |
+| **plane isolation** · FIX-1528 | FIX-1455's durable hire row (FIX-1475); the seat-hire tools; W4's dispatch and admission seams; a verified principal from FIX-1503, outside this project | One owner pin on the hire row fencing every door into a hired seat — catalog, open, restart, roster read, drain, debug, stored data — and a hired seat's data kept per (org, user). **Not** user planes, which wait on FIX-1486 |
 
-**Two epics run the same play from here, and the difference is who they are for.** W5 composes the
-surface for whoever builds on it; the kitchen-sink rebuild is the one app people copy. They share a
-released fence and most of their inputs, which is worth watching — the seam to guard is that a UI
-shape either app needs lands in a **client package**, not twice.
+**Two epics prove the outcome from two sides.** W5 produces the release evidence — graded proofs on
+a live workforce, observed in Devtool; the kitchen-sink rebuild is the one app people copy. They
+share a released fence and most of their inputs, so the seam to guard is unchanged: a UI shape
+either needs lands in a **client package**, not twice.
 
 **W1 is the one that unblocks nothing**, which is why it can sit unstarted at the bottom of the arc
 without holding anything up — and also why it is the easiest to keep deferring. Its cost is not
@@ -53,6 +54,10 @@ issue says only *Todo* ([Decisions](DECISIONS.md) → Open).
   remains is each epic's own sequencing, and neither is waiting on anything upstream. The per-child
   hold W5 used to carry is gone with the children: FIX-1458 is canceled and FIX-1455 is its own
   epic.
+- **Kitchen-sink → plane isolation — one hire row, fenced from the other epic.** FIX-1528 pins the
+  roster row FIX-1455's durable hire made, and its ER-12 says no fence lives only in kitchen-sink
+  or a Lab: the framework enforces it, or a host that copies the app gets none. Whether that binds
+  the kitchen-sink rebuild as a project rule is FIX-1528's wrap to say, not its gate.
 - **W3's lab is the proof for PR-3**, so any epic that ships a convention before the lab exists is
   asserting the rule rather than checking it. The lab shipped with W3 (FIX-1355, done).
 - **The `org/channels/` door outlived both epics that bound it, and now reads closed while being
@@ -68,7 +73,7 @@ issue says only *Todo* ([Decisions](DECISIONS.md) → Open).
   **unowned**: W4 met PR-5 with a check over its own diff and named the repo-wide pass out at its
   wrap.
 - **Tasks, Skills internals, Memory implementation.** Own projects; this one owns the vocabulary.
-- **Re-parenting the 45 unparented issues.** They are the pre-epic era. Sweeping them under epics
+- **Re-parenting the 75 unparented issues.** They are the pre-epic era. Sweeping them under epics
   retroactively would make the arc look tidier and tell you less about what actually happened.
 - **A second harness or transport for the MCP door.** W1 has not started; widening it before it
   does is scope with no consumer.

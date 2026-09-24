@@ -44,7 +44,7 @@ is a wish.
 PR-4 is the one rule here that was **corrected after it was first written**, and the correction is
 the reason it names *derived keys* rather than a specific key.
 
-It began inside `FIX-1354 §7` as a table of seven inherited shape rules — a rule set living inside a
+It began inside [FIX-1354](https://linear.app/fixpoint-labs/issue/FIX-1354) §7 as a table of seven inherited shape rules — a rule set living inside a
 document it governs, where a sibling epic could not find it. Two of those rules were wrong; the
 correction reached a comment on a Linear issue and never reached the table. Review then found, by
 running it, that carrying the remaining frontmatter through verbatim let a file point itself at

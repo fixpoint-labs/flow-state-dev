@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 444" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: eight epic lanes against sixteen days. W2 ran Sep 8 to Sep 12 and is done. The default agent flow ran Sep 12 to Sep 16 and is done. W3 ran Sep 16 to Sep 20 and is done. W4 ran Sep 18 to Sep 20 and is done. W5 was filed on Sep 19, passed its gate on Sep 20 and is in flight. The kitchen-sink rebuild became its own epic on Sep 20, had its spec approved on Sep 21 and is in flight. Plane isolation's children began shipping on Sep 22, the epic was filed on Sep 23 and its spec is at the objective gate. W1 was created Sep 8 and has not started. The now line is Sep 23.">
+     aria-label="The arc: eight epic lanes against seventeen days. W2 ran Sep 8 to Sep 12 and is done. The default agent flow ran Sep 12 to Sep 16 and is done. W3 ran Sep 16 to Sep 20 and is done. W4 ran Sep 18 to Sep 20 and is done. W5 was filed on Sep 19, re-cut as release QA on Sep 20 and is in flight. The kitchen-sink rebuild became its own epic on Sep 20, had its spec approved on Sep 21 and is in flight. Plane isolation's children began shipping on Sep 22; the epic was filed, passed its gate and had its spec merged on Sep 23, and is in flight. W1 was created Sep 8 and has not started. The now line is Sep 24.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -20,64 +20,64 @@
     .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
   </style>
 
-  <!-- 49.6px per day: x = 180 + 49.6 * (day - 8); Sep 23 = 924 -->
+  <!-- 46.5px per day: x = 180 + 46.5 * (day - 8); Sep 24 = 924 -->
   <g id="axis">
     <text class="t-lbl" x="16" y="20">EPIC</text>
     <text class="t-lbl" x="180" y="20">SEP 8</text>
-    <text class="t-lbl" x="378" y="20">SEP 12</text>
-    <text class="t-lbl" x="577" y="20">SEP 16</text>
-    <text class="t-lbl" x="775" y="20">SEP 20</text>
+    <text class="t-lbl" x="366" y="20">SEP 12</text>
+    <text class="t-lbl" x="552" y="20">SEP 16</text>
+    <text class="t-lbl" x="738" y="20">SEP 20</text>
     <path class="axis" d="M180 30 H924"/>
-    <path class="tick" d="M180 30 V412 M378 30 V412 M577 30 V412 M775 30 V412"/>
+    <path class="tick" d="M180 30 V412 M366 30 V412 M552 30 V412 M738 30 V412"/>
   </g>
 
   <g id="w2">
     <text class="t-lane" x="16" y="56">W2 · foundation</text>
     <text class="t-s"    x="16" y="70">FIX-1332 · 5/5</text>
-    <rect class="done" x="180" y="42" width="198" height="26" rx="4"/>
+    <rect class="done" x="180" y="42" width="186" height="26" rx="4"/>
     <text class="t-s" x="192" y="59">conventions, seat factory</text>
   </g>
 
   <g id="agent-flow">
     <text class="t-lane" x="16" y="104">agent flow</text>
     <text class="t-s"    x="16" y="118">FIX-1359 · 8/11</text>
-    <rect class="done" x="378" y="90" width="199" height="26" rx="4"/>
-    <text class="t-s" x="390" y="107">OOTB `agent` flow kind</text>
+    <rect class="done" x="366" y="90" width="186" height="26" rx="4"/>
+    <text class="t-s" x="378" y="107">OOTB agent flow kind</text>
   </g>
 
   <g id="w3">
     <text class="t-lane" x="16" y="152">W3 · file surface</text>
     <text class="t-s"    x="16" y="166">FIX-1351 · 19/20</text>
-    <rect class="done" x="577" y="138" width="198" height="26" rx="4"/>
-    <text class="t-s" x="589" y="155">channels, resources, skills</text>
+    <rect class="done" x="552" y="138" width="186" height="26" rx="4"/>
+    <text class="t-s" x="564" y="155">channels, resources, skills</text>
   </g>
 
   <g id="w4">
     <text class="t-lane" x="16" y="200">W4 · routing</text>
     <text class="t-s"    x="16" y="214">FIX-1407 · 7/9</text>
-    <rect class="done" x="676" y="186" width="99" height="26" rx="4"/>
-    <text class="t-s" x="668" y="203" text-anchor="end">spec Sep 18 · gate Sep 19 · wrapped Sep 20</text>
+    <rect class="done" x="645" y="186" width="93" height="26" rx="4"/>
+    <text class="t-s" x="637" y="203" text-anchor="end">spec Sep 18 · gate Sep 19 · wrapped Sep 20</text>
   </g>
 
   <g id="w5">
     <text class="t-lane" x="16" y="248">W5 · release QA</text>
     <text class="t-s"    x="16" y="262">FIX-1457 · 3/8</text>
-    <rect class="flight" x="726" y="234" width="198" height="26" rx="4"/>
-    <text class="t-s" x="718" y="251" text-anchor="end">filed Sep 19 · gate passed Sep 20</text>
+    <rect class="flight" x="691.5" y="234" width="232.5" height="26" rx="4"/>
+    <text class="t-s" x="683" y="251" text-anchor="end">filed Sep 19 · re-cut as release QA Sep 20</text>
   </g>
 
   <g id="kitchen-sink">
     <text class="t-lane" x="16" y="296">kitchen-sink rebuild</text>
-    <text class="t-s"    x="16" y="310">FIX-1455 · 4/8</text>
-    <rect class="flight" x="775" y="282" width="149" height="26" rx="4"/>
-    <text class="t-s" x="767" y="299" text-anchor="end">own epic Sep 20 · spec approved Sep 21</text>
+    <text class="t-s"    x="16" y="310">FIX-1455 · 6/8</text>
+    <rect class="flight" x="738" y="282" width="186" height="26" rx="4"/>
+    <text class="t-s" x="730" y="299" text-anchor="end">own epic Sep 20 · spec approved Sep 21</text>
   </g>
 
   <g id="plane-isolation">
     <text class="t-lane" x="16" y="344">plane isolation</text>
-    <text class="t-s"    x="16" y="358">FIX-1528 · 3/7</text>
-    <rect class="flight" x="874" y="330" width="50" height="26" rx="4"/>
-    <text class="t-s" x="866" y="347" text-anchor="end">children shipping Sep 22 · epic filed Sep 23 · spec at its gate</text>
+    <text class="t-s"    x="16" y="358">FIX-1528 · 6/8</text>
+    <rect class="flight" x="831" y="330" width="93" height="26" rx="4"/>
+    <text class="t-s" x="823" y="347" text-anchor="end">children shipping Sep 22 · filed and approved Sep 23</text>
   </g>
 
   <g id="w1">
@@ -88,6 +88,6 @@
 
   <g id="now">
     <path class="now" d="M924 30 V424"/>
-    <text class="t-now" x="918" y="28" text-anchor="end">NOW · SEP 23</text>
+    <text class="t-now" x="918" y="28" text-anchor="end">NOW · SEP 24</text>
   </g>
 </svg>
