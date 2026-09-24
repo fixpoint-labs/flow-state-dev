@@ -33,9 +33,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | **Because** | On 2026-09-19 the owner locked the opposite for presets ([FIX-1464](https://linear.app/fixpoint-labs/issue/FIX-1464)): picking a preset *implies* its tools, `tools: []` still means nothing. That ticket lists this one as a clash it hasn't resolved. Shipping packages on the old rule would teach a rule the owner has already retired, and would leave two authoring stories that disagree, which FIX-1464 forbids by name. So this spec builds FIX-1464's rule once, for both. Its open question, what an **omitted** `tools:` means, is answered here: the tools of everything the worker chose. A **written** `tools:` line keeps meaning exactly what it lists, `tools: []` included. Adding chosen tools to a written list was the first draft, and review showed its cost: a worker that picks a preset and lists two catalog tools would gain the preset's tools on upgrade, with no line that keeps its old reach, because `tools: []` also drops the two it listed. Only what the worker's own file chose counts: presets the kind switches on by default still grant nothing, and chosen tools don't travel to a delegate |
 | **Locks in** | A worker with no `tools:` line reaches what it holds and picks; one with a line reaches that line. A worker that writes a list and holds a package names the package's blocks in the list to call them. **Existing workers that pick a tool-bearing preset and write no `tools:` line gain its tools** on upgrade; they had no tools before, so `tools: []` restores their old reach exactly. This ships with a changelog line and that migration note |
 
-**What would change my mind:** the owner choosing *list it too* on the decision card. Then the
-ticket's original rule stands, presets are untouched, FIX-1464 stays open, and PR-A is dropped from
-the plan. Nothing else in this set moves.
+**Chosen by the owner on 2026-09-24**, over *list it too* and *packages only*, and confirmed in
+the project thread.
 
 <a name="d2"></a>
 ## D2 · A worker holds a package by having it in its folder, or takes one from a library by name; always on either way
@@ -82,10 +81,11 @@ the plan. Nothing else in this set moves.
 
 ## Open
 
-- **D1** is on a decision card with the owner. The draft follows the recommendation.
+Nothing. D1 was chosen by the owner on 2026-09-24.
 
 ## How it got here
 
+- **Owner's call** — D1 chosen and confirmed on 2026-09-24: choosing grants, presets too.
 - **Review, round 1** — Codex showed that adding chosen tools to a *written* list widens
   list-writers on upgrade with no way back; D1 now leaves a written list literal. Controls,
   per-turn collisions and the *list it too* fallback were tightened with it.

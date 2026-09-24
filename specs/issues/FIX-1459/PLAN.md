@@ -4,8 +4,7 @@
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 (BR-n) and [DECISIONS.md](DECISIONS.md) (D-n). `tdd`. Two PRs: **PR-A** the grant rule, **PR-B**
-the format. If the owner rules *list it too* on D1, PR-A is dropped and PR-B grants nothing (see
-*At implement time*).
+the format.
 
 ## Surfaces
 
@@ -124,12 +123,6 @@ real path. Its reader read from a path and hand-parsed frontmatter; this plan do
 
 ## At implement time
 
-- **D1's card.** If the owner picks *list it too*: drop PR-A and S1/S2. A package block is
-  callable only when the worker's `tools:` names it, exactly as BR-3 already reads for a worker
-  that writes a line; an unnamed block is simply not granted, so `tools: []` keeps the
-  instructions and no tool (BR-2 unchanged). S8 refuses only a name in `tools:` that no held
-  package or other source offers. S9 adds nothing on its own. BR-1 and BR-4 invert (no line
-  means no tools), BR-6 and BR-31 drop; everything else stands.
 - **FIX-1435** may have hoisted the shared slot walk. If so, S5 and S6 use it rather than adding a
   fifth copy.
 - **Stored roster rows** (`roster/rows.ts`) keep `settings` as declared. Confirm an omitted

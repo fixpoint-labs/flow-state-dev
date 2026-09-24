@@ -113,6 +113,6 @@ worker on the team, so a worker has to name it.
 3. **[D3](DECISIONS.md#d3) · A package's tool reaches only the workers that hold it.** If wrong:
    two workers of one kind can't share a package's tool without both holding the package.
 
-**Open: [D1](DECISIONS.md#d1) is with you** as a decision card in the project thread. The draft
-follows its recommendation. Number 1 is the one to weigh. What was rejected is in
+**[D1](DECISIONS.md#d1) was chosen and confirmed by the owner on 2026-09-24** (choosing grants,
+presets too), with the round-1 narrowing that a written `tools:` line stays the whole grant. What was rejected is in
 [DECISIONS.md](DECISIONS.md), the cases in [BUSINESS-RULES.md](BUSINESS-RULES.md).
