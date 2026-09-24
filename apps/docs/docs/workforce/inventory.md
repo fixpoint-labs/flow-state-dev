@@ -167,6 +167,44 @@ const seatChannels = handler({
 
 `openedAt` is an ISO timestamp set the first time the channel registers and left alone after. `members` is what the channel's session holds, not what the roster declared.
 
+### From a browser
+
+All three collections can be read from a browser, with the same collection read your app's client code uses for any other resource. You read through a session, by the name that session's flow gave the collection in its `resources` map. That name is up to the flow, so look it up in the session's resource manifest by pattern:
+
+```ts
+import { createResourceClient } from "@flow-state-dev/client";
+
+const resources = createResourceClient({ baseUrl: "https://app.example.com" });
+
+const manifest = await resources.getResourceManifest(channelSessionId);
+const channelsRef = manifest.resources.find(
+  (entry) => entry.pattern === "inventory/channels/*",
+)?.ref;
+
+const channels: unknown[] = [];
+if (channelsRef !== undefined) {
+  let cursor: string | undefined;
+  do {
+    const page = await resources.listCollectionItems(channelSessionId, channelsRef, { cursor });
+    channels.push(...page.items.map((item) => item.clientData));
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+}
+// channels[0] → { id: "engineering.standup", kind: "channel", members: [...], openedAt: "..." }
+```
+
+The patterns are `inventory/seats/*`, `inventory/channels/*` and `inventory/members/**`. A channel built with `channelInstances(roster.channels, { inventory: true })` declares all three, so any channel's session can read the whole inventory. A seat whose kind carries the [`seat-hire` tools](./durable-hire.md) declares only the seat collection.
+
+**Which organization:** the session's. The server takes it from the session, and the session took it from your principal resolver when it was created. Nothing in the request can name a different one.
+
+**What each row carries:** the fields in [What each row holds](#what-each-row-holds), and no others.
+
+**Paging:** pass `nextCursor` back as `cursor` until it comes back empty. `limit` takes 1 to 200 and defaults to 50.
+
+**When the ref is wrong:** the call rejects with a `ClientHttpError` whose `status` is 404.
+
+A row means registered, not open. Nothing deletes one, so a fired seat keeps its row, and a channel's `members` are the members it had when it registered.
+
 ## Writing from your own kind
 
 A channel kind you wrote yourself gets rows when it carries the writer. `inventoryWriterActions(kind)` gives back its two blocks by action name — split them across `actions` and `internal.actions`, the way the built-in kind does. `registerChannelInInventory` is safe to leave public: it takes no input and derives its row from the channel's own already-open session state. `registerSeatsInInventory` is not — its whole input is the row data — so it belongs only in `internal.actions`, reachable solely by the trusted, direct `runAction({ source: "internal", ... })` call `openInventory` makes for it:

@@ -1489,6 +1489,12 @@ reads them the way it reads any other resource.
 | `defineChannelInventoryCollection()` | open channel, at `inventory/channels/<channelId>` | `id`, `kind` (the channel kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
 | `defineMembershipIndexCollection()` | seat-in-channel, at `inventory/members/<seatId>/<channelId>` | `seatId`, `channelId` |
 
+All three are readable by a browser through the ordinary collection read
+(`listCollectionItems` from `@flow-state-dev/client`), from any session whose flow installs them.
+Each row crosses with the fields in the table and nothing else. The read answers for the session's
+own organization, which the server takes from the session, never from the request. A row means the
+seat or channel was registered: nothing is removed when a seat is fired or leaves a channel.
+
 ### Writing the inventory at boot
 
 The rows are written by `openInventory`, which runs after `openChannels`:
