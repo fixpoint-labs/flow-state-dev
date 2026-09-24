@@ -23,7 +23,8 @@ and nothing on the request is read for either.
 - `pickPrincipalResolver` makes it the resolver for every flow that has none of its own
   (`packages/engine/src/transports/auth/pickPrincipalResolver.ts:27`). That covers `chat-agent`,
   the rail's flow, every seat and every channel. `workforce-admin` and `weekly-digest` keep
-  their own resolvers.
+  their own resolvers. PR-B pins `workforce-admin`'s tokens to the same organization, and
+  `weekly-digest`'s scheduled path stays on `org_test` without hiring or reading the roster.
 - The session binds to it (`orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID`,
   `packages/engine/src/routes/session-routes.ts:300`). An action whose org differs from its
   session's binding is refused (`packages/engine/src/context/createExecutionContext.ts:757`–`:759`).
