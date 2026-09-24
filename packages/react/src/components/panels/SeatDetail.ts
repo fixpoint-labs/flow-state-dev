@@ -15,9 +15,8 @@
  *
  * **A seat with no public roster row gets no read at all** (BR-31): when the
  * host passes no `seatId` — a seat declared in a `WORKER.md`, or one a user
- * hired for themselves — the instructions read is never mounted. "Mounting is
- * the gate" is the same rule `FlowNavigator`'s `LeafSessionList` already
- * uses: no open leaf, no hook, no request. The host, not this component,
+ * hired for themselves — the instructions read is never mounted: mounting is
+ * the gate, so no `seatId` means no hook and no request. The host, not this component,
  * decides whether a `seatId` names a public roster row; a user-owned address
  * is never handed in as if it were one, and this component never derives a
  * roster topic from an address itself — see the file this issue's PLAN calls

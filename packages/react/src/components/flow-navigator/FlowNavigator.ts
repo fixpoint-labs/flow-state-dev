@@ -15,8 +15,21 @@
  * and no icon set. A host themes it by setting the `--fsd-nav-*` custom
  * properties on any ancestor, and fills the parts that are its own through
  * slots.
+ *
+ * Every level starts its labels on one column, one twisty's width right of its
+ * parent's, and a dashed line (`--fsd-nav-guide`) runs down from each open
+ * row past everything under it. A row's slot content shows while the row is
+ * pointed at, focused into or selected, and always on a screen with no hover.
  */
-import { createElement, useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  createElement,
+  useCallback,
+  useMemo,
+  useState,
+  type FocusEvent,
+  type ReactNode
+} from "react";
 import {
   createClient,
   createSessionClient,
@@ -34,7 +47,8 @@ import {
   useFlowInventory,
   useLeafSessions,
   type FlowNavigatorFlowSource,
-  type FlowNavigatorSessionSource
+  type FlowNavigatorSessionSource,
+  type LeafSessions
 } from "./reads";
 import { arrangeSessionRows, type SessionRow } from "./dispatch-runs";
 
@@ -90,10 +104,27 @@ export type FlowNavigatorRow =
 export type FlowNavigatorSlots = {
   /** Beside a section's label. */
   readonly sectionHeader?: (section: FlowNavigatorSection) => ReactNode;
-  /** Beside any row's name. */
+  /**
+   * At the end of any row. Shown while the row is pointed at, has focus inside
+   * it or is selected, and always on a screen with no hover; hidden content
+   * keeps its space and stays reachable with Tab.
+   */
   readonly rowTrailing?: (row: FlowNavigatorRow) => ReactNode;
-  /** The strip inside an open leaf, above its sessions. */
+  /**
+   * An open leaf's actions, drawn on that leaf's own row after `rowTrailing`'s
+   * content and revealed the same way. Mounted when the leaf opens, unmounted
+   * when it closes. It shares one line with the row's label, so give it icon
+   * buttons with an `aria-label`, not text.
+   */
   readonly leafToolbar?: (leaf: FlowNavigatorLeafState) => ReactNode;
+  /**
+   * What an open leaf shows about itself, on its own lines directly under the
+   * leaf's row and above its sessions, starting at the leaf's label column.
+   * Handed the same state as `leafToolbar`, and mounted and unmounted with the
+   * leaf the same way. It is always shown while the leaf is open, and it wraps
+   * to the rail's width: for detail and forms that don't fit on a row.
+   */
+  readonly leafDetail?: (leaf: FlowNavigatorLeafState) => ReactNode;
   /** What a section covering no registered kind says. */
   readonly emptySection?: (section: FlowNavigatorSection) => ReactNode;
 };
@@ -151,7 +182,28 @@ export const flowNavigatorPropNames = [
   "userId"
 ] as const;
 
-const INDENT_STEP = 12;
+/** The twisty's column. Every row reserves it, whether or not it can open. */
+const TWISTY = 10;
+const GAP = 6;
+/**
+ * One level is exactly the twisty column, so a child's twisty sits under its
+ * parent's label and every label at one level starts at one x.
+ */
+const INDENT_STEP = TWISTY + GAP;
+
+const ENGINE_ID = /^([a-z]+)_\d{13}_([0-9a-f]{6,})$/;
+
+/**
+ * What a session row reads: its title, else an engine-minted id shortened to
+ * its prefix and its last six characters (`sess_…3df102`), else the id whole.
+ * The tail is kept rather than the head because ids minted months apart share
+ * their first digits.
+ */
+function sessionLabel(session: SessionSummary): string {
+  if (session.title != null && session.title.trim() !== "") return session.title;
+  const match = ENGINE_ID.exec(session.id);
+  return match === null ? session.id : `${match[1]}_…${match[2]!.slice(-6)}`;
+}
 
 const label = {
   flex: 1,
@@ -181,7 +233,7 @@ function rowButtonStyle(depth: number): Record<string, unknown> {
   return {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: GAP,
     flex: 1,
     // Without this a flex child refuses to shrink below its content, and the
     // label's ellipsis never engages.
@@ -206,6 +258,16 @@ const trailingStyle = {
   paddingRight: 8
 } as const;
 
+/** What a slot returns when it has nothing to draw. */
+function isBlank(node: ReactNode): boolean {
+  return node === undefined || node === null || node === false;
+}
+
+/** No hover pointer (a phone, a tablet): nothing can reveal the actions, so show them. */
+function screenHasNoHover(): boolean {
+  return typeof matchMedia === "function" && matchMedia("(hover: none)").matches;
+}
+
 /**
  * One row: its activation button, and the host's trailing content BESIDE it.
  *
@@ -219,34 +281,66 @@ const trailingStyle = {
  *
  * The highlight sits on the container so it spans both, and the indent stays on
  * the button so the thing you click is the thing that is indented.
+ *
+ * The trailing area is invisible until the row is pointed at, holds focus, or
+ * is selected. Invisible, never removed: it keeps its width, so nothing on the
+ * row moves when it appears, and its controls stay in the tab order, so
+ * tabbing to one is what reveals it. The state is the row's own, so pointing
+ * at one row re-renders no other.
  */
-function row(options: {
+function Row(props: {
   readonly depth: number;
   readonly isSelected?: boolean;
   readonly button: Record<string, unknown>;
   readonly content: readonly ReactNode[];
   readonly trailing: ReactNode;
 }): ReactNode {
-  const { depth, isSelected = false, button, content, trailing } = options;
+  const { depth, isSelected = false, button, content, trailing } = props;
+  const [pointed, setPointed] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const shown = pointed || focused || isSelected || screenHasNoHover();
 
   return createElement(
     "div",
-    { style: rowContainerStyle(isSelected) },
+    {
+      style: rowContainerStyle(isSelected),
+      onMouseEnter: () => setPointed(true),
+      onMouseLeave: () => setPointed(false),
+      onFocus: () => setFocused(true),
+      onBlur: (event: FocusEvent<HTMLDivElement>) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+      }
+    },
     createElement(
       "button",
       { type: "button", ...button, style: rowButtonStyle(depth) },
       ...content
     ),
-    trailing === undefined || trailing === null || trailing === false
+    isBlank(trailing)
       ? null
-      : createElement("span", { style: trailingStyle }, trailing)
+      : createElement("span", { style: { ...trailingStyle, opacity: shown ? 1 : 0 } }, trailing)
   );
 }
 
+/**
+ * An open leaf's detail block: starts on the leaf row's label column and wraps
+ * to whatever width the rail leaves it, so it never pushes the rail wider.
+ */
+function detailStyle(depth: number): Record<string, unknown> {
+  return {
+    boxSizing: "border-box",
+    minWidth: 0,
+    padding: `2px 8px 4px ${8 + depth * INDENT_STEP + INDENT_STEP}px`,
+    overflowWrap: "anywhere",
+    fontSize: "var(--fsd-nav-note-font-size, 11px)"
+  };
+}
+
+/** A note stands in for the rows at `depth`, so it starts on their label column. */
 function noteStyle(depth: number): Record<string, unknown> {
   return {
     margin: 0,
-    padding: `4px 8px 4px ${8 + depth * INDENT_STEP}px`,
+    padding: `4px 8px 4px ${8 + depth * INDENT_STEP + INDENT_STEP}px`,
     fontSize: "var(--fsd-nav-note-font-size, 11px)",
     color: "var(--fsd-nav-muted-fg, inherit)"
   };
@@ -254,12 +348,43 @@ function noteStyle(depth: number): Record<string, unknown> {
 
 const bareList = { listStyle: "none", margin: 0, padding: 0 } as const;
 
-/** `▾`/`▸` as text, because the package ships no icon set. */
-function twisty(isOpen: boolean): ReactNode {
+/** An open row's child list: positioned, so its tree line can hang in it. */
+const childList = { ...bareList, position: "relative" } as const;
+
+/**
+ * The dashed line down an open parent's children, on the centre of the
+ * parent's twisty column. It runs the whole list, past any open child's own
+ * rows, and a note included. Decorative: hidden from assistive technology,
+ * out of flow so it moves no row, and drawn over a selected row's highlight.
+ * `--fsd-nav-guide` colours it; `transparent` hides it.
+ */
+function treeLine(parentDepth: number): ReactNode {
+  return createElement("li", {
+    "aria-hidden": "true",
+    role: "presentation",
+    style: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      left: 8 + parentDepth * INDENT_STEP + TWISTY / 2 - 0.5,
+      width: 0,
+      borderLeftWidth: 1,
+      borderLeftStyle: "dashed",
+      borderLeftColor: "var(--fsd-nav-guide, rgba(127, 127, 127, 0.45))",
+      pointerEvents: "none"
+    }
+  });
+}
+
+/**
+ * `▾`/`▸` as text, because the package ships no icon set. `null` is a row that
+ * cannot open: its column is still reserved, so its label lines up.
+ */
+function twisty(isOpen: boolean | null): ReactNode {
   return createElement(
     "span",
-    { "aria-hidden": "true", style: { width: 10, flexShrink: 0 } },
-    isOpen ? "▾" : "▸"
+    { "aria-hidden": "true", style: { width: TWISTY, flexShrink: 0 } },
+    isOpen === null ? "" : isOpen ? "▾" : "▸"
   );
 }
 
@@ -291,47 +416,30 @@ function describeDispatchRun(
   return { parentSessionId: entry.parentSessionId, parentInView: entry.depth === 1 };
 }
 
-/**
- * A leaf's session list, mounted only while the leaf is open.
- *
- * Mounting IS the gate: no open leaf, no hook, no request. Collapsing unmounts
- * it, which retires its fence, so a response that arrives afterwards has
- * nothing to write to.
- */
-function LeafSessionList(props: {
-  readonly leaf: FlowNavigatorLeaf;
-  readonly depth: number;
+/** What every leaf row needs to read its sessions and draw them. */
+type LeafContext = {
   readonly source: FlowNavigatorSessionSource;
   readonly userId: string | undefined;
   readonly selectedSessionId: string | undefined;
   readonly includeDispatchRuns: boolean;
   readonly onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
   readonly slots: FlowNavigatorSlots;
+};
+
+/** An open leaf's session list, drawn from the read its row holds. */
+function SessionList(props: {
+  readonly leaf: FlowNavigatorLeaf;
+  readonly depth: number;
+  readonly state: LeafSessions;
+  readonly context: LeafContext;
 }): ReactNode {
-  const {
-    leaf,
-    depth,
-    source,
-    userId,
-    selectedSessionId,
-    includeDispatchRuns,
-    onSelectSession,
-    slots
-  } = props;
-  const state = useLeafSessions(source, leaf, userId, includeDispatchRuns);
+  const { leaf, depth, state, context } = props;
+  const { selectedSessionId, onSelectSession, slots } = context;
   // Arranged, not re-sorted: the listing's order is the server's, and this only
   // moves a dispatch run to sit under the session that started it. With the
   // include off there are no runs in the list and every row comes back at
   // depth 0 in the order it arrived.
   const arranged = useMemo(() => arrangeSessionRows(state.sessions), [state.sessions]);
-
-  const toolbar = slots.leafToolbar?.({
-    ...leaf,
-    sessions: state.sessions,
-    isLoading: state.isLoading,
-    error: state.error,
-    refresh: state.refresh
-  });
 
   const rows =
     state.error !== null
@@ -355,7 +463,7 @@ function LeafSessionList(props: {
               return createElement(
                 "li",
                 { key: session.id },
-                row({
+                createElement(Row, {
                   // One level under the session that started it, and never a
                   // second: `entry.depth` is 0 or 1 by construction.
                   depth: depth + entry.depth,
@@ -363,13 +471,15 @@ function LeafSessionList(props: {
                   button: {
                     "aria-current": isSelected ? "true" : undefined,
                     "data-session-id": session.id,
+                    title: session.id,
                     ...(dispatchRun === undefined
                       ? {}
                       : { "data-dispatch-run-of": dispatchRun.parentSessionId }),
                     onClick: () => onSelectSession(session.id, leaf)
                   },
                   content: [
-                    createElement("span", { style: label }, session.title ?? session.id)
+                    twisty(null),
+                    createElement("span", { style: label }, sessionLabel(session))
                   ],
                   trailing: slots.rowTrailing?.({
                     type: "session",
@@ -384,15 +494,76 @@ function LeafSessionList(props: {
 
   return createElement(
     "ul",
-    { "data-leaf": leaf.address, style: bareList },
-    toolbar === undefined || toolbar === null
+    { "data-leaf": leaf.address, style: childList },
+    treeLine(depth - 1),
+    rows
+  );
+}
+
+/**
+ * A leaf's row — a singleton's kind row, or one copy under a collection — and
+ * its sessions while it is open.
+ *
+ * Mounted whether or not the leaf is open, so the row that opens it is never
+ * replaced and keeps focus. What waits for the leaf to open is the read: a
+ * closed leaf asks the server nothing, and closing retires a read in flight.
+ * The host's toolbar joins the row's own trailing content, so it draws on
+ * this row and mounts and unmounts with the leaf. The host's detail, when it
+ * gives one, sits on its own lines between the row and the sessions, so the
+ * row stays one line whatever the detail holds.
+ */
+function LeafRow(props: {
+  readonly leaf: FlowNavigatorLeaf;
+  readonly depth: number;
+  readonly isOpen: boolean;
+  readonly name: string;
+  readonly button: Record<string, unknown>;
+  readonly trailing: ReactNode;
+  readonly context: LeafContext;
+}): ReactNode {
+  const { leaf, depth, isOpen, name, button, trailing, context } = props;
+  const state = useLeafSessions(
+    context.source,
+    leaf,
+    context.userId,
+    context.includeDispatchRuns,
+    isOpen
+  );
+
+  const leafState: FlowNavigatorLeafState = {
+    ...leaf,
+    sessions: state.sessions,
+    isLoading: state.isLoading,
+    error: state.error,
+    refresh: state.refresh
+  };
+  const toolbar = isOpen ? context.slots.leafToolbar?.(leafState) : null;
+  const detail = isOpen ? context.slots.leafDetail?.(leafState) : null;
+
+  return createElement(
+    "li",
+    null,
+    createElement(Row, {
+      depth,
+      button,
+      content: [twisty(isOpen), createElement("span", { style: label }, name)],
+      // One fragment whenever there is anything to draw, so opening adds the
+      // toolbar after the row's own content without remounting that content.
+      // Nothing at all draws no trailing area, whose padding would otherwise
+      // cut the label short.
+      trailing:
+        isBlank(trailing) && isBlank(toolbar)
+          ? null
+          : createElement(Fragment, null, trailing, toolbar)
+    }),
+    isBlank(detail)
       ? null
       : createElement(
-          "li",
-          { role: "none", style: { padding: `2px 8px 2px ${8 + depth * INDENT_STEP}px` } },
-          toolbar
+          "div",
+          { "data-leaf-detail": leaf.address, style: detailStyle(depth) },
+          detail
         ),
-    rows
+    isOpen ? createElement(SessionList, { leaf, depth: depth + 1, state, context }) : null
   );
 }
 
@@ -401,109 +572,76 @@ function KindRow(props: {
   readonly group: FlowNavigatorKindGroup;
   readonly open: ReadonlySet<string>;
   readonly toggle: (key: string) => void;
-  readonly source: FlowNavigatorSessionSource;
-  readonly userId: string | undefined;
-  readonly selectedSessionId: string | undefined;
-  readonly includeDispatchRuns: boolean;
-  readonly onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
-  readonly slots: FlowNavigatorSlots;
+  readonly context: LeafContext;
 }): ReactNode {
-  const {
-    group,
-    open,
-    toggle,
-    source,
-    userId,
-    selectedSessionId,
-    includeDispatchRuns,
-    onSelectSession,
-    slots
-  } = props;
+  const { group, open, toggle, context } = props;
   const isOpen = open.has(`kind:${group.kind}`);
-
-  const leafProps = {
-    source,
-    userId,
-    selectedSessionId,
-    includeDispatchRuns,
-    onSelectSession,
-    slots
+  const button = {
+    "aria-expanded": isOpen,
+    "data-kind": group.kind,
+    "data-cardinality": group.cardinality,
+    onClick: () => toggle(`kind:${group.kind}`)
   };
+  const trailing = context.slots.rowTrailing?.({
+    type: "kind",
+    kind: group.kind,
+    cardinality: group.cardinality,
+    isOpen
+  });
 
-  const children = !isOpen
-    ? null
-    : group.leaf !== null
-      ? // A singleton's kind row IS its leaf: there is no copy to pick, so the
-        // instance level is not drawn and the sessions hang directly under it.
-        createElement(LeafSessionList, {
-          leaf: group.leaf,
-          depth: 1,
-          ...leafProps
-        })
-      : createElement(
-          "ul",
-          { style: bareList },
-          ...group.instances.map((instance) => {
-            const key = `instance:${instance.id}`;
-            const instanceOpen = open.has(key);
-            const leaf: FlowNavigatorLeaf = {
-              kind: group.kind,
-              address: instance.id,
-              cardinality: "collection"
-            };
-
-            return createElement(
-              "li",
-              { key: instance.id },
-              row({
-                depth: 1,
-                button: {
-                  "aria-expanded": instanceOpen,
-                  "data-instance-id": instance.id,
-                  onClick: () => toggle(key)
-                },
-                content: [
-                  twisty(instanceOpen),
-                  createElement("span", { style: label }, instance.id)
-                ],
-                trailing: slots.rowTrailing?.({
-                  type: "instance",
-                  kind: group.kind,
-                  instance,
-                  isOpen: instanceOpen
-                })
-              }),
-              instanceOpen
-                ? createElement(LeafSessionList, {
-                    leaf,
-                    depth: 2,
-                    ...leafProps
-                  })
-                : null
-            );
-          })
-        );
+  // A singleton's kind row IS its leaf: there is no copy to pick, so the
+  // instance level is not drawn and the sessions hang directly under it.
+  if (group.leaf !== null) {
+    return createElement(LeafRow, {
+      leaf: group.leaf,
+      depth: 0,
+      isOpen,
+      name: group.kind,
+      button,
+      trailing,
+      context
+    });
+  }
 
   return createElement(
     "li",
     null,
-    row({
+    createElement(Row, {
       depth: 0,
-      button: {
-        "aria-expanded": isOpen,
-        "data-kind": group.kind,
-        "data-cardinality": group.cardinality,
-        onClick: () => toggle(`kind:${group.kind}`)
-      },
+      button,
       content: [twisty(isOpen), createElement("span", { style: label }, group.kind)],
-      trailing: slots.rowTrailing?.({
-        type: "kind",
-        kind: group.kind,
-        cardinality: group.cardinality,
-        isOpen
-      })
+      trailing
     }),
-    children
+    isOpen
+      ? createElement(
+          "ul",
+          { style: childList },
+          treeLine(0),
+          ...group.instances.map((instance) => {
+            const key = `instance:${instance.id}`;
+            const instanceOpen = open.has(key);
+            return createElement(LeafRow, {
+              key: instance.id,
+              leaf: { kind: group.kind, address: instance.id, cardinality: "collection" },
+              depth: 1,
+              isOpen: instanceOpen,
+              name: instance.id,
+              button: {
+                "aria-expanded": instanceOpen,
+                "data-instance-id": instance.id,
+                onClick: () => toggle(key)
+              },
+              trailing: context.slots.rowTrailing?.({
+                type: "instance",
+                kind: group.kind,
+                instance,
+                isOpen: instanceOpen
+              }),
+              context
+            });
+          })
+        )
+      : null
   );
 }
 
@@ -563,6 +701,15 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
   // with its retry — repeating it per section as "no seats on this server"
   // would be the same missing answer wearing a confident face.
   const answered = !inventory.isLoading && inventory.error === null;
+
+  const leafContext: LeafContext = {
+    source: sources.sessions,
+    userId,
+    selectedSessionId: props.selectedSessionId,
+    includeDispatchRuns: props.includeDispatchRuns ?? false,
+    onSelectSession: props.onSelectSession,
+    slots
+  };
 
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set<string>());
   const toggle = useCallback((key: string) => {
@@ -627,18 +774,7 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
               "ul",
               { "aria-label": view.section.label, style: bareList },
               ...view.kinds.map((group) =>
-                createElement(KindRow, {
-                  key: group.kind,
-                  group,
-                  open,
-                  toggle,
-                  source: sources.sessions,
-                  userId,
-                  selectedSessionId: props.selectedSessionId,
-                  includeDispatchRuns: props.includeDispatchRuns ?? false,
-                  onSelectSession: props.onSelectSession,
-                  slots
-                })
+                createElement(KindRow, { key: group.kind, group, open, toggle, context: leafContext })
               )
             )
       )

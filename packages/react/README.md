@@ -407,15 +407,45 @@ How deep the tree goes comes from each flow's declared `cardinality`. A flow dec
 
 `onSelectSession(sessionId, flow)` fires when a session row is picked. The second argument describes the instance that session was listed under: `{ kind, address, cardinality }`, where `address` is the kind name for a singleton and the instance id for one copy of a collection. Selection is yours to keep; pass it back as `selectedSessionId` to mark the current row.
 
-Sessions load when you open a single flow instance, which is a singleton's row or one copy under a collection. Expanding a collection row to see its copies costs no request.
+Sessions load when you open a leaf, a row whose sessions you can open: a singleton's row, or one copy under a collection. Expanding a collection row to see its copies costs no request.
 
 Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers ran work in, each drawn one level under the session that started it. One level is all there is: a run started by another run sits beside its own parent, and a run whose parent is not in the listing sits at the left margin. The `rowTrailing` slot receives `dispatchRun` on those rows, carrying the id of the session that started it, so you can label the row or link to it. Left out, the rail lists the sessions a person started.
 
 The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
 
-The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.
+The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` at the end of any row, `leafToolbar` at the end of an open leaf's row, `leafDetail` under an open leaf's row, and `emptySection` for a section whose kinds the server does not have.
 
-`leafToolbar` is handed that instance's session list, a `refresh` for it, and the flow-list entry the row was drawn from. The entry carries what the flow declares — its actions, for example — so the toolbar can render them without fetching the flow list itself.
+While a leaf is open, `leafToolbar` is called with the leaf's `kind`, `address` and `cardinality`, its `sessions`, `isLoading` and `error`, and a `refresh` that re-reads the sessions. What it returns sits on the leaf's own row, after `rowTrailing`'s content. It mounts when the leaf opens and unmounts when it closes. It shares one line with the row's label, so give it icon buttons with an `aria-label` rather than text buttons.
+
+`leafDetail` is called with the same leaf, and what it returns sits on its own lines directly under the open leaf's row, above its sessions, starting at the leaf's label column. It's always shown while the leaf is open, and it wraps to the rail's width. Use it for what doesn't fit on a row, such as a leaf's details or a short form. It also mounts when the leaf opens and unmounts when it closes.
+
+```tsx
+<FlowNavigator
+  sections={[{ label: "Seats", kinds: ["agent"] }]}
+  onSelectSession={(picked) => setSessionId(picked)}
+  slots={{
+    leafToolbar: (leaf) => (
+      <button type="button" aria-label={`Refresh ${leaf.address}`} onClick={leaf.refresh}>
+        ↻
+      </button>
+    ),
+  }}
+/>
+```
+
+A row's actions, whatever `rowTrailing` and `leafToolbar` return for it, are hidden until the pointer is over the row or keyboard focus is inside it. They stay shown on the selected row. On a touch screen with no hover they are always shown. Hidden actions keep their space, so nothing on the row shifts when they appear, and they stay in the tab order, so tabbing to one reveals it.
+
+You can't pin an action visible. Only a session row's label is yours to set: it shows the session's `title`, which you set through the session client's `createSession` or `updateSessionMetadata`. Put a status your users need at a glance there. A session with no title shows its id instead, shortened to its prefix and last six characters (`sess_…8a71aa`) when the server generated it. Any other id, such as one you supplied, shows in full. Hover a session row to see its full id. Kind and instance rows always show the kind name and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
+
+Both slots draw on the same row, so pick icons that look the same size.
+
+Each level of the tree indents by the width of the expand arrow, so a row's arrow sits under its parent's label. Labels at the same level line up, whether or not the row can expand. A dashed line runs down from each open row past everything under it. Set `--fsd-nav-guide` to colour the lines, or to `transparent` to hide them. They take no space either way. Left unset, they draw in a translucent grey.
+
+```css
+.sidebar {
+  --fsd-nav-guide: rgba(148, 163, 184, 0.5);
+}
+```
 
 Before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. There is no `orgId` prop.
 

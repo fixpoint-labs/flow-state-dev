@@ -8,8 +8,8 @@
  * this component can get badly wrong.
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { createElement } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createElement, useEffect } from "react";
 import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
 import {
   FlowNavigator,
@@ -22,7 +22,7 @@ const entry = (
   cardinality: FlowListEntry["cardinality"]
 ): FlowListEntry => ({ id, kind, cardinality, requireUser: false, actions: [] });
 
-const session = (id: string, flowId?: string): SessionSummary =>
+const session = (id: string, flowId?: string, title?: string): SessionSummary =>
   ({
     id,
     flowKind: "agent",
@@ -30,6 +30,7 @@ const session = (id: string, flowId?: string): SessionSummary =>
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...(flowId === undefined ? {} : { flowId }),
+    ...(title === undefined ? {} : { title }),
   }) as unknown as SessionSummary;
 
 /**
@@ -37,7 +38,10 @@ const session = (id: string, flowId?: string): SessionSummary =>
  * an exact owner and never matches a row with no owner recorded; `flowKind`
  * matches by kind, ownerless rows included.
  */
-function fakeServer(flows: FlowListEntry[], rows: { id: string; kind: string; owner?: string }[]) {
+function fakeServer(
+  flows: FlowListEntry[],
+  rows: { id: string; kind: string; owner?: string; title?: string }[]
+) {
   const calls: { flowId?: string; flowKind?: string; userId?: string }[] = [];
 
   return {
@@ -53,7 +57,7 @@ function fakeServer(flows: FlowListEntry[], rows: { id: string; kind: string; ow
               ? row.kind === options.flowKind
               : true
         )
-        .map((row) => session(row.id, row.owner));
+        .map((row) => session(row.id, row.owner, row.title));
     }),
   };
 }
@@ -280,7 +284,10 @@ describe("FlowNavigator · the published props are an allow-list (V5, BR-3, BR-2
 });
 
 describe("FlowNavigator · the rail at 256px, fully expanded (V6, BR-27)", () => {
-  it("indents three levels inside exactly one scroll container", async () => {
+  // Where the three levels' labels land is measured on the rendered page, in
+  // the kitchen-sink end-to-end suite: this DOM has no layout, and comparing
+  // padding values passes on a rail whose labels land in the wrong column.
+  it("stays inside exactly one scroll container", async () => {
     const server = fakeServer(
       [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")],
       [{ id: "s1", kind: "agent", owner: "seat-a" }]
@@ -299,15 +306,6 @@ describe("FlowNavigator · the rail at 256px, fully expanded (V6, BR-27)", () =>
     );
     // Mount the component twice instead of once and this reads 2.
     expect(scrollers).toHaveLength(1);
-
-    const indents = new Set(
-      [
-        kindRow("agent"),
-        instanceRow("seat-a"),
-        document.querySelector<HTMLElement>('[data-session-id="s1"]')!,
-      ].map((el) => el.style.paddingLeft)
-    );
-    expect(indents.size).toBe(3);
   });
 });
 
@@ -368,8 +366,8 @@ describe("FlowNavigator · a host affordance is beside the row, not inside it", 
             { type: "button", "data-affordance": r.type, onClick: () => {} },
             "Copy"
           ),
-        // The leaf toolbar is filled too, and with a BUTTON. Its host renders
-        // it inside an `li` rather than inside the row's activation button,
+        // The leaf toolbar is filled too, and with a BUTTON. It draws on the
+        // leaf's own row, beside the activation button rather than inside it,
         // and the rail-wide assertion below is what keeps it there — which it
         // cannot do for a slot no case ever mounts.
         leafToolbar: () =>
@@ -454,8 +452,8 @@ describe("FlowNavigator · a host affordance is beside the row, not inside it", 
     await click(instanceRow("seat-a"));
     await waitFor(() => expect(screen.queryByText("s1")).toBeTruthy());
 
-    // Includes `leafToolbar`'s host, which renders inside an `li` rather than
-    // a button — this is the assertion that keeps it that way.
+    // Includes `leafToolbar`'s host, which draws on the leaf's row beside its
+    // button rather than in it — this is the assertion that keeps it that way.
     const nested = Array.from(
       document.querySelectorAll("button, a[href]")
     ).filter((el) => el.parentElement?.closest("button, a[href]") != null);
@@ -480,5 +478,393 @@ describe("FlowNavigator · selection", () => {
     expect(picked).toEqual([
       ["s1", { kind: "agent", address: "seat-a", cardinality: "collection" }],
     ]);
+  });
+});
+
+describe("FlowNavigator · an open leaf's toolbar sits on the leaf's own row (BR-1 – BR-3, BR-7)", () => {
+  const flows = [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")];
+
+  /** Counts its own mounts and unmounts, the way a host's toolbar effects would. */
+  const lifecycle = { mounted: 0, unmounted: 0 };
+  function Toolbar(props: { address: string }) {
+    useEffect(() => {
+      lifecycle.mounted += 1;
+      return () => {
+        lifecycle.unmounted += 1;
+      };
+    }, []);
+    return createElement("button", { type: "button", "data-toolbar": props.address }, "New session");
+  }
+
+  const withToolbar = (server: ReturnType<typeof fakeServer>) =>
+    mount(server, {
+      slots: {
+        rowTrailing: (r: { type: string }) =>
+          r.type === "instance"
+            ? createElement("button", { type: "button", "data-copy": "" }, "Copy")
+            : null,
+        leafToolbar: (leaf: { address: string }) => createElement(Toolbar, { address: leaf.address }),
+      },
+    });
+
+  beforeEach(() => {
+    lifecycle.mounted = 0;
+    lifecycle.unmounted = 0;
+  });
+
+  it("draws it in the instance row's frame, after the row's own trailing content, never in the button", async () => {
+    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "seat-a" }]);
+    withToolbar(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    // Closed: the row's own copy is drawn, the leaf's actions are not.
+    expect(instanceRow("seat-a").parentElement!.querySelector("[data-copy]")).toBeTruthy();
+    expect(document.querySelector("[data-toolbar]")).toBeNull();
+
+    await click(instanceRow("seat-a"));
+    const toolbar = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[data-toolbar="seat-a"]');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    const frame = instanceRow("seat-a").parentElement!;
+    expect(frame.contains(toolbar)).toBe(true);
+    expect(instanceRow("seat-a").contains(toolbar)).toBe(false);
+    // Nothing of the toolbar's is left under the row as a line of its own.
+    expect(document.querySelector('[data-leaf="seat-a"]')!.contains(toolbar)).toBe(false);
+
+    // Tab order follows the DOM: the row, its own copy, then the leaf's actions.
+    const copy = frame.querySelector("[data-copy]")!;
+    const follows = (a: Node, b: Node) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(follows(instanceRow("seat-a"), copy)).toBe(true);
+    expect(follows(copy, toolbar)).toBe(true);
+  });
+
+  it("draws a singleton's toolbar on its kind row, which is its leaf", async () => {
+    const server = fakeServer(flows, [{ id: "c1", kind: "chat" }]);
+    withToolbar(server);
+
+    await waitFor(() => expect(kindRow("chat")).toBeTruthy());
+    await click(kindRow("chat"));
+    const toolbar = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[data-toolbar="chat"]');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    expect(kindRow("chat").parentElement!.contains(toolbar)).toBe(true);
+    expect(kindRow("chat").contains(toolbar)).toBe(false);
+  });
+
+  it("draws no trailing area on a leaf row with nothing to put in it", async () => {
+    // A host whose toolbar is for some leaves only, and with no row content.
+    // An empty trailing area still takes its padding, and every such label
+    // truncates early for it.
+    const server = fakeServer(flows, []);
+    mount(server, { slots: { leafToolbar: () => null } });
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    await click(instanceRow("seat-a"));
+    await click(kindRow("chat"));
+    await waitFor(() => expect(screen.getAllByText("No sessions yet")).toHaveLength(2));
+
+    for (const rowButton of [instanceRow("seat-a"), kindRow("chat")]) {
+      expect(Array.from(rowButton.parentElement!.children)).toEqual([rowButton]);
+    }
+  });
+
+  it("mounts it when the leaf opens and unmounts it when the leaf closes", async () => {
+    const server = fakeServer(flows, []);
+    withToolbar(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    expect(lifecycle).toEqual({ mounted: 0, unmounted: 0 });
+
+    await click(instanceRow("seat-a"));
+    await waitFor(() => expect(lifecycle).toEqual({ mounted: 1, unmounted: 0 }));
+
+    await click(instanceRow("seat-a"));
+    expect(lifecycle).toEqual({ mounted: 1, unmounted: 1 });
+    expect(document.querySelector("[data-toolbar]")).toBeNull();
+  });
+
+  it("keeps the row's button, and its focus, across a toggle, with one read per open", async () => {
+    const server = fakeServer(flows, []);
+    withToolbar(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    const button = instanceRow("seat-a");
+    button.focus();
+
+    await click(button);
+    await waitFor(() => expect(document.querySelector('[data-toolbar="seat-a"]')).toBeTruthy());
+    expect(instanceRow("seat-a")).toBe(button);
+    expect(document.activeElement).toBe(button);
+    expect(server.listSessions).toHaveBeenCalledTimes(1);
+
+    await click(button);
+    expect(instanceRow("seat-a")).toBe(button);
+    expect(document.activeElement).toBe(button);
+    expect(server.listSessions).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("FlowNavigator · an open leaf's detail sits on its own line under the row", () => {
+  const flows = [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")];
+  const follows = (a: Node, b: Node) =>
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  const detailOf = (address: string) =>
+    document.querySelector<HTMLElement>(`[data-detail="${address}"]`);
+
+  it("draws it under an open leaf's row, outside the row, and only while the leaf is open", async () => {
+    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "seat-a" }]);
+    mount(server, {
+      slots: {
+        leafDetail: (leaf: { address: string; kind: string }) =>
+          createElement("div", { "data-detail": leaf.address }, `About ${leaf.kind}`),
+      },
+    });
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    // Closed: nothing to show, and nothing mounted.
+    expect(detailOf("seat-a")).toBeNull();
+
+    await click(instanceRow("seat-a"));
+    const detail = await waitFor(() => {
+      expect(detailOf("seat-a")).toBeTruthy();
+      return detailOf("seat-a")!;
+    });
+    expect(detail.textContent).toBe("About agent");
+    // Its own line: not in the row's frame, so the row stays one line, and
+    // between the row and the leaf's sessions.
+    const frame = instanceRow("seat-a").parentElement!;
+    expect(frame.contains(detail)).toBe(false);
+    expect(follows(frame, detail)).toBe(true);
+    await waitFor(() => expect(screen.queryByText("s1")).toBeTruthy());
+    expect(follows(detail, document.querySelector('[data-leaf="seat-a"]')!)).toBe(true);
+
+    // A singleton's kind row is its leaf, so its detail is drawn under that row.
+    await click(kindRow("chat"));
+    const chatDetail = await waitFor(() => {
+      expect(detailOf("chat")).toBeTruthy();
+      return detailOf("chat")!;
+    });
+    expect(kindRow("chat").parentElement!.contains(chatDetail)).toBe(false);
+    expect(follows(kindRow("chat").parentElement!, chatDetail)).toBe(true);
+
+    await click(instanceRow("seat-a"));
+    expect(detailOf("seat-a")).toBeNull();
+    expect(detailOf("chat")).toBeTruthy();
+  });
+
+  it("draws nothing extra under an open leaf when the host gives no detail", async () => {
+    const server = fakeServer(flows, []);
+    mount(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    await click(instanceRow("seat-a"));
+    await waitFor(() => expect(screen.queryByText("No sessions yet")).toBeTruthy());
+
+    // The row's frame, then its sessions. Nothing between them.
+    const item = instanceRow("seat-a").closest("li")!;
+    expect(Array.from(item.children)).toEqual([
+      instanceRow("seat-a").parentElement,
+      item.querySelector(':scope > [data-leaf="seat-a"]'),
+    ]);
+  });
+});
+
+describe("FlowNavigator · session labels (BR-16 – BR-19)", () => {
+  const sessionRow = (id: string) =>
+    document.querySelector<HTMLElement>(`[data-session-id="${id}"]`)!;
+
+  it("shows a title, a short engine id, or the id whole, with the full id as the tooltip", async () => {
+    const server = fakeServer(
+      [entry("chat", "chat", "singleton")],
+      [
+        { id: "sess_1790206121611_42636c63df102", kind: "chat", title: "Refund for order 4417" },
+        { id: "sess_1790206133090_9f1e07ab55c3", kind: "chat" },
+        { id: "support.noticeboard", kind: "chat" },
+        { id: "sess_1790206140712_0c4d2e91aa7f", kind: "chat", title: "" },
+      ]
+    );
+    const picked: string[] = [];
+    mount(server, { onSelectSession: (id: string) => picked.push(id) });
+
+    await waitFor(() => expect(kindRow("chat")).toBeTruthy());
+    await click(kindRow("chat"));
+    await waitFor(() => expect(sessionRow("support.noticeboard")).toBeTruthy());
+
+    expect(sessionRow("sess_1790206121611_42636c63df102").textContent).toBe("Refund for order 4417");
+    // The prefix says what it is; the tail is what tells two apart.
+    expect(sessionRow("sess_1790206133090_9f1e07ab55c3").textContent).toBe("sess_…ab55c3");
+    // Not engine-shaped, so nothing to shorten: a channel reads as its name.
+    expect(sessionRow("support.noticeboard").textContent).toBe("support.noticeboard");
+    // An empty title is no title.
+    expect(sessionRow("sess_1790206140712_0c4d2e91aa7f").textContent).toBe("sess_…91aa7f");
+
+    for (const id of [
+      "sess_1790206121611_42636c63df102",
+      "sess_1790206133090_9f1e07ab55c3",
+      "support.noticeboard",
+      "sess_1790206140712_0c4d2e91aa7f",
+    ]) {
+      expect(sessionRow(id).title).toBe(id);
+    }
+    // What the row reports when picked is the id, not the label.
+    await click(sessionRow("sess_1790206133090_9f1e07ab55c3"));
+    expect(picked).toEqual(["sess_1790206133090_9f1e07ab55c3"]);
+  });
+});
+
+describe("FlowNavigator · tree lines (BR-26 – BR-28)", () => {
+  const guidesUnder = (rowButton: HTMLElement) => {
+    const list = rowButton.closest("li")!.querySelector(":scope > ul");
+    return list === null
+      ? []
+      : (Array.from(list.children).filter(
+          (c) => c.getAttribute("aria-hidden") === "true"
+        ) as HTMLElement[]);
+  };
+
+  it("hangs one decorative line under each open parent and none under a closed one", async () => {
+    const server = fakeServer(
+      [
+        entry("chat", "chat", "singleton"),
+        entry("seat-a", "agent", "collection"),
+        entry("seat-b", "agent", "collection"),
+      ],
+      [{ id: "s1", kind: "agent", owner: "seat-a" }]
+    );
+    mount(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    await click(instanceRow("seat-a"));
+    await click(kindRow("chat"));
+    // An open leaf holding only a note still gets its line.
+    await waitFor(() => expect(screen.queryByText("No sessions yet")).toBeTruthy());
+
+    for (const parent of [kindRow("agent"), instanceRow("seat-a"), kindRow("chat")]) {
+      const guides = guidesUnder(parent);
+      expect(guides).toHaveLength(1);
+      // Out of flow and inert, so drawing it moves no row and takes no click.
+      expect(guides[0]!.style.position).toBe("absolute");
+      expect(guides[0]!.style.pointerEvents).toBe("none");
+      expect(guides[0]!.style.borderLeftStyle).toBe("dashed");
+    }
+    expect(guidesUnder(instanceRow("seat-b"))).toHaveLength(0);
+  });
+});
+
+describe("FlowNavigator · row actions show on hover or focus (BR-29 – BR-34)", () => {
+  const flows = [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")];
+  // The area holding the row's actions: the parent of what the host put there.
+  const trailingOf = (rowButton: HTMLElement) =>
+    rowButton.parentElement!.querySelector<HTMLElement>("[data-affordance]")!.parentElement!;
+  const opacity = (rowButton: HTMLElement) => trailingOf(rowButton).style.opacity;
+
+  const withAffordances = (
+    server: ReturnType<typeof fakeServer>,
+    props: Record<string, unknown> = {}
+  ) => {
+    const rowTrailing = vi.fn((r: { type: string }) =>
+      createElement("button", { type: "button", "data-affordance": r.type }, "Copy")
+    );
+    mount(server, { slots: { rowTrailing }, ...props });
+    return rowTrailing;
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("hides a row's actions until the pointer is over it, re-rendering no other row", async () => {
+    const server = fakeServer(flows, []);
+    const rowTrailing = withAffordances(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    await click(instanceRow("seat-a"));
+    // Open is not enough: an open leaf's row stays quiet until pointed at.
+    expect(opacity(instanceRow("seat-a"))).toBe("0");
+    expect(opacity(kindRow("agent"))).toBe("0");
+
+    const calls = rowTrailing.mock.calls.length;
+    const frame = instanceRow("seat-a").parentElement!;
+    await act(async () => {
+      fireEvent.mouseEnter(frame);
+    });
+    expect(opacity(instanceRow("seat-a"))).toBe("1");
+    expect(opacity(kindRow("agent"))).toBe("0");
+    // Only the pointed-at row re-rendered: no slot was asked for anything again.
+    expect(rowTrailing.mock.calls.length).toBe(calls);
+
+    await act(async () => {
+      fireEvent.mouseLeave(frame);
+    });
+    expect(opacity(instanceRow("seat-a"))).toBe("0");
+  });
+
+  it("shows them while focus is anywhere in the row, and hides them without removing them", async () => {
+    const server = fakeServer(flows, []);
+    withAffordances(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    const affordance = kindRow("agent").parentElement!.querySelector<HTMLButtonElement>(
+      "[data-affordance]"
+    )!;
+    // Hidden, and still in the tab order.
+    expect(opacity(kindRow("agent"))).toBe("0");
+    expect(trailingOf(kindRow("agent")).style.display).not.toBe("none");
+    expect(trailingOf(kindRow("agent")).style.visibility).not.toBe("hidden");
+    expect(affordance.tabIndex).toBe(0);
+
+    await act(async () => {
+      affordance.focus();
+    });
+    expect(opacity(kindRow("agent"))).toBe("1");
+
+    await act(async () => {
+      kindRow("chat").focus();
+    });
+    expect(opacity(kindRow("agent"))).toBe("0");
+  });
+
+  it("keeps a selected row's actions shown", async () => {
+    const server = fakeServer(flows, [
+      { id: "c1", kind: "chat" },
+      { id: "c2", kind: "chat" },
+    ]);
+    withAffordances(server, { selectedSessionId: "c1" });
+
+    await waitFor(() => expect(kindRow("chat")).toBeTruthy());
+    await click(kindRow("chat"));
+    const sessionRow = (id: string) =>
+      document.querySelector<HTMLElement>(`[data-session-id="${id}"]`)!;
+    await waitFor(() => expect(sessionRow("c1")).toBeTruthy());
+    expect(opacity(sessionRow("c1"))).toBe("1");
+    expect(opacity(sessionRow("c2"))).toBe("0");
+  });
+
+  it("always shows them on a screen with no hover pointer", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(hover: none)",
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    const server = fakeServer(flows, []);
+    withAffordances(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    expect(opacity(kindRow("agent"))).toBe("1");
+    expect(opacity(kindRow("chat"))).toBe("1");
   });
 });
