@@ -360,14 +360,14 @@ The `seat-hire` capability, `createSeatHireCapability`, gives a worker kind read
 
 ## Who can reach a hired seat
 
-A hired seat belongs to the organization that hired it, and to the person who hired it when it is user-owned. The row records both, the seat is registered with them as its `pin`, and the framework compares every caller to that pin. It never reads them from the seat's address.
+A hired seat belongs to the organization that hired it, and to the person who hired it when it is user-owned. The `pin` you register the seat with names both, and every caller is checked against it. Knowing or guessing a seat's address grants nothing.
 
 Anyone outside that pair gets the answer an address your app does not serve would get:
 
 - Opening a session with the seat, or sending it an action, answers `404 Unknown flow`.
 - `GET /api/flows` leaves the seat out of the list.
 - A session opened earlier cannot be resumed by a caller outside the pair.
-- A task board in another organization cannot hand work to the seat. The hand-off is refused as if the seat did not exist, and the task ends errored with that reason, unclaimed.
+- A task board in another organization cannot hand work to the seat. The hand-off is refused as if the seat did not exist: the task ends errored and unclaimed, and its error reads `flow-not-found` with `no flow instance "<address>" is registered in this process`, the same as for an address nobody holds.
 - With debug endpoints switched on, the debug listing does not show another person's private roster row.
 
 For example, Alice hires a user-owned `research` seat while signed in to Acme. Bob, also in Acme, cannot open it. Neither can Alice while she is signed in to Globex. If she wants a research seat there, she hires one in Globex, and it starts empty. If Bob hires his own, his starts empty too.
@@ -380,7 +380,9 @@ For example, Alice hires a user-owned `research` seat while signed in to Acme. B
 
 One row per seat in the organization's scope: at `workforce/roster/<seatId>`, or at `workforce/roster/~<user>/<seatId>` for a user-owned seat. It is read through the same storage adapter as everything else the app persists, so a Postgres-backed app keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.
 
-What a seat saves for a person is stored separately from the roster, in a cell for the seat's organization and that person. The person's own data outside hired seats, such as preferences your app's other flows keep, is a different cell. A hired seat does not read it and cannot write to it. A seat whose kind isolates its user data per flow keeps that data under the seat's own address instead. If you are upgrading an app whose seats already saved data, see [Hired seats' stored data](../persistence/overview.md#hired-seats-stored-data).
+What a seat saves for a person is stored separately from the roster, in a cell: a user-scope key for the seat's organization and that person, `<person>:~org:<organization>`. The person's own data outside hired seats, such as preferences your app's other flows keep, is a different cell, keyed by the person's id alone. A hired seat does not read it and cannot write to it. A seat whose kind isolates its user data per flow keeps that data under the seat's own address instead. If you are upgrading an app whose seats already saved data, see [Upgrading: moving hired seats' stored data](../persistence/overview.md#upgrading-moving-hired-seats-stored-data).
+
+A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the person's id and the organization, so key its rows by `orgId` as well, or a seat in one organization reads what was saved in another.
 
 The roster is not the [live inventory](./inventory.md). An inventory row means *was registered in this organization* and is never removed. A roster row is removed when the seat is fired. A seat hired at runtime gets a roster row and no inventory row, so anything that wants one list of every seat, declared and hired, joins the two itself.
 

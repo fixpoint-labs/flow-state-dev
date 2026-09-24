@@ -109,12 +109,19 @@ The default URL convention is `<userId>/<collectionKey>`. Override with
 `parseId` for richer compositions. A row whose `kind` isn't in the `blocks`
 map resolves to `null` (404).
 
-On a hired seat (an instance registered with an owner `pin`), the dispatch
-route passes that pin to the resolver as `ctx.ownerPin`. The helper then reads
-the row from the seat's own `(organization, person)` cell, derived with the
-engine's `resolveUserStorageKey`, and a row naming another organization than
-the pin's resolves to `null`. A hand-written resolver that reads user-scoped
-storage should derive its key the same way.
+On a hired seat (an instance registered with an owner `pin`: the organization,
+and user if any, the seat is registered to), the dispatch route passes that pin
+to the resolver as `ctx.ownerPin`. The helper then reads the row from the
+seat's storage for that organization and person, derived with the engine's
+`resolveUserStorageKey`, and a row naming another organization than the pin's
+resolves to `null`. A hand-written resolver that reads user-scoped storage
+derives its key the same way:
+
+```ts
+const [userId, key] = scheduleId.split("/");
+const scopeId = resolveUserStorageKey(userId, { id: ctx.flowKind, isolateUserState: false, ownerPin: ctx.ownerPin });
+const raw = await ctx.stores.content.get("user", scopeId, `schedules/${key}`);
+```
 
 **Durable dynamic schedules don't recover across crashes.** A dynamic
 schedule's action core is produced by the resolver at dispatch time and carried

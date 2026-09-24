@@ -181,14 +181,16 @@ Stop the cutover, restore the backup, and change nothing when:
 
 None of these is a case for guessing. Leave the original data intact and resolve the attribution first.
 
-## Hired seats' stored data
+## Upgrading: moving hired seats' stored data
 
-A seat hired at runtime keeps what it saves for a person in a cell for its organization and that person, keyed `<person>:~org:<organization>` in the user scope. Data a seat saved before your upgrade is under the person's own id, where your other flows keep theirs. The server does not read it for the seat and does not move it, because only your records say which organization it came from. Until you copy it, each seat starts empty for each person.
+This section is for apps that ran [hired seats](/docs/workforce/durable-hire#who-can-reach-a-hired-seat) on an earlier release, where a seat stored what it saved for a person under the person's own id. A new install can skip it.
+
+A seat keeps what it saves for a person under a user-scope key for its organization and that person, `<person>:~org:<organization>`. Data a seat saved before your upgrade is under the person's own id, where your other flows keep theirs. The server does not read it for the seat and does not move it, because only your records say which organization it came from. Until you copy it, each seat starts empty for each person.
 
 Copying is optional and offline, with writers quiesced and a backup taken, as in the procedure above. It copies only data you can show a seat wrote.
 
-1. **List the keys.** For each seat kind, the user-scoped resources and collections it declares without `flowIsolation: true`. Strike any that a flow which is not a hired seat also declares. Those, and the person's user-state record (the `users` row), are one cell your other flows wrote to as well, with no record of which flow wrote what. They are not copied, so a seat's user state starts empty. Copy one only if you have your own record of who wrote it.
-2. **List the people and their organizations.** Hired seat addresses start with their organization (`acme.research`, `acme.~alice.research`). Include seats you have since fired.
+1. **List the keys.** For each seat kind, the user-scoped resources and collections it declares without `flowIsolation: true`. Strike the keys a flow that is not a hired seat also declares, and the person's `users` row. Those stay where they are, so the seat starts without them. Copy a struck key only if your own records show a seat wrote it.
+2. **List the people and their organizations.** Hired seat addresses start with their organization (`acme.research`, `acme.~alice.research`). Include seats you have since fired: their addresses are still in `sessions.flow_id`, so `SELECT DISTINCT flow_id FROM sessions WHERE flow_id LIKE 'acme.%'` lists every address used in `acme`, then keep the ones that were hired seats.
 
    ```sql
    SELECT user_id, COUNT(DISTINCT org_id) AS orgs, GROUP_CONCAT(DISTINCT org_id) AS which

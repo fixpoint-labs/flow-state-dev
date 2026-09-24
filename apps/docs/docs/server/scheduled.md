@@ -208,11 +208,21 @@ See [Which organization a record belongs to](/docs/persistence/overview#which-or
 for the attribution recipe.
 
 On a [hired seat](/docs/workforce/durable-hire#who-can-reach-a-hired-seat), the
-helper reads the schedule row from the seat's own cell for that organization and
+helper reads the schedule row from the seat's storage for that organization and
 person, and a row naming a different organization than the one that hired the
-seat returns `null`. A resolver you write by hand gets the seat's pin as
-`ctx.ownerPin` (`{ orgId, userId? }`, absent for any other flow); pass it to
-`resolveUserStorageKey` from `@flow-state-dev/engine` to read the same cell.
+seat returns `null`. A resolver you write by hand gets the seat's pin, the
+organization (and user, if any) the seat is registered to, as `ctx.ownerPin`
+(`{ orgId, userId? }`, absent for any other flow). Pass it to
+`resolveUserStorageKey` from `@flow-state-dev/engine` to read the same storage:
+
+```ts
+resolve: async (scheduleId, ctx) => {
+  const [userId, key] = scheduleId.split("/");
+  const scopeId = resolveUserStorageKey(userId, { id: ctx.flowKind, isolateUserState: false, ownerPin: ctx.ownerPin });
+  const raw = await ctx.stores.content.get("user", scopeId, `schedules/${key}`);
+  // parse `raw`, map its `kind` to a block, return the config as above
+}
+```
 
 ## The dispatch endpoint
 

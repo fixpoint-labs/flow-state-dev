@@ -49,8 +49,8 @@
  * equal the one-part cross-org key or the two-part isolated key, because the
  * encoding is decodable. Unpinned flows, flow-isolated keys and every org key
  * are unchanged. Data a seat saved before this moves only by the operator
- * step in `apps/docs/docs/persistence/overview.md` → "Hired seats' stored
- * data"; there is deliberately no fallback read of the old cell, because that
+ * step in `apps/docs/docs/persistence/overview.md` → "Upgrading: moving
+ * hired seats' stored data"; there is deliberately no fallback read of the old cell, because that
  * fallback is the cross-org read this closes.
  */
 

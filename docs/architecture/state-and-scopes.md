@@ -554,7 +554,7 @@ A flow instance registered with an owner pin (`register(flow, { pin })`, copied 
 
 What does not move: unpinned flows (including seats declared in a `WORKER.md` file), every flow-isolated key (a seat's address already carries org and person), and every org-scoped key. The three-part key is escaped per component like the others, so it cannot equal a one-part cross-org key or a two-part isolated key.
 
-There is no fallback read of the person's cross-org cell for a seat: that fallback is the cross-org read the cell exists to close. Data a seat wrote before the cell existed moves only by the operator step in `apps/docs/docs/persistence/overview.md` → "Hired seats' stored data", which copies keys only a seat kind declares, for people whose seats ran in one org, and stops on a destination a seat already wrote to.
+There is no fallback read of the person's cross-org cell for a seat: that fallback is the cross-org read the cell exists to close. Data a seat wrote before the cell existed moves only by the operator step in `apps/docs/docs/persistence/overview.md` → "Upgrading: moving hired seats' stored data", which copies keys only a seat kind declares, for people whose seats ran in one org, and stops on a destination a seat already wrote to.
 
 A run refused at the pin writes no user record: `createExecutionContext` creates the record only after every binding check and the pin refusal.
 
