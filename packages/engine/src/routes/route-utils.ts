@@ -273,6 +273,7 @@ export function createScopeResources(options: {
         // route and the execution-context handle — a single-level `positions/*`
         // must not resolve `positions/AAPL/history` through `read`.
         if (!matchesPattern(pattern, storageKey)) return undefined;
+        if (!privateRosterAdmits(extConfig, storageKey, options.userId)) return undefined;
         const state = await readProjectedRecord<JsonObject>(
           extConfig,
           extractBareTopic(pattern, storageKey),
@@ -310,6 +311,9 @@ export function createScopeResources(options: {
           return unsupportedEnumeration("count");
         },
         async get(key: string | Record<string, string>) {
+          if (!privateRosterAdmits(extConfig, resolveCollectionKey(pattern, key), options.userId)) {
+            throw new Error(HIRED_SEAT_ROW_REFUSAL);
+          }
           const ref = await readThrough(key);
           if (ref === undefined) {
             throw new Error(

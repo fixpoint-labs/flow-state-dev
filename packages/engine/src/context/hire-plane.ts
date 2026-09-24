@@ -160,18 +160,40 @@ export function privateRosterAdmits(
 }
 
 /**
+ * Whether a row read from the store may enter a run's cache for `userId`:
+ * every key except another user's user-owned roster row.
+ *
+ * Collections load by prefix, so a wide collection's scan sweeps up every
+ * user's roster rows. The handles fence them again on read, but the cache
+ * has other readers (a `contentTemplateRef` resolves against it by storage
+ * key), so another user's row never enters it. The caller's own rows do: the
+ * private writer serves them from the same cache.
+ */
+export function rosterKeyMaySeed(storageKey: string, userId: string | undefined): boolean {
+  if (!isUserOwnedRosterKey(storageKey)) return true;
+  if (userId === undefined || userId.length === 0) return false;
+  return storageKey.startsWith(`workforce/roster/~${encodeUserSegment(userId)}/`);
+}
+
+/**
  * The refusal a fenced key gets on a write or a by-name `get`. It does not say
  * whether the row exists.
  */
 export const HIRED_SEAT_ROW_REFUSAL = "A hired-seat row is readable only by the user it belongs to.";
 
-/** A segment that can stand in for `literal`: the literal itself, a parameter, or a wildcard. */
+/**
+ * A segment that can stand in for `literal`: the literal itself, a wildcard,
+ * or any bracketed segment. The bracket test is the key matcher's own
+ * (`matchesPattern` reads `[a-b]` as one segment of anything), not the
+ * narrower rule for a nameable parameter, so no pattern the matcher can
+ * resolve onto a user-owned key slips past as a literal here.
+ */
 function segmentOpens(segment: string, literal: string): boolean {
   return (
     segment === literal ||
     segment === "*" ||
     segment === "**" ||
-    /^\[[a-zA-Z0-9_]+\]$/.test(segment)
+    /^\[.+\]$/.test(segment)
   );
 }
 

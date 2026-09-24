@@ -482,11 +482,13 @@ export async function handleListCollectionState(
       extCtx
     );
     const items = await Promise.all(
-      hits.map(async (hit) => ({
-        topic: extractBareTopic(config.pattern, hit.storageKey),
-        storageKey: hit.storageKey,
-        clientData: await applyClientData(config, hit.state as JsonObject),
-      }))
+      hits
+        .filter((hit) => privateRosterAdmits(config, hit.storageKey, session.userId))
+        .map(async (hit) => ({
+          topic: extractBareTopic(config.pattern, hit.storageKey),
+          storageKey: hit.storageKey,
+          clientData: await applyClientData(config, hit.state as JsonObject),
+        }))
     );
     return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
   }

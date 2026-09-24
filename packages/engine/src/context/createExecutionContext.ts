@@ -100,7 +100,7 @@ import {
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./binding-errors";
-import { refuseInstancePin } from "./hire-plane";
+import { refuseInstancePin, rosterKeyMaySeed } from "./hire-plane";
 import {
   outputItemToSessionItem,
   createSessionItemViews,
@@ -1231,6 +1231,9 @@ export async function createExecutionContext<
   // decides that correctly, so re-check each returned key against it and keep
   // only the ones this bucket is the address for. Without this the surviving
   // copy depends on which collection was declared first.
+  //
+  // Every prefix load passes through here, so it is also where another user's
+  // roster row is kept out of the run's cache (`rosterKeyMaySeed`).
   const retainOwnedKeys = <T>(
     scope: ContentScopeType,
     scopeId: string,
@@ -1238,6 +1241,7 @@ export async function createExecutionContext<
   ): Record<string, T> => {
     const owned: Record<string, T> = {};
     for (const [key, value] of Object.entries(rows)) {
+      if (!rosterKeyMaySeed(key, userId)) continue;
       if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
     }
     return owned;
@@ -1620,6 +1624,8 @@ export async function createExecutionContext<
         // store round-trip in both cases.
         if (isMissAuthoritative(scope, storageKey)) return { fetched: false, durationMs: 0 };
         if (missingResourceKeys[scope].has(storageKey)) return { fetched: false, durationMs: 0 };
+        // Another user's roster row never enters this run's cache.
+        if (!rosterKeyMaySeed(storageKey, userId)) return { fetched: false, durationMs: 0 };
         // FIX-735: route to this key's isolation bucket (bare vs namespaced).
         const scopeId = resolveResourceStorageScopeId(scope, storageKey)!;
         let fetched = false;

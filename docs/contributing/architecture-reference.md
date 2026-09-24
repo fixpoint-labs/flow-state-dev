@@ -163,7 +163,7 @@ Purposes and default models live in the catalog — don't restate them here.
 - `defineFlow` merges block-declared resources into the flow's `resources` map; flow-level wins over block-level
 - Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
 - Collection snapshots emit `count` always and `prefetched` when `prefetchWindow > 0`; per-item `clientData` is gated by `client.state.read`. Lazy reads via `GET /sessions/:id/resources/:ref` and a flow-static manifest at `GET /sessions/:id/manifest` (FIX-427).
-- Keys under `workforce/roster/~` are reserved for Workforce's branded private roster collection, in every app: no other collection reads or writes them. A registry that has held that collection refuses, for good, any flow whose collection pattern can reach those keys → [State and scopes](../architecture/state-and-scopes.md#user-owned-roster-rows)
+- Keys of the form `workforce/roster/~<user>/…` are reserved for Workforce's branded private roster collection, in every app: no other collection reads or writes them. A registry that has held that collection refuses, for good, any flow whose collection pattern can reach those keys → [State and scopes](../architecture/state-and-scopes.md#user-owned-roster-rows)
 
 → [Resources and Client Data](../architecture/resources-and-client-data.md)
 

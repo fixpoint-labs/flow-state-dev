@@ -1373,6 +1373,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             `Key "${storageKey}" does not match projected collection pattern "${pattern}"`
           );
         }
+        if (!privateRosterAdmits(extConfig, storageKey, options.actorUserId)) {
+          throw new Error(HIRED_SEAT_ROW_REFUSAL);
+        }
         const state = await readThrough(storageKey);
         if (state === undefined) {
           throw new Error(
@@ -1384,6 +1387,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       async getOptional(key: string): Promise<ProjectedResourceRef<JsonObject> | undefined> {
         const storageKey = resolveCollectionKey(pattern, key);
         if (!matchesPattern(pattern, storageKey)) return undefined;
+        if (!privateRosterAdmits(extConfig, storageKey, options.actorUserId)) return undefined;
         const state = await readThrough(storageKey);
         return state === undefined ? undefined : makeRef(storageKey);
       },
@@ -1394,7 +1398,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         // BP-033). A bare string is `{ search }` shorthand.
         const q: ResourceQuery = typeof query === "string" ? { search: query } : query ?? {};
         const { hits, nextCursor } = await searchProjectedRecords<JsonObject>(extConfig, q, externalCtx());
-        const items = hits.map((hit) => {
+        const admitted = hits.filter((hit) =>
+          privateRosterAdmits(extConfig, hit.storageKey, options.actorUserId)
+        );
+        const items = admitted.map((hit) => {
           // Seed the per-request cache so each ref's synchronous `.state`
           // resolves against the searched state, exactly like a read-through get.
           cache.set(hit.storageKey, hit.state);

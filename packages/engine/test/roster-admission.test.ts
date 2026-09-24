@@ -179,6 +179,16 @@ describe("roster admission · armed by the writer", () => {
     ).toBe(overlapMessage("workforce/roster/**"));
   });
 
+  it("refuses a bracketed segment the key matcher reads as a parameter, though it names none", () => {
+    // `[a-b]` is not a nameable parameter, but the matcher still reads it as
+    // one segment of anything, so `[a-b]/[b]/[c]/[d]` reaches a user-owned key.
+    const registry = createFlowRegistry();
+    registry.register(flowWith("writer", { roster: writer() }));
+    expect(refusal(() => registry.register(overlapping("odd", "[a-b]/[b]/[c]/[d]")))).toBe(
+      overlapMessage("[a-b]/[b]/[c]/[d]"),
+    );
+  });
+
   it("registerMany arms on the writer and refuses a later overlap in the same batch", () => {
     const registry = createFlowRegistry();
     expect(

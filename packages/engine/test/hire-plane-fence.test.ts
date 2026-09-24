@@ -10,6 +10,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   defineFlow,
+  defineProjectedResourceCollection,
+  defineResource,
   defineResourceCollection,
   dispatcher,
   handler,
@@ -837,6 +839,15 @@ describe("key fence · a process that never registered the writer", () => {
       stateSchema: passthrough,
       ...browsable,
     }),
+    // A bracketed first segment the matcher reads as a parameter even though
+    // it is not a nameable one: it still matches `workforce`.
+    bracketed: defineResourceCollection({
+      pattern: "[a-b]/[b]/[c]/[d]",
+      scope: "org",
+      flowIsolation: false,
+      stateSchema: passthrough,
+      ...browsable,
+    }),
     tenantWide: defineResourceCollection({
       pattern: "[tenant]/**",
       scope: "org",
@@ -868,6 +879,24 @@ describe("key fence · a process that never registered the writer", () => {
       scope: "org",
       stateSchema: z.object({ seen: z.string() }),
     }),
+    // An app source that happens to hold Alice's row under its reserved key.
+    projected: defineProjectedResourceCollection({
+      pattern: "workforce/roster/**",
+      scope: "org",
+      stateSchema: passthrough,
+      read: async ({ key }: { key: string }) =>
+        key === "~alice/research" ? { instructions: ALICE_PROMPT } : null,
+      search: async () => ({ hits: [{ key: "~alice/research", state: { instructions: ALICE_PROMPT } }] }),
+      client: { state: { read: true }, content: { read: true } },
+    }),
+    // A single resource whose template is read from the run's content cache by
+    // storage key: a reader of the raw seed, not of any collection handle.
+    peek: defineResource({
+      scope: "org",
+      ref: "peek",
+      stateSchema: passthrough,
+      contentTemplateRef: ALICE_KEY,
+    }),
   };
 
   const attempt = async (run: () => Promise<unknown>): Promise<string> => {
@@ -893,6 +922,8 @@ describe("key fence · a process that never registered the writer", () => {
         wideList: (await wide.list()).map((row) => row.path),
         wideCount: await wide.count(),
         tenantList: (await ref("tenantWide").list()).map((row) => row.path),
+        bracketedList: (await ref("bracketed").list()).map((row) => row.path),
+        bracketedCount: await ref("bracketed").count(),
         workforceList: (await workforce.list()).map((row) => row.path),
         workforceCount: await workforce.count(),
         copyList: (await copy.list()).map((row) => row.path),
@@ -906,6 +937,18 @@ describe("key fence · a process that never registered the writer", () => {
         upsert: await attempt(async () => (await workforce.upsert("roster/~alice/research", { forged: true })).state),
         getOrCreate: await attempt(async () => (await copy.getOrCreate({ owner: "~alice", seat: "other" }, {})).state),
         delete: await attempt(() => wide.delete(aliceParams)),
+        projectedList: (await (ctx.resources.projected as unknown as {
+          list(): Promise<{ items: Array<{ path: string }> }>;
+        }).list()).items.map((row) => row.path),
+        projectedGetOptional: await attempt(
+          async () => (await ref("projected" as keyof typeof open).getOptional("~alice/research"))?.state
+        ),
+        projectedGet: await attempt(
+          async () => (await ref("projected" as keyof typeof open).get("~alice/research")).state
+        ),
+        templatePeek: await attempt(() =>
+          (ctx.resources.peek as unknown as { readContentRaw(): Promise<string | null> }).readContentRaw()
+        ),
       };
       await (ctx.resources.probes as unknown as ResourceCollectionRef).create(input.tag, {
         seen: JSON.stringify(seen),
@@ -938,6 +981,23 @@ describe("key fence · a process that never registered the writer", () => {
               list: wide.list().map((row) => row.path),
               count: wide.count(),
               byName: wide.getOptional(aliceParams) === undefined ? "absent" : "present",
+              get,
+            };
+          },
+          projectedSeen: async (ctx: { resources: Record<string, unknown> }) => {
+            const projected = ctx.resources.projected as {
+              getOptional(key: string): Promise<unknown>;
+              get(key: string): Promise<unknown>;
+            };
+            let get: string;
+            try {
+              await projected.get("~alice/research");
+              get = "present";
+            } catch (error) {
+              get = (error as Error).message;
+            }
+            return {
+              byName: (await projected.getOptional("~alice/research")) === undefined ? "absent" : "present",
               get,
             };
           },
@@ -1017,6 +1077,8 @@ describe("key fence · a process that never registered the writer", () => {
       wideList: [],
       wideCount: 0,
       tenantList: [],
+      bracketedList: [],
+      bracketedCount: 0,
       workforceList: ["workforce/roster/eng.lead"],
       workforceCount: 1,
       copyList: [],
@@ -1028,6 +1090,10 @@ describe("key fence · a process that never registered the writer", () => {
       upsert: refused,
       getOrCreate: refused,
       delete: refused,
+      projectedList: [],
+      projectedGetOptional: "ok:null",
+      projectedGet: refused,
+      templatePeek: "ok:null",
     });
     expect(JSON.stringify(seen)).not.toContain("ALICE-PRIVATE");
     expect(await h.aliceRow()).toEqual({ state: { instructions: ALICE_PROMPT }, content: ALICE_PROMPT });
@@ -1037,7 +1103,7 @@ describe("key fence · a process that never registered the writer", () => {
     const h = await bootOpen();
     const resources = ["sessions", h.sessionId, "resources"];
 
-    for (const ref of ["wide", "workforceWide"]) {
+    for (const ref of ["wide", "workforceWide", "projected"]) {
       const listed = await h.call("GET", [...resources, ref]);
       expect(listed.status).toBe(200);
       expect(listed.json.items.map((item: { storageKey: string }) => item.storageKey)).not.toContain(ALICE_KEY);
@@ -1076,6 +1142,10 @@ describe("key fence · a process that never registered the writer", () => {
     expect(snapshot.json.clientData.org.wideSeen).toEqual({
       list: [],
       count: 0,
+      byName: "absent",
+      get: "A hired-seat row is readable only by the user it belongs to.",
+    });
+    expect(snapshot.json.clientData.org.projectedSeen).toEqual({
       byName: "absent",
       get: "A hired-seat row is readable only by the user it belongs to.",
     });
