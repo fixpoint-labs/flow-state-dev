@@ -22,7 +22,7 @@
  * closes. That is a workaround for a missing callback, and it is written down
  * here rather than hidden so a third host does not have to rediscover it.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Check,
@@ -82,15 +82,18 @@ const THEME = {
  * One icon set fills its box unevenly: copy's drawing spans 20 units, plus's
  * 14. Give them the same box and copy is drawn half as big again, which is
  * what a row of them looks like. So each is sized by its drawing instead.
+ *
+ * `RailIcon` takes a key of this record, not an icon component, so an icon
+ * with no measured extent is a type error rather than a `NaN` size.
  */
-const DRAWN_EXTENT = new Map<LucideIcon, number>([
-  [Copy, 20],
-  [Check, 16],
-  [RefreshCw, 18],
-  [Plus, 14],
-  [ArrowUpRight, 10],
-  [CircleAlert, 20],
-]);
+const RAIL_ICONS = {
+  copy: { Icon: Copy, extent: 20 },
+  copied: { Icon: Check, extent: 16 },
+  refresh: { Icon: RefreshCw, extent: 18 },
+  plus: { Icon: Plus, extent: 14 },
+  parent: { Icon: ArrowUpRight, extent: 10 },
+  failed: { Icon: CircleAlert, extent: 20 },
+} as const satisfies Record<string, { Icon: LucideIcon; extent: number }>;
 
 /** The size every rail icon's drawing covers, in pixels. */
 const DRAWN_SIZE = 11;
@@ -102,8 +105,9 @@ const DRAWN_SIZE = 11;
  * class overrides a width or height class, which is how a declared `h-3 w-3`
  * ends up drawn at 16px.
  */
-function RailIcon({ icon: Icon, className }: { icon: LucideIcon; className?: string }) {
-  const box = (DRAWN_SIZE * 24) / DRAWN_EXTENT.get(Icon)!;
+function RailIcon({ icon, className }: { icon: keyof typeof RAIL_ICONS; className?: string }) {
+  const { Icon, extent } = RAIL_ICONS[icon];
+  const box = (DRAWN_SIZE * 24) / extent;
   return (
     <Icon
       className={className}
@@ -293,7 +297,7 @@ function DispatchRunProvenance({
         data-open-parent-session={parentSessionId}
         onClick={() => void openParent()}
       >
-        <RailIcon icon={ArrowUpRight} className="text-slate-500" />
+        <RailIcon icon="parent" className="text-slate-500" />
       </Button>
     </>
   );
@@ -317,9 +321,9 @@ function CopyInstanceId({ flowId }: { flowId: string }) {
       }}
     >
       {copied ? (
-        <RailIcon icon={Check} className="text-green-400" />
+        <RailIcon icon="copied" className="text-green-400" />
       ) : (
-        <RailIcon icon={Copy} className="text-slate-500" />
+        <RailIcon icon="copy" className="text-slate-500" />
       )}
     </Button>
   );
@@ -348,6 +352,7 @@ function LeafToolbar({
 }) {
   const { sessionClient, config, selectWorkspace } = useDevTool();
   const [error, setError] = useState<string | null>(null);
+  const errorId = useId();
 
   const address = leaf.address;
   const refresh = leaf.refresh;
@@ -393,8 +398,8 @@ function LeafToolbar({
         sessionRefreshKey={sessionRefreshKey}
       />
       {error !== null && (
-        <span role="alert" title={error} className="inline-flex text-red-400">
-          <RailIcon icon={CircleAlert} />
+        <span id={errorId} role="alert" title={error} className="inline-flex text-red-400">
+          <RailIcon icon="failed" />
           <span className="sr-only">{error}</span>
         </span>
       )}
@@ -406,10 +411,11 @@ function LeafToolbar({
           refresh();
           onRefreshActiveSession?.();
         }}
+        aria-label="Refresh sessions"
         title="Refresh sessions"
       >
         <RailIcon
-          icon={RefreshCw}
+          icon="refresh"
           className={`text-slate-500 ${leaf.isLoading ? "animate-spin" : ""}`}
         />
       </Button>
@@ -418,9 +424,13 @@ function LeafToolbar({
         size="sm"
         className="h-5 w-5 p-0"
         onClick={() => void handleCreate()}
-        title="New session"
+        aria-label="New session"
+        // The button that failed says why, so the reason is on the control a
+        // person pointed at or tabbed to, not only in the announcement.
+        aria-describedby={error === null ? undefined : errorId}
+        title={error === null ? "New session" : `New session failed: ${error}`}
       >
-        <RailIcon icon={Plus} className="text-slate-500" />
+        <RailIcon icon="plus" className="text-slate-500" />
       </Button>
     </>
   );

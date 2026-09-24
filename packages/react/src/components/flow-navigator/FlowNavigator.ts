@@ -250,6 +250,11 @@ const trailingStyle = {
   paddingRight: 8
 } as const;
 
+/** What a slot returns when it has nothing to draw. */
+function isBlank(node: ReactNode): boolean {
+  return node === undefined || node === null || node === false;
+}
+
 /** No hover pointer (a phone, a tablet): nothing can reveal the actions, so show them. */
 function screenHasNoHover(): boolean {
   return typeof matchMedia === "function" && matchMedia("(hover: none)").matches;
@@ -303,7 +308,7 @@ function Row(props: {
       { type: "button", ...button, style: rowButtonStyle(depth) },
       ...content
     ),
-    trailing === undefined || trailing === null || trailing === false
+    isBlank(trailing)
       ? null
       : createElement("span", { style: { ...trailingStyle, opacity: shown ? 1 : 0 } }, trailing)
   );
@@ -518,9 +523,14 @@ function LeafRow(props: {
       depth,
       button,
       content: [twisty(isOpen), createElement("span", { style: label }, name)],
-      // One fragment whether open or not, so opening adds the toolbar after
-      // the row's own content without remounting that content.
-      trailing: createElement(Fragment, null, trailing, toolbar)
+      // One fragment whenever there is anything to draw, so opening adds the
+      // toolbar after the row's own content without remounting that content.
+      // Nothing at all draws no trailing area, whose padding would otherwise
+      // cut the label short.
+      trailing:
+        isBlank(trailing) && isBlank(toolbar)
+          ? null
+          : createElement(Fragment, null, trailing, toolbar)
     }),
     isOpen ? createElement(SessionList, { leaf, depth: depth + 1, state, context }) : null
   );

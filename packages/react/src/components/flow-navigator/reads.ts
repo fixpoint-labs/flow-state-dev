@@ -110,8 +110,10 @@ export type LeafSessions = {
  * Reads only while its leaf is open, which is what keeps a kind row holding
  * forty instances from costing forty requests: the fetch lives at the level
  * that is a leaf, a collection's kind row is not one, and a closed leaf asks
- * for nothing. Closing is part of the read's identity, so it retires a read
- * still in flight exactly as unmounting would.
+ * for nothing. Each opening is a visit of its own, carried in the read's
+ * identity, so closing retires a read still in flight and a `refresh` captured
+ * on an earlier visit reads nothing once the leaf has closed and reopened —
+ * what unmounting the list used to guarantee.
  *
  * The fence answers the two hazards a leaf read has, and an "is this still the
  * open leaf?" comparison answers only the first of them. A response can outlive
@@ -141,8 +143,19 @@ export function useLeafSessions(
 
   const { address, cardinality } = leaf;
 
+  // One token per opening, `null` while closed. `isOpen` alone repeats — every
+  // visit is `true` — so a closure from a finished visit would agree with the
+  // next one; the fence compares whatever it is handed, and a fresh object
+  // never matches an old one. Adjusted during render rather than in an effect,
+  // so the read that opens the leaf is already fenced on its own visit.
+  const [visit, setVisit] = useState<{ open: boolean; token: object | null }>(() => ({
+    open: isOpen,
+    token: isOpen ? {} : null
+  }));
+  if (visit.open !== isOpen) setVisit({ open: isOpen, token: isOpen ? {} : null });
+
   const fence = useReadFence(
-    [source, address, cardinality, userId, includeDispatchRuns, isOpen],
+    [source, address, cardinality, userId, includeDispatchRuns, visit.token],
     () => {
       setSessions(EMPTY_SESSIONS);
       setError(null);
@@ -153,7 +166,7 @@ export function useLeafSessions(
   const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
 
   const read = useCallback(async () => {
-    if (!isOpen) return;
+    if (visit.token === null) return;
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
     setIsLoading(true);
@@ -177,7 +190,7 @@ export function useLeafSessions(
     } finally {
       if (stillCurrent()) setIsLoading(false);
     }
-  }, [fence, isOpen, source, address, cardinality, userId, includeDispatchRuns]);
+  }, [fence, visit.token, source, address, cardinality, userId, includeDispatchRuns]);
 
   useEffect(() => {
     void read();

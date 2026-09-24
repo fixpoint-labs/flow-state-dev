@@ -102,9 +102,94 @@ describe("useLeafSessions · two reads of ONE leaf racing", () => {
 });
 
 /**
- * A collapsed leaf unmounts, and unmounting is the one kind of staleness that
- * announces no superseding identity. That path is asserted directly on the
- * fence in `useReadFence.test.ts` — there is nothing left to observe on an
- * unmounted hook here, so a test written at this level would pass however the
- * fence behaved.
+ * A leaf's row stays mounted while it is closed, so closing is not an unmount:
+ * it is an identity change the hook has to be told about. Each case below
+ * holds a response open across a close, because a source that answers at once
+ * has always landed before the close and cannot show what the close retires.
  */
+describe("useLeafSessions · a leaf that closes and opens again", () => {
+  const mountLeaf = (source: ReturnType<typeof deferredSource>, isOpen: boolean) =>
+    renderHook(
+      ({ open }: { open: boolean }) =>
+        useLeafSessions(source as never, leaf("seat-a"), "u", false, open),
+      { initialProps: { open: isOpen } }
+    );
+
+  it("asks nothing and holds nothing while closed", async () => {
+    const source = deferredSource();
+    const { result, rerender } = mountLeaf(source, false);
+    expect(source.listSessions).not.toHaveBeenCalled();
+    expect(result.current.sessions).toEqual([]);
+
+    rerender({ open: true });
+    await waitFor(() => expect(source.pending).toHaveLength(1));
+    await act(async () => {
+      source.pending[0]!.release([row("a-1")]);
+    });
+    await waitFor(() => expect(result.current.sessions.map((s) => s.id)).toEqual(["a-1"]));
+
+    rerender({ open: false });
+    expect(result.current.sessions).toEqual([]);
+  });
+
+  it("writes nothing from a read that lands after the leaf closed", async () => {
+    const source = deferredSource();
+    const { result, rerender } = mountLeaf(source, true);
+    await waitFor(() => expect(source.pending).toHaveLength(1));
+
+    rerender({ open: false });
+    await act(async () => {
+      source.pending[0]!.release([row("late")]);
+      await Promise.resolve();
+    });
+
+    expect(result.current.sessions).toEqual([]);
+    expect(source.listSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows nothing of the last visit's rows while a reopened leaf reads again", async () => {
+    const source = deferredSource();
+    const { result, rerender } = mountLeaf(source, true);
+    await waitFor(() => expect(source.pending).toHaveLength(1));
+    await act(async () => {
+      source.pending[0]!.release([row("first-visit")]);
+    });
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+
+    rerender({ open: false });
+    rerender({ open: true });
+    await waitFor(() => expect(source.pending).toHaveLength(2));
+
+    // The new read is still in flight: the list is loading, not the old one.
+    expect(result.current.sessions).toEqual([]);
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  it("ignores a refresh captured on an earlier visit", async () => {
+    const source = deferredSource();
+    const { result, rerender } = mountLeaf(source, true);
+    await waitFor(() => expect(source.pending).toHaveLength(1));
+    await act(async () => {
+      source.pending[0]!.release([row("first-visit")]);
+    });
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+    // A host affordance that held on to this visit's refresh, the way an
+    // unmounted toolbar's effect or timer can.
+    const staleRefresh = result.current.refresh;
+
+    rerender({ open: false });
+    rerender({ open: true });
+    await waitFor(() => expect(source.pending).toHaveLength(2));
+    await act(async () => {
+      source.pending[1]!.release([row("second-visit")]);
+    });
+    await waitFor(() => expect(result.current.sessions.map((s) => s.id)).toEqual(["second-visit"]));
+
+    await act(async () => {
+      staleRefresh();
+      await Promise.resolve();
+    });
+    // The earlier visit is over, so its refresh reads nothing.
+    expect(source.listSessions).toHaveBeenCalledTimes(2);
+  });
+});

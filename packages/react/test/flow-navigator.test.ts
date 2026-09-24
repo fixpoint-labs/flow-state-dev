@@ -557,6 +557,24 @@ describe("FlowNavigator · an open leaf's toolbar sits on the leaf's own row (BR
     expect(kindRow("chat").contains(toolbar)).toBe(false);
   });
 
+  it("draws no trailing area on a leaf row with nothing to put in it", async () => {
+    // A host whose toolbar is for some leaves only, and with no row content.
+    // An empty trailing area still takes its padding, and every such label
+    // truncates early for it.
+    const server = fakeServer(flows, []);
+    mount(server, { slots: { leafToolbar: () => null } });
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    await click(instanceRow("seat-a"));
+    await click(kindRow("chat"));
+    await waitFor(() => expect(screen.getAllByText("No sessions yet")).toHaveLength(2));
+
+    for (const rowButton of [instanceRow("seat-a"), kindRow("chat")]) {
+      expect(Array.from(rowButton.parentElement!.children)).toEqual([rowButton]);
+    }
+  });
+
   it("mounts it when the leaf opens and unmounts it when the leaf closes", async () => {
     const server = fakeServer(flows, []);
     withToolbar(server);

@@ -403,6 +403,28 @@ describe("the tool's three affordances, as slots", () => {
     expect(instanceRow("engineer-b").parentElement!.contains(alert)).toBe(true);
     expect(alert.textContent).toContain("Request failed (500)");
     expect(document.querySelector('[data-leaf="engineer-b"]')!.contains(alert)).toBe(false);
+
+    // The button that failed carries the reason, for whoever lands on it by
+    // keyboard or pointer, not only for a screen reader that heard the alert.
+    const create = screen.getByRole("button", { name: "New session" });
+    expect(create.getAttribute("title")).toBe("New session failed: Request failed (500)");
+    const describedBy = create.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)?.textContent).toContain("Request failed (500)");
+  });
+
+  it("names its icon buttons for assistive technology", async () => {
+    mount();
+    await waitFor(() => expect(kindRow("engineer")).toBeTruthy());
+    await click(kindRow("engineer"));
+    await click(instanceRow("engineer-a"));
+    await waitFor(() => expect(screen.queryByTitle("New session")).toBeTruthy());
+
+    const actions = instanceRow("engineer-a").parentElement!;
+    for (const name of ["Refresh sessions", "New session"]) {
+      const button = actions.querySelector(`button[aria-label="${name}"]`);
+      expect(button, name).toBeTruthy();
+    }
   });
 });
 
