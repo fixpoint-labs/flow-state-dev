@@ -41,7 +41,8 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
    errors it once the retry budget is spent *(BR-14)*;
 7. a `boards/` folder added to the tree changes nothing the loader produces while the `channels/`
    folder beside it loads, and an org-less read is refused at the transport door while the same read
-   with an org lands *(BR-16, BR-17)*.
+   through the same door, carrying the lab's verified bearer, lands with the seat's own facts
+   *(BR-16, BR-17)*.
 
 **Anti-game:** a hollow pass here looks like a seat that read none of its own files while a model
 improvised a plausible commit — which is why this half runs **with no model at all** and grades what
