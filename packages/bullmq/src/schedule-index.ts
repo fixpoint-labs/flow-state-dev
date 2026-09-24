@@ -31,14 +31,18 @@ export function createBullmqScheduleIndex(
     opts.schedulerIdPrefix ?? DEFAULT_SCHEDULER_PREFIX;
   const flowKind = opts.flowKind;
 
-  function schedulerId(userId: string, key: string): string {
-    return `${schedulerPrefix}:${userId}:${key}`;
+  // Built from the row's identity, `(cell, key)`, so two cells' schedules
+  // with one key are two schedulers. A person's own cell is their id (escaped
+  // only when it contains `:` or `\`), so ordinary ids keep the scheduler
+  // ids they had before rows carried a cell.
+  function schedulerId(cell: string, key: string): string {
+    return `${schedulerPrefix}:${cell}:${key}`;
   }
 
   return {
     async upsert(row: ScheduleIndexRow): Promise<void> {
       await queue.upsertJobScheduler(
-        schedulerId(row.userId, row.key),
+        schedulerId(row.cell, row.key),
         {
           pattern: row.cron,
           ...(row.timezone ? { tz: row.timezone } : {}),
@@ -64,8 +68,8 @@ export function createBullmqScheduleIndex(
       return [];
     },
 
-    async remove(userId: string, key: string): Promise<void> {
-      await queue.removeJobScheduler(schedulerId(userId, key));
+    async remove({ cell, key }: { cell: string; key: string }): Promise<void> {
+      await queue.removeJobScheduler(schedulerId(cell, key));
     },
   };
 }

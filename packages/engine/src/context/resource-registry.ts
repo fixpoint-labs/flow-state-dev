@@ -810,6 +810,13 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
      * can correlate mutations back to the owning entity.
      */
     scopeId: string;
+    /**
+     * The storage cell a collection's instances are persisted under — the same
+     * derivation the persisters use for that config. Surfaced to lifecycle
+     * hooks as `CollectionHookContext.cell`, so a hook never re-derives where
+     * its rows live.
+     */
+    cellOf: (config: ResourceCollectionConfig) => string;
     configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     readResourceContent: () => Record<string, string>;
@@ -1427,6 +1434,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         },
         scopeType: options.scope,
         scopeId: options.scopeId,
+        cell: options.cellOf(nsConfig),
         orgId: options.orgId,
       };
 
