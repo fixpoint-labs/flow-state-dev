@@ -130,9 +130,9 @@ The switch is exhaustive over `ParsedFlowRoute["kind"]`.
 | `request` | stream, abort, retry, continue, status, resume | Owner is the request record's `userId` (or the in-flight `activeRequests` entry when the record is not persisted yet). |
 | `flow` | `create_session` | No record yet. The authenticated caller becomes the owner. Flow comes from the URL. |
 | `user` | `user_stream`, `check_interrupted_requests` | Owner is the `userId` in the path. |
-| `host` | `list_sessions`, `active_requests`, `transcribe` | No single owner. The handler scopes rows to the caller. |
+| `host` | `list_sessions`, `active_requests`, `transcribe` | No single owner. The handler scopes rows to the caller. A listed row owned by an instance with its own `authentication.resolvePrincipal` is judged by that resolver, the one its doors use: shown only when it accepts the caller, the row's `userId` and `orgId` are the principal it returns, and a pinned instance's pin admits that principal. A credential one instance's resolver accepts never lists another instance's rows. Instances that share a resolver are resolved once per request. |
 
-A hired instance is registered with `register(flow, { pin })`. The pin is `{ orgId, userId? }` from the hire row, not from the address. `create_session` and a session-less `execute_action` compare the caller to that pin before the acknowledgement and answer a mismatch with `404 Unknown flow`, the same sentence an address this process does not hold gets. An internal dispatch to a pinned instance is refused at the dispatch seam, before a child session is written: a sending principal outside the pin gets `flow-not-found`, the same refusal an unregistered address gets (see [Dispatched Work](./dispatched-work.md)). Execution admission is the backstop. Every run, including resume and retry, compares the bound session to the pin before any block and throws `InstancePinMismatchError` on a mismatch. An instance registered without a pin stays shared. A hire writer does not get that path: `registerHiredSeat` refuses a hired seat that arrives with no pin. The comparison uses the principal the host resolved. On the framework default resolver that principal does not name an organization, so opening a pinned seat — including for the user who hired it — answers `404 Unknown flow`. Install the resolver that verified the hire where the seat is resolved: at the host when every flow authenticates, or on the seat instance itself (its `authentication.resolvePrincipal`) in a mixed app whose other flows stay on the development default. A host resolver that merely delegates to the default does not work, because the engine recognises the development default by the resolver it runs (`isDefaultBodyUserIdPrincipalResolver`), not by the principal it returns: a tokenless caller then gets 401 on actions (no verified organization) and on the management routes and listings (enforcement switches on). With the resolver on the seat, the flow catalog lists the seat to a caller that resolver admits and the pin matches, because the catalog resolves each pinned instance through its own resolver, as the doors do. Its sessions still stay out of the host listings, as for any authenticating flow in a mixed app, because the listings resolve the caller through the host resolver. The pin also picks where the seat stores a person's shared user data: one cell per (pin org, person), never the person's cross-org cell (FIX-1538, [State and Scopes](./state-and-scopes.md#the-hired-seat-cell)).
+A hired instance is registered with `register(flow, { pin })`. The pin is `{ orgId, userId? }` from the hire row, not from the address. `create_session` and a session-less `execute_action` compare the caller to that pin before the acknowledgement and answer a mismatch with `404 Unknown flow`, the same sentence an address this process does not hold gets. An internal dispatch to a pinned instance is refused at the dispatch seam, before a child session is written: a sending principal outside the pin gets `flow-not-found`, the same refusal an unregistered address gets (see [Dispatched Work](./dispatched-work.md)). Execution admission is the backstop. Every run, including resume and retry, compares the bound session to the pin before any block and throws `InstancePinMismatchError` on a mismatch. An instance registered without a pin stays shared. A hire writer does not get that path: `registerHiredSeat` refuses a hired seat that arrives with no pin. The comparison uses the principal the host resolved. On the framework default resolver that principal does not name an organization, so opening a pinned seat — including for the user who hired it — answers `404 Unknown flow`. Install the resolver that verified the hire where the seat is resolved: at the host when every flow authenticates, or on the seat instance itself (its `authentication.resolvePrincipal`) in a mixed app whose other flows stay on the development default. A host resolver that merely delegates to the default does not work, because the engine recognises the development default by the resolver it runs (`isDefaultBodyUserIdPrincipalResolver`), not by the principal it returns: a tokenless caller then gets 401 on actions (no verified organization) and on the management routes and listings (enforcement switches on). With the resolver on the seat, the flow catalog lists the seat to a caller that resolver admits and the pin matches, because the catalog resolves each pinned instance through its own resolver, as the doors do. The host listings (`list_sessions`, `active_requests`) show the seat's sessions and in-flight requests to the same caller, because they judge each of its rows through the seat's resolver too. The pin also picks where the seat stores a person's shared user data: one cell per (pin org, person), never the person's cross-org cell (FIX-1538, [State and Scopes](./state-and-scopes.md#the-hired-seat-cell)).
 
 Enforcement is off when the host resolver is the framework default **and**
 no registered flow configures its own resolver. A flow-scoped route whose
@@ -144,14 +144,25 @@ the guard does not refuse the route. It returns `anonymousFlowIds` —
 the set of flow **instance ids** that do **not** configure their own
 resolver — and the handler withholds rows whose recorded owner
 (`flowId`, or the singleton its `flowKind` implies for a legacy row) is not
-in that set. Instance ids, not kinds: two instances of one collection can
+in that set. The two listings then judge a row owned by an instance that
+does configure its own resolver through that resolver, as the `host` row of
+the table above describes, so a caller that instance accepts sees its rows;
+`check_interrupted_requests` does not, and leaves those rows alone. Instance ids, not kinds: two instances of one collection can
 authenticate differently, and an anonymous member must not expose its
 authenticating sibling's rows. `anonymousFlowIds` is that computed set, not
 a `createFlowApiRouter` option.
 
 A mixed app that wants listings scoped to a real caller must set a
 host-level `resolvePrincipal`. Without one, the listing stays up for the
-open flows and stays closed for the authenticated ones.
+open flows, and shows an authenticated instance's rows only to a caller
+that instance's resolver accepts.
+
+With a host-level resolver, `list_sessions` scopes its store query to the
+host's principal. When an instance with its own resolver names the caller
+as someone else, the query runs unscoped and every row is judged in the
+handler instead, so a page can come back shorter than `limit`, as the
+anonymous listing's can. A caller the host resolver refuses still gets 401
+on the listings, whatever an instance's own resolver would say.
 
 ### `create_session` is not a bypass
 

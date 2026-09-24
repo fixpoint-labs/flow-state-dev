@@ -30,6 +30,7 @@ import {
 } from "../context/org-attribution";
 import { jsonResponse, loadTenantSession, refuseUnattributedRecord } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
+import { flowAuthenticates } from "./instance-caller";
 
 /** Wiring the guard needs; all of it is already built by `createFlowRouteHandlers`. */
 export type RouteAuthContext = {
@@ -60,7 +61,9 @@ export type RouteAuthResult = {
    * flow INSTANCE ids whose effective resolver is the framework default. The
    * handler resolves each row's owner and returns the rows owned by one of
    * these, withholding the rest — so an open instance never makes a
-   * same-kind authenticated peer's rows visible.
+   * same-kind authenticated peer's rows visible. The two listings judge a row
+   * owned by an instance with its own resolver through that resolver instead
+   * (`instance-caller.ts`); the interrupted-request sweep does not.
    *
    * An empty set means "withhold everything"; `undefined` means the listing is
    * unrestricted (either nothing in the app authenticates, or a principal
@@ -224,14 +227,6 @@ function ownerFlowOf(
   if (owner.ok) return { flow };
   const denied = refuseUnattributedRecord(ctx.registry, record);
   return denied === undefined ? {} : { denied };
-}
-
-/** Whether `flow` configures a resolver that is not the framework default. */
-function flowAuthenticates(flow: {
-  authentication?: { resolvePrincipal?: PrincipalResolver };
-}): boolean {
-  const resolver = flow.authentication?.resolvePrincipal;
-  return resolver !== undefined && !isDefaultBodyUserIdPrincipalResolver(resolver);
 }
 
 /** Whether any registered flow configures a resolver that is not the framework default. */
