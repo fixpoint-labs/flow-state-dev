@@ -47,12 +47,27 @@ Options:
 | `-f, --input-file <path>` | JSON input from file |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
 | `-s, --session <id>` | Session ID for reuse across invocations |
+| `--org <id>` | Run in this organization and skip the app's resolver. See [Who a run is](#who-a-run-is) |
+| `-u, --user <id>` | Run as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
-| `--quiet` | Suppress `[flow-state] *` runtime logs on stderr |
+| `--quiet` | Suppress `[flow-state] *` runtime logs and the `[fsdev] running as …` line on stderr |
 | `--log-level <level>` | Stderr log level: `debug \| info \| warn \| error` (default: `info`) |
 | `--capture <path>` | Write the full structured run output to a JSON file (additive with stdout) |
+
+#### Who a run is
+
+Every run executes as a user in an organization, the same as a request to your server. Without `--org`, `fsdev run` asks your app, the same way your server asks for every request: the flow's own `authentication.resolvePrincipal` if it has one, otherwise the one passed to `createFlowState`. The resolver sees `source: "cli"`, no `request`, and the `--user` value (default `cli-user`) as the caller-named user. `cli` is reserved for `fsdev run` and `fsdev chat`; a transport adapter that stamps it is refused before your resolver runs.
+
+- An app with no resolver runs as `cli-user` (or `--user`) in the development organization, `DEFAULT_ORG_ID`.
+- A resolver that checks a credential refuses the terminal, which carries none. The run stops before it writes anything, exits `2`, and the message names the flow and `--org`.
+- `--org <id>` skips the resolver and runs as `--user` (default `cli-user`) in that organization. It may not be blank or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag.
+- `--user` alone keeps the organization the resolver gives and replaces only the user.
+- `--session` / `--seed-session` on a session another user or organization owns is refused before anything is written, including the seed. Sessions keep the identity they were created with. A session stored before organizations were required is refused with the migration message.
+- A seat pinned to an owner refuses any identity outside its pin, before anything is written.
+
+One stderr line names the identity, e.g. `[fsdev] running as devuser in organization acme (from the app's resolver)`; a user given with `--user` is marked `(named by --user)`. In the capture, `principal.from` names where the **organization** came from.
 
 #### Stderr runtime logs
 
@@ -64,13 +79,14 @@ By default `fsdev run` emits `[flow-state] *` runtime events to stderr at `info`
 
 ```jsonc
 {
-  "command": { "flow": "...", "action": "...", "input": {...}, "model": null, "session": null, ... },
+  "command": { "flow": "...", "action": "...", "input": {...}, "model": null, "session": null, ...,
+               "principal": { "userId": "...", "orgId": "...", "from": "resolver" } },
   "events":  [ /* every NDJSON event in order */ ],
   "result":  { "success": true, "flow": {...}, "output": {...}, "execution": {...}, "exitCode": 0 }
 }
 ```
 
-Stdout NDJSON streaming continues unchanged when `--capture` is set — you get both. Parent directories are created as needed.
+`principal.from` is `resolver`, `flag` (`--org`), or `development-default` (no resolver configured). Stdout NDJSON streaming continues unchanged when `--capture` is set — you get both. Parent directories are created as needed.
 
 #### NDJSON streaming
 
@@ -194,12 +210,15 @@ Options:
 |------|-------------|
 | `-s, --session <id>` | Resume an engine session for the initially bound flow |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
-| `-u, --user <id>` | Engine identity for sessions and turns (default: `cli-user`) |
+| `-u, --user <id>` | Run turns as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
+| `--org <id>` | Run turns in this organization and skip the app's resolver. See [Who a run is](#who-a-run-is) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (default level `warn`) |
 
 Built-in commands: `/help`, `/targets`, `/use <flow> [action]`, `/status`, `/session [new|<id>]`, `/exit`. A `/name` no built-in claims is sent to the flow as chat text (how skills are invoked). Messages are sent as `{ message: "<text>" }`. Sessions are kept per flow kind and persist in the engine's stores.
+
+Each turn asks the app who it is for that turn's flow, as [`fsdev run`](#who-a-run-is) does. A turn whose flow refuses the terminal fails on its own and the session carries on; `/status` shows the organization the active target's last turn ran in.
 
 ### `fsdev block` — Execute a single block in isolation
 

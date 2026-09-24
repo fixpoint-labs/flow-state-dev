@@ -15,6 +15,10 @@ import type {
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
 import type { FlowDispatcher } from "../transports/dispatcher";
+import type {
+  InProcessPrincipal,
+  InProcessPrincipalQuestion
+} from "../transports/host/createInboundTransportHost";
 import type { CapabilitySlot, StoresConfig } from "../stores/store-adapter";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
@@ -346,6 +350,18 @@ export interface FlowState<TSettings extends object = FlowStateSettings> {
 
   /** Eager warmup. Idempotent. Useful in `instrumentation.ts` / tests. */
   ready(): Promise<void>;
+
+  /**
+   * Who an in-process caller is, answered the way this app's HTTP routes
+   * answer a request: the flow's own `resolvePrincipal`, else the one passed
+   * to `createFlowState`, held to the same organization rules. The resolver
+   * sees `source: "cli"` and no request. `fsdev run` and `fsdev chat` ask this
+   * before they write anything.
+   *
+   * In-process only — no route reaches it. Rejects with the resolver's own
+   * refusal, exactly as the route would refuse a caller with no credential.
+   */
+  resolveInProcessPrincipal(question: InProcessPrincipalQuestion): Promise<InProcessPrincipal>;
 
   /**
    * Admit one flow instance after construction — the door an app hires a seat

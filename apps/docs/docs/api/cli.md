@@ -28,6 +28,8 @@ The first argument is the flow **instance** id — see [Flows](/docs/fundamental
 | `-f, --input-file <path>` | JSON input from file |
 | `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `-s, --session <id>` | Session ID for reuse across invocations |
+| `--org <id>` | Run in this organization and skip the app's resolver. See [Who a run is](/docs/cli/configuration#who-a-run-is) |
+| `-u, --user <id>` | Run as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
@@ -35,6 +37,8 @@ The first argument is the flow **instance** id — see [Flows](/docs/fundamental
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
 
 When a config is loaded, `fsdev run` looks up the flow by instance id in the config's registry and uses its stores. `--model <id>` still applies, routed through the config's own resolver (your gateways and providers stay in effect), and it covers the generators that run in this process but not [background work handed to a queue](/docs/cli/overview#model-overrides). `--flow-dir` together with a config is an error; the message suggests `--no-config` if directory discovery is what you want. The config's FlowState is disposed on exit, and disposal waits for any background work the run started in this process. See [App Configuration](/docs/cli/configuration) and [Background work](/docs/cli/overview#background-work).
+
+Without `--org`, the run is whoever your app's resolver says it is. See [Who a run is](/docs/cli/configuration#who-a-run-is).
 
 **NDJSON events:**
 
@@ -143,7 +147,8 @@ fsdev chat hello-chat chat
 |------|-------------|
 | `-s, --session <id>` | Resume an engine session for the initially bound flow. Requires a bound target. |
 | `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
-| `-u, --user <id>` | Engine identity for sessions and turns (default: `cli-user`) |
+| `-u, --user <id>` | Run turns as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
+| `--org <id>` | Run turns in this organization and skip the app's resolver. See [Who a run is](/docs/cli/configuration#who-a-run-is) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
@@ -345,7 +350,7 @@ import type {
 |------|---------|
 | 0 | Success |
 | 1 | Execution error (flow or block failed at runtime) |
-| 2 | Invalid arguments (bad JSON input, missing required flags) |
+| 2 | Invalid arguments (bad JSON input, missing required flags), or a run whose identity was refused. See [Who a run is](/docs/cli/configuration#who-a-run-is) |
 | 3 | Configuration error (invalid port, missing devtool assets) |
 | 4 | Discovery error (flow or block not found, import failed) |
 | 10 | Internal error (unhandled exception) |

@@ -20,7 +20,7 @@ gates, not the gates.
 
 | | Under `epic-em` |
 |---|---|
-| Epic/issue direction approval · implementation merge | Human-owned, never absorbed. Approved spec merge follows required checks; confirmed merge releases implementation |
+| Epic/issue direction approval · implementation merge | Human-owned, never absorbed. The owner merging a spec PR is the approval, no label or comment needed. Otherwise an approved spec merge follows required checks; confirmed merge releases implementation |
 | An escalated blocker | **Yours**, unless it meets a test below |
 | The PR-feedback cap | **Yours** per resolution, not per option |
 

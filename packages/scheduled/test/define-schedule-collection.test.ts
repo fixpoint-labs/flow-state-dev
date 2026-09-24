@@ -18,10 +18,10 @@ function createFakeIndex(): ScheduleIndex & { rows: Map<string, ScheduleIndexRow
   return {
     rows,
     async upsert(row) {
-      rows.set(`${row.userId}/${row.key}`, row);
+      rows.set(`${row.cell}/${row.key}`, row);
     },
-    async remove(userId, key) {
-      rows.delete(`${userId}/${key}`);
+    async remove({ cell, key }) {
+      rows.delete(`${cell}/${key}`);
     },
     async claimDue() {
       return [];
@@ -45,6 +45,8 @@ const HOOK_CTX = {
   log: () => {},
   scopeType: "user" as const,
   scopeId: "user-1",
+  // An unpinned flow's user cell is the person's own id.
+  cell: "user-1",
   orgId: EXEC_ORG
 };
 
@@ -258,15 +260,17 @@ describe("defineScheduleCollection", () => {
   });
 
   /**
-   * FIX-1442 review, round 3 — what `(userId, key)` identity means across
-   * organizations.
+   * FIX-1442 review, round 3 — what one cell's `(cell, key)` identity means
+   * across organizations.
    *
-   * The schedule collection is USER-scoped (`scope: "user"` is forced above),
-   * and a user-scoped resource's storage identity is the bare `userId` — the
-   * organization never enters it (`resolveResourceScopeId`). So two
-   * organizations cannot hold two different schedules at one `(userId, key)`:
-   * they hold the SAME resource, and the index's `PRIMARY KEY (user_id, key)`
-   * mirrors that key space exactly rather than collapsing anything.
+   * An unpinned flow keeps a person's user-scoped resources in one cell, the
+   * person's own, whatever organization the run is in — the organization
+   * never enters it (`resolveResourceScopeId`). So two organizations writing
+   * through an unpinned flow cannot hold two different schedules at one key:
+   * they hold the SAME resource, in the same cell, and the index's
+   * `(cell, key)` identity mirrors that exactly. (A hired seat is different:
+   * it stores per (org, person), so each organization is its own cell — see
+   * "one row per storage cell" below.)
    *
    * What that leaves is not a key collision but an ATTRIBUTION one, and only
    * for a row whose state names no organization. `create` now stamps the
@@ -278,7 +282,7 @@ describe("defineScheduleCollection", () => {
    * never engages for that row. These tests pin that, so the gap is visible
    * rather than inferred.
    */
-  describe("cross-organization writes at one (userId, key)", () => {
+  describe("cross-organization writes at one (cell, key)", () => {
     /** A second execution: same user, a different organization. */
     const OTHER_ORG_CTX = { ...HOOK_CTX, orgId: "org-globex" };
 
@@ -341,6 +345,90 @@ describe("defineScheduleCollection", () => {
         OTHER_ORG_CTX
       );
       expect(index.rows.size).toBe(0);
+    });
+  });
+
+  /**
+   * A person can hold a schedule with one key in several storage cells at
+   * once: a hired seat per organization, plus their own app-wide cell. Each is
+   * its own schedule, so each is its own index row, and nothing written in one
+   * cell may move or remove another cell's row.
+   */
+  describe("one row per storage cell", () => {
+    const ACME_SEAT = { ...HOOK_CTX, cell: "user-1:~org:org-acme", orgId: "org-acme" };
+    const GLOBEX_SEAT = { ...HOOK_CTX, cell: "user-1:~org:org-globex", orgId: "org-globex" };
+    const weekly = (orgId: string, over: Record<string, unknown> = {}) => ({
+      cron: "0 0 * * 0",
+      kind: "send-digest",
+      enabled: true,
+      orgId,
+      ...over,
+    });
+
+    async function twoSeats() {
+      const index = createFakeIndex();
+      const coll = defineScheduleCollection({ pattern: "schedules/*", index });
+      await coll.onInstanceCreated!("schedules/weekly", weekly("org-acme"), ACME_SEAT);
+      await coll.onInstanceCreated!("schedules/weekly", weekly("org-globex"), GLOBEX_SEAT);
+      return { index, coll };
+    }
+
+    it("writes one row per cell, each with its own cell, person and organization (BR-2)", async () => {
+      const { index } = await twoSeats();
+      expect([...index.rows.values()].map((r) => [r.cell, r.userId, r.orgId, r.key])).toEqual([
+        ["user-1:~org:org-acme", "user-1", "org-acme", "weekly"],
+        ["user-1:~org:org-globex", "user-1", "org-globex", "weekly"],
+      ]);
+    });
+
+    it("disabling in one cell leaves the other cell's row (BR-6)", async () => {
+      const { index, coll } = await twoSeats();
+      await coll.onInstanceUpdated!(
+        "schedules/weekly",
+        weekly("org-acme", { enabled: false }),
+        weekly("org-acme"),
+        ACME_SEAT
+      );
+      expect([...index.rows.keys()]).toEqual(["user-1:~org:org-globex/weekly"]);
+    });
+
+    it("deleting in one cell leaves the other cell's row (BR-6)", async () => {
+      const { index, coll } = await twoSeats();
+      await coll.onInstanceDeleted!("schedules/weekly", GLOBEX_SEAT);
+      expect([...index.rows.keys()]).toEqual(["user-1:~org:org-acme/weekly"]);
+    });
+
+    it("a cron that stops parsing removes only its own cell's row (BR-7)", async () => {
+      const { index, coll } = await twoSeats();
+      await coll.onInstanceUpdated!(
+        "schedules/weekly",
+        weekly("org-acme", { cron: "not a cron" }),
+        weekly("org-acme"),
+        ACME_SEAT
+      );
+      expect([...index.rows.keys()]).toEqual(["user-1:~org:org-globex/weekly"]);
+    });
+
+    it("an organization mismatch removes only its own cell's row (BR-8)", async () => {
+      const { index, coll } = await twoSeats();
+      await coll.onInstanceUpdated!(
+        "schedules/weekly",
+        weekly("org-initech"),
+        weekly("org-acme"),
+        ACME_SEAT
+      );
+      expect([...index.rows.keys()]).toEqual(["user-1:~org:org-globex/weekly"]);
+    });
+
+    it("keeps the app-wide cell and a seat cell in one organization apart (BR-3)", async () => {
+      const index = createFakeIndex();
+      const coll = defineScheduleCollection({ pattern: "schedules/*", index });
+      await coll.onInstanceCreated!("schedules/weekly", weekly(EXEC_ORG), HOOK_CTX);
+      await coll.onInstanceCreated!("schedules/weekly", weekly("org-acme"), ACME_SEAT);
+      expect([...index.rows.keys()].sort()).toEqual([
+        "user-1/weekly",
+        "user-1:~org:org-acme/weekly",
+      ]);
     });
   });
 

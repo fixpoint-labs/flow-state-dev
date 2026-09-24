@@ -18,7 +18,6 @@ import {
   type StoreRegistry,
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowActionTarget } from "./targets";
 import type { ChatRenderer } from "./render";
 
@@ -37,7 +36,9 @@ export interface ExecuteTurnParams {
   text: string;
   /** Stable session id for this flow kind — never undefined (seeded at bind). */
   sessionId: string;
+  /** The identity this turn runs under, resolved for its target by the loop. */
   userId: string;
+  orgId: string;
   stores: StoreRegistry;
   /** Base runtime config with the CLI logger + model resolver already applied. */
   runtimeConfig: RuntimeConfig;
@@ -80,7 +81,7 @@ function isInputValidationError(err: unknown): boolean {
  * loop's SIGINT handler calls.
  */
 export function executeTurn(params: ExecuteTurnParams): RunningTurn {
-  const { flow, target, text, sessionId, userId, stores, runtimeConfig, renderer } = params;
+  const { flow, target, text, sessionId, userId, orgId, stores, runtimeConfig, renderer } = params;
   const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
   let settled = false;
@@ -133,11 +134,11 @@ export function executeTurn(params: ExecuteTurnParams): RunningTurn {
     let errored = false;
     try {
       const result = await runAction({
-    orgId: DEFAULT_ORG_ID,
         flow,
         actionName: target.actionName,
         input: { message: text },
         userId,
+        orgId,
         sessionId,
         requestId,
         stores,

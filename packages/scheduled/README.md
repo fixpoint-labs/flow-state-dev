@@ -139,7 +139,7 @@ only — a scheduled handler is never reachable through the action endpoint).
 
 ## Schedule index
 
-`ScheduleIndex` is an opt-in adapter interface that lets a polling cron tick find due dynamic schedules in one query, instead of scanning every user's schedule collection. Store packages implement it (`createPostgresScheduleIndex`, `createSQLiteScheduleIndex`); custom backends implement the three-method interface directly.
+`ScheduleIndex` is an opt-in adapter interface that lets a polling cron tick find due dynamic schedules in one query, instead of scanning every user's schedule collection. Store packages implement it (`createPostgresScheduleIndex`, `createSQLiteScheduleIndex`); custom backends implement the three-method interface directly. Rows are identified by the schedule's storage cell and key, so one schedule is always one row.
 
 The contract is at-most-once: `claimDue` atomically advances rows before returning them, so a dispatch that fails after advance is dropped, not retried.
 
@@ -175,7 +175,7 @@ createScheduleIndexConformanceTests("my-backend", {
 });
 ```
 
-Covers upsert idempotence, atomic claim+advance, no-op remove, bad-cron skip, and the `limit` parameter. The Postgres and SQLite adapters both run this suite against their backends.
+Covers upsert idempotence, one row per storage cell, atomic claim+advance, no-op remove, bad-cron skip, and the `limit` parameter. The Postgres and SQLite adapters both run this suite against their backends.
 
 See [the schedule index reference](https://flow-state.dev/docs/server/schedule-index) for the full interface and contract.
 
