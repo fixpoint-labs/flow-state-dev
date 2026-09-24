@@ -34,16 +34,20 @@ made unreachable. The organization is kitchen-sink's own, named once in the app
 ([D6](DECISIONS.md#d6)). Under the framework's development organization, which is what the app
 runs as without it, the hire arrow would be refused.
 
-**Hiring a second seat, as a person does it:**
+**Hiring a second seat, as a person does it.** An open seat's row stays one line. Its details
+draw in the rail directly under that row, in the navigator's new open-leaf slot
+([E4](DECISIONS.md#e4)):
 
 ```diff
-  Seats ▸ support.ada                     kind: agent
+  Seats ▸ support.ada                     ← the row, one line
++   kind           agent                  ← the open-leaf slot, under the row
 +   instructions   not published — declared in a worker file
 +
 +   [ Hire another agent ]  →  id: support.bruno · instructions: "Takes escalations."
 +                              hired. support.bruno appears in the roster.
 +
-+ Seats ▸ support.bruno                   kind: agent
++ Seats ▸ support.bruno                   ← the row, one line
++   kind           agent                  ← the open-leaf slot, under the row
 +   instructions   Takes escalations.
 ```
 
@@ -130,6 +134,10 @@ low, and only for the team's own persistent deployments.
 3. **[D5](DECISIONS.md#d5) · The seat detail ships kind and instructions; skills, channels and
    boards move to FIX-1539.** Decided by the product owner, 2026-09-23. It costs a thinner seat
    view than the issue's outcome 2 promises, and a file-declared seat shows no instructions yet.
+
+**[E4](DECISIONS.md#e4) · A seat's details stay in the rail, in a new slot under the seat's
+row.** Decided by the product owner, 2026-09-24. It costs one new published slot on
+`@flow-state-dev/react`, which FIX-1561 ships.
 
 **What this amendment asks.** Approve the record of D6 by merging it. It also records the
 engineering calls that follow from D6: one fallback resolver for every flow without its own, the

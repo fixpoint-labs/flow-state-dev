@@ -3,7 +3,8 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Two decisions are the sign-off surface. Three owner decisions, made in review and in session,
-are recorded as given; nothing is open. Everything else here is context for them.
+are recorded as given; nothing is open. A fourth, after merge, is the one exception to D1: a
+new [`leafDetail`](#d1-leafdetail) slot. Everything else here is context for them.
 
 ## The tree
 
@@ -35,6 +36,26 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 **What would change my mind:** knowing of an app outside this repo that renders text or a form
 in `leafToolbar`. Then a rename that fails loudly is worth the churn.
+
+<a name="d1-leafdetail"></a>
+### The one exception, after merge: a `leafDetail` slot for content inside an open leaf
+
+**Approved by the product owner, 2026-09-24.** D1 above is kept as written, for the record. Its
+*Locks in* left nowhere to put a full-width strip inside an open leaf, and PLAN's guardrails
+added no new slot. One slot is now added: `leafDetail` (working name), optional, for content
+inside an open leaf. It draws on its own line directly under the open leaf's row, inside the
+rail, indented at the leaf's column, and shows only while the leaf is open. `leafToolbar` keeps
+D1's meaning: actions on the row, shown on hover or focus. The row stays one line.
+
+**Why.** FIX-1500's seat pane, a seat's kind, instructions and "Hire another" form, drew in
+`leafToolbar`. On D1's one-line row it overflowed the 256px rail and this spec's goal checks
+failed. The owner chose to keep a seat's details in the rail, under the seat
+([FIX-1500 E4](../FIX-1500/DECISIONS.md#e4)). A row holds a few icons, so that content needs a
+line of its own.
+
+**Locks in:** one more published slot on `@flow-state-dev/react`, in the same `minor`.
+**Instead of** one row icon opening the details outside the rail, in a popover or a side panel,
+which needed no new slot (FIX-1500 E4's option A).
 
 <a name="d2"></a>
 ## D2 · The rail's layout is checked on the rendered page, in CI, for both rails
@@ -181,3 +202,6 @@ patch release with no change to anyone's code.
   suite's size budget.
 - **Owner answer: hover reveal** — the row-actions fork closed as the owner's call, and the goal
   check gained G8 (hidden at rest, shown on hover or keyboard focus, always on touch).
+- **Amendment after merge: `leafDetail`** — FIX-1500's seat pane no longer fit on the row. The
+  owner approved one new slot under an open leaf's row ([the exception](#d1-leafdetail)), and
+  the goal check gained G9 ([EVOLUTION](EVOLUTION.md#amendment-leafdetail)).

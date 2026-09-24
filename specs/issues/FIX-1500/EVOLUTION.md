@@ -137,6 +137,34 @@ old channel session, with its requests, out of the channel's id and reopened the
 | SPEC → *Sign off*, D6's cost of being wrong, Settled's N8 row, PLAN S10 | **Amended** to "wiped, not upgraded" | They described the upgrade step | — |
 | DOCS, the kitchen-sink README | **New** PR-B operation: wipe the store after upgrading | A developer needs to know before their boot fails | — |
 
+<a name="amendment-seat-pane"></a>
+## Fourth amendment after merge: a seat's details stay in the rail, in a new slot
+
+**Why.** PR-D ([#2193](https://github.com/fixpoint-labs/flow-state-dev/pull/2193), merged)
+built S8 by drawing the seat pane (`SeatDetail` and the "Hire another" form) in
+`FlowNavigator`'s `leafToolbar`. FIX-1561's approved spec then made that slot draw on the leaf's
+own row, as actions shown on hover or focus ([FIX-1561 D1](../FIX-1561/DECISIONS.md#d1)), and
+its guardrail added no new slot. Together they put a form on a 256px row: the seat row
+overflowed the rail and FIX-1561's goal checks failed.
+
+**The decision.** On 2026-09-24 the owner chose B, recorded as [E4](DECISIONS.md#e4). The
+navigator gets one new optional slot for content inside an open leaf (working name
+`leafDetail`), on its own line under the open leaf's row, inside the rail. The seat pane moves
+into it. The seat's row stays one line. The slot is published API on `react`, shipped by
+FIX-1561 as a recorded exception to its guardrail
+([FIX-1561 → `leafDetail`](../FIX-1561/DECISIONS.md#d1-leafdetail)), and
+[#2203](https://github.com/fixpoint-labs/flow-state-dev/pull/2203) implements it. The epic
+coordinator had first taken A, one row icon opening the details in a popover or the right-hand
+panel, as an engineering call. The owner redirected it.
+
+| What | Treatment | Why |
+|---|---|---|
+| PLAN S8: "a seat row opens `SeatDetail`" | **Amended.** The pane renders in the new open-leaf slot, under the seat's one-line row. The old wording is kept under [E4](DECISIONS.md#e4) | `leafToolbar` no longer has room for a pane |
+| PLAN VG | **Amended in its steps only.** The details render under the seat's row. The assertions stand: instructions from the collection route, no reload, the hired seat listed, the conversation untouched | Only where the details draw has moved |
+| DECISIONS | **New** [E4](DECISIONS.md#e4), the owner's. A is in *Considered and dropped* | The owner's call, recorded where H1 is |
+| SPEC's hire illustration and sign-off, DOCS' rail paragraph | **Amended** to show the details under a one-line row, in the new slot | They drew or described the details in the old toolbar strip |
+| D1, D5, E2, and every rule | **Retained** unchanged | What a seat shows and where it is read from do not move |
+
 <a name="br35-overtaken"></a>
 ## FIX-1475's BR-35 — overtaken in code, not dissolved
 

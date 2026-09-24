@@ -189,7 +189,8 @@ FIX-1527's README section.)*
 
 *(PR-D. After the rail's own introduction, which FIX-1477's draft owns.)*
 
-> Open a seat to see its kind, and for a seat hired here, its instructions. **Hire another** adds
+> Open a seat to see its details under it in the rail: its kind, and for a seat hired here, its
+> instructions. **Hire another**, under the same seat, adds
 > a seat of the same kind to the app's organization. It appears in the list without a reload, and
 > it is still there after a restart on a persistent store.
 
@@ -199,5 +200,8 @@ Each operation publishes with the PR whose behaviour it describes. The `durable-
 section and the workforce README went with PR-A, and the react README with PR-C. The kitchen-sink
 README's organization paragraph and the pinned-token paragraph go with PR-B. The rail paragraph
 and the admin-fire sentence go with PR-D, because each names a path PR-D ships.
+PR-D published the rail paragraph as "Open a seat to see its kind". Its sentence about where
+a seat's details show ([E4](DECISIONS.md#e4)) ships with the PR that moves them into the
+open-leaf slot, [#2203](https://github.com/fixpoint-labs/flow-state-dev/pull/2203).
 Reconcile each against the built behaviour first, in particular the organization paragraph,
 which is a promise about who can do what in a deployed copy.
