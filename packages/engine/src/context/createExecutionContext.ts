@@ -44,6 +44,7 @@ import { createScopeStateOps, createStateContainer } from "../stores/state-conta
 import { createScopePersist } from "../stores/scope-persist";
 import { toBareState, toBareStates, toVersions } from "../stores/resource-state-views";
 import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
+import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import {
   ConcurrentModificationError,
   ResourceAlreadyExistsError
@@ -2493,7 +2494,8 @@ export async function createExecutionContext<
    * Read-modify-write of a session record field outside `state` (journal,
    * title/description/tags/metadata). The write replaces the whole record, so
    * it re-reads the stored record and commits at that version under a bounded
-   * retry: a stale `sessionRef` snapshot would otherwise revert `state` (or a
+   * retry (same budget and backoff as `runWithCAS`, from `flow.session.cas`):
+   * a stale `sessionRef` snapshot would otherwise revert `state` (or a
    * journal entry) another request committed in the meantime. When this
    * request's state container was at the version just read, it is advanced to
    * the new version — its state is unchanged by this write, so its next state
@@ -2502,8 +2504,9 @@ export async function createExecutionContext<
   const writeSessionRecord = async (
     mutate: (current: SessionRecord) => SessionRecord
   ): Promise<void> => {
-    const maxAttempts = 1 + Math.max(0, flow.session?.cas?.maxRetries ?? 3);
+    const maxAttempts = 1 + casMaxRetries(flow.session?.cas);
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (attempt > 0) await waitForCASRetry(attempt, flow.session?.cas);
       const stored = await stores.session.get(sessionRef.current.id);
       if (stored !== undefined) ensureJournalDefaults(stored);
       const current = stored ?? sessionRef.current;

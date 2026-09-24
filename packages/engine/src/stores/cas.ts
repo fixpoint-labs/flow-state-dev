@@ -104,7 +104,23 @@ export type RunWithCASOptions<TState> = {
   hint?: CASMutationHint;
 };
 
-function wait(ms: number): Promise<void> {
+/**
+ * Retries a scope CAS write gets after its first attempt: `maxRetries`,
+ * default 3, floored at 0. Shared with the session-record write in
+ * `createExecutionContext` so both honour one `flow.session.cas` budget.
+ */
+export function casMaxRetries(options?: CASOptions): number {
+  return Math.max(0, options?.maxRetries ?? DEFAULT_MAX_RETRIES);
+}
+
+/**
+ * Waits out the exponential backoff before retry number `attempt` (1-based):
+ * `baseDelayMs * 2^(attempt - 1)`, base default 10ms. Not abortable — see
+ * `./resource-cas.ts` for the driver that needs that.
+ */
+export function waitForCASRetry(attempt: number, options?: CASOptions): Promise<void> {
+  const baseDelayMs = Math.max(0, options?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
+  const ms = baseDelayMs * Math.pow(2, attempt - 1);
   if (ms <= 0) {
     return Promise.resolve();
   }
@@ -134,8 +150,7 @@ export async function runWithCAS<TState>({
   options,
   hint
 }: RunWithCASOptions<TState>): Promise<RunWithCASResult<TState>> {
-  const maxRetries = Math.max(0, options?.maxRetries ?? DEFAULT_MAX_RETRIES);
-  const baseDelayMs = Math.max(0, options?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
+  const maxRetries = casMaxRetries(options);
   const persistHint = hint ?? SET_HINT;
 
   let attempt = 0;
@@ -175,8 +190,7 @@ export async function runWithCAS<TState>({
       break;
     }
 
-    const delay = baseDelayMs * Math.pow(2, attempt - 1);
-    await wait(delay);
+    await waitForCASRetry(attempt, options);
   }
 
   throw new ConcurrentModificationError(
