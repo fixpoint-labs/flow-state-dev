@@ -56,7 +56,7 @@ const kind = defineAgentWorkerFlow({
     createWorkforceCapability({
       // What the tree declared, read once at boot.
       roster: declaredRoster,
-      // Where the live seat and channel rows are mounted on this block.
+      // Where the inventory's seat and channel rows are mounted on this block.
       inventory: { seats: "seatInventory", channels: "channelInventory" },
       // The other domains, behind the same door.
       sources: [

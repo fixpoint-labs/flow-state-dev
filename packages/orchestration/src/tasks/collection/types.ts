@@ -519,6 +519,11 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   // exactly as the previous `void` return did.
   block(id: string, reason?: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
   unblock(id: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
+  /**
+   * Park the task for a person to review (`→ parked`). `feedback` becomes the
+   * task's note, and omitting it clears any note already there, so an earlier
+   * attempt's failure text is never left standing as the reason for the park.
+   */
   awaitReview(
     id: string,
     feedback?: string,

@@ -69,6 +69,7 @@ import { createDispatchOperation } from "../context/dispatch-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { PrincipalResolutionError } from "../transports/errors";
 import { pinRejectsCaller } from "../context/hire-plane";
+import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 
@@ -382,7 +383,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "list_flows") {
-        const visible = await flowsForCaller(options.registry, request, host);
+        const visible = await flowsForCaller(options.registry, request, host, hostResolver);
         return jsonResponse(200, {
           flows: visible.map((flow) => ({
             id: flow.id,
@@ -703,39 +704,89 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
  * Catalog rows for this caller.
  *
  * Unpinned flows are always listed. A hired instance is listed only when the
- * caller matches its pin. Resolution runs only when the registry holds a pin,
- * so a catalog of shared flows does not start requiring a principal, and the
- * route stays exempt. A caller who cannot be resolved sees the shared flows
- * and no hired ones.
+ * caller, resolved the way that instance's own doors resolve it, matches its
+ * pin. Resolution runs only when the registry holds a pin, so a catalog of
+ * shared flows does not start requiring a principal, and the route stays
+ * exempt.
+ *
+ * Each pinned instance is resolved through `host.resolvePrincipal` at its own
+ * address, so the host applies the same resolver precedence
+ * (`pickPrincipalResolver`) and the same identity rules the session and
+ * action doors do. Resolution is per instance: a credential one instance's
+ * resolver accepts never lists another instance. A caller an instance's
+ * resolver refuses (`PrincipalResolutionError`) is not that instance's caller,
+ * so the instance is omitted and the route never answers 401.
+ *
+ * Instances that share a resolver and the settings the host applies to its
+ * answer (`requireUser`, `defaultUserId`) are resolved once per request, at the
+ * first such instance's address.
  */
 async function flowsForCaller(
   registry: FlowRegistry,
   request: Request,
-  host: InboundTransportHost
+  host: InboundTransportHost,
+  hostResolver: PrincipalResolver
 ): Promise<FlowInstance[]> {
   const flows = registry.list();
   if (!flows.some((flow) => flow.ownerPin !== undefined)) return flows;
 
-  let caller: { userId: string; orgId: string } | undefined;
+  type Caller = { userId: string; orgId: string } | undefined;
+  const resolved = new Map<PrincipalResolver, Map<string, Promise<Caller>>>();
+
+  const callerFor = (flow: FlowInstance): Promise<Caller> => {
+    const resolver = pickPrincipalResolver(registry, flow.id, hostResolver);
+    const settings = JSON.stringify([
+      flow.requireUser ?? true,
+      flow.authentication?.defaultUserId ?? null,
+    ]);
+    let byResolver = resolved.get(resolver);
+    if (byResolver === undefined) {
+      byResolver = new Map();
+      resolved.set(resolver, byResolver);
+    }
+    let caller = byResolver.get(settings);
+    if (caller === undefined) {
+      caller = resolveCatalogCaller(host, request, flow.id);
+      byResolver.set(settings, caller);
+    }
+    return caller;
+  };
+
+  const visible: FlowInstance[] = [];
+  for (const flow of flows) {
+    const pin = flow.ownerPin;
+    if (pin === undefined) {
+      visible.push(flow);
+      continue;
+    }
+    const caller = await callerFor(flow);
+    if (caller !== undefined && !pinRejectsCaller(pin, caller)) visible.push(flow);
+  }
+  return visible;
+}
+
+/**
+ * The caller as the instance at `address` resolves it, or `undefined` when
+ * that instance's resolver refuses them.
+ */
+async function resolveCatalogCaller(
+  host: InboundTransportHost,
+  request: Request,
+  address: string
+): Promise<{ userId: string; orgId: string } | undefined> {
   try {
-    caller = await host.resolvePrincipal({
+    return await host.resolvePrincipal({
       source: "http",
       request,
       envelope: {
-        flowKind: "",
+        flowKind: address,
         action: "list_flows",
         metadata: {},
         input: undefined,
       },
     });
   } catch (error) {
-    if (!(error instanceof PrincipalResolutionError)) throw error;
+    if (error instanceof PrincipalResolutionError) return undefined;
+    throw error;
   }
-
-  return flows.filter((flow) => {
-    const pin = flow.ownerPin;
-    if (pin === undefined) return true;
-    if (caller === undefined) return false;
-    return !pinRejectsCaller(pin, caller);
-  });
 }

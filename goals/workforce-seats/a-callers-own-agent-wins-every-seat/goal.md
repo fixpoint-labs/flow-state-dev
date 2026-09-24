@@ -35,6 +35,8 @@ fail there.
 No model runs. What is graded is which flow answered and which settings reached it, so the seats run
 on handlers.
 
+**Model:** n/a — handlers only. The property under test is which flow answered and which settings reached it, not model output.
+
 ## Runs
 
 | Date | Branch | Model | Verdict | Notes |
