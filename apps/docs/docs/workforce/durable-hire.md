@@ -44,7 +44,7 @@ The files on this page go in your app's own source tree, under `src/flows/`, whe
 
 A hire writes durable state that belongs to an organization, so the organization has to come from something the framework can trust, not from the request body. Configure [`resolvePrincipal`](../server/authentication.md) on the flow and the action's `orgId` comes from there. An `orgId` in the body is ignored, so a caller can't hire into another organization by naming it in the input.
 
-A hired seat is pinned to that organization, so the host that serves the seat needs the same resolver. The framework default resolver does not name one, and opening the seat answers `404 Unknown flow` even for the person who hired it.
+A hired seat is pinned to that organization, and every request to it is checked against the pin. The principal for that check comes from the seat's own `authentication` when it has one, and from the host's otherwise. With neither, the default resolver supplies no verified principal, and opening the seat answers `404 Unknown flow` even for the person who hired it. So put the resolver that verified the hire on the seat itself, where you register it, as `registerSeat` [below](#reaching-the-flowstate) does. A host-level resolver would also reach the seat, but it applies to every flow the host serves, so an admin credential check there locks out callers of your other flows who don't carry that credential.
 
 ```ts title="src/flows/workforce-admin/authentication.ts"
 import type { AuthenticationConfig } from "@flow-state-dev/core/types";
@@ -89,6 +89,8 @@ import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types"
 import type { FlowState } from "@flow-state-dev/engine";
 import { registerHiredSeat } from "@flow-state-dev/workforce";
 
+import { adminAuthentication } from "./authentication";
+
 let app: FlowState | undefined;
 
 /** Call once, immediately after `createFlowState`. */
@@ -99,7 +101,14 @@ export function useFlowState(next: FlowState): void {
 export function registerSeat(seat: FlowInstance, pin?: InstanceOwnerPin): void {
   const state = app;
   if (!state) throw new Error("No FlowState to register into.");
-  registerHiredSeat((instance, owner) => state.register(instance, { pin: owner }), seat, pin);
+  registerHiredSeat((instance, owner) => state.register(withAdminResolver(instance), { pin: owner }), seat, pin);
+}
+
+/** The seat answers the credential that hired it. A kind with its own resolver keeps it. */
+function withAdminResolver(seat: FlowInstance): FlowInstance {
+  const { resolvePrincipal } = adminAuthentication;
+  if (!resolvePrincipal || seat.authentication?.resolvePrincipal) return seat;
+  return { ...seat, authentication: { ...seat.authentication, resolvePrincipal } };
 }
 
 export function releaseSeat(id: string): boolean {
@@ -437,7 +446,7 @@ Anyone outside that pair gets the answer an address your app does not serve woul
 
 For example, Alice hires a user-owned `research` seat while signed in to Acme. Bob, also in Acme, cannot open it. Neither can Alice while she is signed in to Globex. If she wants a research seat there, she hires one in Globex, and it starts empty. If Bob hires his own, his starts empty too. [What a seat saves for a person](#what-a-seat-saves-for-a-person) covers why.
 
-**The check is as strong as the principal your resolver returns.** "Who is asking" is the principal your [`resolvePrincipal`](../server/authentication.md) returns: a user and the organization they are signed in to. Use a resolver that verifies both, and install the same one on the host that serves the seat as on the flow that hires it.
+**The check is as strong as the principal your resolver returns.** "Who is asking" is the principal your [`resolvePrincipal`](../server/authentication.md) returns: a user and the organization they are signed in to. Use a resolver that verifies both, and install it on each hired seat as well as on the flow that hires it, as `registerSeat` in [Reaching the `FlowState`](#reaching-the-flowstate) does.
 
 ## Reading the roster back at the next start
 
