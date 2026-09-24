@@ -2,82 +2,112 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Improvement · `core` + `engine` · small · 1 PR · no epic (follows [FIX-1529](https://linear.app/fixpoint-labs/issue/FIX-1529), under [FIX-1528](https://linear.app/fixpoint-labs/issue/FIX-1528))
+Improvement · `core` + `engine` + `workforce` · medium · 3 PRs · no epic (follows [FIX-1529](https://linear.app/fixpoint-labs/issue/FIX-1529), under [FIX-1528](https://linear.app/fixpoint-labs/issue/FIX-1528))
 
-## Six people, before and after
+> **Amended after merge.** The approved spec ([#2178](https://github.com/fixpoint-labs/flow-state-dev/pull/2178))
+> moved the roster fence from Core into Engine's hire-plane module. Jake's call on its build
+> ([#2196](https://github.com/fixpoint-labs/flow-state-dev/pull/2196)): hiring is not a Layer-1
+> concept, so it leaves Engine too, and so does the FIX-1529 hire-plane code already there
+> ([D3](DECISIONS.md#d3)). Engine gains one generic primitive in its place.
+
+## Seven people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **builds an app without Workforce and declares `workforce/roster/[owner]/notes`** | `defineResourceCollection` throws: "can read user-owned roster rows" | Defines and registers like any other pattern |
-| **builds an app without Workforce and declares a generic org collection such as `[tenant]/**` or `[a]/[b]/[c]/[d]`** | Defines fine, then the app refuses to start: registration names "user-owned roster rows" | Registers. No Workforce name appears anywhere on their path |
-| **runs Workforce with user-owned seats, and some flow declares `workforce/roster/**`, `[tenant]/**`, or a copy of the private writer** | Refused | Refused, with the same message, whichever of the two flows registered first ([D1](DECISIONS.md#d1)) |
-| **runs Workforce and writes the literal deep pattern `workforce/roster/**`** | Refused when the module loads (definition) | Refused when the app starts (registration). Same outcome, one step later |
-| **owns a user-owned seat, or is another member of the org** | Only the owner opens the seat or reads its row | Unchanged: the pin, the caller-only read and the debug listing are untouched |
-| **runs a process over a store that holds user-owned rows, without the private roster writer** (a split worker, an app that dropped Workforce, a second app on the same store) | That process refuses overlapping patterns too | The overlapping collection registers, and cannot read or write any user-owned row. The rows are fenced by their key, in every process ([D1](DECISIONS.md#d1)) |
+| **builds an app without Workforce and declares `[tenant]/**` or `[a]/[b]/[c]/[d]`** | The app refuses to start, naming "user-owned roster rows" | Registers. No Workforce name appears anywhere on their path |
+| **wants rows only their owner can read, without Workforce** | Not possible: the fence is Workforce's alone | Declares `ownerPrivate: { param: "owner" }` on a collection and gets the same fence Workforce gets ([D4](DECISIONS.md#d4)) |
+| **runs Workforce with user-owned seats, and some flow declares `workforce/roster/**`, `[tenant]/**`, or an undeclared copy of the private collection** | Refused | Refused, whichever flow registered first. The message is generic: it names the owner-private collection, not the roster |
+| **owns a user-owned seat, or is another member of the org** | Only the owner opens the seat or reads its row | Unchanged. The pin, the caller-only read and the debug listing behave exactly as today ([D6](DECISIONS.md#d6)) |
+| **runs a process over a store holding user-owned rows, without Workforce** (a split worker, a second app) | That process refuses overlapping patterns | The overlapping collection registers and cannot read or write any owner's row ([D1](DECISIONS.md#d1)) |
+| **stores a key segment beginning `~` through an ordinary collection** | Allowed | Refused on write: `~` marks an owner segment in every app ([D5](DECISIONS.md#d5), the one open call). Nothing on `main` does this but the private roster |
 
-The first two rows are measured on today's `main`, not argued:
-[poc/characterize](poc/characterize/README.md) runs twelve patterns through both paths in an app
-with no Workforce at all. Eight are refused, all by the roster fence. Four of those carry no
-Workforce name: `**`, `[tenant]/**`, `[a]/[b]/[c]/[d]`, `*/**`.
+Rows one and two are measured, not argued: [poc/characterize](poc/characterize/README.md) runs
+twelve patterns through both paths in an app with no Workforce. Eight are refused, all by the
+roster fence.
 
 ## What changes
 
-![Two rows. Today every app passes through a roster check at definition and again at registration. After, definition runs no roster check; registration refuses overlaps only in a registry holding Workforce's private roster writer; and in every app a user-owned row is readable only by its owner through that writer.](figures/what-changes.svg)
+![Two rows split by the Layer 1 / Layer 2 line. Today, Core's collection builder and Engine's registry and hire-plane module all name Workforce's roster, and every app pays. After, Workforce declares its collection owner-private on the line's Layer 2 side; below the line Core carries the declaration's type and Engine enforces a generic owner-private fence, with no Workforce name.](figures/what-changes.svg)
 
-Top row, today: two unconditional checks. Bottom rows, after: none at definition, a startup
-refusal armed by the writer, and a fence on the rows themselves that needs no arming.
+Look at the horizontal line. Today Workforce's names sit below it, in Core and Engine. After,
+they stay above it, and what crosses is one declaration.
 
-**Nothing changes in how anyone writes code.** An app without Workforce simply stops being
-refused; a Workforce app keeps writing the collections exactly as
-[durable hire](../../../apps/docs/docs/workforce/durable-hire.md) documents. The one public
-change is a removal: Core no longer exports `assertRosterCollectionIsNotDeep`. Nothing outside
-Engine calls it.
+```diff
+ // packages/workforce/src/roster/collections.ts
+ export function defineHiredRosterPrivateCollection() {
+-  return markHiredRosterPrivateCollection(
+-    defineResourceCollection({
+-      pattern: HIRED_ROSTER_PRIVATE_PATTERN,
++  return defineResourceCollection({
++    pattern: HIRED_ROSTER_PRIVATE_PATTERN,      // now Workforce's own constant
++    ownerPrivate: { param: "owner" },           // the generic primitive
+     scope: "org",
+     flowIsolation: SHARED_ACROSS_FLOWS,
+     stateSchema: hiredSeatRowSchema,
+-    }),
+-  );
++  });
+ }
+```
 
-## How a user-owned row stays private
+Any app can write the same line. Nobody else has to change code: an app without Workforce stops
+being refused, and a Workforce app keeps writing what
+[durable hire](../../../apps/docs/docs/workforce/durable-hire.md) documents.
+
+## How an owner's row stays private
 
 ```mermaid
 flowchart LR
   F["a flow registers"] --> R["Engine registry"]
-  R -->|"holds the private writer?"| A{"startup fence"}
+  R -->|"holds an owner-private collection?"| A{"startup fence"}
   A -->|"no"| OK["admitted"]
-  A -->|"yes · every held flow checked"| X["overlap refused · same message"]
+  A -->|"yes · every held flow checked"| X["overlap refused"]
   OK --> K["any read or write of a key"]
-  K -->|"workforce/roster/~user/…"| W{"branded writer · caller is user?"}
+  K -->|"a segment begins ~"| W{"owner-private collection,<br/>owner segment is the caller's?"}
   W -->|"no"| H["absent on read · refused on write"]
   W -->|"yes"| Y["served"]
 ```
 
-Two layers, both in Engine's hire-plane module. **The key fence** is the guarantee: a
-user-owned key is served only through Workforce's branded writer, to its owner, on every read
-path. It is decided by the stored key, so it holds in every process, whatever that process
-registered. **The startup fence** keeps today's loud failure where Workforce is in play: once a
-registry holds the writer it checks every flow, held or incoming, with today's rules and
-messages.
+Two layers, one Engine module, no Workforce name. **The key fence** is the guarantee: a key with a
+`~` segment is served only through an owner-private collection, to the user that segment encodes,
+on every read path. It reads the key, so it holds in every process. **The startup fence** keeps
+the loud failure: once a registry holds an owner-private collection, it refuses any other
+collection whose pattern can reach its keys, held or incoming.
 
 ## What stays as it is
 
-- **What the fence refuses, once armed.** Same patterns, same messages. The characterization
-  corpus is the equivalence check ([PLAN V4](PLAN.md#checks)).
-- **Acceptance 5 of FIX-1529, roster-owner refuse.** That is the pin, and the pin never touched
-  pattern admission.
-- **The caller-only read of the private writer.** The key fence extends the same predicate to
-  every other collection; the writer itself behaves exactly as today.
-- **The brand, the two roster patterns and `encodeUserSegment`** stay in Core. Workforce builds
-  the writer with them and Engine recognizes it; Workforce has no runtime dependency on Engine,
-  so this is the one seam both can reach.
+- **Which patterns a Workforce app is refused.** Same patterns; generic sentences
+  ([Decided, not asked](DECISIONS.md#decided-not-asked)). The corpus is the check.
+- **FIX-1529's guarantees.** The pin's 404 for another org or user, the caller-only read, the
+  debug listing. Its goals under `goals/hire-plane/` re-run unchanged.
+- **Stored rows.** `workforce/roster/~<user>/<seat>` is read back as-is. Nothing migrates.
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · A user-owned roster row is fenced by its key in every process;
-   the startup refusal arms per registry once Workforce's private roster writer is registered,
-   in either order, and stays armed.** Changed in review round 1: the first draft relied on
-   arming alone, and a POC showed a process without the writer reading another member's row.
-   If wrong: every app, Workforce or not, reserves keys under `workforce/roster/~…` for the
-   writer, and a missed read path is exposed only in processes without the writer.
-2. **[D2](DECISIONS.md#d2) · The fence lives in one place, Engine's hire-plane admission,
-   and Core's `defineResourceCollection` runs no roster policy.** If wrong: Engine keeps
-   carrying Workforce's roster names until a generic hook exists, and a minor bump drops one
-   export nobody else calls.
+**[D3](DECISIONS.md#d3) is Jake's lock** and is recorded, not asked. [D1](DECISIONS.md#d1),
+[D4](DECISIONS.md#d4) and [D6](DECISIONS.md#d6) carry it out and are decided. One call is yours.
 
-**Open: none.** Number 1 is the one to weigh, and it changed since the last review. Reasoning and what lost:
-[DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+### Reserve `~` key segments in every app, or fence only where the declaration is loaded?
+
+**Plain terms.** Engine can't name Workforce's key any more, so it needs another way to recognise
+an owner's row. Either every app agrees that a key segment starting `~` is an owner's, and the
+fence holds in any process that touches the store. Or Engine fences only the collections it has
+been told about, and a process that was never told (a background worker, a second app on the same
+database) can read other members' private seats.
+
+**The trade-off.** Reserving costs every app one character at the start of a key segment, which
+nobody but Workforce uses today, and a write that tries it fails loudly. Not reserving costs
+nothing up front and reopens the leak a POC already proved.
+
+**My recommendation: reserve `~`.** It keeps the promise FIX-1529 made, fail-closed wherever the
+rows exist, and it is the marker the stored rows already carry.
+
+**What would change my mind.** An app that needs `~`-leading keys of its own, or a plan to run
+Workforce's rows only in processes that always load Workforce. Then the narrower fence plus a
+deployment rule is cheaper.
+
+**What being wrong costs.** Reserving wrongly: an app hits a refused write and renames a key,
+once, before launch. Not reserving wrongly: another member's private seat is readable from a
+worker process, found after it has happened. Relaxing a reservation later is easy; adding one
+after apps store `~` keys is a migration.
