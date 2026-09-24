@@ -45,7 +45,7 @@ import {
 import { TabsContent, TabsTrigger } from "../ui/tabs";
 
 /** The tab's value in the workspace `Tabs`. */
-export const INVENTORY_TAB = "inventory";
+const INVENTORY_TAB = "inventory";
 
 const InventoryContext = createContext<InventoryDeclarations | null>(null);
 
@@ -108,9 +108,8 @@ type Reads = Record<InventoryCollection, InventoryRead> | null;
 
 /**
  * The three sections, for a session whose declarations are already known.
- * Exported for tests that render it without the panel.
  */
-export function InventoryView({
+function InventoryView({
   sessionId,
   declarations,
 }: {

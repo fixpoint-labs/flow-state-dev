@@ -148,11 +148,11 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-export const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind"] as const;
+const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
-export const CHANNEL_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
+const CHANNEL_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
-export const MEMBERSHIP_INDEX_CLIENT_FIELDS = ["seatId", "channelId"] as const;
+const MEMBERSHIP_INDEX_CLIENT_FIELDS = ["seatId", "channelId"] as const;
 
 /**
  * The seat inventory — one row per registered seat, at `inventory/seats/*`.

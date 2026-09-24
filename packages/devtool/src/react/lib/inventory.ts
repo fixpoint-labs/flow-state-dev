@@ -43,7 +43,7 @@ export type InventoryDeclaration = { ref: string; readable: boolean };
 export type InventoryDeclarations = Record<InventoryCollection, InventoryDeclaration | undefined>;
 
 /** Page size for every read — the collection route's maximum. */
-export const INVENTORY_PAGE_SIZE = 200;
+const INVENTORY_PAGE_SIZE = 200;
 
 /**
  * Find the three collections in a session's manifest, by pattern.
