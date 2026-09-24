@@ -13,6 +13,7 @@ vi.mock("../src/react/lib/client", () => ({
   createDevToolClient: () => ({ listFlows: async () => [] }),
   createDevToolSessionClient: () => ({}),
   createDevToolRecoveryClient: () => ({}),
+  createDevToolResourceClient: () => ({}),
 }));
 
 const { DevToolProvider, useDevTool } = await import("../src/react/context/devtool-context");

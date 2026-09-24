@@ -29,6 +29,11 @@ import { TraceView } from "./components/workspace/trace-view";
 import { TaskCollectionsView } from "./components/workspace/task-collections-view";
 import { DispatchRunNodes } from "./components/workspace/dispatch-run-nodes";
 import { SuspensionsView } from "./components/workspace/suspensions-view";
+import {
+  InventoryProvider,
+  InventoryTabContent,
+  InventoryTabTrigger,
+} from "./components/workspace/inventory-view";
 import { ActionBar } from "./components/workspace/action-bar";
 import { LiveSwitch } from "./components/workspace/live-switch";
 import { SessionContextPanel } from "./components/detail/session-context";
@@ -807,6 +812,7 @@ function PanelContent({ className }: { className?: string }) {
           needs a fence of its own as well.
         */}
         <SelectionProvider key={workspaceKey}>
+        <InventoryProvider sessionId={effectiveSessionId}>
         {/* Main workspace */}
         <main className="flex min-w-0 min-h-0 flex-1 flex-col bg-slate-950">
           <Tabs defaultValue="stream" className="flex flex-1 flex-col min-h-0">
@@ -816,6 +822,7 @@ function PanelContent({ className }: { className?: string }) {
                 <TabsTrigger value="trace">Trace</TabsTrigger>
                 <TabsTrigger value="tasks">Tasks</TabsTrigger>
                 <TabsTrigger value="suspensions">Suspensions</TabsTrigger>
+                <InventoryTabTrigger />
               </TabsList>
               <div className="flex items-center gap-3 min-w-0">
                 <SessionIdBadge sessionId={effectiveSessionId} />
@@ -878,6 +885,8 @@ function PanelContent({ className }: { className?: string }) {
               />
             </TabsContent>
 
+            <InventoryTabContent sessionId={effectiveSessionId} />
+
             <Separator />
 
             <div className="p-2">
@@ -892,6 +901,7 @@ function PanelContent({ className }: { className?: string }) {
             </div>
           </Tabs>
         </main>
+        </InventoryProvider>
 
         <div
           role="separator"

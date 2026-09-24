@@ -41,6 +41,7 @@ const devToolState = {
     listSessions: vi.fn().mockResolvedValue([]),
   },
   recoveryClient: { checkInterrupted: vi.fn().mockResolvedValue([]), continueStream: vi.fn() },
+  resourceClient: { getResourceManifest: vi.fn().mockResolvedValue({ flowKind: "demo", resources: [] }) },
   activeFlowId: "demo",
   activeFlow: demoInstance,
   activeSessionId: "sess_1",

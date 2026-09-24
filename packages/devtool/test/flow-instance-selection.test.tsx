@@ -27,6 +27,7 @@ vi.mock("../src/react/lib/client", () => ({
   createDevToolClient: () => ({ listFlows }),
   createDevToolSessionClient: () => ({ getSession }),
   createDevToolRecoveryClient: () => ({ checkInterrupted }),
+  createDevToolResourceClient: () => ({}),
 }));
 
 import { DevToolProvider, useDevTool } from "../src/react/context/devtool-context";

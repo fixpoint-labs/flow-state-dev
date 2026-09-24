@@ -144,6 +144,26 @@ A note is not an error. A failure with no retries left writes the task's `error`
 
 See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onreview) for parking and resuming.
 
+## Inventory
+
+If your app writes a [workforce inventory](/docs/workforce/inventory), the Inventory tab shows the organization's registered seats, channels and memberships from one session. Open any channel's session and pick the tab.
+
+The tab appears on a session whose flow declares at least one of the three inventory collections. It has one section per collection:
+
+- **Registered seats:** Id, Kind, and Channels, the channels that seat's membership rows name. Channels shows only when the flow declares the membership collection.
+- **Registered channels:** Id, Kind, Members, and Registered, the time the channel first registered.
+- **Registered memberships:** Seat and Channel.
+
+A channel's session declares all three. Some flows declare only part: a seat carrying the [`seat-hire` tools](/docs/workforce/durable-hire) declares only the seat collection. A collection the flow doesn't declare reads "Not installed on this flow.", which is different from an empty section such as "No seats registered." When nothing is registered anywhere, the tab says so and points at the usual cause: the app never calls `openInventory` at boot.
+
+Every row is labelled registered. Rows are never removed, so a fired seat stays listed, and a channel's members are the ones it had when it registered. The tab is a record of what has been registered here. It can't tell you which seats are working now.
+
+The tab works with `FSDEV_DEBUG_ENDPOINTS=0`. Each request carries the DevTool's bearer token, from `devtool.bearerToken` in your config or the Settings sheet (see [Connecting to a secured flow](./setup.md#connecting-to-a-secured-flow)). It reads every page of each collection.
+
+It shows the organization of the session you opened and no other. There is no organization picker.
+
+A read that fails is never shown as an empty section. A refused read names its status, 403, and a collection the server doesn't know names 404. If a read fails partway, the section says how many pages were read before it stopped and shows none of the rows.
+
 ## Session state
 
 Inspect current state at every scope level. View session-level state, user-level state, and org-level state. Resources and their content are visible. ClientData values appear in the detail panel.

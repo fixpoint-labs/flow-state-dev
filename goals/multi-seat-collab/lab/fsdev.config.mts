@@ -21,15 +21,25 @@
  * - `swapped-desks` — the two desks trade seats.
  * - `one-seat` — both desks route to the first seat; the other gets nothing.
  * - `ignore-the-answer`, `silent-park` — passed to the worker kind.
+ * - `no-inventory` — the boot opens the channel and skips `openInventory`, so
+ *   the organization's inventory holds no rows.
  *
  * Any other value leaves the app as written.
+ *
+ * ## The boot
+ *
+ * After the `FlowState` is built, and before this module finishes loading —
+ * so before `fsdev dev` takes a request — {@link openLab} opens the channel
+ * and then the inventory, in-process, exactly as the inventory docs show an
+ * app doing it. A boot whose inventory reports a problem throws here, and the
+ * server does not start.
  */
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LAB_USER_ID, hireLab, readLabTree } from "./host.mts";
+import { LAB_DB_PATH, LAB_USER_ID, hireLab, openLab, readLabTree } from "./host.mts";
 import type { WorkerControl } from "./workforce/flows/workers/worker.mts";
 
 /** Desk key -> seat id. The app's wiring — see the module header. */
@@ -66,15 +76,21 @@ mkdirSync(".fsdev/data", { recursive: true });
 
 const tree = await readLabTree();
 
-export default createFlowState({
-  flows: hireLab({
-    tree,
-    routes: routesFor(control),
-    outbox,
-    ...(workerControl === undefined ? {} : { workerControl }),
-  }),
-  stores: { default: { primary: sqliteStores({ filename: ".fsdev/data/multi-seat-collab.db" }) } },
+const flows = hireLab({
+  tree,
+  routes: routesFor(control),
+  outbox,
+  ...(workerControl === undefined ? {} : { workerControl }),
+});
+
+const flowstate = createFlowState({
+  flows,
+  stores: { default: { primary: sqliteStores({ filename: LAB_DB_PATH }) } },
   // The documented DevTool setting: which user the navigator lists sessions
   // for. Not a wrapper — the same field any app sets.
   devtool: { userId: LAB_USER_ID },
 } as never);
+
+await openLab(flowstate, { tree, flows, inventory: control !== "no-inventory" });
+
+export default flowstate;
