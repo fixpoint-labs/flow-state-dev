@@ -44,6 +44,7 @@ Every utility factory accepts a `name` (required) and returns a block that can b
 | `intentClassifier` | generator | Routing | Classify input into a bounded category set for downstream routing |
 | `intentRouter` | sequencer | Routing | Pre-wired classifier + router for classification-driven branching |
 | `keyedRouter` | router | Routing | Pick a block from a `Record` by string key (no LLM) |
+| `cascadingRouter` | sequencer | Routing | A tree of evaluator choice questions with confidence gates; anything unsure goes to one `ambiguous` block |
 | `upsertResource` | handler | Resources | Get-or-create + patch a resource collection instance (no LLM) |
 | `sessionTitleGenerator` | sequencer | Session | Generate a session title from recent conversation messages |
 
@@ -56,10 +57,12 @@ The table tracks `packages/core/src/utility/index.ts` — eleven factories. Per-
 |------|-----------|---------------|
 | generator | `contextReducer`, `memoryExtractor`, `decomposer`, `summarizer`, `analyzer`, `intentClassifier` | One model call, structured output |
 | handler | `combiner`, `upsertResource` | Deterministic work, no model |
-| sequencer | `intentRouter`, `sessionTitleGenerator` | Compose other blocks |
+| sequencer | `intentRouter`, `cascadingRouter`, `sessionTitleGenerator` | Compose other blocks |
 | router | `keyedRouter` | Dispatch by string key, no model |
 
 `intentRouter` is the load-bearing composition example: it compiles to a sequencer that runs `intentClassifier` and then a `router`. Use the classifier alone when the classification itself is a value the next step needs to inspect or transform.
+
+`cascadingRouter` compiles each level of its tree into an evaluator step, a gate step and a `router` whose selector only reads the gate's verdict, so resume replays the recorded answer instead of asking the model again.
 
 ## Key properties
 

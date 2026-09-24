@@ -1,0 +1,34 @@
+{
+  "clearTicket": {
+    "id": "T-1042",
+    "message": "I was charged twice for my annual plan this morning and my rent payment just bounced because of it. I need the duplicate charge reversed right now, today."
+  },
+  "tickets": [
+    {
+      "id": "T-1042",
+      "message": "I was charged twice for my annual plan this morning and my rent payment just bounced because of it. I need the duplicate charge reversed right now, today."
+    },
+    {
+      "id": "T-1043",
+      "message": "The export button throws a 500 error every time I click it, on every browser I've tried."
+    },
+    {
+      "id": "T-1044",
+      "message": "Could you send me a copy of last quarter's invoice when you get a chance? No rush."
+    }
+  ],
+  "team": {
+    "instructions": "Which team should handle this support ticket?",
+    "options": {
+      "billing": "Payments, charges, refunds and invoices",
+      "technical": "Bugs, outages and product errors"
+    }
+  },
+  "urgency": {
+    "instructions": "How urgent is this billing issue?",
+    "options": {
+      "high": "The customer is losing money or blocked right now and needs someone today",
+      "low": "Can wait in the normal queue"
+    }
+  }
+}
