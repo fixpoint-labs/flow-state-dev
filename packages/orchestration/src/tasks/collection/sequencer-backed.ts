@@ -670,11 +670,14 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async awaitReview(id, feedback, options) {
+      // Writes `feedback` unconditionally, the way `unpark` does: a park with
+      // no reason clears the note, so a failed attempt's text never reads as
+      // why the task is waiting on a person.
       return transitionTo(
         id,
         "parked",
         "review_requested",
-        () => (feedback !== undefined ? { feedback } : {}),
+        () => ({ feedback }),
         options
       );
     },

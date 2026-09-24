@@ -50,6 +50,8 @@ the last attempt's work because that work is on disk. On a queued multi-host dep
 recorded checkout names nothing on the worker that recovers, and the retry restarts with none of
 the work the retry budget is priced on. Named as a limit; deliberately not built around.
 
+**Model:** real — Claude Code's own, through the Agent SDK. Requires a signed-in SDK.
+
 **Run:** `pnpm tsx goals/conductor/implement-phase-opens-a-pr/run.mts`
 
 Requires a real Claude Code Agent SDK, a `gh` authenticated against the repository, and
