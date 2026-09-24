@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 350" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. Inside: one pin from the hire row, and seven doors fenced by it. Catalog, open and run, restart, and the browser roster read are shipped; board drain, debug listing and stored data are this epic's remaining work. Composed in by the app: the principal resolver that says who the user and org are. Replaced in one line: the framework default resolver, which FIX-1503 makes verified. Not built: user planes, portability between orgs, org-owned hire cells, bridge seats, notify and always-on doors, per-tier memory isolation.">
+     aria-label="What's in the box. Inside: one pin from the hire row, and seven doors fenced by it. Catalog, open and run, restart, and the browser roster read are shipped; board drain, debug listing and stored data are this epic's remaining work. Composed in by the app: the principal resolver that says who the user and org are. Replaced in one line: the framework default resolver, which is unverified and names no org; FIX-1503 makes a verified one the default. Not built: user planes, portability between orgs, org-owned hire cells, bridge seats, notify and always-on doors, per-tier memory isolation.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -62,7 +62,7 @@
     <text class="t-lbl" x="652" y="38">COMPOSED IN BY THE APP</text>
     <text class="t-b" x="652" y="62">The principal resolver</text>
     <text class="t-s" x="652" y="82">who the user is, and which org</text>
-    <text class="t-s" x="652" y="98">the fence is only as strong as this</text>
+    <text class="t-s" x="652" y="98">the fence is only as good as this</text>
     <text class="t-s" x="652" y="114">install it on the host that serves seats</text>
   </g>
 
@@ -70,7 +70,7 @@
     <rect class="app" x="636" y="140" width="288" height="112" rx="6"/>
     <text class="t-lbl" x="652" y="162">REPLACED IN ONE LINE</text>
     <text class="t-b" x="652" y="186">The default resolver</text>
-    <text class="t-s" x="652" y="206">today a caller names itself</text>
+    <text class="t-s" x="652" y="206">unverified, and it names no org</text>
     <text class="t-s" x="652" y="222">FIX-1503 makes a verified one</text>
     <text class="t-s" x="652" y="238">the default &#183; input, not a child</text>
   </g>
