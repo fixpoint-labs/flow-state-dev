@@ -207,7 +207,9 @@ SVG, at `--force-device-scale-factor=2`, and keep the SVG as the file that gets 
 ## In the PR body
 
 A spec or epic PR body carries the figures the table above marks — one at issue altitude, three at
-epic altitude — as raw-content images pinned to a commit:
+epic altitude — as raw-content images pinned to a commit. The implementation PR for a spec-backed
+issue carries the same issue-altitude figures again, pinned to the `main` commit that last touched
+each one, so the reviewer of the code sees the intent it answers to (`issue-implement` Step 9):
 
 ```html
 <img src="https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/specs/issues/<ISSUE-ID>/figures/<name>.svg"
