@@ -160,6 +160,9 @@ The epic-specific delta:
   without it. Dispatch directly, and hold that row's merge gate until the change lands.
 - **A dispatch here is a worktree, always.** N workers are live on their own branches; a
   sub-agent you spawn without `isolation: worktree` shares this checkout with them.
+- **A fact you write into a brief or a status line is read when you write it.** Read an issue's
+  or a PR's state from Linear or GitHub at that moment; get a rule's merge state or what the code
+  does from a fresh `scout` or worker lookup and cite its result — never from an earlier wake's record.
 
 ## The loop (each invocation)
 

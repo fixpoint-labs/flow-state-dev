@@ -232,7 +232,7 @@ Every file-declared document is installed at `org` scope. A `resources/` entry c
 
 Every request runs in an organization, so a block reads a document straight off `ctx.resources`. [Authentication](/docs/server/authentication#every-request-runs-in-an-organization) covers where that organization comes from. Each organization gets its own copy of a `resources/` document, so what one organization's agents write is not what another's read.
 
-`documents` and `references` tell the hire which entries on a kind's map are which. [The tree wall](#who-reaches-what) is derived against the `references` map, so a kind holding references has to be hired with it. Omit it, or pass one that is missing a reference the kind installed, and `hireWorkforce` throws, naming every reference it was not given. The whole roster is refused, so no seat is hired:
+`documents` and `references` tell the hire which entries on a kind's map are which. [Which seats reach which reference](#who-reaches-what) is worked out against the `references` map, so a kind holding references has to be hired with it. Omit it, or pass one that is missing a reference the kind installed, and `hireWorkforce` throws, naming every reference it was not given. The whole roster is refused, so no seat is hired:
 
 ```
 hireWorkforce refused 1 of 1 worker; nothing was hired:
@@ -328,6 +328,8 @@ The documents are already declared on the flow, so the generator does not declar
 
 A reference is read-only to code and to the model. `writeContent()` on one throws a `FlowError` with code `resource_read_only`, whose message names the ref: `Resource "teams/engineering/handbook" content is read-only`. The write tool is never offered for a reference either, whatever tools the generator carries.
 
+The DevTool's Resources panel marks a reference read-only. The mark follows the two settings the folder gives a reference, `writable: false` and `llmWritable: false`. A `resources/` document a seat takes read-only in its own file carries the same pair and gets the same mark. [Read-only resources](../devtool/debug-vs-client-state.md#read-only-resources) covers what each setting refuses.
+
 ## Moving a document into `references/`
 
 Moving the file is usually the whole job. One case needs a second step: if anything ever wrote that document while it was in `resources/`, the written body is still stored, and a stored body wins over the file. Move the file and agents keep reading the old write, while the file in your repository looks authoritative and reaches nobody.
@@ -366,9 +368,6 @@ Once the row is gone, `shadowedContent` is the only copy of that written body, s
 Run it once per organization after the move. It is safe to run again — a tree whose files are already the source reports nothing cleared — and it never touches a `resources/` document.
 
 It throws for an organization or flow id containing `:` or a backslash. Those ids need the escaping the engine applies when it builds a storage address; clear those rows with the engine's own store helpers instead.
-
-After the move, the DevTool marks the document read-only in its Resources panel. The mark follows the two settings the folder gives a reference, `writable: false` and `llmWritable: false`. A document a seat takes read-only in its own file carries the same pair and gets the same mark. [Read-only resources](../devtool/debug-vs-client-state.md#read-only-resources) covers what each setting refuses.
-
 ## What stays in TypeScript
 
 `defineResource` is the other route into the same map, and the two sit side by side, as `ticket` and the file-declared documents do above.
