@@ -213,9 +213,8 @@ carries it to them.
 
 **The image line is raw HTML.** Write it exactly as
 [`spec-figures.md`](spec-figures.md) → "In the PR body" specifies — plain double quotes around each
-attribute, **no backticks anywhere in or around the line, and never inside a code fence.** Read
-the stored body back. That section is canonical for what a backtick inside the `src` means, and
-this rule does not get a second home here.
+attribute, **no backticks anywhere in or around the line, and never inside a code fence.** Follow
+that section's stored-body check. It does not get a second home here.
 
 **Pin every image to the commit SHA** and use the raw-content URL — a branch URL is cached stale by
 GitHub's image proxy and a blob URL does not render. Never rewrite a body a person has pasted an
