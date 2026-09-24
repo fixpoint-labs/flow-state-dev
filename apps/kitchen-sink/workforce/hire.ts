@@ -7,28 +7,41 @@
  * from the `teams/` folders. Adding a kind means adding a file and re-running
  * the command — there is no second place to edit.
  *
- * This subtree is the whole of the app's Layer 2 usage. Nothing in `flows/` or
- * `app/` reaches into it; the one edge out is `fsdev.config.ts`, which awaits
- * the hire below and spreads the seats into the map it serves. That edge is
- * what makes the demonstration real — until it existed the bundler never
- * resolved `workforce.gen.ts`'s imports, so the claim this tree exists to
- * prove (a generated module of static imports survives a production build)
+ * This subtree is the whole of the app's Layer 2 usage. Nothing in `app/`
+ * reaches into it. Two edges lead in: `fsdev.config.ts`, which awaits the hire
+ * below and spreads the seats into the map it serves, and the
+ * `workforce-admin` flow, which hires against `kitchenSinkKinds`. That first
+ * edge is what makes the demonstration real — until it existed the bundler
+ * never resolved `workforce.gen.ts`'s imports, so the claim this tree exists
+ * to prove (a generated module of static imports survives a production build)
  * was asserted and untested (FIX-1429).
+ *
+ * One edge leads out: `lib/workforce-registrar`. The seat-hire tools on the
+ * `agent` kind admit and release addresses through it, the same door the
+ * admin flow and the boot reload use, so all three leave the provenance mark
+ * `fire` reads.
  */
 import {
   channelBoardIds,
   channelInstances,
+  createSeatHireCapability,
+  createWorkforceCapability,
   defineAgentWorkerFlow,
   defineChannelFlow,
   hireWorkforce,
   splitResourceModules,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE,
   type ChannelManifest,
+  type HireOptions,
+  type SeatHireCapabilityOptions,
 } from "@flow-state-dev/workforce";
 import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
+import { workforceRegistrar } from "../lib/workforce-registrar";
 import notify from "./channel-notify";
 import { blocks, channelKinds, kinds, resourceModules, seatBlocks } from "./workforce.gen";
 
@@ -43,6 +56,69 @@ import { blocks, channelKinds, kinds, resourceModules, seatBlocks } from "./work
 const { capabilities } = splitResourceModules(resourceModules);
 
 /**
+ * The kinds a seat may be hired into — generated, plus the built-in `agent`
+ * carrying this tree's capabilities and tool catalog.
+ *
+ * Exported because a runtime hire and the boot reload must hire against the
+ * SAME map the file-declared roster does. Calling `defineAgentWorkerFlow` a
+ * second time elsewhere would build a *different* kind under the same name, so
+ * a seat hired over `workforce-admin` would carry a different tool catalog from
+ * its file-declared neighbours for no reason anyone stated.
+ *
+ * Declared before `agent` and filled in after it, because `agent` itself
+ * carries the seat-hire tools, and those close over this object: a seat that
+ * hires through them hires from this map, the same one the admin action and
+ * the boot reload read.
+ */
+export const kitchenSinkKinds: NonNullable<HireOptions["kinds"]> = { ...kinds };
+
+/**
+ * How a seat hires and fires from its own tools: this app's kinds, and this
+ * app's registrar as the door.
+ *
+ * Exported so any other caller of the seat-hire blocks hires from the same map
+ * through the same door.
+ *
+ * - `register` goes through `registerFromRoster`, so a seat hired this way is
+ *   marked as minted from a roster row. The admin action's `fire` and the boot
+ *   reload both depend on that mark.
+ * - `unregister` releases only an address that mark covers. The registrar's
+ *   own `unregister` releases whatever holds the address; a seat declared in
+ *   `workforce/teams/` at the same address is removed by editing its folder,
+ *   so here it is left registered and the fire reports `released: false`.
+ * - No `allowKinds`: a seat may hire any kind the admin action may.
+ * - No `channelBoards`: the unattended-board warning would be computed against
+ *   the one seat just hired, and would name boards the file seats already drain.
+ * - No organization: it comes from the caller's verified principal at the call.
+ */
+export const kitchenSinkSeatHireOptions: SeatHireCapabilityOptions = {
+  kinds: kitchenSinkKinds,
+  register: (seat, pin) => workforceRegistrar.registerFromRoster(seat, { pin }),
+  unregister: (id) => workforceRegistrar.isFromRoster(id) && workforceRegistrar.unregister(id),
+  kindAt: (id) => workforceRegistrar.kindAt(id),
+};
+
+/**
+ * `hire` and `fire`, offered to every seat of the `agent` kind. Offered, not
+ * granted: a seat still names them in its `tools:` before the model can call
+ * them.
+ */
+const seatHire = createSeatHireCapability(kitchenSinkSeatHireOptions);
+
+/**
+ * `discover`, so an agent seat can ask which seats this organization has hired.
+ *
+ * The declared roster is empty because this app writes no inventory rows for
+ * the seats its folders declare, so `discover` could not list them either way.
+ * It lists runtime hires: the inventory row and the roster row a hire writes.
+ */
+const discover = createWorkforceCapability({
+  roster: { workers: [], channels: [] },
+  inventory: { seats: SEAT_INVENTORY_RESOURCE },
+  hiredRoster: HIRED_ROSTER_RESOURCE,
+});
+
+/**
  * The built-in worker kind, carrying what the team's folder declared.
  *
  * Registered under `agent`, so it is the kind every seat that names no `flow:`
@@ -55,19 +131,10 @@ const { capabilities } = splitResourceModules(resourceModules);
  * of its keys in `tools:` can call it. The app decides what the catalog holds;
  * each seat decides which of it to use, and a key nobody names reaches nobody.
  */
-const agent = defineAgentWorkerFlow({ uses: capabilities, catalog: blocks });
-
-/**
- * The kinds a seat may be hired into — generated, plus the built-in `agent`
- * carrying this tree's capabilities and tool catalog.
- *
- * Exported because a runtime hire and the boot reload must hire against the
- * SAME map the file-declared roster does. Calling `defineAgentWorkerFlow` a
- * second time elsewhere would build a *different* kind under the same name, so
- * a seat hired over `workforce-admin` would carry a different tool catalog from
- * its file-declared neighbours for no reason anyone stated.
- */
-export const kitchenSinkKinds = { ...kinds, agent };
+kitchenSinkKinds.agent = defineAgentWorkerFlow({
+  uses: [...capabilities, seatHire, discover],
+  catalog: blocks,
+});
 
 /** This directory — the workforce root, read at run time the way Markdown always is. */
 export const workforceRoot = dirname(fileURLToPath(import.meta.url));

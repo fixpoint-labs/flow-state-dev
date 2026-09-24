@@ -50,7 +50,7 @@ Exported as `richTextComponentFlow` (`kind: "rich-text-component"`). Consumed by
 
 ### The support team (`workforce/`)
 
-A hired team, declared in files rather than wired in code. Each seat is a `WORKER.md` under `workforce/teams/support/workers/`, and its frontmatter is the whole of its configuration — which flow kind it runs, and the settings that kind offers. `support.ada` and `support.grace` both run the `desk-clerk` kind and declare different desks; `support.iris` and `support.otto` run the built-in agent kind with different tools.
+A hired team, declared in files rather than wired in code. Each seat is a `WORKER.md` under `workforce/teams/support/workers/`, and its frontmatter is the whole of its configuration — which flow kind it runs, and the settings that kind offers. `support.ada` and `support.grace` both run the `desk-clerk` kind and declare different desks; `support.iris` and `support.otto` run the built-in agent kind with different tools, and `support.mara` runs it too, naming `hire` and `fire`: she can add a seat to the team, which the section on hiring below covers.
 
 Worker kinds, blocks and capabilities are picked up the same way: a file under `workforce/flows/workers/`, `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That generated module is committed, so the *code* an app can run is fixed when you run the command — no code is discovered while the app runs, which is what lets a bundler see it.
 
@@ -95,7 +95,7 @@ Adding a seat means adding a folder and restarting; adding a kind means adding a
 
 Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization (`acme.support.ada`), and is still there after `pnpm build && pnpm start`.
 
-The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no hire path. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
+The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no working hire path. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
 
 ```bash
 export WORKFORCE_ADMIN_TOKENS="acme:dev-token"
@@ -109,6 +109,33 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
 Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
 
 Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
+
+### A seat that hires
+
+The admin action is how an operator adds a seat. `support.mara` is how a seat does it.
+
+Her `WORKER.md` names two tools, and that is all she declares:
+
+```yaml
+---
+description: Staffs the support desk — hires a seat of a kind the app already has, and fires one it hired.
+tools: [hire, fire]
+---
+```
+
+The tools come from `createSeatHireCapability`, which `workforce/hire.ts` adds to the built-in agent kind next to the team's own capability. Adding it to a kind puts `hire` and `fire` in that kind's catalog, and a seat still has to name them. Iris and otto run the same kind and can't hire, because their files don't ask for it. The same file also adds `discover`, so any agent seat can ask which seats this organization has hired.
+
+A hire names a kind this app already carries (`agent`, `desk-clerk` or `followup-runner`, the same list the admin action offers) and a seat id. It can't invent a kind. The seat answers straight away at `<org>.<seatId>`, and it's written to the same roster the admin action writes. So it comes back after a restart, and the admin action's `fire` can remove it. Mara can fire only the seats she, or another seat, hired this way. A seat declared in a folder is removed by editing the folder, and a seat the admin action hired belongs to the operator who hired it.
+
+Firing releases the address, and `discover` stops listing the seat. The seat's row in the live inventory stays, because that list records what was ever registered.
+
+**Out of the box, mara can't hire.** A hired seat's address starts with its organization, and this app authenticates nobody, so every seat request runs under the framework's development organization. That name is deliberately not a legal address, so the hire is refused and nothing is written. Ask her anyway and she tells you the hire was refused, quoting the refusal, which names the organization:
+
+```bash
+pnpm fsdev run support.mara run -i '{"message":"Hire support.pat, an agent seat that takes refunds."}'
+```
+
+The wiring is the part to copy: in an app whose seats run under an organization its callers verified, the same two files hire. The app's tests (`test/manager-seat.test.ts`) show it working under a named organization.
 
 ## Web Application (`app/`)
 
