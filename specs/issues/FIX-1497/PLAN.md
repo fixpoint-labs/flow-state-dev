@@ -8,7 +8,9 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 **The run is fenced; the build is not.** [ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26) holds the *graded run* until
 [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) stands up a live hired Workforce. It
 does not hold this spec and it does not hold this PR — build S1 to S7 now, and run VG last
-(BR-21).
+(BR-21). **The fence lifted on 2026-09-22** when [#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051)
+stood the live hire up, and **the graded run passed** ([#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065),
+verdict in `goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/goal.md`).
 
 ## Surfaces
 

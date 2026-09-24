@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 5 issues · Workforce: Layer 2 Abstraction · Goal 1, validate through real usage
+Epic · 7 issues · Workforce: Layer 2 Abstraction · Goal 1, validate through real usage
 
 ## Five teams, before and after
 
@@ -31,7 +31,7 @@ wires the module in, both kinds compile into **3** chunks each, and the goal che
 
 ## What's in the box
 
-![What's in the box: durable hire, the channel and board convention, and both shipped UI shapes, over one running thing — a hired team in a Next app. Composed in by the app: its own channel kinds and its own seat files. Consumed, not owned: the W3 floor, the W4 first cut, and the Postgres persistence the app already runs on. Not built: a kitchen-sink-only store, a kitchen-sink-only UI API, seats inside pattern factories, and Agent, Team, Channel or Board as Layer 1](figures/end-state.svg)
+![What's in the box: durable hire, the channel and board convention, both shipped UI shapes, the human path through the rail, and a manager seat that hires, over one running thing — a hired team in a Next app. Composed in by the app: its own channel kinds, its own seat files, and its one named organization. Consumed, not owned: the W3 floor, the W4 first cut, and the Postgres persistence the app already runs on. Not built: a kitchen-sink-only store, a kitchen-sink-only UI API, seats inside pattern factories, and Agent, Team, Channel or Board as Layer 1](figures/end-state.svg)
 
 Everything in the box is what a team gets by cloning the app. The fence at the bottom is what
 keeps it a *consumer*: nothing in this epic ships an API that only kitchen-sink can call
@@ -49,21 +49,25 @@ app — which is why seats are three levels and channels are two. The regions th
 hooks, their tags, their narrow-width order — are FIX-1477's, under
 [ER-7](BUSINESS-RULES.md).
 
-## The set · as of 2026-09-21
+## The set · as of 2026-09-24
 
-This table is the live one. It is refreshed on the epic PR as issues move; the plan and the
-figures point here rather than repeating it.
+A dated snapshot, not a tracker: Linear is the live status, and this table changes only when an
+amendment does. FIX-1500 and FIX-1527 joined under [ER-21](BUSINESS-RULES.md) on 2026-09-24.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · **bug** | The file-declared workforce demo is served over the app's real HTTP route | Nothing else in the set can stand on a workforce the app never loads. It is also the only row that tests the file convention against a real build | **Done** · [PR #1989](https://github.com/fixpoint-labs/flow-state-dev/pull/1989) merged · goal PASS · direct route, no spec PR |
-| [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | A team hired at runtime — its seats and roster — survives a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | **In Development** · spec [#1990](https://github.com/fixpoint-labs/flow-state-dev/pull/1990) merged · FIX-1429 cleared · implementing in two PRs, packages first |
-| [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | The shipped channel pair — a kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | **In Spec Dev** · D8 signed off, the hold lifted |
-| [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages — including the one navigator the rail hosts ([D8](DECISIONS.md#d8)), and every region that renders, both halves of the rail included | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | **In Spec Dev** · D8 signed off, the hold lifted |
-| [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478) | `@flow-state-dev/patterns` dropped as a kitchen-sink dependency where Workforce covers it | A reference app teaching two recipes for one job teaches neither | **Spec Approved** · spec [#1988](https://github.com/fixpoint-labs/flow-state-dev/pull/1988) merged · implementation queued on the concurrency cap |
+| [FIX-1429](https://linear.app/fixpoint-labs/issue/FIX-1429) · **bug** | The file-declared workforce demo is served over the app's real HTTP route | Nothing else in the set can stand on a workforce the app never loads. It is also the only row that tests the file convention against a real build | **Done** · [#1989](https://github.com/fixpoint-labs/flow-state-dev/pull/1989) · goal PASS · direct route, no spec PR |
+| [FIX-1475](https://linear.app/fixpoint-labs/issue/FIX-1475) | A team hired at runtime — its seats and roster — survives a redeploy, on the Postgres the app already uses | The substance. "Durable" is the whole difference between a reference and a demo | **Done** · spec [#1990](https://github.com/fixpoint-labs/flow-state-dev/pull/1990) |
+| [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) | The shipped channel pair — a kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — one ChannelFlow factory, board v1 seat drain | Without it there is no worked example of how a seat reaches the boards it is meant to watch — and no visible warning for the ones nobody watches | **Done** · spec [#1992](https://github.com/fixpoint-labs/flow-state-dev/pull/1992) |
+| [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477) | Inline and resource-backed components shipped in the client packages — including the one navigator the rail hosts ([D8](DECISIONS.md#d8)), and every region that renders, both halves of the rail included | The one row that makes the rebuild reusable rather than admirable. Without it every reader copies kitchen-sink files | **Done** · spec [#1994](https://github.com/fixpoint-labs/flow-state-dev/pull/1994) · shell [#2113](https://github.com/fixpoint-labs/flow-state-dev/pull/2113), seats in the rail ([answered](DECISIONS.md#answered-seat-list)) |
+| [FIX-1478](https://linear.app/fixpoint-labs/issue/FIX-1478) | `@flow-state-dev/patterns` dropped as a kitchen-sink dependency where Workforce covers it | A reference app teaching two recipes for one job teaches neither | **Done** · spec [#1988](https://github.com/fixpoint-labs/flow-state-dev/pull/1988) |
+| [FIX-1500](https://linear.app/fixpoint-labs/issue/FIX-1500) | The human path: open a seat in the rail, read its kind, hire another of it, and find it after a restart. Owns `createSeatHireBlocks` and the rail's hire door | Goal 1 is a claim about a person running an org, and until now no single run a person could do tested it | **In Development** · spec [#2061](https://github.com/fixpoint-labs/flow-state-dev/pull/2061), amended [#2111](https://github.com/fixpoint-labs/flow-state-dev/pull/2111) · PR-A [#2123](https://github.com/fixpoint-labs/flow-state-dev/pull/2123) and PR-C [#2122](https://github.com/fixpoint-labs/flow-state-dev/pull/2122) merged · the rail hire waits on the named-org amendment ([D9](DECISIONS.md#d9)) |
+| [FIX-1527](https://linear.app/fixpoint-labs/issue/FIX-1527) | A manager seat, `support.mara`, whose `WORKER.md` names `hire` and `fire`. Owns mara's composition on the `agent` kind | A seat that hires is the pattern people copy, and kitchen-sink had none | **In Development** · spec [#2112](https://github.com/fixpoint-labs/flow-state-dev/pull/2112) · implementing |
 
-1 done · 4 in flight · 0 not started. Four are substance and one (FIX-1429) is a bug the set
-stands on — and it is the row that has already proven the claim in *why now*.
+5 done · 2 in flight · 0 not started. Six rows are substance and one (FIX-1429) is a bug the set
+stands on. **FIX-1500 and FIX-1527 share one seat-hire options object** in
+`apps/kitchen-sink/workforce/hire.ts`; neither declares a second
+([the seam](PLAN.md#coordination-seams-to-watch)).
 
 **Is five really four?** FIX-1478 is the row to weigh: shedding patterns changes no behaviour a
 user can see, and the audit could ride along inside FIX-1477. It stays separate because it is
@@ -85,18 +89,21 @@ flowchart LR
   C["FIX-1476 · channels and boards"] -->|"channels and boards to render"| D["FIX-1477 · UI package split"]
   B -->|"a roster to render"| D
   E["FIX-1478 · patterns shed"] -->|"the freed control row"| D
+  B -->|"the roster a hire writes"| F["FIX-1500 · the human path"]
+  D -->|"the rail its seat rows live in"| F
+  F -->|"createSeatHireBlocks"| G["FIX-1527 · a manager seat hires"]
   W3["FIX-1351 · W3 floor"] -.->|"seats, channels, skills on disk"| A
   W4["FIX-1407 · W4 first cut"] -.->|"boards, inventory, dispatch policy"| C
   classDef done stroke-width:2px
   classDef proposed stroke-dasharray:4 3
-  class A,W3,W4 done
+  class A,B,C,D,E,W3,W4 done
 ```
 
 An edge is what one issue hands the next. A heavy border is done. Dashed edges come from other
-epics and are consumed, not owned. FIX-1429 → FIX-1475 was the set's one hard block and is now
-**satisfied** — FIX-1429 is done, so nothing in the set is blocked. FIX-1477 is last by
-preference, not by dependency — it can begin against today's shapes and absorb the other rows'
-surfaces as they land.
+epics and are consumed, not owned. Every edge is satisfied: the first five rows are done, and
+FIX-1500's export merged on [#2123](https://github.com/fixpoint-labs/flow-state-dev/pull/2123).
+The one open wait is not an issue. FIX-1500's rail hire, and mara hiring in stock kitchen-sink,
+both need the named organization [D9](DECISIONS.md#d9) records.
 
 ## What stays as it is
 
@@ -108,11 +115,13 @@ surfaces as they land.
 - **`/devtool`.** Observing a run as it unfolds is a different surface with no child here.
 - **DevForce and CyberForce.** They stay finish-line Labs beside kitchen-sink, never inside it.
 - **Org identity.** [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) is soft-related
-  and consumed; this set does not re-decide it.
+  and consumed; this set does not re-decide it. [D9](DECISIONS.md#d9) names kitchen-sink's own
+  organization and nothing wider, and
+  [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) replaces that resolver later.
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · Five issues, one objective, ship released now.** The fence the
+1. **[D1](DECISIONS.md#d1) · Five issues (seven since [ER-21](BUSINESS-RULES.md)), one objective, ship released now.** The fence the
    epic body set is verified lifted. If wrong: a cycle spent on a reference app while the L2
    surface underneath it still moves, and every row is re-specced against a changed floor.
 2. **[D7](DECISIONS.md#d7) · The persistent rail stops being a session list and becomes the
@@ -129,8 +138,15 @@ surfaces as they land.
    what released FIX-1476 and FIX-1477 into spec. If wrong: two navigators that diverge, or a
    depth the app declares and the framework contradicts. Reversible cheaply until FIX-1477
    merges, and not after.
+5. **[D9](DECISIONS.md#d9) · Kitchen-sink runs under one named organization.** The owner's call
+   on 2026-09-24; merging this amendment is its sign-off. If wrong: an anonymous visitor to a
+   deployed copy hires and fires seats in that organization, and the reference teaches that as
+   normal until [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) lands.
 
-**Open: none.** Both questions were answered by the owner on 2026-09-20
+**Open: none.** Since the merge, the owner has answered two more:
+**the seat list ships in the rail** ([#2113](https://github.com/fixpoint-labs/flow-state-dev/pull/2113),
+[answered](DECISIONS.md#answered-seat-list)) and [D9](DECISIONS.md#d9). The first two were
+answered by the owner on 2026-09-20
 ([PR #1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978#issuecomment-5753189267)),
 taking the Architect's recommendations. **FIX-1475's durability proof is scoped to runtime
 hire** — seats and the roster — so [ER-2](BUSINESS-RULES.md) and [ER-22](BUSINESS-RULES.md) no

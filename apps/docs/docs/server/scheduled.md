@@ -228,10 +228,37 @@ Omit it and the action lands in whichever organization fired the beat, which
 is rarely the one the schedule belongs to.
 
 `createResourceCollectionScheduleResolver` reads it for you and refuses to go
-without it. A stored schedule with no organization makes it return `null`, so
-the dispatch 404s and the schedule stays put until an operator attributes it.
+without it. A collection made with `defineScheduleCollection` (from
+`@flow-state-dev/scheduled`) records it for you. Its `create` stores the
+organization the creating run belongs to, so you pass only
+`{ cron, kind, enabled }`. A stored schedule with no organization makes the
+resolver return `null`, so the dispatch 404s and the schedule stays put until
+an operator attributes it.
 See [Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to)
 for the attribution recipe.
+
+On a [hired seat](/docs/workforce/durable-hire#who-can-reach-a-hired-seat), use
+`createResourceCollectionScheduleResolver`. It reads the schedule row from the
+seat's storage for that organization and person. It returns `null` for a row
+naming a different organization from the one that hired the seat. On a
+user-owned seat, it also returns `null` for a schedule id naming another user.
+
+If you must write the resolver by hand, it gets the seat's pin, the organization
+(and user, if any) the seat is registered to, as `ctx.ownerPin` (`{ orgId,
+userId? }`, absent for any other flow). Pass it to `resolveUserStorageKey` from
+`@flow-state-dev/engine` to read the same storage:
+
+```ts
+resolve: async (scheduleId, ctx) => {
+  const [userId, key] = scheduleId.split("/");
+  const scopeId = resolveUserStorageKey(userId, { id: ctx.flowKind, isolateUserState: false, ownerPin: ctx.ownerPin });
+  const row = await ctx.stores.resourceState.get("user", scopeId, `schedules/${key}`);
+  // read `row?.state`, map its `kind` to a block, return the config as above
+}
+```
+
+`isolateUserState: false` is right for a schedule collection declared without
+`flowIsolation: true`, which is the default. The helper reads the same storage.
 
 ## The dispatch endpoint
 

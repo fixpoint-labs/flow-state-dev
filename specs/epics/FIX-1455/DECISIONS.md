@@ -5,7 +5,8 @@
 The calls that sit above any single issue. Six of them are locks the epic body and the Architect
 already made — they are recorded here so no child reopens them, not re-argued. **Two are new:
 [D7](#d7)**, what the app's persistent rail is for, and **[D8](#d8)**, how you browse the
-workforce inside it. Those are the two to read.
+workforce inside it. **[D9](#d9)**, which organization kitchen-sink runs under, came after the
+merge. Those are the three to read.
 
 ## The tree
 
@@ -21,6 +22,8 @@ flowchart TD
   D7 -.->|"rejected"| X7["a fourth column · a channels tab"]
   D7 --> D8["D8 · one navigator, depth from cardinality"]
   D8 -.->|"rejected"| X8["two navigators · a fixed three-level tree"]
+  E --> D9["D9 · one named org for kitchen-sink"]
+  D9 -.->|"rejected"| X9["the default org refuses hires · wait for FIX-1503"]
 ```
 
 D3, D4 and D6 are vocabulary and invent-kill locks with no live alternative; they are cards
@@ -37,6 +40,10 @@ below rather than branches above.
 
 **What would change my mind:** evidence that W4's two open strays move a surface a child builds
 on. Then this epic returns to design and POC and the fence goes back up.
+
+**The set grew to seven on 2026-09-24**: FIX-1500 and FIX-1527 joined under
+[ER-21](BUSINESS-RULES.md). That is the open set working, not a re-scope of this card. The
+objective and the lifted fence are unchanged.
 
 <a name="d2"></a>
 ## D2 · Durable hire composes the persistence the app already has
@@ -116,6 +123,9 @@ channels half and the seats half together without one of them becoming a scroll-
 Then the seats half leaves the rail entirely — the rail is channels only, and seats are reached
 through the panel's roster. It does not move the roster, which is already there.
 
+**Both halves ship.** That fallback never fired. FIX-1477 raised a different reason to hold the
+seat half, and the owner answered **ship** ([below](#answered-seat-list)).
+
 <a name="d8"></a>
 ## D8 · One navigator, and its depth is read from the flow's cardinality
 
@@ -140,13 +150,29 @@ rendered pass showing three levels of indentation cannot be read in a 256px rail
 stops at kind → instances and a seat's sessions are reached from the panel, which costs the rail a
 level and costs the card nothing else: the depth is still derived, and it is still one component.
 
+<a name="d9"></a>
+## D9 · Kitchen-sink's host names one organization, and every caller runs under it
+
+| | |
+|---|---|
+| **Instead of** | **B** · leave kitchen-sink on the framework's default organization, where every hire is refused · **C** · wait for [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503), verified identity by default, which will replace this resolver anyway |
+| **Because** | A hired seat's address begins with its organization, and `seatAddress` refuses `__fsd_default_org__`: it is not a legal address segment (`packages/workforce/src/roster/rows.ts`, `validateSegment` in `packages/workforce/src/loader/segments.ts`). Kitchen-sink authenticates nobody, so every principal resolved to that default and **every hire in the stock app was refused**: FIX-1500's rail hire and FIX-1527's mara alike. B ships a reference whose headline action fails. C holds both rows on an epic still in spec review in another project |
+| **Locks in** | Kitchen-sink's host resolves every principal to **one named, non-default organization**, set by host code and never read from caller input (BP-031). **An anonymous visitor to a kitchen-sink deployment can hire and fire seats in that organization.** The mechanism is specced in the FIX-1500 and FIX-1527 amendment (branch `spec/FIX-1500-1527-amend-named-org`), not here. FIX-1503 replaces the resolver when it lands |
+
+Decided by the product owner on 2026-09-24, choosing A.
+
+**What would change my mind:** FIX-1503 landing before the amendment ships, so C costs nothing.
+Or a kitchen-sink deployment reachable by people who must not hire, where B's refusal is the
+safer default.
+
 ## Who owns what
 
-![Who owns what: seven cross-cutting rules against the five issues in the set, each rule with exactly one decides or builds cell and consumes cells elsewhere. The durable-roster rule is built by FIX-1475 and consumed by FIX-1477; the served-workforce rule is built by FIX-1429 and consumed by FIX-1475; the channel and board convention is decided by FIX-1476 and consumed by FIX-1477; the two UI shapes are decided and built by FIX-1477 and consumed by FIX-1475 and FIX-1476; one recipe per job is built by FIX-1478; the vocabulary rule is decided by FIX-1476 and consumed by every other row; and the shell regions rule is decided by the epic and built by FIX-1477, consumed by FIX-1475 and FIX-1476](figures/ownership.svg)
+![Who owns what: seven cross-cutting rules against the seven issues in the set, each rule with exactly one decides or builds cell and consumes cells elsewhere. The served-workforce rule is built by FIX-1429 and consumed by FIX-1475, FIX-1500 and FIX-1527; the durable-roster rule is built by FIX-1475, rendered by FIX-1477 and consumed by FIX-1500 and FIX-1527; the channel and board convention is decided by FIX-1476 and rendered by FIX-1477; the two UI shapes are built by FIX-1477 and consumed by FIX-1475, FIX-1476 and FIX-1500; one recipe per job is built by FIX-1478; the vocabulary rule is defined by FIX-1476 and consumed by every other row; and the shell regions rule is decided by the epic and built by FIX-1477, consumed by FIX-1475, FIX-1476 and FIX-1500](figures/ownership.svg)
 
 Every rule has exactly one owner. A cell that says *consumes* is a place a child must not
 re-decide — the seam, not a wait. ER-6 and ER-7 are the two rows to check on any refresh: they
-are the ones that bind three children each, and an owner moving there moves a figure too.
+bind three or more children each, and an owner moving there moves a figure too. FIX-1500 and
+FIX-1527 own no rule here; the seam between them is [in the plan](PLAN.md#coordination-seams-to-watch).
 
 ## Decided in review, recorded so no child reopens them
 
@@ -235,12 +261,13 @@ section takes its four lines.
 <a name="open"></a>
 ## Answered
 
-Both were the owner's, and both were answered on 2026-09-20: *"Approved, I'm good with
+All four were the owner's. The first two were answered on 2026-09-20: *"Approved, I'm good with
 Architects recommendations for any remaining open questions"*
 ([PR #1978](https://github.com/fixpoint-labs/flow-state-dev/pull/1978#issuecomment-5753189267)),
 formalized by the Architect's follow-up
 ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/1978#pullrequestreview-5261975115)).
-Nothing here is reopened by a child ([ER-19](BUSINESS-RULES.md)).
+The last two came up from children after the merge ([ER-19](BUSINESS-RULES.md)). Nothing here
+is reopened by a child.
 
 <a name="answered-runtime-admin"></a>
 ### 1 · FIX-1475's durability proof is scoped to runtime hire — **closed**
@@ -283,6 +310,26 @@ of them is re-stated, re-parented or edited in Linear by this epic or any child
 ([ER-17](BUSINESS-RULES.md), [ER-21](BUSINESS-RULES.md)). The epic names itself as the
 superseder when the four are closed.
 
+<a name="answered-seat-list"></a>
+### 3 · The rail's seat list, although the flow list is public: **answered, ship**
+
+FIX-1477 raised it as its spec's one Open fork
+([DECISIONS → Open](../../issues/FIX-1477/DECISIONS.md#open), and the PLAN check that asks
+whether it has been answered), recommending *hold*. The owner chose **ship**:
+[#2113](https://github.com/fixpoint-labs/flow-state-dev/pull/2113) merged on 2026-09-23 with
+`SHOW_SEATS_IN_RAIL = true` in `apps/kitchen-sink/app/page.tsx`. [D7](#d7) stands whole.
+
+**What it locks in.** The seat rows come from the flow list, which is answered without a
+credential and carries no organization. So every hired seat's id, which names its organization,
+is listed to anyone who can load the page. Hiding the rows would not have closed that. The
+fences are [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) (org-scoped listing) and
+[FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) (a gated `/api/flows`). Turning
+the rows off is one constant.
+
+### 4 · Which organization kitchen-sink runs under: **answered, A**
+
+One named organization, on 2026-09-24. Recorded as [D9](#d9), with what lost and what it locks in.
+
 ## How it got here
 
 - **Drafted (Sep 20)** — five issues under one objective; the epic body's spine and invent-kills
@@ -317,3 +364,8 @@ superseder when the four are closed.
   **D8 is signed off** — the owner merged
   [#1986](https://github.com/fixpoint-labs/flow-state-dev/pull/1986) on 2026-09-21, which is what
   released FIX-1476 and FIX-1477 into spec.
+- **Amended — the set grows, two answers recorded (Sep 24)** — a follow-up PR from `main`.
+  FIX-1500 and FIX-1527 joined under [ER-21](BUSINESS-RULES.md), with rows, lanes and
+  ownership columns. The seat list was answered *ship* on
+  [#2113](https://github.com/fixpoint-labs/flow-state-dev/pull/2113), and [D9](#d9) records
+  the owner's named-organization call. The lineage is in [EVOLUTION.md](EVOLUTION.md).

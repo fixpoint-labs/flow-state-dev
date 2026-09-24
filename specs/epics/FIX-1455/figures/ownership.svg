@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 396" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: a matrix of the seven cross-cutting rules against the five issues in the set. ER-1, the file-declared seat answers over the app's real route, is built by FIX-1429 and consumed by FIX-1475. ER-2, hire a team and it survives a redeploy, is built by FIX-1475 and consumed by FIX-1477, which renders the roster. ER-3, one channel family and one instance with an explicit per-seat board drain, is decided by FIX-1476 and consumed by FIX-1477. ER-4, every component is imported from a client package, is built by FIX-1477 and consumed by FIX-1475 and FIX-1476. ER-5, one recipe per job on screen, is built by FIX-1478 and consumed by FIX-1477. ER-6, the vocabulary Seat, Kind and Agent, is defined by FIX-1476 and consumed by all four other rows — it is the rule that binds the whole set. ER-7, the shell's regions and whether each is inline or resource-backed, is decided by the epic in decisions D7 and D8, built by FIX-1477, and consumed by FIX-1475 and FIX-1476. Every rule has exactly one owner and no rule is ownerless. Two rows are flagged as the ones to re-check on every refresh, ER-6 and ER-7, because each binds three or more children and an owner moving there moves a figure too. Eighteen further rules bind every row equally and need no column: ten prohibitions ER-8 to ER-17, four rules for how the set is run ER-18 to ER-21, and four proof rules ER-22 to ER-25.">
+     aria-label="Who owns what: a matrix of the seven cross-cutting rules against the seven issues in the set. ER-1, the file-declared seat answers over the app's real route, is built by FIX-1429 and consumed by FIX-1475, FIX-1500 and FIX-1527. ER-2, hire a team and it survives a redeploy, is built by FIX-1475, rendered by FIX-1477, and consumed by FIX-1500, which hires from the rail, and FIX-1527, whose manager seat hires. ER-3, one channel kind and one instance with an explicit per-seat board drain, is decided by FIX-1476 and rendered by FIX-1477. ER-4, every component is imported from a client package, is built by FIX-1477 and consumed by FIX-1475, FIX-1476 and FIX-1500. ER-5, one recipe per job on screen, is built by FIX-1478, and FIX-1477 reads its notes. ER-6, the vocabulary Seat, Kind and Agent, is defined by FIX-1476 and consumed by all six other rows; it is the rule that binds the whole set. ER-7, the shell's regions and whether each is inline or resource-backed, is decided by the epic in decisions D7 and D8, built by FIX-1477, and consumed by FIX-1475, FIX-1476 and FIX-1500. FIX-1500 and FIX-1527 own no rule; the seam between them is a plan row. Every rule has exactly one owner and no rule is ownerless. Two rows are flagged as the ones to re-check on every refresh, ER-6 and ER-7, because each binds three or more children and an owner moving there moves a figure too. Eighteen further rules bind every row equally and need no column: ten prohibitions ER-8 to ER-17, four rules for how the set is run ER-18 to ER-21, and four proof rules ER-22 to ER-25.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -25,76 +25,92 @@
   <text class="t-lbl" x="16" y="20">WHO OWNS WHAT — EVERY RULE HAS EXACTLY ONE OWNER</text>
 
   <g id="columns">
-    <text class="t-col" x="316" y="50">FIX-1429</text>
-    <text class="t-col" x="442" y="50">FIX-1475</text>
-    <text class="t-col" x="568" y="50">FIX-1476</text>
-    <text class="t-col" x="694" y="50">FIX-1477</text>
-    <text class="t-col" x="820" y="50">FIX-1478</text>
+    <text class="t-col" x="341" y="50" text-anchor="middle">FIX-1429</text>
+    <text class="t-col" x="430" y="50" text-anchor="middle">FIX-1475</text>
+    <text class="t-col" x="519" y="50" text-anchor="middle">FIX-1476</text>
+    <text class="t-col" x="608" y="50" text-anchor="middle">FIX-1477</text>
+    <text class="t-col" x="697" y="50" text-anchor="middle">FIX-1478</text>
+    <text class="t-col" x="786" y="50" text-anchor="middle">FIX-1500</text>
+    <text class="t-col" x="875" y="50" text-anchor="middle">FIX-1527</text>
   </g>
 
   <g id="r1">
     <text class="t-row" x="16" y="79">ER-1 &#183; the seat answers over the real route</text>
-    <rect class="own" x="300" y="60" width="118" height="30"/><text class="t-own" x="330" y="79">BUILDS</text>
-    <rect class="use" x="426" y="60" width="118" height="30"/><text class="t-use" x="448" y="79">consumes</text>
-    <rect class="cell" x="552" y="60" width="118" height="30"/>
-    <rect class="cell" x="678" y="60" width="118" height="30"/>
-    <rect class="cell" x="804" y="60" width="118" height="30"/>
+    <rect class="own" x="298" y="60" width="85" height="30"/><text class="t-own" x="341" y="79" text-anchor="middle">BUILDS</text>
+    <rect class="use" x="387" y="60" width="85" height="30"/><text class="t-use" x="430" y="79" text-anchor="middle">consumes</text>
+    <rect class="cell" x="476" y="60" width="85" height="30"/>
+    <rect class="cell" x="565" y="60" width="85" height="30"/>
+    <rect class="cell" x="654" y="60" width="85" height="30"/>
+    <rect class="use" x="743" y="60" width="85" height="30"/><text class="t-use" x="786" y="79" text-anchor="middle">consumes</text>
+    <rect class="use" x="832" y="60" width="85" height="30"/><text class="t-use" x="875" y="79" text-anchor="middle">consumes</text>
   </g>
 
   <g id="r2">
     <text class="t-row" x="16" y="113">ER-2 &#183; hire it, redeploy, it is still there</text>
-    <rect class="cell" x="300" y="94" width="118" height="30"/>
-    <rect class="own" x="426" y="94" width="118" height="30"/><text class="t-own" x="456" y="113">BUILDS</text>
-    <rect class="cell" x="552" y="94" width="118" height="30"/>
-    <rect class="use" x="678" y="94" width="118" height="30"/><text class="t-use" x="700" y="113">renders it</text>
-    <rect class="cell" x="804" y="94" width="118" height="30"/>
+    <rect class="cell" x="298" y="94" width="85" height="30"/>
+    <rect class="own" x="387" y="94" width="85" height="30"/><text class="t-own" x="430" y="113" text-anchor="middle">BUILDS</text>
+    <rect class="cell" x="476" y="94" width="85" height="30"/>
+    <rect class="use" x="565" y="94" width="85" height="30"/><text class="t-use" x="608" y="113" text-anchor="middle">renders it</text>
+    <rect class="cell" x="654" y="94" width="85" height="30"/>
+    <rect class="use" x="743" y="94" width="85" height="30"/><text class="t-use" x="786" y="113" text-anchor="middle">consumes</text>
+    <rect class="use" x="832" y="94" width="85" height="30"/><text class="t-use" x="875" y="113" text-anchor="middle">consumes</text>
   </g>
 
   <g id="r3">
     <text class="t-row" x="16" y="147">ER-3 &#183; a seat drains a named subset</text>
-    <rect class="cell" x="300" y="128" width="118" height="30"/>
-    <rect class="cell" x="426" y="128" width="118" height="30"/>
-    <rect class="own" x="552" y="128" width="118" height="30"/><text class="t-own" x="578" y="147">DECIDES</text>
-    <rect class="use" x="678" y="128" width="118" height="30"/><text class="t-use" x="700" y="147">renders it</text>
-    <rect class="cell" x="804" y="128" width="118" height="30"/>
+    <rect class="cell" x="298" y="128" width="85" height="30"/>
+    <rect class="cell" x="387" y="128" width="85" height="30"/>
+    <rect class="own" x="476" y="128" width="85" height="30"/><text class="t-own" x="519" y="147" text-anchor="middle">DECIDES</text>
+    <rect class="use" x="565" y="128" width="85" height="30"/><text class="t-use" x="608" y="147" text-anchor="middle">renders it</text>
+    <rect class="cell" x="654" y="128" width="85" height="30"/>
+    <rect class="cell" x="743" y="128" width="85" height="30"/>
+    <rect class="cell" x="832" y="128" width="85" height="30"/>
   </g>
 
   <g id="r4">
     <text class="t-row" x="16" y="181">ER-4 &#183; every component comes from a package</text>
-    <rect class="cell" x="300" y="162" width="118" height="30"/>
-    <rect class="use" x="426" y="162" width="118" height="30"/><text class="t-use" x="448" y="181">consumes</text>
-    <rect class="use" x="552" y="162" width="118" height="30"/><text class="t-use" x="574" y="181">consumes</text>
-    <rect class="own" x="678" y="162" width="118" height="30"/><text class="t-own" x="708" y="181">BUILDS</text>
-    <rect class="cell" x="804" y="162" width="118" height="30"/>
+    <rect class="cell" x="298" y="162" width="85" height="30"/>
+    <rect class="use" x="387" y="162" width="85" height="30"/><text class="t-use" x="430" y="181" text-anchor="middle">consumes</text>
+    <rect class="use" x="476" y="162" width="85" height="30"/><text class="t-use" x="519" y="181" text-anchor="middle">consumes</text>
+    <rect class="own" x="565" y="162" width="85" height="30"/><text class="t-own" x="608" y="181" text-anchor="middle">BUILDS</text>
+    <rect class="cell" x="654" y="162" width="85" height="30"/>
+    <rect class="use" x="743" y="162" width="85" height="30"/><text class="t-use" x="786" y="181" text-anchor="middle">consumes</text>
+    <rect class="cell" x="832" y="162" width="85" height="30"/>
   </g>
 
   <g id="r5">
     <text class="t-row" x="16" y="215">ER-5 &#183; one recipe per job on screen</text>
-    <rect class="cell" x="300" y="196" width="118" height="30"/>
-    <rect class="cell" x="426" y="196" width="118" height="30"/>
-    <rect class="cell" x="552" y="196" width="118" height="30"/>
-    <rect class="use" x="678" y="196" width="118" height="30"/><text class="t-use" x="700" y="215">reads notes</text>
-    <rect class="own" x="804" y="196" width="118" height="30"/><text class="t-own" x="834" y="215">BUILDS</text>
+    <rect class="cell" x="298" y="196" width="85" height="30"/>
+    <rect class="cell" x="387" y="196" width="85" height="30"/>
+    <rect class="cell" x="476" y="196" width="85" height="30"/>
+    <rect class="use" x="565" y="196" width="85" height="30"/><text class="t-use" x="608" y="215" text-anchor="middle">reads notes</text>
+    <rect class="own" x="654" y="196" width="85" height="30"/><text class="t-own" x="697" y="215" text-anchor="middle">BUILDS</text>
+    <rect class="cell" x="743" y="196" width="85" height="30"/>
+    <rect class="cell" x="832" y="196" width="85" height="30"/>
   </g>
 
   <g id="r6">
     <text class="t-row" x="16" y="249">ER-6 &#183; Seat &#183; Kind &#183; Agent &#8212; none is L1</text>
-    <rect class="use" x="300" y="230" width="118" height="30"/><text class="t-use" x="322" y="249">consumes</text>
-    <rect class="use" x="426" y="230" width="118" height="30"/><text class="t-use" x="448" y="249">consumes</text>
-    <rect class="own" x="552" y="230" width="118" height="30"/><text class="t-own" x="578" y="249">DEFINES</text>
-    <rect class="use" x="678" y="230" width="118" height="30"/><text class="t-use" x="700" y="249">consumes</text>
-    <rect class="use" x="804" y="230" width="118" height="30"/><text class="t-use" x="826" y="249">consumes</text>
-    <rect class="flag" x="298" y="228" width="626" height="34"/>
+    <rect class="use" x="298" y="230" width="85" height="30"/><text class="t-use" x="341" y="249" text-anchor="middle">consumes</text>
+    <rect class="use" x="387" y="230" width="85" height="30"/><text class="t-use" x="430" y="249" text-anchor="middle">consumes</text>
+    <rect class="own" x="476" y="230" width="85" height="30"/><text class="t-own" x="519" y="249" text-anchor="middle">DEFINES</text>
+    <rect class="use" x="565" y="230" width="85" height="30"/><text class="t-use" x="608" y="249" text-anchor="middle">consumes</text>
+    <rect class="use" x="654" y="230" width="85" height="30"/><text class="t-use" x="697" y="249" text-anchor="middle">consumes</text>
+    <rect class="use" x="743" y="230" width="85" height="30"/><text class="t-use" x="786" y="249" text-anchor="middle">consumes</text>
+    <rect class="use" x="832" y="230" width="85" height="30"/><text class="t-use" x="875" y="249" text-anchor="middle">consumes</text>
+    <rect class="flag" x="296" y="228" width="623" height="34"/>
   </g>
 
   <g id="r7">
     <text class="t-row" x="16" y="289">ER-7 &#183; the shell&#8217;s regions &#183; inline vs resource</text>
-    <rect class="cell" x="300" y="270" width="118" height="30"/>
-    <rect class="use" x="426" y="270" width="118" height="30"/><text class="t-use" x="448" y="289">consumes</text>
-    <rect class="use" x="552" y="270" width="118" height="30"/><text class="t-use" x="574" y="289">consumes</text>
-    <rect class="own" x="678" y="270" width="118" height="30"/><text class="t-own" x="708" y="289">BUILDS</text>
-    <rect class="cell" x="804" y="270" width="118" height="30"/>
-    <rect class="flag" x="298" y="268" width="626" height="34"/>
+    <rect class="cell" x="298" y="270" width="85" height="30"/>
+    <rect class="use" x="387" y="270" width="85" height="30"/><text class="t-use" x="430" y="289" text-anchor="middle">consumes</text>
+    <rect class="use" x="476" y="270" width="85" height="30"/><text class="t-use" x="519" y="289" text-anchor="middle">consumes</text>
+    <rect class="own" x="565" y="270" width="85" height="30"/><text class="t-own" x="608" y="289" text-anchor="middle">BUILDS</text>
+    <rect class="cell" x="654" y="270" width="85" height="30"/>
+    <rect class="use" x="743" y="270" width="85" height="30"/><text class="t-use" x="786" y="289" text-anchor="middle">consumes</text>
+    <rect class="cell" x="832" y="270" width="85" height="30"/>
+    <rect class="flag" x="296" y="268" width="623" height="34"/>
   </g>
 
   <g id="legend">

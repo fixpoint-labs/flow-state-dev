@@ -406,6 +406,47 @@ async function runWriteMutator(
 }
 
 /**
+ * The `orgId` a write to a `stampOrgId` collection instance may store (FIX-1545).
+ * The organization is the server's to record, never the caller's (BP-031).
+ *
+ *  - **New instance** (`basis` undefined): the executing run's org. Naming it is
+ *    fine; naming any other throws.
+ *  - **Update of a row that stores an org:** that org, always. Omitting it
+ *    carries it forward; naming the same value is fine; naming another throws —
+ *    an update never moves a row to another organization.
+ *  - **Update of a legacy row with no org:** stays absent unless the caller
+ *    names the executing run's own org. Naming any other throws.
+ *
+ * A throw happens inside the write mutator, before anything is persisted. A
+ * {@link WRITE_UNCHANGED} refusal is left alone.
+ */
+function applyStampedOrgId(
+  next: JsonObject | WriteUnchanged,
+  basis: JsonObject | undefined,
+  executionOrgId: string,
+  label: string
+): JsonObject | WriteUnchanged {
+  if (next === WRITE_UNCHANGED) return next;
+  const stored = basis?.orgId ?? undefined;
+  const { orgId: named, ...rest } = next;
+  if (named == null) {
+    const orgId = stored ?? (basis === undefined ? executionOrgId : undefined);
+    return orgId === undefined ? rest : { ...rest, orgId };
+  }
+  const allowed = stored ?? executionOrgId;
+  if (named !== allowed) {
+    throw new Error(
+      `Resource "${label}" names organization ${JSON.stringify(named)}, but ` +
+        (stored != null
+          ? `it belongs to organization ${JSON.stringify(stored)}; an update cannot move it to another organization.`
+          : `this execution runs in organization ${JSON.stringify(executionOrgId)}. ` +
+            `This collection records the creating execution's organization; omit orgId.`)
+    );
+  }
+  return next;
+}
+
+/**
  * Outcome of a lazy on-demand load. `fetched` is true only when a real store
  * round-trip occurred (false for a cache short-circuit); `durationMs` is the
  * wall time of that round-trip. The lazy collection accessor wrapper uses this
@@ -1024,10 +1065,18 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       throw new Error(`Resource "${storageKey}" is read-only`);
     }
 
+    // `stampOrgId`: judged against the CAS basis (so a retry is judged against
+    // the winner's row). An update keeps the stored org and cannot name another.
+    const write: ResourceWriteMutator =
+      nsConfig.stampOrgId === true
+        ? async (current) =>
+            applyStampedOrgId(await mutate(current), current, options.orgId, storageKey)
+        : mutate;
+
     return options.mutateResourceKey(
       storageKey,
       (current) =>
-        runWriteMutator(mutate, nsConfig.stateSchema, storageKey, current, deferWriteError),
+        runWriteMutator(write, nsConfig.stateSchema, storageKey, current, deferWriteError),
       { seed }
     );
   };
@@ -1497,11 +1546,17 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           // Defaults declared on the schema (e.g. `.nullable().default(null)`,
           // per BP-023) fill missing fields on both the create and replace
           // branches, so callers only supply the non-nullable scaffold.
-          const state = parseResourceWriteState(
+          // `stampOrgId` (FIX-1545): the org is decided in the write mutator by
+          // `applyStampedOrgId`, against the row the write lands on. The named
+          // org is held out of the parse and judged there.
+          const stampOrg = nsConfig.stampOrgId === true;
+          const { orgId: namedOrg, ...unstamped } = initial ?? {};
+          const parsed = parseResourceWriteState(
             nsConfig.stateSchema,
-            initial ?? {},
+            stampOrg ? unstamped : (initial ?? {}),
             storageKey
           );
+          let state = parsed;
 
           // Capture (cloned) prior state for the updated-hook before
           // persisting. Clone so hook code that caches or mutates `prev`
@@ -1523,7 +1578,20 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           try {
             await options.mutateResourceKey(
               storageKey,
-              () => state,
+              (current) => {
+                // A new instance takes the creating execution's org. A replace of
+                // a live one is an update, judged against `current` (this
+                // context's view of the row it lands on).
+                if (stampOrg) {
+                  state = applyStampedOrgId(
+                    namedOrg == null ? parsed : { ...parsed, orgId: namedOrg },
+                    replaceIntent && exists ? current : undefined,
+                    options.orgId,
+                    storageKey
+                  ) as JsonObject;
+                }
+                return state;
+              },
               { intent: replaceIntent ? "replace" : "create" }
             );
           } catch (err) {
