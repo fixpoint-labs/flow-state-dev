@@ -1423,6 +1423,56 @@ address (removed by editing its folder, not by firing it).
 Pass both keys so `discover` lists a runtime hire the same way it lists a file-declared seat.
 Omit `hiredRoster` and it lists only file-declared seats.
 
+### The same handlers, as actions
+
+`createSeatHireBlocks` takes the same options as `createSeatHireCapability` and returns
+`{ hire, fire }`, the handlers behind its catalog tools. Mount them as a flow's actions when a
+person or your own code does the hiring and no model should be in front of it. Inputs, outputs
+and refusals are the ones described above for the tools.
+
+Declare the roster and seat-inventory collections on that flow, under `HIRED_ROSTER_RESOURCE`
+and `SEAT_INVENTORY_RESOURCE`. The handlers read them by those keys, and without them every
+hire fails before anything is written.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import {
+  createSeatHireBlocks,
+  defineHiredRosterCollection,
+  defineSeatInventoryCollection,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE,
+} from "@flow-state-dev/workforce";
+
+// `kinds` and `live` as in the example above.
+const hireActions = createSeatHireBlocks({
+  kinds,
+  register: live.register,
+  unregister: live.unregister,
+  kindAt: live.kindAt,
+});
+
+const workforceAdmin = defineFlow({
+  kind: "workforce-admin",
+  requireUser: true,
+  // Your AuthenticationConfig. Its resolvePrincipal must return an orgId.
+  authentication: adminAuthentication,
+  resources: {
+    [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
+    [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection(),
+  },
+  actions: {
+    hire: { block: hireActions.hire },
+    fire: { block: hireActions.fire },
+  },
+});
+```
+
+The organization comes from the session's principal; an `orgId` in the input is ignored. A
+session whose principal names no organization belongs to the default organization, whose id
+cannot start a seat address, so a hire there is refused before anything is written. Configure a
+`resolvePrincipal` that returns an `orgId` on the flow that mounts these.
+
 ## The live inventory
 
 The tree tells you what a workforce is meant to be. A `WORKER.md` declares a seat, a `CHANNEL.md`
@@ -1640,6 +1690,7 @@ membershipPrefix("");
 | `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
 | `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and channel sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
 | `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat names those tools in `tools:` or cannot call them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
+| `createSeatHireBlocks({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Returns `{ hire, fire }`, the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and a session whose principal names no organization cannot hire. |
 | `registerHiredSeat(register, seat, pin)` | The hire writer's register path. Refuses when `pin` has no `orgId`. The pin is the hire row's roster owner, not the address. |
 | `HiredSeatOwnerPin` | `{ orgId, userId? }`. `userId` is present only for a user-owned hire row. |
 | `SEAT_HIRE_CAPABILITY` | The capability name, `"seat-hire"`. |
