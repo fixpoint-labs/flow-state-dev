@@ -4,12 +4,13 @@
 
 Improvement · `react` + `devtool` + kitchen-sink · small · 1 PR · epic [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455)
 
-## Six people, before and after
+## Seven people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **opens instances in the developer tool's rail** | Each open instance, and the `digest` channel kind, gets an extra line holding only refresh and new session: 12 of the tree's 17 icons | Copy, refresh and new session sit on the instance's own row, right-aligned. The photographed tree takes 16 lines, not 22 |
-| **scans the tree to see what belongs to what** | A session starts 4px *left* of its instance. `support.noticeboard` starts 16px left of the instances at its level | One column per level, each one 16px step right of its parent. The channel lines up with the instances. Notes sit on their level's column |
+| **scans the tree to see what belongs to what** | A session starts 4px *left* of its instance. `support.noticeboard` starts 16px left of the instances at its level. Nothing but indent shows nesting | One column per level, each one 16px step right of its parent, and a dashed line down from each open parent past its children. The channel lines up with the instances. Notes sit on their level's column |
+| **compares a row's icons** | Copy is drawn at 13.3px, refresh at 12, plus at 9.3, in the same 16px boxes | All three drawn at one size, with one stroke, in one hit area |
 | **looks for a session with no title** | Reads a 32-character engine id, clipped by the rail | Reads `sess_…3df102`, with the full id on hover. Titles and channel names show whole |
 | **starts a conversation in kitchen-sink** | Opens the Assistant row and clicks a full-width "New session" line under it | Clicks the + on the Assistant row. Same action, still named "New session" for screen readers and in its tooltip |
 | **uses the rail from the keyboard** | Tabs through the row, its actions, then a separate action line | The same controls in the same order, on one line. Opening a row keeps focus on it |
@@ -22,13 +23,15 @@ they compare padding values, not where the text lands.
 
 ![Wireframe of today's rail: refresh and new-session icons on a line of their own under each open instance and under digest; session labels start left of their instance; support.noticeboard starts left of the instances; raw session ids](figures/today.svg)
 
-Today, the photographed rail at twice its horizontal size. The dashed columns show where the
-labels actually start: 36, 32 and 20 pixels.
+Today, the photographed rail at twice its horizontal size. The red dashed columns show where
+the labels actually start: 36, 32 and 20 pixels. The icons are drawn at their real relative sizes.
 
-![Wireframe of the recommended rail: every action on its own row, right-aligned; labels in three columns at 24, 40 and 56 pixels; short session ids](figures/after.svg)
+![Wireframe of the recommended rail: every action on its own row, right-aligned, drawn at one size; dashed tree lines down from each open parent; labels in three columns at 24, 40 and 56 pixels; short session ids](figures/after.svg)
 
-After, same tree and scale: three label columns, actions on their row, three fewer lines. This
-is the always-visible layout the spec recommends ([Open](DECISIONS.md#open)).
+After, same tree and scale: three label columns, tree lines, one icon size, actions on their
+row, three fewer lines. This is the always-visible layout the spec recommends
+([Open](DECISIONS.md#open)); the tree lines and icon size are the owner's
+([O1, O2](DECISIONS.md#owner-decisions)).
 
 ![One instance row zoomed: the button carries the indent, twisty and label; the trailing area beside it holds the copy icon and, while the leaf is open, refresh and new session; tab order button, copy, refresh, new; three session labels](figures/row-anatomy.svg)
 
@@ -53,8 +56,9 @@ session" becomes an icon that fits on a row:
   </Button>
 ```
 
-The developer tool drops the right-aligned wrapper around its two icons; the row now does the
-aligning.
+The developer tool drops the right-aligned wrapper around its two icons, since the row now does
+the aligning, and sizes its three icons so their drawings match. Each host may colour the tree
+lines with one new property, `--fsd-nav-guide`.
 
 ## How an action reaches the row
 
@@ -75,7 +79,8 @@ The leaf is still read once, when it opens. Its toolbar now lands on the row tha
 - When sessions are read: once per leaf you open, never for a closed one.
 - How deep the tree goes, read from each flow's cardinality ([FIX-1455 D8](../../epics/FIX-1455/DECISIONS.md#d8)).
 - The missing leaf open and close event. That is [FIX-1494](https://linear.app/fixpoint-labs/issue/FIX-1494), and the developer tool keeps its workaround.
-- Theming through `--fsd-nav-*` custom properties, and no class names published.
+- Theming through `--fsd-nav-*` custom properties, and no class names published. The one
+  addition is `--fsd-nav-guide`, the tree lines' colour.
 
 ## Sign off
 
@@ -85,6 +90,9 @@ The leaf is still read once, when it opens. Its toolbar now lands on the row tha
 2. **[D2](DECISIONS.md#d2) · The rail's layout is checked on the rendered page, in CI, for
    both rails.** If wrong: a slow or flaky check nobody trusts, or without it, the next layout
    slip found by eye again.
+
+Already decided by the owner in review, and built into both: one drawn icon size
+([O1](DECISIONS.md#o1)) and dashed tree lines ([O2](DECISIONS.md#o2)).
 
 **Open: one fork.** [Row actions: always visible, or revealed on hover?](DECISIONS.md#open)
 I recommend always visible. The reasoning and what lost: [DECISIONS.md](DECISIONS.md). The

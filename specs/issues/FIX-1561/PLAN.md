@@ -15,11 +15,12 @@ exists; everything else is the same either way.
 | S3 | `react` · indentation | Every row reserves the twisty column; one level is that column's width. Notes and retry lines start on the label column of the level they stand in for | BR-11 – BR-15 |
 | S4 | `react` · session label | Title, else the short engine form, else the id; full id as the row's tooltip | BR-16 – BR-19 |
 | S5 | `react` · reveal, **only if the owner picks hover** | Hide the trailing area until the row is hovered, focused into or selected; always shown with no hover pointer; opacity, never removal from the tab order. No stylesheet or class name (the package publishes none) | BR-10 |
-| S6 | `devtool` · the rail's leaf toolbar | **Remove** the right-aligned strip wrapper. Show a failed create on the row, not as a paragraph under it | BR-9 BR-22 |
-| S7 | kitchen-sink · the Assistant leaf toolbar | "New session" becomes an icon button with that accessible name and tooltip | BR-9 |
-| S8 | tests | **Remove** the two checks that compare padding values: the unit case "indents three levels inside exactly one scroll container" keeps its scroll-container half and loses the padding half; the e2e case "three levels still indent" loses its padding assertions to VG | — |
-| S9 | kitchen-sink e2e | New spec over both rails: VG (D2) | BR-2 BR-4 BR-11 – BR-15 BR-23 |
-| S10 | docs + release notes | [DOCS.md](DOCS.md): README, the workforce UI page, doc comments; `minor` for `react`, `patch` for `devtool` | — |
+| S6 | `devtool` · the rail's affordances | **Remove** the right-aligned strip wrapper. Show a failed create on the row, not as a paragraph under it. Size copy, refresh and new session so their drawings cover one size with one stroke (O1); set the size explicitly, because today the Button's descendant rule silently turns the declared 12px into 16px. Theme `--fsd-nav-guide` | BR-9 BR-22 BR-24 BR-25 |
+| S7 | kitchen-sink · the rail | "New session" becomes an icon button with that accessible name and tooltip. Theme `--fsd-nav-guide` from the app's border token | BR-9 BR-24 |
+| S8 | tests | **Remove** the unit case's padding comparison ("indents three levels inside exactly one scroll container" keeps its scroll-container half) | — |
+| S9 | kitchen-sink e2e | **Replace**, don't add: the existing `workforce-shell.spec.ts` scenario "expanded all the way in the 256px rail…" becomes VG, and visits `/devtool` as well as `/`. The suite stays at nine scenarios | BR-2 BR-4 BR-11 – BR-15 BR-23 – BR-28 |
+| S10 | docs + release notes | [DOCS.md](DOCS.md): README (including `--fsd-nav-guide`), the workforce UI page, doc comments; one changeset, `minor` for `react`, `patch` for `devtool` | — |
+| S11 | `react` · tree lines | One dashed guide per open parent, on the centre of its twisty column, down its whole child list, a note included. Decorative: hidden from assistive technology and out of layout flow. Colour from `--fsd-nav-guide`, with a neutral fallback that reads on light and dark (O2) | BR-26 – BR-28 |
 
 ## Sequence
 
@@ -32,8 +33,10 @@ flowchart TD
   S4 --> S5["S5 · reveal, if chosen"]
   S1 --> S6["S6 · devtool toolbar"]
   S1 --> S7["S7 · kitchen-sink toolbar"]
-  S3 --> S8["S8 · retire the padding checks"]
-  S5 --> S10["S10 · docs and changesets"]
+  S3 --> S11["S11 · tree lines"]
+  S3 --> S8["S8 · retire the padding check"]
+  S11 --> S10["S10 · docs and changeset"]
+  S5 --> S10
 ```
 
 Write VG first and watch it fail on `main`. That is the red state D2 promises.
@@ -46,8 +49,9 @@ Write VG first and watch it fail on `main`. That is the red state D2 promises.
 | V2 | S2 | The row's button is the same node before and after a toggle, and keeps focus; opening a leaf is one read, closing none |
 | V3 | S4 | BR-16 – BR-19: a title, an engine id, a channel id, an empty-string title; the tooltip carries the full id |
 | V4 | S6 | The developer tool's rail suite passes unchanged, including the open-restore and refresh signals; a failed create shows on the row |
+| V6 | S11 | Each open parent renders exactly one guide, hidden from assistive technology; a closed parent renders none; opening or closing a parent moves no row |
 | V5 | S5 | *If chosen:* at rest the trailing area is invisible but reachable by Tab; focus or hover shows it; selected rows show it |
-| VG | S3 S4 S6 S7 | **Goal, rendered page.** Kitchen-sink e2e opens `/devtool` and `/`, seeds sessions so each rail has a collection instance with sessions, one with none, and a singleton channel, expands every row, and asserts on measured text positions: **G1** no host action's centre falls outside a row's box · **G2** every label at one level starts within 0.5px of one x · **G3** each level steps right by one equal amount, at least 12px · **G4** each note starts on its level's column. Both screenshots attach to the run and go in the PR body. **Negative control:** run it on `main` first; it must fail G1 to G3, as the POC did (12 of 17 actions off-row, a 16px spread at level 2, steps of 12 then −4) |
+| VG | S3 S4 S6 S7 S11 | **Goal, rendered page**, in the one replaced scenario (S9). It opens `/` and `/devtool` in turn, seeds sessions so each rail has a collection instance with sessions, one with none, a singleton channel, and one instance and one session title too long for the rail, expands every row, and measures: **G1** no host action's centre falls outside a row's box · **G2** every label at one level starts within 0.5px of one x · **G3** each level steps right by one equal amount, at least 12px · **G4** each note starts on its level's column · **G5** every row action's drawn glyph (its ink, not its box) and its hit area are one size, ±0.5px · **G6** each open parent has one aria-hidden guide whose x is its twisty's centre ±0.5px, running from its first child line to at least its last · **G7** at 256px the long labels ellipsize, every action keeps its box, and no row or the rail overflows. Screenshots of both rails attach to the run and go in the PR body. **Negative control:** run it on `main` first; the POC's numbers are what it must reproduce ([POC](poc/rail-geometry/README.md)) |
 
 Measure each label's first glyph through a text range, not padding; the POC's
 [`measure.mjs`](poc/rail-geometry/measure.mjs) does this and can be lifted.
@@ -72,7 +76,9 @@ yours to name.
 | Toggling never replaces the row's button | A replaced button drops keyboard focus on every open |
 | Assert where text lands, never style values | The two existing checks compared padding and passed on the broken layout (tenet 7) |
 | Delete the toolbar's list item and the padding checks in this PR | Old and new side by side is how the next ragged rail ships (tenet 3) |
-| No new prop, slot, class name or stylesheet | Nothing here needs a new surface, and the package publishes none |
+| No new prop, slot, class name or stylesheet; one new custom property, `--fsd-nav-guide` | Theming already runs through `--fsd-nav-*`, and a host has to be able to colour the lines or set them `transparent` |
+| Tree lines never take space | A line that shifts a row by a pixel breaks G2 and the column the owner asked for |
+| Icon sizes are the host's, checked on the drawing | The package ships no icons. Every box is already 16px today and copy still looks bigger, so a box check would pass on the defect |
 
 ## Docs
 
@@ -90,14 +96,17 @@ leaf row (instance, or a singleton's kind row):
 every row: reserve the twisty column, empty if it has no children
 level step = twisty column width
 note under a leaf: on the column of the rows it stands in for
+open parent's child list: one dashed guide at the parent's twisty centre,
+    absolutely placed, top to bottom of the list, hidden from AT
 ```
 
 Two ways to land it: portal the open leaf's toolbar into its row (the sketch does, and the
 button never remounts), or lift the read into an always-mounted leaf gated on "open". Your call.
 
 **POC:** [`poc/rail-geometry/`](poc/rail-geometry/README.md) renders the real component with
-the owner's tree and measures it. Today fails G1 to G3; the sketch passes all four with the read
-unchanged. The premise held.
+the owner's tree and the developer tool's own buttons and icons, and measures it. Today fails
+G1–G3, G5 and G6; the sketch passes G1–G7 with the read unchanged, and G7's negative control
+fails as it should. The premise held.
 
 ## At implement time
 

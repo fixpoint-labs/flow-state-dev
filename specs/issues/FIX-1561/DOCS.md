@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-Three destinations. Only the changed prose is drafted; everything around it stays. Voice: no
+Four destinations. Only the changed prose is drafted; everything around it stays. Voice: no
 internal issue numbers in `apps/docs`, and introduce "leaf" the first time it appears.
 
 ## UPDATE · `packages/react/README.md` · FlowNavigator, the two slot paragraphs
@@ -22,8 +22,14 @@ Replaces the paragraph that lists the slots, and the `leafToolbar` paragraph aft
 > `aria-label` rather than text buttons. It is mounted when the leaf opens and unmounted when it
 > closes.
 >
-> Every level of the tree starts its labels on one column, whether or not a row can expand, and
-> a session with no title shows a shortened id with the full id in its tooltip.
+> Both slots draw on the same row, so draw their icons at one visual size. Matching the icons'
+> boxes isn't always enough: icon sets draw some shapes larger than others inside the same box,
+> a copy icon beside a plus, for example, so size each one until the drawings match.
+>
+> Every level of the tree starts its labels on one column, whether or not a row can expand. A
+> dashed line runs down from each open row past everything under it. Set `--fsd-nav-guide` to
+> colour it, or to `transparent` to hide it; the lines take no space either way. A session with
+> no title shows a shortened id with the full id in its tooltip.
 
 ## UPDATE · `apps/docs/docs/workforce/ui.md` · "Where each component reads from", the flow-list paragraph
 
@@ -33,6 +39,12 @@ Replaces the paragraph that lists the slots, and the `leafToolbar` paragraph aft
 > `leafToolbar` slot draws on an open leaf's own row and is handed a `refresh` function that
 > re-reads that leaf's sessions, so a refresh button sits right next to the thing it refreshes.
 
+## UPDATE · `apps/docs/docs/workforce/ui.md` · "Styling it", the custom-properties bullet
+
+> - **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator,
+>   `--fsd-panel-*` for the roster and the board columns. Set them on any ancestor.
+>   `--fsd-nav-guide` colours the dashed lines that show the navigator's tree.
+
 ## CREATE · `.changeset/flow-navigator-row-actions.md`
 
 ```md
@@ -41,16 +53,11 @@ Replaces the paragraph that lists the slots, and the `leafToolbar` paragraph aft
 "@flow-state-dev/devtool": patch
 ---
 
-`FlowNavigator` draws an open leaf's `leafToolbar` on the leaf's own row, after `rowTrailing`,
-instead of on a line of its own above the sessions. The slot's name and arguments are
-unchanged, but its content now has to fit on a row: replace text buttons with icon buttons that
-carry an `aria-label`. Every tree level now starts its labels on one column, notes line up with
-the level they describe, and a session with no title shows a shortened id with the full id as
-its tooltip. The DevTool rail picks all of this up (FIX-1561).
+`FlowNavigator` now draws an open leaf's `leafToolbar` on that leaf's own row instead of a line of its own, so give the slot icon buttons with an `aria-label` rather than text buttons, and it adds dashed tree lines you can colour with `--fsd-nav-guide` (FIX-1561).
 ```
 
 ## Publication ownership
 
-This issue publishes all three after VG passes. The workforce UI page's styling section and
-the README's other slot descriptions are unchanged and not redrafted here. The epic's shared
+This issue publishes all four after VG passes. The README's other slot descriptions and the
+rest of the workforce UI page are unchanged and not redrafted here. The epic's shared
 narrative about the navigator (FIX-1455) is untouched.

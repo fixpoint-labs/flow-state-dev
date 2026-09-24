@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The alternative layout: the same rail with every row's actions hidden until the row is pointed at or focused. On the left, only support.otto, under the pointer, shows its copy, refresh and new-session icons; every other row shows none. On the right, one row in four states: at rest the actions are invisible but still reachable by Tab, under the pointer they show, with keyboard focus in the row they show, and on a touch screen with no hover they always show.">
+     aria-label="The alternative layout: the same rail with every row's actions hidden until the row is pointed at or focused. On the left, only support.otto, under the pointer, shows its copy, refresh and new-session icons; every other row shows none. On the right, one row in four states: at rest the actions are invisible but still reachable by Tab, under the pointer they show, with keyboard focus in the row they show, and on a touch screen with no hover they always show. Dashed tree lines and one icon size are the same as in the recommended layout.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --prose:#A8761C; }
@@ -13,9 +13,9 @@
     .id    { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }
     .muted { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
     .lbl   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
-    .ico   { fill:none; stroke:var(--ink-3); stroke-width:1.2; }
+    .ico   { fill:none; stroke:var(--ink-2); stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+    .tree  { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:3 3; }
     .ghost { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:2 2; }
-    .glyph { fill:var(--ink-3); font-family:system-ui,sans-serif; font-size:12px; text-anchor:middle; }
     .ring  { fill:none; stroke:var(--accent); stroke-width:2; }
     .ptr   { fill:var(--ink); stroke:var(--surface); stroke-width:1; }
     .warn  { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-size:13px; }
@@ -31,12 +31,15 @@
     <text class="id" x="136" y="146">sess_…3df102</text>
     <rect class="hov" x="30" y="158" width="488" height="26" rx="4"/>
     <text class="t" x="72" y="176">▾</text><text class="t" x="104" y="176">support.otto</text>
-    <rect class="ico" x="429" y="163" width="11" height="11" rx="2"/><path class="ico" d="M425 167 v10 h10"/>
-    <text class="glyph" x="462" y="176">⟳</text><text class="glyph" x="492" y="176">+</text>
+    <g class="ico" transform="translate(428 164)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g><g class="ico" transform="translate(457 164)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g><g class="ico" transform="translate(485 164)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
     <path class="ptr" d="M300 170 l0 16 l4 -4 l3 7 l3 -1 l-3 -7 l6 0 z"/>
     <text class="muted" x="136" y="206">No sessions yet</text>
     <text class="t" x="40" y="236">▾</text><text class="t" x="72" y="236">digest</text>
     <text class="t" x="104" y="266">support.noticeboard</text>
+    <line class="tree" x1="45" y1="96" x2="45" y2="214"/>
+    <line class="tree" x1="77" y1="126" x2="77" y2="154"/>
+    <line class="tree" x1="77" y1="186" x2="77" y2="214"/>
+    <line class="tree" x1="45" y1="246" x2="45" y2="274"/>
   </g>
 
   <g id="states">
@@ -50,24 +53,21 @@
     <g id="pointer">
       <rect class="rail" x="560" y="128" width="356" height="30" rx="4"/>
       <text class="t" x="574" y="148">▾ support.otto</text>
-      <rect class="ico" x="835" y="137" width="11" height="11" rx="2"/><path class="ico" d="M831 141 v10 h10"/>
-      <text class="glyph" x="866" y="148">⟳</text><text class="glyph" x="894" y="148">+</text>
+      <g class="ico" transform="translate(836 136)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g><g class="ico" transform="translate(865 136)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g><g class="ico" transform="translate(893 136)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
       <path class="ptr" d="M720 140 l0 16 l4 -4 l3 7 l3 -1 l-3 -7 l6 0 z"/>
       <text class="muted" x="560" y="174">Pointer over the row: shown</text>
     </g>
     <g id="focus">
       <rect class="rail" x="560" y="188" width="356" height="30" rx="4"/>
       <text class="t" x="574" y="208">▾ support.otto</text>
-      <rect class="ico" x="835" y="197" width="11" height="11" rx="2"/><path class="ico" d="M831 201 v10 h10"/>
-      <text class="glyph" x="866" y="208">⟳</text><text class="glyph" x="894" y="208">+</text>
-      <rect class="ring" x="856" y="194" width="20" height="20" rx="3"/>
+      <g class="ico" transform="translate(836 196)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g><g class="ico" transform="translate(865 196)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g><g class="ico" transform="translate(893 196)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
+      <rect class="ring" x="861" y="193" width="19" height="19" rx="3"/>
       <text class="muted" x="560" y="234">Keyboard focus anywhere in the row: shown</text>
     </g>
     <g id="touch">
       <rect class="rail" x="560" y="248" width="356" height="30" rx="4"/>
       <text class="t" x="574" y="268">▾ support.otto</text>
-      <rect class="ico" x="835" y="257" width="11" height="11" rx="2"/><path class="ico" d="M831 261 v10 h10"/>
-      <text class="glyph" x="866" y="268">⟳</text><text class="glyph" x="894" y="268">+</text>
+      <g class="ico" transform="translate(836 256)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g><g class="ico" transform="translate(865 256)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g><g class="ico" transform="translate(893 256)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
       <text class="muted" x="560" y="294">A touch screen, no hover: always shown</text>
     </g>
   </g>

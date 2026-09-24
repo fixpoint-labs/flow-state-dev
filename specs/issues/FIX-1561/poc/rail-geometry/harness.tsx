@@ -11,15 +11,26 @@
  *
  * `?variant=` picks today's component or the sketch in `sketch/`.
  */
-import { createElement as h } from "react";
+import { Fragment, createElement as h } from "react";
+import { Copy, Plus, RefreshCw } from "lucide-react";
+import { Button } from "../../../../../packages/devtool/src/react/components/ui/button";
 import { createRoot } from "react-dom/client";
 import { FlowNavigator as Today } from "../../../../../packages/react/src/components/flow-navigator/index";
-import { FlowNavigator as Sketch, setSketchReveal } from "./sketch/FlowNavigator.sketch";
+import { FlowNavigator as Sketch, setSketchBroken, setSketchReveal } from "./sketch/FlowNavigator.sketch";
 
-/** `?variant=today` (default) · `always` · `hover` — see README.md. */
-const variant = new URLSearchParams(location.search).get("variant") ?? "today";
+/**
+ * `?variant=today` (default) · `always` · `hover` — see README.md.
+ * `?long=1` adds an instance and a session whose labels overflow any rail;
+ * `?width=` sets the rail's width; `?break=1` is the narrow check's negative
+ * control (sketch only).
+ */
+const params = new URLSearchParams(location.search);
+const variant = params.get("variant") ?? "today";
 if (variant === "hover") setSketchReveal("hover");
+if (params.get("break") === "1") setSketchBroken(true);
 const FlowNavigator = (variant === "today" ? Today : Sketch) as typeof Today;
+const LONG = params.get("long") === "1";
+const WIDTH = Number(params.get("width") ?? 300);
 
 type Entry = { id: string; kind: string; cardinality: "singleton" | "collection" };
 
@@ -30,6 +41,9 @@ const flows: Entry[] = [
   { id: "support.grace", kind: "desk-clerk", cardinality: "collection" },
   { id: "digest", kind: "digest", cardinality: "singleton" },
   { id: "support.wren", kind: "followup-runner", cardinality: "collection" },
+  ...(LONG
+    ? [{ id: "support.escalations-overnight-weekend-queue", kind: "desk-clerk", cardinality: "collection" as const }]
+    : []),
 ];
 
 /** Sessions per leaf address. Engine-minted ids have no title, as in the screenshot. */
@@ -40,6 +54,9 @@ const sessions: Record<string, { id: string; title?: string }[]> = {
   "support.grace": [{ id: "sess_1790206151208_7b2a90cc1e40" }],
   digest: [{ id: "support.noticeboard" }],
   "support.wren": [{ id: "sess_1790206170444_e3a19b62f08d" }],
+  "support.escalations-overnight-weekend-queue": [
+    { id: "sess_1790206180000_5d0c11aa9e21", title: "Refund escalation for order 4417 and both linked chargebacks" },
+  ],
 };
 
 const client = {
@@ -60,28 +77,63 @@ const sessionClient = {
   },
 };
 
-const iconButton = (label: string, glyph: string) =>
+/*
+ * The DevTool's own affordances: its button, its icon set, and its class
+ * strings copied verbatim from `packages/devtool/.../flows/flow-rail.tsx`, so
+ * the icon sizes measured here are the ones the owner sees. `measure.mjs`
+ * compiles the Tailwind these classes need.
+ *
+ * Today every icon box is 16px: the Button's `[&_svg:not([class*='size-'])]`
+ * rule overrides the declared `h-3 w-3`. The boxes match, but the drawings
+ * don't: Copy's covers 20 of its 24 grid units, RefreshCw's 18, Plus's 14.
+ *
+ * `?icons=equal` applies the proposed host fix: each icon is sized so its
+ * drawing covers the same 11px, with one absolute stroke width, set inline so
+ * the Button's rule cannot override it. The hit area stays the 20px button.
+ */
+const equalIcons = new URLSearchParams(location.search).get("icons") === "equal";
+const DRAWN = 11;
+const EXTENT = new Map<unknown, number>([
+  [Copy, 20],
+  [RefreshCw, 18],
+  [Plus, 14],
+]);
+const icon = (Icon: typeof Plus) => {
+  if (!equalIcons) return h(Icon, { className: "h-3 w-3 text-slate-500" });
+  const box = (DRAWN * 24) / EXTENT.get(Icon)!;
+  return h(Icon, {
+    className: "text-slate-500",
+    style: { width: box, height: box },
+    strokeWidth: 1.5,
+    absoluteStrokeWidth: true,
+  });
+};
+
+const copyButton = (flowId: string) =>
   h(
-    "button",
+    Button,
     {
-      type: "button",
-      "aria-label": label,
-      title: label,
-      "data-host-action": label,
-      style: {
-        width: 20,
-        height: 20,
-        padding: 0,
-        border: "none",
-        background: "transparent",
-        color: "rgb(100 116 139)",
-        font: "inherit",
-        fontSize: 12,
-        cursor: "pointer",
-      },
+      variant: "ghost",
+      size: "sm",
+      className: "h-5 w-5 p-0",
+      title: `Copy instance ID: ${flowId}`,
+      "aria-label": `Copy instance ID ${flowId}`,
+      "data-host-action": "copy",
     },
-    glyph,
+    icon(Copy),
   );
+
+const toolbarButton = (title: string, Icon: typeof Plus) =>
+  h(
+    Button,
+    { variant: "ghost", size: "sm", className: "h-5 w-5 p-0", title, "data-host-action": title },
+    icon(Icon),
+  );
+
+const toolbarButtons = () => [
+  toolbarButton("Refresh sessions", RefreshCw),
+  toolbarButton("New session", Plus),
+];
 
 const THEME = {
   "--fsd-nav-fg": "rgb(226 232 240)",
@@ -90,7 +142,8 @@ const THEME = {
   "--fsd-nav-font-size": "13px",
   "--fsd-nav-note-font-size": "10px",
   "--fsd-nav-section-font-size": "10px",
-  width: 300,
+  "--fsd-nav-guide": "rgb(71 85 105)",
+  width: WIDTH,
   height: "100vh",
   background: "rgb(15 23 42)",
   fontFamily: "system-ui, sans-serif",
@@ -107,14 +160,13 @@ createRoot(document.getElementById("root")!).render(
       userId: "devuser",
       onSelectSession: () => {},
       slots: {
-        rowTrailing: (row) => (row.type === "instance" ? iconButton("Copy id", "⧉") : null),
+        rowTrailing: (row) => (row.type === "instance" ? copyButton(row.instance.id) : null),
+        // Today the DevTool wraps its two buttons in a right-aligned strip; the
+        // sketch drops the wrapper because the row does the aligning (PLAN S6).
         leafToolbar: () =>
-          h(
-            "div",
-            { style: { display: "flex", justifyContent: "flex-end", gap: 4, padding: "4px 0" } },
-            iconButton("Refresh sessions", "⟳"),
-            iconButton("New session", "+"),
-          ),
+          variant === "today"
+            ? h("div", { className: "flex items-center justify-end gap-1 py-1" }, ...toolbarButtons())
+            : h(Fragment, null, ...toolbarButtons()),
       },
     }),
   ),

@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 340" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Wireframe of the recommended rail, same tree and same scale as today's figure. Copy, refresh and new-session icons sit on their instance's own row, right-aligned, and digest's actions sit on the digest row. Labels line up in three columns at 24, 40 and 56 pixels, one 16 pixel step per level; support.noticeboard lines up with the instances, the empty note sits on the session column, and sessions show a short id. The same tree takes seven lines instead of ten.">
+<svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Wireframe of the recommended rail, same tree and same scale as today's figure. Copy, refresh and new-session icons sit on their instance's own row, right-aligned, all drawn at one size, and digest's actions sit on the digest row. A dashed tree line runs down from each open parent's arrow past its children. Labels line up in three columns at 24, 40 and 56 pixels; support.noticeboard lines up with the instances, the empty note sits on the session column, and sessions show a short id. The same tree takes seven lines instead of ten.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --code:#2C7C69; }
@@ -12,15 +12,15 @@
     .id    { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }
     .muted { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
     .lbl   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
-    .ico   { fill:none; stroke:var(--ink-3); stroke-width:1.2; }
-    .glyph { fill:var(--ink-3); font-family:system-ui,sans-serif; font-size:12px; text-anchor:middle; }
-    .guide { stroke:var(--code); stroke-width:1.2; stroke-dasharray:3 3; }
+    .ico   { fill:none; stroke:var(--ink-2); stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+    .tree  { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:3 3; }
+    .tick  { stroke:var(--code); stroke-width:1.4; }
     .num   { fill:var(--code); }
     .numt  { fill:var(--surface); font-family:system-ui,sans-serif; font-weight:700; font-size:11px; text-anchor:middle; }
     .note  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:13px; }
     .noteb { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:13px; font-weight:600; }
   </style>
-  <rect class="bg" width="940" height="340"/>
+  <rect class="bg" width="940" height="360"/>
   <text class="lbl" x="24" y="24">AFTER · RECOMMENDED · ACTIONS ALWAYS VISIBLE · X POSITIONS ×2</text>
 
   <g id="rail">
@@ -29,53 +29,63 @@
     <text class="t" x="40" y="86">▾</text><text class="t" x="72" y="86">agent</text>
     <g id="iris">
       <text class="t" x="72" y="116">▾</text><text class="t" x="104" y="116">support.iris</text>
-      <rect class="ico" x="429" y="103" width="11" height="11" rx="2"/><path class="ico" d="M425 107 v10 h10"/>
-      <text class="glyph" x="462" y="116">⟳</text><text class="glyph" x="492" y="116">+</text>
+      <g class="ico" transform="translate(425 104)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g>
+      <g class="ico" transform="translate(455 104)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g>
+      <g class="ico" transform="translate(485 104)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
     </g>
     <text class="id" x="136" y="146">sess_…3df102</text>
     <g id="otto">
       <text class="t" x="72" y="176">▾</text><text class="t" x="104" y="176">support.otto</text>
-      <rect class="ico" x="429" y="163" width="11" height="11" rx="2"/><path class="ico" d="M425 167 v10 h10"/>
-      <text class="glyph" x="462" y="176">⟳</text><text class="glyph" x="492" y="176">+</text>
+      <g class="ico" transform="translate(425 164)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g>
+      <g class="ico" transform="translate(455 164)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g>
+      <g class="ico" transform="translate(485 164)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
     </g>
     <text class="muted" x="136" y="206">No sessions yet</text>
     <g id="digest">
       <text class="t" x="40" y="236">▾</text><text class="t" x="72" y="236">digest</text>
-      <text class="glyph" x="462" y="236">⟳</text><text class="glyph" x="492" y="236">+</text>
+      <g class="ico" transform="translate(455 224)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g>
+      <g class="ico" transform="translate(485 224)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
     </g>
     <text class="t" x="104" y="266">support.noticeboard</text>
   </g>
 
-  <g id="guides">
-    <line class="guide" x1="71" y1="68" x2="71" y2="290"/>
-    <line class="guide" x1="103" y1="98" x2="103" y2="290"/>
-    <line class="guide" x1="135" y1="128" x2="135" y2="290"/>
-    <text class="lbl" x="60" y="304">24</text>
-    <text class="lbl" x="92" y="304">40</text>
-    <text class="lbl" x="124" y="304">56</text>
+  <g id="tree-lines">
+    <line class="tree" x1="45" y1="96" x2="45" y2="214"/>
+    <line class="tree" x1="77" y1="126" x2="77" y2="154"/>
+    <line class="tree" x1="77" y1="186" x2="77" y2="214"/>
+    <line class="tree" x1="45" y1="246" x2="45" y2="274"/>
+  </g>
+
+  <g id="columns">
+    <line class="tick" x1="72" y1="290" x2="72" y2="298"/><text class="lbl" x="66" y="310">24</text>
+    <line class="tick" x1="104" y1="290" x2="104" y2="298"/><text class="lbl" x="98" y="310">40</text>
+    <line class="tick" x1="136" y1="290" x2="136" y2="298"/><text class="lbl" x="130" y="310">56</text>
   </g>
 
   <g id="markers">
     <circle class="num" cx="404" cy="111" r="9"/><text class="numt" x="404" y="115">1</text>
     <circle class="num" cx="270" cy="261" r="9"/><text class="numt" x="270" y="265">2</text>
-    <circle class="num" cx="258" cy="201" r="9"/><text class="numt" x="258" y="205">3</text>
-    <circle class="num" cx="244" cy="141" r="9"/><text class="numt" x="244" y="145">4</text>
+    <circle class="num" cx="58" cy="160" r="9"/><text class="numt" x="58" y="164">3</text>
+    <circle class="num" cx="258" cy="201" r="9"/><text class="numt" x="258" y="205">4</text>
+    <circle class="num" cx="244" cy="141" r="9"/><text class="numt" x="244" y="145">5</text>
   </g>
 
   <g id="callouts">
-    <circle class="num" cx="566" cy="72" r="9"/><text class="numt" x="566" y="76">1</text>
-    <text class="noteb" x="584" y="76">Actions on the row, right-aligned</text>
-    <text class="note" x="584" y="96">Copy stays put. Refresh and new session join it</text>
-    <text class="note" x="584" y="114">while the leaf is open. No line of their own.</text>
-    <circle class="num" cx="566" cy="146" r="9"/><text class="numt" x="566" y="150">2</text>
-    <text class="noteb" x="584" y="150">One label column per level</text>
-    <text class="note" x="584" y="170">24, 40, 56: one 16px step, the width of the ▸.</text>
-    <text class="note" x="584" y="188">The channel lines up with the instances.</text>
-    <circle class="num" cx="566" cy="220" r="9"/><text class="numt" x="566" y="224">3</text>
-    <text class="noteb" x="584" y="224">Notes sit on the level they describe</text>
-    <circle class="num" cx="566" cy="258" r="9"/><text class="numt" x="566" y="262">4</text>
-    <text class="noteb" x="584" y="262">Short ids, full id on hover</text>
-    <text class="note" x="584" y="282">Titles and channel names show whole.</text>
-    <text class="lbl" x="584" y="312">SAME TREE · 10 LINES BECOME 7</text>
+    <circle class="num" cx="566" cy="64" r="9"/><text class="numt" x="566" y="68">1</text>
+    <text class="noteb" x="584" y="68">Actions on the row, one drawn size</text>
+    <text class="note" x="584" y="88">Copy, refresh and new session, right-aligned,</text>
+    <text class="note" x="584" y="106">in the same box. No line of their own.</text>
+    <circle class="num" cx="566" cy="136" r="9"/><text class="numt" x="566" y="140">2</text>
+    <text class="noteb" x="584" y="140">One label column per level</text>
+    <text class="note" x="584" y="160">24, 40, 56: one 16px step, the width of the ▸.</text>
+    <circle class="num" cx="566" cy="190" r="9"/><text class="numt" x="566" y="194">3</text>
+    <text class="noteb" x="584" y="194">Dashed tree lines</text>
+    <text class="note" x="584" y="214">From each open parent's arrow, down past its</text>
+    <text class="note" x="584" y="232">last child. Decoration only; nothing moves.</text>
+    <circle class="num" cx="566" cy="262" r="9"/><text class="numt" x="566" y="266">4</text>
+    <text class="noteb" x="584" y="266">Notes sit on the level they describe</text>
+    <circle class="num" cx="566" cy="296" r="9"/><text class="numt" x="566" y="300">5</text>
+    <text class="noteb" x="584" y="300">Short ids, full id on hover</text>
+    <text class="lbl" x="584" y="336">SAME TREE · 10 LINES BECOME 7</text>
   </g>
 </svg>

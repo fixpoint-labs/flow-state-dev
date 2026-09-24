@@ -11,6 +11,8 @@
  *   trailing area, mounted exactly while the leaf is open, with the row's
  *   button never remounted;
  * - an untitled engine-minted session id shows a short form, full id in `title`;
+ * - each open parent's child list carries one dashed tree line on the
+ *   parent's twisty centre, decorative and out of flow (`--fsd-nav-guide`);
  * - `setSketchReveal("hover")` hides a row's trailing area until the row is
  *   hovered, focused into, or selected (and always shows it without a hover
  *   pointer).
@@ -164,6 +166,16 @@ export function setSketchReveal(next: "always" | "hover"): void {
   reveal = next;
 }
 
+let broken = false;
+/**
+ * SKETCH: the negative control for the narrow-rail check. Drops the button's
+ * `minWidth: 0`, so a long label stops ellipsizing and pushes the row's
+ * actions out of the rail.
+ */
+export function setSketchBroken(next: boolean): void {
+  broken = next;
+}
+
 const ENGINE_ID = /^([a-z]+)_\d{13}_([0-9a-f]{6,})$/;
 /** SKETCH: `sess_1790206121611_42636c63df102` → `sess_…3df102`; any other id as is. */
 function sessionLabel(session: SessionSummary): string {
@@ -204,7 +216,7 @@ function rowButtonStyle(depth: number): Record<string, unknown> {
     flex: 1,
     // Without this a flex child refuses to shrink below its content, and the
     // label's ellipsis never engages.
-    minWidth: 0,
+    minWidth: broken ? undefined : 0,
     boxSizing: "border-box",
     padding: `4px 4px 4px ${8 + depth * INDENT_STEP}px`,
     border: "none",
@@ -299,6 +311,33 @@ function noteStyle(depth: number): Record<string, unknown> {
 }
 
 const bareList = { listStyle: "none", margin: 0, padding: 0 } as const;
+
+/** SKETCH: a parent's child list, positioned so its guide can hang in it. */
+const childList = { ...bareList, position: "relative" } as const;
+
+/**
+ * SKETCH: the dashed guide down a parent's children, on the centre of the
+ * parent's twisty column. Decorative: hidden from assistive technology, out
+ * of flow so nothing moves, and themed by `--fsd-nav-guide`. It runs the whole
+ * child list, so it passes an open child's own subtree and stops at the last
+ * line, a note included. No horizontal ticks.
+ */
+function guide(parentDepth: number): ReactNode {
+  return createElement("li", {
+    "aria-hidden": "true",
+    role: "presentation",
+    "data-nav-guide": "",
+    style: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      left: 8 + parentDepth * INDENT_STEP + TWISTY / 2 - 0.5,
+      width: 0,
+      borderLeft: "1px dashed var(--fsd-nav-guide, rgba(127, 127, 127, 0.45))",
+      pointerEvents: "none"
+    }
+  });
+}
 
 /** `▾`/`▸` as text, because the package ships no icon set. */
 function twisty(isOpen: boolean | null): ReactNode {
@@ -436,7 +475,9 @@ function LeafSessionList(props: {
 
   return createElement(
     "ul",
-    { "data-leaf": leaf.address, style: bareList },
+    { "data-leaf": leaf.address, style: childList },
+    // SKETCH: the guide for the row that opened this leaf, one level up.
+    guide(depth - 1),
     // SKETCH: no line of its own — the toolbar joins its leaf's row.
     toolbar === undefined || toolbar === null || actionsEl === null
       ? null
@@ -533,7 +574,8 @@ function KindRow(props: {
         })
       : createElement(
           "ul",
-          { style: bareList },
+          { style: childList },
+          guide(0),
           ...group.instances.map((instance) =>
             createElement(InstanceNode, {
               key: instance.id,

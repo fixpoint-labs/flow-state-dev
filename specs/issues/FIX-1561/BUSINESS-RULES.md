@@ -15,7 +15,7 @@ The row these rules describe is drawn in [the row, zoomed](figures/row-anatomy.s
 | BR-1 | A leaf is open: an instance of a collection kind, or a singleton kind's own row | The host's leaf actions draw in that row's trailing area, after the row's own trailing content, right-aligned | CI · VG |
 | BR-2 | Anything in the rail is drawn, open or not | No line holds only host actions. Every action shares a line with the row it acts on | VG · G1 |
 | BR-3 | A leaf is closed | Its leaf actions are not drawn. Its row's own trailing content, such as copy, still is | CI |
-| BR-4 | A label is longer than the rail allows | The label truncates with an ellipsis. Actions keep their size and stay on the row | VG, at the developer tool's width and at 256px |
+| BR-4 | A label is longer than the rail allows | The label truncates with an ellipsis. Actions keep their size and stay on the row, and nothing runs past the row or the rail | VG · G7, at 256px with an overlong instance and session title |
 | BR-5 | Someone clicks an action | The action runs. The row does not open, close or become selected | CI (existing) |
 | BR-6 | The rail renders any combination of slots | No button or link sits inside another | CI (existing, now covering the moved toolbar) |
 
@@ -28,6 +28,15 @@ The row these rules describe is drawn in [the row, zoomed](figures/row-anatomy.s
 | BR-9 | An action is an icon | It has an accessible name and a tooltip saying what it does. Kitchen-sink's + is "New session" | CI · VG by role and name |
 | BR-10 | *Only if the owner picks hover reveal.* A row's actions are hidden | They stay in the tab order, and focusing any of them shows them. A row that is selected, or on a screen with no hover, always shows them | CI |
 
+## Icons
+
+Owner decision [O1](DECISIONS.md#o1).
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-24 | A row shows more than one action, from either slot | Every icon is drawn at one size, with one stroke width, in one hit area | VG · G5, measured on the drawing, not its box |
+| BR-25 | A host's icon set draws some shapes larger inside the same box, as copy does beside plus | The host sizes each icon so the drawings match. A matching box is not enough | VG · G5 |
+
 ## Indentation
 
 | # | When | Then | Proved by |
@@ -37,6 +46,19 @@ The row these rules describe is drawn in [the row, zoomed](figures/row-anatomy.s
 | BR-13 | A singleton kind is open | Its sessions sit at the level a collection's instances would, on the same column | VG · G2 |
 | BR-14 | A dispatch run is listed under the session that started it | It sits one more step in, as today, and still only one | CI (existing) |
 | BR-15 | A leaf is loading, empty, or failed to load | The note or retry line starts on the label column of the rows it stands in for. A section-level note starts on the kind column | VG · G4 |
+
+## Tree lines
+
+Owner decision [O2](DECISIONS.md#o2). Drawn in [the recommended layout](figures/after.svg).
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-26 | A parent is open and shows anything under it | One dashed line runs down from the centre of its twisty column, past its children and any open grandchildren, and stops at the end of its last child line. No horizontal ticks | VG · G6 |
+| BR-27 | An open leaf shows only a note, such as "No sessions yet" | The line runs beside the note, so the note reads as inside the leaf | VG · G6 |
+| BR-28 | Lines are drawn, a parent opens or closes, or the row is selected | Nothing moves: lines take no space and are hidden from assistive technology. A selected row's highlight shows the line through it. A host colours them with `--fsd-nav-guide`, or hides them with `transparent` | CI · VG · G2, G6 |
+
+A dispatch run gets no line of its own. It is drawn one step in under the session that
+started it, as today, and that list is not a tree to navigate.
 
 ## Session labels
 
@@ -64,5 +86,6 @@ A host action that fails says so on its row. Nothing retries on its own.
 ## Acceptance criteria this issue owns
 
 On a real browser, the developer tool's rail and kitchen-sink's rail, fully expanded over
-seeded sessions that include an empty leaf and a singleton channel, pass G1 to G4, and the
-implementation PR shows both screenshots. The same check fails on the code this replaces.
+seeded sessions that include an empty leaf, a singleton channel and labels too long for the
+rail, pass G1 to G7, and the implementation PR shows both screenshots. The same check fails on
+the code this replaces.
