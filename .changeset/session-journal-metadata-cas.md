@@ -2,4 +2,4 @@
 "@flow-state-dev/engine": patch
 ---
 
-`ctx.session.appendJournal` and `ctx.session.setMetadata` no longer overwrite session state, or journal entries, that another request committed while this one was running. Both now re-read the session record and write it back at the version they read, retrying on a conflict; after the retries are spent they throw `ConcurrentModificationError`. Each call now also advances the session record's version (FIX-1376).
+`ctx.session.appendJournal` and `ctx.session.setMetadata` no longer overwrite session state or journal entries another request committed meanwhile: they now write at the version they read, retry on conflict, and throw `ConcurrentModificationError` once retries run out (FIX-1376).
