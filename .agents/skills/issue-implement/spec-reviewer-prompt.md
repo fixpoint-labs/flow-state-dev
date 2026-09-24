@@ -70,7 +70,8 @@ Agent tool (general-purpose):
       equivalence, a count, an identity, an absence, a verdict) — owes a
       **blast radius** in place of the failing output: what the implementer
       broke, which checks went red, and that nothing else did. A report
-      missing the third part is not evidence; FAIL it. Exceptions: pure
+      missing the third part is not evidence; FAIL it. So is one given per
+      leg rather than per assertion, or a claimed outcome with no assertion. Exceptions: pure
       characterization/parity work holding pre-existing tests green across
       a swap, and trivial mechanical edits with no behavioural surface —
       neither needs red evidence.
