@@ -12,8 +12,8 @@ Replaces the paragraph that lists the slots, and the `leafToolbar` paragraph aft
 > The package brings no CSS framework and no icon set. Style the rows by setting the
 > `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through
 > `slots`: `sectionHeader` beside a section label, `rowTrailing` at the end of any row,
-> `leafToolbar` at the end of an open leaf's row, and `emptySection` for a section whose kinds
-> the server does not have.
+> `leafToolbar` at the end of an open leaf's row, `leafDetail` on its own line under an open
+> leaf's row, and `emptySection` for a section whose kinds the server does not have.
 >
 > A leaf is a row whose sessions you can open: a singleton's row, or one copy under a
 > collection. While a leaf is open, `leafToolbar` is handed its session list, a `refresh` for
@@ -21,6 +21,10 @@ Replaces the paragraph that lists the slots, and the `leafToolbar` paragraph aft
 > row, after `rowTrailing`'s content. It has to fit on one line, so give it icon buttons with an
 > `aria-label` rather than text buttons. It is mounted when the leaf opens and unmounted when it
 > closes.
+>
+> Content that needs more room than a row, such as a short form, goes in `leafDetail`. It draws
+> on its own line directly under the open leaf's row, indented with the leaf, and shows only
+> while the leaf is open. The row itself stays one line.
 >
 > What `rowTrailing` and `leafToolbar` return shows when someone points at the row or moves
 > keyboard focus into it, and stays shown on the selected row and on touch screens, which have
@@ -60,7 +64,7 @@ Replaces the paragraph that lists the slots, and the `leafToolbar` paragraph aft
 "@flow-state-dev/devtool": patch
 ---
 
-`FlowNavigator` now draws an open leaf's `leafToolbar` on that leaf's own row, showing both row slots only when the row is hovered or focused (always on touch screens), so give them icon buttons with an `aria-label`, and it adds dashed tree lines you can colour with `--fsd-nav-guide` (FIX-1561).
+`FlowNavigator` now draws an open leaf's `leafToolbar` on that leaf's own row, showing both row slots only when the row is hovered or focused (always on touch screens), so give them icon buttons with an `aria-label`. It adds a `leafDetail` slot for content on its own line under an open leaf's row, and dashed tree lines you can colour with `--fsd-nav-guide` (FIX-1561).
 ```
 
 ## Publication ownership

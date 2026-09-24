@@ -25,3 +25,21 @@ shipped as written.
 | Owner review round 1: icon sizes + tree lines | Added [O1](DECISIONS.md#o1) (every row action drawn at one size) and [O2](DECISIONS.md#o2) (dashed tree lines), BR-24 – BR-28, S11, and G5 and G6. All four figures redrawn | The owner's review [comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2173#issuecomment-5821385718). The first draft's figures and POC also drew copy bigger than the other icons |
 | Review round 1 | G7 (long labels at 256px) proves BR-4; VG replaces an existing end-to-end scenario instead of adding one; the changeset is one sentence | Three review threads on the first draft |
 | Owner answer: hover reveal | The row-actions fork closed as [R1](DECISIONS.md#r1): actions shown on hover or keyboard focus, always on touch screens, space kept. BR-29 – BR-34, S5 made firm, G8 added, and G1, G5 and G7 measured with the row hovered. `after.svg` now shows the chosen reveal; `alt-hover.svg` became `reveal-states.svg`; the always-visible drawing stays at a15fe8e | The owner, in session, 2026-09-24: *"Only on hover. Screens look good"* |
+
+<a name="amendment-leafdetail"></a>
+## Amendment after merge: one new slot, `leafDetail`
+
+A new PR from `main`; the original review was
+[#2173](https://github.com/fixpoint-labs/flow-state-dev/pull/2173). FIX-1500's seat pane (a
+seat's kind, instructions and "Hire another" form) drew in `leafToolbar`. On D1's one-line row it
+overflowed the 256px rail, and VG failed. On 2026-09-24 the owner chose to keep a seat's details
+in the rail, under the seat ([FIX-1500 E4](../FIX-1500/DECISIONS.md#e4)). The epic coordinator
+had first taken the other option, a row icon opening the details outside the rail, as an
+engineering call. The owner redirected it.
+
+| What | Treatment | Why |
+|---|---|---|
+| [D1](DECISIONS.md#d1): `leafToolbar` draws on the row, and nothing full-width sits inside an open leaf | **Retained** for `leafToolbar`, and kept as written. **Amended** by [one exception](DECISIONS.md#d1-leafdetail): a new `leafDetail` slot draws on its own line under the open leaf's row | The seat pane needs a line of its own, and the owner kept it in the rail |
+| PLAN's guardrail: no new prop or slot | **Amended** to name the one exception | Same |
+| PLAN | **New** S12 and G9: the row stays one line, with the detail below it, within the rail's width | The check that would have caught the overflow |
+| DOCS | **Amended**: the README slot paragraphs and the changeset name `leafDetail` | A published slot is documented where the others are |

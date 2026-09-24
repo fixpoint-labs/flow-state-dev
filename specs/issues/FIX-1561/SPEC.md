@@ -14,7 +14,7 @@ Improvement · `react` + `devtool` + kitchen-sink · small · 1 PR · epic [FIX-
 | **looks for a session with no title** | Reads a 32-character engine id, clipped by the rail | Reads `sess_…3df102`, with the full id on hover. Titles and channel names show whole |
 | **starts a conversation in kitchen-sink** | Opens the Assistant row and clicks a full-width "New session" line under it | Points at or tabs to the Assistant row, then clicks its +. Same action, still named "New session". Until then it is hidden: the cost the owner accepted |
 | **uses the rail from the keyboard** | Tabs through the row, its actions, then a separate action line | The same controls in the same order, on one line; tabbing into a row shows its actions. Opening a row keeps focus on it |
-| **builds an app on `FlowNavigator`** | Their `leafToolbar` draws as a strip above the open leaf's sessions | It draws on the leaf's own row, so it has to fit one: a few icon buttons. The release note says so |
+| **builds an app on `FlowNavigator`** | Their `leafToolbar` draws as a strip above the open leaf's sessions | It draws on the leaf's own row, so it has to fit one: a few icon buttons. Content that needs more room goes in a new `leafDetail` slot, on its own line under the open row ([exception](DECISIONS.md#d1-leafdetail)). The release note says so |
 
 Found from a screenshot. Two checks already guard the rail's indentation and both pass on it:
 they compare padding values, not where the text lands.

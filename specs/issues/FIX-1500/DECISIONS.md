@@ -5,7 +5,8 @@
 What was considered, what was chosen, and what each locks in. Three decisions are the product
 owner's: the hire door ([D1](#d1)), the scope ([D5](#d5)), and the one organization kitchen-sink
 runs as ([D6](#d6)). A fourth, [H1](#h1), is the owner's too: a store written before PR-B is
-wiped, not upgraded. The rest are engineering calls,
+wiped, not upgraded. A fifth, [E4](#e4), is the owner's as well: a seat's details stay in the
+rail, in a new slot under the seat's row. The rest are engineering calls,
 recorded under [Decided, not asked](#decided-not-asked). The issue's Architect fences are locked
 input and are not reopened here: one navigator and depth from cardinality
 ([epic D8](../../epics/FIX-1455/DECISIONS.md#d8)), the organization from the principal or the
@@ -166,25 +167,6 @@ boot's reload all land in the same organization, and none of them has to be told
   **The user is a constant too.** A resolver other than the framework's default turns on ownership checks for
   every read route. Those routes carry no body, so a user read from the body breaks the session
   it just created (N7). Engineering call, taken by the epic coordinator at this amendment.
-<a name="e4"></a>
-- **E4 · A seat's details and "Hire another" open from the seat row's one action, outside the
-  rail row.** The seat row carries a single row action in `leafToolbar`: an icon button with an
-  `aria-label`. It opens the seat's kind, its instructions and the hire form in a popover or in
-  the right-hand panel, whichever [#2203](https://github.com/fixpoint-labs/flow-state-dev/pull/2203)
-  ships. **Why it moved:** PR-D ([#2193](https://github.com/fixpoint-labs/flow-state-dev/pull/2193))
-  drew the whole pane in `leafToolbar`. [FIX-1561 D1](../FIX-1561/DECISIONS.md#d1) then made that
-  slot draw on the leaf's own row, as actions shown on hover or focus, and its guardrail adds no
-  new slot. With the pane on it, a seat row overflowed the 256px rail and FIX-1561's goal checks
-  failed. What a seat shows, where each answer is read from, and VG's assertions are unchanged.
-  Only where the details open has moved. Kitchen-sink only, no package change, and reversible.
-  **Engineering call, taken by the epic coordinator on 2026-09-24. The owner can redirect it**;
-  the alternative, a navigator slot for content inside an open leaf, is priced under
-  [Considered and dropped](#considered-and-dropped).
-
-  *S8 as it was, kept for the record:* "A seat row opens `SeatDetail` with its kind. The hire
-  affordance calls S7, then refreshes the roster by a **specified, checked remount**." PR-D read
-  "opens" as the pane inside the open leaf's `leafToolbar`, which was true of that slot until
-  FIX-1561 D1.
 <a name="d4"></a>
 - **The rail refreshes its roster by a specified, checked remount, not by a new public API on the
   panel.** `RosterProps` carries no refresh, ref or version, so the alternative is not *use the
@@ -225,7 +207,7 @@ they lost and each card's *Instead of* names them, so neither restates the reaso
 | Keep the development organization and let every hire be refused ([D6](#d6)'s B) | Nothing is exposed, and nothing can be demonstrated: the spine's hire step fails in front of whoever runs it, and so does mara's |
 | Set D6's organization with a resolver on each flow instead of one on the host | Seats are minted from shared kinds that take no authentication option, so they would miss it, and their `discover` would read a different organization from the rail's hire ([E3](#e3)) |
 | Read the visitor's user from the request body, beside the constant organization | Read routes carry no body. The session is created for one user, the action arrives as another, and the action is refused ([E3](#e3), POC N7) |
-| Keep a seat's details inside the rail, through a new navigator slot for content in an open leaf ([E4](#e4)'s option B) | It re-opens [FIX-1561 D1](../FIX-1561/DECISIONS.md#d1), whose guardrail adds no new slot, and it adds published API on `react` for one host. The detail fits beside the rail with no package change |
+| Give a seat's row one icon action that opens its details and the hire form outside the rail, in a popover or the right-hand panel ([E4](#e4)'s option A) | The owner chose to keep a seat's details in the rail, under the seat ([E4](#e4), 2026-09-24). A was the epic coordinator's first call, taken as an engineering call and redirected by the owner |
 
 <a name="settled"></a>
 ## Settled
@@ -267,8 +249,9 @@ named-organization amendment. Each of its legs has a planted control that was se
   to be false. The owner chose a named organization, recorded as [D6](#d6), and a POC settled
   where it is set ([EVOLUTION.md → Named organization](EVOLUTION.md#amendment-named-org)).
 - **Fourth amendment after merge**: FIX-1561 put `leafToolbar` on the leaf's own row, so the
-  seat pane PR-D drew there no longer fit. A seat's details now open from the row's one action
-  ([E4](#e4), [EVOLUTION.md → Seat details](EVOLUTION.md#amendment-seat-pane)).
+  seat pane PR-D drew there no longer fit. The owner kept a seat's details in the rail, in a new
+  slot under the seat's row, recorded as [E4](#e4)
+  ([EVOLUTION.md → Seat details](EVOLUTION.md#amendment-seat-pane)).
 
 <a name="open"></a>
 ## Closed by the owner after merge
@@ -315,5 +298,37 @@ outside the team is relying on, such as a demo environment with a customer's thr
 still in the store, unread rather than deleted, so a migration can be written later. If we
 migrate and nobody wanted it, we have maintained a one-off script for nothing.
 
+<a name="e4"></a>
+### E4 · A seat's details stay in the rail, in a new slot under the seat's row
+
+**Decided by the product owner, 2026-09-24, choosing B.** PR-D
+([#2193](https://github.com/fixpoint-labs/flow-state-dev/pull/2193)) drew the seat pane, meaning
+`SeatDetail` and the "Hire another" form, in `FlowNavigator`'s `leafToolbar`.
+[FIX-1561 D1](../FIX-1561/DECISIONS.md#d1) then made that slot draw on the leaf's own row, as
+actions shown on hover or focus. With the pane on it, a seat row overflowed the 256px rail and
+FIX-1561's goal checks failed.
+
+So the navigator gets **one new optional slot for content inside an open leaf** (working name
+`leafDetail`). It draws on its own line directly under the open leaf's row, inside the rail,
+indented at the leaf's column. The seat pane moves into it, so a seat's details and "Hire
+another" still show in the rail, under the seat. The seat's row stays one line, and
+`leafToolbar` keeps FIX-1561 D1's meaning. What a seat shows, where each answer is read from,
+and VG's assertions are unchanged.
+
+**Locks in:** new published API on `@flow-state-dev/react`, released as a `minor`. It is
+FIX-1561's to ship, as a recorded exception to its no-new-slot guardrail
+([FIX-1561 → `leafDetail`](../FIX-1561/DECISIONS.md#d1-leafdetail)), and
+[#2203](https://github.com/fixpoint-labs/flow-state-dev/pull/2203) implements it. This issue
+changes no package itself.
+
+**Instead of** A: one icon action on the seat's row opening the details and the hire form in a
+popover or the right-hand panel. The epic coordinator first took A as an engineering call. The
+owner redirected it to B ([Considered and dropped](#considered-and-dropped)).
+
+*S8 as it was, kept for the record:* "A seat row opens `SeatDetail` with its kind. The hire
+affordance calls S7, then refreshes the roster by a **specified, checked remount**." PR-D read
+"opens" as the pane inside the open leaf's `leafToolbar`, which was true of that slot until
+FIX-1561 D1.
+
 The other forks this spec carried are closed as [D5](#d5) and [D6](#d6), by the product owner.
-H1 is closed above.
+H1 and E4 are closed above.
