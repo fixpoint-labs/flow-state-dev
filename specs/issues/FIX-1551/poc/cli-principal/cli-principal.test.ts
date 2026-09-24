@@ -12,10 +12,16 @@
  *       loaded FlowState exposes
  *   P3  the mechanism: the host's own normalized resolution, asked with a
  *       CLI-local context (no request, no credential), gives the same answer the
- *       app's router gives an equivalent HTTP caller, flow by flow
+ *       app's action route gives an equivalent HTTP caller, flow by flow
  *   P4  the outcome: a run under P3's principal leaves a session the app's own
  *       router reads back
  *   P5  a developer-named org stays out of the app's view
+ *   P6  today a custom network adapter can put `source: "cli"` on the context it
+ *       resolves, whatever source it declared (characterization, Codex finding 1)
+ *   P7  a mark only the in-process entry point can set closes P6 without
+ *       changing what the CLI's own ask gets
+ *   P8  today `--seed-session` rewrites a same-org, other-user session before the
+ *       run refuses it (characterization, Codex finding 2)
  */
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -32,8 +38,10 @@ import { executeRunCommand } from "../../src/commands/run";
 import {
   APP_ORG,
   APP_USER,
+  echoFlow,
   hostResolver,
   hostResolverEnabled,
+  makeAdapterApp,
   makeFlowState,
 } from "./fixture/app";
 
@@ -169,15 +177,35 @@ describe("FIX-1551 POC", () => {
   it("P3 · the CLI-local ask gives what HTTP gives, flow by flow", async () => {
     const { runtime, router } = await app();
     const rows: Record<string, { cli: string; http: string }> = {};
+    const statuses: Record<string, { cli: unknown; http: number }> = {};
     for (const flowId of ["echo", "admin", "digest"]) {
       const cli = await cliResolve(runtime, flowId);
-      const http = await call(router, "POST", `${flowId}/sessions`, { userId: CLI_USER });
+      // The action route the CLI's run stands in for, with the same action and input.
+      const http = await call(router, "POST", `${flowId}/actions/respond`, {
+        userId: CLI_USER,
+        input: { message: "hi" },
+      });
+      // Accepted: read who the request ran as from its own record. Refused: compare the
+      // host's refusal message, not the status — the action route maps the host's
+      // missing-user 401 to a legacy 400, and the CLI maps every refusal to one exit code.
+      let request: { userId?: string; orgId?: string } | undefined;
+      if (http.status < 300 && typeof http.json?.request?.id === "string") {
+        // The route answers 202 and runs the action detached; wait for its record.
+        for (let i = 0; i < 50 && request === undefined; i++) {
+          request = (await runtime.stores.request.get(http.json.request.id)) as typeof request;
+          if (request === undefined) await new Promise((r) => setTimeout(r, 10));
+        }
+      }
       rows[flowId] = {
-        cli: cli.ok ? `ok ${cli.userId}@${cli.orgId}` : `refused ${cli.status}`,
-        http: http.status < 300 ? `ok ${http.json?.session?.userId}@${http.json?.session?.orgId}` : `refused ${http.status}`,
+        cli: cli.ok ? `ok ${cli.userId}@${cli.orgId}` : `refused: ${cli.message}`,
+        http:
+          http.status < 300
+            ? `ok ${request?.userId}@${request?.orgId}`
+            : `refused: ${http.json?.error}`,
       };
+      statuses[flowId] = { cli: cli.ok ? "ok" : cli.status, http: http.status };
     }
-    console.log("[P3]", rows);
+    console.log("[P3]", rows, statuses);
     // Control POC_HOST_RESOLVER=none: echo is ok cli-user@__fsd_default_org__, red here.
     expect(rows.echo.cli).toBe(`ok ${APP_USER}@${APP_ORG}`);
     // Control POC_CLI_FALLBACK=1: admin and digest become ok@placeholder while HTTP refuses, red here.
@@ -230,4 +258,108 @@ describe("FIX-1551 POC", () => {
     // Control POC_NAMED_ORG=kitchen-sink names the app's own org: readable, red here.
     expect(read.status).not.toBe(200);
   });
+
+  it("P6 · today a custom network adapter can stamp `source: \"cli\"` (characterization)", async () => {
+    const stash: { host?: { resolvePrincipal: (ctx: PrincipalResolutionContext) => unknown } } = {};
+    const flowState = makeAdapterApp(stash as never);
+    open.push(flowState);
+    await flowState.getRouter(); // adapters get their bindings, and the shared host, here
+    const answer = await Promise.resolve(stash.host!.resolvePrincipal(networkContext()))
+      .then((p) => ({ ok: true as const, p }))
+      .catch((err: Error) => ({ ok: false as const, message: err.message }));
+    console.log("[P6]", { adapterSource: "custom-ws", contextSource: "cli", answer });
+    // The adapter declared `custom-ws`, not `cli`: refusing adapters that DECLARE `cli`
+    // would not stop this. Control POC_CLI_BRANCH=0 (no cli branch): refused, red here.
+    expect(answer).toEqual({ ok: true, p: { userId: "local-dev", orgId: "acme" } });
+  });
+
+  it("P7 · an in-process-only mark closes P6 and keeps the CLI's ask", async () => {
+    const stash: { host?: { resolvePrincipal: (ctx: PrincipalResolutionContext) => unknown } } = {};
+    const flowState = makeAdapterApp(stash as never);
+    open.push(flowState);
+    await flowState.getRouter();
+    const resolveGuarded = guard(stash.host!.resolvePrincipal);
+    const viaAdapter = await Promise.resolve(resolveGuarded(networkContext()))
+      .then((p) => `ok ${JSON.stringify(p)}`)
+      .catch((err: Error) => `refused: ${err.message}`);
+    const viaCli = await inProcessAsk(resolveGuarded, {
+      envelope: { flowKind: "echo", action: "respond", input: { message: "hi" } },
+    }).then((p) => `ok ${JSON.stringify(p)}`, (err: Error) => `refused: ${err.message}`);
+    console.log("[P7]", { viaAdapter, viaCli });
+    // Control POC_NO_GUARD=1: the adapter gets the local identity again, red here.
+    expect(viaAdapter).toMatch(/^refused: source "cli" is reserved/);
+    expect(viaCli).toBe(`ok ${JSON.stringify({ userId: "local-dev", orgId: "acme" })}`);
+  });
+
+  it("P8 · today --seed-session rewrites another user's session before the run is refused (characterization)", async () => {
+    const stores = createInMemoryStores();
+    const owner = process.env.POC_SEED_OWNER ?? "alice";
+    const flow = echoFlow(false);
+    const first = await runAction({
+      flow,
+      actionName: "respond",
+      input: { message: "hi" },
+      userId: owner,
+      orgId: DEFAULT_ORG_ID, // the org today's CLI runs in: same org, different user
+      sessionId: "alice-s",
+      stores,
+      runtimeConfig: {},
+    });
+    expect(first.error).toBeUndefined();
+    const before = await stores.session.get("alice-s");
+    const run = await executeRunCommand("echo", "respond", {
+      cwd: fixtureDir,
+      input: '{"message":"hi"}',
+      session: "alice-s",
+      seedSession: '{"tampered":true}',
+      stores,
+      quiet: true,
+    });
+    const after = await stores.session.get("alice-s");
+    console.log("[P8]", {
+      owner,
+      runSucceeded: run.success,
+      error: run.error?.message,
+      stateBefore: before?.state,
+      stateAfter: after?.state,
+    });
+    // Control POC_SEED_OWNER=cli-user (the caller owns it): the run succeeds, red here.
+    expect(run.success).toBe(false);
+    // The finding: the seed landed on a record the run then refused to touch.
+    expect(after?.state).toMatchObject({ tampered: true });
+  });
 });
+
+/** What a custom adapter builds for a network request: no credential, `source: "cli"`. */
+function networkContext(): PrincipalResolutionContext {
+  return {
+    source: "cli",
+    request: new Request("http://poc.local/ws", { method: "POST" }),
+    envelope: { flowKind: "echo", action: "respond", input: { message: "hi" } },
+  };
+}
+
+/**
+ * The mechanism sketch for S1. In the engine this is module-private state inside
+ * the host's resolution (never exported, never `Symbol.for`): the only code that
+ * can add to it is the in-process entry point, which network adapters never get.
+ */
+const inProcessAsks = new WeakSet<object>();
+
+function guard(resolve: (ctx: PrincipalResolutionContext) => unknown) {
+  return async (ctx: PrincipalResolutionContext) => {
+    if (process.env.POC_NO_GUARD !== "1" && ctx.source === "cli" && !inProcessAsks.has(ctx)) {
+      throw new Error('source "cli" is reserved for the in-process CLI ask');
+    }
+    return resolve(ctx);
+  };
+}
+
+async function inProcessAsk(
+  resolve: (ctx: PrincipalResolutionContext) => Promise<unknown>,
+  partial: Omit<PrincipalResolutionContext, "source">,
+) {
+  const ctx: PrincipalResolutionContext = { ...partial, source: "cli" };
+  inProcessAsks.add(ctx);
+  return resolve(ctx);
+}

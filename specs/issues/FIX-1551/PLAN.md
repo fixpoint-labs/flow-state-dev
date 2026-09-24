@@ -10,9 +10,9 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `engine` · a loaded app's answer to "who is this in-process caller" | Expose the host's **own** resolution (resolver precedence plus the organization rules, what the router's inbound host calls) to in-process callers of a loaded FlowState, and for a bare registry with no host resolver (the discovery path). No route, no transport, not on `runAction` (D1). Shape is yours | BR-1 – BR-6 |
+| S1 | `engine` · a loaded app's answer to "who is this in-process caller" | Expose the host's **own** resolution (resolver precedence plus the organization rules, what the router's inbound host calls) to in-process callers of a loaded FlowState, and for a bare registry with no host resolver (the discovery path). No route, no transport, not on `runAction` (D1). **Reserve `cli`:** the host's resolution refuses `source: "cli"` unless the context carries a mark only this entry point sets. Module-private, never exported, never `Symbol.for`, never on the adapter host. Shape is yours | BR-1 – BR-6 BR-18 |
 | S2 | `fsdev` · one identity step, shared by `run` and `chat` | Build the terminal's question (`source: "cli"`, the flow id, the action, the input, the local user as the caller-named `userId`, no request) and ask S1. Apply `--org` / `--user` (F1). Return the user, the organization, and where they came from, or a refusal naming the flow and `--org` (F2) | BR-5 BR-7 – BR-9 |
-| S3 | `fsdev` · `fsdev run` | Add `--org` and `--user`. Take one identity from S2 before any write, and use it for both `--seed-session` and the run. Record it in the capture under `command.principal`. One stderr line names the organization | BR-1 BR-2 BR-12 BR-14 |
+| S3 | `fsdev` · `fsdev run` | Add `--org` and `--user`. Take one identity from S2 before any write, and use it for both `--seed-session` and the run. **Before any seed write, check an existing session's flow, organization and user against that identity**, and refuse on a mismatch. Record it in the capture under `command.principal`. One stderr line names the organization | BR-1 BR-2 BR-11 BR-12 BR-14 |
 | S4 | `fsdev` · `fsdev chat` | Add `--org`. Each turn takes its identity from S2 for that turn's target. `/status` shows the organization. The session guard compares against the same identity | BR-13 |
 | S5 | `fsdev` · removals | **Remove** the two hard-coded placeholder organizations and the two `cli-user` literals in `fsdev run`, the placeholder in the chat turn, and their now-unused imports. Rewrite the comment above the seed path that says the CLI names the organization | — |
 | S6 | `goals/` · VG | One goal directory for VG, following `goals/_template`. Name it | acceptance |
@@ -37,12 +37,13 @@ flowchart TD
 |---|---|---|---|
 | V1 | S3 | **Model-free: the organization the CLI binds to.** A `fsdev` test over a fixture config whose host resolver names `dev` in `acme-dev`, run with `--capture` and `--seed-session`: `command.principal` is `dev` / `acme-dev` / `resolver`, and the stored session says `acme-dev`. After PR-B, on the real app: `cd apps/kitchen-sink && KITCHEN_SINK_TEST_MODE=1 STORE_TYPE=filesystem pnpm fsdev run chat-agent run -i '{"message":"hi","mode":"ask"}' -s fix1551-v1 --capture /tmp/fix1551-v1.json` records `devuser` / `kitchen-sink`, and `.fsdev/data/sessions/fix1551-v1.json` has `orgId: "kitchen-sink"` | No host resolver: the placeholder. S3 still hard-coded: the placeholder despite the resolver (POC P1) |
 | V2 | S3 | Every existing `run-command` and `chat` test passes unchanged, except assertions on the new capture field | — |
-| V3 | S2 | Promote POC P3 into the `fsdev` package: for a flow on the host resolver, a bearer-checking flow, a weekly-digest-shaped flow, and a resolver that returns the placeholder, the terminal's outcome equals the app router's outcome for a credential-less HTTP caller | Plant a fallback to the placeholder on refusal: two rows diverge (POC `POC_CLI_FALLBACK=1`) |
+| V3 | S2 | Promote POC P3 into the `fsdev` package: for a flow on the host resolver, a bearer-checking flow, a weekly-digest-shaped flow, and a resolver that returns the placeholder, the terminal's outcome equals the app's **action route** (`POST /<flow>/actions/<action>`, same action and input) for a credential-less HTTP caller: same user and organization, or the same refusal message. Status codes are not compared; the route maps a missing user to a legacy 400 | Plant a fallback to the placeholder on refusal: two rows diverge (POC `POC_CLI_FALLBACK=1`) |
 | V4 | S3 | A refused run leaves no session and no request record, exits 2, and its message names the flow and `--org` | Resolve after the seed write: the seeded record survives |
 | V5 | S2 | The flag matrix: `--org`, blank `--org`, `--org` set to the placeholder, `--user` alone, both. A flag-named organization's session is refused by the app's router as the app's user (POC P5) | Name the app's own organization: readable (POC `POC_NAMED_ORG=kitchen-sink`) |
-| V6 | S3 | `-s` naming a session bound to the placeholder, run against an app with a resolver: refused with both organizations named; the record is unchanged | — |
+| V6 | S3 | Three cases, each asserting the stored record is byte-for-byte unchanged afterwards: `-s` on a session in the placeholder organization against an app with a resolver; `--seed-session` on a **same-organization, different-user** session; `--seed-session` on another organization's session. Each is refused with the owner named | Seed before the check, as today: the record gains the seed (POC P8) |
 | V7 | S4 | `fsdev chat` over two targets, one refused: that turn fails, the next turn on the other target succeeds, `/status` shows the organization | — |
 | V8 | S3 S4 | `fsdev serve --org x` and `fsdev dev --org x` are unknown options. The existing node bind-guard tests and the FIX-1442 body-organization tests pass untouched. Nothing under the engine's routes calls S1 | Add `--org` to `serve`: the first assertion fails |
+| V9 | S1 | A custom adapter declaring its own source resolves a request with `source: "cli"` and no credential through the shared host: refused. The CLI's in-process ask still gets its answer (POC P7) | Drop the mark check: the adapter gets the CLI's local identity (POC P6, `POC_NO_GUARD=1`) |
 | VG | S6 | **Goal, real model, real path. Needs FIX-1500 PR-B merged.** `cd apps/kitchen-sink && STORE_TYPE=filesystem pnpm fsdev run support.mara run -i '{"message":"Hire support.pat, an agent seat that takes refunds."}' --capture /tmp/fix1551-vg.json`. Passes when the principal is `devuser` / `kitchen-sink` / `resolver`, mara's `hire` call succeeds, and **a zero-model read of the roster over the same store finds `support.pat` under `kitchen-sink` and nothing under the placeholder**. The store decides, not the transcript | On `main` today the same command ends in `Organization id "__fsd_default_org__"` (FIX-1527 VG's first form) |
 
 ## Pinned names
@@ -63,12 +64,13 @@ Everything else is yours to name, including S1's shape.
 | S1 is in-process only. No route, header, query or environment variable reaches it (BP-031) | It is the whole security argument. The terminal's question is safe because only the terminal can ask it |
 | `--org` and `--user` exist only on `run` and `chat` | Those run in the developer's process. `serve` and `dev` face a network |
 | Never fall back to the placeholder when a configured resolver refuses (F2) | The silent fallback is this issue's bug |
-| One identity per invocation, resolved before the first write | Two sites that could disagree are what the two hard-coded placeholders were |
+| One identity per invocation, resolved and **checked against an existing session** before the first write | Two sites that could disagree are what the two hard-coded placeholders were, and a seed that lands before the check corrupts the owner's state (P8) |
+| The in-process mark never leaves the engine's host module | A mark any code can set is a source string again (P6) |
 | Leave the run entry's organization check, the hired-seat pin, the resolver contract and the node bind guard as they are | FIX-1442, FIX-1529 and FIX-1503 own them. This issue calls them |
 
 ## Docs
 
-Reconcile [DOCS.md](DOCS.md) against the shipped flags and messages after V1 to V8 pass, then
+Reconcile [DOCS.md](DOCS.md) against the shipped flags and messages after V1 to V9 pass, then
 publish it. No new page.
 
 ## Sketch · pseudocode, illustrative
@@ -83,10 +85,11 @@ identity for (app, flow, action, input, flags):
     return { user: flags.user or answer.user, org: answer.org, from: answer.devDefault ? development-default : resolver }
 ```
 
-**POC:** [`poc/cli-principal/`](poc/cli-principal/README.md), five legs, each control seen red:
+**POC:** [`poc/cli-principal/`](poc/cli-principal/README.md), eight legs, each control seen red:
 today's split (P1), the host resolver unreachable from a loaded app, hence S1 (P2), the host's
-answer matching HTTP for every flow shape (P3), the result readable by the app (P4), a
-flag-named organization not (P5). The premise held; the approach did not move.
+answer matching the HTTP action route for every flow shape (P3), the result readable by the app
+(P4), a flag-named organization not (P5), a custom adapter stamping `cli` today (P6) and the
+in-process mark closing it (P7), and today's seed landing before the user check (P8).
 
 ## At implement time
 

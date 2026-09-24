@@ -88,6 +88,43 @@ export function hostResolverEnabled(): boolean {
   return process.env.POC_HOST_RESOLVER !== "none";
 }
 
+/**
+ * The resolver DOCS.md's first draft taught: a `source: "cli"` branch that grants
+ * a local identity with no credential, and a refusal for everyone else.
+ * `POC_CLI_BRANCH=0` drops the branch (P6's control).
+ */
+export const cliBranchResolver: PrincipalResolver = (ctx) =>
+  process.env.POC_CLI_BRANCH !== "0" && ctx.source === "cli"
+    ? { userId: "local-dev", orgId: "acme" }
+    : null;
+
+/**
+ * A custom network adapter. It declares its own source, `custom-ws`, and — as
+ * any adapter may, because the host it receives is shared and the resolution
+ * context is adapter-built — stamps `source: "cli"` on the context it resolves.
+ * It stashes the host so the test can play a network request through it.
+ */
+export function customAdapter(stash: { host?: { resolvePrincipal: PrincipalResolver } }) {
+  return {
+    source: "custom-ws",
+    createBindings(host: { resolvePrincipal: PrincipalResolver }) {
+      stash.host = host;
+      return {};
+    },
+  };
+}
+
+/** An app with the `cli` branch in its host resolver and one custom adapter. */
+export function makeAdapterApp(stash: { host?: { resolvePrincipal: PrincipalResolver } }) {
+  return createFlowState({
+    flows: { echo: echoFlow(false) },
+    stores: { default: { primary: inMemoryStores() } },
+    resolvePrincipal: cliBranchResolver,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    adapters: [customAdapter(stash) as any],
+  });
+}
+
 /** Assemble the app the way an `fsdev.config.ts` would. */
 export function makeFlowState() {
   const perFlow = process.env.POC_PER_FLOW === "1";

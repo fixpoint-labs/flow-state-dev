@@ -29,7 +29,7 @@ The cases, as rules. *Proved by* names the check in [PLAN.md](PLAN.md). Rules ma
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-11 | `--session` names a session bound to another organization or user, such as one created before this change | The engine's existing refusal, with both organizations named. The record is untouched and not migrated | V6 |
+| BR-11 | `--session` or `--seed-session` names a session bound to another organization **or another user in the same organization**, such as one created before this change | Refused before any write, with the owner named. The stored record is byte-for-byte unchanged, seed included. Nothing is migrated | V6 |
 | BR-12 | `--seed-session` creates a session | It is written under the identity the run uses. One identity per invocation | V1 |
 | BR-13 | `fsdev chat` sends a turn | Identity is resolved for that turn's target. A refused turn fails and the loop continues. `/status` shows the organization | V7 |
 | BR-14 | `--capture` is set | The capture records the user, the organization, and whether the resolver, a flag, or the development default chose them. Stdout NDJSON is unchanged | V1 |
@@ -39,8 +39,9 @@ The cases, as rules. *Proved by* names the check in [PLAN.md](PLAN.md). Rules ma
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-15 | Anyone runs `fsdev serve` or `fsdev dev` with `--org` or `--user` | Unknown option. No command that serves a network accepts an identity | V8 |
-| BR-16 | An HTTP caller sends an organization in a body, query or header, or tries to look like the CLI | Ignored, as today. HTTP requests are always `source: "http"`, and nothing in this change is mounted on a route | V8 |
+| BR-16 | An HTTP caller sends an organization in a body, query or header | Ignored, as today. HTTP requests are always `source: "http"` | V8 |
 | BR-17 | A network bind is requested for an app with a flow on the development default | Still refused by the node host, unchanged | V8 |
+| BR-18 | Any transport adapter, built-in or an app's own, resolves a request with `source: "cli"` | Refused, whatever source the adapter declared. Only the in-process entry point `fsdev` uses can produce that source, through a mark adapters never receive | V9 |
 
 ## Failure taxonomy
 

@@ -40,7 +40,8 @@ owner answered it: a developer-named organization that the app's own callers nev
 ```
 
 No app code changes. An app that wants the CLI to get a particular identity says so in its own
-resolver, which sees `source: "cli"` — a value no network transport can send.
+resolver, which sees `source: "cli"`. The framework reserves that value: only the in-process
+entry point the CLI uses can produce it, and a network adapter that stamps it is refused (POC P7).
 
 ## How the CLI gets its answer
 

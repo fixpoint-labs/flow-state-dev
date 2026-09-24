@@ -15,9 +15,10 @@ config loads, the CLI asks your app who it is, the same way your server asks for
 through your `resolvePrincipal`, the flow's own if it has one, otherwise the one you passed to
 `createFlowState`. Whatever that returns is who the run is.
 
-The CLI's question carries no request and no credential. Your resolver sees `source: "cli"`,
-which no network request can send, so a resolver that wants the terminal to get a particular
-identity can check for it:
+The CLI's question carries no request and no credential. Your resolver sees `source: "cli"`.
+The framework reserves that value for `fsdev run` and `fsdev chat`: a transport adapter that
+stamps it, including one you wrote, is refused before your resolver runs. So a resolver that
+wants the terminal to get a particular identity can check for it:
 
 ```ts title="fsdev.config.ts"
 resolvePrincipal: async (ctx) =>
@@ -102,6 +103,12 @@ through the same resolvers and organization rules as its HTTP routes.
 - Mara's "out of the box, mara can't hire" paragraph is FIX-1500 PR-B's to rewrite. If PR-B has
   landed first, add: "`pnpm fsdev run support.mara …` hires too; the CLI runs as the same
   `devuser` in `kitchen-sink`."
+
+## UPDATE · `docs/architecture/inbound-transports.md` · the `source` paragraph under "The envelope"
+
+Add after the known-set sentence: `cli` is reserved. Only the engine's in-process entry point
+produces it, for `fsdev run` and `fsdev chat`; the host refuses `source: "cli"` from any
+adapter, whatever source that adapter declares.
 
 ## Publication ownership
 
