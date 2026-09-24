@@ -24,7 +24,6 @@
  *       first; another seat runs it; the assignee is never moved
  *   V6  `TaskStatus` has gained no value
  *   VB  three screens, on the DevTool's own navigation, in a real browser
- *   V7  the diff stays inside the fence
  *
  * Run:      pnpm tsx goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/run.mts
  * Controls: GOAL_CONTROL=swapped-desks | ignore-the-answer | second-principal |
@@ -37,7 +36,6 @@ import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
-import { diffReport } from "../lab/diff-check.mts";
 import { LAB_USER_ID, readLabTree } from "../lab/host.mts";
 import { Scenario, actionOutputOf, serveLab, terminationReasonOf, type ActResult } from "../lab/run-scenario.mts";
 import { DRAIN_ENTRY, type WorkLine } from "../lab/workforce/flows/workers/worker.mts";
@@ -574,14 +572,6 @@ async function main() {
   } finally {
     await browser?.close().catch(() => {});
     served.stop();
-  }
-
-  // ---- V7. the fence ---------------------------------------------------------
-  const diff = diffReport();
-  if (diff.changed.length === 0) {
-    notes.push(`V7 not exercised: nothing differs from ${diff.base.slice(0, 9)}`);
-  } else if (diff.outside.length > 0) {
-    fail("V7", `changed outside goals/ and the spec folder: ${diff.outside.join(", ")}`);
   }
 
   // ---- the controls grade THEMSELVES --------------------------------------

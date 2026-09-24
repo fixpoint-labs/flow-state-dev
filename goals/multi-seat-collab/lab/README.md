@@ -41,7 +41,6 @@ against what the ledger holds.
 | `workforce/flows/piece.mts` | The row's input contract, the one piece both kinds share. Beside the kinds rather than among them, since a file under `flows/workers/` reads as a kind. |
 | `fsdev.config.mts` | Everything `fsdev dev` serves: one `FlowState` over SQLite, the app's desk → seat map, and the boot (`openLab`) before the first request. `GOAL_CONTROL` perturbs it here; `no-inventory` skips the inventory half of the boot. |
 | `run-scenario.mts` | The driver the check uses: spawns `fsdev dev` (optionally with `FSDEV_DEBUG_ENDPOINTS=0`), meets the channel the boot opened through `openChannels` over the HTTP session route, and files, drains and answers over the action route. Reports; grades nothing. |
-| `diff-check.mts` | The fence: every path this change touches is under `goals/` or the spec folder. |
 
 ## What the lab owns rather than the framework
 
