@@ -5,7 +5,11 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord, resolveRecordOwner } from "../context/record-owner";
 import type { ActiveRequestEntry, StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
-import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
+import {
+  DEFAULT_DETECTION_STALE_THRESHOLD_MS,
+  detectInterruptedRequests,
+  retryRequest
+} from "../execution/request-recovery";
 import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
@@ -372,9 +376,11 @@ export async function handleListActiveRequests(
  * next tick, which is why the DevTool calls it on mount and on every
  * session-list refresh, and a router that has turned both controls off.
  *
- * Optional query: `staleThresholdMs` (defaults to the host's configured
- * `staleSweepThresholdMs`, so an unparameterised poke sweeps on the same clock
- * the server's own sweeper uses).
+ * Optional query: `staleThresholdMs`. The host's configured
+ * `staleSweepThresholdMs` is both the default and the floor: a caller may widen
+ * the heartbeat window past it, never tighten it. A value at or below the floor
+ * (zero and negatives included) sweeps exactly as an unparameterised poke
+ * does. A value that is not a number is a 400.
  *
  * Response: `{ interrupted: [{ requestId, sessionId, flowKind, actionName, interruptedAt }] }`,
  * limited to records that this call actually transitioned to `interrupted`.
@@ -435,11 +441,29 @@ export async function handleCheckInterruptedRequests(
 
   const url = new URL(request.url);
   const thresholdParam = url.searchParams.get("staleThresholdMs");
-  const staleThresholdMs =
+  const requestedThresholdMs =
     thresholdParam === null ? undefined : Number.parseInt(thresholdParam, 10);
-  if (staleThresholdMs !== undefined && !Number.isFinite(staleThresholdMs)) {
+  if (requestedThresholdMs !== undefined && !Number.isFinite(requestedThresholdMs)) {
     return jsonResponse(400, { error: "staleThresholdMs must be a number" });
   }
+
+  // The HOST's resolved threshold is the floor, and the caller's value can only
+  // raise it. Reaping on a tighter clock than the server's own sweeper marks
+  // work `interrupted` that the deployment still considers healthy, and this
+  // route is reachable by whoever can name a `userId` on an open flow: a
+  // caller-chosen `0` would let a stranger interrupt another user's live runs.
+  // A wider window is harmless, because it only spares entries the server would
+  // have reaped. A value at or below the floor, zero and negatives included, is
+  // held to the floor rather than refused: it asks for no more than the
+  // server's own answer, which is what an unparameterised poke already gets.
+  // With no host threshold at all (a direct `createFlowRouteHandlers` caller),
+  // the floor is the sweep's own default.
+  const hostThresholdMs =
+    ctx.runtimeConfig.requestHost?.staleThresholdMs ?? DEFAULT_DETECTION_STALE_THRESHOLD_MS;
+  const staleThresholdMs =
+    requestedThresholdMs === undefined
+      ? hostThresholdMs
+      : Math.max(requestedThresholdMs, hostThresholdMs);
 
   // Reached anonymously in a mixed app, `ctx.anonymousFlowIds` carries only
   // the flows that nothing authenticates, so the sweep leaves an authenticated
@@ -447,19 +471,11 @@ export async function handleCheckInterruptedRequests(
   const swept = await detectInterruptedRequests({
     stores: ctx.stores,
     userId,
-    // Caller-tunable, but it falls back to the HOST's resolved threshold rather
-    // than to a private default of this route's own. A client that asks for no
-    // particular window is asking for the server's answer, and reaping on a
-    // tighter clock than the server's own sweeper marks work `interrupted` that
-    // the deployment still considers healthy — on a DevTool refresh, which is
-    // the most frequent caller of this endpoint.
-    staleThresholdMs:
-      staleThresholdMs ?? ctx.runtimeConfig.requestHost?.staleThresholdMs,
+    staleThresholdMs,
     // The host's configured grace, not the caller's: a client poking this
     // endpoint must not be able to reap a queued row the server's own sweeper
-    // is still waiting on. `staleThresholdMs` above stays caller-tunable
-    // because it only widens or narrows which heartbeat-governed entries are
-    // considered, never which queued ones survive.
+    // is still waiting on. Same rule as `staleThresholdMs` above, which the
+    // caller can only widen.
     queuedGraceMs: ctx.runtimeConfig.queuedGraceMs,
     ownedBy: sweepAdmits(ctx),
     logger: ctx.runtimeConfig.logger

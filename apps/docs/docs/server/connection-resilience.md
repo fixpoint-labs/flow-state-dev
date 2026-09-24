@@ -52,7 +52,7 @@ export const flowstate = createFlowState({
 });
 ```
 
-Both sweep bounds — `staleSweepThresholdMs` and `queuedGraceMs` — apply to every sweep: the periodic one, the pass that runs when the server starts, and the on-demand `check-interrupted` call. A restart reaps on the same clock the running server used.
+Both sweep bounds — `staleSweepThresholdMs` and `queuedGraceMs` — apply to every sweep: the periodic one, the pass that runs when the server starts, and the on-demand `check-interrupted` call. A restart reaps on the same clock the running server used. The on-demand call accepts a `staleThresholdMs` of its own, but it can only lengthen `staleSweepThresholdMs`, never shorten it, so no caller can get a request the server still considers alive marked `interrupted`.
 
 ### Queued jobs and `queuedGraceMs`
 

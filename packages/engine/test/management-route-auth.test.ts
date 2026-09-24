@@ -500,7 +500,10 @@ describe("user-addressed routes", () => {
     stores: StoreRegistry,
     init: { requestId: string; flowKind: string; userId: string }
   ): Promise<void> {
-    const now = Date.now();
+    // Heartbeat stopped well past the host's threshold, so the sweep would reap
+    // it on its default clock. What decides the outcome is the scoping under
+    // test, not the threshold, which a caller cannot tighten below the host's.
+    const stale = Date.now() - 10 * 60_000;
     await stores.activeRequests.register({
       requestId: init.requestId,
       sessionId: `s-${init.requestId}`,
@@ -509,8 +512,8 @@ describe("user-addressed routes", () => {
       userId: init.userId,
       orgId: init.orgId ?? "org_test",
       source: "http",
-      startedAt: now,
-      lastHeartbeatAt: now
+      startedAt: stale,
+      lastHeartbeatAt: stale
     });
   }
 
@@ -526,9 +529,7 @@ describe("user-addressed routes", () => {
       userId: "victim"
     });
 
-    const res = await call(router, "POST", ["users", "victim", "check-interrupted"], {
-      query: "staleThresholdMs=-1"
-    });
+    const res = await call(router, "POST", ["users", "victim", "check-interrupted"]);
     const body = (await res.json()) as { interrupted: { requestId: string }[] };
 
     expect(res.status).toBe(200);
@@ -549,9 +550,7 @@ describe("user-addressed routes", () => {
       userId: "alice"
     });
 
-    const res = await call(router, "POST", ["users", "alice", "check-interrupted"], {
-      query: "staleThresholdMs=-1"
-    });
+    const res = await call(router, "POST", ["users", "alice", "check-interrupted"]);
     const body = (await res.json()) as { interrupted: { requestId: string }[] };
 
     expect(res.status).toBe(200);
@@ -570,9 +569,7 @@ describe("user-addressed routes", () => {
       userId: "alice"
     });
 
-    const res = await call(router, "POST", ["users", "alice", "check-interrupted"], {
-      query: "staleThresholdMs=-1"
-    });
+    const res = await call(router, "POST", ["users", "alice", "check-interrupted"]);
     const body = (await res.json()) as { interrupted: { requestId: string }[] };
 
     expect(res.status).toBe(200);
@@ -589,7 +586,6 @@ describe("user-addressed routes", () => {
     });
 
     const res = await call(router, "POST", ["users", "victim", "check-interrupted"], {
-      query: "staleThresholdMs=-1",
       headers: { "x-verified-user": "attacker" }
     });
 
