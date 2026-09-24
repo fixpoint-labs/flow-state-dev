@@ -1859,6 +1859,19 @@ const GATE_SCHEMA = {
   },
 }
 
+// The issue at the far end of a relation edge. Its `state.type` is REQUIRED: a blocker outside the
+// epic's read has no entry of its own, so the edge is the only place its state can come from, and
+// without it `openBlockers` could never see an external prerequisite land.
+const FAR_ISSUE = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['identifier', 'state'],
+  properties: {
+    identifier: { type: 'string' },
+    state: { type: 'object', additionalProperties: false, required: ['type'], properties: { type: { type: 'string' } } },
+  },
+}
+
 const LINEAR_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -1893,7 +1906,7 @@ const LINEAR_SCHEMA = {
               required: ['type', 'relatedIssue'],
               properties: {
                 type: { type: 'string' },
-                relatedIssue: { type: 'object', additionalProperties: false, required: ['identifier'], properties: { identifier: { type: 'string' } } },
+                relatedIssue: FAR_ISSUE,
               },
             },
           },
@@ -1906,7 +1919,7 @@ const LINEAR_SCHEMA = {
               required: ['type', 'issue'],
               properties: {
                 type: { type: 'string' },
-                issue: { type: 'object', additionalProperties: false, required: ['identifier'], properties: { identifier: { type: 'string' } } },
+                issue: FAR_ISSUE,
               },
             },
           },
@@ -2354,8 +2367,8 @@ const [gate, linear, prScan] = await parallel([
     agent(
       `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's human identifier, current state name, its CATEGORY label, and its raw relation edges. Do not fetch them individually.\n` +
         `IDENTIFIERS, NEVER UUIDs — Linear has two ids per issue and only one is usable here. \`id\` and every relation node's \`identifier\` are the human identifier (\`LAB-152\`, \`FIX-150\` — Linear's \`identifier\` field), never a UUID \`id\` field: the wake matches your entries against the tracked ids above by identifier, so a UUID matches nothing and every issue reads as unobserved.\n` +
-        `RELATIONS, RAW — select \`relations{nodes{type relatedIssue{identifier}}} inverseRelations{nodes{type issue{identifier}}}\` on each issue and copy both \`nodes\` arrays VERBATIM into \`relations\` and \`inverseRelations\`: every node, every type, same keys, nothing filtered, reordered, moved between the two lists, or interpreted. Do not work out which issue blocks which — the wake computes that from these edges and cross-checks the two sides, so a derived or tidied list is worse than useless. An issue with no relations has \`[]\` for both.\n` +
-        `\`category\` is the label from the category label group, verbatim. A correct entry: {"id":"LAB-150","state":"Backlog","relations":[{"type":"related","relatedIssue":{"identifier":"LAB-160"}}],"inverseRelations":[{"type":"blocks","issue":{"identifier":"LAB-141"}}],"category":"Bug"}.\n` +
+        `RELATIONS, RAW — select \`relations{nodes{type relatedIssue{identifier state{type}}}} inverseRelations{nodes{type issue{identifier state{type}}}}\` on each issue and copy both \`nodes\` arrays VERBATIM into \`relations\` and \`inverseRelations\`: every node, every type, same keys, nothing filtered, reordered, moved between the two lists, or interpreted. Do not work out which issue blocks which — the wake computes that from these edges and cross-checks the two sides, so a derived or tidied list is worse than useless. An issue with no relations has \`[]\` for both.\n` +
+        `\`category\` is the label from the category label group, verbatim. A correct entry: {"id":"LAB-150","state":"Backlog","relations":[{"type":"related","relatedIssue":{"identifier":"LAB-160","state":{"type":"started"}}}],"inverseRelations":[{"type":"blocks","issue":{"identifier":"LAB-141","state":{"type":"completed"}}}],"category":"Bug"}.\n` +
         `The category is what ROUTES the issue: "Bug" sends it straight to implementation with no spec. Report the label verbatim; report null if the issue genuinely carries no category label, and never infer one from the title — an unread category safely keeps the issue on the spec route, an invented one can send a feature to implementation ungated.\n` +
         `The carried ids matter separately from the children: orchestration.md keeps an existing functional parent and links such a member to the epic with relates-to, so it is NEVER in the parent→children set. Omitting it froze its Linear state at whatever was last cached — a blocked member never noticed its prerequisite merge, and a cancelled one kept being dispatched.`,
       { label: 'linear:epic-children', phase: 'Refresh', schema: LINEAR_SCHEMA, agentType: 'scout' },
@@ -2622,9 +2635,10 @@ if (discovered.length) {
  * cannot correct it from `args` either. One over-reported id is enough to strand an issue for the
  * rest of the epic.
  *
- * Only blockers this epic can SEE are dropped — `linearById` covers the epic's children, so a
- * blocker outside the epic is unresolvable here and is kept. That fails closed: a stale block
- * costs a wake, an incorrectly cleared one runs an issue concurrently with its prerequisite.
+ * Only blockers this epic can SEE are dropped — `linearById` covers the epic's children, and a
+ * blocker outside the epic is seen only through the state type on the edge that names it, so it
+ * clears on `completed` and on nothing else. Anything unresolvable is kept. That fails closed: a
+ * stale block costs a wake, an incorrectly cleared one runs an issue concurrently with its prerequisite.
  *
  * FINISHED, not merely terminal. `TERMINAL_LINEAR` also matches cancelled / duplicate / dropped —
  * states where the work is GONE rather than done. Clearing those would admit a dependent whose
@@ -2637,10 +2651,24 @@ const cancelledBlockers = new Set()
 const unmergedBlockers = new Set()
 // Carried rows only — `discovered` rows are new this wake and carry no handles to fall back on.
 const carriedById = new Map(rows.map((r) => [r.id, r]))
+// A blocker OUTSIDE this read has no entry of its own, but every `blocks` edge that names it carries
+// its Linear state TYPE. Built from `linearIssues`, so a voided read (contradiction) contributes nothing.
+const edgeBlockerStateType = new Map(
+  linearIssues.flatMap((li) => (li.inverseRelations || []).filter((n) => n.type === 'blocks').map((n) => [n.issue.identifier, n.issue.state.type])),
+)
 const openBlockers = (ids) =>
   (ids || []).filter((b) => {
     const bs = linearById.get(b)
-    if (!bs) return true
+    if (!bs) {
+      // Only for a blocker this epic does not carry as a row: a carried one must clear through the
+      // live-merge check below, which a missing entry of its own (a dropped or UUID'd read) cannot reach
+      // — so it keeps blocking this wake, as before. Only `completed` clears; `canceled` never landed and
+      // keeps blocking, logged, the same rule applied to blockers inside the epic.
+      const edgeState = carriedById.has(b) ? undefined : edgeBlockerStateType.get(b)
+      if (edgeState === 'completed') return false
+      if (edgeState === 'canceled') cancelledBlockers.add(`${b} (canceled)`)
+      return true
+    }
     const state = (bs.state || '').trim()
     if (!TERMINAL_LINEAR.test(state)) return true
     if (CANCELLED_LINEAR.test(state)) {
