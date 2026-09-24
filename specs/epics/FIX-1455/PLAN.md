@@ -8,15 +8,12 @@ and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
 
 ## The path
 
-![The path: lanes against time with a now line at September 21, 2026, and a ship-fence band under the axis reading lifted. Two input lanes from other epics — the W3 floor FIX-1351, landed, and the W4 first cut FIX-1407, landed with two strays left in backlog. Then the five rows of the set, every one of them started. FIX-1429 carries a done bar: 1989 is merged and its goal check passes. The other four carry in-flight bars reaching the now line, each with a dashed line ahead of it because nothing beyond is dated — FIX-1475 implementing with its spec merged on 1990, FIX-1476 and FIX-1477 in spec development now that D8 is signed off, and FIX-1478 spec-approved on 1988 with implementation queued on the concurrency cap. FIX-1477's lane runs longest because it absorbs the other rows' surfaces as they land. The critical path, FIX-1429 to FIX-1475, is drawn in the gutter and is now satisfied](figures/path.svg)
+![The path: lanes against time with a now line at September 24, 2026, and a ship-fence band under the axis reading lifted. Two input lanes from other epics, the W3 floor FIX-1351 and the W4 first cut FIX-1407, both landed. Then seven lanes of the set, each bar running from the day Linear marked it started to the day it was done. Five are done: FIX-1429 on September 21, FIX-1476 on September 21, FIX-1475 and FIX-1478 on September 22, and FIX-1477 on September 23, the longest. Two joined the set on September 24 and are in flight, with a dashed line ahead because nothing beyond is dated: FIX-1500, the human path, started September 22 with PR-A and PR-C merged; FIX-1527, the manager seat, started September 23. A gutter mark links the two new lanes to the one open wait, the named-organization amendment that both need before a hire works in stock kitchen-sink. Below a divider, related lanes not in the set: FIX-1415, FIX-1430, FIX-1442, and FIX-1503, whose verified identity later replaces the named organization](figures/path.svg)
 
-One hard chain and three lanes beside it. FIX-1429 was the only row that gated another, and it
-gated the substance — nothing durable can be hired into a workforce the app never loads. It is
-**done**, so the chain is satisfied and **nothing in the set is held**: every lane has started.
-FIX-1475 is implementing against a workforce the app now serves, FIX-1476 and FIX-1477 entered
-spec the moment D8 was signed off, and FIX-1478's spec is approved with implementation waiting
-only on the concurrency cap. FIX-1477's lane still runs longest because it absorbs what the other
-two produce rather than waiting for it. The dependency shape itself is in
+The first five rows are done, and the chain that held them, FIX-1429 before FIX-1475, is
+satisfied. Two rows joined on 2026-09-24 under [ER-21](BUSINESS-RULES.md). **The one open wait
+is the named-organization amendment** ([D9](DECISIONS.md#d9)): FIX-1500's rail hire waits on it,
+and mara hires in stock kitchen-sink only once it lands. The dependency shape itself is in
 [the spec](SPEC.md#how-the-issues-flow-into-each-other); this adds time to it.
 
 ## What each issue entails
@@ -28,6 +25,8 @@ two produce rather than waiting for it. The dependency shape itself is in
 | **FIX-1476** channels and boards | spec → impl PR | The W4 first cut (boards, inventory) · D4 | The shipped pair — a channel kind as `flows/channels/<kind>.ts`, an instance as `CHANNEL.md` — written as real kind files, one ChannelFlow factory carrying the dm / topic / workstream demo channels — **how those three split across kinds and instances is bounded by what `defineChannelFlow` can build** ([recorded under D4](DECISIONS.md#custom-kind)) and is FIX-1476's spec to settle — boards as a bare name list, explicit per-seat drain, the unattended-board warning. **The convention and its data, not its rendering** — it ships no rail UI, and **its spec must say it consumes the D8 navigator rather than inventing a `ChannelList`** (D8, ER-7, ER-9) | The channels and boards FIX-1477 renders | Large |
 | **FIX-1477** UI package split | spec → impl PR | D5 · D7 · D8 · FIX-1475's roster · FIX-1476's channels and boards · the three shell figures below | Inline and resource-backed components as client-package exports; kitchen-sink consuming them; **every region of the rebuilt shell, both halves of the rail included** — among them **the one navigator**, parameterized by kind and deriving its depth from each flow's `cardinality` (D8), promoted out of the devtool rather than re-invented. Ships **tenant-scoped**; org-aware listing is blocked by [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) (below) and is not in this row | The rebuild people can copy | Large |
 | **FIX-1478** patterns shed | spec → impl PR | D6 · the five `@flow-state-dev/patterns` imports under `flows/chat-agent/` | An audit with a Workforce path or a *keep because…* per surface; the dependency dropped if no keep-notes remain; the six-control strip's justification gone | The freed control row | Small |
+| **FIX-1500** the human path | spec → impl PRs | FIX-1475's roster · FIX-1477's rail and panel · D9's named organization | `createSeatHireBlocks`, `SeatDetail`, and the rail's hire door on the rail's own flow: open a seat, read its kind, hire another, find it after a restart. Skills, channels and boards on a seat are [FIX-1539](https://linear.app/fixpoint-labs/issue/FIX-1539)'s | Goal 1's acceptance run · the export FIX-1527 composes | Large |
+| **FIX-1527** manager seat | spec → impl PR | FIX-1500's `createSeatHireBlocks` · FIX-1475's roster door · D9's named organization | `support.mara` on the existing `agent` kind, naming `hire` and `fire`, with seat-hire and discover composed onto that kind | A seat people copy that staffs a team | Small |
 
 **Inherited by FIX-1477 with the navigator — implementation notes, not decisions.** They are
 recorded here because they are the seam's foot-guns and its spec should not rediscover them.
@@ -68,8 +67,8 @@ three children, not one issue's layout call.
 
 ## Where it is
 
-Status lives in one place: [the set table in the spec](SPEC.md#the-set--as-of-2026-09-21). The
-lanes above carry the same state as a picture of time and are redrawn when it moves. The two
+Live status is Linear's. [The set table in the spec](SPEC.md#the-set--as-of-2026-09-24) is a
+dated snapshot, and the lanes above draw that same snapshot against time. The two
 inputs from other epics, re-verified 2026-09-21 and unchanged: **FIX-1351** (W3 floor) is Done,
 19 of 20 children Done and one Duplicate; **FIX-1407** (W4) is In Review with its first cut
 landed — FIX-1385, FIX-1405 and FIX-1408 all Done — carrying only FIX-1461 (docs) and FIX-1460
@@ -101,7 +100,10 @@ landed — FIX-1385, FIX-1405 and FIX-1408 all Done — carrying only FIX-1461 (
 4. **FIX-1478's audit completes** → either the dependency drops and the control strip's
    remaining rationale goes with it, or its keep-notes tell FIX-1477 which surfaces keep their
    controls.
-5. **ER-22, ER-23 and ER-24 all hold** → the epic wraps. ER-24 is in the gate deliberately:
+5. **The named-organization amendment merges** ([D9](DECISIONS.md#d9)) → FIX-1500's rail hire
+   (PR-D) can land, and mara hires inside stock kitchen-sink rather than only under an
+   authenticating app.
+6. **ER-22, ER-23 and ER-24 all hold, and FIX-1500 and FIX-1527 are Done** → the epic wraps. ER-24 is in the gate deliberately:
    it is the reusability claim the whole set rests on, and an epic that closed on ER-22 and
    ER-23 alone would have shipped a rebuild nobody outside kitchen-sink had ever imported.
 
@@ -133,6 +135,7 @@ identity everywhere*), which is a flat related issue with no sub-issues, not a p
 | `CHANNEL.md` frontmatter — the boards list | FIX-1476 and FIX-1477 | FIX-1476 owns the shape; FIX-1477 renders it. The UI never widens the frontmatter to make a column easier |
 | The rail's navigator, and the channel half of the rail | FIX-1477 builds and integrates; FIX-1476 supplies | One component for both halves, depth derived from `cardinality` (D8, ER-7). **FIX-1476 ships no rail UI** — not the navigator, not a channel-only list, not a temporary one. It ships the convention and the data; FIX-1477 renders them. **Its spec names the navigator as the consumed surface**; a `ChannelList` appearing in that spec is the seam being breached before a line is written. Splitting rendering across the two is what created a completion cycle in an earlier draft, and a second navigator is still the collision to expect — ER-9 forbids the `depth` prop that would paper over it |
 | The control strip above the prompt | FIX-1478 and FIX-1477 | FIX-1478 removes what patterns backed; FIX-1477 decides what, if anything, takes the row. Whichever lands second reads the other's notes rather than re-auditing |
+| `apps/kitchen-sink/workforce/hire.ts` — the seat-hire options | FIX-1500 and FIX-1527 | **FIX-1500 owns `createSeatHireBlocks` and the rail's hire door; FIX-1527 owns mara's composition on the `agent` kind.** Both read **one** seat-hire options object in `hire.ts`. A second object hires a different `agent` kind, which `hire.ts` already warns against. The named organization both hire into is [D9](DECISIONS.md#d9)'s, specced in their shared amendment |
 | The Workforce docs pages | FIX-1475, FIX-1476, FIX-1477 | All three will touch them. Whichever lands second links rather than repeats; the wrap's docs polish reconciles (ER-25) |
 
 ## Not children, deliberately
@@ -152,7 +155,7 @@ triage itself is PM/LM's — no child edits those five.
 
 ## Wrap
 
-When ER-22, ER-23 and ER-24 all hold: run the lessons pass over the set's review rounds, dispatch
+When ER-22, ER-23 and ER-24 all hold and every row is Done: run the lessons pass over the set's review rounds, dispatch
 the docs polish over the Workforce pages the children each edited in isolation (ER-25),
 **verify FIX-1372 against the rebuilt app** — the owner's triage kept it open — refresh the set
 table and the path one last time, and report completion in Linear against the retained set and
