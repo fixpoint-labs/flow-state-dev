@@ -349,7 +349,7 @@ describe("the fence around the cell", () => {
       "user",
       "alice",
       "notes/planted",
-      { state: { marker: "PLANTED-M" }, version: 1 } as never,
+      { marker: "PLANTED-M" },
       "any"
     );
     await h.runtime.stores.user.set(

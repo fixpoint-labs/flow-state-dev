@@ -207,6 +207,13 @@ the dispatch 404s and the schedule stays put until an operator attributes it.
 See [Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to)
 for the attribution recipe.
 
+On a [hired seat](/docs/workforce/durable-hire#who-can-reach-a-hired-seat), the
+helper reads the schedule row from the seat's own cell for that organization and
+person, and a row naming a different organization than the one that hired the
+seat returns `null`. A resolver you write by hand gets the seat's pin as
+`ctx.ownerPin` (`{ orgId, userId? }`, absent for any other flow); pass it to
+`resolveUserStorageKey` from `@flow-state-dev/engine` to read the same cell.
+
 ## The dispatch endpoint
 
 ```

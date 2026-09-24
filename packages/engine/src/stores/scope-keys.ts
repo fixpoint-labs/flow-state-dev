@@ -383,8 +383,9 @@ export function resolveResourceScopeId(
 /**
  * The distinct storage `scopeId`s a flow's user/org-scoped resources occupy
  * for a given identity — at most two (the shared bucket — the bare id, or a
- * hired seat's (org, person) cell — and the instance-namespaced bucket). Read paths consult every returned id and merge,
- * since a flow may declare both shared and isolated resources at one scope.
+ * hired seat's (org, person) cell — and the instance-namespaced bucket). Read
+ * paths consult every returned id and merge, since a flow may declare both
+ * shared and isolated resources at one scope.
  *
  * When the flow declares no resources at the scope, falls back to the
  * scope-record bucket (the flow-flag key) so callers still resolve a key.

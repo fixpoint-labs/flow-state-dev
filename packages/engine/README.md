@@ -579,7 +579,9 @@ resolveUserStorageKey(userId, { kind: flow.kind, isolateUserState: true });
 resolveUserStorageKey(userId, { id: flow.id, isolateUserState: true });
 ```
 
-`resolveOrgStorageKey`, `resolveResourceScopeId` and `resourceScopeIds` change the same way; their return type is unchanged. A `FlowInstance` satisfies the input as-is. Attributing an existing collection deployment's stored cells to the copy that owns them is one offline procedure — see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record); there is no runtime fallback to the old kind-keyed cell.
+`resolveOrgStorageKey` changes the same way; its return type is unchanged. A `FlowInstance` satisfies the input as-is. Attributing an existing collection deployment's stored cells to the copy that owns them is one offline procedure — see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record); there is no runtime fallback to the old kind-keyed cell.
+
+**Hired seats.** A flow registered with an owner `pin` (`register(flow, { pin: { orgId, userId? } })`) keeps its shared user data — the user record and every user-scoped resource that is not flow-isolated — per organization and person, at `<userId>:~org:<orgId>`, with the organization taken from the pin. `resolveUserStorageKey(userId, { id, isolateUserState, ownerPin })` returns that key when `ownerPin` is present, and the key it always returned when it is absent. Flow-isolated keys and org keys are the same for a pinned flow as for any other. Data a seat saved before this keying is not read for the seat; [Persistence](https://flow-state.dev/docs/persistence/overview#hired-seats-stored-data) has the optional offline copy step.
 
 See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
 
