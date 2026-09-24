@@ -270,8 +270,8 @@ describe("defineScheduleCollection", () => {
    *
    * What that leaves is not a key collision but an ATTRIBUTION one, and only
    * for a row whose state names no organization. `create` now stamps the
-   * state (`stampOrgId`), so that is a row written before the stamp, or one a
-   * `setState` stripped. The hook's own stamp lands on the index row and never
+   * state and updates keep it (`stampOrgId`), so that is a row written before
+   * the stamp. The hook's own stamp lands on the index row and never
    * on the state (it fires after the write commits), so such a state stays
    * org-less, `indexOrgFor` returns the writing execution's org every time,
    * and BR-19's disagreement check — the whole enforcement of the binding —

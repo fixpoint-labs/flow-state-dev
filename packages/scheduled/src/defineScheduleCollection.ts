@@ -42,9 +42,10 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
    *
    * Not a caller's choice. `create` writes the creating execution's own
    * (server-derived) organization here when the caller names none, which is
-   * what the ordinary `schedules.create({ cron, kind, enabled })` does. A row
-   * naming a DIFFERENT organization than the execution writing it is refused
-   * from the index below and therefore never fires. Optional on the schema
+   * what the ordinary `schedules.create({ cron, kind, enabled })` does, keeps
+   * it across an update that omits it, and throws on a create naming another.
+   * An update naming a DIFFERENT organization than the execution writing it is
+   * refused from the index below and therefore never fires. Optional on the schema
    * because callers omit it and because a pre-attribution row has to stay
    * readable to be diagnosed (BP-030).
    */
@@ -90,8 +91,9 @@ export function defineScheduleCollection(
     scope: "user" as const,
     stateSchema: SCHEDULE_RESOURCE_SCHEMA,
     // A row created without an organization records the one its run was
-    // admitted under, so the resolver has the stored target it requires and
-    // the schedule fires (BR-19, FIX-1545).
+    // admitted under, and a reschedule that omits it keeps it, so the resolver
+    // has the stored target it requires and the schedule fires (BR-19,
+    // FIX-1545).
     stampOrgId: true
   };
 
@@ -186,10 +188,10 @@ function stripPrefix(storageKey: string, pattern: string): string {
  *    contradict. `executionOrgId` is server-derived — the organization this
  *    execution was admitted under, never a caller-supplied field — so stamping
  *    it is the server recording what it already knows, not a guess about who
- *    the row belongs to. `create` now stamps the state itself (`stampOrgId`),
- *    so this is a row written before that, or one whose `setState` dropped the
- *    field: refusing it indexed nothing, returned success, and left the caller
- *    with a schedule that never fired.
+ *    the row belongs to. `create` now stamps the state itself and updates keep
+ *    it (`stampOrgId`), so this is a row written before that: refusing it
+ *    indexed nothing, returned success, and left the caller with a schedule
+ *    that never fired.
  *  - **Stores a DIFFERENT organization.** That is a claim, and it disagrees
  *    with the execution writing it. Indexing under either organization would
  *    point a standing instruction somewhere nobody authorised, so the row stays

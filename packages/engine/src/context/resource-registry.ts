@@ -406,6 +406,19 @@ async function runWriteMutator(
 }
 
 /**
+ * For a `stampOrgId` collection: a next state that names no `orgId` keeps the
+ * one `basis` (the stored row) carries. A named `orgId` passes through, and a
+ * {@link WRITE_UNCHANGED} refusal is left alone.
+ */
+function carryOrgId(
+  next: JsonObject | WriteUnchanged,
+  basis: JsonObject
+): JsonObject | WriteUnchanged {
+  if (next === WRITE_UNCHANGED || next.orgId != null || basis.orgId == null) return next;
+  return { ...next, orgId: basis.orgId };
+}
+
+/**
  * Outcome of a lazy on-demand load. `fetched` is true only when a real store
  * round-trip occurred (false for a cache short-circuit); `durationMs` is the
  * wall time of that round-trip. The lazy collection accessor wrapper uses this
@@ -1024,10 +1037,18 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       throw new Error(`Resource "${storageKey}" is read-only`);
     }
 
+    // `stampOrgId`: an update that omits the organization keeps the stored one
+    // (the CAS basis, so a retry carries the winner's). It never stamps the
+    // updating execution's — an update does not re-point the row.
+    const write: ResourceWriteMutator =
+      nsConfig.stampOrgId === true
+        ? async (current) => carryOrgId(await mutate(current), current)
+        : mutate;
+
     return options.mutateResourceKey(
       storageKey,
       (current) =>
-        runWriteMutator(mutate, nsConfig.stateSchema, storageKey, current, deferWriteError),
+        runWriteMutator(write, nsConfig.stateSchema, storageKey, current, deferWriteError),
       { seed }
     );
   };
@@ -1497,17 +1518,26 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           // Defaults declared on the schema (e.g. `.nullable().default(null)`,
           // per BP-023) fill missing fields on both the create and replace
           // branches, so callers only supply the non-nullable scaffold.
-          // `stampOrgId`: the org comes from the execution (server-derived),
-          // never the caller, and only fills an absent one (FIX-1545).
-          const seed: Partial<JsonObject> =
-            nsConfig.stampOrgId === true && initial?.orgId == null
-              ? { ...(initial ?? {}), orgId: options.orgId }
-              : (initial ?? {});
-          const state = parseResourceWriteState(
+          // `stampOrgId` (FIX-1545): the organization is the server's to write,
+          // never the caller's (BP-031). A caller may restate the execution's
+          // own; naming any other is refused rather than silently rewritten.
+          // Which org is written is decided against the row the write lands
+          // on, below.
+          const stampOrg = nsConfig.stampOrgId === true;
+          if (stampOrg && initial?.orgId != null && initial.orgId !== options.orgId) {
+            throw new Error(
+              `Resource "${storageKey}" names organization ${JSON.stringify(initial.orgId)}, ` +
+                `but this execution runs in organization ${JSON.stringify(options.orgId)}. ` +
+                `This collection records the creating execution's organization; omit orgId.`
+            );
+          }
+          const { orgId: _namedOrg, ...unstamped } = initial ?? {};
+          const parsed = parseResourceWriteState(
             nsConfig.stateSchema,
-            seed,
+            stampOrg ? unstamped : (initial ?? {}),
             storageKey
           );
+          let state = parsed;
 
           // Capture (cloned) prior state for the updated-hook before
           // persisting. Clone so hook code that caches or mutates `prev`
@@ -1529,7 +1559,17 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           try {
             await options.mutateResourceKey(
               storageKey,
-              () => state,
+              (current) => {
+                // A new instance takes the creating execution's (server-derived)
+                // org. A replace of a live one is an update: it keeps the stored
+                // org and never takes the replacing execution's. `current` is
+                // this context's view of the row the replace lands on.
+                if (stampOrg) {
+                  const kept = replaceIntent && current.orgId != null ? current.orgId : undefined;
+                  state = { ...parsed, orgId: kept ?? options.orgId };
+                }
+                return state;
+              },
               { intent: replaceIntent ? "replace" : "create" }
             );
           } catch (err) {

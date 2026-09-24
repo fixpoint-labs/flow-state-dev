@@ -61,6 +61,39 @@ const plan = handler({
   },
 });
 
+/**
+ * A later run moves the schedule the way the reference digest flow does: a full
+ * `setState` of the row, which again names no organization.
+ */
+const reschedule = handler({
+  name: "reschedule",
+  inputSchema: z.object({ key: z.string() }),
+  outputSchema: z.object({ ok: z.boolean() }),
+  resources: { schedules },
+  execute: async (input, ctx) => {
+    const row = await (ctx.resources.schedules as unknown as ResourceCollectionRef).get(input.key);
+    await row.setState({ cron: "30 17 * * FRI", kind: "ping", enabled: true });
+    return { ok: true };
+  },
+});
+
+/** A run that tries to name the organization the schedule fires into. */
+const planInto = handler({
+  name: "plan-into",
+  inputSchema: z.object({ key: z.string(), orgId: z.string() }),
+  outputSchema: z.object({ ok: z.boolean() }),
+  resources: { schedules },
+  execute: async (input, ctx) => {
+    await (ctx.resources.schedules as unknown as ResourceCollectionRef).create(input.key, {
+      orgId: input.orgId,
+      cron: "0 9 * * MON",
+      kind: "ping",
+      enabled: true,
+    });
+    return { ok: true };
+  },
+});
+
 const kind = (name: string, cardinality: "collection" | "singleton") =>
   defineFlow({
     kind: name,
@@ -78,7 +111,11 @@ const kind = (name: string, cardinality: "collection" | "singleton") =>
     schedules: {
       resolve: createResourceCollectionScheduleResolver({ collection: schedules, blocks: { ping } }),
     },
-    actions: { plan: { inputSchema: z.object({ key: z.string() }), block: plan } },
+    actions: {
+      plan: { inputSchema: z.object({ key: z.string() }), block: plan },
+      reschedule: { inputSchema: z.object({ key: z.string() }), block: reschedule },
+      planInto: { inputSchema: z.object({ key: z.string(), orgId: z.string() }), block: planInto },
+    },
   });
 
 const seatKind = kind("research", "collection");
@@ -105,17 +142,19 @@ function boot() {
       }),
       { params: { path: [flowId, "schedules", scheduleId, "dispatch"] } }
     );
-  /** Alice runs `plan` on `flow` while admitted under `orgId`. */
-  const runPlan = (flow: FlowInstance, key: string, orgId: string) =>
+  /** Alice runs `actionName` on `flow` while admitted under `orgId`. */
+  const run = (actionName: "plan" | "reschedule", flow: FlowInstance, key: string, orgId: string) =>
     runAction({
       flow,
-      actionName: "plan",
+      actionName,
       input: { key },
       userId: "alice",
       orgId,
       stores,
       runtimeConfig: { modelResolver: createMockModelResolver({}) },
     });
+  const runPlan = (flow: FlowInstance, key: string, orgId: string) => run("plan", flow, key, orgId);
+  const runReschedule = (flow: FlowInstance, key: string, orgId: string) => run("reschedule", flow, key, orgId);
   /**
    * A row no run of this flow created — a legacy or foreign one — written
    * where the collection keeps its rows.
@@ -131,7 +170,7 @@ function boot() {
     }
     return undefined;
   };
-  return { router, stores, register, dispatch, runPlan, plant, fired };
+  return { router, stores, register, dispatch, runPlan, runReschedule, plant, fired };
 }
 
 describe("a schedule created through the collection fires", () => {
@@ -148,6 +187,63 @@ describe("a schedule created through the collection fires", () => {
       const fired = await h.fired();
       expect(fired?.userId).toBe("alice");
       expect(fired?.orgId).toBe("globex");
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
+  it("still fires after a run reschedules it with a full setState", async () => {
+    const h = boot();
+    const app = h.register(appKind());
+    try {
+      await h.runPlan(app, "digest", "globex");
+      await h.runReschedule(app, "digest", "globex");
+      expect((await h.stores.resourceState.get("user", "alice", "schedules/digest"))?.state.cron).toBe("30 17 * * FRI");
+
+      const response = await h.dispatch("reminders", "alice/digest");
+      expect(response.status).toBe(202);
+      expect((await h.fired())?.orgId).toBe("globex");
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
+  it("keeps the creating organization when a run in another organization reschedules it", async () => {
+    const h = boot();
+    const app = h.register(appKind());
+    try {
+      // The same person, acting under initech, rewrites the row. The schedule
+      // stays bound to globex, which created it; an update never re-points it.
+      await h.runPlan(app, "digest", "globex");
+      await h.runReschedule(app, "digest", "initech");
+
+      const response = await h.dispatch("reminders", "alice/digest");
+      expect(response.status).toBe(202);
+      expect((await h.fired())?.orgId).toBe("globex");
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
+  it("cannot point a schedule it creates at another organization", async () => {
+    const h = boot();
+    const app = h.register(appKind());
+    try {
+      // A run in globex names initech. The create is refused, so nothing can
+      // later dispatch into initech on this run's say-so.
+      await runAction({
+        flow: app,
+        actionName: "planInto",
+        input: { key: "elsewhere", orgId: "initech" },
+        userId: "alice",
+        orgId: "globex",
+        stores: h.stores,
+        runtimeConfig: { modelResolver: createMockModelResolver({}) },
+      }).catch(() => undefined);
+      expect(await h.stores.resourceState.get("user", "alice", "schedules/elsewhere")).toBeUndefined();
+
+      const response = await h.dispatch("reminders", "alice/elsewhere");
+      expect(response.status).toBe(404);
     } finally {
       await disposeFlowApiRouter(h.router);
     }
