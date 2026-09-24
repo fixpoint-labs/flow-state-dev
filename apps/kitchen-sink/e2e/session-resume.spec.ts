@@ -2,10 +2,10 @@ import { test, expect, openKitchenSink, byTestId } from "./fixtures";
 
 test("session resume: prior messages return after page reload", async ({
   page,
-  userId,
+  sessionId,
   consoleErrors: _consoleErrors,
 }) => {
-  await openKitchenSink(page, userId);
+  await openKitchenSink(page, sessionId);
 
   await byTestId(page, "message-input").fill("[scenario:resume] remember me");
   await byTestId(page, "message-submit").click();

@@ -57,6 +57,7 @@ import { SessionItemsProvider } from "@/components/flow-state/session-items-cont
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
 import { CHANNEL_KINDS, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
+import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
@@ -131,28 +132,37 @@ export default function Page() {
 }
 
 function PageInner() {
-  // Under E2E test mode only, allow tests to mint a per-test userId via
-  // ?e2eUserId=... so parallel scenarios don't share session state. The env
-  // var is `NEXT_PUBLIC_*` so the gate evaluates on the client; production
-  // builds without it always use the hardcoded "devuser".
+  // Every caller of this app is the same user (`lib/kitchen-sink-principal.ts`),
+  // so parallel E2E scenarios cannot be kept apart by user. Under E2E test mode
+  // only, `?e2eSession=<id>` opens the assistant on that session instead of the
+  // user's most recent one, and each test brings its own. The env var is
+  // `NEXT_PUBLIC_*` so the gate evaluates on the client; production builds
+  // ignore the parameter.
   const searchParams = useSearchParams();
-  const e2eUserId =
+  const e2eSessionId =
     process.env.NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE === "1"
-      ? searchParams.get("e2eUserId")
+      ? searchParams.get("e2eSession")
       : null;
-  const userId = e2eUserId ?? "devuser";
   return (
-    <FlowProvider flowKind="chat-agent" userId={userId} baseUrl="" renderers={chatAgentRenderers}>
-      <KitchenSinkApp />
+    <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAgentRenderers}>
+      <KitchenSinkApp e2eSessionId={e2eSessionId} />
     </FlowProvider>
   );
 }
 
-function KitchenSinkApp() {
+function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
-  // page, never one per row.
-  const flow = useFlow({ autoCreateSession: true });
+  // page, never one per row. A test's own session, when one is named, is the
+  // only one selected: the hook neither picks the latest nor creates another.
+  const flow = useFlow({
+    autoCreateSession: e2eSessionId === null,
+    autoSelectSession: e2eSessionId === null,
+  });
+  const { selectSession } = flow;
+  useEffect(() => {
+    if (e2eSessionId !== null) selectSession(e2eSessionId);
+  }, [e2eSessionId, selectSession]);
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
   const [message, setMessage] = useState("");

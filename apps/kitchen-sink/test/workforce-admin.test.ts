@@ -8,7 +8,7 @@
  *   V9  — register the admin flow unconditionally: the fail-closed assertion
  *         passes trivially and a default deployment has a hire path.
  *   V10 — return the org from the envelope instead of the token: the resolver
- *         hands back "bravo" for acme's credential.
+ *         hands back the body's organization for the kitchen-sink credential.
  *   V11 — for the ordinary duplicate, remove the address pre-check: the second
  *         hire reaches the row write, and `create()` refuses it there instead
  *         of the refusal naming what holds the address.
@@ -26,10 +26,13 @@
  *         caller was told the hire failed.
  *   V15 — unregister by address alone: the foreign instance goes offline.
  *
- *   V9b — bind tokens with `byToken.set(token, org)`: with
- *         `acme:secret,bravo:secret` the later write silently wins, so acme's
- *         own credential resolves the BRAVO organization. Produced: the
- *         principal came back as `bravo`.
+ *   V9b — run the organization check before the collision check: with
+ *         `kitchen-sink:shared,elsewhere:shared` only `elsewhere`'s entry is
+ *         dropped, and a secret handed out for `elsewhere` administers
+ *         kitchen-sink. Produced: `adminCredentialConfigured()` read true.
+ *   V22 — drop the organization check: an `elsewhere` token resolves, to a
+ *         roster nothing in this app reads. Produced: the principal came back
+ *         as `elsewhere`.
  *   V11 (settings shadow) — spread the row as `{ flow, ...settings }` in
  *         `packages/workforce/src/roster/rows.ts`: the hire is ACCEPTED and
  *         registers an `agent` under a row that says `desk-clerk`, and the
@@ -59,11 +62,14 @@ import {
   type WorkforceRegistrar,
 } from "../lib/workforce-registrar";
 import workforceAdminFlow from "../flows/workforce-admin/flow";
+import { KITCHEN_SINK_ORG_ID } from "../lib/kitchen-sink-principal";
 
 const modelResolver = createMockModelResolver({ policy: "allow" });
 
-const ORG = "acme";
-const OTHER_ORG = "bravo";
+/** The one organization every admin token must name. */
+const ORG = KITCHEN_SINK_ORG_ID;
+/** Any other organization. A token may not name it; a row written under it before the pin may exist. */
+const OTHER_ORG = "elsewhere";
 
 /** A registrar stub that records what was admitted, and can be made to refuse. */
 function stubRegistrar(options: { refuse?: boolean } = {}) {
@@ -155,7 +161,7 @@ async function storedRow(
 }
 
 beforeEach(() => {
-  vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:tok-acme,${OTHER_ORG}:tok-bravo`);
+  vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:tok-ks`);
 });
 
 afterEach(() => {
@@ -193,15 +199,14 @@ describe("V9 · the admin door is fail-closed", () => {
 });
 
 describe("V9b · a token two organizations share resolves neither", () => {
-  it("drops BOTH bindings rather than letting config order pick a tenant", () => {
-    // `byToken.set(token, org)` keeps the last write and discards the first
-    // silently, so with a shared secret acme's own admin credential resolves
-    // the BRAVO organization — a cross-tenant authorization decision made by
-    // the order two entries are written in. Dropping only the later binding
-    // would still leave acme's operator holding a credential bravo knows.
+  it("drops EVERY binding for it, including kitchen-sink's", () => {
+    // Somebody was handed `shared` believing it administers `elsewhere`.
+    // Refusing only the `elsewhere` entry — which the organization check alone
+    // would do — leaves that credential administering kitchen-sink.
     //
-    // Red state: go back to `byToken.set(...)` per entry. `resolve` is defined
-    // (the map has one live entry), and the principal comes back as bravo.
+    // Red state: run the organization check before the collision check.
+    // `kitchen-sink:shared` survives and this reads true.
+    vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:shared,${OTHER_ORG}:shared`);
 
     // The only token collided, so nothing is configured — which is what makes
@@ -211,7 +216,8 @@ describe("V9b · a token two organizations share resolves neither", () => {
   });
 
   it("leaves an uncollided token working, and refuses the shared one", async () => {
-    vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:shared,${OTHER_ORG}:shared,carol:tok-carol`);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:shared,${OTHER_ORG}:shared,${ORG}:tok-ks`);
     const resolve = adminPrincipalResolver();
     expect(resolve).toBeDefined();
 
@@ -222,27 +228,55 @@ describe("V9b · a token two organizations share resolves neither", () => {
       envelope,
     });
 
-    // Neither org the shared secret named — not the first, not the last.
     expect(() => resolve!(withToken("shared"))).toThrow(/Invalid/i);
-    expect(await resolve!(withToken("tok-carol"))).toMatchObject({ orgId: "carol" });
+    expect(await resolve!(withToken("tok-ks"))).toMatchObject({ orgId: ORG });
   });
 
   it("treats one organization written twice under one token as one binding", () => {
     // Not a collision: it is the same binding spelled twice, and failing it
     // closed would refuse a config that names exactly one tenant.
-    vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:tok-acme,${ORG}:tok-acme`);
+    vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:tok-ks,${ORG}:tok-ks`);
     expect(adminCredentialConfigured()).toBe(true);
   });
 });
 
+describe("V22 · a token may name only kitchen-sink", () => {
+  const envelope = { flowKind: "workforce-admin", action: "fire", input: {} };
+  const withToken = (token: string) => ({
+    source: "http" as const,
+    request: new Request("http://x", { headers: { authorization: `Bearer ${token}` } }),
+    envelope,
+  });
+
+  it("refuses an entry naming another organization, names it in the log, and keeps the kitchen-sink one", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv(ADMIN_TOKENS_ENV, `${OTHER_ORG}:tok-x,${ORG}:tok-ks`);
+    const resolve = adminPrincipalResolver()!;
+
+    expect(() => resolve(withToken("tok-x"))).toThrow(/Invalid/i);
+    expect(await resolve(withToken("tok-ks"))).toEqual({ userId: "workforce-admin", orgId: ORG });
+    const log = logged.mock.calls.flat().join("\n");
+    expect(log).toMatch(/names organization "elsewhere"/);
+    // The token itself never reaches the log.
+    expect(log).not.toContain("tok-x");
+  });
+
+  it("leaves the admin flow unregistered when every entry names another organization", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv(ADMIN_TOKENS_ENV, `${OTHER_ORG}:tok-x`);
+    expect(adminCredentialConfigured()).toBe(false);
+    expect(adminPrincipalResolver()).toBeUndefined();
+  });
+});
+
 describe("V10 · the organization comes from the credential, never the body", () => {
-  it("returns acme for acme's token even when the request body names bravo", async () => {
+  it("returns kitchen-sink for its token even when the request body names another organization", async () => {
     const resolve = adminPrincipalResolver()!;
     const principal = await resolve({
       source: "http",
-      request: new Request("http://x", { headers: { authorization: "Bearer tok-acme" } }),
-      // The body says bravo. The stock resolver would believe it — that is the
-      // BP-031 hole this flow's own resolver exists to close.
+      request: new Request("http://x", { headers: { authorization: "Bearer tok-ks" } }),
+      // The body names another organization. The stock resolver would believe
+      // it — that is the BP-031 hole this flow's own resolver exists to close.
       envelope: {
         flowKind: "workforce-admin",
         action: "hire",
@@ -250,16 +284,6 @@ describe("V10 · the organization comes from the credential, never the body", ()
       },
     });
     expect(principal).toEqual({ userId: "workforce-admin", orgId: ORG });
-  });
-
-  it("returns bravo for bravo's token — so the mapping is read, not hard-coded", async () => {
-    const resolve = adminPrincipalResolver()!;
-    const principal = await resolve({
-      source: "http",
-      request: new Request("http://x", { headers: { authorization: "Bearer tok-bravo" } }),
-      envelope: { flowKind: "workforce-admin", action: "hire", input: {} },
-    });
-    expect(principal).toMatchObject({ orgId: OTHER_ORG });
   });
 });
 
@@ -288,7 +312,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     // "back".
     const row = await storedRow(stores, "support.ada");
     expect(row).toMatchObject({ flow: "desk-clerk", settings: { desk: "front" } });
-    expect(registrar.held.get("acme.~admin.support.ada")?.config).toMatchObject({ desk: "front" });
+    expect(registrar.held.get(`${ORG}.~admin.support.ada`)?.config).toMatchObject({ desk: "front" });
   });
 
   it("refuses when a ROW exists although no instance holds the address", async () => {
@@ -312,7 +336,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
       settings: { desk: "front" },
     });
     // The address is released; the row is left exactly where it was.
-    registrar.held.delete("acme.~admin.support.ada");
+    registrar.held.delete(`${ORG}.~admin.support.ada`);
     expect(await storedRow(stores, "support.ada")).toBeDefined();
 
     const second = await callAdmin(flow, stores, "hire", {
@@ -358,7 +382,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     });
     expectAccepted(hired);
 
-    expect(registrar.held.get("acme.~admin.support.ada")?.kind).toBe("desk-clerk");
+    expect(registrar.held.get(`${ORG}.~admin.support.ada`)?.kind).toBe("desk-clerk");
     expect(await storedRow(stores, "support.ada")).toMatchObject({ flow: "desk-clerk" });
 
     // The stored kind and the live kind agree, so the mismatch branch in
@@ -367,7 +391,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
     expectAccepted(fired);
     expect(fired.output).toMatchObject({ released: true });
-    expect(registrar.held.has("acme.~admin.support.ada")).toBe(false);
+    expect(registrar.held.has(`${ORG}.~admin.support.ada`)).toBe(false);
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
   });
 
@@ -406,40 +430,17 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     const flow = adminFlow();
     const stores = createInMemoryStores();
 
-    // `acme.support` + `ada` would spell `acme.support.ada` — the same address
-    // `acme` + `support.ada` spells. Exactly one of them can be addressable.
+    // `kitchen-sink.support` + `ada` would spell `kitchen-sink.support.ada` —
+    // the same address `kitchen-sink` + `support.ada` spells. Exactly one of
+    // them can be addressable.
     const result = await callAdmin(
       flow,
       stores,
       "hire",
       { seatId: "ada", flow: "desk-clerk", settings: {} },
-      "acme.support"
+      `${ORG}.support`
     );
     expectRefused(result, /Organization id/);
-  });
-
-  it("lets two organizations hold a seat of the same name", async () => {
-    const registrar = stubRegistrar();
-    const flow = adminFlow();
-    const stores = createInMemoryStores();
-
-    const one = await callAdmin(
-      flow, stores, "hire",
-      { seatId: "support.ada", flow: "desk-clerk", settings: { desk: "front" } },
-      ORG
-    );
-    const two = await callAdmin(
-      flow, stores, "hire",
-      { seatId: "support.ada", flow: "desk-clerk", settings: { desk: "back" } },
-      OTHER_ORG
-    );
-
-    expectAccepted(one);
-    expectAccepted(two);
-    expect(registrar.held.has("acme.~admin.support.ada")).toBe(true);
-    expect(registrar.held.has("bravo.~admin.support.ada")).toBe(true);
-    expect(await storedRow(stores, "support.ada", ORG)).toMatchObject({ settings: { desk: "front" } });
-    expect(await storedRow(stores, "support.ada", OTHER_ORG)).toMatchObject({ settings: { desk: "back" } });
   });
 });
 
@@ -507,8 +508,8 @@ describe("fire", () => {
     const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
 
     expectAccepted(fired);
-    expect(fired.output).toMatchObject({ address: "acme.~admin.support.ada", released: true });
-    expect(registrar.held.has("acme.~admin.support.ada")).toBe(false);
+    expect(fired.output).toMatchObject({ address: `${ORG}.~admin.support.ada`, released: true });
+    expect(registrar.held.has(`${ORG}.~admin.support.ada`)).toBe(false);
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
   });
 
@@ -522,6 +523,8 @@ describe("fire", () => {
   });
 
   it("refuses to fire another organization's seat, even by exact id", async () => {
+    // No token can name another organization any more, but a store written
+    // before that rule can hold one's rows. The lookup is still org-scoped.
     stubRegistrar();
     const flow = adminFlow();
     const stores = createInMemoryStores();
@@ -567,9 +570,9 @@ describe("fire", () => {
 
     // The restart: the address is released and re-taken by a seat this app did
     // NOT register from the row — same address, same kind.
-    workforceRegistrar.unregister("acme.~admin.support.ada");
-    registrar.held.set("acme.~admin.support.ada", {
-      id: "acme.~admin.support.ada",
+    workforceRegistrar.unregister(`${ORG}.~admin.support.ada`);
+    registrar.held.set(`${ORG}.~admin.support.ada`, {
+      id: `${ORG}.~admin.support.ada`,
       kind: "desk-clerk",
     } as unknown as FlowInstance);
 
@@ -579,7 +582,7 @@ describe("fire", () => {
     expect(fired.output).toMatchObject({ released: false });
     // The row goes — this org did hire it. The file-declared seat stays.
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
-    expect(registrar.held.has("acme.~admin.support.ada")).toBe(true);
+    expect(registrar.held.has(`${ORG}.~admin.support.ada`)).toBe(true);
   });
 
   it("V15 · leaves an address alone when a foreign instance holds it", async () => {
@@ -596,8 +599,8 @@ describe("fire", () => {
     // Something else takes the address between the hire and the fire. The
     // address grammar is supposed to make this unreachable; the check is here
     // because a guarantee nobody checks is how this goes wrong.
-    registrar.held.set("acme.~admin.support.ada", {
-      id: "acme.~admin.support.ada",
+    registrar.held.set(`${ORG}.~admin.support.ada`, {
+      id: `${ORG}.~admin.support.ada`,
       kind: "some-other-kind",
     } as unknown as FlowInstance);
 
@@ -608,7 +611,7 @@ describe("fire", () => {
     // The row goes; the foreign instance stays. Unregistering by address alone
     // would take it offline.
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
-    expect(registrar.held.get("acme.~admin.support.ada")?.kind).toBe("some-other-kind");
+    expect(registrar.held.get(`${ORG}.~admin.support.ada`)?.kind).toBe("some-other-kind");
   });
 });
 
@@ -631,17 +634,17 @@ describe("user-owned addresses", () => {
     const bob = await hired("bob");
     expectAccepted(alice);
     expectAccepted(bob);
-    expect(alice.output).toMatchObject({ address: "acme.~alice.research" });
-    expect(bob.output).toMatchObject({ address: "acme.~bob.research" });
-    expect(registrar.held.has("acme.~alice.research")).toBe(true);
-    expect(registrar.held.has("acme.~bob.research")).toBe(true);
+    expect(alice.output).toMatchObject({ address: `${ORG}.~alice.research` });
+    expect(bob.output).toMatchObject({ address: `${ORG}.~bob.research` });
+    expect(registrar.held.has(`${ORG}.~alice.research`)).toBe(true);
+    expect(registrar.held.has(`${ORG}.~bob.research`)).toBe(true);
   });
 });
 
 describe("roster registration", () => {
   it("refuses a hired seat that arrives with no pin, and does not mark it", () => {
     const registrar = stubRegistrar();
-    const seat = { id: "acme.research", kind: "desk-clerk" } as FlowInstance;
+    const seat = { id: `${ORG}.research`, kind: "desk-clerk" } as FlowInstance;
     expect(() => workforceRegistrar.registerFromRoster(seat)).toThrow(/owner pin/);
     expect(registrar.held.has(seat.id)).toBe(false);
     expect(workforceRegistrar.isFromRoster(seat.id)).toBe(false);
@@ -657,12 +660,12 @@ describe("roster registration", () => {
       kindAt: () => undefined,
     });
     const seat = {
-      id: "acme.x",
+      id: `${ORG}.x`,
       kind: "desk-clerk",
-      ownerPin: { orgId: "acme", userId: "alice" },
+      ownerPin: { orgId: ORG, userId: "alice" },
     } as FlowInstance;
     workforceRegistrar.registerFromRoster(seat);
-    expect(seen).toEqual([{ orgId: "acme", userId: "alice" }]);
-    expect(workforceRegistrar.isFromRoster("acme.x")).toBe(true);
+    expect(seen).toEqual([{ orgId: ORG, userId: "alice" }]);
+    expect(workforceRegistrar.isFromRoster(`${ORG}.x`)).toBe(true);
   });
 });

@@ -58,6 +58,8 @@ interface TreeSpec {
   membersByChannel: Record<string, string[]>;
   channelOwner: string;
   appUserId: string;
+  /** The organization the app resolves every caller to, where the boards' rows live. */
+  orgId: string;
 }
 
 const TREE = JSON.parse(process.env.GOAL_TREE ?? "") as TreeSpec;
@@ -324,9 +326,9 @@ for (const board of TREE.boardHolder.boards) {
 // Read straight out of the store rather than through an action: the board's
 // own report is generated on the path under test.
 {
-  const { DEFAULT_ORG_ID } = await import("@flow-state-dev/core");
+  const ORG_ID = TREE.orgId;
   const stores = (await flowstate.getRuntime()).stores;
-  out.orgId = DEFAULT_ORG_ID;
+  out.orgId = ORG_ID;
 
   const filed = filedFollowup.output as { boardId?: string; taskId?: string } | undefined;
   out.followupRowKey =
@@ -336,7 +338,7 @@ for (const board of TREE.boardHolder.boards) {
       ? null
       : ((await stores.resourceState.get(
           "org",
-          DEFAULT_ORG_ID,
+          ORG_ID,
           `${filed.boardId}/${filed.taskId}`,
         )) ?? null);
 
@@ -346,7 +348,7 @@ for (const board of TREE.boardHolder.boards) {
       ? null
       : ((await stores.resourceState.get(
           "org",
-          DEFAULT_ORG_ID,
+          ORG_ID,
           `support-followup-notes/${filed.taskId}`,
         )) ?? null);
 }
