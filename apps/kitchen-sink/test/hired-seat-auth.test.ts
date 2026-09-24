@@ -178,7 +178,7 @@ describe("a seat hired over workforce-admin, reached with the hiring credential"
   it("is listed in the catalog for the operator who hired it", async () => {
     const app = await bootWithHire();
 
-    const listed = await app.catalog(ACME);
+    const listed = await app.catalog(TOKEN);
 
     expect(listed.status).toBe(200);
     expect(listed.ids).toContain(SEAT);
@@ -212,11 +212,11 @@ describe("a seat hired over workforce-admin stays closed to everyone else", () =
   it("is left out of the catalog for another organization and for a caller with no credential", async () => {
     const app = await bootWithHire();
 
-    const bravo = await app.catalog(BRAVO);
+    const elsewhere = await app.catalog(OTHER_ORG_TOKEN);
     const anonymous = await app.catalog(undefined);
 
-    expect(bravo.status).toBe(200);
-    expect(bravo.ids).not.toContain(SEAT);
+    expect(elsewhere.status).toBe(200);
+    expect(elsewhere.ids).not.toContain(SEAT);
     // The catalog route stays exempt: no credential is a shorter list, not a 401.
     expect(anonymous.status).toBe(200);
     expect(anonymous.ids).not.toContain(SEAT);
