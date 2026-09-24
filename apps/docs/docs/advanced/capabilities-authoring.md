@@ -271,7 +271,7 @@ A block that uses `searchCapability` gets memory's resources installed too. Depe
 
 ## Dynamic `uses`
 
-`uses` arrays accept a function that returns capability refs at runtime: `(ctx) => CapabilityRef[]`. Static entries install resources at build time; dynamic entries add context and tools at runtime. Resources have to be declared statically somewhere — you can't conditionally install a new resource per request.
+`uses` arrays accept a function that returns capability refs at runtime: `(ctx) => CapabilityRef[]`. Static entries install resources at build time; dynamic entries add context, tools, and [`controlTools`](#tools-and-controltools) at runtime. Resources have to be declared statically somewhere — you can't conditionally install a new resource per request.
 
 The typical use is gating context or tools on session state without forking the block:
 

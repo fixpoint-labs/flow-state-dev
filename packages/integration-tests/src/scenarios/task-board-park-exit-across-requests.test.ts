@@ -71,8 +71,8 @@ function deferred(): Deferred {
  * Not through `board.capability`: the board does not exist until `taskBoard()`
  * returns, and the worker is an argument to that call, so the capability cannot
  * be in the worker's static `uses`. A dynamic `uses` does not help either —
- * dynamic entries contribute context and tools, not the `ctx.cap` accessor, so
- * `ctx.cap[BOARD]` reads `undefined` and the worker throws. (Measured: the task
+ * dynamic entries contribute context, tools and control tools, not the `ctx.cap`
+ * accessor, so `ctx.cap[BOARD]` reads `undefined` and the worker throws. (Measured: the task
  * settled `errored` with "Cannot read properties of undefined (reading
  * 'tasks')".)
  *

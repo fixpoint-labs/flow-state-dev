@@ -1455,7 +1455,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 900 330" role="img" aria-label="Capability resolution split into two phases: static entries resolved at build time contribute resources and state schemas, while both static and dynamic entries contribute context and tools at runtime; helper functions and the three generator singletons come from static entries only, resolving last-wins among capabilities with block-level config overriding all of them.">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Capability resolution split into two phases: static entries resolved at build time contribute resources and state schemas, while both static and dynamic entries contribute context, tools and control tools at runtime; helper functions and the three generator singletons come from static entries only, resolving last-wins among capabilities with block-level config overriding all of them.">
         <defs><marker id="a11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
 
         <rect class="n-acc" x="286" y="14" width="328" height="46" rx="4"/>
@@ -1495,10 +1495,10 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-s" x="502" y="282">model · providerOptions · caching</text>
         <text class="t-xs" x="502" y="295">STATIC ONLY · LAST CAP WINS · BLOCK-LEVEL BEATS ALL</text>
 
-        <text class="t-xs" x="450" y="322" text-anchor="middle" fill="var(--k-router)">A DYNAMIC ENTRY CONTRIBUTES CONTEXT AND TOOLS — NOTHING ELSE. fns, THE SINGLETONS AND RESOURCES ARE STATIC-ONLY</text>
+        <text class="t-xs" x="450" y="322" text-anchor="middle" fill="var(--k-router)">A DYNAMIC ENTRY CONTRIBUTES CONTEXT, TOOLS AND CONTROL TOOLS — NOTHING ELSE. fns, THE SINGLETONS AND RESOURCES ARE STATIC-ONLY</text>
       </svg>
     </div>
-    <figcaption><b>The two-phase split is the whole design.</b> Resources have to exist before the flow is built, so they can only come from static entries; context and tools are assembled per call, so a resolver can decide them from <code>ctx</code>. That constraint is what makes conditional capabilities possible without making resource wiring conditional. The asymmetry inside the runtime column is the easy thing to miss: <code>fns</code> is read off the block's statically resolved capability list when <code>ctx.cap</code> is built, and the generator singletons are settled during the build-time merge. A capability reachable only through a dynamic <code>uses</code> resolver contributes context and tools and nothing else &mdash; its <code>fns</code> never appear on <code>ctx.cap</code>, and its <code>model</code> is never installed.</figcaption>
+    <figcaption><b>The two-phase split is the whole design.</b> Resources have to exist before the flow is built, so they can only come from static entries; context, tools and control tools are assembled per call, so a resolver can decide them from <code>ctx</code>. That constraint is what makes conditional capabilities possible without making resource wiring conditional. The asymmetry inside the runtime column is the easy thing to miss: <code>fns</code> is read off the block's statically resolved capability list when <code>ctx.cap</code> is built, and the generator singletons are settled during the build-time merge. A capability reachable only through a dynamic <code>uses</code> resolver contributes context, tools and control tools and nothing else &mdash; its <code>fns</code> never appear on <code>ctx.cap</code>, and its <code>model</code> is never installed.</figcaption>
   </figure>
 
   <h4>Capabilities shipped in the framework</h4>

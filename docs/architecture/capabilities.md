@@ -183,9 +183,9 @@ generator({
 });
 ```
 
-### Constraint: dynamic entries contribute context and tools only
+### Constraint: dynamic entries contribute context, tools and control tools only
 
-Dynamic resolver functions are evaluated at runtime with `ctx`. Resources and state schemas must be flattened at build time, so capabilities returned from a dynamic `uses` function **only contribute context entries and tool entries** to the consuming block. Anything else (resources, state schemas, target schemas, singletons) is silently dropped from the dynamic path.
+Dynamic resolver functions are evaluated at runtime with `ctx`. Resources and state schemas must be flattened at build time, so capabilities returned from a dynamic `uses` function **only contribute context entries, tool entries and control-tool entries** (`controlTools`) to the consuming block. Anything else (resources, state schemas, target schemas, singletons) is silently dropped from the dynamic path.
 
 **Workaround:** declare the resources statically — either via a static `uses` entry that always activates, or directly on the consuming block's `resources:` slot. The trading-desk's phase-3 trader uses both patterns:
 
