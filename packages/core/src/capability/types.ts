@@ -578,9 +578,9 @@ export type CapabilityRef = DefinedCapability<any, any, any, any, any, any, any,
  * A single entry in a `uses` array — either a static capability reference
  * or a function that resolves capabilities at runtime based on context.
  *
- * Dynamic entries contribute context and tools only. Resources must be
- * declared statically (on the capability's required surface or elsewhere)
- * because they need to exist before block execution.
+ * Dynamic entries contribute context, tools and control tools only.
+ * Resources must be declared statically (on the capability's required surface
+ * or elsewhere) because they need to exist before block execution.
  */
 export type UsesEntry = CapabilityRef | ((ctx: BlockContext) => readonly CapabilityRef[]);
 
