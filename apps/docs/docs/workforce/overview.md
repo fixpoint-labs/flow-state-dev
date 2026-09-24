@@ -61,9 +61,9 @@ const seats = hireWorkforce(workers);
 flowRegistry.registerMany(seats);
 ```
 
-That worker file names no `flow:`, so it runs on the built-in worker kind. Its body becomes its instructions, and it talks.
+That worker file names no `flow:`, so it runs on the built-in worker kind. Its body becomes its instructions, and it talks. It has no memory: nothing it is told survives the turn.
 
-It has no memory — nothing it is told survives the turn. A **skill** is a folder of instructions a worker can pull into a turn; `readWorkforce` collects the ones sitting beside each worker in the tree, and the built-in reads them. Each organization keeps its own copy of a seat's skills. On the action call, send `userId` beside `input`. The skills read are the ones stored for the organization that caller already belongs to. The call does not name the organization. Every request runs in one. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
+A **skill** is a folder of instructions a worker can pull into a turn. `readWorkforce` collects the skills sitting beside each worker in the tree, and the built-in reads them. Each organization keeps its own copy of a seat's skills. On the action call, send `userId` beside `input`. The call never names the organization: every request runs in one, and [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers where it comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 
 To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
 
@@ -102,6 +102,7 @@ Workforce does not staff a task board. It does not replace flows, sessions, or r
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
 - [The built-in worker](./built-in-worker) — the `agent` kind a record with no `flow:` runs on: its settings, tools, skills, and memory.
 - [Channels](./channels) — several agents on one topic, with one durable transcript and nobody owning a row.
+- [Inventory](./inventory) — a record of every seat and channel registered in an organization, readable by a block.
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
 - [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.

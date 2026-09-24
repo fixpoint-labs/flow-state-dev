@@ -35,12 +35,6 @@ A flow with `cardinality: "singleton"` is one instance whose address is its kind
 
 There is no prop for choosing the depth. What the navigator shows always matches the flow, so a flow that changes its cardinality changes the navigator with it.
 
-## What it asks your server for
-
-The navigator reads the flow list once, however many sections you give it.
-
-Sessions are read only when a **leaf** opens: a singleton kind, or one instance of a collection kind. Opening a collection kind's row asks your server for nothing. A roster of two hundred seats costs one request to draw, and one more when somebody opens a seat.
-
 ## Showing the roster and the boards
 
 `Roster` and `BoardColumns` read collections through a session you pass in. That session's flow has to declare the collections, under the keys the components read:
@@ -102,6 +96,18 @@ Pass the same `resourceClient` to both, built once. Leave it out and each panel 
 
 A board column is grouped by task status. An empty board says so, and names the usual reason: no seat drains it.
 
+## Where each component reads from
+
+What a component reads decides what it shows and when it updates.
+
+**The session's item stream.** Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) draw on the items a session persisted. They update as items arrive, and they are still there after a reload.
+
+**A standing collection.** The roster and the board columns read a collection that lives outside any one session. Everyone in the organization sees the same rows. They read it when they mount and don't watch it afterwards, so a change somebody else makes appears the next time the panel mounts. To read again on demand, change the component's React `key`.
+
+**The flow list.** The navigator reads your server's flow list once, however many sections you give it. It reads a leaf's sessions only when that **leaf** opens: a singleton kind, or one instance of a collection kind. Opening a collection kind's row asks your server for nothing, so a roster of two hundred seats costs one request to draw, and one more when somebody opens a seat.
+
+Like the panels, the navigator reads on mount and doesn't watch. To re-read a leaf's sessions on demand, use the `leafToolbar` slot. It's handed a `refresh` function, and what it returns sits on the open leaf's own row, after any `rowTrailing` content.
+
 ## Styling it
 
 The components ship with no CSS framework and no icon set. Style them with:
@@ -122,20 +128,12 @@ A navigator row's actions, whatever its `rowTrailing` and `leafToolbar` slots re
 
 You can't pin an action visible. Only a session row's label is yours to set: it shows the session's title, which you set when you [create or update the session](../client/overview.md#session-management). Put a status your users need at a glance there. A session with no title shows its id, shortened when the server generated it; hover the row for the full id. Kind and instance rows always show the kind name and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
 
-## Where each component reads from
-
-What a component reads decides what it shows and when it updates.
-
-**The session's item stream.** Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) draw on the items a session persisted. They update as items arrive, and they are still there after a reload.
-
-**A standing collection.** The roster and the board columns read a collection that lives outside any one session. Everyone in the organization sees the same rows. They read it when they mount and don't watch it afterwards, so a change somebody else makes appears the next time the panel mounts. To read again on demand, change the component's React `key`.
-
-**The flow list.** The navigator reads your server's flow list, plus a session list for each leaf you open. Like the panels, it reads on mount and doesn't watch. To re-read a leaf's sessions on demand, use the `leafToolbar` slot. It's handed a `refresh` function, and what it returns sits on the open leaf's own row, after any `rowTrailing` content.
-
 ## Limits
 
 These components render; they don't administer. There is no create-channel or invite control.
 
-The roster and the board columns are scoped to an organization, because the collections behind them are. **The navigator is not.** It shows the flow kinds your server has registered, and under them the sessions the caller can see. There is no organization filter, so a hired seat appears under its kind whichever organization it was hired for. The flow list is also answered without authentication. Don't show a seats section to end users in a multi-organization deployment, because the flow list isn't organization-scoped.
+The roster and the board columns are scoped to an organization, because the collections behind them are. **The navigator is not.** It shows the flow kinds your server has registered, the instances under them, and the sessions the caller can see, with no organization filter. The flow list is answered without authentication, so every caller sees every flow your app defines and every seat declared in a `WORKER.md` file.
+
+A hired seat is listed only to callers who could open it, as [Who can reach a hired seat](./durable-hire.md#who-can-reach-a-hired-seat) describes. For a person's own hired seats to appear, the navigator's `client` has to carry their credential. In a multi-organization deployment, don't show end users a seats section that includes file-declared seats, because those are listed to everyone.
 
 **Which organization the panels show depends on how your deployment signs people in.** A session is bound to the organization of the identity your server resolves for the request. With no sign-in configured there is one organization, and you see it. If you hire into real organizations but have not given the app a way to identify the person viewing it, the panels read the default organization and come up empty. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers how a request gets its organization.

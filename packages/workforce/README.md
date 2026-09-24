@@ -1290,7 +1290,7 @@ const { seats, problems } = await reloadHiredSeats({
 });
 
 for (const seat of seats) {
-  try { flowstate.register(seat); }
+  try { flowstate.register(seat, { pin: seat.ownerPin }); }
   catch (err) { problems.push(`${seat.id} — ${String(err)}`); }
 }
 ```
@@ -1299,8 +1299,8 @@ A reloaded seat is addressed `<orgId>.<seatId>`, so two organizations can both h
 `support.ada`. The organization must be a single address segment — lowercase letters, digits and
 single hyphens, up to 64 characters, and no dots, since a dot is what joins the two halves.
 
-Register the seats yourself, one at a time, and fold any refusal into the same list. That is not
-ceremony: a seat the registry refuses is one seat that cannot run, not a reason for the app to fail
+Register the seats yourself, one at a time, with each seat's `ownerPin`, and fold any refusal into
+the same list. A seat the registry refuses is one seat that cannot run, not a reason for the app to fail
 to start, and admitting them as a batch would make it one.
 
 It takes the organizations rather than discovering them, because which organizations an app reloads
