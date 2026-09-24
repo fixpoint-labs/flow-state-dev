@@ -94,6 +94,19 @@ const planInto = handler({
   },
 });
 
+/** A later run that tries to move the schedule to another organization. */
+const moveInto = handler({
+  name: "move-into",
+  inputSchema: z.object({ key: z.string(), orgId: z.string() }),
+  outputSchema: z.object({ ok: z.boolean() }),
+  resources: { schedules },
+  execute: async (input, ctx) => {
+    const row = await (ctx.resources.schedules as unknown as ResourceCollectionRef).get(input.key);
+    await row.setState({ cron: "30 17 * * FRI", kind: "ping", enabled: true, orgId: input.orgId });
+    return { ok: true };
+  },
+});
+
 const kind = (name: string, cardinality: "collection" | "singleton") =>
   defineFlow({
     kind: name,
@@ -115,6 +128,7 @@ const kind = (name: string, cardinality: "collection" | "singleton") =>
       plan: { inputSchema: z.object({ key: z.string() }), block: plan },
       reschedule: { inputSchema: z.object({ key: z.string() }), block: reschedule },
       planInto: { inputSchema: z.object({ key: z.string(), orgId: z.string() }), block: planInto },
+      moveInto: { inputSchema: z.object({ key: z.string(), orgId: z.string() }), block: moveInto },
     },
   });
 
@@ -244,6 +258,34 @@ describe("a schedule created through the collection fires", () => {
 
       const response = await h.dispatch("reminders", "alice/elsewhere");
       expect(response.status).toBe(404);
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
+  it("cannot move a schedule to another organization with a later update", async () => {
+    const h = boot();
+    const app = h.register(appKind());
+    try {
+      await h.runPlan(app, "digest", "globex");
+      // A later run names initech on the row. The update is refused, and the
+      // row is left as it was.
+      await runAction({
+        flow: app,
+        actionName: "moveInto",
+        input: { key: "digest", orgId: "initech" },
+        userId: "alice",
+        orgId: "globex",
+        stores: h.stores,
+        runtimeConfig: { modelResolver: createMockModelResolver({}) },
+      }).catch(() => undefined);
+      const stored = (await h.stores.resourceState.get("user", "alice", "schedules/digest"))?.state;
+      expect(stored?.orgId).toBe("globex");
+      expect(stored?.cron).toBe("0 9 * * MON");
+
+      const response = await h.dispatch("reminders", "alice/digest");
+      expect(response.status).toBe(202);
+      expect((await h.fired())?.orgId).toBe("globex");
     } finally {
       await disposeFlowApiRouter(h.router);
     }

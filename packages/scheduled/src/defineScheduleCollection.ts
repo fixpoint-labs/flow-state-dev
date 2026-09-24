@@ -43,9 +43,11 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
    * Not a caller's choice. `create` writes the creating execution's own
    * (server-derived) organization here when the caller names none, which is
    * what the ordinary `schedules.create({ cron, kind, enabled })` does, keeps
-   * it across an update that omits it, and throws on a create naming another.
-   * An update naming a DIFFERENT organization than the execution writing it is
-   * refused from the index below and therefore never fires. Optional on the schema
+   * it across an update that omits it, and throws on any write naming another
+   * (`stampOrgId`). A row whose organization still disagrees with the
+   * execution writing it (a legacy row, or one written from another
+   * organization) is refused from the index below and therefore never fires.
+   * Optional on the schema
    * because callers omit it and because a pre-attribution row has to stay
    * readable to be diagnosed (BP-030).
    */

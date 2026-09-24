@@ -153,11 +153,12 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * when the caller's initial state names none — so the stored row carries a
    * server-derived org without the caller passing one. A create whose initial
    * state names a different `orgId` than the execution's throws; restating the
-   * execution's own is accepted. An
-   * update — `setState` / `updateState`, or `create(..., { replace: true })` of
-   * a live instance — whose new state names no `orgId` keeps the stored one; an
-   * update never takes the updating execution's org. The `stateSchema` must
-   * declare `orgId`, or the parse strips it. Default `false`.
+   * execution's own is accepted. On an update (every instance write, and
+   * `create(..., { replace: true })` of a live instance) the stored `orgId`
+   * stands: omitting it keeps it, restating it is accepted, and naming another
+   * throws without writing. A row with no stored `orgId` stays without one
+   * unless the update names the executing run's own; any other throws. The
+   * `stateSchema` must declare `orgId`, or the parse strips it. Default `false`.
    */
   stampOrgId?: boolean;
 

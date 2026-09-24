@@ -797,14 +797,55 @@ describe("stampOrgId", () => {
     expect(stored?.orgId).toBe(DEFAULT_ORG_ID);
   });
 
-  it("passes an explicitly named organization through an update", async () => {
+  it("refuses an update that names another organization than the stored one, on every write path", async () => {
     const { ctx, stores } = await createCtx({ stamped });
     const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
-    const ref = await ns.create("f", { label: "f" });
+    await ns.create("f", { label: "f" });
 
-    await ref.setState({ label: "f", orgId: "org-named" });
+    // The updater names its own org: still not the row's.
+    const other = await otherOrgCtx(stores);
+    const theirs = other.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+    const ref = await theirs.get("f");
+    const refused = `names organization "org-updater", but it belongs to organization "${DEFAULT_ORG_ID}"`;
+    await expect(ref.setState({ label: "moved", orgId: "org-updater" })).rejects.toThrow(refused);
+    await expect(ref.updateState((s) => ({ ...s, label: "moved", orgId: "org-updater" }))).rejects.toThrow(refused);
+    await expect(ref.patchState({ orgId: "org-updater" })).rejects.toThrow(refused);
+    await expect(theirs.upsert("f", { orgId: "org-updater" })).rejects.toThrow(refused);
+    await expect(theirs.create("f", { label: "moved", orgId: "org-updater" }, { replace: true })).rejects.toThrow(refused);
 
-    expect((await stores.resourceState.get("user", "user_1", "stamped/f"))?.state.orgId).toBe("org-named");
+    expect((await stores.resourceState.get("user", "user_1", "stamped/f"))?.state).toEqual({ label: "f", orgId: DEFAULT_ORG_ID });
+  });
+
+  it("accepts an update that restates the stored organization", async () => {
+    const { ctx, stores } = await createCtx({ stamped });
+    const ns = ctx.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>;
+    const ref = await ns.create("g", { label: "g" });
+
+    await ref.setState({ label: "g2", orgId: DEFAULT_ORG_ID });
+
+    expect((await stores.resourceState.get("user", "user_1", "stamped/g"))?.state).toEqual({ label: "g2", orgId: DEFAULT_ORG_ID });
+  });
+
+  it("on a legacy row with no organization, allows only none or the executing run's own", async () => {
+    const stores = createInMemoryStores();
+    await stores.resourceState.set("user", "user_1", "stamped/legacy", { label: "old" }, "any");
+    const other = await otherOrgCtx(stores);
+    const ref = await (other.resources.stamped as unknown as ResourceCollectionRef<{ orgId?: string; label: string }>).get("legacy");
+    const read = async () => (await stores.resourceState.get("user", "user_1", "stamped/legacy"))?.state;
+
+    // Omitting it does not back-stamp the row.
+    await ref.setState({ label: "still-legacy" });
+    expect(await read()).toEqual({ label: "still-legacy" });
+
+    // Any org but the executing run's is refused, and nothing is written.
+    await expect(ref.setState({ label: "x", orgId: "org-third" })).rejects.toThrow(
+      `names organization "org-third", but this execution runs in organization "org-updater"`
+    );
+    expect(await read()).toEqual({ label: "still-legacy" });
+
+    // The executing run may attribute it to itself.
+    await ref.setState({ label: "attributed", orgId: "org-updater" });
+    expect(await read()).toEqual({ label: "attributed", orgId: "org-updater" });
   });
 
   it("writes nothing when the collection does not ask for it", async () => {
