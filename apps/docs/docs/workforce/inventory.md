@@ -71,7 +71,7 @@ await openInventory(
 );
 ```
 
-Only one of the two names an organization. `openInventory` writes org-scoped storage directly and takes the organization as an argument; a channel session takes its organization from the caller.
+`openInventory` takes the organization as `orgId`. `openChannels` does not: each channel session takes its organization from the caller.
 
 The writer needs both halves:
 
@@ -106,7 +106,7 @@ const run = async (request) => {
 
 The door has to reject. One that hands back a failed run as an ordinary value reports every channel registered while writing nothing.
 
-It has to forward `source` as well. The seat write is a boot-only action: its request carries `source: "internal"`, and it runs only when that value reaches `runAction`. A door that drops `source` does not open the seat write to other callers. The seat write fails instead, and `problems` names it.
+It has to forward `source` as well. The seat write is a boot-only action: its request carries `source: "internal"`, and it runs only when that value reaches `runAction`. A door that drops `source` makes the seat write fail, and `problems` names it.
 
 ### Where the seat rows go
 

@@ -822,9 +822,9 @@ const seats = hireWorkforce(workers, {
 });
 ```
 
-`references` is what tells the hire which entries on a kind's map are references, and the limit on
-which seats reach which reference applies only to the entries it names. So once a kind holds references, the option is required: omit
-it, or pass a map that is missing one of them, and `hireWorkforce` throws, naming every reference it
+`references` is what tells the hire which entries on a kind's map are references, and
+[which seats reach which reference](#what-a-seat-reaches) is decided only for the entries it names.
+So once a kind holds references, the option is required: omit it, or pass a map that is missing one of them, and `hireWorkforce` throws, naming every reference it
 was not given. A kind that holds none needs no map. A ref passed in both maps is refused as well,
 naming it.
 
@@ -1485,8 +1485,8 @@ registered seat, one row per registered channel, and one row per seat-in-channel
 collections, so a block reads them the way it reads any other resource.
 
 **A row means registered, not open.** It records that a seat or channel was registered in this
-organization, not that the seat is working or the channel is open now. Nothing deletes a row: a
-fired seat keeps its row, and a channel's `members` are the ones it had when it registered.
+organization, not that the seat is working or the channel is open now. Nothing deletes a row, so a
+fired seat keeps its row. A channel's `members` are the ones it had when it registered.
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
@@ -1547,13 +1547,13 @@ builds, runs it through your runtime, and rejects when the action fails. A door 
 failed run as an ordinary value reports every channel registered while writing nothing. **It must
 also forward `request.source` into `runAction`'s own `source` option**
 (`runAction({ ..., source: request.source })`). The seat write's request carries
-`source: "internal"`, and it runs only when that value arrives. A door that drops it does not open
-the seat write to other callers; the seat write fails instead, named in `problems`.
+`source: "internal"`, and it runs only when that value arrives. A door that drops `source` makes
+the seat write fail, and `problems` names it.
 
 **Where the seat rows go.** Seat rows need a flow to run in, because a resource collection can only
 be written from inside a flow. `seatWriter: { flowKind: "channel" }` names the built-in, which
-carries the writer when built with `inventory: true`. Any flow that spreads `inventoryWriterActions`
-will do.
+carries the writer when built with `inventory: true`. Any flow carrying the writer actions will do
+(see [Custom channel kinds](#custom-channel-kinds)).
 
 **`registerSeatsInInventory` is a boot-only action.** Channel registration takes no input and
 builds its row from the channel's own open session, so it is safe as a public action. The seat
