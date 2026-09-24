@@ -5,8 +5,9 @@
 Kitchen-sink is a private app, and its README is where readers learn it. This issue adds no
 API, so `apps/docs` gets no change from it. The capability's own reference belongs to its
 package (see [PLAN.md → Follow-ups](PLAN.md#follow-ups)). The prose below is written for
-[F1](DECISIONS.md#f1) resolved as *ship now*. Under *hold*, the last paragraph of the new
-section goes and the rest waits with the code.
+[F1](DECISIONS.md#f1), which was answered *ship now*. **The last paragraph of the new section
+depends on FIX-1500's PR-B.** If PR-B has landed when this publishes, use the replacement below
+it instead.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · "The support team (`workforce/`)", the seat sentence
 
@@ -55,6 +56,15 @@ Replace the sentence that lists the seats:
 > nothing is written. Ask her anyway and the run stops with an error naming the organization. The wiring is the part to copy: in an
 > app whose seats run under an organization its callers verified, the same two files hire. The
 > app's tests show it working under a named organization.
+
+*(Replacement for the paragraph above, once FIX-1500's PR-B has landed.)*
+
+> **Mara hires in the app's one organization.** This app runs every request as the
+> `kitchen-sink` organization, so ask her in the browser and the seat is hired there, where the
+> rail and `discover` both see it. `fsdev run` is the exception: the CLI always runs as the
+> framework's development organization, whose name is not a legal seat address, so a hire from
+> the CLI is refused and nothing is written. Anyone who can open a deployed copy of this app can
+> ask her to hire or fire.
 
 ## Voice notes for the implementer
 

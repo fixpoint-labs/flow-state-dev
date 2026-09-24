@@ -9,10 +9,12 @@ the check the plan runs. A human reviews this page for a missed case; the plan t
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A session is created for the rail and no principal resolves | It binds to the default organization, and every read and every hire the rail makes uses that one | CI |
+| BR-1 | A session is created for the rail | It binds to the kitchen-sink organization ([D6](DECISIONS.md#d6)), and every read and every hire the rail makes uses that one | V18 |
 | BR-2 | A hire request arrives carrying an `orgId` in its body | The body's value is not consulted. The seat is hired into the session's organization | V11 · asserted on the seat landing in the session's org while the body named a *different* one — a check that only asserts the call succeeded proves nothing |
-| BR-3 | The rail hires a seat and then reads the roster | Both name one organization. There is no configuration in which the hire lands in one and the read in another | CI |
-| BR-4 | A deployment configures operator tokens | The rail still hires and reads the default organization; seats hired under a token are not in its list. Documented, not an error state | Docs + CI (BR-1) |
+| BR-3 | The rail hires a seat and then reads the roster | Both name one organization. There is no configuration in which the hire lands in one and the read in another | V18 |
+| BR-4 | A deployment configures operator tokens | The rail still hires and reads the kitchen-sink organization. A token bound to that organization can fire the rail's hires. Seats a token hires are user-owned and are not in the rail's list, and a token bound to another organization administers seats the rail never shows. Documented, not an error state | Docs + V18 |
+| BR-33 | Any request reaches kitchen-sink: the rail, a seat, a channel | It runs as the one kitchen-sink organization and the one `devuser` user. Nothing on the request, whether a body field, a query, a header or a cookie, can name another. Anyone who can open the app can therefore hire through the rail, and through mara can hire and fire | V18 · red state is removing the resolver, which puts every request back in the development organization, where every hire is refused |
+| BR-34 | The first boot after this change runs over a store written before it | The boot completes. Records written under the development organization are not served to the kitchen-sink organization | V19 · red state is the unhandled channel open, `Request failed (403)` |
 
 ## Opening a seat
 
@@ -53,7 +55,9 @@ the check the plan runs. A human reviews this page for a missed case; the plan t
 
 ## Failure taxonomy
 
-A hire refused before its row is written is fatal to that call and changes nothing. A
+A hire refused before its row is written is fatal to that call and changes nothing. Before
+[D6](DECISIONS.md#d6), that was every hire in the app, because the development organization is not
+a legal seat address. A
 registration failure deletes the row it wrote. The one partial outcome is the inherited
 inventory write after registration (BR-11). A read that fails degrades: the seat detail shows
 its kind and says the instructions could not be read, distinct from *not published* and from

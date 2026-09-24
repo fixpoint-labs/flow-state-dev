@@ -2,9 +2,12 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-Three operations, all extensions — no new page. The vocabulary this issue works in (seat, kind,
-roster, hire) is already introduced across the Workforce section. The reader-facing prose below
-carries no issue or PR identifiers, per the site writing rules.
+Four operations, all extensions, and no new page. The first and third were published with PR-A
+([#2123](https://github.com/fixpoint-labs/flow-state-dev/pull/2123)); the second shipped with PR-C
+([#2122](https://github.com/fixpoint-labs/flow-state-dev/pull/2122)). The fourth, kitchen-sink's
+README, publishes with PR-B and PR-D. The vocabulary this issue works in (seat, kind, roster,
+hire) is already introduced across the Workforce section. The reader-facing prose below carries
+no issue or PR identifiers, per the site writing rules.
 
 **Ownership.** The rail's own introduction — what a navigator is, what the roster and board panels
 show — belongs to [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477)'s draft. This issue
@@ -73,17 +76,23 @@ The route or screen in front of the action, and whatever guards it, are still yo
 
 ### Which organization a hire lands in
 
-The handlers take the organization from the session the action runs in: its authenticated
-principal's, or the default organization when the flow authenticates nobody. An `orgId` in the
-request body is accepted and ignored, so a caller cannot hire into somebody else's organization
-by naming it.
+*(Published with PR-A. This draft's first version said a flow that authenticates nobody hires
+into the default organization. That was false, and the published section already says so: a hire
+there is refused, because that organization's id cannot start a seat address. Mount the handlers
+only on a flow whose resolver names a real organization. The corrected text is kept below so the
+draft and the page agree.)*
+
+The handlers take the organization from the session the action runs in, which is its
+authenticated principal's. An `orgId` in the request body is accepted and ignored, so a caller
+cannot hire into somebody else's organization by naming it. A session with no principal belongs
+to the framework's default organization, and every hire there is refused before anything is
+written.
 
 This has a consequence worth planning for. A screen hires into the organization its own session is
 bound to, and it reads the roster from that same organization, so the two always agree. An
-endpoint guarded by an operator credential resolves a different one — the credential's — so seats
-hired there will not appear on a screen whose session has no credential. That is not a bug to
-hunt; it is two organizations, and the fix is giving the screen an identity rather than giving it
-the operator's token.
+endpoint guarded by an operator credential resolves a different one, the credential's, so seats
+hired there will not appear on a screen whose session resolves another. That is not a bug to
+hunt; it is two organizations.
 
 ---
 
@@ -142,11 +151,36 @@ API table row:
 
 ---
 
+## UPDATE · `apps/kitchen-sink/README.md` · the channels paragraph, and the `workforce-admin` section
+
+*(PR-B. Replace the sentence that says this app's channels land in the framework's default
+organization.)*
+
+> This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both are set in
+> `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request, so every page,
+> seat and channel lands in that organization and nobody calling the app can pick another. It is
+> a stand-in for real sign-in, and it means **anyone who can open a deployed copy of this app can
+> hire and fire its seats**. If you deploy it somewhere other people can reach, put sign-in in
+> front of it or remove the hire paths first.
+
+*(PR-B. In the `workforce-admin` section, after the `WORKFORCE_ADMIN_TOKENS` example.)*
+
+> A token bound to `kitchen-sink` administers the seats the rest of the app hires: its `fire`
+> releases a seat hired from the rail or by a seat's own `hire` tool. A seat the admin action
+> hires belongs to the operator who hired it and does not appear in the rail. A token bound to
+> any other organization, like `acme` above, administers that organization's seats, which this
+> app's pages never show.
+
+*(PR-D. After the rail's own introduction, which FIX-1477's draft owns.)*
+
+> Open a seat to see its kind, and for a seat hired here, its instructions. **Hire another** adds
+> a seat of the same kind to the app's organization. It appears in the list without a reload, and
+> it is still there after a restart on a persistent store.
+
 ## Publication ownership
 
-Each operation publishes with the PR whose behaviour it describes: the `durable-hire.md` section
-and the workforce README with PR-A, the react README with PR-C, and the organization paragraph's
-kitchen-sink counterpart with PR-D. Reconcile each against the built behaviour first — in
-particular the organization paragraph, which is a promise about what a reader will see. The limit
-it describes is the same one `apps/kitchen-sink/README.md` states for the reference app; keep them
-in step or state it once and link.
+Each operation publishes with the PR whose behaviour it describes. The `durable-hire.md`
+section and the workforce README went with PR-A, and the react README with PR-C. The kitchen-sink
+README's organization paragraph and admin note go with PR-B, and its rail paragraph with PR-D.
+Reconcile each against the built behaviour first, in particular the organization paragraph,
+which is a promise about who can do what in a deployed copy.

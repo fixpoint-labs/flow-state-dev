@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 366" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Left, today: the human rail reads a roster and a board from the organization its own session binds to, a seat row opens into nothing, and the durable hire door sits apart behind an admin credential writing into a different organization — two organization boxes that never meet. Right, after: a hired seat's row opens into a seat detail showing its kind and instructions, and the hire door is on the rail's own flow, so the hire arrow and the read arrow land in one organization box.">
+     aria-label="Left, today: the human rail reads a roster and a board from the organization its own session binds to, a seat row opens into nothing, and the durable hire door sits apart behind an admin credential writing into a different organization — two organization boxes that never meet. Right, after: a hired seat's row opens into a seat detail showing its kind and instructions, and the hire door is on the rail's own flow, so the hire arrow and the read arrow land in one organization box: kitchen-sink's own, named by the app rather than by any caller.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -117,7 +117,7 @@
   <g id="after-org">
     <rect class="n-org" x="812" y="34" width="112" height="240" rx="5"/>
     <text class="t-lbl" x="824" y="52">ORGANIZATION</text>
-    <text class="t-b"   x="824" y="72">the session's</text>
+    <text class="t-b"   x="824" y="72">kitchen-sink's</text>
     <text class="t-s"   x="824" y="94">roster rows</text>
     <text class="t-s"   x="824" y="110">board rows</text>
     <text class="t-b"   x="824" y="186">the new seat,</text>
@@ -141,7 +141,7 @@
   </g>
 
   <g id="footnote">
-    <text class="t-s" x="16" y="330">With no viewer identity configured that organization is the default one — the limit FIX-1503 lifts,</text>
-    <text class="t-s" x="16" y="346">and the one thing it cannot do any more is disagree with itself.</text>
+    <text class="t-s" x="16" y="330">That organization is kitchen-sink's one named organization, set by the app and never by a caller (D6).</text>
+    <text class="t-s" x="16" y="346">Without it the app runs as the development organization, where every hire is refused. FIX-1503 replaces it.</text>
   </g>
 </svg>

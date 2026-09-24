@@ -8,7 +8,7 @@ is superseded: all four shipped contracts this design composes.
 | Prior intent and precise source | Treatment | Why / evidence | Replacement | Compatibility |
 |---|---|---|---|---|
 | **FIX-1477 D4** — a hired roster and a channel board are ordinary in-organization data, so the panels read them directly; the axis is the resource's **scope**, and a user-scoped collection does not qualify. Source [`../FIX-1477/DECISIONS.md#d4`](../FIX-1477/DECISIONS.md#d4) | **Retained and applied** to a seat hired from the rail | The rule is the product owner's. A rail hire writes an org-visible roster row because the rule says a member of the organization sees its workers unless they are user-scoped — so the row's visibility is derived, not decided afresh | [E1](DECISIONS.md#e1) | Additive. The roster collection's read declaration and `expose` are unchanged |
-| **FIX-1477 `PLAN.md` → Blocked on** — the shell's session cannot be bound to a viewer's organization, so in a deployment configuring operator tokens the panels render **correct and empty**; the binding belongs to FIX-1503. Source [`../FIX-1477/PLAN.md#blocked-on`](../FIX-1477/PLAN.md#blocked-on) | **Amended in its consequence, not in its cause** | The cause is unchanged: there is still no viewer credential, and a session still binds to `ctx.principal?.orgId ?? DEFAULT_ORG_ID` (`packages/engine/src/routes/session-routes.ts:285`). What changes is what that costs: because this issue's hire resolves the organization by the same path as its reads, the two can no longer disagree, so the failure mode stops being *empty with no reason* and becomes *a different organization, named* | [D1](DECISIONS.md#d1), [PLAN.md → Blocked on](PLAN.md#blocked-on), BR-4 | The limit narrows; nothing that relied on the old behaviour breaks. FIX-1503 still removes it entirely |
+| **FIX-1477 `PLAN.md` → Blocked on** — the shell's session cannot be bound to a viewer's organization, so in a deployment configuring operator tokens the panels render **correct and empty**; the binding belongs to FIX-1503. Source [`../FIX-1477/PLAN.md#blocked-on`](../FIX-1477/PLAN.md#blocked-on) | **Amended in its consequence, and, for kitchen-sink, in its cause** | There is still no viewer credential, and a session still binds to `ctx.principal?.orgId ?? DEFAULT_ORG_ID` (`packages/engine/src/routes/session-routes.ts:300`). What changed first is what that costs: this issue's hire resolves the organization by the same path as its reads, so the two can no longer disagree, and the failure mode stops being *empty with no reason* and becomes *a different organization, named*. What changed second is the principal itself. Under [D6](DECISIONS.md#d6), kitchen-sink's host names one organization for every request, so the shell's session is no longer on the default one | [D1](DECISIONS.md#d1), [D6](DECISIONS.md#d6), [PLAN.md → Blocked on](PLAN.md#blocked-on), BR-4 | The limit narrows. A persistent store written before PR-B needs its upgrade step (BR-34). FIX-1503 still removes the limit entirely |
 | **FIX-1475** — a runtime hire is stored in the hired-roster collection and read back at the next boot; the door in front of it is the **app's** to write and guard, and `workforce-admin` is a worked example rather than something the framework ships (`apps/docs/docs/workforce/durable-hire.md`) | **Retained**; its BR-35 is recorded as overtaken in code ([below](#br35-overtaken)) | The stored contract is untouched — same collection, same `create()`-as-duplicate-refusal, same compensating delete, same registration order | [D1](DECISIONS.md#d1)'s *What this is not* | `workforce-admin` is not touched by this issue |
 | **FIX-1525 / FIX-1526** — `createSeatHireCapability` puts `hire` and `fire` on a worker kind's catalog, writing the roster and `inventory/seats/*`, and Discover lists a runtime hire by joining the two (merged in [#2079](https://github.com/fixpoint-labs/flow-state-dev/pull/2079)) | **Retained and extended additively** | The package already owns a durable-hire sequence the owner ratified. The rail reuses it rather than adding a third; the only change is a model-free export of the same handlers, with the capability's behaviour byte-for-byte unchanged | [E1](DECISIONS.md#e1), [PLAN S1](PLAN.md#surfaces) | Additive export. The capability's tests pass unedited (PLAN V1) |
 
@@ -50,6 +50,63 @@ seats, and the declared seat says so ([E2](DECISIONS.md#e2)).
 **The PR plan went from four to three.** PR-B's surfaces all left; PR-A became the additive
 export; PR-C lost its dependency on PR-B, because the roster is already browser-readable. The
 four-PR decision was made for the old scope and did not carry.
+
+<a name="amendment-named-org"></a>
+## Second amendment after merge: kitchen-sink runs as one named organization
+
+The original review is [#2111](https://github.com/fixpoint-labs/flow-state-dev/pull/2111), and
+before it [#2061](https://github.com/fixpoint-labs/flow-state-dev/pull/2061). This amendment is a
+new PR from `main`. It does not reopen either.
+
+**Why.** The spec said that in a deployment that authenticates nobody, the app can hire (D1 →
+*Locks in*, and the deployment table in PLAN → *Blocked on*). That was false. With no resolver,
+every session binds to the framework's development organization, and `seatAddress` refuses that
+organization's id as the first segment of an address. So every hire in kitchen-sink, through
+the rail's door or through mara's tools, was refused before anything was written. FIX-1527's
+POC found it (its P2 and leg R). The published `durable-hire.md` already says so.
+
+**The decision.** On 2026-09-24 the product owner chose A: kitchen-sink runs as one named
+organization, set by host code and never read from the caller. The alternatives were B, keep the
+development organization and let hires refuse, and C, wait for FIX-1503. The decision is the
+epic's, [FIX-1455 D9](../../epics/FIX-1455/DECISIONS.md#d9). This spec records it as
+[D6](DECISIONS.md#d6), with the mechanism and the POC. It fits D1's existing *what would change
+my mind*.
+
+| What | Treatment | Evidence |
+|---|---|---|
+| D1: one door on the rail's own flow, and one organization for hire and read | **Retained.** Its *Locks in* is **amended**: an anonymous visitor to a deployment can hire into, and through mara hire and fire in, the one named organization. The organization is no longer the development one, where nothing could be hired | [`poc/named-org/`](poc/named-org/README.md) N1, N2 |
+| D5 and E1, E2 | **Retained** unchanged. D2 and D3's stubs are **folded into D5**, and their anchors now land on D5 | — |
+| PLAN PR-B, empty since D5 | **Superseded** by a new PR-B: the host-level resolver (S10). PR-A and PR-C are shown **merged**. PR-D now depends on PR-B only, because FIX-1477 PR-C merged in #2113 | [PLAN → PR plan](PLAN.md#pr-plan) |
+| PLAN's struck rows (S2 to S4, S6, V4 to V8, V13, V15) | **Removed from the live tables.** What moved and why is still [above](#amendment-option-c) and [below](#v15) | — |
+| S7 and S8 | **Amended.** One roster key on the rail's flow, the shared `kitchenSinkSeatHireOptions`, and an `unregister` guarded by `isFromRoster` | POC's first run (resource collision), N6 |
+| DECISIONS → Settled, the `ctx.org` row | **Amended** from *"read by one author, not executed"* to executed. Its clause *"including an unauthenticated session on the default one"* was true of the binding and false of the hire | N1, N2, and the split control |
+| BR-1, BR-3, BR-4 | **Amended** to the named organization. BR-33 and BR-34 are **new** | N1 to N5, N8 |
+| DOCS → *Which organization a hire lands in* | **Amended** to match the page PR-A published. A kitchen-sink README operation is **new** | `apps/docs/docs/workforce/durable-hire.md` → *Which organization a hire lands in* |
+
+**Claims withdrawn, swept by claim and not by spelling** ([the rule](#retraction-sweep)). The
+sweep covered "default org", `DEFAULT_ORG_ID`, `__fsd_default_org__`, "can hire", "authenticates
+nobody" and "no viewer identity", in every document and the figure:
+
+- DECISIONS → D1 *Locks in*: "In a deployment that authenticates nobody, the app can hire."
+- DECISIONS → Settled: "… including an unauthenticated session on the default one."
+- SPEC → the people table: "With no viewer identity that organization is the default one."
+- SPEC → Sign off, D1's *If wrong*: "anybody who can open the app can hire a seat into the default
+  organization."
+- BUSINESS-RULES → BR-1: "It binds to the default organization, and every read and every hire
+  the rail makes uses that one." BR-4: "The rail still hires and reads the default organization."
+- PLAN → *Blocked on*: "A clone with no operator tokens · The whole spine works. Hire and read are
+  both the default organization," and "Operator tokens configured · … on the default
+  organization."
+- DOCS → *Which organization a hire lands in*: "… or the default organization when the flow
+  authenticates nobody."
+- `figures/one-org.svg`: "With no viewer identity configured that organization is the default
+  one."
+- EVOLUTION → the FIX-1477 row: `session-routes.ts:285` is now `:300`.
+
+**What the POC changed besides confirming the direction.** It found four things, and each moved a
+surface. The user has to be a constant as well as the organization (N7). A store written before
+PR-B fails the first boot after it (N8). The rail's flow cannot declare the roster under two
+keys. And `fsdev run` never reaches the app's resolver.
 
 <a name="br35-overtaken"></a>
 ## FIX-1475's BR-35 — overtaken in code, not dissolved

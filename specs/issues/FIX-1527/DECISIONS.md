@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was considered, what was chosen, and what each choice locks in. Two decisions and one open
-question make up the sign-off.
+What was considered, what was chosen, and what each choice locks in. Two decisions and one
+question, now answered, made up the sign-off.
 
 ## The tree
 
@@ -14,7 +14,7 @@ flowchart TD
   D1 -.->|"rejected"| X1b["give otto or iris the tool<br/>breaks the story each already tells"]
   I --> D2["D2 · hires go through the app's roster door"]
   D2 -.->|"rejected"| X2["register straight into FlowState<br/>the operator fire leaves it answering"]
-  I --> F1["F1 · open · ship now or hold for a real organization"]
+  I --> F1["F1 · answered: ship"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -41,10 +41,17 @@ alone.
 | **Because** | Kitchen-sink records which addresses it registered *from a roster row*. The boot reload writes that record (`apps/kitchen-sink/fsdev.config.ts:287`, `lib/workforce-registrar.ts:118-128`) and the operator's fire reads it. Going around it, the operator's fire would delete the row of a seat mara hired and leave the seat answering until the next boot (`apps/kitchen-sink/flows/workforce-admin/flow.ts:293-304`). The capability's `register` receives the owner pin that door already takes, so the wiring is one line each for `register`, `unregister` and `kindAt` |
 | **Locks in** | One roster, three writers that must agree: the file boot, the operator's action, and mara. A seat mara hires comes back on the next boot and can be fired by the operator. Mara cannot fire an operator hire, because those rows are user-owned and the capability reads only org-visible rows |
 
-## Open
+## Answered
 
 <a name="f1"></a>
 ### F1 · Ship mara now, working only for apps that authenticate, or hold it until kitchen-sink runs seats under a real organization?
+
+**Answered: ship.** The product owner merged
+[#2112](https://github.com/fixpoint-labs/flow-state-dev/pull/2112) with the recommendation below.
+Kitchen-sink will get its real organization from the owner's 2026-09-24 decision,
+[FIX-1455 D9](../../epics/FIX-1455/DECISIONS.md#d9), recorded for this pair as
+[FIX-1500 D6](../FIX-1500/DECISIONS.md#d6). That is FIX-1500's PR-B, not this issue. The ask is kept
+as it was put.
 
 **Plain terms.** A hired seat's address starts with its organization's name. Kitchen-sink
 checks nobody's identity, so every request to one of its seats runs under the framework's
@@ -89,6 +96,16 @@ Holding costs a cycle.
   `createSeatHireBlocks(options): { hire, fire }`, pinned on
   [#2111](https://github.com/fixpoint-labs/flow-state-dev/pull/2111), and the capability's tools
   are built from it. Mara uses the tools, so she goes through the same sequence.
+<a name="shared-options"></a>
+- **One seat-hire options object for both doors.** `kitchenSinkSeatHireOptions` is exported from
+  `apps/kitchen-sink/workforce/hire.ts`. Mara's `createSeatHireCapability` takes it, and so does
+  the rail's `createSeatHireBlocks` in FIX-1500's PR-D. Two objects are how the two doors come to
+  hire different `agent` kinds or release addresses differently. Whichever PR lands first creates
+  it, and the other imports it.
+- **`unregister` goes through `workforceRegistrar.isFromRoster`.** The capability's `fire`
+  compares kinds, not provenance, so a bare `unregister` would release a same-kind registration
+  the roster never made. The operator's fire already checks both. FIX-1500's POC shows the
+  difference (N6). This is the second half of D2, not a new door.
 - **[FIX-1540](https://linear.app/fixpoint-labs/issue/FIX-1540) is not fixed here.** Mara's
   fire leaves the inventory row. `discover` still withholds the seat, because its seat list
   needs the roster row too (`packages/workforce/src/manifest-sources.ts:181-227`).
@@ -97,7 +114,7 @@ Holding costs a cycle.
 
 | Alternative | Why not |
 |---|---|
-| A resolver on mara's flow so it runs under a real organization | Seats are minted from a shared kind, which takes no authentication option. It would also be an app-only identity path the invent-kills name |
+| A resolver on mara's flow so it runs under a real organization | Seats are minted from a shared kind, which takes no authentication option. It would also be an app-only identity path the invent-kills name. The owner has since chosen one host-level organization for the whole app ([FIX-1500 D6](../FIX-1500/DECISIONS.md#d6)). That reaches mara with nothing on her flow, and it is FIX-1500's to build |
 | Make the placeholder organization legal in an address | An invent-kill on [FIX-1536](https://linear.app/fixpoint-labs/issue/FIX-1536), and a change to the capability's surface |
 | Mara names `hire` only | Smaller, but it leaves any seat she hires stuck on the roster unless the operator removes it |
 | No `discover` in kitchen-sink | The smallest version, and the package suite already proves discover. Dropped because the issue's point is that a hire people can't find is theater |
@@ -123,3 +140,10 @@ Holding costs a cycle.
 - **Draft** — framed as the reference teach for the landed capability. The POC found that
   kitchen-sink's seats can't hire under the organization they run under, which became F1. The
   build is one seat file plus a few lines on the existing kind.
+- **Merged** — F1 answered *ship* ([#2112](https://github.com/fixpoint-labs/flow-state-dev/pull/2112)).
+- **Amendment after merge** — the owner chose one named organization for kitchen-sink
+  (FIX-1500 D6). F1 is closed, and the goal check gains its success form once FIX-1500's PR-B
+  lands. The shared options object and the `isFromRoster` guard are recorded. The approach and
+  the surfaces are unchanged ([EVOLUTION.md](EVOLUTION.md#amendment-named-org)).
+
+**Open: none.**
