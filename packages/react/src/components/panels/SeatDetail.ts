@@ -38,7 +38,7 @@ import { createElement, useMemo, type ReactNode } from "react";
 import { createResourceClient } from "@flow-state-dev/client";
 import { useFlowContext } from "../../context/FlowContext";
 import { usePanelItem, type PanelItemSource } from "./reads";
-import { isSeat, normalizeSeat, type RosterSeat } from "./Roster";
+import { DEFAULT_ROSTER_REF, isSeat, normalizeSeat, type RosterSeat } from "./Roster";
 import { note, noteStyle, panelStyle, retryLine } from "./chrome";
 
 export type SeatDetailProps = {
@@ -72,9 +72,6 @@ export type SeatDetailProps = {
   readonly resourceClient?: PanelItemSource;
 };
 
-/** The conventional key a flow declares the roster under — matches `Roster`'s default. */
-const DEFAULT_ROSTER_REF = "roster";
-
 /**
  * The instructions region alone, mounted only while there is a topic to read.
  *
@@ -89,7 +86,7 @@ function Instructions(props: {
   readonly source: PanelItemSource;
 }): ReactNode {
   const { sessionId, collectionRef, seatId, source } = props;
-  const state = usePanelItem<unknown>(
+  const state = usePanelItem<RosterSeat>(
     source,
     sessionId,
     collectionRef,
@@ -106,7 +103,7 @@ function Instructions(props: {
     return note("error", "This seat's instructions could not be read.");
   }
 
-  const seat = state.item === null ? null : normalizeSeat(state.item as RosterSeat);
+  const seat = state.item === null ? null : normalizeSeat(state.item);
   if (seat === null) return note("not-published", "This seat's instructions are not published.");
   if (seat.instructions === null) return note("none", "No instructions were given.");
   return createElement("p", { style: noteStyle, "data-state": "text" }, seat.instructions);
@@ -126,7 +123,9 @@ export function SeatDetail(props: SeatDetailProps): ReactNode {
     "div",
     { style: panelStyle, "data-panel": "seat-detail" },
     createElement("p", { style: noteStyle, "data-seat-kind": kind }, kind),
-    seatId === undefined
+    // An empty string is not a topic to read — treat it the same as no
+    // `seatId` at all: not published, zero reads (Cursor nit).
+    seatId === undefined || seatId === ""
       ? note("not-published", "This seat's instructions are not published.")
       : createElement(Instructions, { sessionId, collectionRef, seatId, source })
   );

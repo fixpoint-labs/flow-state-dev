@@ -117,14 +117,26 @@ export const rosterPropNames = [
   "slots"
 ] as const;
 
-/** The conventional key a flow declares the roster under. */
-const DEFAULT_ROSTER_REF = "roster";
+/** The conventional key a flow declares the roster under. Shared with `SeatDetail` (FIX-1500 S5). */
+export const DEFAULT_ROSTER_REF = "roster";
 
-/** Shared with `SeatDetail` (FIX-1500 S5), so a list read and a single-item read agree on what a seat row is. */
+/**
+ * Shared with `SeatDetail` (FIX-1500 S5), so a list read and a single-item read agree on what a seat row is.
+ *
+ * `instructions` is checked too, not just `seatId`/`flow` (FIX-1500 bug 2): a
+ * row with e.g. `instructions: {}` would otherwise pass, get cast to
+ * `RosterSeat`, and be handed to React as a child, which throws trying to
+ * render an object. The declared shape is `string | null`, and a row from
+ * before seats had instructions carries the key absent — so `undefined` is
+ * accepted as the legacy case (see `normalizeSeat`), and anything else
+ * (an object, a number, …) is not a seat this version can read.
+ */
 export function isSeat(value: unknown): value is RosterSeat {
   if (value === null || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
-  return typeof row.seatId === "string" && typeof row.flow === "string";
+  if (typeof row.seatId !== "string" || typeof row.flow !== "string") return false;
+  const { instructions } = row;
+  return instructions === undefined || instructions === null || typeof instructions === "string";
 }
 
 /**

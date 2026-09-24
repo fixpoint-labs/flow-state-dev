@@ -36,6 +36,14 @@ function failingSource(message: string) {
 }
 
 describe("SeatDetail", () => {
+  it("treats an empty-string seatId like no seatId at all: not published, zero reads (Cursor nit)", () => {
+    const source = fakeSource({ topic: "", clientData: { seatId: "x", flow: "agent", instructions: "hi" } });
+    render(createElement(SeatDetail, { sessionId: "s1", kind: "support-agent", seatId: "", resourceClient: source }));
+
+    expect(document.querySelector('[data-state="not-published"]')).toBeTruthy();
+    expect(source.getCollectionItemState).not.toHaveBeenCalled();
+  });
+
   it("shows the kind from the prop and makes no read when no seatId is given (BR-5, BR-31)", () => {
     const source = fakeSource({ topic: "irrelevant", clientData: { seatId: "x", flow: "agent", instructions: "hi" } });
     render(createElement(SeatDetail, { sessionId: "s1", kind: "support-agent", resourceClient: source }));
@@ -136,6 +144,37 @@ describe("SeatDetail", () => {
     expect(document.querySelector('[data-state="not-published"]')).toBeNull();
     expect(document.querySelector('[data-state="none"]')).toBeNull();
     expect(document.querySelector('[data-state="loading"]')).toBeNull();
+    expect(document.querySelector('[data-state="text"]')).toBeNull();
+  });
+
+  it("treats a metadata-only item (no clientData) as could-not-be-read, not not-published (FIX-1500 bug 1)", async () => {
+    // The route returns `{ topic, storageKey, hint }` — no `clientData` — when
+    // the collection has no client projection configured. The item EXISTS;
+    // it just can't be read through this surface. That is the distinct
+    // "could not be read" state, not the "no such topic" state.
+    const source = fakeSource({ topic: "f", storageKey: "roster/f", hint: "no client.data configured" });
+    render(createElement(SeatDetail, { sessionId: "s1", kind: "k", seatId: "f", resourceClient: source }));
+
+    await waitFor(() => expect(document.querySelector('[data-state="error"]')).toBeTruthy());
+    expect(document.querySelector('[data-state="not-published"]')).toBeNull();
+  });
+
+  it("treats a row with a non-string, non-null instructions field as could-not-be-read, not a throw (FIX-1500 bug 2)", async () => {
+    // `isSeat` checks only `seatId` and `flow`. A row with `instructions: {}`
+    // passes that guard, gets cast to `RosterSeat`, and would be handed to
+    // React as a child — which throws trying to render an object.
+    const source = fakeSource({
+      topic: "g",
+      clientData: { seatId: "g", flow: "agent", instructions: {} }
+    });
+
+    expect(() =>
+      render(createElement(SeatDetail, { sessionId: "s1", kind: "k", seatId: "g", resourceClient: source }))
+    ).not.toThrow();
+
+    await waitFor(() => expect(document.querySelector('[data-state="error"]')).toBeTruthy());
+    expect(document.querySelector('[data-state="not-published"]')).toBeNull();
+    expect(document.querySelector('[data-state="none"]')).toBeNull();
     expect(document.querySelector('[data-state="text"]')).toBeNull();
   });
 
