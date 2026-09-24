@@ -15,10 +15,12 @@
  * (`404 Unknown flow` on the open, the run, and the run after a restart); the
  * refusals stay green, because they were refused before the fix too.
  *
- * The catalog legs lean on the engine resolving each pinned instance's caller
- * with that instance's own resolver. Revert `flowsForCaller` in the engine's
- * `routes/http-handlers.ts` to the host resolver alone and only "is listed in
- * the catalog" goes red.
+ * The catalog and listing legs lean on the engine resolving each instance's
+ * caller with that instance's own resolver. Revert `flowsForCaller` in the
+ * engine's `routes/http-handlers.ts` to the host resolver alone and only "is
+ * listed in the catalog" goes red. Drop the `ownResolverVerdict` calls from
+ * the engine's session listing and only the two "session listing" cases for
+ * the hiring credential go red.
  *
  * Every admin token names `kitchen-sink`, the one organization this app runs
  * as (`lib/workforce-admin-auth.ts`). A token naming any other organization is
@@ -43,7 +45,7 @@ import { ADMIN_USER_ID } from "../lib/workforce-admin-auth";
 import { setWorkforceRegistrarImpl, workforceRegistrar } from "../lib/workforce-registrar";
 import workforceAdminFlow from "../flows/workforce-admin/flow";
 import { kitchenSinkKinds } from "../workforce/hire";
-import { KITCHEN_SINK_ORG_ID } from "../lib/kitchen-sink-principal";
+import { KITCHEN_SINK_ORG_ID, resolveKitchenSinkPrincipal } from "../lib/kitchen-sink-principal";
 
 /** The configured kitchen-sink admin token. */
 const TOKEN = "tok-ks";
@@ -61,11 +63,15 @@ type Router = {
  * admin flow registered, and the registrar installed over the FlowState's own
  * door, so a hire goes through the same admission a real one does.
  */
-async function boot(stores = inMemoryStores()) {
+async function boot(stores = inMemoryStores(), options: { hostResolver?: boolean } = {}) {
   const state = createFlowState({
     flows: { workforceAdmin: workforceAdminFlow as FlowInstance },
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({ policy: "allow" }),
+    // The host-level fallback `fsdev.config.ts` installs. Off by default: the
+    // hire, open and run legs do not reach it, since the admin flow and the
+    // seat each bring their own.
+    ...(options.hostResolver === true ? { resolvePrincipal: resolveKitchenSinkPrincipal } : {}),
   });
   const router = (await state.getRouter()) as Router;
   const runtime = await state.getRuntime();
@@ -106,6 +112,18 @@ async function boot(stores = inMemoryStores()) {
     return { status: response.status, ids: (json.flows ?? []).map((flow) => flow.id) };
   };
 
+  /** `GET /api/flows/sessions` — the session listing — as `token`: the status and the listed ids. */
+  const sessions = async (token: string | undefined) => {
+    const headers: Record<string, string> = {};
+    if (token !== undefined) headers.authorization = `Bearer ${token}`;
+    const response = await router.GET(
+      new Request("http://kitchen-sink.local/api/flows/sessions", { headers }),
+      { params: { path: ["sessions"] } }
+    );
+    const json = (await response.json()) as { sessions?: { id: string }[] };
+    return { status: response.status, ids: (json.sessions ?? []).map((session) => session.id) };
+  };
+
   /** Post an action and wait for its request to settle. */
   const act = async (flowId: string, action: string, input: unknown, token: string | undefined) => {
     const posted = await call([flowId, "actions", action], token, { userId: ADMIN_USER_ID, input });
@@ -136,12 +154,12 @@ async function boot(stores = inMemoryStores()) {
     return seats.map((seat) => seat.id);
   };
 
-  return { call, act, catalog, reload };
+  return { call, act, catalog, sessions, reload };
 }
 
 /** Boot, and hire `support.bo` into kitchen-sink with its admin credential. */
-async function bootWithHire(stores = inMemoryStores()) {
-  const app = await boot(stores);
+async function bootWithHire(stores = inMemoryStores(), options: { hostResolver?: boolean } = {}) {
+  const app = await boot(stores, options);
   const hired = await app.act(
     "workforce-admin",
     "hire",
@@ -178,10 +196,34 @@ describe("a seat hired over workforce-admin, reached with the hiring credential"
   it("is listed in the catalog for the operator who hired it", async () => {
     const app = await bootWithHire();
 
-    const listed = await app.catalog(ACME);
+    const listed = await app.catalog(TOKEN);
 
     expect(listed.status).toBe(200);
     expect(listed.ids).toContain(SEAT);
+  });
+
+  it("lists the session it opened in the session listing for the operator who hired it", async () => {
+    const app = await bootWithHire();
+    const opened = await app.call([SEAT, "sessions"], TOKEN, { userId: ADMIN_USER_ID, sessionId: "s-op" });
+    expect(opened.status).toBe(201);
+
+    const listed = await app.sessions(TOKEN);
+
+    expect(listed.status).toBe(200);
+    expect(listed.ids).toContain("s-op");
+  });
+
+  it("lists that session under the host resolver this app installs, too", async () => {
+    const app = await bootWithHire(inMemoryStores(), { hostResolver: true });
+    const opened = await app.call([SEAT, "sessions"], TOKEN, { userId: ADMIN_USER_ID, sessionId: "s-op" });
+    expect(opened.status).toBe(201);
+
+    const listed = await app.sessions(TOKEN);
+
+    // The host resolver names every caller the app's one visitor, not the
+    // operator the seat resolves. The seat's own resolver decides its rows.
+    expect(listed.status).toBe(200);
+    expect(listed.ids).toContain("s-op");
   });
 
   it("still answers the operator after a restart brings it back from its row", async () => {
@@ -212,14 +254,32 @@ describe("a seat hired over workforce-admin stays closed to everyone else", () =
   it("is left out of the catalog for another organization and for a caller with no credential", async () => {
     const app = await bootWithHire();
 
-    const bravo = await app.catalog(BRAVO);
+    const elsewhere = await app.catalog(OTHER_ORG_TOKEN);
     const anonymous = await app.catalog(undefined);
 
-    expect(bravo.status).toBe(200);
-    expect(bravo.ids).not.toContain(SEAT);
+    expect(elsewhere.status).toBe(200);
+    expect(elsewhere.ids).not.toContain(SEAT);
     // The catalog route stays exempt: no credential is a shorter list, not a 401.
     expect(anonymous.status).toBe(200);
     expect(anonymous.ids).not.toContain(SEAT);
+  });
+
+  it("keeps the seat's sessions out of the session listing for anyone else", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const hostResolver of [false, true]) {
+      const app = await bootWithHire(inMemoryStores(), { hostResolver });
+      const opened = await app.call([SEAT, "sessions"], TOKEN, { userId: ADMIN_USER_ID, sessionId: "s-op" });
+      expect(opened.status).toBe(201);
+
+      const anonymous = await app.sessions(undefined);
+      const elsewhere = await app.sessions(OTHER_ORG_TOKEN);
+
+      // No credential is a shorter list, not a 401.
+      expect(anonymous.status).toBe(200);
+      expect(anonymous.ids).not.toContain("s-op");
+      expect(elsewhere.status).toBe(200);
+      expect(elsewhere.ids).not.toContain("s-op");
+    }
   });
 
   it("refuses a caller with no credential, even one naming the org and user in the body", async () => {
