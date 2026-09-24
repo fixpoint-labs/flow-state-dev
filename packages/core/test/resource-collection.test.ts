@@ -179,6 +179,13 @@ describe("defineResourceCollection", () => {
     ).toThrow("eviction requires maxInstances");
   });
 
+  it("throws when stampOrgId is set but the schema would strip orgId", () => {
+    const define = (stateSchema: z.ZodObject<z.ZodRawShape>) => () =>
+      defineResourceCollection({ pattern: "rows/*", scope: "user", stateSchema, stampOrgId: true });
+    expect(define(z.object({ label: z.string() }))).toThrow("requires the stateSchema to declare orgId");
+    expect(define(z.object({ orgId: z.string().optional(), label: z.string() }))).not.toThrow();
+  });
+
   it("preserves writable: false on the collection definition (FIX-1261)", () => {
     const coll = defineResourceCollection({
       pattern: "notes/*",

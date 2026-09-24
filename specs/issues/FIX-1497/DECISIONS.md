@@ -66,7 +66,7 @@ Reached outside this issue, so it went up rather than being decided here
 |---|---|
 | **Instead of** | Running the graded scenario inside [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496)'s DevForce workforce — one tree, one team, one place to point people at |
 | **Because** | Two reasons, and they are different in kind. **The owner's is sequencing:** separate labs keep the two proofs from colliding while both are in flight, and *"we can combine them later"* — so the separation is a choice about ordering, not a boundary anyone has to argue their way back through. **The spec's is technical:** FIX-1496's [BR-8](../FIX-1496/BUSINESS-RULES.md) forbids board or harness *work* dispatch reaching its reviewer seat, with the control `reviewer-files` graded on the board dispatch record to go red if one does. A tree carrying two collaborating seats would have to relax that rule deliberately and be re-gated — which costs the first proof the thing it exists to prove |
-| **Locks in** | S1–S7 build their own `workforce/` tree under `goals/multi-seat-collab/`, and the day hiring changes shape there are two small Markdown trees to update rather than one. **What it does not lock in:** [ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26) still fences the *graded run* on a live hired Workforce existing at all ([BR-21](BUSINESS-RULES.md)). That fence was never a claim about whose tree the run uses, and this decision neither narrows nor widens it |
+| **Locks in** | S1–S7 build their own `workforce/` tree under `goals/multi-seat-collab/`, and the day hiring changes shape there are two small Markdown trees to update rather than one. **What it does not lock in:** [ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26) fenced the *graded run* on a live hired Workforce existing at all ([BR-21](BUSINESS-RULES.md)); it lifted on 2026-09-22 ([#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051)) and the run passed ([#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065)). That fence was never a claim about whose tree the run uses, and this decision neither narrows nor widens it |
 
 **Combining stays cheap, and stays available.** Both trees are a few hundred lines in the same
 folder. Merging them later is an afternoon; the expensive direction was the other one — bending
@@ -80,9 +80,11 @@ deliberately and re-gated rather than worked around.
   already fix it: the seat that owns the row parks it, and the person answers through a flow
   action carrying the request's own principal. This spec obeys it and exercises it.
 - **Ordering against FIX-1481 is soft.** Authoring and building this issue need neither code PR
-  merged; only the *graded run* needs them, and the run is already fenced until a live hire exists
+  merged; only the *graded run* needs them, and the run was already fenced until a live hire existed
   ([ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26)). Recorded so
-  nobody reads the spec as blocked.
+  nobody reads the spec as blocked. **The fence lifted on 2026-09-22**
+  ([#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051)) and the graded run passed
+  ([#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065)).
 - **The acceptance names the board by its local name**, and asserts the minted ledger id appears
   in no file under the scenario. The Architect left this open leaning yes; board v1's whole point
   is that a file says a name and the framework owns the identity.

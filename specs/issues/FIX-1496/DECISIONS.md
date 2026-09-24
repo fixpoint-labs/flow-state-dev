@@ -96,11 +96,12 @@ ref fails because `src/greeting.js` does not exist there.
   sibling labs on the same primitive, so closing it costs composition, not invention. **Not ours
   to reopen locally** ([ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17)).
   **Sequencing, not a fork:** ER-Collab's producer **exists** —
-  [FIX-1497](https://linear.app/fixpoint-labs/issue/FIX-1497), Backlog, not started. If it lands
-  the channel leg first, this proof **reuses** it rather than re-building it. *(The merged epic
-  spec still records ER-Collab and ER-DevForce as having **no producer**; both lines went stale
-  when FIX-1497 and this issue were filed. The epic amendment is the coordinator's, on its own PR
-  from `main` — do not read the merged row as current, here or anywhere.)*
+  [FIX-1497](https://linear.app/fixpoint-labs/issue/FIX-1497), Backlog and not started when this
+  was written; **Done since 2026-09-22** ([#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065)).
+  If it lands the channel leg first, this proof **reuses** it rather than re-building it. *(When
+  this was written the merged epic spec still recorded ER-Collab and ER-DevForce as having **no
+  producer**. The epic amendment [#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033)
+  named both producers; current status is in the epic's set table.)*
 - **One automated gate, not two.** The temp-repository leg is the **only** leg CI runs; the
   credentialed pull-request leg is documented and named in the verdict as the **human release
   run**. That keeps [BR-14](BUSINESS-RULES.md) and [BR-15](BUSINESS-RULES.md) honest — the claim

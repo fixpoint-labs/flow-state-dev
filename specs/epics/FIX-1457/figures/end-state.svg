@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 606" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box for W5, Workforce release QA. The box holds three named exit proofs, and as of 2026-09-22 all three are drawn as solid held slots because every one now has a filed child; none is drawn as passed, because none has been run. First, ER-Devtool, held jointly by FIX-1481 and FIX-1502: a documented six-row checklist green on a live hired Workforce, covering roster, channels, boards, inventory, parked rows and resources plus references, with no special wrapper. Rows four and six are FIX-1481's and fail as written today; row five is FIX-1502's and is blocked by FIX-1486, an epic W5 does not run; rows one to three ride FIX-1320. Second, ER-DevForce, held by FIX-1496, in spec review: one DevForce path completes and produces a real artifact, run as one automated leg that pushes to a bare clone at a declared path, with the credentialed pull-request leg documented as the human release run. Third, ER-Collab, held by FIX-1497, Backlog with no spec yet: two or more seats across at least one channel, work filed, assigned, drained, and a cross-seat handoff or reply observed in Devtool. Under the box a boundary line reads: one user, one org, agents isolated from each other, not people from people. Below that, consumed and not owned, the unchanged substrate every proof composes and none may extend: the W3 floor FIX-1351 with seats, channels and skills on disk; the W4 first cut FIX-1407 with boards FIX-1385, inventory FIX-1405, manager-queue FIX-1430, org never optional FIX-1442 and dispatch honesty FIX-1440; and the references versus resources split FIX-1467 settled and merged. To the right, outside the box, kitchen-sink FIX-1455 is drawn as a sibling epic that left the set on September 20: soft-related, running its own lifecycle, not a child and carrying no row in the set table. Below it, composed in by the app: its own channel kinds as CHANNEL.md flow factories rather than new L1, and its own rendering of Waiting-on-you, which never adds a status value. Below that, a box headed open, the owner's call: does W5 exit on five of the six checklist rows, given that row five is blocked by FIX-1486 outside W5; and whether CyberForce gets a parallel thin proof, which remains open and not blocking. Then a band headed grow into later, deferred and not refused, revisited when multi-user or sign-off pain is real, containing multi-user with more than one principal, the org chart of people as a product, originator not equal to reviewer, a durable reviewedBy bind, and multi-principal walls. Finally, below a fence, what is not built: no Human, Team, Channel or Agent as an L1 type; no parallel HITL plane and no humans as board drain seats; no merged board-assignee and seat registry; no new L1 TaskStatus for Waiting-on-you or Idle, including to pass a Devtool checklist row; no collab RC as the whole of W5; no kitchen-sink nested under W5 again; no new substrate epic disguised as polish; no unbounded Lab product delivery and no rebuilding the whole Lab product; no nested or child sessions as the work control plane; no second skill registry and no second memory story; and no multi-human machinery, which is deferred rather than refused. One line records the reversal: the old invent-kill that said don't treat W5 as build DevForce is dead, proof-via-DevForce is in at the thinnest path only, and which artifact counts was cut on September 22.">
+     aria-label="What's in the box for W5, Workforce release QA. The box holds three named exit proofs, and as of 2026-09-24 two are drawn as passed and one as held. First, ER-Devtool, held jointly by FIX-1481 and FIX-1502 and not yet green: a documented six-row checklist green on a live hired Workforce, covering roster, channels, boards, inventory, parked rows and resources plus references, with no special wrapper. Row four passed live; row five is FIX-1502's, built in W5 under D10; row six is proved by automated checks only, its live read carried under D11; rows one to three ride FIX-1320. Second, ER-DevForce, passed on September 22 with FIX-1496, pull request 2051: one DevForce path completes and produces a real artifact, run as one automated leg that pushes to a bare clone at a declared path, with the credentialed pull-request leg documented as the human release run. Third, ER-Collab, passed on September 22 with FIX-1497, pull request 2065: two or more seats across at least one channel, work filed, assigned, drained, and a cross-seat handoff or reply observed in Devtool. Under the box a boundary line reads: one user, one org, agents isolated from each other, not people from people. Below that, consumed and not owned, the unchanged substrate every proof composes and none may extend: the W3 floor FIX-1351 with seats, channels and skills on disk; the W4 first cut FIX-1407 with boards FIX-1385, inventory FIX-1405, manager-queue FIX-1430, org never optional FIX-1442 and dispatch honesty FIX-1440; and the references versus resources split FIX-1467 settled and merged. To the right, outside the box, kitchen-sink FIX-1455 is drawn as a sibling epic that left the set on September 20: soft-related, running its own lifecycle, not a child and carrying no row in the set table. Below it, composed in by the app: its own channel kinds as CHANNEL.md flow factories rather than new L1, and its own rendering of Waiting-on-you, which never adds a status value. Below that, a box headed decided September 24, the owner's calls: row five is a channel session's view of the whole organization, D10; row six's live read waits for a real hire with a sealed document, D11; and whether CyberForce gets a parallel thin proof remains open and not blocking. Then a band headed grow into later, deferred and not refused, revisited when multi-user or sign-off pain is real, containing multi-user with more than one principal, the org chart of people as a product, originator not equal to reviewer, a durable reviewedBy bind, and multi-principal walls. Finally, below a fence, what is not built: no Human, Team, Channel or Agent as an L1 type; no parallel HITL plane and no humans as board drain seats; no merged board-assignee and seat registry; no new L1 TaskStatus for Waiting-on-you or Idle, including to pass a Devtool checklist row; no collab RC as the whole of W5; no kitchen-sink nested under W5 again; no new substrate epic disguised as polish; no unbounded Lab product delivery and no rebuilding the whole Lab product; no nested or child sessions as the work control plane; no second skill registry and no second memory story; and no multi-human machinery, which is deferred rather than refused. One line records the reversal: the old invent-kill that said don't treat W5 as build DevForce is dead, proof-via-DevForce is in at the thinnest path only, and which artifact counts was cut on September 22.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -11,6 +11,7 @@
     .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
     .slot  { fill:none; stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
     .held  { fill:none; stroke:var(--accent); stroke-width:1.6; }
+    .pass  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
     .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
     .inp   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
     .out   { fill:var(--surface-2); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
@@ -23,6 +24,8 @@
              font-size:9.5px; letter-spacing:.1em; }
     .t-hld { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
              font-size:9.5px; letter-spacing:.1em; }
+    .t-pas { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
     .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
     .t-bm  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
     .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
@@ -33,20 +36,20 @@
 
   <g id="in-the-box">
     <rect class="box" x="16" y="26" width="560" height="252" rx="5"/>
-    <text class="t-lbl" x="32" y="46">IN THE BOX &#8212; WORKFORCE RELEASE QA &#183; THREE EXIT PROOFS, ALL STAFFED, ALL UNRUN</text>
+    <text class="t-lbl" x="32" y="46">IN THE BOX &#8212; WORKFORCE RELEASE QA &#183; THREE EXIT PROOFS &#183; TWO PASSED, ONE HELD</text>
 
     <rect class="held" x="32" y="58" width="528" height="62" rx="4"/>
-    <text class="t-hld" x="48" y="76">ER-DEVTOOL &#183; FIX-1481 + FIX-1502 &#183; NOT RUN</text>
+    <text class="t-hld" x="48" y="76">ER-DEVTOOL &#183; FIX-1481 + FIX-1502 &#183; HELD, NOT YET GREEN</text>
     <text class="t-b" x="48" y="95">the checklist is green on a live hired Workforce</text>
-    <text class="t-s" x="48" y="110">rows 4 and 6 to FIX-1481 &#183; row 5 to FIX-1502, blocked &#183; rows 1&#8211;3 ride FIX-1320</text>
+    <text class="t-s" x="48" y="110">row 4 PASS live &#183; row 5 in W5 (D10) &#183; row 6 checks only (D11) &#183; rows 1&#8211;3 ride FIX-1320</text>
 
-    <rect class="held" x="32" y="126" width="528" height="62" rx="4"/>
-    <text class="t-hld" x="48" y="144">ER-DEVFORCE &#183; FIX-1496 &#183; IN SPEC REVIEW &#183; NOT RUN</text>
+    <rect class="pass" x="32" y="126" width="528" height="62" rx="4"/>
+    <text class="t-pas" x="48" y="144">ER-DEVFORCE &#183; FIX-1496 &#183; PASS SEP 22 &#183; #2051</text>
     <text class="t-b" x="48" y="163">one DevForce path ships a real artifact</text>
     <text class="t-s" x="48" y="178">one automated leg, pushed to a bare clone &#183; the credentialed PR leg is the release run</text>
 
-    <rect class="held" x="32" y="194" width="528" height="62" rx="4"/>
-    <text class="t-hld" x="48" y="212">ER-COLLAB &#183; FIX-1497 &#183; BACKLOG, NO SPEC &#183; NOT RUN</text>
+    <rect class="pass" x="32" y="194" width="528" height="62" rx="4"/>
+    <text class="t-pas" x="48" y="212">ER-COLLAB &#183; FIX-1497 &#183; PASS SEP 22 &#183; #2065</text>
     <text class="t-b" x="48" y="231">&#8805;2 seats collaborate across &#8805;1 channel</text>
     <text class="t-s" x="48" y="246">filed &#8594; assigned &#8594; drained &#8594; a cross-seat handoff, observed in Devtool</text>
   </g>
@@ -80,11 +83,11 @@
     <text class="t-s" x="608" y="178">its own Waiting-on-you rendering &#8212; no status value</text>
   </g>
 
-  <g id="still-open">
-    <rect class="later" x="592" y="198" width="332" height="74" rx="4"/>
-    <text class="t-lbl" x="608" y="218">OPEN &#8212; THE OWNER&#8217;S CALL</text>
-    <text class="t-s" x="608" y="236">does W5 exit on 5 of the 6 checklist rows?</text>
-    <text class="t-s" x="608" y="250">row 5 is blocked by FIX-1486, outside W5</text>
+  <g id="decided">
+    <rect class="held" x="592" y="198" width="332" height="74" rx="4"/>
+    <text class="t-hld" x="608" y="218">DECIDED SEP 24 &#8212; THE OWNER&#8217;S CALLS</text>
+    <text class="t-s" x="608" y="236">row 5: a channel session&#8217;s view of the org &#183; D10</text>
+    <text class="t-s" x="608" y="250">row 6: live read waits for a real hire &#183; D11</text>
     <text class="t-s" x="608" y="264">CyberForce: still open, still not blocking</text>
   </g>
 
@@ -92,7 +95,7 @@
     <rect class="later" x="16" y="414" width="908" height="60" rx="4"/>
     <text class="t-lbl" x="32" y="433">GROW INTO LATER &#8212; DEFERRED, NOT REFUSED &#183; REVISITED WHEN MULTI-USER OR SIGN-OFF PAIN IS REAL</text>
     <text class="t-s" x="32" y="451">multi-user (&gt;1 principal) &#183; the org chart of people as a product &#183; originator &#8800; reviewer &#183; a durable reviewedBy bind &#183; multi-principal walls</text>
-    <text class="t-s" x="32" y="466">CyberForce sits above, under the open box: not deferred, just not this cycle&#8217;s call to make</text>
+    <text class="t-s" x="32" y="466">CyberForce sits above, beside the owner&#8217;s calls: not deferred, just not this cycle&#8217;s call to make</text>
   </g>
 
   <g id="not-built">

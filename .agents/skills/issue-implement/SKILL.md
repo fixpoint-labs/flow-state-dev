@@ -326,6 +326,10 @@ Architecture docs (`docs/architecture/`), `docs/internal/*`, the changeset, and 
 the tradeoffs, and the defect belong. The split is the point: write the internal record fully, and
 keep it out of `apps/docs/`.
 
+**When the change narrows a rule stated elsewhere** — a new exception, or a new layer that now
+enforces it — the old statement is a superseded claim: before review, run 10.6's word and surface
+sweeps on it, put the user-facing hits in the brief's **Targets**, and fix the rest yourself.
+
 ### Step 6: Comprehensive Review
 
 This is the critical quality gate. **Invoke `review`** on the change (the implementation branch/PR), passing the spec and the Linear category as context. It is the single definition of how we review — the same skill runs standalone — so there is no separate inline panel here. It composes the review lenses as **parallel sub-agents** and returns one deduped, ranked report:

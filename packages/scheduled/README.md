@@ -74,24 +74,14 @@ required `blocks` map.
 ```ts
 import {
   createResourceCollectionScheduleResolver,
-  type ScheduleResourceState
+  defineScheduleCollection
 } from "@flow-state-dev/scheduled";
-import { defineResourceCollection } from "@flow-state-dev/core";
-import { z } from "zod";
 
-const userSchedules = defineResourceCollection<ScheduleResourceState>({
-  pattern: "schedules/*",
-  scope: "user",
-  stateSchema: z.object({
-    cron: z.string(),
-    kind: z.string(),          // handler discriminator, not a flow-action name
-    input: z.unknown().optional(),
-    timezone: z.string().optional(),
-    onOverlap: z.enum(["skip", "allow"]).optional(),
-    description: z.string().optional(),
-    enabled: z.boolean().default(true)
-  })
-});
+// User-scoped, with the schedule row schema: `cron`, `kind` (a handler
+// discriminator, not a flow-action name), and optional `input`, `timezone`,
+// `onOverlap`, `description`, `enabled`. `create` records the organization
+// the creating run belongs to on each row.
+const userSchedules = defineScheduleCollection({ pattern: "schedules/*" });
 
 defineFlow({
   kind: "reminders",
@@ -120,11 +110,11 @@ derives its key the same way:
 ```ts
 const [userId, key] = scheduleId.split("/");
 const scopeId = resolveUserStorageKey(userId, { id: ctx.flowKind, isolateUserState: false, ownerPin: ctx.ownerPin });
-const raw = await ctx.stores.content.get("user", scopeId, `schedules/${key}`);
+const row = await ctx.stores.resourceState.get("user", scopeId, `schedules/${key}`);
 ```
 
 `isolateUserState: false` is right for a schedule collection declared without
-`flowIsolation: true`, which is the default. The helper reads the same storage.
+`flowIsolation: true`, which is the default.
 
 **Durable dynamic schedules don't recover across crashes.** A dynamic
 schedule's action core is produced by the resolver at dispatch time and carried
