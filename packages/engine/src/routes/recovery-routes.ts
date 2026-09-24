@@ -362,10 +362,20 @@ export async function handleListActiveRequests(
  * silently deregistered and excluded from the response.
  */
 /**
- * Which entries this sweep may touch, or `undefined` for unrestricted.
+ * Which entries this sweep may touch.
  *
- * The two clauses are mutually exclusive by construction: `route-auth` hands
- * back a principal or an anonymous flow allow-list, never both.
+ * The tenant is checked first and on its own (FIX-682), on every path. The
+ * identity clauses below judge who the caller is, and one identity can hold
+ * rows in several tenants, while `listStale` spans every tenant. Without it a
+ * caller on one tenant who shares a user id with another tenant reads that
+ * tenant's request and session ids and forces its live requests to
+ * `interrupted`. Same rule `handleRetryRequest` / `handleContinueRequest`
+ * apply to a single record: `tenantMatches`, so a caller with no tenant
+ * reaches only rows with no tenant.
+ *
+ * The two identity clauses are mutually exclusive by construction:
+ * `route-auth` hands back a principal or an anonymous flow allow-list, never
+ * both. With neither, identity is unrestricted beyond the path's `userId`.
  *
  * The authenticated clause is the organization axis, and it matters more here
  * than on any read route. This route is user-addressed, so its `userId` comes
@@ -381,12 +391,13 @@ export async function handleListActiveRequests(
  */
 function sweepAdmits(
   ctx: RecoveryRouteContext
-): ((entry: ActiveRequestEntry) => boolean) | undefined {
+): (entry: ActiveRequestEntry) => boolean {
   const callerOrgId = ctx.principal?.orgId;
-  if (callerOrgId !== undefined) return (entry) => entry.orgId === callerOrgId;
   const allowed = ctx.anonymousFlowIds;
-  if (allowed === undefined) return undefined;
   return (entry) => {
+    if (!tenantMatches(entry.tenantId, ctx.tenantId)) return false;
+    if (callerOrgId !== undefined) return entry.orgId === callerOrgId;
+    if (allowed === undefined) return true;
     const owner = resolveRecordOwner(ctx.registry, entry);
     return owner.ok && allowed.has(owner.flow.id);
   };

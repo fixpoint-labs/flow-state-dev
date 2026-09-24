@@ -2,7 +2,8 @@
  * FIX-682 HTTP-route isolation. The session/state/resource routes namespace by
  * the `x-tenant-id` header, surface bare session ids, and 404 on a tenant
  * mismatch (including the crafted `${tenant}:${id}` key-collision probe). A
- * tenant id containing `:` is rejected with 400.
+ * tenant id containing `:` is rejected with 400. The user-addressed
+ * `check-interrupted` sweep reads and writes only the calling tenant's entries.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -233,6 +234,143 @@ describe("tenant route isolation (FIX-682)", () => {
         { params: { path: ["demo", "sessions", "s", "requests", "req_1", "continue"] } }
       );
       expect(res.status).toBe(404);
+    });
+  });
+
+  // `check-interrupted` is user-addressed, and the same user id (in the same
+  // organization) can hold in-flight requests in more than one tenant. The
+  // sweep WRITES: whatever it admits is marked `interrupted` and deregistered.
+  // So a caller on one tenant must neither see nor sweep another tenant's
+  // stale entries, while their own tenant's stale entries still get swept.
+  describe("check-interrupted sweeps only the calling tenant's entries", () => {
+    async function seedStaleRun(
+      stores: ReturnType<typeof createRouter>["stores"],
+      requestId: string,
+      tenantId: string | undefined,
+      orgId: string = DEFAULT_ORG_ID
+    ) {
+      const stale = Date.now() - 600_000;
+      await stores.request.set(
+        requestId,
+        {
+          orgId,
+          id: requestId,
+          flowKind: "demo",
+          flowId: "demo",
+          actionName: "run",
+          sessionId: `${requestId}-session`,
+          ...(tenantId === undefined ? {} : { tenantId }),
+          userId: "u",
+          source: "http",
+          status: "in_progress",
+          startedAtMs: stale,
+          state: {},
+          version: 0,
+          createdAt: stale,
+          updatedAt: stale
+        },
+        "any"
+      );
+      await stores.activeRequests.register({
+        requestId,
+        flowKind: "demo",
+        flowId: "demo",
+        actionName: "run",
+        sessionId: `${requestId}-session`,
+        userId: "u",
+        orgId,
+        ...(tenantId === undefined ? {} : { tenantId }),
+        source: "http",
+        input: {},
+        startedAt: stale,
+        lastHeartbeatAt: stale
+      });
+    }
+
+    async function checkInterrupted(
+      router: ReturnType<typeof createRouter>["router"],
+      headers: Record<string, string>
+    ): Promise<string[]> {
+      const res = await router.POST(
+        new Request("http://localhost/api/flows/users/u/check-interrupted", {
+          method: "POST",
+          headers
+        }),
+        { params: { path: ["users", "u", "check-interrupted"] } }
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        interrupted: Array<{ requestId: string; sessionId?: string }>;
+      };
+      return body.interrupted.map((i) => i.requestId);
+    }
+
+    /**
+     * Same user and organization on both tenants, resolved host-level. A
+     * resolver may not return the framework default org, so this uses a real one.
+     */
+    function createRouterWithHostResolver() {
+      const registry = createFlowRegistry();
+      const stores = createInMemoryStores();
+      registry.register(makeFlow("demo"));
+      const router = createFlowApiRouter({
+        registry,
+        stores,
+        resolvePrincipal: (context) => {
+          const user = context.request?.headers.get("x-verified-user");
+          if (user === null || user === undefined) return null;
+          return { userId: user, orgId: "org_1" };
+        }
+      });
+      return { router, stores };
+    }
+
+    async function expectOnlyOwnTenantSwept(
+      setup: ReturnType<typeof createRouter>,
+      headers: Record<string, string>,
+      orgId: string
+    ) {
+      const { router, stores } = setup;
+      await seedStaleRun(stores, "acme_req", "acme", orgId);
+      await seedStaleRun(stores, "globex_req", "globex", orgId);
+
+      const swept = await checkInterrupted(router, { ...headers, "x-tenant-id": "acme" });
+
+      // Globex's entry is not disclosed to an acme caller...
+      expect(swept).not.toContain("globex_req");
+      // ...and nothing of globex's was written: its live request is still
+      // running and still registered.
+      expect((await stores.request.get("globex_req"))?.status).toBe("in_progress");
+      expect(await stores.activeRequests.get("globex_req")).toBeDefined();
+      // The caller's own stale entry is still swept.
+      expect(swept).toEqual(["acme_req"]);
+      expect((await stores.request.get("acme_req"))?.status).toBe("interrupted");
+      expect(await stores.activeRequests.get("acme_req")).toBeUndefined();
+    }
+
+    it("leaves another tenant's live request untouched (framework default resolver)", async () => {
+      await expectOnlyOwnTenantSwept(createRouter(), {}, DEFAULT_ORG_ID);
+    });
+
+    it("leaves another tenant's live request untouched (host resolver, same user and org)", async () => {
+      await expectOnlyOwnTenantSwept(
+        createRouterWithHostResolver(),
+        { "x-verified-user": "u" },
+        "org_1"
+      );
+    });
+
+    it("a caller with no tenant header sweeps only rows with no tenant", async () => {
+      const { router, stores } = createRouter();
+      await seedStaleRun(stores, "untenanted_req", undefined);
+      await seedStaleRun(stores, "acme_req", "acme");
+
+      const swept = await checkInterrupted(router, {});
+
+      expect(swept).toEqual(["untenanted_req"]);
+      expect((await stores.request.get("untenanted_req"))?.status).toBe("interrupted");
+      expect((await stores.request.get("acme_req"))?.status).toBe("in_progress");
+      expect(await stores.activeRequests.get("acme_req")).toBeDefined();
     });
   });
 });
