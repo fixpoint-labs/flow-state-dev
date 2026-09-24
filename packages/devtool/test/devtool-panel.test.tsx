@@ -37,6 +37,7 @@ const devToolState = {
   client: { listFlows: vi.fn().mockResolvedValue([]) },
   sessionClient: { listSessions: vi.fn().mockResolvedValue([]) },
   recoveryClient: { checkInterrupted: vi.fn().mockResolvedValue([]), continueStream: vi.fn() },
+  resourceClient: { getResourceManifest: vi.fn().mockResolvedValue({ flowKind: "demo", resources: [] }) },
   activeFlowId: "demo",
   activeFlow: demoInstance,
   activeSessionId: "sess_1",
@@ -151,5 +152,40 @@ describe("DevToolPanel — legacy Resume button removed", () => {
     });
 
     expect(screen.getByTitle("More actions")).toBeInTheDocument();
+  });
+});
+
+describe("DevToolPanel — the Inventory tab is wired into the workspace", () => {
+  it("appears for a session whose manifest lists an inventory collection, reading the open session's manifest", async () => {
+    devToolState.resourceClient.getResourceManifest.mockResolvedValue({
+      flowKind: "demo",
+      resources: [
+        {
+          ref: "orgSeats",
+          kind: "collection",
+          scope: "org",
+          pattern: "inventory/seats/*",
+          hasClientData: true,
+          client: { state: { read: true } },
+        },
+      ],
+    });
+    await act(async () => {
+      render(<DevToolPanel userId="u1" />);
+    });
+
+    expect(await screen.findByRole("tab", { name: "Inventory" })).toBeInTheDocument();
+    expect(devToolState.resourceClient.getResourceManifest).toHaveBeenCalledWith("sess_1");
+  });
+
+  it("is absent when the manifest lists none", async () => {
+    devToolState.resourceClient.getResourceManifest.mockResolvedValue({ flowKind: "demo", resources: [] });
+    await act(async () => {
+      render(<DevToolPanel userId="u1" />);
+    });
+
+    expect(devToolState.resourceClient.getResourceManifest).toHaveBeenCalledWith("sess_1");
+    expect(screen.queryByRole("tab", { name: "Inventory" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Tasks" })).toBeInTheDocument();
   });
 });
