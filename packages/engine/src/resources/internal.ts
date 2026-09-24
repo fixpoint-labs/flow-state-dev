@@ -14,6 +14,7 @@
  */
 import { requireAttributedOrg } from "../context/org-attribution";
 import type {
+  InstanceOwnerPin,
   ProjectedResourceCollectionConfig,
   ProjectedResourceContext,
   JsonObject,
@@ -67,8 +68,13 @@ export type ResourceFlowLike = {
  * decides which copy's data it is about — the type is what stops that, rather
  * than a comment asking callers to remember. Every caller already resolves the
  * owner through `resolveOwnerFlow` / `resolveRecordOwner` before reading.
+ *
+ * `ownerPin` is the registered instance's pin, present on a hired seat
+ * (FIX-1538). A user-scoped read keys the seat's shared data by it, so the
+ * resolved instance — which carries it — is what a caller must pass, not a
+ * copy that drops it.
  */
-export type ResourceOwnerFlow = ResourceFlowLike & { id: string };
+export type ResourceOwnerFlow = ResourceFlowLike & { id: string; ownerPin?: InstanceOwnerPin };
 
 /** Context required for persisted-data lookups (mirrors what the route handlers carry). */
 export type ResourcePersistenceContext = {
@@ -225,6 +231,9 @@ export async function getPersistedData(
     // FIX-735: read resources by per-resource isolation bucket (bare `{userId}`
     // when shared, `{userId}:{flow.id}` when isolated — the resolved owning
     // instance, FIX-1323), keyed off the identity id, not the scope record.
+    // A hired seat's shared bucket is its (org, person) cell, keyed by the
+    // pin the owning instance carries (FIX-1538) — the same cell its runs
+    // wrote, and never the person's cross-org cell.
     // Read every bucket the flow declares and merge; the snapshot/clientData
     // builders filter to declared configs, so other flows' shared rows under
     // the bare key never surface.

@@ -572,8 +572,10 @@ export async function createExecutionContext<
   // Storage keys — namespaced by the resolved INSTANCE id when the flow opts
   // into per-flow isolation for user/org scope. Bare identity ids otherwise.
   // Two registered copies of one collection definition therefore keep separate
-  // private scope records (FIX-1323). See
-  // `packages/engine/src/stores/scope-keys.ts` and FIX-431.
+  // private scope records (FIX-1323). A hired seat — an instance carrying the
+  // owner pin from its hire row — keys its shared user data at the (org,
+  // person) cell, the org taken from that pin and never from the request
+  // (FIX-1538). See `packages/engine/src/stores/scope-keys.ts` and FIX-431.
   const userKey = resolveUserStorageKey(userId, flow);
   const optionsOrgId = options.orgId;
   const optionsOrgKey = resolveOrgStorageKey(optionsOrgId, flow);
@@ -666,23 +668,6 @@ export async function createExecutionContext<
     const tsDiff = (a.ts ?? 0) - (b.ts ?? 0);
     return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
   });
-
-  let userRecord = loadedUser;
-  if (userRecord === undefined) {
-    // `id` is the storage key (namespaced when isolated); `userId` stays as
-    // the bare identity so listing and cross-reference by userId work across
-    // isolated and shared records alike.
-    userRecord = {
-      id: userKey,
-      userId,
-      state: (options.userState ?? {}) as TUserState,
-      resources: normalizeScopeResources(userResourceConfigs, undefined),
-      version: 0,
-      createdAt: now,
-      updatedAt: now
-    };
-    await stores.user.set(userRecord.id, userRecord, "any");
-  }
 
   // Created through the one path that mints the lineage id and writes
   // create-if-absent (FIX-1068), so this request cannot overwrite a concurrent
@@ -779,6 +764,28 @@ export async function createExecutionContext<
   // here. A shared instance has no pin and is not asked. The address is not
   // the pin.
   refuseInstancePin(flow, { userId, orgId: sessionOrgId });
+
+  // The user record is created only now, after every refusal above (BR-9,
+  // FIX-1538). A caller outside the pin must not leave even an empty record
+  // in the cell it would have keyed — for a hired seat that cell is keyed by
+  // the pin's org, so an early write would plant a record in another org's
+  // or another person's cell.
+  let userRecord = loadedUser;
+  if (userRecord === undefined) {
+    // `id` is the storage key (namespaced when isolated, the (org, person)
+    // cell for a hired seat); `userId` stays as the bare identity so listing
+    // and cross-reference by userId work across every record shape.
+    userRecord = {
+      id: userKey,
+      userId,
+      state: (options.userState ?? {}) as TUserState,
+      resources: normalizeScopeResources(userResourceConfigs, undefined),
+      version: 0,
+      createdAt: now,
+      updatedAt: now
+    };
+    await stores.user.set(userRecord.id, userRecord, "any");
+  }
 
   const resolvedOrgId = sessionOrgId;
 
@@ -1146,7 +1153,7 @@ export async function createExecutionContext<
       flow,
       scope
     );
-    return resolveResourceScopeId(identityId, flow.id, isolated);
+    return resolveResourceScopeId(identityId, flow, scope, isolated);
   };
 
   // Resolve the per-resource storage `scopeId` from a (scope, storageKey). Used
@@ -1195,7 +1202,7 @@ export async function createExecutionContext<
     if (isolated === undefined) {
       isolated = scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
     }
-    return resolveResourceScopeId(identityId, flow.id, isolated);
+    return resolveResourceScopeId(identityId, flow, scope, isolated);
   };
 
   // Group a per-scope config subset by the storage scopeId each entry resolves

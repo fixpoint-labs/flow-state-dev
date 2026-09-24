@@ -207,6 +207,29 @@ the dispatch 404s and the schedule stays put until an operator attributes it.
 See [Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to)
 for the attribution recipe.
 
+On a [hired seat](/docs/workforce/durable-hire#who-can-reach-a-hired-seat), use
+`createResourceCollectionScheduleResolver`. It reads the schedule row from the
+seat's storage for that organization and person. It returns `null` for a row
+naming a different organization from the one that hired the seat. On a
+user-owned seat, it also returns `null` for a schedule id naming another user.
+
+If you must write the resolver by hand, it gets the seat's pin, the organization
+(and user, if any) the seat is registered to, as `ctx.ownerPin` (`{ orgId,
+userId? }`, absent for any other flow). Pass it to `resolveUserStorageKey` from
+`@flow-state-dev/engine` to read the same storage:
+
+```ts
+resolve: async (scheduleId, ctx) => {
+  const [userId, key] = scheduleId.split("/");
+  const scopeId = resolveUserStorageKey(userId, { id: ctx.flowKind, isolateUserState: false, ownerPin: ctx.ownerPin });
+  const raw = await ctx.stores.content.get("user", scopeId, `schedules/${key}`);
+  // parse `raw`, map its `kind` to a block, return the config as above
+}
+```
+
+`isolateUserState: false` is right for a schedule collection declared without
+`flowIsolation: true`, which is the default. The helper reads the same storage.
+
 ## The dispatch endpoint
 
 ```

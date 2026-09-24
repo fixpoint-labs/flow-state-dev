@@ -463,9 +463,31 @@ Once registered, the seat answers its owner only. Any other member gets `404 Unk
 
 The `seat-hire` capability, `createSeatHireCapability`, gives a worker kind ready-made `hire` and `fire` tools. It and [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) always hire org-visible seats. For a user-owned hire, write the action yourself as above.
 
+## Who can reach a hired seat
+
+A hired seat belongs to the organization that hired it, and to the person who hired it when it is user-owned. The `pin` you register the seat with names both, and every caller is checked against it. Knowing or guessing a seat's address grants nothing.
+
+Anyone outside that pair gets the answer an address your app does not serve would get:
+
+- Opening a session with the seat, or sending it an action, answers `404 Unknown flow`.
+- `GET /api/flows` leaves the seat out of the list.
+- A session opened earlier cannot be resumed by a caller outside the pair.
+- A task board in another organization cannot hand work to the seat. The hand-off is refused as if the seat did not exist: the task ends errored and unclaimed, and its error reads `flow-not-found` with `no flow instance "<address>" is registered in this process`, the same as for an address nobody holds.
+- With debug endpoints switched on, the debug listing does not show another person's private roster row.
+
+For example, Alice hires a user-owned `research` seat while signed in to Acme. Bob, also in Acme, cannot open it. Neither can Alice while she is signed in to Globex. If she wants a research seat there, she hires one in Globex, and it starts empty. If Bob hires his own, his starts empty too.
+
+**What a seat saves stays with its organization and its person.** Anything a seat stores for Alice in a user-scoped resource, or in `ctx.user.state`, while she works in Acme stays in Acme and stays hers. Her Globex seat of the same kind cannot read it, and neither can Bob's. Her other seats in Acme can, if they declare the same resource. A seat does not move between organizations, and there is no setting that makes it move.
+
+**The check is as strong as the principal your resolver returns.** "Who is asking" is the principal your [`resolvePrincipal`](../server/authentication.md) returns: a user and the organization they are signed in to. Use a resolver that verifies both, and install the same one on the host that serves the seat as on the flow that hires it.
+
 ## What is stored, and where
 
 One row per seat in the organization's scope: at `workforce/roster/<seatId>`, or at `workforce/roster/~<user>/<seatId>` for a user-owned seat. It is read through the same storage adapter as everything else the app persists, so a Postgres-backed app keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.
+
+What a seat saves for a person is stored separately from the roster, in a cell: a user-scope key for the seat's organization and that person, `<person>:~org:<organization>`. The person's own data outside hired seats, such as preferences your app's other flows keep, is a different cell, keyed by the person's id alone. A hired seat does not read it and cannot write to it. A seat whose kind isolates its user data per flow keeps that data under the seat's own address instead. If you are upgrading an app whose seats already saved data, see [Upgrading: moving hired seats' stored data](../persistence/overview.md#upgrading-moving-hired-seats-stored-data).
+
+A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the person's id and the organization, so key its rows by `orgId` as well, or a seat in one organization reads what was saved in another.
 
 The roster is not the [live inventory](./inventory.md). An inventory row means *was registered in this organization* and is never removed. A roster row is removed when the seat is fired. A seat hired through [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) or the `seat-hire` tools gets both rows. A seat hired by a handler you wrote gets only the rows it writes: the `hire-seat` handler in [Hiring a seat](#hiring-a-seat) writes a roster row and no inventory row. Anything that wants one list of every seat, declared and hired, joins the two itself.
 
@@ -475,10 +497,10 @@ The roster is not the [live inventory](./inventory.md). An inventory row means *
 
 **Firing has the same window, and it is the sharper end of it.** A fired seat is gone from storage immediately and will not come back at any start. But a sibling instance that is already serving it keeps serving it until that instance restarts. If you fire a seat because it should stop answering right now, restart the app rather than assuming the fire did it.
 
-**Inside the organization, an address is not a permission.** An org-visible seat answers every member your resolver admits, and whatever its instructions say can come back in an answer. If only one member should reach a seat, [hire it user-owned](#hiring-a-seat-only-one-member-can-reach). For any other rule about who may call a seat, put your own check in front of it. Outside the organization the seat is closed: a caller whose principal belongs to another organization, or a user other than a user-owned seat's owner, gets `404 Unknown flow` (the same answer as an address your app does not serve), and nothing runs.
+**Inside the organization, an address is not a permission.** An org-visible seat answers every member your resolver admits, and whatever its instructions say can come back in an answer. If only one member should reach a seat, [hire it user-owned](#hiring-a-seat-only-one-member-can-reach). For any other rule about who may call a seat, put your own check in front of it. Outside the organization the seat is closed. [Who can reach a hired seat](#who-can-reach-a-hired-seat) lists every door.
 
 **A start may serve fewer seats than the roster names.** If a stored seat names a flow kind the current code no longer has, or carries settings that kind no longer accepts, that seat is skipped and named in `problems`. The app starts and every other seat answers. The skipped row is left exactly as it was: nothing is repaired or deleted on your behalf. Fix it by putting the kind back, or by firing the seat.
 
-**Listing flows shows every flow except hired seats to anyone.** `GET /api/flows` needs no credential. Any caller who can reach your app sees every flow your app defines and every seat declared in a `WORKER.md` file, including one your code registers after start. A hired seat is listed only to callers who could open it: members of the organization that hired it, or, for a user-owned seat, its owner. A caller your resolver cannot identify sees no hired seats. What hides a hired seat is the `pin` it is registered with, so a flow you register with a `pin` yourself is listed the same way. If those names are sensitive, put your own check in front of the route.
+**Listing flows shows every flow except hired seats to anyone.** `GET /api/flows` needs no credential. Any caller who can reach your app sees every flow your app defines and every seat declared in a `WORKER.md` file, including one your code registers after start. A hired seat is listed only to callers who could open it, as described in [Who can reach a hired seat](#who-can-reach-a-hired-seat). A caller your resolver cannot identify sees no hired seats. A flow you register with a `pin` yourself is listed the same way. If those names are sensitive, put your own check in front of the route.
 
 **A seat hired at runtime skips the webhook start-up check.** [Webhook providers](../server/webhooks.md) are the per-provider mechanics an app configures at mount, and a start refuses when a registered flow subscribes to one the app never configured. That check runs over the flows registered at start, so it does not see a seat hired after it. Until the next start, deliveries to that seat's webhook route come back `404 webhook_not_found`; at the next start the mismatch is raised and the start refuses.

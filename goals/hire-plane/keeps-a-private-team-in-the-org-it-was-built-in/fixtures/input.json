@@ -1,0 +1,9 @@
+{
+  "ownerOrg": "acme",
+  "otherOrg": "globex",
+  "ownerUser": "alice",
+  "peerUser": "bob",
+  "seatId": "research",
+  "hireInstructions": "ALICE-PRIVATE-HIRE-INSTRUCTIONS",
+  "marker": "ACME-ALICE-SAVED-MARKER"
+}

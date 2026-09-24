@@ -16,6 +16,10 @@ Every flow you register on a server reads from and writes to the same `UserRecor
 
 So if two flows declare a `user.stateSchema`, they're declaring it over the *same* underlying record. That's powerful when the schemas agree, and it would be a silent data-loss bug if they didn't.
 
+### Hired seats share within one organization
+
+A seat hired at runtime is registered with the organization that hired it. Its shared user data is kept per organization and person rather than per person, so what a seat saves for Alice in Acme is not what her seat in Globex reads. Alice's seats in Acme share with each other, and your other flows share with each other, but the two groups do not share with each other. See [Hiring while the app runs](/docs/workforce/durable-hire#who-can-reach-a-hired-seat).
+
 ## The guardrail: schema conflicts caught at startup
 
 When you register your flows with the server, the framework checks that every flow's user and org schemas are compatible with each other. If two flows declare the same field with different types, registration fails immediately:

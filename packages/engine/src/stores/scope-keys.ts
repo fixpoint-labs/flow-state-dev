@@ -38,8 +38,23 @@
  * the pair is recoverable from the key. Concatenating them raw was ambiguous —
  * two different (identity, instance) pairs could name one cell — which is the
  * opposite of what isolation promises.
+ *
+ * FIX-1538: a **hired seat** — an instance registered with an owner pin from
+ * its hire row — keeps its *shared* user data in one cell per (org, person),
+ * `<person>:~org:<org>`, instead of the person's cross-org cell. The org comes
+ * from the pin, never from the request; the person is the admitted caller,
+ * which admission has already checked against the pin. Without this the
+ * person's bare key was the one bucket that followed them between orgs: their
+ * Globex seat read what their Acme seat saved. Three escaped parts cannot
+ * equal the one-part cross-org key or the two-part isolated key, because the
+ * encoding is decodable. Unpinned flows, flow-isolated keys and every org key
+ * are unchanged. Data a seat saved before this moves only by the operator
+ * step in `apps/docs/docs/persistence/overview.md` → "Upgrading: moving
+ * hired seats' stored data"; there is deliberately no fallback read of the old cell, because that
+ * fallback is the cross-org read this closes.
  */
 
+import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
 import type { SessionParentage } from "./types";
 
 /**
@@ -57,6 +72,13 @@ export interface IsolationFlow {
    * to enumerate the per-resource isolation buckets in play for a scope.
    */
   resources?: Record<string, { scope?: string; flowIsolation?: boolean }>;
+  /**
+   * The owner pin of a hired instance (FIX-1538). Present, its org keys the
+   * flow's shared user data into the (org, person) cell. Absent — an app flow,
+   * a file-declared seat, or a caller that predates the field — every key is
+   * the one it was before.
+   */
+  ownerPin?: InstanceOwnerPin;
 }
 
 /**
@@ -78,6 +100,7 @@ export function toIsolationFlow(flow: {
   isolateUserState?: boolean;
   isolateOrgState?: boolean;
   resources?: unknown;
+  ownerPin?: InstanceOwnerPin;
 }): IsolationFlow {
   return {
     id: flow.id,
@@ -85,7 +108,10 @@ export function toIsolationFlow(flow: {
     isolateOrgState: flow.isolateOrgState ?? false,
     resources: flow.resources as
       | Record<string, { scope?: string; flowIsolation?: boolean }>
-      | undefined
+      | undefined,
+    // Forwarded, or a read-side projection of a hired seat would resolve the
+    // person's cross-org cell instead of the one the seat wrote (FIX-1538).
+    ownerPin: flow.ownerPin
   };
 }
 
@@ -128,19 +154,35 @@ function joinIsolationKey(identityId: string, flowId: string): string {
 }
 
 /**
+ * The key a flow's **shared** user data lives at: the person's cross-org cell
+ * (the bare, escaped `userId`) for an unpinned flow, or the (org, person) cell
+ * `<person>:~org:<org>` for a hired seat (FIX-1538). One copy, because the
+ * scope record and the per-resource buckets must land in the same cell.
+ */
+function sharedUserKey(userId: string, pin: InstanceOwnerPin | undefined): string {
+  if (pin === undefined) return encodeScopeKeyComponent(userId);
+  return `${encodeScopeKeyComponent(userId)}:~org:${encodeScopeKeyComponent(pin.orgId)}`;
+}
+
+/**
  * Bare `userId` unless the flow isolates the user scope; then
- * `${userId}:${flow.id}`. Both forms run through
- * {@link encodeScopeKeyComponent}, so the pair is recoverable from the key.
- * Governs the scope *record* (`ctx.user.state`) only — resources route
- * per-resource via `resolveResourceScopeId`.
+ * `${userId}:${flow.id}`. A hired seat (a flow carrying `ownerPin`) that does
+ * not isolate keys at `${userId}:~org:${pin.orgId}` instead (FIX-1538). Every
+ * form runs through {@link encodeScopeKeyComponent}, so the parts are
+ * recoverable from the key. Governs the scope *record* (`ctx.user.state`) —
+ * resources route per-resource via `resolveResourceScopeId`, and for a shared
+ * resource the two agree by construction.
+ *
+ * A shape without `ownerPin` gets exactly the key it got before the field
+ * existed (BP-030).
  */
 export function resolveUserStorageKey(
   userId: string,
-  flow: Pick<IsolationFlow, "id" | "isolateUserState">
+  flow: Pick<IsolationFlow, "id" | "isolateUserState" | "ownerPin">
 ): string {
   return flow.isolateUserState
     ? joinIsolationKey(userId, flow.id)
-    : encodeScopeKeyComponent(userId);
+    : sharedUserKey(userId, flow.ownerPin);
 }
 
 /**
@@ -317,25 +359,33 @@ export function resolveResourceIsolation(
 
 /**
  * The `scopeId` a resource's per-resource storage (`resourceState` / `content`)
- * lives at: bare `identityId` when shared, `${identityId}:${flowId}` when
- * isolated. `flowId` is the resolved instance's id — two copies of one
- * definition occupy two buckets.
+ * lives at: `${identityId}:${flow.id}` when isolated — the resolved instance,
+ * so two copies of one definition occupy two buckets — and otherwise the
+ * shared bucket. At org scope that is the bare `identityId`. At user scope it
+ * is the person's cross-org cell for an unpinned flow and the (org, person)
+ * cell for a hired seat (FIX-1538).
+ *
+ * Takes the flow rather than its id so a caller cannot build a user key
+ * without handing over the pin.
  */
 export function resolveResourceScopeId(
   identityId: string,
-  flowId: string,
+  flow: Pick<IsolationFlow, "id" | "ownerPin">,
+  scope: "user" | "org",
   isolated: boolean
 ): string {
-  return isolated
-    ? joinIsolationKey(identityId, flowId)
+  if (isolated) return joinIsolationKey(identityId, flow.id);
+  return scope === "user"
+    ? sharedUserKey(identityId, flow.ownerPin)
     : encodeScopeKeyComponent(identityId);
 }
 
 /**
  * The distinct storage `scopeId`s a flow's user/org-scoped resources occupy
- * for a given identity — at most two (the bare bucket and the
- * instance-namespaced bucket). Read paths consult every returned id and merge,
- * since a flow may declare both shared and isolated resources at one scope.
+ * for a given identity — at most two (the shared bucket — the bare id, or a
+ * hired seat's (org, person) cell — and the instance-namespaced bucket). Read
+ * paths consult every returned id and merge, since a flow may declare both
+ * shared and isolated resources at one scope.
  *
  * When the flow declares no resources at the scope, falls back to the
  * scope-record bucket (the flow-flag key) so callers still resolve a key.
@@ -350,11 +400,11 @@ export function resourceScopeIds(
   for (const entry of entries) {
     if (entry.scope !== scope) continue;
     const isolated = resolveResourceIsolation(entry.flowIsolation, flow, scope);
-    ids.add(resolveResourceScopeId(identityId, flow.id, isolated));
+    ids.add(resolveResourceScopeId(identityId, flow, scope, isolated));
   }
   if (ids.size === 0) {
     const flowDefault = scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
-    ids.add(resolveResourceScopeId(identityId, flow.id, flowDefault));
+    ids.add(resolveResourceScopeId(identityId, flow, scope, flowDefault));
   }
   return [...ids];
 }

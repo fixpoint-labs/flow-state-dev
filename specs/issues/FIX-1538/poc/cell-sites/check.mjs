@@ -55,7 +55,7 @@ const SITES = {
   "packages/engine/src/routes/state-routes.ts": { derive: 1, store: 1, class: "derives" },
   "packages/engine/src/context/resource-registry.ts": { derive: 0, store: 4, class: "consumes" },
   "packages/engine/src/routes/resource-routes.ts": { derive: 0, store: 10, class: "session-only" },
-  "packages/scheduled/src/createResourceCollectionScheduleResolver.ts": { derive: 0, store: 1, class: "bypass" },
+  "packages/scheduled/src/createResourceCollectionScheduleResolver.ts": { derive: 1, store: 1, class: "derives" },
   "packages/testing/src/runtime/createTestContext.ts": { derive: 0, store: 2, class: "harness" },
   "packages/testing/src/test-utilities/testFlow.ts": { derive: 0, store: 4, class: "harness" },
 };

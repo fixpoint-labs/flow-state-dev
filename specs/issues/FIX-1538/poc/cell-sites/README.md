@@ -37,3 +37,7 @@ derivation (S3).
 Throwaway. Not wired into CI or any default discovery. A grep can miss a call written through an
 alias; the typed guardrail in `PLAN.md` (the pin as a required key on the isolation shape) is what
 catches those at build time.
+
+**After the build (FIX-1538 implementation PR).** PASS, 9 files. The resolver moved from
+`bypass` to `derives` (`derive=1 store=1`): it now keys through `resolveUserStorageKey` with
+the pin its dispatch route hands it. The `bypass` class is empty. `--plant` still fails, exit 1.

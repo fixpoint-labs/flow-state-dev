@@ -454,7 +454,9 @@ User and org records are shared across every flow registered on the same
 server by default. A chat flow that writes `user.preferences.theme` and
 an admin flow that reads it touch the same `UserRecord`. That's usually
 what you want — preferences, profile fields, org settings belong to the
-user or the org, not to one flow.
+user or the org, not to one flow. A seat hired at runtime is the exception: it
+keeps a person's data per organization, apart from your other flows (see
+[Who can reach a hired seat](/docs/workforce/durable-hire#who-can-reach-a-hired-seat)).
 
 For shared-by-default to be safe, the framework checks at startup that
 every flow's `user.stateSchema` and `org.stateSchema` are structurally
