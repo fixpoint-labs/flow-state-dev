@@ -18,7 +18,7 @@ So if two flows declare a `user.stateSchema`, they're declaring it over the *sam
 
 ### Hired seats share within one organization
 
-A seat hired at runtime is registered with the organization that hired it. Its shared user data is kept per organization and person rather than per person, so what a seat saves for Alice in Acme is not what her seat in Globex reads. Alice's seats in Acme share with each other, and your other flows share with each other, but the two groups do not share with each other. See [Hiring while the app runs](/docs/workforce/durable-hire#who-can-reach-a-hired-seat).
+A seat hired at runtime is registered with the organization that hired it. Its shared user data is kept per organization and person rather than per person, so what a seat saves for Alice in Acme is not what her seat in Globex reads. Alice's seats in Acme share with each other, and your other flows share with each other, but the two groups do not share with each other. See [What a seat saves for a person](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person).
 
 ## The guardrail: schema conflicts caught at startup
 

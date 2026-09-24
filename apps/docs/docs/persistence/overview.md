@@ -181,52 +181,6 @@ Stop the cutover, restore the backup, and change nothing when:
 
 None of these is a case for guessing. Leave the original data intact and resolve the attribution first.
 
-## Upgrading: moving hired seats' stored data
-
-This section is for apps that ran [hired seats](/docs/workforce/durable-hire#who-can-reach-a-hired-seat) on an earlier release, where a seat stored what it saved for a person under the person's own id. A new install can skip it.
-
-A seat keeps what it saves for a person under a user-scope key for its organization and that person, `<person>:~org:<organization>`. Data a seat saved before your upgrade is under the person's own id, where your other flows keep theirs. The server does not read it for the seat and does not move it, because only your records say which organization it came from. Until you copy it, each seat starts empty for each person.
-
-Copying is optional and offline, with writers quiesced and a backup taken, as in the procedure above. It copies only data you can show a seat wrote.
-
-1. **List the keys.** For each seat kind, the user-scoped resources and collections it declares without `flowIsolation: true`. Strike the keys a flow that is not a hired seat also declares, and the person's `users` row. Those stay where they are, so the seat starts without them. Copy a struck key only if your own records show a seat wrote it.
-2. **List the people and their organizations.** Hired seat addresses start with their organization (`acme.research`, `acme.~alice.research`). Include seats you have since fired. Their addresses remain in `sessions.flow_id`, so `SELECT DISTINCT flow_id FROM sessions WHERE flow_id LIKE 'acme.%'` lists every address used in `acme`. Keep the ones that were hired seats.
-
-   ```sql
-   SELECT user_id, COUNT(DISTINCT org_id) AS orgs, GROUP_CONCAT(DISTINCT org_id) AS which
-   FROM sessions WHERE flow_id IN (/* your hired seat addresses */)
-   GROUP BY user_id;
-   ```
-
-   On Postgres, use `string_agg(DISTINCT org_id, ',')` in place of `GROUP_CONCAT`.
-
-3. **List the rows.** A collection is declared as a pattern such as `notes/*`, but its rows are stored under concrete keys such as `notes/a`. Read the raw rows, not the server's reads, so deletion markers and content-only rows show up. SQLite, for Alice:
-
-   ```sql
-   SELECT resource_key FROM resource_state
-   WHERE scope_type = 'user' AND scope_id = 'alice'
-     AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%')
-   UNION
-   SELECT resource_key FROM resource_content
-   WHERE scope_type = 'user' AND scope_id = 'alice'
-     AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%');
-   ```
-
-4. **Check the destination.** Run the same query with `scope_id = 'alice:~org:acme'`. A seat that ran after the upgrade may already have written there. If any key from step 3 is there, stop for that person, write the keys down, and resolve them by hand. Do not overwrite, and do not merge.
-5. **Copy, for people with one organization and an empty destination.** In one transaction:
-
-   ```sql
-   INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-   SELECT scope_type, 'alice:~org:acme', resource_key, state, version, lifecycle
-   FROM resource_state
-   WHERE scope_type = 'user' AND scope_id = 'alice' AND resource_key IN (/* step 3 */);
-   ```
-
-   Do the same for `resource_content`, keeping the content as it is. State and content for one key move together, deletion markers included.
-6. **Leave everything else.** A person with seats in two or more organizations has one mixed copy of their seats' data. Copying it into either organization would hand that organization what the other one's seats saved, so it stays where it is, and those seats start empty. Note each such person, and each key you struck in step 1, in your record of the upgrade.
-
-Ids containing `:` or `\` are escaped in the new key the same way as in the other keys on this page. The original rows stay. Remove them only for keys no other flow declares, and only after you have read the copies back through a seat.
-
 ## Which organization a record belongs to
 
 Every session and request also records an organization, as `orgId`. It is the boundary the server checks on reads, dispatch and execution. [Authentication](/docs/server/authentication) covers where the value comes from. An app that configures no `resolvePrincipal` runs under one reserved organization, `DEFAULT_ORG_ID`, exported from `@flow-state-dev/core`.
@@ -285,6 +239,52 @@ A non-zero count on an installation that has ever authenticated its callers is a
 Rollback is the backup, and only before the converted store has taken new writes.
 
 **When to stop.** The list under [When to stop](#when-to-stop) applies here unchanged, plus: a record whose organization you cannot defend from your own records stays quarantined. A partially applied mapping is worse than none: it puts one organization's history where another organization can read it.
+
+## Upgrading: moving hired seats' stored data
+
+This section is for apps that ran [hired seats](/docs/workforce/durable-hire) on an earlier release, where a seat stored what it saved for a person under the person's own id. A new install can skip it.
+
+A seat keeps what it saves for a person under a user-scope key for its organization and that person, `<person>:~org:<organization>`. [What a seat saves for a person](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person) describes that cell. Data a seat saved before your upgrade is under the person's own id, where your other flows keep theirs. The server does not read it for the seat and does not move it, because only your records say which organization it came from. Until you copy it, each seat starts empty for each person.
+
+Copying is optional and offline, with writers quiesced and a backup taken, as in the [owner attribution procedure](#who-owns-a-record) above. It copies only data you can show a seat wrote.
+
+1. **List the keys.** For each seat kind, the user-scoped resources and collections it declares without `flowIsolation: true`. Strike the keys a flow that is not a hired seat also declares, and the person's `users` row. Those stay where they are, so the seat starts without them. Copy a struck key only if your own records show a seat wrote it.
+2. **List the people and their organizations.** Hired seat addresses start with their organization (`acme.research`, `acme.~alice.research`). Include seats you have since fired. Their addresses remain in `sessions.flow_id`, so `SELECT DISTINCT flow_id FROM sessions WHERE flow_id LIKE 'acme.%'` lists every address used in `acme`. Keep the ones that were hired seats.
+
+   ```sql
+   SELECT user_id, COUNT(DISTINCT org_id) AS orgs, GROUP_CONCAT(DISTINCT org_id) AS which
+   FROM sessions WHERE flow_id IN (/* your hired seat addresses */)
+   GROUP BY user_id;
+   ```
+
+   On Postgres, use `string_agg(DISTINCT org_id, ',')` in place of `GROUP_CONCAT`.
+
+3. **List the rows.** A collection is declared as a pattern such as `notes/*`, but its rows are stored under concrete keys such as `notes/a`. Read the raw rows, not the server's reads, so deletion markers and content-only rows show up. SQLite, for Alice:
+
+   ```sql
+   SELECT resource_key FROM resource_state
+   WHERE scope_type = 'user' AND scope_id = 'alice'
+     AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%')
+   UNION
+   SELECT resource_key FROM resource_content
+   WHERE scope_type = 'user' AND scope_id = 'alice'
+     AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%');
+   ```
+
+4. **Check the destination.** Run the same query with `scope_id = 'alice:~org:acme'`. A seat that ran after the upgrade may already have written there. If any key from step 3 is there, stop for that person, write the keys down, and resolve them by hand. Do not overwrite, and do not merge.
+5. **Copy, for people with one organization and an empty destination.** In one transaction:
+
+   ```sql
+   INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
+   SELECT scope_type, 'alice:~org:acme', resource_key, state, version, lifecycle
+   FROM resource_state
+   WHERE scope_type = 'user' AND scope_id = 'alice' AND resource_key IN (/* step 3 */);
+   ```
+
+   Do the same for `resource_content`, keeping the content as it is. State and content for one key move together, deletion markers included.
+6. **Leave everything else.** A person with seats in two or more organizations has one mixed copy of their seats' data. Copying it into either organization would hand that organization what the other one's seats saved, so it stays where it is, and those seats start empty. Note each such person, and each key you struck in step 1, in your record of the upgrade.
+
+Ids containing `:` or `\` are escaped in the new key the same way as in the other keys on this page. The original rows stay. Remove them only for keys no other flow declares, and only after you have read the copies back through a seat.
 
 ## Tenant isolation
 
