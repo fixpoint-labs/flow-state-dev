@@ -207,7 +207,9 @@ SVG, at `--force-device-scale-factor=2`, and keep the SVG as the file that gets 
 ## In the PR body
 
 A spec or epic PR body carries the figures the table above marks — one at issue altitude, three at
-epic altitude — as raw-content images pinned to a commit:
+epic altitude — as raw-content images pinned to a commit. The implementation PR for a spec-backed
+issue carries the same issue-altitude figures again, pinned to the `main` commit that last touched
+each one, so the reviewer of the code sees the intent it answers to (`issue-implement` Step 9):
 
 ```html
 <img src="https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/specs/issues/<ISSUE-ID>/figures/<name>.svg"
@@ -222,6 +224,18 @@ Three facts decide that form:
   The project-spec's standing refresh lifecycle is unchanged.
 - **The blob URL doesn't render; the raw URL does.** `…/blob/<branch>/<path>` is a link to a page.
 - **A relative path resolves against the repo root and 404s.** Absolute, always.
+
+**On an implementation PR, read the figures from a fresh `main`.** An amendment may have
+redrawn, renamed or dropped a figure since the branch was cut, and fetching does not update the
+branch's own copy of the spec:
+
+```bash
+git fetch origin main
+git show origin/main:specs/issues/<ISSUE-ID>/SPEC.md           # the figure list and each alt text
+git log -1 --format=%H origin/main -- specs/issues/<ISSUE-ID>/figures/<name>.svg   # the SHA to pin
+```
+
+If an amendment redraws a figure while the implementation PR is still open, re-pin it there too.
 
 **Light and dark.** The SVG's media query follows the reader's OS. A PNG pair with GitHub's
 `#gh-light-mode-only` / `#gh-dark-mode-only` suffixes follows GitHub's theme instead, and is the

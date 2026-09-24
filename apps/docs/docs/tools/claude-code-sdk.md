@@ -468,8 +468,9 @@ it.
 block takes. A capability handed here that declares resources has them
 registered on the flow, so `ctx.resources` resolves for them at run time.
 Capabilities resolved dynamically, by a function rather than a static entry,
-contribute context and tools only — a resource has to exist before the block
-runs.
+contribute context, tools and
+[`controlTools`](../advanced/capabilities-authoring.md#tools-and-controltools)
+only — a resource has to exist before the block runs.
 
 **`onErrored`** runs after the block threw, with the error and the block's
 context. It does not swallow the error; the run still fails. A capability can

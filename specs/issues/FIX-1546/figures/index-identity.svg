@@ -1,0 +1,71 @@
+<svg viewBox="0 0 940 270" role="img" aria-label="Two panels with the same three storage cells for Alice: her app-wide cell, her Acme seat's cell and her Globex seat's cell, each holding a schedule named weekly. Today all three feed one schedule-index row keyed by Alice and weekly, whose organization is whichever wrote last. After, each cell feeds its own index row."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:none; stroke:var(--rule); stroke-width:1.2; }
+    .n-box { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .row-bad  { fill:var(--surface); stroke:var(--gone); stroke-width:1.6; }
+    .row-good { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .e-bad  { stroke:var(--gone); stroke-width:1.4; fill:none; }
+    .e-good { stroke:var(--code); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-bad { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="270"/>
+
+  <g id="today">
+    <rect class="panel" x="12" y="12" width="450" height="246" rx="6"/>
+    <text class="t-lbl" x="28" y="34">TODAY · INDEX KEYED BY PERSON + KEY</text>
+    <rect class="n-box" x="28" y="52" width="180" height="50" rx="5"/>
+    <text class="t-b" x="40" y="72">Alice · app-wide cell</text>
+    <text class="t-s" x="40" y="90">schedules/weekly</text>
+    <rect class="n-box" x="28" y="120" width="180" height="50" rx="5"/>
+    <text class="t-b" x="40" y="140">Alice · Acme seat cell</text>
+    <text class="t-s" x="40" y="158">schedules/weekly</text>
+    <rect class="n-box" x="28" y="188" width="180" height="50" rx="5"/>
+    <text class="t-b" x="40" y="208">Alice · Globex seat cell</text>
+    <text class="t-s" x="40" y="226">schedules/weekly</text>
+    <path class="e-bad" d="M208 77 C 250 77, 250 140, 282 140"/>
+    <path class="e-bad" d="M208 145 L 282 145"/>
+    <path class="e-bad" d="M208 213 C 250 213, 250 150, 282 150"/>
+    <rect class="row-bad" x="282" y="112" width="166" height="66" rx="5"/>
+    <text class="t-lbl" x="294" y="130">ONE INDEX ROW</text>
+    <text class="t-b" x="294" y="150">alice · weekly</text>
+    <text class="t-bad" x="294" y="168">org = last writer</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="12" width="450" height="246" rx="6"/>
+    <text class="t-lbl" x="494" y="34">AFTER · INDEX KEYED BY CELL + KEY</text>
+    <rect class="n-box" x="494" y="52" width="180" height="50" rx="5"/>
+    <text class="t-b" x="506" y="72">Alice · app-wide cell</text>
+    <text class="t-s" x="506" y="90">schedules/weekly</text>
+    <rect class="n-box" x="494" y="120" width="180" height="50" rx="5"/>
+    <text class="t-b" x="506" y="140">Alice · Acme seat cell</text>
+    <text class="t-s" x="506" y="158">schedules/weekly</text>
+    <rect class="n-box" x="494" y="188" width="180" height="50" rx="5"/>
+    <text class="t-b" x="506" y="208">Alice · Globex seat cell</text>
+    <text class="t-s" x="506" y="226">schedules/weekly</text>
+    <path class="e-good" d="M674 77 L 740 77"/>
+    <path class="e-good" d="M674 145 L 740 145"/>
+    <path class="e-good" d="M674 213 L 740 213"/>
+    <rect class="row-good" x="740" y="52" width="176" height="50" rx="5"/>
+    <text class="t-b" x="752" y="72">alice · weekly</text>
+    <text class="t-s" x="752" y="90">org = where it was made</text>
+    <rect class="row-good" x="740" y="120" width="176" height="50" rx="5"/>
+    <text class="t-b" x="752" y="140">alice@acme · weekly</text>
+    <text class="t-s" x="752" y="158">org = acme</text>
+    <rect class="row-good" x="740" y="188" width="176" height="50" rx="5"/>
+    <text class="t-b" x="752" y="208">alice@globex · weekly</text>
+    <text class="t-s" x="752" y="226">org = globex</text>
+  </g>
+</svg>

@@ -2,10 +2,10 @@ import { test, expect, openKitchenSink, byTestId } from "./fixtures";
 
 test("tool calls render in a grouped collapsible", async ({
   page,
-  userId,
+  sessionId,
   consoleErrors: _consoleErrors,
 }) => {
-  await openKitchenSink(page, userId);
+  await openKitchenSink(page, sessionId);
 
   await byTestId(page, "message-input").fill("[scenario:tool-1] use the tools");
   await byTestId(page, "message-submit").click();

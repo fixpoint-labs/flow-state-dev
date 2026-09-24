@@ -121,7 +121,8 @@ export interface FlattenResult {
  *
  * Dynamic entries (functions) encountered during traversal — either at the
  * top level or nested inside a capability's `uses` — are collected separately.
- * They contribute context and tools at runtime, not resources at build time.
+ * They contribute context, tools and control tools at runtime, not resources at
+ * build time.
  */
 export function flattenCapabilities(
   refs: readonly CapabilityRef[]

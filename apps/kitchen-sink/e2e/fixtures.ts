@@ -1,14 +1,16 @@
 /**
  * Shared Playwright fixtures for the kitchen-sink Tier 2 suite.
  *
- * - `userId` mints a fresh `e2e-<uuid>` per test so parallel scenarios don't
- *   share session state.
+ * - `sessionId` mints a fresh `e2e-<uuid>` per test. Every caller of this app
+ *   is the same user in the same organization (`lib/kitchen-sink-principal.ts`),
+ *   so scenarios cannot be kept apart by user; each one gets its own assistant
+ *   session instead.
  * - `consoleErrors` collects console errors and unhandled page errors, then
  *   asserts none happened in `afterEach`. Tests that intentionally trigger
  *   errors should clear the array before assertion.
- * - `openKitchenSink` navigates to a path with the per-test `userId` query
- *   param and waits for the message input to be enabled — the cheapest
- *   readiness signal for the FlowProvider.
+ * - `openKitchenSink` creates the test's session, navigates to `/` on it, and
+ *   waits for the message input to be enabled — the cheapest readiness signal
+ *   for the FlowProvider.
  */
 import { test as base, expect, type Page, type Locator } from "@playwright/test";
 import { randomUUID } from "node:crypto";
@@ -25,12 +27,12 @@ export function byTestId(page: Page, id: string): Locator {
 }
 
 type Fixtures = {
-  userId: string;
+  sessionId: string;
   consoleErrors: string[];
 };
 
 export const test = base.extend<Fixtures>({
-  userId: async ({}, use) => {
+  sessionId: async ({}, use) => {
     await use(`e2e-${randomUUID()}`);
   },
   consoleErrors: async ({ page }, use) => {
@@ -47,18 +49,15 @@ export const test = base.extend<Fixtures>({
 export { expect };
 
 /**
- * Navigate to a kitchen-sink path with the per-test `userId` query param and
- * wait for FlowProvider readiness (message input enabled). For routes other
- * than `/` (e.g. `/devtool`), pass the path explicitly.
+ * Create the test's own assistant session, open `/` on it with
+ * `?e2eSession=`, and wait for FlowProvider readiness (message input enabled).
+ * A reload keeps the parameter, so it comes back to the same session.
  */
-export async function openKitchenSink(
-  page: Page,
-  userId: string,
-  path = "/",
-): Promise<void> {
-  const sep = path.includes("?") ? "&" : "?";
-  await page.goto(`${path}${sep}e2eUserId=${encodeURIComponent(userId)}`);
-  if (path === "/") {
-    await expect(byTestId(page, "message-input")).toBeEnabled();
-  }
+export async function openKitchenSink(page: Page, sessionId: string): Promise<void> {
+  const created = await page.request.post("/api/flows/chat-agent/sessions", {
+    data: { sessionId },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  await page.goto(`/?e2eSession=${encodeURIComponent(sessionId)}`);
+  await expect(byTestId(page, "message-input")).toBeEnabled();
 }

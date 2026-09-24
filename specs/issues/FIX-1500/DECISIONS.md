@@ -4,7 +4,8 @@
 
 What was considered, what was chosen, and what each locks in. Three decisions are the product
 owner's: the hire door ([D1](#d1)), the scope ([D5](#d5)), and the one organization kitchen-sink
-runs as ([D6](#d6)). One question, [H1](#h1), is open. The rest are engineering calls,
+runs as ([D6](#d6)). A fourth, [H1](#h1), is the owner's too: a store written before PR-B is
+wiped, not upgraded. The rest are engineering calls,
 recorded under [Decided, not asked](#decided-not-asked). The issue's Architect fences are locked
 input and are not reopened here: one navigator and depth from cardinality
 ([epic D8](../../epics/FIX-1455/DECISIONS.md#d8)), the organization from the principal or the
@@ -102,9 +103,8 @@ and the POC that settled it.
 - **What would change my mind:** as in D9. FIX-1503 lands before PR-B ships, or a deployment is
   reachable by people who must not hire.
 - **Cost of being wrong: low to moderate, and mostly reversible.** Reverting means removing one
-  resolver. Seats visitors hired remain until someone fires them. On a persistent store, records
-  written before PR-B belong to the old organization. PR-B makes the channels usable again (V19),
-  and whether earlier conversation history carries over is [open](#open).
+  resolver. Seats visitors hired remain until someone fires them. A persistent store written
+  before PR-B is wiped, not upgraded ([H1](#h1)).
 
 **How it is set** (engineering, [`poc/named-org/`](poc/named-org/README.md)). Kitchen-sink's
 runtime assembly gets one host-level `resolvePrincipal`. It returns one constant organization and
@@ -226,7 +226,7 @@ named-organization amendment. Each of its legs has a planted control that was se
 | The hire sequence's `ctx.org` is the session's bound organization, and an action whose organization differs from its session's is refused | **CONFIRMED by execution** (N1, N2). The split control is refused with `Session … is bound to org globex but request supplied org kitchen-sink` (`packages/engine/src/context/createExecutionContext.ts:757`–`:759`). The earlier wording, *"including an unauthenticated session on the default one"*, was true of the binding and false of the hire, because the hire refuses that organization | [D1](#d1)'s "hire and read are one organization" |
 | One host-level resolver puts the rail, the seats and the boot's reload in one named organization. A rail hire is then read by the rail, listed by a seat's `discover`, reloaded after a restart, and released by an operator whose token names that organization | **CONFIRMED** (N1 to N5) | [D6](#d6), [E3](#e3) |
 | The capability's `fire` releases an address only when the registrar recorded it as roster-minted, provided the shared options route `unregister` through `isFromRoster` | **CONFIRMED** (N6). Without that guard, it released a registration the roster never made | FIX-1527's shared options object, [PLAN → Reuse](PLAN.md#reuse) |
-| The first named-organization boot over a store the shipped app wrote cannot open its channels | **CONFIRMED** (N8): `could not be opened — Request failed (403)` | PR-B's upgrade step and V19. The history question is [open](#open) |
+| The first named-organization boot over a store the shipped app wrote cannot open its channels | **CONFIRMED** (N8): `could not be opened — Request failed (403)` | PR-B's boot guard and V19. There is no upgrade step: the store is wiped ([H1](#h1)) |
 
 ## How it got here
 
@@ -248,10 +248,26 @@ named-organization amendment. Each of its legs has a planted control that was se
   where it is set ([EVOLUTION.md → Named organization](EVOLUTION.md#amendment-named-org)).
 
 <a name="open"></a>
-## Open
+## Closed by the owner after merge
 
 <a name="h1"></a>
-### H1 · On a deployment that already has data: carry earlier conversations into the new organization, or leave them behind?
+### H1 · A deployment that already has data: upgrade its store, or wipe it?
+
+**Decided by the product owner, 2026-09-24: wipe it.** In [the owner's review comment on #2159](https://github.com/fixpoint-labs/flow-state-dev/pull/2159#discussion_r4097667270):
+*"Lets not do this, lets just wipe everything and start from fresh. On next upgrade any dev can
+just wipe their .fsdev directory and start fresh."* So there is **no upgrade path**. Channels are
+not reopened over the old records, and nothing is carried over or kept readable. A boot over a
+pre-change store **fails loudly**, naming each channel stored under another organization and
+saying to delete the store (`.fsdev/data` for the dev profile, an empty database for Postgres).
+The kitchen-sink README says to wipe the store after upgrading.
+
+**It supersedes** the question below and its answer. That answer was to leave history behind,
+unread and not deleted, while PR-B made the channels open under the new organization. PR-B built
+that first, as a set-aside step, and the owner removed it in review. What is kept from the
+question below: its recommendation not to migrate history, and its reason that kitchen-sink's
+persistent deployments are the team's own.
+
+*The question as it was asked, kept for the record:*
 
 **Plain terms.** A kitchen-sink deployment with a persistent store has conversations and
 channels recorded under the old placeholder organization. After PR-B, the app runs as the named
@@ -277,3 +293,4 @@ still in the store, unread rather than deleted, so a migration can be written la
 migrate and nobody wanted it, we have maintained a one-off script for nothing.
 
 The other forks this spec carried are closed as [D5](#d5) and [D6](#d6), by the product owner.
+H1 is closed above.

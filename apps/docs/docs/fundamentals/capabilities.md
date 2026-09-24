@@ -221,7 +221,7 @@ For a fully-bundled multi-tier capability — resources, context, tools, and dep
 
 **Direct only.** If a capability itself `uses` another capability, the inner capability's schema contributions do not flow up to the block that `uses` the outer one. Each capability exposes only what it directly declares. If you need the inner schemas visible to consumers, re-declare them on the outer capability.
 
-**Dynamic `uses` entries are runtime-only.** When `uses` contains a function — `(ctx) => [...]` — the returned capabilities contribute context and tools at runtime but nothing to types. Only static `CapabilityRef` entries are reflected.
+**Dynamic `uses` entries are runtime-only.** When `uses` contains a function — `(ctx) => [...]` — the returned capabilities contribute context, tools, and [`controlTools`](../advanced/capabilities-authoring#tools-and-controltools) at runtime but nothing to types. Only static `CapabilityRef` entries are reflected.
 
 **The `sessionStateType` escape hatch.** When a capability's `sessionStateSchema` produces a type that is too loose or causes TS2589 (type instantiation too deep), `defineCapability` accepts a `sessionStateType` field as a type-only override. The equivalent escape hatches exist for resources, target states, and sequencer state: `resourcesType`, `targetStatesType`, `sequencerStateType`. These are compile-time only — they carry no runtime value.
 

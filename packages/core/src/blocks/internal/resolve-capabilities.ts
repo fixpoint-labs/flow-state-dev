@@ -76,7 +76,8 @@ export interface ResolveResult {
  *
  * Dynamic entries (functions) — whether at the block level or nested inside
  * a capability's own `uses` — are collected for runtime resolution. They
- * contribute context and tools only; resources must be declared statically.
+ * contribute context, tools and control tools only; resources must be declared
+ * statically.
  */
 export function resolveCapabilities(
   config: HasResources,

@@ -207,9 +207,9 @@ export interface AgentWorkerFlowOptions {
    * passed as a plain ref needs nothing declared alongside it.
    *
    * **A DYNAMIC entry (`(ctx) => refs`) does not.** `UsesSlot` accepts both,
-   * and a resolver function contributes context and tools only: resources have
-   * to exist before the block runs, so they must be declared statically
-   * somewhere (see `UsesEntry` in `@flow-state-dev/core`). Pass a capability
+   * and a resolver function contributes context, tools and control tools only:
+   * resources have to exist before the block runs, so they must be declared
+   * statically somewhere (see `UsesEntry` in `@flow-state-dev/core`). Pass a capability
    * dynamically and its stores are *not* installed by that entry alone.
    *
    * **A seat picks presets from what this option installs.** A worker file's
