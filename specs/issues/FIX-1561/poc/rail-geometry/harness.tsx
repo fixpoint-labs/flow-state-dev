@@ -16,7 +16,7 @@ import { Copy, Plus, RefreshCw } from "lucide-react";
 import { Button } from "../../../../../packages/devtool/src/react/components/ui/button";
 import { createRoot } from "react-dom/client";
 import { FlowNavigator as Today } from "../../../../../packages/react/src/components/flow-navigator/index";
-import { FlowNavigator as Sketch, setSketchBroken, setSketchReveal } from "./sketch/FlowNavigator.sketch";
+import { FlowNavigator as Sketch, setSketchBroken, setSketchHoverOnly, setSketchReveal } from "./sketch/FlowNavigator.sketch";
 
 /**
  * `?variant=today` (default) · `always` · `hover` — see README.md.
@@ -28,6 +28,7 @@ const params = new URLSearchParams(location.search);
 const variant = params.get("variant") ?? "today";
 if (variant === "hover") setSketchReveal("hover");
 if (params.get("break") === "1") setSketchBroken(true);
+if (params.get("nofocus") === "1") setSketchHoverOnly(true);
 const FlowNavigator = (variant === "today" ? Today : Sketch) as typeof Today;
 const LONG = params.get("long") === "1";
 const WIDTH = Number(params.get("width") ?? 300);

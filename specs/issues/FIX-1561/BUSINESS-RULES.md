@@ -19,6 +19,19 @@ The row these rules describe is drawn in [the row, zoomed](figures/row-anatomy.s
 | BR-5 | Someone clicks an action | The action runs. The row does not open, close or become selected | CI (existing) |
 | BR-6 | The rail renders any combination of slots | No button or link sits inside another | CI (existing, now covering the moved toolbar) |
 
+## When actions show
+
+Owner decision [R1](DECISIONS.md#r1): on hover. Drawn in [the reveal's four states](figures/reveal-states.svg).
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-29 | Nobody is pointing at a row, focus is outside it, and it isn't selected | Its actions are invisible. They are still there to Tab to | VG · G8 |
+| BR-30 | The pointer is over a row | That row's actions show, and no other row's | VG · G8 |
+| BR-31 | Focus moves into a row from the keyboard | Its actions show for as long as focus stays anywhere in the row | VG · G8 |
+| BR-32 | A row is selected | Its actions stay shown. An open leaf alone does not keep them shown | CI |
+| BR-33 | The screen has no hover pointer, a phone or a tablet | Every row's actions always show | VG · G8, on a touch-emulated page |
+| BR-34 | Actions appear or disappear | Nothing moves. Their space is kept while hidden, so a label truncates at the same point either way | VG · G2 and G7, measured with the row hovered |
+
 ## From the keyboard
 
 | # | When | Then | Proved by |
@@ -26,7 +39,7 @@ The row these rules describe is drawn in [the row, zoomed](figures/row-anatomy.s
 | BR-7 | Someone tabs along a row | Focus goes to the row, then its own trailing controls, then the open leaf's actions, then the next row | CI |
 | BR-8 | Someone opens or closes a leaf with Enter | Focus stays on the same row. The row's button is not replaced | CI |
 | BR-9 | An action is an icon | It has an accessible name and a tooltip saying what it does. Kitchen-sink's + is "New session" | CI · VG by role and name |
-| BR-10 | *Only if the owner picks hover reveal.* A row's actions are hidden | They stay in the tab order, and focusing any of them shows them. A row that is selected, or on a screen with no hover, always shows them | CI |
+| BR-10 | Someone tabs to an action on a row whose actions are hidden | Focus lands on it and the row's actions show; nothing is skipped because it was invisible | VG · G8 |
 
 ## Icons
 
@@ -87,5 +100,5 @@ A host action that fails says so on its row. Nothing retries on its own.
 
 On a real browser, the developer tool's rail and kitchen-sink's rail, fully expanded over
 seeded sessions that include an empty leaf, a singleton channel and labels too long for the
-rail, pass G1 to G7, and the implementation PR shows both screenshots. The same check fails on
+rail, pass G1 to G8 with each row's actions measured while shown, and the implementation PR shows both screenshots. The same check fails on
 the code this replaces.

@@ -167,6 +167,11 @@ export function setSketchReveal(next: "always" | "hover"): void {
 }
 
 let broken = false;
+let focusReveal = true;
+/** SKETCH: G8's negative control. Hover still reveals; keyboard focus no longer does. */
+export function setSketchHoverOnly(next: boolean): void {
+  focusReveal = !next;
+}
 /**
  * SKETCH: the negative control for the narrow-rail check. Drops the button's
  * `minWidth: 0`, so a long label stops ellipsizing and pushes the row's
@@ -265,7 +270,7 @@ function Row(props: {
   const [focused, setFocused] = useState(false);
   const noHover =
     typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches === true;
-  const shown = reveal === "always" || hovered || focused || isSelected || noHover;
+  const shown = reveal === "always" || hovered || (focused && focusReveal) || isSelected || noHover;
   const hasTrailing = !(trailing === undefined || trailing === null || trailing === false);
 
   return createElement(

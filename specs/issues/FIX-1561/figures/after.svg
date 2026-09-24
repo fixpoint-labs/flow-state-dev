@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Wireframe of the recommended rail, same tree and same scale as today's figure. Copy, refresh and new-session icons sit on their instance's own row, right-aligned, all drawn at one size, and digest's actions sit on the digest row. A dashed tree line runs down from each open parent's arrow past its children. Labels line up in three columns at 24, 40 and 56 pixels; support.noticeboard lines up with the instances, the empty note sits on the session column, and sessions show a short id. The same tree takes seven lines instead of ten.">
+     aria-label="Wireframe of the chosen rail, same tree and same scale as today's figure. The pointer is over support.iris, so its copy, refresh and new-session icons show at the right end of its own row, all drawn at one size; every other row's actions stay hidden, their space kept. A dashed tree line runs down from each open parent's arrow past its children. Labels line up in three columns at 24, 40 and 56 pixels; support.noticeboard lines up with the instances, the empty note sits on the session column, and sessions show a short id. The same tree takes seven lines instead of ten.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --code:#2C7C69; }
@@ -8,6 +8,8 @@
               --rule:#2B3135; --code:#5DBBA1; } }
     .bg    { fill:var(--surface); }
     .rail  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .hov   { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .ptr   { fill:var(--ink); stroke:var(--surface); stroke-width:1; }
     .t     { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:14px; }
     .id    { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }
     .muted { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
@@ -21,30 +23,27 @@
     .noteb { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:13px; font-weight:600; }
   </style>
   <rect class="bg" width="940" height="360"/>
-  <text class="lbl" x="24" y="24">AFTER · RECOMMENDED · ACTIONS ALWAYS VISIBLE · X POSITIONS ×2</text>
+  <text class="lbl" x="24" y="24">AFTER · CHOSEN · ACTIONS ON HOVER OR FOCUS · X POSITIONS ×2</text>
 
   <g id="rail">
     <rect class="rail" x="24" y="36" width="500" height="280" rx="6"/>
     <text class="lbl" x="40" y="58">FLOWS</text>
     <text class="t" x="40" y="86">▾</text><text class="t" x="72" y="86">agent</text>
     <g id="iris">
+      <rect class="hov" x="30" y="98" width="488" height="26" rx="4"/>
       <text class="t" x="72" y="116">▾</text><text class="t" x="104" y="116">support.iris</text>
       <g class="ico" transform="translate(425 104)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g>
       <g class="ico" transform="translate(455 104)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g>
       <g class="ico" transform="translate(485 104)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
+      <path class="ptr" d="M300 108 l0 16 l4 -4 l3 7 l3 -1 l-3 -7 l6 0 z"/>
     </g>
     <text class="id" x="136" y="146">sess_…3df102</text>
     <g id="otto">
       <text class="t" x="72" y="176">▾</text><text class="t" x="104" y="176">support.otto</text>
-      <g class="ico" transform="translate(425 164)"><rect x="4" y="4" width="9" height="9" rx="1.5"/><path d="M0 9 V1 Q0 0 1 0 H9"/></g>
-      <g class="ico" transform="translate(455 164)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g>
-      <g class="ico" transform="translate(485 164)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
     </g>
     <text class="muted" x="136" y="206">No sessions yet</text>
     <g id="digest">
       <text class="t" x="40" y="236">▾</text><text class="t" x="72" y="236">digest</text>
-      <g class="ico" transform="translate(455 224)"><path d="M12 6.5 A5.5 5.5 0 1 1 9.8 2.1 M9.8 0 V2.1 H12"/></g>
-      <g class="ico" transform="translate(485 224)"><path d="M6.5 0 V13 M0 6.5 H13"/></g>
     </g>
     <text class="t" x="104" y="266">support.noticeboard</text>
   </g>
@@ -63,7 +62,7 @@
   </g>
 
   <g id="markers">
-    <circle class="num" cx="404" cy="111" r="9"/><text class="numt" x="404" y="115">1</text>
+    <circle class="num" cx="400" cy="111" r="9"/><text class="numt" x="400" y="115">1</text>
     <circle class="num" cx="270" cy="261" r="9"/><text class="numt" x="270" y="265">2</text>
     <circle class="num" cx="58" cy="160" r="9"/><text class="numt" x="58" y="164">3</text>
     <circle class="num" cx="258" cy="201" r="9"/><text class="numt" x="258" y="205">4</text>
@@ -72,9 +71,9 @@
 
   <g id="callouts">
     <circle class="num" cx="566" cy="64" r="9"/><text class="numt" x="566" y="68">1</text>
-    <text class="noteb" x="584" y="68">Actions on the row, one drawn size</text>
-    <text class="note" x="584" y="88">Copy, refresh and new session, right-aligned,</text>
-    <text class="note" x="584" y="106">in the same box. No line of their own.</text>
+    <text class="noteb" x="584" y="68">Actions on hover or focus, on the row</text>
+    <text class="note" x="584" y="88">One drawn size, right-aligned. Hidden rows keep</text>
+    <text class="note" x="584" y="106">the space, so nothing moves when they appear.</text>
     <circle class="num" cx="566" cy="136" r="9"/><text class="numt" x="566" y="140">2</text>
     <text class="noteb" x="584" y="140">One label column per level</text>
     <text class="note" x="584" y="160">24, 40, 56: one 16px step, the width of the ▸.</text>

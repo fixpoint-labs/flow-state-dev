@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 400" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="One instance row, zoomed. The row frame holds two siblings: the activation button, which carries the indent, the twisty column and the label, and the trailing area beside it, which holds the host's row content (the copy icon, always) and the open leaf's actions (refresh and new session, only while open). Keyboard order runs button, copy, refresh, new session. Below, three session rows: an untitled engine id shows a short form with the full id in a tooltip, a channel id shows whole, and a titled session shows its title. Every icon is drawn at one size with one stroke, and a dashed tree line runs from the instance's arrow down past its sessions.">
+     aria-label="One instance row, zoomed. The row frame holds two siblings: the activation button, which carries the indent, the twisty column and the label, and the trailing area beside it, which holds the host's row content (the copy icon, always) and the open leaf's actions (refresh and new session, only while open). Keyboard order runs button, copy, refresh, new session. Below, three session rows: an untitled engine id shows a short form with the full id in a tooltip, a channel id shows whole, and a titled session shows its title. Every icon is drawn at one size with one stroke; the trailing area shows on hover or keyboard focus and keeps its space while hidden; and a dashed tree line runs from the instance's arrow down past its sessions.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; }
@@ -48,9 +48,10 @@
   </g>
 
   <g id="slot-labels">
-    <text class="cod" x="628" y="136">ROWTRAILING · ALWAYS</text>
+    <text class="cod" x="628" y="136">ROWTRAILING · ANY ROW</text>
     <text class="cod" x="712" y="150">LEAFTOOLBAR · WHILE OPEN</text>
     <text class="lbl" x="628" y="178">EVERY ICON · ONE DRAWN SIZE, ONE STROKE</text>
+    <text class="lbl" x="628" y="192">SHOWN ON HOVER OR FOCUS · SPACE KEPT</text>
   </g>
 
   <g id="tab-order">

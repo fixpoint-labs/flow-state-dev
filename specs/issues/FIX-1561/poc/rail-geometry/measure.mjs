@@ -22,7 +22,10 @@
  * harness.tsx). The host buttons are the DevTool's own, so the Tailwind they
  * use is compiled here with the DevTool's toolchain.
  * `--long --width 256` adds overlong labels and narrows the rail for G7;
- * `--break` is G7's negative control on the sketch.
+ * `--break` is G7's negative control on the sketch. G8 checks the chosen
+ * hover/focus reveal: `--variant hover` should pass it, `today` and `always`
+ * are its red state. G1, G5 and G7 are measured with each action's row
+ * hovered, so the actions are measured revealed.
  *
  * Experimental evidence retained with the spec; not production code.
  */
@@ -50,6 +53,7 @@ const icons = arg("--icons", "today");
 const long = process.argv.includes("--long");
 const width = arg("--width", "300");
 const broken = process.argv.includes("--break");
+const noFocus = process.argv.includes("--no-focus");
 
 // The DevTool's classes, compiled by the DevTool's own Tailwind, so the
 // Button's rules resolve exactly as they do in the tool.
@@ -81,21 +85,53 @@ writeFileSync(
   '<!doctype html><html><head><link rel="stylesheet" href="harness.css"></head><body style="margin:0;background:#0f172a"><div id="root"></div><script src="harness.js"></script></body></html>',
 );
 
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 300, height: 860 }, deviceScaleFactor: 2 });
-await page.goto(
-  `file://${join(out, "index.html")}?variant=${variant}&icons=${icons}&long=${long ? 1 : 0}&width=${width}&break=${broken ? 1 : 0}`,
-);
-await page.waitForSelector("[data-kind]");
+const url = `file://${join(out, "index.html")}?variant=${variant}&icons=${icons}&long=${long ? 1 : 0}&width=${width}&break=${broken ? 1 : 0}&nofocus=${noFocus ? 1 : 0}`;
 
-// Expand everything: a collapsed rail proves nothing about nesting.
-for (let pass = 0; pass < 30; pass++) {
-  const closed = page.locator('button[aria-expanded="false"]');
-  if ((await closed.count()) === 0) break;
-  await closed.first().click();
+/** Open the harness and expand everything: a collapsed rail proves nothing about nesting. */
+async function openExpanded(page) {
+  await page.goto(url);
+  await page.waitForSelector("[data-kind]");
+  for (let pass = 0; pass < 30; pass++) {
+    const closed = page.locator('button[aria-expanded="false"]');
+    if ((await closed.count()) === 0) break;
+    await closed.first().click();
+    await page.waitForTimeout(50);
+  }
+  await page.waitForTimeout(200);
+}
+
+/**
+ * Each host action's reveal state: the opacity of the trailing area it sits in
+ * (the row frame's child that holds it), and whether Tab can reach it. An
+ * action outside any row frame, today's toolbar line, reads as its own opacity.
+ */
+const readReveal = (page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll("[data-host-action]")].map((a) => {
+      let el = a;
+      const isFrame = (n) =>
+        n?.querySelector(":scope > button[data-kind], :scope > button[data-instance-id], :scope > button[data-session-id]");
+      while (el.parentElement && !isFrame(el.parentElement)) el = el.parentElement;
+      const trailing = el.parentElement ? el : a;
+      return {
+        action: a.dataset.hostAction,
+        row: (el.parentElement?.querySelector(":scope > button")?.textContent ?? "").replace(/[▾▸]/g, "").trim(),
+        opacity: Number(getComputedStyle(trailing).opacity),
+        focusable: a.tabIndex >= 0 && !a.disabled && getComputedStyle(a).visibility !== "hidden" && a.closest("[inert]") === null,
+      };
+    }),
+  );
+
+/** Nothing hovered, nothing focused. */
+async function rest(page) {
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.mouse.move(Number(width) - 4, 850);
   await page.waitForTimeout(50);
 }
-await page.waitForTimeout(200);
+
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 300, height: 860 }, deviceScaleFactor: 2 });
+await openExpanded(page);
 
 const m = await page.evaluate(() => {
   const textLeft = (el) => {
@@ -211,6 +247,54 @@ const m = await page.evaluate(() => {
   return { rows, notes, actions, actionLines, iconBoxes, guides, fit, railOverflows };
 });
 
+// Revealed: hover each action's row and read it there, so G1, G5 and G7 are
+// measured on actions a person can actually see.
+const revealed = [];
+for (const handle of await page.$$("[data-host-action]")) {
+  const frame = await handle.evaluateHandle((a) => a.closest("li > div") ?? a);
+  await frame.asElement().hover();
+  await page.waitForTimeout(20);
+  revealed.push(
+    await handle.evaluate((a) => {
+      let el = a;
+      while (el.parentElement && el.parentElement !== a.closest("li > div")) el = el.parentElement;
+      return Number(getComputedStyle(el.parentElement ? el : a).opacity);
+    }),
+  );
+}
+const measuredRevealed = revealed.every((o) => o >= 0.99);
+
+// G8: at rest hidden but reachable; Tab from a row reveals its actions; a
+// hovered row reveals its own and no other; a no-hover screen shows them all.
+await rest(page);
+const atRest = await readReveal(page);
+const firstActionRow = atRest.find((r) => r.row)?.row;
+await page.getByRole("button", { name: firstActionRow, exact: true }).focus();
+await page.keyboard.press("Tab");
+const tabbed = await page.evaluate(() => document.activeElement?.dataset.hostAction ?? null);
+const afterTab = (await readReveal(page)).filter((r) => r.row === firstActionRow);
+await rest(page);
+const hoverTarget = [...atRest].reverse().find((r) => r.row)?.row;
+await page.getByRole("button", { name: hoverTarget, exact: true }).hover();
+await page.waitForTimeout(50);
+const onHover = await readReveal(page);
+const touchContext = await browser.newContext({ viewport: { width: 300, height: 860 }, hasTouch: true, isMobile: true });
+const touch = await touchContext.newPage();
+await openExpanded(touch);
+await rest(touch);
+const noHover = await touch.evaluate(() => matchMedia("(hover: none)").matches);
+const onTouch = await readReveal(touch);
+await touchContext.close();
+
+const reveal = {
+  restHidden: atRest.length > 0 && atRest.every((r) => r.opacity <= 0.01),
+  reachable: atRest.every((r) => r.focusable),
+  tabReveals: tabbed !== null && afterTab.length > 0 && afterTab.every((r) => r.opacity >= 0.99),
+  hoverOnlyThatRow: onHover.every((r) => (r.row === hoverTarget ? r.opacity >= 0.99 : r.opacity <= 0.01)),
+  touchShows: noHover && onTouch.every((r) => r.opacity >= 0.99),
+};
+
+await rest(page);
 if (hoverRow !== null) await page.getByRole("button", { name: hoverRow, exact: true }).hover();
 await page.waitForTimeout(100);
 if (shot) await page.screenshot({ path: shot, fullPage: true });
@@ -258,7 +342,11 @@ console.log(
 );
 
 const results = [
-  ["G1 no host action sits on a line of its own", own.length === 0, `${own.length} of ${m.actions.length} off-row`],
+  [
+    "G1 no host action sits on a line of its own (measured revealed)",
+    own.length === 0 && measuredRevealed,
+    `${own.length} of ${m.actions.length} off-row; all measured revealed: ${measuredRevealed}`,
+  ],
   ["G2 every label at one level starts at one x", levelX.every((l) => l.spread <= 0.5), levelX.map((l) => `L${l.level} spread ${l.spread.toFixed(1)}px`).join(", ")],
   ["G3 each level steps right by the same amount, at least 12px", steps.every((s) => s >= 12 && Math.abs(s - steps[0]) <= 0.5), `steps ${steps.map((s) => s.toFixed(1)).join(", ")}px`],
   [
@@ -269,8 +357,8 @@ const results = [
   [
     // The drawing, not the box: every box is already 16px today, and the owner
     // still saw copy drawn bigger. A box check would pass on the defect.
-    "G5 every row action's drawn glyph, and its hit area, is one size (±0.5px)",
-    [sizes("inkW"), sizes("inkH"), sizes("hitW"), sizes("hitH")].every((xs) => range(xs) <= 0.5),
+    "G5 every row action's drawn glyph, and its hit area, is one size (±0.5px, measured revealed)",
+    [sizes("inkW"), sizes("inkH"), sizes("hitW"), sizes("hitH")].every((xs) => range(xs) <= 0.5) && measuredRevealed,
     `glyph spread ${range(sizes("inkW")).toFixed(1)}×${range(sizes("inkH")).toFixed(1)}px; hit spread ${range(sizes("hitW")).toFixed(1)}×${range(sizes("hitH")).toFixed(1)}px; icon box spread ${range(sizes("w")).toFixed(1)}px (information)`,
   ],
   [
@@ -278,14 +366,19 @@ const results = [
     badGuides.length === 0,
     `${m.guides.length - badGuides.length} of ${m.guides.length} parents`,
   ],
+  [
+    "G8 actions hidden at rest yet reachable; Tab and hover reveal only their row; always shown with no hover",
+    Object.values(reveal).every(Boolean),
+    `at rest hidden ${atRest.filter((r) => r.opacity <= 0.01).length} of ${atRest.length}, reachable ${atRest.filter((r) => r.focusable).length}; Tab from "${firstActionRow}" → ${tabbed ?? "nothing"}, shown ${reveal.tabReveals}; hover "${hoverTarget}" shows only it ${reveal.hoverOnlyThatRow}; no-hover screen (${noHover}) shows all ${reveal.touchShows}`,
+  ],
 ];
 if (long) {
   const longRows = m.fit.filter((f) => f.long);
   const overflowing = m.fit.filter((f) => f.overflows);
   const hitOk = m.iconBoxes.every((i) => Math.abs(i.hitW - m.iconBoxes[0].hitW) <= 0.5 && Math.abs(i.hitH - m.iconBoxes[0].hitH) <= 0.5);
   results.push([
-    `G7 at ${width}px an overlong label ellipsizes, actions keep their box, nothing overflows`,
-    longRows.length > 0 && longRows.every((f) => f.ellipsized) && overflowing.length === 0 && !m.railOverflows && hitOk,
+    `G7 at ${width}px an overlong label ellipsizes, actions keep their box, nothing overflows (measured revealed)`,
+    longRows.length > 0 && longRows.every((f) => f.ellipsized) && overflowing.length === 0 && !m.railOverflows && hitOk && measuredRevealed,
     `${longRows.filter((f) => f.ellipsized).length} of ${longRows.length} long labels ellipsized; ${overflowing.length} rows overflow${overflowing.length ? ` (${overflowing.map((f) => f.label).join(", ")})` : ""}; rail overflows: ${m.railOverflows}; hit boxes equal: ${hitOk}`,
   ]);
 }

@@ -8,12 +8,12 @@ Improvement · `react` + `devtool` + kitchen-sink · small · 1 PR · epic [FIX-
 
 | Someone who… | Today | After |
 |---|---|---|
-| **opens instances in the developer tool's rail** | Each open instance, and the `digest` channel kind, gets an extra line holding only refresh and new session: 12 of the tree's 17 icons | Copy, refresh and new session sit on the instance's own row, right-aligned. The photographed tree takes 16 lines, not 22 |
+| **opens instances in the developer tool's rail** | Each open instance, and the `digest` channel kind, gets an extra line holding only refresh and new session: 12 of the tree's 17 icons | Points at an instance and its copy, refresh and new session appear on its own row, right-aligned; other rows stay quiet. The photographed tree takes 16 lines, not 22 |
 | **scans the tree to see what belongs to what** | A session starts 4px *left* of its instance. `support.noticeboard` starts 16px left of the instances at its level. Nothing but indent shows nesting | One column per level, each one 16px step right of its parent, and a dashed line down from each open parent past its children. The channel lines up with the instances. Notes sit on their level's column |
 | **compares a row's icons** | Copy is drawn at 13.3px, refresh at 12, plus at 9.3, in the same 16px boxes | All three drawn at one size, with one stroke, in one hit area |
 | **looks for a session with no title** | Reads a 32-character engine id, clipped by the rail | Reads `sess_…3df102`, with the full id on hover. Titles and channel names show whole |
-| **starts a conversation in kitchen-sink** | Opens the Assistant row and clicks a full-width "New session" line under it | Clicks the + on the Assistant row. Same action, still named "New session" for screen readers and in its tooltip |
-| **uses the rail from the keyboard** | Tabs through the row, its actions, then a separate action line | The same controls in the same order, on one line. Opening a row keeps focus on it |
+| **starts a conversation in kitchen-sink** | Opens the Assistant row and clicks a full-width "New session" line under it | Points at or tabs to the Assistant row, then clicks its +. Same action, still named "New session". Until then it is hidden: the cost the owner accepted |
+| **uses the rail from the keyboard** | Tabs through the row, its actions, then a separate action line | The same controls in the same order, on one line; tabbing into a row shows its actions. Opening a row keeps focus on it |
 | **builds an app on `FlowNavigator`** | Their `leafToolbar` draws as a strip above the open leaf's sessions | It draws on the leaf's own row, so it has to fit one: a few icon buttons. The release note says so |
 
 Found from a screenshot. Two checks already guard the rail's indentation and both pass on it:
@@ -26,12 +26,16 @@ they compare padding values, not where the text lands.
 Today, the photographed rail at twice its horizontal size. The red dashed columns show where
 the labels actually start: 36, 32 and 20 pixels. The icons are drawn at their real relative sizes.
 
-![Wireframe of the recommended rail: every action on its own row, right-aligned, drawn at one size; dashed tree lines down from each open parent; labels in three columns at 24, 40 and 56 pixels; short session ids](figures/after.svg)
+![Wireframe of the chosen rail: the row under the pointer shows its actions at one drawn size on its own row, every other row keeps them hidden; dashed tree lines down from each open parent; labels in three columns at 24, 40 and 56 pixels; short session ids](figures/after.svg)
 
-After, same tree and scale: three label columns, tree lines, one icon size, actions on their
-row, three fewer lines. This is the always-visible layout the spec recommends
-([Open](DECISIONS.md#open)); the tree lines and icon size are the owner's
-([O1, O2](DECISIONS.md#owner-decisions)).
+After, same tree and scale, one row pointed at: three label columns, tree lines, one icon size,
+actions on their own row and only there, three fewer lines. The reveal, the tree lines and the
+icon size are all the owner's ([R1](DECISIONS.md#r1), [O1, O2](DECISIONS.md#owner-decisions)).
+
+![One row in four states: at rest, pointed at, focused from the keyboard, and on a touch screen](figures/reveal-states.svg)
+
+The reveal, one row at a time. Hidden actions keep their space and stay reachable by Tab; a
+screen with no hover pointer always shows them.
 
 ![One instance row zoomed: the button carries the indent, twisty and label; the trailing area beside it holds the copy icon and, while the leaf is open, refresh and new session; tab order button, copy, refresh, new; three session labels](figures/row-anatomy.svg)
 
@@ -91,9 +95,9 @@ The leaf is still read once, when it opens. Its toolbar now lands on the row tha
    both rails.** If wrong: a slow or flaky check nobody trusts, or without it, the next layout
    slip found by eye again.
 
-Already decided by the owner in review, and built into both: one drawn icon size
-([O1](DECISIONS.md#o1)) and dashed tree lines ([O2](DECISIONS.md#o2)).
+Decided by the owner, and built in: actions shown on hover or focus ([R1](DECISIONS.md#r1),
+in session, 2026-09-24), one drawn icon size ([O1](DECISIONS.md#o1)) and dashed tree lines
+([O2](DECISIONS.md#o2)).
 
-**Open: one fork.** [Row actions: always visible, or revealed on hover?](DECISIONS.md#open)
-I recommend always visible. The reasoning and what lost: [DECISIONS.md](DECISIONS.md). The
-cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+**Open: none.** Approve by merging. The reasoning and what lost: [DECISIONS.md](DECISIONS.md).
+The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).

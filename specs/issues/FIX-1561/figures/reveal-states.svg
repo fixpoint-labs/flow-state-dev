@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 360" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The alternative layout: the same rail with every row's actions hidden until the row is pointed at or focused. On the left, only support.otto, under the pointer, shows its copy, refresh and new-session icons; every other row shows none. On the right, one row in four states: at rest the actions are invisible but still reachable by Tab, under the pointer they show, with keyboard focus in the row they show, and on a touch screen with no hover they always show. Dashed tree lines and one icon size are the same as in the recommended layout.">
+     aria-label="The chosen reveal: the same rail with every row's actions hidden until the row is pointed at or focused. On the left, only support.otto, under the pointer, shows its copy, refresh and new-session icons; every other row shows none. On the right, one row in four states: at rest the actions are invisible but still reachable by Tab, under the pointer they show, with keyboard focus in the row they show, and on a touch screen with no hover they always show. A selected row also keeps its actions shown. The accepted cost: the Assistant row's only New session is hidden until that row is pointed at or focused.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --prose:#A8761C; }
@@ -21,7 +21,7 @@
     .warn  { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-size:13px; }
   </style>
   <rect class="bg" width="940" height="360"/>
-  <text class="lbl" x="24" y="24">ALTERNATIVE · ACTIONS REVEALED ON HOVER OR FOCUS · SAME TREE, SAME COLUMNS</text>
+  <text class="lbl" x="24" y="24">THE CHOSEN REVEAL · HOVER OR FOCUS · ONE ROW, FOUR STATES</text>
 
   <g id="rail">
     <rect class="rail" x="24" y="36" width="500" height="250" rx="6"/>
@@ -72,6 +72,6 @@
     </g>
   </g>
 
-  <text class="warn" x="24" y="322">The cost: kitchen-sink's only "New session" is on the Assistant row, so a first-time</text>
+  <text class="warn" x="24" y="322">Accepted cost: kitchen-sink's only "New session" is on the Assistant row, so a first-time</text>
   <text class="warn" x="24" y="340">visitor with a mouse doesn't see it until they point at that row.</text>
 </svg>

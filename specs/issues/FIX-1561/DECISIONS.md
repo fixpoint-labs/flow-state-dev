@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Two decisions and one open fork are the sign-off surface. Two owner decisions, made in review,
-are recorded as given. Everything else here is context for them.
+Two decisions are the sign-off surface. Three owner decisions, made in review and in session,
+are recorded as given; nothing is open. Everything else here is context for them.
 
 ## The tree
 
@@ -18,7 +18,8 @@ flowchart TD
   I --> O1["O1 · owner · icons one drawn size"]
   I --> O2["O2 · owner · dashed tree lines"]
   O2 -.->|"rejected"| X5["ticks into each row<br/>a mark per line is the noise removed"]
-  I --> F["Open · always visible or hover reveal"]
+  I --> R1["R1 · owner · actions on hover or focus"]
+  R1 -.->|"not chosen"| X6["always visible<br/>the recommendation, kept for the record"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -65,17 +66,46 @@ One dashed line per open parent, from its twisty's centre down its whole child l
 component draws it, so both rails get it. No horizontal ticks: a mark on every row is the noise
 the owner asked to remove.
 
-## Open
+## Closed by the owner
 
+<a name="r1"></a>
 <a name="open"></a>
-### Row actions: always visible, or revealed on hover?
+### R1 · Row actions: always visible, or revealed on hover?
 
-![The recommended layout: actions always visible on open rows](figures/after.svg)
+**Decided by the product owner, 2026-09-24: on hover.** The owner, in session: *"Only on hover.
+Screens look good"*. A row's copy, refresh and new-session icons stay hidden until the row is
+pointed at or focused. The accepted cost: kitchen-sink's only "New session", on the Assistant
+row, is hidden until that row is hovered or focused. "Screens look good" also approves the
+icon size and tree lines as drawn ([O1](#o1), [O2](#o2)).
 
-![The alternative: actions hidden until the row is pointed at or focused, shown in four states](figures/alt-hover.svg)
+![The chosen rail: one row under the pointer shows its actions, every other row keeps them hidden](figures/after.svg)
 
-Top is the recommendation, bottom the alternative. The only difference is whether icons wait
-to be pointed at.
+![The chosen reveal, one row in four states: at rest, pointed at, focused from the keyboard, and on a touch screen](figures/reveal-states.svg)
+
+The first is the rail with one row pointed at; the second is one row's four states.
+
+**The calls that come with it, mine:**
+
+- **Shown while the pointer is over the row, and while focus is anywhere inside it**: the
+  effect of `:hover` and `:focus-within`. The package ships no stylesheet, so it gets that from
+  the row's own pointer and focus events, as the sketch does. Tab reaches the actions and shows
+  them.
+- **Hidden means invisible, never removed.** The actions stay in the tab order; removing them
+  would lock keyboard users out.
+- **A selected row keeps its actions shown; an open one doesn't.** Selection belongs to session
+  rows, so this never pins an instance's copy, refresh or new session. Pinning every open leaf
+  would show actions on most rows and undo the owner's call.
+- **No hover pointer (`@media (hover: none)`) means always shown**, so touch users aren't locked
+  out.
+- **The space is kept.** Hidden actions keep their width, so a label truncates at the same point
+  whether the row is pointed at or not, and nothing reflows. The other way, laying actions over
+  the label's end, would need a background colour behind them, and the package can't know a
+  host's. The cost: a long label on a row with actions truncates about 70px earlier.
+- **The developer tool's dispatch-run label rides along.** It sits in the same trailing area, so
+  it hides until hover too; the run is still marked by its extra step of indent.
+
+*The question as it was asked, kept for the record* (the always-visible layout it recommended is
+[`after.svg` at a15fe8e](https://github.com/fixpoint-labs/flow-state-dev/blob/a15fe8e283dc7cceac1c5c356140f8c931084422/specs/issues/FIX-1561/figures/after.svg)):
 
 **Plain terms.** After this change the copy, refresh and new-session icons sit at the right end
 of the row they act on. They can always show there, or appear only when someone points at the
@@ -85,11 +115,11 @@ row or tabs into it. Touch screens have no pointer, so there they would always s
 kitchen-sink's only "New session" until a visitor finds the right row. Always visible shows
 three small, muted icons on each *open* instance and nothing extra on closed ones.
 
-**My recommendation: always visible.** Most of the noise in the screenshot was the extra lines
+**Recommendation at the time: always visible.** Most of the noise in the screenshot was the extra lines
 and the ragged indent, and both go either way. The reference app's main call to action
 shouldn't need discovering.
 
-**What would change my mind:** looking at the top picture and still finding it busy, or a plan
+**What would change my mind:** looking at the always-visible picture and still finding it busy, or a plan
 to give kitchen-sink a second way to start a conversation.
 
 **Cost of being wrong: low.** It's a styling rule inside the component. Switching later is a
@@ -134,7 +164,7 @@ patch release with no change to anyone's code.
   starts its label 16px short, and a level steps only 12px: sessions land 4px left of their
   instance, the channel 16px left of its level ([POC](poc/rail-geometry/README.md)).
 - **It can be fixed without changing when sessions are read** — **CONFIRMED**. The sketch
-  passes G1–G7 with the read untouched.
+  passes G1–G8 with the read untouched.
 - **The developer tool's icons share a box but not a drawn size** — **CONFIRMED**. 16px boxes
   and 20px hit areas; drawings of 13.3 (copy), 12 (refresh) and 9.3px (plus). The declared
   `h-3 w-3` is overridden by the button's descendant rule ([POC](poc/rail-geometry/README.md)).
@@ -149,3 +179,5 @@ patch release with no change to anyone's code.
 - **Review round 1** — the goal check gained G7 (a long label at 256px) and moved into an
   existing end-to-end scenario, because the first plan left a rule unchecked and went over the
   suite's size budget.
+- **Owner answer: hover reveal** — the row-actions fork closed as the owner's call, and the goal
+  check gained G8 (hidden at rest, shown on hover or keyboard focus, always on touch).

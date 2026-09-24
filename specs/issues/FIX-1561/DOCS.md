@@ -22,6 +22,12 @@ Replaces the paragraph that lists the slots, and the `leafToolbar` paragraph aft
 > `aria-label` rather than text buttons. It is mounted when the leaf opens and unmounted when it
 > closes.
 >
+> What `rowTrailing` and `leafToolbar` return shows when someone points at the row or moves
+> keyboard focus into it, and stays shown on the selected row and on touch screens, which have
+> no hover. Hidden content keeps its space and stays reachable with Tab, so nothing on the row
+> moves when it appears. There is no setting to keep it always visible, so put anything a reader
+> must see at a glance in the row's label rather than in a slot.
+>
 > Both slots draw on the same row, so draw their icons at one visual size. Matching the icons'
 > boxes isn't always enough: icon sets draw some shapes larger than others inside the same box,
 > a copy icon beside a plus, for example, so size each one until the drawings match.
@@ -36,8 +42,9 @@ Replaces the paragraph that lists the slots, and the `leafToolbar` paragraph aft
 > **The flow list.** The navigator reads your server's flow list, plus a session list for each
 > leaf you open. A leaf is a row whose sessions you can open: a single-instance flow's row, or
 > one copy of a flow that has many. Like the panels, it reads on mount and doesn't watch. The
-> `leafToolbar` slot draws on an open leaf's own row and is handed a `refresh` function that
-> re-reads that leaf's sessions, so a refresh button sits right next to the thing it refreshes.
+> `leafToolbar` slot draws on an open leaf's own row, shown when the row is pointed at or
+> focused, and is handed a `refresh` function that re-reads that leaf's sessions, so a refresh
+> button sits right next to the thing it refreshes.
 
 ## UPDATE · `apps/docs/docs/workforce/ui.md` · "Styling it", the custom-properties bullet
 
@@ -53,7 +60,7 @@ Replaces the paragraph that lists the slots, and the `leafToolbar` paragraph aft
 "@flow-state-dev/devtool": patch
 ---
 
-`FlowNavigator` now draws an open leaf's `leafToolbar` on that leaf's own row instead of a line of its own, so give the slot icon buttons with an `aria-label` rather than text buttons, and it adds dashed tree lines you can colour with `--fsd-nav-guide` (FIX-1561).
+`FlowNavigator` now draws an open leaf's `leafToolbar` on that leaf's own row, showing both row slots only when the row is hovered or focused (always on touch screens), so give them icon buttons with an `aria-label`, and it adds dashed tree lines you can colour with `--fsd-nav-guide` (FIX-1561).
 ```
 
 ## Publication ownership
