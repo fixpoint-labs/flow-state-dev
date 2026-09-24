@@ -161,7 +161,7 @@ await openChannels(channels, { client: sessionClient, userId: "u_42" });
 
 `boards` is the exception. The [board](#holding-a-board) list is built from the files on every bind and is never stored on the channel, so a board added to an open channel's file is usable the next time you run.
 
-Re-running does repair one thing: a channel whose id was claimed by a post before it was opened. That leaves an empty session, and re-running binds it. An empty session is the only thing it will clear out of the way. If the id is held by something else, such as a session belonging to another flow or another user, or one carrying state that is not a readable channel, `openChannels` names it and stops. A channel id that collides with a real session is a configuration problem, and the fix is to rename the channel, not to have startup delete somebody's data.
+Re-running does repair one thing: a channel whose id was claimed by a post before it was opened. That leaves an empty session, and re-running binds it. An empty session is the only thing it will clear out of the way. If the id is held by something else, such as a session belonging to another flow or another user, or one carrying state that is not a readable channel, `openChannels` names it and stops. If that happens, rename the channel.
 
 The one registered instance answers for every session id, and naming a session that does not exist creates an empty one rather than refusing. So a channel is not "a session id somebody used". It is a session that was opened as a channel, carrying members and a charter. Post to an id nobody opened and you get `channel-not-bound`, nothing is written, and the empty session stays inert.
 
@@ -259,7 +259,7 @@ Compare on `author`, not `principal`: `principal` is the id the channel was open
 
 The delivery runs in its own request, outside the post's turn, so a slow notification never delays the next post. A delivery that fails is recorded and the rest are still attempted; the post stays written either way, because the transcript is the durable record and waking people is best-effort.
 
-Your block supplies the addresses. The framework will not pick a dispatch target out of stored data, so a notify block declares the recipients it can reach rather than reading one off the members list. That means one declaration per recipient kind.
+Your block supplies the addresses. Declare a dispatcher, like the one in [Posting and reading](#posting-and-reading), for each recipient in the notify block, with `flowKind` set to that recipient's address, and choose which one runs from `input.member`.
 
 ## Holding a board
 
@@ -323,7 +323,7 @@ Naming a board the channel does not hold is refused by name, `board-not-declared
 
 ### Showing a board on screen
 
-`readBoard` answers a model. A screen reads the ledger itself, because an action's return value never reaches the browser.
+`readBoard` answers a model. A screen reads the ledger itself, because an action's return value isn't sent to the browser. The browser sees the items a session emits and the collections it can read.
 
 The ledger is readable from a session whose flow declares it, under its minted id:
 
@@ -377,7 +377,7 @@ Compose it once per board. A worker holding two boards holds sixteen tools, and 
 
 A board that no hired worker declares warns at hire, naming the channel and the board. Nothing is refused: a channel may keep a board that only people read.
 
-`boards:` on a channel running a [kind of your own](#registering-a-kind-of-your-own) is refused by name when you bind the roster, because boards belong to the built-in channel kind. A board's rows are stored at organization scope, so they sit in [the organization the channel runs in](#which-organization-a-channel-runs-in).
+A board's rows are stored at organization scope, so they sit in [the organization the channel runs in](#which-organization-a-channel-runs-in).
 
 Rename or move a channel's folder and its boards move with it, since a board's id comes from where the channel sits. Rows filed under the old id stay there and nothing migrates them. The unattended-board warning is what makes that visible.
 
@@ -397,7 +397,7 @@ A record carrying `flow: my-channel` then runs on that kind's own instance, and 
 
 That map is the whole registration surface. There is no second API, and a custom factory carries the same contract the built-in does: one kind, one instance.
 
-The factory the framework ships builds only the built-in kind, so a kind of your own is a flow you write: its own state, its own post, its own read. It cannot hold a board. `boards:` on a record naming your kind is refused when you bind the roster, because a board's ledgers are handed to the built-in kind at bind time and a custom factory takes no arguments.
+The factory the framework ships builds only the built-in kind, so a kind of your own is a flow you write: its own state, its own post, its own read. It cannot hold a board: `boards:` on a record naming your kind is refused by name when you bind the roster.
 
 Different members, a different charter and a different set of boards are not a diverging workflow; they are all one kind. A different `read` is.
 

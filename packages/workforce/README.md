@@ -1299,15 +1299,12 @@ A reloaded seat is addressed `<orgId>.<seatId>`, so two organizations can both h
 `support.ada`. The organization must be a single address segment — lowercase letters, digits and
 single hyphens, up to 64 characters, and no dots, since a dot is what joins the two halves.
 
-Register the seats yourself, one at a time, with each seat's `ownerPin`, and fold any refusal into
-the same list. A seat the registry refuses is one seat that cannot run, not a reason for the app to fail
-to start, and admitting them as a batch would make it one.
+Register the seats yourself, one at a time, with each seat's `ownerPin`, and add any refusal to
+`problems`. The other seats still start.
 
-It takes the organizations rather than discovering them, because which organizations an app reloads
-is the app's decision and not one this package can make for it.
+You pass the organizations to reload. It does not discover them.
 
-`problems` is the part to handle rather than log — the same shape `openInventory` returns, for the
-same reason: the caller owns start-up policy. A row naming a kind you no longer ship, or carrying a
+`problems` is the part to handle rather than log, the same shape `openInventory` returns. A row naming a kind you no longer ship, or carrying a
 setting that kind no longer accepts, comes back here with its reason instead of throwing. The other
 seats still hire, the app still starts, and the row is left exactly as it was — nothing is repaired
 or deleted on your behalf.
@@ -1320,7 +1317,7 @@ the flat list so a registry refusal lands in the right organization's `problems`
 A read the store will not complete rejects, and a set of organizations larger than the cap rejects
 too, naming both numbers. The cap is `maxOrgs`, 100 by default; the read's own bound is `timeoutMs`,
 10000ms by default, and it covers the whole set rather than each organization. Neither returns a
-partial roster, because a short roster that looks complete is the failure this is guarding against.
+partial roster.
 
 The roster and the inventory are different collections. A roster row at
 `workforce/roster/<seatId>` is the durable hire: `hire` writes it, `fire` deletes it. An

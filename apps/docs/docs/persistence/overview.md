@@ -244,7 +244,7 @@ Rollback is the backup, and only before the converted store has taken new writes
 
 This section is for apps that ran [hired seats](/docs/workforce/durable-hire) on an earlier release, where a seat stored what it saved for a person under the person's own id. A new install can skip it.
 
-A seat keeps what it saves for a person under a user-scope key for its organization and that person, `<person>:~org:<organization>`. [What a seat saves for a person](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person) describes that cell. Data a seat saved before your upgrade is under the person's own id, where your other flows keep theirs. The server does not read it for the seat and does not move it, because only your records say which organization it came from. Until you copy it, each seat starts empty for each person.
+A seat keeps what it saves for a person under a user-scope key for its organization and that person, `<person>:~org:<organization>`. [What a seat saves for a person](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person) describes what a seat keeps there. Data a seat saved before your upgrade is under the person's own id, where your other flows keep theirs. The server does not read it for the seat and does not move it, because only your records say which organization it came from. Until you copy it, each seat starts empty for each person.
 
 Copying is optional and offline, with writers quiesced and a backup taken, as in the [owner attribution procedure](#who-owns-a-record) above. It copies only data you can show a seat wrote.
 

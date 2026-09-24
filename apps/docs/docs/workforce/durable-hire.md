@@ -30,7 +30,7 @@ All of these come from `@flow-state-dev/workforce`:
 | `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems, byOrg }`. It registers nothing. |
 | `createSeatHireBlocks(options)` | Returns `{ hire, fire }`, two handlers that run the whole hire and fire sequence. Mount them as a flow's actions. See [the ready-made handlers](#the-ready-made-hire-and-fire-handlers). |
 
-Three smaller helpers appear in the examples below. `registerHiredSeat` calls your register function with the seat's pin, and refuses a pin that names no organization. `toHiredSeatRow` builds a stored row out of what a hire supplied, and `hiredSeatManifest` turns a row back into the record `hireWorkforce` takes.
+`registerHiredSeat` calls your register function with the seat's pin, and refuses a pin that names no organization. `toHiredSeatRow` builds a stored row out of what a hire supplied, and `hiredSeatManifest` turns a row back into the record `hireWorkforce` takes.
 
 What you write around all of them: the flow that carries the hire action, the credential that decides who may call it and which organization they hire into, the call to `flowstate.register()` that puts a minted seat on the air, and the policy for which organizations a start reloads.
 
@@ -51,15 +51,17 @@ import type { AuthenticationConfig } from "@flow-state-dev/core/types";
 import { extractBearerToken, PrincipalResolutionError } from "@flow-state-dev/engine";
 
 /** Your own scheme. This one reads `<org>:<token>` pairs out of the environment. */
-const orgByToken = new Map(
-  (process.env.ADMIN_CREDENTIALS ?? "")
-    .split(",")
-    .filter(Boolean)
-    .map((pair) => {
-      const at = pair.indexOf(":");
-      return [pair.slice(at + 1), pair.slice(0, at)] as const;
-    })
-);
+const orgByToken = new Map<string, string>();
+const boundTwice = new Set<string>();
+for (const pair of (process.env.ADMIN_CREDENTIALS ?? "").split(",").filter(Boolean)) {
+  const at = pair.indexOf(":");
+  const [org, token] = [pair.slice(0, at), pair.slice(at + 1)];
+  const bound = orgByToken.get(token);
+  if (bound !== undefined && bound !== org) boundTwice.add(token);
+  orgByToken.set(token, org);
+}
+// A token written against two organizations is dropped, not resolved to either.
+for (const token of boundTwice) orgByToken.delete(token);
 
 export const adminAuthentication: AuthenticationConfig = {
   requireUser: true,
@@ -74,7 +76,7 @@ export const adminAuthentication: AuthenticationConfig = {
 };
 ```
 
-Give each organization its own token. A token written against two organizations resolves whichever one the parser saw last, so a copy-paste in an environment variable turns into a cross-tenant decision. Drop every binding for a token that names more than one, rather than picking a winner.
+Give each organization its own token. A token written against two organizations would otherwise resolve to whichever one the parser saw last, so a copy-paste in an environment variable would decide which tenant a hire lands in. The sample drops every binding for such a token rather than picking a winner.
 
 Register the flow only when a usable credential is configured. Then a deployment that has none has no hire route at all, and a call to `/api/flows/workforce-admin/actions/hire` comes back `404 Unknown flow "workforce-admin"` rather than reaching a check that can go wrong.
 
@@ -256,7 +258,7 @@ The organization is part of the address because two organizations can both want 
 
 A hired seat belongs to the organization that hired it, and to the person who hired it when it is user-owned. The `pin` you register the seat with names both, and every caller is checked against it. Knowing or guessing a seat's address grants nothing.
 
-Anyone outside that pair gets the answer an address your app does not serve would get:
+A caller your resolver identifies, but who is outside that pair, gets the answer an address your app does not serve would get:
 
 - Opening a session with the seat, or sending it an action, answers `404 Unknown flow`.
 - `GET /api/flows` leaves the seat out of the list.
@@ -265,6 +267,8 @@ Anyone outside that pair gets the answer an address your app does not serve woul
 - With debug endpoints switched on, the debug listing does not show another person's private roster row.
 
 For example, Alice hires a user-owned `research` seat while signed in to Acme. Bob, also in Acme, cannot open it. Neither can Alice while she is signed in to Globex. If she wants a research seat there, she hires one in Globex, and it starts empty. If Bob hires his own, his starts empty too. [What a seat saves for a person](#what-a-seat-saves-for-a-person) covers why.
+
+A caller the seat's resolver refuses, such as a request with no credential, gets that resolver's error before the pin is checked. With the `adminAuthentication` above installed on the seat, that is `401 Invalid admin credential.`
 
 **The check is as strong as the principal your resolver returns.** "Who is asking" is the principal your [`resolvePrincipal`](../server/authentication.md) returns: a user and the organization they are signed in to. Use a resolver that verifies both, and install it on each hired seat as well as on the flow that hires it, as `registerSeat` in [Reaching the `FlowState`](#reaching-the-flowstate) does.
 
@@ -512,11 +516,11 @@ The roster is not the [inventory](./inventory.md). An inventory row means *was r
 
 ### What a seat saves for a person
 
-A seat keeps what it saves for a person in a cell of its own, apart from the roster: a user-scope key for the seat's organization and that person, `<person>:~org:<organization>`. The cell holds the seat's shared user data. That is the user record a seat reads as `ctx.user.state`, unless the kind sets `isolateUserState: true`, and every user-scoped resource that isn't flow-isolated. A resource's own `flowIsolation` decides whether it is isolated; a resource that doesn't set it follows the kind's `isolateUserState`.
-
 Say Alice uses seats in two organizations, Acme and Globex. Anything a seat stores for her while she works in Acme stays in Acme and stays hers. Her Globex seat of the same kind cannot read it, and neither can a seat belonging to Bob, another member of Acme. Her other seats in Acme can, if they declare the same resource. A seat does not move between organizations, and there is no setting that makes it move.
 
-The person's own data outside hired seats, such as preferences your app's other flows keep, is a different cell, keyed by the person's id alone. A hired seat does not read it and cannot write to it. Flow-isolated data is not in either cell: it is keyed by the person and the seat's own address. That covers the user record when the kind sets `isolateUserState: true`, and any user-scoped resource that is isolated, by its own `flowIsolation: true` or by following the kind's `isolateUserState: true`.
+User state and user-scoped resources a seat writes are kept per person, per organization. That covers the user record a seat reads as `ctx.user.state`, and every user-scoped resource that isn't flow-isolated. A resource's own `flowIsolation` decides whether it is isolated; a resource that doesn't set it follows the kind's `isolateUserState`. Flow-isolated data, including the user record when the kind sets `isolateUserState: true`, is kept per person and per seat address instead.
+
+The person's own data outside hired seats, such as preferences your app's other flows keep, is kept separately, by the person's id alone. A hired seat does not read it and cannot write to it.
 
 A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the person's id and the organization, so key its rows by `orgId` as well, or a seat in one organization reads what was saved in another.
 
@@ -532,6 +536,6 @@ If you are upgrading an app whose seats already saved data, see [Upgrading: movi
 
 **A start may serve fewer seats than the roster names.** If a stored seat names a flow kind the current code no longer has, or carries settings that kind no longer accepts, that seat is skipped and named in `problems`. The app starts and every other seat answers. The skipped row is left exactly as it was: nothing is repaired or deleted on your behalf. Fix it by putting the kind back, or by firing the seat.
 
-**The flow list is public, except for hired seats.** `GET /api/flows` needs no credential. Any caller who can reach your app sees every flow your app defines and every seat declared in a `WORKER.md` file, including one your code registers after start. A hired seat is listed only to callers who could open it, as described in [Who can reach a hired seat](#who-can-reach-a-hired-seat). A caller your resolver cannot identify sees no hired seats. A flow you register with a `pin` yourself is listed the same way. If those names are sensitive, put your own check in front of the route.
+**The flow list is public, except for hired seats.** `GET /api/flows` needs no credential. Any caller who can reach your app sees every flow registered without a `pin`, whenever it was registered: every flow your app defines and every seat declared in a `WORKER.md` file. A hired seat is listed only to callers who could open it, as described in [Who can reach a hired seat](#who-can-reach-a-hired-seat). A caller your resolver cannot identify sees no hired seats. A flow you register with a `pin` yourself is listed the same way. If those names are sensitive, put your own check in front of the route.
 
 **A seat hired at runtime skips the webhook start-up check.** [Webhook providers](../server/webhooks.md) are the per-provider mechanics an app configures at mount, and a start refuses when a registered flow subscribes to one the app never configured. That check runs over the flows registered at start, so it does not see a seat hired after it. Until the next start, deliveries to that seat's webhook route come back `404 webhook_not_found`; at the next start the mismatch is raised and the start refuses.

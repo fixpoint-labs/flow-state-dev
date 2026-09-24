@@ -386,7 +386,7 @@ Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
 `FlowNavigator` is a sidebar that browses the flows registered on your server, the instances under them, and each instance's sessions. Reach for it when your app has more than one conversation to switch between and you would otherwise build that list yourself.
 
-You give it sections. A section is a label and a set of flow kind names, so an app that declares a channel kind of its own adds that name to the same list.
+You give it sections. A section is a label and a set of flow kind names.
 
 Leave `kinds` out and the section covers every kind the server registers. That is what you want when the kinds are not yours to write down, such as a tool pointed at whatever deployment is running. `kinds: []` is different: an empty filter matches no kinds, so the section renders empty.
 
@@ -402,6 +402,8 @@ import { FlowNavigator } from "@flow-state-dev/react";
   onSelectSession={(picked) => setSessionId(picked)}
 />
 ```
+
+If your app declares a channel kind of its own, add its name to the Channels section's `kinds`.
 
 How deep the tree goes comes from each flow's declared `cardinality`. A flow declared `singleton` is a single instance and sits as one row. A flow declared `collection` has many addressable copies, and its row expands into them. Depth comes from the flow, not from a prop.
 
