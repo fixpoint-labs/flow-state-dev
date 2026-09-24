@@ -11,15 +11,15 @@ the format. If the owner rules *list it too* on D1, PR-A is dropped and PR-B gra
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the hire step's `tools:` split, and the kind's `tools:` setting | Record whether the worker **wrote** `tools: []` **before** the hire splits `tools:` into own-folder blocks and catalog names (that split can leave an empty catalog list for a worker that listed only its own blocks). Pass the answer on as an imposed withhold flag; never infer it from the list after the split or after the schema default | BR-2 BR-3 BR-5 BR-8 |
-| S2 | `workforce` · the agent kind's per-turn tools slot | Add the tools of every preset the worker's file **picked**, read from its raw selection (not only the presets the per-turn resolver still delivers, which skips presets already on for the kind). Function-valued preset tools join per turn. Nothing is added when S1's withhold flag is set. The kind's mint-time check refuses a picked preset's static tool whose name collides with the worker's other tools | BR-3 BR-4 BR-6 BR-7 BR-21 BR-29 BR-31 |
+| S1 | `workforce` · the hire step's `tools:` split, and the kind's `tools:` setting | Record whether the worker **wrote a `tools:` line at all** **before** the hire splits `tools:` into own-folder blocks and catalog names (that split can leave an empty catalog list for a worker that listed only its own blocks) and before any schema default fills it. Pass the answer on as an imposed flag; never infer it from the list after the split or after the default | BR-2 BR-3 BR-5 BR-8 |
+| S2 | `workforce` · the agent kind's per-turn tools slot | Add the tools of every preset the worker's file **picked**, read from its raw selection (not only the presets the per-turn resolver still delivers, which skips presets already on for the kind). Function-valued preset tools join per turn. Nothing is added when S1 says the worker wrote a `tools:` line. The kind's mint-time check refuses a picked preset's static tool whose name collides with the worker's other tools | BR-3 BR-4 BR-6 BR-7 BR-21 BR-29 BR-31 BR-33 |
 | S3 | `workforce` · the hired worker's settings contract | One more imposed key, beside the team's instructions, own skills and own tools: the worker's **packages**, each with its text and its blocks. Its own key, not `seatTools`, whose documented meaning is what the worker listed. Refused if a file declares it. Documented for custom kinds: reading it is optional, as for the other imposed keys | BR-15 BR-32 |
 | S4 | `workforce` · the package text reader | A pure reader: `PACKAGE.md` text in, `{ description, body }` out, or a named refusal. Takes a string, never a path | BR-16 BR-17 BR-28 |
 | S5 | `workforce` · the package walker at start | Walks `packages/` at org, team and worker level with the shared structural primitives; calls S4 per file; refuses the shapes in BR-18, BR-20, BR-24, BR-25 | BR-9 BR-10 BR-18 BR-20 BR-24 BR-25 |
 | S6 | `workforce` · codegen, a fourth code door | Finds `packages/<name>/blocks/*.ts` at the three levels without opening modules; renders a `packageBlocks` map keyed by the package's address. Reuses the seat-blocks door's refusals | BR-22 BR-27 |
 | S7 | `workforce` · `WORKER.md` | New key `packages:` (list of names). Resolved at the hire against the worker's team library, then the org's | BR-10 BR-11 BR-12 BR-13 |
 | S8 | `workforce` · the hire step | Joins S5's text and S6's blocks per worker: held (own folder) plus taken (`packages:`). Puts both on S3's key. Refuses a package block colliding with the worker's own or team blocks, its catalog names or another held package, and the store rule | BR-9 BR-13 BR-14 BR-19 BR-21 BR-23 BR-26 |
-| S9 | `workforce` · the built-in agent kind | Renders S3's text after the team's and the worker's own instructions; adds S3's blocks to the tools slot unless S1's flag is set. Delegation's seat fence keeps reading the worker's listed names only | BR-1 BR-2 BR-15 BR-30 |
+| S9 | `workforce` · the built-in agent kind | Renders S3's text after the team's and the worker's own instructions; adds S3's blocks to the tools slot when S1 says no `tools:` line was written; with a line, a package block is callable only if the line names it. Delegation's seat fence keeps reading the worker's listed names only | BR-1 BR-2 BR-15 BR-30 |
 | S10 | `fsdev` · `gen` | Passes `packageBlocks` through; `--check` covers it | BR-27 |
 | S11 | Tests · `published-tree-surface.test.ts` | Rows for `packages/<name>/PACKAGE.md` and `packages/<name>/blocks/<block>.ts` at each level; `PACKAGE.md` joins the fixed leaves; `packages` joins the reserved segments | — |
 | S12a | Docs, PR-A | The grant edits in [DOCS.md](DOCS.md), both architecture docs, and the agent kind's module comments; `minor` changeset naming BR-4's upgrade change | — |
@@ -64,10 +64,10 @@ S4–S7 do not depend on PR-A and may be built in parallel with it; only S8 need
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S1 | Omitted and `[]` are told apart after the schema, on a file record and on a stored roster row (BR-8) |
-| V2 | S2 | BR-3 (including a worker that lists only its own blocks), BR-4, BR-6, BR-29, BR-31 green; BR-5, BR-7 green with the existing suites **unmodified**. Negative control: drop S1's flag and read the post-split list instead, and the own-blocks case of BR-3 goes red |
+| V2 | S2 | BR-3 (including a worker that lists only its own blocks), BR-4, BR-6, BR-29, BR-31 green; BR-5, BR-7 green with the existing suites **unmodified**. BR-33 green with the existing suites unmodified. Negative control: drop S1's flag and read the post-split list instead, and a worker that lists only its own blocks gains its presets' tools (red) |
 | V3 | S4 | Each refusal in BR-16/BR-17 red before green; S4 called with a string only (BR-28) |
 | V4 | S5, S6 | BR-18, BR-20, BR-22, BR-24, BR-25, BR-27, each red first. The symlink matrix gains package rows |
-| V5 | S8, S9 | BR-1, BR-2, BR-9–BR-15, BR-19, BR-21, BR-23, BR-26, BR-30, BR-32. BR-14 asserts the sibling **after** proving the holder really got the package, so it cannot pass vacuously |
+| V5 | S8, S9 | The per-turn clash in the failure taxonomy fails that turn with the duplicate-name error. BR-1, BR-2, BR-9–BR-15, BR-19, BR-21, BR-23, BR-26, BR-30, BR-32. BR-14 asserts the sibling **after** proving the holder really got the package, so it cannot pass vacuously |
 | V6 | S11 | The published-surface suite's totality check passes with the new rows, and fails with one row removed |
 | VG | S9 | Goal, real model: `goals/workforce-packages/a-held-package-reaches-one-worker/run.mts`. A worker holding a package follows its instruction and calls its tool; a sibling of the same kind holding nothing does neither; the holder with `tools: []` gets the text and no call. Control: move the package to the sibling's folder, and the legs swap |
 | V7 | all | `pnpm --filter @flow-state-dev/workforce test`, `typecheck`, and the four existing grant-gate suites run unmodified except S13's named changes |
@@ -115,7 +115,7 @@ at the hire, per worker:
         registry += packageBlocks[address]                       ← collisions refused
         chosenTools += names of those blocks
     chosenTools += static tools of selected presets
-    grant ← (tools was written as []) ? nothing : tools ∪ chosenTools
+    grant ← (a tools: line was written) ? exactly that line : chosenTools
 ```
 
 **POC:** none new. The ratify's probes (`origin/spec/FIX-1394-matrix:spec-poc/FIX-1394-probes/`)
@@ -124,9 +124,12 @@ real path. Its reader read from a path and hand-parsed frontmatter; this plan do
 
 ## At implement time
 
-- **D1's card.** If the owner picks *list it too*: drop PR-A and S1/S2, and S8 instead
-  refuses a package block the worker's `tools:` doesn't name, with the line to add. BR-1, BR-3,
-  BR-4, BR-6 invert; everything else stands.
+- **D1's card.** If the owner picks *list it too*: drop PR-A and S1/S2. A package block is
+  callable only when the worker's `tools:` names it, exactly as BR-3 already reads for a worker
+  that writes a line; an unnamed block is simply not granted, so `tools: []` keeps the
+  instructions and no tool (BR-2 unchanged). S8 refuses only a name in `tools:` that no held
+  package or other source offers. S9 adds nothing on its own. BR-1 and BR-4 invert (no line
+  means no tools), BR-6 and BR-31 drop; everything else stands.
 - **FIX-1435** may have hoisted the shared slot walk. If so, S5 and S6 use it rather than adding a
   fifth copy.
 - **Stored roster rows** (`roster/rows.ts`) keep `settings` as declared. Confirm an omitted

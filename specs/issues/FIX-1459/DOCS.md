@@ -68,17 +68,33 @@ Sidebar: Workforce, directly after `capabilities-on-disk`. Frontmatter `sidebar_
 > The team's folder is looked in first, then the org's. A worker that names nothing gets nothing
 > from either, so putting a package in a shared folder changes no worker until one asks for it.
 >
-> A worker that holds a package can call its tools. It doesn't also have to list them under
-> `tools:`. A worker with `tools: []` calls nothing, whatever it holds: it still reads the package's
-> instructions.
+> A worker with no `tools:` line can call the tools of every package it holds. A worker that writes
+> a `tools:` line gets exactly that list, so name a package's block there to keep it. A worker with
+> `tools: []` calls no tool, whatever it holds: it still reads the package's instructions.
 >
 > A package's tools reach only the workers that hold it. They are not in your app's tool catalog,
 > and a worker that doesn't hold the package can't name them.
 >
+> ## Package or skill?
+>
+> Both are Markdown that tells a worker how to do something. The difference is the tool.
+>
+> | | Skill | Package |
+> | --- | --- | --- |
+> | In the folder | `SKILL.md` and reference files | `PACKAGE.md` and `blocks/`, its tools |
+> | In the prompt | when something activates it, or always if it's in `skills: active:` | every turn |
+> | Its tools | the ones the worker can already call | its own blocks |
+> | In a team or org folder | every worker there has it | only a worker that names it in `packages:` |
+> | After you edit it | a worker keeps its copy until you refresh it | the next start picks it up |
+>
+> If the guidance needs a tool the worker can't already call, write a package. Otherwise write a
+> skill. Skills aren't going anywhere: most guidance is a skill.
+>
 > ## When a file is wrong
 >
-> Every mistake is found when the app starts, and every bad worker and file is named in one message.
-> The app is refused when:
+> Nearly every mistake is found when the app starts, and every bad worker and file is named in one
+> message. The exception is a clash with a tool a capability builds fresh on each turn: that turn
+> fails with an error naming the tool. The app is refused when:
 >
 > | What | Why |
 > |------|-----|
@@ -107,12 +123,13 @@ Sidebar: Workforce, directly after `capabilities-on-disk`. Frontmatter `sidebar_
 
 Replace the first paragraph with:
 
-> Presets carry tools as well as context. A worker that selects a preset gets both: its context and
-> its tools. A worker with `tools: []` calls nothing, whatever it selected. That is how you give a
-> worker a preset's guidance without its tools.
+> Presets carry tools as well as context. A worker with no `tools:` line that selects a preset gets
+> both: its context and its tools. A worker that writes a `tools:` line gets exactly the tools it
+> lists, whatever it selected, and `tools: []` gives it the context and no tool. That is how you
+> give a worker a preset's guidance without its tools.
 
 Replace the code comment `// held back, whatever that worker's \`tools:\` says` with
-`// reaches a worker that selects \`radio\`, unless it writes \`tools: []\``, and the sentence under
+`// reaches a worker that selects \`radio\` and has no \`tools:\` line`, and the sentence under
 the example with:
 
 > A worker whose file selects `radio` gets the `radio` context and can call `ping` and `lookup`.
@@ -130,20 +147,20 @@ Add at the end of the page:
 
 > **Coming from an earlier version:** a worker that selected a tool-bearing preset and had no
 > `tools:` line used to get the context only. It now gets the tools too. To keep the old reach,
-> write `tools: []` and list the tools you want.
+> write `tools: []`. A worker that already had a `tools:` line is unchanged.
 
 ## UPDATE · `apps/docs/docs/workforce/built-in-worker.md` · "Tools" (PR-A for the first two, PR-B for the rest)
 
 - Replace *"An empty `tools:`, or none at all, means no tools, whatever is registered."* with:
-  *"A worker also gets the tools of the capability presets it selects and the packages it holds.
-  `tools: []` written out means no tools at all."*
-- Replace *"That list is the whole of what a worker can call."* with *"That list, plus what the
-  worker picked, is what it can call."* Keep the memory paragraph; it stays true (BR-29).
+  *"A worker with no `tools:` line gets the tools of the capability presets it selects and the
+  packages it holds. A written `tools:` line is the whole list, and `tools: []` means no tools."*
+- Keep *"That list is the whole of what a worker can call."* and add after it: *"With no list,
+  a worker can call what it picked."* Keep the memory paragraph; it stays true (BR-29).
 - In the paragraph that begins *"The settings a worker writes for itself…"*, add `packages` to the
   list, and make *"Three more reach the seat in the same bag"* four, adding *"the instructions of
   the packages it holds"*.
 - After *"Declaring a tool under a skill's `allowed-tools` does not grant it."* add: *"A package is
-  different: holding one is choosing its tools. See [Packages on disk](./packages-on-disk.md)."*
+  different: for a worker with no `tools:` line, holding one is choosing its tools. See [Packages on disk](./packages-on-disk.md)."*
 
 ## UPDATE · `apps/docs/docs/workforce/code-on-disk.md` · "Blocks a worker can call"
 
@@ -179,14 +196,14 @@ on disk](./packages-on-disk.md))."*
 
 Replace *"Nothing crosses the fence that the seat did not declare"* with: *"Nothing crosses the
 fence that the seat did not choose. `workforce` adds to the declaration what the seat's own file
-picked (a preset's tools, a held package's blocks) unless the seat wrote `tools: []`; core sees
+picked (a preset's tools, a held package's blocks) when the seat wrote no `tools:` line; core sees
 one declared list and stays exactly as literal as it reads above."*
 
 ## UPDATE · `docs/architecture/workforce-default-worker-kind.md` · the reserved `tools` key (PR-A)
 
-After the sentence on `seatTools`, add: *"The hire step also records whether the file wrote
-`tools: []`, before that split, so a kind can tell an explicit withhold from a list that emptied
-because every name was the seat's own."*
+After the sentence on `seatTools`, add: *"The hire step also records whether the file wrote a
+`tools:` line at all, before that split, so a kind can tell a written list from an omitted one,
+including a list that emptied because every name was the seat's own."*
 
 ## UPDATE · `apps/docs/docs/workforce/built-in-worker.md` · the memory paragraph (PR-A)
 

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="Package or skill. One question decides it: does the guidance need a tool the worker can't already call? If yes, write a package; if no, write a skill. Then five rows compare them. In the folder: a skill is SKILL.md plus reference files and can delegate to agents; a package is PACKAGE.md plus blocks, which are its tools. In the prompt: a skill arrives when something activates it (a slash, the active list, the activate tool, the classifier); a package's text is there on every turn. Tools: a skill uses what the worker can already call, and its allowed-tools grants nothing; a package brings its tools and holding it grants them, unless the worker writes tools: []. In a team or org folder: every worker there holds a skill; a package reaches only a worker that names it in packages:. Changing it: a worker keeps its own copy of a skill and pulls edits with a refresh; a package is read from the file at start, so an edit lands on restart."
+<svg viewBox="0 0 940 470" role="img" aria-label="Package or skill. One question decides it: does the guidance need a tool the worker can't already call? If yes, write a package; if no, write a skill. Then five rows compare them. In the folder: a skill is SKILL.md plus reference files and can delegate to agents; a package is PACKAGE.md plus blocks, which are its tools. In the prompt: a skill arrives when something activates it (a slash, the active list, the activate tool, the classifier); a package's text is there on every turn. Tools: a skill uses what the worker can already call, and its allowed-tools grants nothing; a package brings its tools and holding it grants them, unless the worker writes its own tools: list. In a team or org folder: every worker there holds a skill; a package reaches only a worker that names it in packages:. Changing it: a worker keeps its own copy of a skill and pulls edits with a refresh; a package is read from the file at start, so an edit lands on restart."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -64,7 +64,7 @@
     <text class="t-b" x="216" y="266">Uses what the worker can already call</text>
     <text class="t-s" x="216" y="284">allowed-tools grants nothing</text>
     <text class="t-b" x="588" y="266">Brings them; holding it grants them</text>
-    <text class="t-s" x="588" y="284">unless the worker writes tools: []</text>
+    <text class="t-s" x="588" y="284">unless the worker writes its own tools: list</text>
     <line class="row" x1="16" y1="300" x2="924" y2="300"/>
 
     <text class="t-lbl" x="16" y="326">IN A TEAM OR</text>

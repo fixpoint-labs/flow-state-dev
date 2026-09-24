@@ -11,9 +11,10 @@ already argued for, stated as a promise.
 
 ```mermaid
 flowchart TD
-  I["FIX-1459"] --> D1["D1 · choosing grants its tools<br/>only tools: [] withholds"]
+  I["FIX-1459"] --> D1["D1 · with no tools: line, choosing grants its tools<br/>a written tools: line is the whole grant"]
   D1 -.->|"rejected: authors write each tool twice"| X1["tools: stays the only grant"]
   D1 -.->|"rejected: two rules that disagree"| X1b["packages grant, presets don't"]
+  D1 -.->|"rejected: upgrade widens list-writers, no way back"| X1c["chosen tools add to a written list"]
   I --> D2["D2 · held in its own folder, or taken by name<br/>always on either way"]
   D2 -.->|"rejected: needs a grant mid-conversation"| X2["activated on demand, like a skill"]
   D2 -.->|"rejected: position already says it"| X2b["an attach: key in the file"]
@@ -24,13 +25,13 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · Choosing something grants its tools; only `tools: []` withholds
+## D1 · With no `tools:` line, choosing something grants its tools; a written `tools:` line is the whole grant
 
 | | |
 |---|---|
 | **Instead of** | The ticket's rule: *attaching a package never widens what a seat may call; a package tool the seat doesn't list in `tools:` fails loudly at load*. Today that is also how capability presets work: picking one gives a worker its text and none of its tools |
-| **Because** | On 2026-09-19 the owner locked the opposite for presets ([FIX-1464](https://linear.app/fixpoint-labs/issue/FIX-1464)): picking a preset *implies* its tools, `tools: []` still means nothing. That ticket lists this one as a clash it hasn't resolved. Shipping packages on the old rule would teach a rule the owner has already retired, and would leave two authoring stories that disagree, which FIX-1464 forbids by name. So this spec builds FIX-1464's rule once, for both. Its open question, what an **omitted** `tools:` means, is answered here: the tools of everything the worker chose. `tools: []` written out is the only withhold. Only what the worker's own file chose counts: presets the kind switches on by default still grant nothing, and chosen tools don't travel to a delegate |
-| **Locks in** | A worker's reach is no longer readable from its `tools:` line alone: it is `tools:` plus what it holds and picks. **Existing workers that pick a tool-bearing preset without listing its tools gain those tools** on upgrade, so this ships with a changelog line and a migration note. Anyone who wants the old narrowness writes `tools: []` plus the names, and that is how it stays |
+| **Because** | On 2026-09-19 the owner locked the opposite for presets ([FIX-1464](https://linear.app/fixpoint-labs/issue/FIX-1464)): picking a preset *implies* its tools, `tools: []` still means nothing. That ticket lists this one as a clash it hasn't resolved. Shipping packages on the old rule would teach a rule the owner has already retired, and would leave two authoring stories that disagree, which FIX-1464 forbids by name. So this spec builds FIX-1464's rule once, for both. Its open question, what an **omitted** `tools:` means, is answered here: the tools of everything the worker chose. A **written** `tools:` line keeps meaning exactly what it lists, `tools: []` included. Adding chosen tools to a written list was the first draft, and review showed its cost: a worker that picks a preset and lists two catalog tools would gain the preset's tools on upgrade, with no line that keeps its old reach, because `tools: []` also drops the two it listed. Only what the worker's own file chose counts: presets the kind switches on by default still grant nothing, and chosen tools don't travel to a delegate |
+| **Locks in** | A worker with no `tools:` line reaches what it holds and picks; one with a line reaches that line. A worker that writes a list and holds a package names the package's blocks in the list to call them. **Existing workers that pick a tool-bearing preset and write no `tools:` line gain its tools** on upgrade; they had no tools before, so `tools: []` restores their old reach exactly. This ships with a changelog line and that migration note |
 
 **What would change my mind:** the owner choosing *list it too* on the decision card. Then the
 ticket's original rule stands, presets are untouched, FIX-1464 stays open, and PR-A is dropped from
@@ -85,6 +86,9 @@ the plan. Nothing else in this set moves.
 
 ## How it got here
 
+- **Review, round 1** — Codex showed that adding chosen tools to a *written* list widens
+  list-writers on upgrade with no way back; D1 now leaves a written list literal. Controls,
+  per-turn collisions and the *list it too* fallback were tightened with it.
 - **Draft** — framed as an authoring surface over machinery that already ships, per the ratify;
   folded FIX-1464's grant rule in because the two clash by name; narrowed the library mode to
   take-by-name; two PRs, the grant rule first.

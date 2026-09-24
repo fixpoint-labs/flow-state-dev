@@ -11,14 +11,15 @@ worker runs, with the worker and the file named, and every refusal in one run re
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-1 | A worker holds a package and has no `tools:` line | It can call every block in the package, and nothing else it didn't choose | CI · goal check |
-| BR-2 | A worker holds a package and writes `tools: []` | It calls nothing: not the package's blocks, not a preset's tools. It still gets the package's instructions | CI |
-| BR-3 | A worker holds a package and lists other tools in `tools:` | It can call the listed tools **and** the package's blocks | CI |
+| BR-2 | A worker holds a package and writes `tools: []` | It calls no tool: not the package's blocks, not a preset's tools. It still gets the package's instructions. A picked preset's control tools stay reachable, as today (BR-5) | CI |
+| BR-3 | A worker holds a package and writes a `tools:` line | It can call exactly the listed tools. A package block it lists is callable; one it doesn't list is not, and its instructions still arrive | CI |
 | BR-4 | A worker picks a capability preset that carries tools, and has no `tools:` line | It can call the preset's tools (D1). Control tools behave as today | CI |
-| BR-5 | A worker picks a preset that carries tools and writes `tools: []` | It calls nothing, as today | Existing grant-gate suites, unmodified |
+| BR-5 | A worker picks a preset that carries tools and writes `tools: []` | It calls none of the preset's tools, as today. The preset's **control** tools stay reachable, as today: a control is not a tool the list governs | Existing grant-gate suites, unmodified |
+| BR-33 | A worker picks a preset that carries tools and writes a non-empty `tools:` line | It can call exactly the listed tools, as today. Nothing it chose is added, so no existing list-writer's reach changes on upgrade | Existing grant-gate suites, unmodified · CI |
 | BR-6 | A worker picks a preset whose tools are a function, not a list | Those tools reach it through the preset as they would with no `tools:` line; nothing is refused | CI |
 | BR-7 | A worker holds no package and picks no preset | Exactly today's behaviour, byte for byte | Existing grant-gate suites, unmodified |
 | BR-29 | A capability the **kind** installs has presets on by default, and a worker picks nothing from it (memory's `recall` and `connect`, for example) | Those tools still do not reach the worker. Only what a worker's own file chose grants | CI · the existing memory case, unmodified |
-| BR-31 | A worker picks a preset the kind already switches on by default (memory's `recall`) | It gains that preset's tools. Picking it is the choice; the kind's default is not | CI |
+| BR-31 | A worker with no `tools:` line picks a preset the kind already switches on by default (memory's `recall`) | It gains that preset's tools. Picking it is the choice; the kind's default is not | CI |
 | BR-30 | A worker delegates work through a skill | The delegate is fenced to the names the worker **listed**. Chosen tools and package blocks do not travel, the same as a worker's own `blocks/` today | CI |
 | BR-8 | A worker row stored before this change is reloaded | It is read the same way a file is: an omitted `tools:` stays omitted and the row gains what it chose. A stored `tools: []` still withholds | CI · a stored row fixture |
 
@@ -62,9 +63,11 @@ worker runs, with the worker and the file named, and every refusal in one run re
 
 Every problem with a package or a grant is a start-time refusal: the app does not start, and the
 message names every bad worker and file at once. Nothing degrades silently, nothing is skipped, and
-nothing retries. The one change in reach that is not a refusal is BR-4 and BR-8: a worker that
-chose a tool-bearing preset gains its tools on upgrade. That is the decision, and it is called out
-in the changelog and the docs' migration note.
+nothing retries. **One exception:** a package block whose name clashes with a preset tool that is
+built per turn (BR-6) can't be known at start. That turn fails with the framework's duplicate-name
+error naming the tool, and V5 proves it. The one change in reach that is not a refusal is BR-4 and
+BR-8: a worker with no `tools:` line that chose a tool-bearing preset gains its tools on upgrade.
+That is the decision, and it is called out in the changelog and the docs' migration note.
 
 ## Acceptance criteria this issue owns
 
