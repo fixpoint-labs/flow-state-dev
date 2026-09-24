@@ -14,6 +14,7 @@ is a wish.
 | **PR-4** | When a file declares a thing, then every key the convention **derives** is refused by name — a file may not say where it lives, what its identity is, or what its state shape is | FIX-1351 | Reader tests, per-convention |
 | **PR-5** | When a new surface names a Layer 2 concept, then it uses the **settled name** (Role, Strategy, Instructions, stream visibility), never the superseded one | FIX-1407 | A check over the changing epic's own diff. W4 met it that way (ER-19); the repo-wide pass is **unowned** |
 | **PR-6** | When an epic writes a hireable worker kind, then it **composes `workerConfigSchema()`** — the four imposed keys `instructions`, `teamInstructions`, `seatSkills`, `seatTools` — and a file that authors any of them is refused by name | FIX-1351 | The closed schema at every mint; a kind that cannot take the bag refuses at boot, naming the key |
+| **PR-7** | When an epic needs a fence on a hired seat, then it sits at a framework seam (dispatch, admission or read) and is proved on the real path, **never only in kitchen-sink or a Lab**, where a host that copies the app gets no fence | FIX-1528 | The epic objective gate; `goals/hire-plane/` on the real router and worker pool |
 
 **No epic may:**
 
@@ -36,6 +37,11 @@ is a wish.
   assembled through `@flow-state-dev/patterns` factories rather than hired as a kind. Each is a
   second of something PD-1 says there is one of.
 - Put a concept here **because it is convenient**. PR-1 is a test, not a preference.
+
+**PR-7 was FIX-1528's ER-12, promoted at its wrap** because two live siblings are bound by it.
+The kitchen-sink rebuild is building a manager seat that hires (FIX-1527) and an org and seat path
+in its human rail (FIX-1500). W5's proofs run Labs against a live hired Workforce. Each is where a
+local fence would be the quick fix.
 
 ---
 

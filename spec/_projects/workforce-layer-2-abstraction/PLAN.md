@@ -8,10 +8,11 @@ deliberately not next. Each epic's own plan owns its checks.
 ![The arc](figures/arc.svg)
 
 Seventeen days, not three months. The project opened in June, but every epic here was filed from
-**Sep 8** onward, and 75 issues still sit under no epic. **W4 and W3 wrapped
-three minutes apart on Sep 20**, and three bars now cross the now line: W5, the kitchen-sink
-rebuild, and plane isolation, which passed its gate on Sep 23 with six of eight children already
-done. Eight lanes — four closed, three open, and one that never opened.
+**Sep 8** onward, and 79 issues still sit under no epic. **W4 and W3 wrapped
+three minutes apart on Sep 20.** Plane isolation is the shortest closed bar: its first children
+shipped on Sep 22, it passed its gate on Sep 23 and wrapped on Sep 24, 8 of 8. Two bars cross the
+now line, W5 and the kitchen-sink rebuild. Eight lanes: five closed, two open, and one that never
+opened.
 
 ## What each epic consumes and releases
 
@@ -24,7 +25,7 @@ done. Eight lanes — four closed, three open, and one that never opened.
 | **W4** · FIX-1407 | W3's file surface; the settled vocabulary | Work routing, proved on the real path (ER-20), and the **ratified** package format — whose build left the set as FIX-1459. **Not** the PR-5 propagation pass, which it named out unowned |
 | **W5** · FIX-1457 | W3's file surface; W4's boards, inventory, dispatch and org identity, composed and never extended; Devtool's instance surfaces from FIX-1320 and org selection from FIX-1486, both outside this project | **Release QA** — three graded exit proofs on a live hired Workforce: Devtool reads it without a special wrapper, a DevForce path ships a real artifact, two seats collaborate across a channel. The evidence the project's *ready to ship* claim rests on. **Not** humans in seats: that explore is canceled, and only its invent-kill survives (PR list) |
 | **kitchen-sink** · FIX-1455 | W3's file surface; W4's first cut, for its ship half only; the existing Postgres persistence | The always-on reference consumer — durable hire that survives a redeploy, channels, and the inline-vs-resource-backed UI split, shipped in client packages rather than in the app |
-| **plane isolation** · FIX-1528 | FIX-1455's durable hire row (FIX-1475); the seat-hire tools; W4's dispatch and admission seams; a verified principal from FIX-1503, outside this project | One owner pin on the hire row fencing every door into a hired seat — catalog, open, restart, roster read, drain, debug, stored data — and a hired seat's data kept per (org, user). **Not** user planes, which wait on FIX-1486 |
+| **plane isolation** · FIX-1528 | FIX-1455's durable hire row (FIX-1475); the seat-hire tools; W4's dispatch and admission seams; a verified principal from FIX-1503, outside this project | **Released Sep 24:** one owner pin on the hire row fencing every door into a hired seat (catalog, open, restart, roster read, drain, debug, stored data), a hired seat's data kept per (org, person), and PR-7 for every epic after it. **Not** user planes, which wait on FIX-1486 |
 
 **Two epics prove the outcome from two sides.** W5 produces the release evidence — graded proofs on
 a live workforce, observed in Devtool; the kitchen-sink rebuild is the one app people copy. They
@@ -54,10 +55,10 @@ issue says only *Todo* ([Decisions](DECISIONS.md) → Open).
   remains is each epic's own sequencing, and neither is waiting on anything upstream. The per-child
   hold W5 used to carry is gone with the children: FIX-1458 is canceled and FIX-1455 is its own
   epic.
-- **Kitchen-sink → plane isolation — one hire row, fenced from the other epic.** FIX-1528 pins the
-  roster row FIX-1455's durable hire made, and its ER-12 says no fence lives only in kitchen-sink
-  or a Lab: the framework enforces it, or a host that copies the app gets none. Whether that binds
-  the kitchen-sink rebuild as a project rule is FIX-1528's wrap to say, not its gate.
+- **Kitchen-sink → plane isolation — one hire row, fenced from the other epic.** FIX-1528 pinned
+  the roster row FIX-1455's durable hire made. Its wrap answered the open half: ER-12 binds the
+  kitchen-sink rebuild and W5, so it is now **PR-7** ([Rules](BUSINESS-RULES.md)). FIX-1527's hiring
+  manager seat and FIX-1500's org path inherit the pin rather than adding a check of their own.
 - **W3's lab is the proof for PR-3**, so any epic that ships a convention before the lab exists is
   asserting the rule rather than checking it. The lab shipped with W3 (FIX-1355, done).
 - **The `org/channels/` door outlived both epics that bound it, and now reads closed while being
@@ -67,13 +68,25 @@ issue says only *Todo* ([Decisions](DECISIONS.md) → Open).
   ([Decisions](DECISIONS.md) → Open). The next epic to touch the channel surface inherits a gap
   the tracker says is shut.
 
+## Plane isolation's follow-ups
+
+Filed from its children and left outside the set on purpose. None is an epic child, so no epic is
+driving them.
+
+| Issue | What is open | State |
+|---|---|---|
+| [FIX-1545](https://linear.app/fixpoint-labs/issue/FIX-1545) · High bug | A schedule created through a run's schedule collection never fires. Every flow, hired seats included | In Development |
+| [FIX-1546](https://linear.app/fixpoint-labs/issue/FIX-1546) | Schedule index identity has no storage cell, so two orgs' schedules can collapse | Backlog |
+| [FIX-1543](https://linear.app/fixpoint-labs/issue/FIX-1543) | Two copies of the owner-pin helper can drift apart | Backlog |
+| [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) | A verified principal by default. The fence is only as good as the principal, so every door above is only as strong as this | In Spec Review, another project |
+
 ## What is deliberately not next
 
 - **The propagation pass.** Gated on the vocabulary locking (PD-4), not on capacity — and now
   **unowned**: W4 met PR-5 with a check over its own diff and named the repo-wide pass out at its
   wrap.
 - **Tasks, Skills internals, Memory implementation.** Own projects; this one owns the vocabulary.
-- **Re-parenting the 75 unparented issues.** They are the pre-epic era. Sweeping them under epics
+- **Re-parenting the 79 unparented issues.** They are the pre-epic era. Sweeping them under epics
   retroactively would make the arc look tidier and tell you less about what actually happened.
 - **A second harness or transport for the MCP door.** W1 has not started; widening it before it
   does is scope with no consumer.
