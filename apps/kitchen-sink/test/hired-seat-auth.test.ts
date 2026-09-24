@@ -183,9 +183,8 @@ describe("a seat hired over workforce-admin stays closed to everyone else", () =
       input: { note: "hello" },
     });
 
-    // 401 once the seat authenticates; 404 (the pin) before it did. Either is a
-    // refusal, and neither lets anything run.
-    expect([401, 404]).toContain(opened.status);
-    expect([401, 404]).toContain(ran.status);
+    // The seat's own resolver refuses a missing credential before the pin runs.
+    expect(opened.status).toBe(401);
+    expect(ran.status).toBe(401);
   });
 });
