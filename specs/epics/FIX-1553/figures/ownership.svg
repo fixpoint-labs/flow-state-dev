@@ -52,7 +52,7 @@
     <path class="grid" d="M16 146 L924 146"/>
   </g>
   <g id="r3">
-    <text class="t-row" x="16" y="170">ER-4 &#183; a gated edge fails closed</text>
+    <text class="t-row" x="16" y="170">ER-4 &#183; every cascade edge fails closed</text>
     <rect class="own" x="422" y="154" width="88" height="24" rx="3"/><text class="t-own" x="432" y="170">builds</text>
     <text class="t-con" x="832" y="170">consumes</text>
     <path class="grid" d="M16 184 L924 184"/>

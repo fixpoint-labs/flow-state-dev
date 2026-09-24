@@ -21,12 +21,16 @@ The heading "The four kinds" becomes "The five kinds", and an `### Evaluator` se
 
 ## UPDATE · the same count, everywhere it is stated
 
-`apps/docs/docs/getting-started/quick-start.md` (§ blocks, and "The four block kinds in depth"),
-`apps/docs/docs/getting-started/your-first-flow.md`, `apps/docs/docs/sequencers/overview.md`,
-`docs/architecture/blocks.md` (line 5), `docs/architecture/overview.md` (§ blocks and the
-constraints list), `docs/contributing/architecture-reference.md`, `CLAUDE.md` (Key Architectural
-Constraints), and `docs/philosophy.md` ("What FSD is" and tenet 2 say "four block kinds"). Each says five
-and names `evaluator`. No page is copied here; the edit is the count and the name.
+FIX-1554's PR sweeps the whole repository for "four block kinds", "four kinds" and the four
+names listed as the complete set, and fixes every live hit. A list here would go stale; the
+sweep is the rule (ER-8). On 2026-09-24 it finds, among others: `README.md`,
+`packages/core/README.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/philosophy.md` ("What FSD is"
+and tenet 2), `docs/architecture/{blocks,overview,items}.md`,
+`docs/contributing/architecture-reference.md`,
+`apps/docs/docs/{intro,fundamentals/overview,fundamentals/type-system,patterns/overview,sequencers/overview}.md`,
+the getting-started pages, both guides in `apps/docs/guides/`, the JSDoc on `BlockKind`, and the
+block skills under `.agents/skills/`. Dated history (blog posts, `CHANGELOG.md`, `docs/internal/`)
+stays as written. Each hit says five and names `evaluator`; no page is copied here.
 
 ## CREATE · `apps/docs/guides/routing-with-evaluators.md` · the teaching page (path proposed; FIX-1556 confirms)
 
@@ -48,17 +52,18 @@ and names `evaluator`. No page is copied here; the edit is the count and the nam
 > ```
 >
 > Any model that supports AI SDK evaluation works, including `openai.evaluationModel(...)`. A
-> model that can only generate is refused when the block is built, with a message saying which
-> kind of model to pass.
+> model that can only generate is refused before the block makes any call, with a message
+> saying which kind of model to pass.
 >
 > **Confidence is only there when the model gives it.** Jev reports how sure it is. The popular
 > providers' evaluation adapters don't. The evaluator never fills the gap with a number.
 >
 > When one answer decides the next question, write the tree with `cascadingRouter`. Each edge
-> can require a minimum confidence. If the model's confidence is below it, or missing, the
-> router takes your `ambiguous` branch instead of guessing. On a model without confidence, every
-> gated edge goes to `ambiguous`. That is on purpose: a routing tree that can't tell how sure the
-> model is should hand the case to a person, not pick a branch.
+> can set a minimum confidence, and if the model's confidence is below it the router takes your
+> `ambiguous` branch instead of guessing. If the model gave no confidence at all, every edge goes
+> to `ambiguous`, minimum or not. That is on purpose: a routing tree that can't tell how sure the
+> model is should hand the case to a person, not pick a branch. To branch on a bare answer from
+> such a model, use a plain `router`.
 >
 > The skill activator can use an evaluator for its third tier. Pass one in, and it picks skills
 > from your catalog by their descriptions. Leave it out, and activation works as it does today.

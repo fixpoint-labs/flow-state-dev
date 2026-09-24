@@ -20,7 +20,7 @@ problems, and Goal 4, keep the foundation honest ([`docs/objectives.md`](../../.
 
 | | |
 |---|---|
-| **Outcome** | An author routes on typed answers from any evaluation-capable model, and a routing tree never guesses when the model gives it no confidence |
+| **Outcome** | An author routes on typed answers from any evaluation-capable model, and a `cascadingRouter` tree never guesses: with no confidence from the model, every edge lands on `ambiguous` |
 | **Proof** | One assembled goal on a real evaluation model, six legs, owned by FIX-1556 ([ER-15](BUSINESS-RULES.md#the-proof)) |
 | **Lead measure** | Legs of the assembled evaluator goal passing on a real evaluation model. **0 of 6 today** |
 | **Not doing** | A System One package, an OpenRouter Decisions client, a generator fallback, cascade inside the block, a dispatcher block kind, RAG as core search |
@@ -51,7 +51,7 @@ nothing is specced yet.
 | [FIX-1558](https://linear.app/fixpoint-labs/issue/FIX-1558) · `cascadingRouter` | Code-side tree of evaluate calls with fail-closed gates | The Goal 4 half. Without it the kind is a classifier and nothing more | Backlog |
 | [FIX-1559](https://linear.app/fixpoint-labs/issue/FIX-1559) · skill activator | Evaluator inject for tier 3 | First consumer; sets the inject shape the others copy | Backlog |
 | [FIX-1557](https://linear.app/fixpoint-labs/issue/FIX-1557) · facets | Classify at write, filter at read | Stops a second classify stack from being built for search | Backlog |
-| [FIX-1555](https://linear.app/fixpoint-labs/issue/FIX-1555) · memory | A documented seam and a thin proof, sketch only | Keeps memory from growing its own classifier | Backlog |
+| [FIX-1555](https://linear.app/fixpoint-labs/issue/FIX-1555) · memory | A documented seam, proved by its own tests, sketch only. Its leg proves memory runs without one | Keeps memory from growing its own classifier | Backlog |
 | [FIX-1556](https://linear.app/fixpoint-labs/issue/FIX-1556) · docs and teach path | The published teaching page, one demo, the assembled goal | The only child that proves the set works together | Backlog |
 
 **0 done · 0 in flight · 6 to spec, 1 to close.** Whether six is really five: FIX-1555 is the one
@@ -91,10 +91,11 @@ consumers and the router can all run at once.
 
 ## Sign off
 
-1. **[D2](DECISIONS.md#d2) · The block never gates. A model with no confidence routes every
-   gated edge to `ambiguous`.** With an OpenAI or Anthropic adapter, a gated cascade sends
-   everything to review; only Jev (or a model that reports confidence) routes through a gate.
-   If wrong: authors on popular models read "any model works" and find their tree never routes.
+1. **[D2](DECISIONS.md#d2) · The block never gates. A model with no confidence sends every
+   `cascadingRouter` edge to `ambiguous`, floor or not.** With an OpenAI or Anthropic adapter a
+   cascade sends everything to review; only Jev (or a model that reports confidence) routes
+   through one. Those authors branch on the bare answer with a plain `router`. If wrong: authors
+   on popular models read "any model works" and find their tree never routes.
 2. **[D4](DECISIONS.md#d4) · The skill activator keeps its generator classifier as the default
    when no evaluator is passed.** An evaluator replaces it, and a failed evaluation never falls
    back to it. If wrong: we carry two tier-3 classifiers until a later cut, or the alternative

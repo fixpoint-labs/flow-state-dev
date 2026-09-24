@@ -42,7 +42,7 @@ is a rename, and Jev is the only reason for it.
 |---|---|
 | **Instead of** | A `minConfidence` option on the block · or a default confidence for models that report none |
 | **Because** | The lock makes the block a thin wrap and puts trees in code. A floor inside the block would be a gate in two places. A default number is the "synthetic confidence" the owner invent-killed |
-| **Locks in** | FIX-1554 defines one answer shape: each answer, plus confidence and per-option probabilities **only when the model returned them**, absent otherwise. FIX-1558, FIX-1559, FIX-1557 and FIX-1555 read that shape as is; none computes its own confidence. Every gate treats absent as below the floor. Per the POC on #1903, the popular providers' adapters return neither, so a gated edge on them always lands on `ambiguous`. FIX-1558's spec re-checks that against the shipped adapters, and the docs say it plainly ([DOCS.md](DOCS.md)) |
+| **Locks in** | FIX-1554 defines one answer shape: each answer, plus confidence and per-option probabilities **only when the model returned them**, absent otherwise. FIX-1558, FIX-1559, FIX-1557 and FIX-1555 read that shape as is; none computes its own confidence. In `cascadingRouter` absent confidence fails every edge, whether or not it sets a floor; a floor adds the "too low" check (ER-4). Per the POC on #1903, the popular providers' adapters return neither, so a cascade on them always lands on `ambiguous`; an author who wants to branch on their bare answer uses a plain `router`. FIX-1558's spec re-checks that against the shipped adapters, and the docs say it plainly ([DOCS.md](DOCS.md)) |
 
 <a name="d3"></a>
 ## D3 · A consumer takes an evaluator block, optional, typed on core. It never builds one, names a model, or imports a lab
@@ -75,7 +75,8 @@ is the only column that reads every row.
 Owner locks on FIX-1553 and its children (Architect chat, Jake, 2026-09-20 to 24):
 
 - **`evaluator` is the fifth core block kind**, a peer of `generator` wrapping AI SDK
-  `experimental_evaluate`. Dispatcher stays a handler extender; no sixth kind.
+  `experimental_evaluate`. Dispatcher stays a handler extender; no sixth kind. Tenet 2's test
+  for a new primitive is applied, not waived: see [Decided in review](#decided-in-review).
 - **`cascadingRouter` is a utility, not a kind.** The name is locked. Trees stay in code.
 - **Fail closed** when confidence or probabilities are missing or low. No soft fail into a wrong branch.
 - **Prefer Jev via Gateway; accept any evaluation-capable model.** Strings and instances both go
@@ -101,11 +102,37 @@ consumer needed only an optional block slot on the existing package, and the gat
 from the block beyond the confidence it passes through. **Changed:** nothing in the division. It
 set D2 (adapters carry no confidence) and D3 (the slot takes a block). No new end-state POC.
 
+<a name="decided-in-review"></a>
+## Decided in review
+
+Round 1 on #2166 (second look, Codex, FSD Architect triage).
+
+- **Why a kind and not a handler (tenet 2).** The lock stands. What a handler can't carry is
+  the model: `ctx.resolveModel` returns a generator model, so an evaluation model needs
+  framework-owned resolution and the generate-only refusal, the same reason `generator` is a
+  kind. The kind also gets its own trace and DevTool identity, and consumers type their slot on
+  an evaluator, not on any handler ([D3](#d3)). The #1903 stand-in resolved its own model, which
+  is what D3 forbids consumers doing. **Tripwire:** if FIX-1554's spec finds the kind adds no
+  resolution, trace or DevTool behaviour a handler factory couldn't, it raises that to this epic
+  before building, and the fallback is an `evaluate` handler factory with four kinds untouched.
+- **Absent confidence fails every cascade edge, not only floored ones** ([D2](#d2), ER-4). The
+  lock says missing confidence fails closed, and an optional floor let a confidence-less answer
+  walk an unfloored edge. Rejected: narrowing the promise to floored edges. Would change my mind:
+  a real tree that must route on popular adapters and can't use a plain `router` instead.
+- **Leg (f) proves only that memory runs without an evaluator.** The seam call is FIX-1555's own
+  test. Asserting it in the assembled goal would pull the cut candidate onto the critical path.
+  If FIX-1555 is cut, ER-7's second clause leaves with it by amendment.
+- **Leg (b) runs on a real generate-only model** (ER-13), so the wrap gate is satisfiable.
+- **Refusal happens before the first call, not when the block is built.** A string model resolves
+  at execution; ER-2 already said "before any call", and the docs draft now matches.
+- **The five-kinds doc update is a sweep, not a list** ([DOCS.md](DOCS.md)).
+
 ## How it got here
 
 - **Lab (Sep 18 to 22)** — #1903 moved from OpenRouter Decisions to `experimental_evaluate`.
 - **Owner locks (Sep 21 to 24)** — the kind, the utility, the kills, the consumer order.
 - **Filed (Sep 24)** — FIX-1553 and seven children under Core Blocks.
 - **Drafted (Sep 24)** — FIX-1560 folded; four cards.
+- **Review round 1 (Sep 24)** — every cascade edge fails closed; leg (f) scoped; the kind's case recorded.
 
 **Open: none.**

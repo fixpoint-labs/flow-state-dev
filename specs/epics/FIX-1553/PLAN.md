@@ -25,7 +25,7 @@ order to it.
 | **FIX-1558** `cascadingRouter` | spec → impl PR | FIX-1554 | The block · the answer shape | The utility beside the kind, fail-closed gates (ER-4), leg (c) | FIX-1556 | Medium |
 | **FIX-1559** skill activator | spec → impl PR | FIX-1554 | The block · [D3](DECISIONS.md#d3) · [D4](DECISIONS.md#d4) | The optional evaluator slot on tier 3 (ER-5), leg (d) | FIX-1556 · the inject shape FIX-1555 copies | Small |
 | **FIX-1557** facets | spec → impl PR | FIX-1554 | The block · D3 | Classify at write, deterministic read (ER-6), leg (e) | The proof | Medium: storage shape is open for its spec |
-| **FIX-1555** memory seam | spec → impl PR | FIX-1554 | The block · FIX-1559's seam shape, preferred | The seam and thin proof (ER-7), leg (f) | The proof | Small |
+| **FIX-1555** memory seam | spec → impl PR | FIX-1554 | The block · FIX-1559's seam shape, preferred | The seam, proved by its own tests (ER-7); leg (f), memory with none | The proof | Small |
 | **FIX-1556** docs and teach | spec → impl PR | FIX-1558 · FIX-1559 | Every shipped surface above | The teaching page, one demo, the assembled goal (ER-15, ER-16) | Wrap | Medium |
 
 **The hard edges to wire in Linear as blocked-by:** FIX-1558, FIX-1559, FIX-1557 and FIX-1555
@@ -47,8 +47,8 @@ waits on FIX-1560, and its Linear text holds no decision the locks on FIX-1553 d
 ## Where it is
 
 [The set table](SPEC.md#the-set--as-of-2026-09-24) is the dated snapshot; follow its Linear
-links for current state. On 2026-09-24 every child is Backlog and unspecced, with no blocked-by
-relations. #1903 is an open draft (DNM) at `b33a072` and is never merged as the product.
+links for current state. On 2026-09-24 every child is Backlog and unspecced, and the hard blocked-by edges
+below are wired in Linear. #1903 is an open draft (DNM) at `b33a072` and is never merged as the product.
 [FIX-1495](https://linear.app/fixpoint-labs/issue/FIX-1495) is Backlog on Framework
 simplification & cleanup.
 
