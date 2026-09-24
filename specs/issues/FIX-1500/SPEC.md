@@ -34,17 +34,20 @@ made unreachable. The organization is kitchen-sink's own, named once in the app
 ([D6](DECISIONS.md#d6)). Under the framework's development organization, which is what the app
 runs as without it, the hire arrow would be refused.
 
-**Hiring a second seat, as a person does it:**
+**Hiring a second seat, as a person does it.** A seat's row in the rail has one action, and it
+opens the seat's details beside the rail rather than inside the row
+([E4](DECISIONS.md#e4)):
 
 ```diff
-  Seats ▸ support.ada                     kind: agent
-+   instructions   not published — declared in a worker file
+  Seats ▸ support.ada   [details]   →   support.ada                kind: agent
++                                         instructions   not published — declared in a worker file
 +
-+   [ Hire another agent ]  →  id: support.bruno · instructions: "Takes escalations."
-+                              hired. support.bruno appears in the roster.
++                                         [ Hire another agent ]  →  id: support.bruno
++                                                                     instructions: "Takes escalations."
++                                         hired. support.bruno appears in the roster.
 +
-+ Seats ▸ support.bruno                   kind: agent
-+   instructions   Takes escalations.
++ Seats ▸ support.bruno [details]   →   support.bruno              kind: agent
++                                         instructions   Takes escalations.
 ```
 
 **What the app's own wiring gains.** First, one organization as the host's fallback for every

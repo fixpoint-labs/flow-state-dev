@@ -137,6 +137,31 @@ old channel session, with its requests, out of the channel's id and reopened the
 | SPEC → *Sign off*, D6's cost of being wrong, Settled's N8 row, PLAN S10 | **Amended** to "wiped, not upgraded" | They described the upgrade step | — |
 | DOCS, the kitchen-sink README | **New** PR-B operation: wipe the store after upgrading | A developer needs to know before their boot fails | — |
 
+<a name="amendment-seat-pane"></a>
+## Fourth amendment after merge: a seat's details open from the row's action
+
+**Why.** PR-D ([#2193](https://github.com/fixpoint-labs/flow-state-dev/pull/2193), merged)
+built S8 by drawing the seat pane (`SeatDetail` and the "Hire another" form) in
+`FlowNavigator`'s `leafToolbar`. FIX-1561's approved spec then made that slot draw on the leaf's
+own row, as actions shown on hover or focus ([FIX-1561 D1](../FIX-1561/DECISIONS.md#d1)), and its
+guardrail adds no new slot. Together they put a form on a 256px row: the seat row overflowed the
+rail and FIX-1561's goal checks failed.
+
+**The call.** On 2026-09-24 the epic coordinator took option A as an engineering call. The owner
+can redirect it. The seat row keeps one icon action in `leafToolbar`, and that action opens the
+seat's details and the hire form outside the row, in a popover or the right-hand panel. The
+implementation lands in [#2203](https://github.com/fixpoint-labs/flow-state-dev/pull/2203).
+Option B, a navigator slot for content inside an open leaf, was rejected: it re-opens FIX-1561 D1
+and adds published API.
+
+| What | Treatment | Why |
+|---|---|---|
+| PLAN S8: "a seat row opens `SeatDetail`" | **Amended.** The row's one action opens the details and the hire form outside the rail row. The old wording is kept under [E4](DECISIONS.md#e4) | `leafToolbar` no longer has room for a pane |
+| PLAN VG | **Amended in its steps only.** The seat's details are reached from its row action. The assertions stand: instructions from the collection route, no reload, the hired seat listed, the conversation untouched | Only where the details open has moved |
+| DECISIONS | **New** [E4](DECISIONS.md#e4), and option B in *Considered and dropped* | Engineering call, recorded where the others are |
+| SPEC's hire illustration, DOCS' rail paragraph | **Amended** to say the details open beside the rail | They drew or described the detail inside the row |
+| D1, D5, E2, and every rule | **Retained** unchanged | What a seat shows and where it is read from do not move |
+
 <a name="br35-overtaken"></a>
 ## FIX-1475's BR-35 — overtaken in code, not dissolved
 
