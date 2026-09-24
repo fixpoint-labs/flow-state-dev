@@ -133,14 +133,16 @@ resolvePrincipal: async (ctx) =>
 ```
 
 With no resolver configured anywhere, a run is `cli-user` in the development organization,
-`DEFAULT_ORG_ID`. That is also who a run is with no config at all, when flows come from directory
+`DEFAULT_ORG_ID` (`__fsd_default_org__` in output). That is also who a run is with no config at all, when flows come from directory
 discovery or you pass `--no-config`. A configured resolver can't claim that organization: one that
 returns `DEFAULT_ORG_ID` is refused, from the terminal as over HTTP. See
 [Every request runs in an organization](/docs/server/authentication#every-request-runs-in-an-organization).
 
 **When the resolver wants a credential.** A resolver that checks a bearer token or a signature
-has nothing to check, so it refuses. `fsdev run` stops before it writes anything and exits with
-code `2`. The error names the flow and includes the resolver's own message:
+has nothing to check. It either throws its own error or returns `null`, and a `null` is refused
+because it names no user or organization. Either way, `fsdev run` stops before it writes anything and exits
+with code `2`. The error names the flow and carries the refusal's message. Here the flow's resolver
+is `createBearerSecretPrincipalResolver`, which returns `null` when there's no bearer header:
 
 ```text
 Flow "admin" refused this terminal: Action request requires non-empty userId
@@ -169,8 +171,8 @@ anything is written:
   it's pinned to. A run whose user or organization falls outside that pin is refused, whether the
   identity came from your resolver or from `--user` and `--org`. Name the owner with `--org`, plus
   `--user` for a seat one member owns.
-- A session stored before organizations were required is refused and left unchanged. The message
-  points to the upgrade steps in
+- A session with no organization recorded on it is refused and left unchanged. The message points
+  to the upgrade steps in
   [Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to).
 
 **Seeing who a run was.** Unless you pass `--quiet`, `fsdev run` prints one line to stderr before
