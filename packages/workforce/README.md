@@ -822,8 +822,8 @@ const seats = hireWorkforce(workers, {
 });
 ```
 
-`references` is what tells the hire which entries on a kind's map are references, and the tree wall
-applies only to the entries it names. So once a kind holds references, the option is required: omit
+`references` is what tells the hire which entries on a kind's map are references, and the limit on
+which seats reach which reference applies only to the entries it names. So once a kind holds references, the option is required: omit
 it, or pass a map that is missing one of them, and `hireWorkforce` throws, naming every reference it
 was not given. A kind that holds none needs no map. A ref passed in both maps is refused as well,
 naming it.
@@ -1473,27 +1473,31 @@ session whose principal names no organization belongs to the default organizatio
 cannot start a seat address, so a hire there is refused before anything is written. Configure a
 `resolvePrincipal` that returns an `orgId` on the flow that mounts these.
 
-## The live inventory
+## The inventory
 
 The tree tells you what a workforce is meant to be. A `WORKER.md` declares a seat, a `CHANNEL.md`
-declares a channel, and both are read once at boot. Neither answers what is open right now, or which
-channels a given seat is in, and a block cannot walk folders to find out.
+declares a channel, and both are read once at boot. Neither can tell a block which seats and channels
+were actually registered in an organization, or which channels a given seat is in, and a block cannot
+walk folders to find out.
 
-The inventory holds those answers as data: three org-scoped resource collections, one row per seat,
-one row per open channel, and one row per seat-in-channel. They are ordinary collections, so a block
-reads them the way it reads any other resource.
+The inventory keeps that record as data: three org-scoped resource collections, one row per
+registered seat, one row per registered channel, and one row per seat-in-channel. They are ordinary
+collections, so a block reads them the way it reads any other resource.
+
+**A row means registered, not open.** It records that a seat or channel was registered in this
+organization, not that the seat is working or the channel is open now. Nothing deletes a row: a
+fired seat keeps its row, and a channel's `members` are the ones it had when it registered.
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
 | `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker kind the seat was hired into) |
-| `defineChannelInventoryCollection()` | open channel, at `inventory/channels/<channelId>` | `id`, `kind` (the channel kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
+| `defineChannelInventoryCollection()` | registered channel, at `inventory/channels/<channelId>` | `id`, `kind` (the channel kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
 | `defineMembershipIndexCollection()` | seat-in-channel, at `inventory/members/<seatId>/<channelId>` | `seatId`, `channelId` |
 
 All three are readable by a browser through the ordinary collection read
 (`listCollectionItems` from `@flow-state-dev/client`), from any session whose flow declares them.
 Each row comes back with the fields in the table and nothing else. The read answers for the session's
-own organization, which the server takes from the session, never from the request. A row means the
-seat or channel was registered: nothing is removed when a seat is fired or leaves a channel.
+own organization, which the server takes from the session, never from the request.
 
 ### Writing the inventory at boot
 
@@ -1541,35 +1545,31 @@ Leave both out and channels work without an inventory. Nothing is declared, noth
 **The `run` door.** `run` is your app's door into a flow: it takes the request `openInventory`
 builds, runs it through your runtime, and rejects when the action fails. A door that hands back a
 failed run as an ordinary value reports every channel registered while writing nothing. **It must
-also forward `request.source` into `runAction`'s own `source` option** —
-`runAction({ ..., source: request.source })` — because the seat write sets `source: "internal"` on
-its request and needs that value carried through. A door that drops it does not become insecure, it
-becomes unable to write seats at all: the seat write shows up named in `problems` instead.
+also forward `request.source` into `runAction`'s own `source` option**
+(`runAction({ ..., source: request.source })`). The seat write's request carries
+`source: "internal"`, and it runs only when that value arrives. A door that drops it does not open
+the seat write to other callers; the seat write fails instead, named in `problems`.
 
 **Where the seat rows go.** Seat rows need a flow to run in, because a resource collection can only
 be written from inside a flow. `seatWriter: { flowKind: "channel" }` names the built-in, which
 carries the writer when built with `inventory: true`. Any flow that spreads `inventoryWriterActions`
 will do.
 
-**`registerSeatsInInventory` is boot machinery, not a caller-addressed action.** Unlike channel
-registration, which is public because its empty input and the channel's own already-open session
-state make it harmless from any caller, the seat write has no session to derive from — its whole
-input IS the row data. It lives only in the flow's `internal.actions` map, which a caller-addressed
-HTTP or MCP request can never resolve into (`resolveEntry` reads one map per dispatch type with no
-fallback); the only way in is the trusted, direct `runAction({ source: "internal", ... })` call
-`openInventory`'s own request makes. A hand-rolled kind that spreads `inventoryWriterActions(kind)`
-must make the same split itself — see that function's own doc comment for the shape.
+**`registerSeatsInInventory` is a boot-only action.** Channel registration takes no input and
+builds its row from the channel's own open session, so it is safe as a public action. The seat
+write's whole input is the row data, so it lives only in the flow's `internal.actions` map. An HTTP
+or MCP request never reaches that map; the only way in is the direct
+`runAction({ source: "internal", ... })` call `openInventory` makes. A kind of your own makes the
+same split: see [Custom channel kinds](#custom-channel-kinds).
 
-**What the channel rows hold.** `members` is the seat ids the channel's session holds, read by the
-channel itself. An edit to `members:` in a `CHANNEL.md` does not reach a channel that is already
+**What the channel rows hold.** `members` is the seat ids the channel's session held when it
+registered, read by the channel itself. An edit to `members:` in a `CHANNEL.md` does not reach a channel that is already
 open, so it does not reach the row either. The `post` and `fileTask` blocks check membership against
 the channel's session state, not the inventory; the row is a copy for finding things, not the check.
 
 **Running it twice.** Every write is an upsert keyed by the record's id. Nothing duplicates, and a
-channel that has been open since an earlier boot keeps its original `openedAt`.
-
-**Nothing is deleted.** A row stays where it is when a later roster no longer names the seat or
-channel.
+channel registered on an earlier boot keeps its original `openedAt`. A row stays where it is when a
+later roster no longer names the seat or channel.
 
 **What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. A channel
 whose session is not open, or whose kind declares no registration action, is named in `problems` and
@@ -1577,15 +1577,22 @@ the rest of the roster is still attempted.
 
 ### Custom channel kinds
 
-A channel kind you wrote yourself gets rows when it spreads `inventoryWriterActions` into its
-`actions`. The string it passes is the value that appears as `kind` on that channel's rows.
+A channel kind you wrote yourself gets rows when it carries the two blocks
+`inventoryWriterActions(kind)` returns. Put `registerChannelInInventory` in `actions` and
+`registerSeatsInInventory` in `internal.actions`; do not spread the whole return into `actions`. The
+string you pass is the value that appears as `kind` on that channel's rows.
 
 ```ts
+const writer = inventoryWriterActions("briefing");
+
 defineFlow({
   kind: "briefing",
   cardinality: "singleton",
   session: { stateSchema: channelSessionStateSchema },
-  actions: { ...myActions, ...inventoryWriterActions("briefing") },
+  actions: { ...myActions, registerChannelInInventory: writer.registerChannelInInventory },
+  internal: {
+    actions: { registerSeatsInInventory: writer.registerSeatsInInventory },
+  },
 });
 ```
 
@@ -1713,7 +1720,7 @@ membershipPrefix("");
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
 | `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, every `resources/` folder the convention reads, and every `blocks/` folder inside the team tree, returning what they hold on `files`, `resourceModules` and `seatBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules, seatBlocks?)` | Render a discovery's `files`, `resourceModules` and `seatBlocks` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `seatBlocks` and `resourceModules`. Pass all three: the third parameter defaults to `[]`, so omitting it renders an empty `seatBlocks` map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(manifests, { kinds, seatBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, the per-seat tree wall is derived against it, and a kind holding references it was not given refuses the whole roster. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
+| `hireWorkforce(manifests, { kinds, seatBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, which references each seat reaches is worked out against it, and a kind holding references it was not given refuses the whole roster. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
 | `unattendedBoardWarnings(boardIds, seats)` | The unattended-board warning strings `hireWorkforce` prints. The `hire` tool puts the same sentences on `warning` when a named board has no seat that declares it. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills` and `seatTools`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
@@ -1759,7 +1766,7 @@ membershipPrefix("");
 | `DEFAULT_MAX_RELOAD_ORGS` / `DEFAULT_ROSTER_READ_TIMEOUT_MS` | The two bounds' defaults: 100 organizations, and 10000 ms for the whole read. |
 | `HiredRosterReload` / `HiredRosterOrgReload` / `HiredRosterStores` / `ReloadHiredSeatsOptions` / `RowProblem` | What the reload returns, one organization's share of it, the slice of the runtime's stores it reads through, its options, and the `{ problem }` shape a row that could not be read comes back as. |
 | `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
-| `defineChannelInventoryCollection()` | The channel inventory: one org-scoped row per open channel, at `inventory/channels/<channelId>`, carrying the channel's `members` and `openedAt`. Takes no options. |
+| `defineChannelInventoryCollection()` | The channel inventory: one org-scoped row per registered channel, at `inventory/channels/<channelId>`, carrying the channel's `members` and `openedAt`. Takes no options. |
 | `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so one seat's channels can be listed by prefix. Takes no options. |
 | `membershipKey(seatId, channelId)` | The membership index key for one row, relative to the collection's prefix. Throws when either id is not one whole path segment. |
 | `membershipPrefix(seatId)` | The prefix that lists one seat's memberships, trailing slash included, relative to the collection's prefix. Refuses the same ids `membershipKey` does. |
