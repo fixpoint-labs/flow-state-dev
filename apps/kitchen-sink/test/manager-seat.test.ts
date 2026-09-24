@@ -19,7 +19,7 @@
  *       `workforce/hire.ts` — `isFromRoster` reads false.
  *   V2  under the development org the hire is refused and nothing is written,
  *       read straight out of the stores with no model involved. Red: run the
- *       same case under `acme` — the run succeeds and a roster row exists.
+ *       same case under `kitchen-sink` — the run succeeds and a roster row exists.
  *   V3  otto, on the same kind, cannot hire. Red: add `hire` to otto's
  *       `WORKER.md` — the seat is registered.
  *   V4  a `desk-clerk` hire with a `desk` setting. Red: pass
@@ -46,11 +46,13 @@ import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing"
 import { reloadHiredSeats } from "@flow-state-dev/workforce";
 
 import { ADMIN_TOKENS_ENV } from "../lib/workforce-admin-auth";
+import { KITCHEN_SINK_ORG_ID } from "../lib/kitchen-sink-principal";
 import { setWorkforceRegistrarImpl, workforceRegistrar } from "../lib/workforce-registrar";
 import workforceAdminFlow from "../flows/workforce-admin/flow";
 import { hireKitchenSinkWorkforce, kitchenSinkKinds } from "../workforce/hire";
 
-const ORG = "acme";
+/** The app's one organization, which every admin token must name. */
+const ORG = KITCHEN_SINK_ORG_ID;
 
 type Stores = ReturnType<typeof createInMemoryStores>;
 type ScriptStep =
@@ -143,7 +145,7 @@ beforeEach(() => {
   // The admin flow's own resolver is transport-level and never runs under
   // `runAction`; the env is stubbed so its module sees a configured
   // deployment, the same as `workforce-admin.test.ts`.
-  vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:tok-acme`);
+  vi.stubEnv(ADMIN_TOKENS_ENV, `${ORG}:tok-ks`);
 });
 
 afterEach(() => {
@@ -162,11 +164,11 @@ describe("mara hires, discover lists the hire, and mara fires it", () => {
       { text: "hired" },
     ]);
     expect(hired.error?.message ?? null).toBe(null);
-    expect(toolOutput(hired, "hire")).toMatchObject({ address: "acme.support.pat" });
+    expect(toolOutput(hired, "hire")).toMatchObject({ address: `${ORG}.support.pat` });
     expect(await storedKeys(stores, ORG, ROSTER)).toEqual(["workforce/roster/support.pat"]);
-    expect(held.get("acme.support.pat")?.kind).toBe("agent");
-    expect(workforceRegistrar.isFromRoster("acme.support.pat")).toBe(true);
-    expect(discoveredSeats(hired)).toEqual(["acme.support.pat"]);
+    expect(held.get(`${ORG}.support.pat`)?.kind).toBe("agent");
+    expect(workforceRegistrar.isFromRoster(`${ORG}.support.pat`)).toBe(true);
+    expect(discoveredSeats(hired)).toEqual([`${ORG}.support.pat`]);
 
     const fired = await runSeat(mara, stores, [
       call("fire", { seatId: "support.pat" }),
@@ -175,13 +177,13 @@ describe("mara hires, discover lists the hire, and mara fires it", () => {
     ]);
     expect(fired.error?.message ?? null).toBe(null);
     expect(toolOutput(fired, "fire")).toMatchObject({ released: true });
-    expect(held.has("acme.support.pat")).toBe(false);
+    expect(held.has(`${ORG}.support.pat`)).toBe(false);
     expect(await storedKeys(stores, ORG, ROSTER)).toEqual([]);
     expect(discoveredSeats(fired)).toEqual([]);
     // The inventory row outlives the fire: it records what was registered,
     // not what is still hired. `discover` withholds the seat anyway, because
     // its seat list needs the roster row too.
-    expect(await storedKeys(stores, ORG, INVENTORY)).toEqual(["inventory/seats/acme.support.pat"]);
+    expect(await storedKeys(stores, ORG, INVENTORY)).toEqual([`inventory/seats/${ORG}.support.pat`]);
   });
 });
 
@@ -236,8 +238,8 @@ describe("mara offers the kinds the admin action offers", () => {
     ]);
 
     expect(result.error?.message ?? null).toBe(null);
-    expect(held.get("acme.support.bea")?.kind).toBe("desk-clerk");
-    expect(held.get("acme.support.bea")?.config).toMatchObject({ desk: "back" });
+    expect(held.get(`${ORG}.support.bea`)?.kind).toBe("desk-clerk");
+    expect(held.get(`${ORG}.support.bea`)?.config).toMatchObject({ desk: "back" });
   });
 });
 
@@ -251,7 +253,7 @@ describe("after a restart", () => {
     const reload = await reloadHiredSeats({ stores, orgIds: [ORG], kinds: kitchenSinkKinds });
 
     expect(reload.problems).toEqual([]);
-    expect(reload.seats.map((seat) => `${seat.id}:${seat.kind}`)).toEqual(["acme.support.pat:agent"]);
+    expect(reload.seats.map((seat) => `${seat.id}:${seat.kind}`)).toEqual([`${ORG}.support.pat:agent`]);
   });
 });
 
@@ -264,7 +266,7 @@ describe("a seat mara hires with hire in its settings", () => {
       call("hire", { seatId: "support.pat", flow: "agent", settings: { tools: ["hire"] } }),
       { text: "hired" },
     ]);
-    const pat = held.get("acme.support.pat");
+    const pat = held.get(`${ORG}.support.pat`);
     expect(pat).toBeDefined();
 
     const result = await runSeat(pat!, stores, [
@@ -273,7 +275,7 @@ describe("a seat mara hires with hire in its settings", () => {
     ]);
 
     expect(result.error?.message ?? null).toBe(null);
-    expect(held.has("acme.support.quinn")).toBe(true);
+    expect(held.has(`${ORG}.support.quinn`)).toBe(true);
   });
 });
 
@@ -287,8 +289,8 @@ describe("mara and the operator share one roster", () => {
     const fired = await callAdmin(stores, "fire", { seatId: "support.pat" });
 
     expect(fired.error?.message ?? null).toBe(null);
-    expect(fired.output).toMatchObject({ address: "acme.support.pat", released: true });
-    expect(held.has("acme.support.pat")).toBe(false);
+    expect(fired.output).toMatchObject({ address: `${ORG}.support.pat`, released: true });
+    expect(held.has(`${ORG}.support.pat`)).toBe(false);
     expect(await storedKeys(stores, ORG, ROSTER)).toEqual([]);
   });
 
@@ -297,7 +299,7 @@ describe("mara and the operator share one roster", () => {
     const stores = createInMemoryStores();
     const hired = await callAdmin(stores, "hire", { seatId: "support.ada2", flow: "desk-clerk", settings: {} });
     expect(hired.error?.message ?? null).toBe(null);
-    const operatorAddress = "acme.~admin.support.ada2";
+    const operatorAddress = `${ORG}.~admin.support.ada2`;
     expect(held.has(operatorAddress)).toBe(true);
 
     const mara = await fileSeat("support.mara");
@@ -321,7 +323,7 @@ describe("mara's fire releases only what the roster door registered", () => {
     // The address is now held by the same kind, registered without the
     // roster mark — what a seat declared in a folder at that address looks
     // like. The roster row is still there, so mara's fire reaches the release.
-    const pat = held.get("acme.support.pat")!;
+    const pat = held.get(`${ORG}.support.pat`)!;
     workforceRegistrar.unregister(pat.id);
     workforceRegistrar.register(pat);
     expect(workforceRegistrar.isFromRoster(pat.id)).toBe(false);
@@ -330,6 +332,6 @@ describe("mara's fire releases only what the roster door registered", () => {
 
     expect(fired.error?.message ?? null).toBe(null);
     expect(toolOutput(fired, "fire")).toMatchObject({ released: false });
-    expect(held.has("acme.support.pat")).toBe(true);
+    expect(held.has(`${ORG}.support.pat`)).toBe(true);
   });
 });

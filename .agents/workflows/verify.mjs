@@ -6112,6 +6112,21 @@ check('the Linear refresh covers carried members, not just parent children', asy
   assert.match(linear.prompt, /relates-to/, 'and the reason is stated, so the scout does not treat it as redundant')
 })
 
+check('the Linear scout reads blockedBy from inverseRelations, never relations', async () => {
+  // An issue's `relations` of type `blocks` are the issues IT blocks. A scout that read them as
+  // blockedBy reported a prerequisite as blocked by its own dependents, and those dependents as
+  // unblocked — so the critical-path issue parked and its dependents were dispatched first. Nothing
+  // downstream can detect the inversion (it forms no cycle), so the prompt is the only guard.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  const linear = calls.find((c) => c.label === 'linear:epic-children')
+  assert.match(linear.prompt, /inverseRelations\{nodes\{type issue\{identifier state\{type\}\}\}\}/, 'the exact field to read is named')
+  assert.match(linear.prompt, /NEVER read `relations`/, 'and the field that inverts the direction is ruled out')
+  assert.match(linear.schema.properties.issues.items.properties.blockedBy.description, /inverseRelations.*never from relations/)
+})
+
 check('the repair worker bases its fix on fresh origin/main', async () => {
   // A fresh worktree starts on the lifecycle checkout, which drifts as slices merge — basing the repair
   // there puts unrelated commits in the fix PR or omits the merged slices whose interaction is failing.

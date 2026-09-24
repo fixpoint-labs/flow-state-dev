@@ -337,15 +337,26 @@ await runGoal(() => {
       splitManifest(readFileSync(path, "utf8")).frontmatter.match(/^flow:\s*(.+)$/m)?.[1]?.trim() ===
         runnerKind,
   );
-  const channelOwner = configSource.match(/CHANNEL_OWNER\s*=\s*"([^"]+)"/)?.[1];
-  const appUserId = readFileSync(join(KITCHEN_SINK, "app", "page.tsx"), "utf8").match(
-    /e2eUserId\s*\?\?\s*"([^"]+)"/,
-  )?.[1];
+  // The app names one user and one organization for every caller, in
+  // `lib/kitchen-sink-principal.ts`. The config opens the channels as that user
+  // and the page calls as it; each is read only if it still names the constant.
+  const principalSource = readFileSync(join(KITCHEN_SINK, "lib", "kitchen-sink-principal.ts"), "utf8");
+  const appUser = principalSource.match(/KITCHEN_SINK_USER_ID\s*=\s*"([^"]+)"/)?.[1];
+  const orgId = principalSource.match(/KITCHEN_SINK_ORG_ID\s*=\s*"([^"]+)"/)?.[1];
+  const channelOwner = /CHANNEL_OWNER\s*=\s*KITCHEN_SINK_USER_ID\b/.test(configSource)
+    ? appUser
+    : configSource.match(/CHANNEL_OWNER\s*=\s*"([^"]+)"/)?.[1];
+  const appUserId = /userId=\{KITCHEN_SINK_USER_ID\}/.test(
+    readFileSync(join(KITCHEN_SINK, "app", "page.tsx"), "utf8"),
+  )
+    ? appUser
+    : undefined;
   if (
     attendedBoard === undefined ||
     seatFile === undefined ||
     channelOwner === undefined ||
-    appUserId === undefined
+    appUserId === undefined ||
+    orgId === undefined
   ) {
     return {
       failures: [
@@ -355,7 +366,9 @@ await runGoal(() => {
             ? `no WORKER.md names \`flow: ${runnerKind}\``
             : channelOwner === undefined
               ? "fsdev.config.ts declares no CHANNEL_OWNER this check can read"
-              : "app/page.tsx declares no fallback userId this check can read",
+              : appUserId === undefined
+                ? "app/page.tsx passes no userId this check can read"
+                : "lib/kitchen-sink-principal.ts names no organization this check can read",
       ],
       evidence: "",
     };
@@ -394,6 +407,7 @@ await runGoal(() => {
         ),
         channelOwner,
         appUserId,
+        orgId,
       }),
     },
   });

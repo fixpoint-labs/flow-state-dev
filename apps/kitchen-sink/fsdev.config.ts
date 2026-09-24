@@ -28,6 +28,11 @@ import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { setWorkforceRegistrarImpl, workforceRegistrar } from "@/lib/workforce-registrar";
 import { admitReloadedSeats } from "@/lib/roster-reload-report";
 import { adminCredentialConfigured } from "@/lib/workforce-admin-auth";
+import {
+  KITCHEN_SINK_ORG_ID,
+  KITCHEN_SINK_USER_ID,
+  resolveKitchenSinkPrincipal,
+} from "@/lib/kitchen-sink-principal";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
 import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
 import chatAgentFlow from "@/flows/chat-agent/flow";
@@ -210,6 +215,12 @@ const flowstate = createFlowState({
   // runtime the router uses.
   worker: bullmqDispatch ? bullmq : undefined,
   adapters: [createScheduledTransportAdapter()],
+  // Who every caller is, for every flow that brings no resolver of its own:
+  // the assistant's flow, every seat, every channel. One organization and one
+  // user, both constants, read from nothing on the request
+  // (`lib/kitchen-sink-principal.ts`). `workforce-admin` and `weekly-digest`
+  // keep their own.
+  resolvePrincipal: resolveKitchenSinkPrincipal,
   onError: (error, ctx) => {
     console.error(`[flowstate] ${ctx.method} ${ctx.path}:`, error.message);
   },
@@ -342,22 +353,14 @@ export const hiredRosterReload: { seats: string[]; problems: string[]; reportErr
 // ---------------------------------------------------------------------------
 
 /**
- * Who every channel session belongs to.
+ * Who every channel session belongs to: the app's one user.
  *
- * A session belongs to one user, so a channel does too — and sessions are
- * per-user, so this value decides who can SEE the channels at all. It has to be
- * the id this app's callers use: `app/page.tsx` and `app/devtool/page.tsx` both
- * call as `devuser` (overridden per test by `?e2eUserId=`), so a channel opened
- * under any other id is one the app ships and none of its own pages can list.
- * That is a reachability rule rather than an authentication one, and it binds
- * here, where nothing is verified. An app that authenticates should open its
- * channels as an identity its callers actually resolve to.
- *
- * Deliberately a literal rather than an import from `app/`: this module is the
- * runtime assembly and the pages are its consumers, so importing upward would
- * invert the dependency. V13 of the goal check reads both and fails on drift.
+ * A session belongs to one user, so a channel does too. The session route takes
+ * its owner from the resolved principal, which is `KITCHEN_SINK_USER_ID` for
+ * every caller, so opening the channels as anyone else would make the binder
+ * refuse its own sessions on the next boot.
  */
-const CHANNEL_OWNER = "devuser";
+const CHANNEL_OWNER = KITCHEN_SINK_USER_ID;
 
 // The session client, over this app's own router rather than over the network:
 // the app is the server, so a loopback fetcher hands the request straight to
@@ -380,6 +383,33 @@ const channelSessions = createSessionClient({
     return await router[method](new Request(url, init), { params: { path } });
   },
 });
+
+// A store written before this app named its organization holds its channel
+// sessions under the framework's development organization, and this app can
+// neither open nor read them. There is no upgrade path: the store is wiped and
+// the app starts fresh. So the boot stops here and says so, naming every such
+// channel, instead of failing on the first one with a bare 403 from the open
+// below. It only reads: it writes, moves and deletes nothing, so two processes
+// booting over the same store at once cannot race each other here.
+{
+  const stale: string[] = [];
+  for (const channel of workforce.channels) {
+    const stored = await runtime.stores.session.get(channel.id);
+    // A session stored with no organization at all (BP-030) is not this app's either.
+    if (stored !== undefined && stored.orgId !== KITCHEN_SINK_ORG_ID) {
+      stale.push(`"${channel.id}" (organization "${stored.orgId ?? "none"}")`);
+    }
+  }
+  if (stale.length > 0) {
+    throw new Error(
+      `[workforce] this store was written before kitchen-sink ran as organization ` +
+        `"${KITCHEN_SINK_ORG_ID}", and its channels belong to another organization: ` +
+        `${stale.join(", ")}. Earlier data is not carried over. Delete the store and restart: ` +
+        `for the dev profile (STORE_TYPE=filesystem) remove .fsdev/data; for the prod profile, ` +
+        `point FSD_DB_URL at an empty database.`,
+    );
+  }
+}
 
 await openChannels(workforce.channels, {
   client: channelSessions,

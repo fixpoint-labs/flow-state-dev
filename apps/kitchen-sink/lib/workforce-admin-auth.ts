@@ -16,15 +16,22 @@
  * all. A default deployment therefore has no hire path to reach, rather than
  * one guarded by a check somebody could get wrong.
  *
- * Configure it as `WORKFORCE_ADMIN_TOKENS="<org>:<token>[,<org>:<token>…]"`.
- * Two organizations are supported because the story this app tells is that two
- * customers can each hold a seat called `support.ada`; one is the ordinary
- * case and costs the same code.
+ * Configure it as `WORKFORCE_ADMIN_TOKENS="kitchen-sink:<token>[,kitchen-sink:<token>…]"`.
+ *
+ * **Every token must name {@link KITCHEN_SINK_ORG_ID}.** This app runs as one
+ * organization (`lib/kitchen-sink-principal.ts`): its assistant, its seats and
+ * its channels all resolve to it, and so does every seat hired through them. A
+ * token bound anywhere else would administer a roster nothing in this app
+ * reads, and its `fire` would miss every seat the app hired. So an entry naming
+ * another organization is refused when the credentials are read, and the
+ * refusal is logged, the same fail-closed way a shared token is.
  */
 
 import { timingSafeEqual } from "node:crypto";
 import { extractBearerToken, PrincipalResolutionError } from "@flow-state-dev/engine";
-import type { FlowInstance, ResolvePrincipalFn } from "@flow-state-dev/core/types";
+import type { FlowInstance, InstanceOwnerPin, ResolvePrincipalFn } from "@flow-state-dev/core/types";
+
+import { KITCHEN_SINK_ORG_ID } from "@/lib/kitchen-sink-principal";
 
 /** The env var holding `<org>:<token>` pairs. */
 export const ADMIN_TOKENS_ENV = "WORKFORCE_ADMIN_TOKENS";
@@ -41,7 +48,8 @@ export const ADMIN_USER_ID = "workforce-admin";
 
 /**
  * Parse `WORKFORCE_ADMIN_TOKENS` into token → org. Malformed entries are
- * skipped.
+ * skipped, and so is every entry naming an organization other than
+ * {@link KITCHEN_SINK_ORG_ID} (see the file header).
  *
  * **A token naming more than one organization drops ALL of its bindings**,
  * later one and earlier one alike. `Map#set` would keep the last write and
@@ -58,6 +66,12 @@ export const ADMIN_USER_ID = "workforce-admin";
  *
  * The same organization listed twice under one token is not a collision: it is
  * one binding written twice, and it resolves.
+ *
+ * **The collision check runs before the organization check**, over every
+ * well-formed entry. With `kitchen-sink:shared,bravo:shared`, somebody was
+ * handed `shared` believing it administers bravo; checking the organization
+ * first would drop bravo's entry and leave that credential administering
+ * kitchen-sink. Both go.
  */
 function configuredTokens(): Map<string, string> {
   const raw = process.env[ADMIN_TOKENS_ENV];
@@ -94,7 +108,17 @@ function configuredTokens(): Map<string, string> {
       );
       continue;
     }
-    byToken.set(token, [...orgs][0]!);
+    const orgId = [...orgs][0]!;
+    if (orgId !== KITCHEN_SINK_ORG_ID) {
+      // The organization, never the token.
+      console.error(
+        `[workforce-admin] refusing a ${ADMIN_TOKENS_ENV} entry that names organization "${orgId}" — ` +
+          `this app runs as "${KITCHEN_SINK_ORG_ID}" only, so a token bound elsewhere would ` +
+          `administer seats nothing here reads. Bind it to "${KITCHEN_SINK_ORG_ID}".`
+      );
+      continue;
+    }
+    byToken.set(token, orgId);
   }
   return byToken;
 }
@@ -117,7 +141,7 @@ function matches(given: string, expected: string): boolean {
  *
  * The returned principal's `orgId` is the one the credential is bound to. The
  * request body is never consulted for it, which is the whole point: a hire
- * whose body says `orgId: "bravo"` under `acme`'s token writes to `acme`.
+ * whose body names another organization still writes to `kitchen-sink`.
  *
  * Read once, at module scope, rather than per request: a credential that could
  * change between two requests of one process would make "which org am I" a
@@ -152,14 +176,21 @@ export function adminPrincipalResolver(): ResolvePrincipalFn | undefined {
 }
 
 /**
- * A seat hired from a roster row, resolving its callers with the admin
- * credential that hired it.
+ * A seat the admin credential hired, resolving its callers with that
+ * credential.
  *
- * A roster hire pins the seat to the organization and user the admin
- * credential resolved, and every request to the seat is checked against that
- * pin. So the seat has to resolve its callers the same way. With no resolver
- * of its own it falls to the framework default, which names the default
- * organization, and the pin refuses even the operator who just hired it.
+ * `workforce-admin` pins its seat to the organization the credential resolved
+ * and to {@link ADMIN_USER_ID}, and every request to the seat is checked
+ * against that pin. So the seat has to resolve its callers the same way. With
+ * no resolver of its own it falls to the framework default, which names the
+ * default organization, and the pin refuses even the operator who just hired it.
+ *
+ * **Only a seat pinned to {@link ADMIN_USER_ID}.** A seat hired from inside the
+ * app, by a seat's `hire` tool, is pinned to the organization alone: any member
+ * of it may open the seat, the way they open any other. Giving that seat the
+ * admin resolver would demand the operator's token from every visitor. So the
+ * decision is read from the pin, which the hire set on the server, and never
+ * from anything on a request (BP-031).
  *
  * **On the seat instance, and nowhere wider.** A host-level resolver would put
  * every open flow in this app (`chat-agent`, the channels, the file-declared
@@ -171,15 +202,21 @@ export function adminPrincipalResolver(): ResolvePrincipalFn | undefined {
  * token. Whether that caller may reach the seat is still the pin's call, so
  * another organization's credential is refused as before.
  *
- * Returned unchanged when no credential is configured — nothing can resolve
- * the pinned organization, so the pin refuses everyone — and when the seat's
- * kind names a resolver of its own, which is that kind's decision to make.
+ * Returned unchanged when the pin names no user or another user, when no
+ * credential is configured — nothing can resolve the pinned organization, so
+ * the pin refuses everyone — and when the seat's kind names a resolver of its
+ * own, which is that kind's decision to make.
  */
 export function withAdminAuthentication(
   seat: FlowInstance,
+  pin: InstanceOwnerPin,
   resolvePrincipal: ResolvePrincipalFn | undefined
 ): FlowInstance {
-  if (resolvePrincipal === undefined || seat.authentication?.resolvePrincipal !== undefined) {
+  if (
+    pin.userId !== ADMIN_USER_ID ||
+    resolvePrincipal === undefined ||
+    seat.authentication?.resolvePrincipal !== undefined
+  ) {
     return seat;
   }
   return { ...seat, authentication: { ...seat.authentication, resolvePrincipal } };

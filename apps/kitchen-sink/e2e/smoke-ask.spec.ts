@@ -2,10 +2,10 @@ import { test, expect, openKitchenSink, byTestId } from "./fixtures";
 
 test("smoke: ask-mode round-trip renders mocked assistant text", async ({
   page,
-  userId,
+  sessionId,
   consoleErrors: _consoleErrors,
 }) => {
-  await openKitchenSink(page, userId);
+  await openKitchenSink(page, sessionId);
 
   await byTestId(page, "message-input").fill("[scenario:smoke] hello");
   await byTestId(page, "message-submit").click();
