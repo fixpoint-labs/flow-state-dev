@@ -274,7 +274,7 @@ export function validateScheduleConfig(args: {
   if (schedule.block === null || typeof schedule.block !== "object") {
     throw new Error(
       `Flow "${kind}" schedule "${id}" must declare a \`block\` ` +
-        `(the handler — handler/generator/sequencer/router) to run when the schedule fires.`
+        `(the handler — any block kind) to run when the schedule fires.`
     );
   }
 

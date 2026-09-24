@@ -14,6 +14,7 @@ export { ITEM_UPDATE_INVARIANT_KEYS } from "./events";
 
 export type {
   BlockTraceItem,
+  EvaluatorTraceQuestion,
   BlockValue,
   ComponentItem,
   ContainerItem,

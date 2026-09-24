@@ -4,13 +4,15 @@ sidebar_position: 2
 
 # Blocks
 
-Everything in flow-state.dev is a block. Every LLM call, every data transform, every branching decision, every multi-step pipeline — it's all composed from four block kinds. No more, no less.
+Everything in flow-state.dev is a block. Every LLM call, every data transform, every branching decision, every multi-step pipeline is composed from five block kinds.
 
-This constraint is the point. Four primitives that compose freely means you can build any AI workflow without inventing new abstractions.
+Two of them talk to a model. A **generator** asks it to write: text, tool calls, a structured object. An **evaluator** asks it questions you already know, and gets typed answers back: which of these options, how severe on this scale, yes or no. Reach for an evaluator when your code is going to branch on the answer.
+
+This constraint is the point. A handful of primitives that compose freely means you can build any AI workflow without inventing new abstractions.
 
 Field-by-field options for each kind live in [Block options](/docs/configuration/blocks).
 
-## The four kinds
+## The five kinds
 
 ### Handler — pure logic
 
@@ -173,7 +175,7 @@ Each branch emits a `tool_output` with the same envelope shape as a generator-dr
 
 Failures behave the same way: if a wrapped block throws, the emitted `tool_output` flips to `status: "failed"` with the error message visible, and the error propagates to the sequencer's normal error path.
 
-`.asTool()` is available on every block kind (handler, generator, sequencer, router). It does not wrap the inner block with retry or timeout — compose those explicitly if needed.
+`.asTool()` is available on every block kind. It does not wrap the inner block with retry or timeout — compose those explicitly if needed.
 
 See also: [`tool_output` items](../streaming/items.md), [emitting items](../streaming/emitting-items.md), [composing with `.parallel`](../sequencers/composing-blocks.md).
 
@@ -299,6 +301,44 @@ generator({
 ```
 
 The coercion model defaults to `intent/utility` so repair routes through a cheap, reliable tier independent of the primary model. Set `repair: { coerce: false }` to turn coercion off, or `repair: { mode: "fail" }` to skip all repair and throw on the first mismatch. If both passes fail, the block throws `OutputValidationError` as before.
+
+### Evaluator — the questions you already know
+
+A generator asks a model to write. An evaluator asks it questions whose possible answers you already know, and hands back typed answers your code can branch on: which of these options, where on this scale, yes or no.
+
+```ts
+import { evaluator, choice, score, boolean } from "@flow-state-dev/core";
+
+const triage = evaluator({
+  name: "triage",
+  model: "typesafe-ai/jev",
+  state: (input: { message: string }) => input.message,
+  questions: {
+    team: choice("Which team should handle this?", {
+      billing: "Payments and refunds",
+      technical: "Bugs and outages",
+    }),
+    frustration: score("How frustrated is the customer?", ["Calm", "Annoyed", "Angry"]),
+    urgent: boolean("Does this need someone now?"),
+  },
+});
+```
+
+The output is `{ answers }`, keyed by the question ids you chose. Each answer is typed by its question, so `answers.team.choice` is `"billing" | "technical"`, not `string`.
+
+| Question | Answer |
+|---|---|
+| `choice` | `choice`: one of your option keys. `probabilities` when the model gives a distribution |
+| `score` | `score`: a position between the first level (0) and the last. `probabilities` by level index when given |
+| `boolean` | `probability`: the model's estimate that the answer is yes |
+
+Any answer can also carry `confidence`, but only when the model reported one. Jev reports it for choice and score questions. The popular providers' evaluation models don't report it at all. When it's missing, the key is absent: the evaluator never fills it in. A boolean's `probability` is the model's estimate that the answer is yes. It isn't the model's confidence in that estimate, so don't gate on it as if it were.
+
+`state` is what the model looks at. Leave it out and the block's input is used as is. It can be a string, an array or a plain object. `questions` can also be a function of the input and the block context, for when the options come from data: a catalog, a list of teams.
+
+The model has to be one that supports evaluation. A model that can only generate text is refused before the block makes any call, and the error says what to pass instead. See [Evaluation models](/docs/fundamentals/models#evaluation-models).
+
+An evaluator answers and stops. It doesn't retry, doesn't fall back to another model, and doesn't decide anything with the answer. Branching belongs to your code: a `router` that reads `answers.team.choice`, or a sequencer step that checks `answers.urgent.probability`. Evaluators are silent like handlers. What they asked and what came back shows up in the DevTool trace.
 
 ### Sequencer — the composition engine
 
@@ -713,11 +753,11 @@ This means blocks bring their own resource requirements — you don't have to re
 
 Because every block has the same contract — typed input, typed output, declared state dependencies — blocks are inherently shareable. A handler that validates email addresses, a sequencer that does multi-step research, a generator pre-configured for code review — each can be packaged independently and composed into any flow.
 
-Connectors make this practical: when types don't align, a simple transform function bridges the gap. No wrapper blocks, no inheritance hierarchies. The framework's four-primitive constraint and partial state schemas mean blocks don't leak assumptions about the flows they live in.
+Connectors make this practical: when types don't align, a simple transform function bridges the gap. No wrapper blocks, no inheritance hierarchies. The framework's small set of primitives and partial state schemas mean blocks don't leak assumptions about the flows they live in.
 
 ## Utility blocks
 
-The four primitives give you full control, but common AI patterns — summarization, task decomposition, intent classification — require the same boilerplate configuration every time. **Utility blocks** are pre-built factories that return fully configured blocks for these patterns:
+The five block kinds give you full control, but common AI patterns — summarization, task decomposition, intent classification — require the same boilerplate configuration every time. **Utility blocks** are pre-built factories that return fully configured blocks for these patterns:
 
 ```ts
 import { utility } from "@flow-state-dev/core";

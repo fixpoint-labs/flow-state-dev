@@ -397,6 +397,7 @@ function assignIterationLabels(siblings: TraceNode[]): void {
 
 function inferBlockKind(item: DevtoolItem): string | undefined {
   if (item.type === "block_trace" && (item as BlockTraceItem).toolCall) return "generator";
+  if (item.type === "block_trace" && (item as BlockTraceItem).evaluator) return "evaluator";
   return undefined;
 }
 

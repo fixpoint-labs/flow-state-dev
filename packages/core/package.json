@@ -143,7 +143,7 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/contracts": "workspace:*",
-    "ai": "^7.0.15",
+    "ai": "^7.0.103",
     "cron-parser": "^5.0.0",
     "gray-matter": "^4.0.3",
     "jsonrepair": "^3.14.0",
@@ -152,8 +152,17 @@
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.24.0"
   },
+  "peerDependencies": {
+    "@ai-sdk/typesafe-ai": "^3.0.6"
+  },
+  "peerDependenciesMeta": {
+    "@ai-sdk/typesafe-ai": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@ai-sdk/openai": "^4.0.7",
+    "@ai-sdk/openai": "^4.0.75",
+    "@ai-sdk/typesafe-ai": "^3.0.6",
     "@types/node": "^22.0.0",
     "@types/picomatch": "^3.0.1"
   },

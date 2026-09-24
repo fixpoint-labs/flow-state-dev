@@ -2,6 +2,7 @@ import { cn } from "../../lib/utils";
 
 const kindColors: Record<string, string> = {
   generator: "bg-green-500",
+  evaluator: "bg-amber-500",
   handler: "bg-green-500",
   sequencer: "bg-blue-500",
   router: "bg-purple-500",
@@ -9,6 +10,7 @@ const kindColors: Record<string, string> = {
 
 const kindLabels: Record<string, string> = {
   generator: "GEN",
+  evaluator: "EVL",
   handler: "HDL",
   sequencer: "SEQ",
   router: "RTR",

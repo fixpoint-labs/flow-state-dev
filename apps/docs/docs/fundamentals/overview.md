@@ -4,14 +4,15 @@ sidebar_position: 1
 
 # Overview
 
-flow-state.dev is a block-based AI workflow framework for TypeScript. You compose four block primitives into flows. The framework runs them, streams the output, and manages state. This page is a map, not a textbook.
+flow-state.dev is a block-based AI workflow framework for TypeScript. You compose five block kinds into flows. The framework runs them, streams the output, and manages state. This page is a map, not a textbook.
 
-## Four block kinds
+## Five block kinds
 
-Every piece of logic is exactly one of four kinds:
+Every piece of logic is exactly one of five kinds:
 
 - **Handler** — Pure logic. Validate input, transform data, mutate state, implement tool logic. No LLM, no streaming. Silent by default.
 - **Generator** — LLM calls. The framework manages prompt assembly, tool loops, streaming, and structured output. This is where AI happens.
+- **Evaluator** — Typed questions to a model: which option, what score, yes or no. The answers come back typed, ready for your code to branch on.
 - **Sequencer** — Compose blocks into pipelines. Chain steps, run work in parallel, add rescue boundaries for error recovery.
 - **Router** — Dispatch to different blocks at runtime based on input or state. Mode switching, intent routing, conditional flows.
 
@@ -50,7 +51,7 @@ Blocks inside blocks. Sequencers as tools. Routers dispatching to sequencers. Ty
 
 ## Next steps
 
-- [Blocks](/docs/fundamentals/blocks) — Deep dive into the four primitives
+- [Blocks](/docs/fundamentals/blocks) — Deep dive into the five block kinds
 - [Quick Start](/docs/getting-started/quick-start) — Build a streaming chat app in 5 minutes
 - [Building a Chat App](/guides/building-a-chat-app) — Full walkthrough
 - [Flow options](/docs/configuration/flow), [Block options](/docs/configuration/blocks) — field catalogs sit after those concepts. [Configuration map](/docs/configuration/overview) is the index.

@@ -42,6 +42,22 @@ describe("fsdev block integration", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("executes an evaluator block against a mock evaluation model", async () => {
+    const result = await executeBlockCommand(
+      resolve(fixturesDir, "evaluator-block.ts"),
+      { input: '{"message": "I was charged twice"}' },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.block.kind).toBe("evaluator");
+    expect(result.output).toEqual({
+      answers: {
+        team: { type: "choice", choice: "billing", confidence: 0.9 },
+        urgent: { type: "boolean", probability: 0.3 },
+      },
+    });
+  });
+
   it("executes with --input-file", async () => {
     const result = await executeBlockCommand(
       resolve(fixturesDir, "echo-handler.ts"),

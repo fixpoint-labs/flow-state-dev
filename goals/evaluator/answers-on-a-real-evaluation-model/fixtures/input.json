@@ -1,0 +1,18 @@
+{
+  "ticket": "Hi, I was charged twice for my annual plan this morning and the second charge is still pending on my card. Can someone reverse it before it posts? This is the second time this has happened.",
+  "team": {
+    "instructions": "Which team should handle this support ticket?",
+    "options": {
+      "billing": "Payments, charges, refunds and invoices",
+      "technical": "Bugs, outages and product errors",
+      "account": "Logins, passwords and account settings"
+    }
+  },
+  "frustration": {
+    "instructions": "How frustrated is the customer?",
+    "levels": ["Calm", "Annoyed", "Angry"]
+  },
+  "urgent": {
+    "instructions": "Does this ticket need a person to act on it today?"
+  }
+}

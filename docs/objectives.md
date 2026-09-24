@@ -14,7 +14,7 @@ serves and how much of the gap it closes.
 | **Winning when** | `goal:all` is green across the whole defined corpus, and Wave 1.n (cross-package validation) is closed |
 | **Lead measure** | **Goals passing over goals *defined*** — read off one `pnpm goal:all` run. Not packages shipped, not waves closed |
 | **Now** | Waves 1.a–1.m complete · 1.n open · **34 defined, 33 with a runner** · passing `<RUN goal:all ONCE TO SET>` |
-| **Kill line** | If real usage shows the four block kinds don't compose into the workflows apps actually need, Phase 1 isn't unfinished — it's mis-shaped, and what changes is the composition model, not the remaining wave list |
+| **Kill line** | If real usage shows the block kinds don't compose into the workflows apps actually need, Phase 1 isn't unfinished — it's mis-shaped, and what changes is the composition model, not the remaining wave list |
 
 > **Two blanks are yours, not mine.** The date is a business call; the passing count needs one
 > `pnpm goal:all` run to establish honestly. Both are left visible rather than guessed — a

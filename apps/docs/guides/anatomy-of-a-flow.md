@@ -11,10 +11,11 @@ If you're new to the framework, read this first. It explains what the pieces are
 
 ## 1. Blocks are the building units
 
-Everything executable in flow-state-dev is a block. There are exactly four kinds:
+Everything executable in flow-state-dev is a block. There are exactly five kinds:
 
 - **Handler** — Pure logic. Validates input, transforms data, mutates state. No LLM. Think of it as a function that can read and write scope state. Handlers are silent by default: they don't emit messages or components unless you call `ctx.emit.message()` or similar.
 - **Generator** — LLM calls. The framework handles prompt assembly, tool loops, streaming, and output parsing. Set `itemVisibility` when those streamed messages should reach the client or the next-turn history.
+- **Evaluator** — Asks a model questions whose possible answers you already know: which option, what score, yes or no. It returns typed answers your code can branch on.
 - **Sequencer** — Composes blocks into pipelines. Chains steps, runs them in parallel, adds error recovery. The composition primitive. A sequencer is itself a block, so you can nest sequencers inside other sequencers or pass them to routers.
 - **Router** — Selects one block at runtime based on input or state. Mode switching, intent routing, conditional flows. The router's `execute` function returns the block to run. The framework then executes that block with the router's input.
 
@@ -129,7 +130,7 @@ You run flows and blocks in an isolated runtime with in-memory stores. Seed stat
 
 ## Go deeper
 
-- [Blocks](/docs/fundamentals/blocks) — Handler, generator, sequencer, router in detail
+- [Blocks](/docs/fundamentals/blocks) — Every block kind in detail
 - [Flows and Actions](/docs/fundamentals/flows) — Flow definition, actions, lifecycle
 - [State and Scopes](/docs/fundamentals/state-and-scopes) — Scope hierarchy, partial schemas, CAS
 - [Streaming](/docs/streaming/overview) — Items, content model, resume semantics

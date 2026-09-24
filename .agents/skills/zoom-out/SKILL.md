@@ -10,7 +10,7 @@ Use **FSD vocabulary** for everything you name:
 
 - **Package** (`@flow-state-dev/<pkg>`) and its role in the layered architecture (core / engine / client / react / cli / testing / store-* / patterns / capabilities / memory / ui / etc.)
 - **Flow** and its **actions** — what's the top-level surface, and which actions live on it?
-- **Block** kinds in the area — handlers, generators, sequencers, routers. Name the root block of each action.
+- **Block** kinds in the area — handlers, generators, evaluators, sequencers, routers. Name the root block of each action.
 - **Pattern** factories and **capabilities** in play — what's the reusable composition machinery here?
 - **State scopes** the area reads/writes (request / session / user / org) and which resources it touches.
 - **Items** the area emits to the stream (message / reasoning / block_output / component / status / state_change / error / etc.) — useful for understanding what reaches the client.

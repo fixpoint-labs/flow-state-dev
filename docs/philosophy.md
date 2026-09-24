@@ -17,7 +17,7 @@ has failed.
 FSD is **infrastructure, not an application**. Every AI feature needs the same
 plumbing: call a model, stream the response, hold state, retry, render, resume.
 Teams rebuild it every time. FSD's reason to exist is to own that plumbing as
-composable primitives — four block kinds, capabilities, patterns — so app authors
+composable primitives — five block kinds, capabilities, patterns — so app authors
 compose instead of rebuild.
 
 Everything below follows from that. The framework's value is what it *absorbs* for
@@ -93,7 +93,7 @@ coherence audit.
 
 ### 2. Composition over features
 
-FSD's power is that a few primitives — the four block kinds, capabilities, patterns
+FSD's power is that a few primitives — the five block kinds, capabilities, patterns
 — compose into anything. So the first question for any capability is not "what
 feature do we add?" but "what composition of what exists already expresses this?"
 Most asks are compositions in disguise. Reserve a genuinely new primitive for what

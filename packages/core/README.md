@@ -1,6 +1,6 @@
 # @flow-state-dev/core
 
-**The building blocks. Define handlers, generators, sequencers, routers, and flows — all with end-to-end type safety.**
+**The building blocks. Define handlers, generators, evaluators, sequencers, routers, and flows — all with end-to-end type safety.**
 
 This is the foundation package. Every other package depends on it. It's isomorphic — runs in Node, the browser, edge runtimes, anywhere JavaScript runs.
 
@@ -130,6 +130,11 @@ Copies that differ by more than their name declare `configSchema` on the definit
 
 **Block builders:**
 - `handler(config)` — Synchronous/async logic block
+- `evaluator(config)` — a block that asks an evaluation model typed questions (`choice`,
+  `score`, `boolean`) about one state and returns `{ answers }`. Confidence appears on an answer
+  only when the model reported it. See [Blocks](https://flow-state.dev/docs/fundamentals/blocks).
+- `choice(instructions, options)` / `score(instructions, levels)` / `boolean(instructions, criteria?)`
+  — question builders for `evaluator`.
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair (deterministic `jsonrepair` then LLM coercion that reshapes off-schema output to the schema; on by default, configured via `repair.coerce` / `repair.coerce.model`, defaulting to `intent/utility`)
   - Provider-native web search: set `search: true` (or a `GeneratorSearchConfig`). This is the model provider's built-in search, distinct from the `@flow-state-dev/tools` `tools.search` tool — the tools `tier` knob does not apply, and the generator's `searchDepth` (`"low" | "medium" | "high"`, OpenAI `searchContextSize`) is a different field from the tools `searchDepth` (`"basic" | "advanced"`). See [Web search](https://flow-state.dev/docs/fundamentals/blocks#web-search).
   - Human-in-the-loop inside the tool loop: a generator tool can call `ctx.suspend()` to gate its own call. The request suspends like any sequencer gate, and on a durable resume the tool re-enters past the approval — prior turns and completed sibling tools replay from the item log, so the model is not re-called for them. Constraints: gate before side effects (the tool re-enters from the top on resume, so guard pre-gate work with `runOnce`), one approval gate per model turn (first-suspension-wins), and a gated tool can't be `cacheable` (the cache short-circuits before the tool body). See [Generator and router suspend/resume](https://flow-state.dev/docs/advanced/generator-and-router-suspend-resume).
@@ -296,8 +301,11 @@ Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normaliz
 - `ContextOf<T, Kind>` — Get context handle type for scope/resource
 - `ResourceContext<T>` — Resource context type
 - `BlockInput<T>` / `BlockOutput<T>` — Infer block I/O types
-- `BlockDefinition` — The fully-typed return interface of `handler()`, `generator()`, `sequencer()`, and `router()`. Generics default to `ZodTypeAny`, so unparameterized `BlockDefinition` is the unconstrained "any block" form — useful when an app-level factory needs to accept or return a block without restating the framework's generics.
-- `BlockKind` — `"handler" | "generator" | "sequencer" | "router"` union — useful when writing dispatchers that switch on `block.kind`.
+- `BlockDefinition` — The fully-typed return interface of `handler()`, `generator()`, `evaluator()`, `sequencer()`, and `router()`. Generics default to `ZodTypeAny`, so unparameterized `BlockDefinition` is the unconstrained "any block" form — useful when an app-level factory needs to accept or return a block without restating the framework's generics.
+- `BlockKind` — `"handler" | "generator" | "evaluator" | "sequencer" | "router"` union — useful when writing dispatchers that switch on `block.kind`.
+- `EvaluatorAnswer`, `EvaluatorAnswers<Q>` — the answer types, for code that consumes an evaluator's output. `EvaluationModel` is the evaluation model an evaluator accepts.
+- `ModelResolver` gains an optional `resolveEvaluationModel(modelId, blockName?)`. A custom
+  resolver needs it only to resolve evaluator model strings.
 - `BlockContext` — The full block-context interface (the type of `ctx` in `execute`). Generic over the four scope-state types, declared resources, sequencer state, and parent input.
 - `BlockResult<TOutput>` — The handler `execute` return-value union.
 - `SessionScopeHandle<TState>` / `UserScopeHandle<TState>` / `OrgScopeHandle<TState>` / `RequestScopeHandle<TState>` — The scope handles `ctx.session` / `ctx.user` / etc. resolve to. Use to type a ctx slice (e.g. `(input, ctx: { session: SessionScopeHandle<MySessionState> }) => …`) instead of hand-rolling a `{ session: { patchState: ... } }` shape.
@@ -754,6 +762,7 @@ The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `Sett
 ## Dependencies
 
 - `zod` ^3.24.1
+- `@ai-sdk/typesafe-ai` is an optional peer, needed only to pass Jev's model directly.
 
 ## Scripts
 
@@ -765,7 +774,7 @@ pnpm --filter @flow-state-dev/core test
 
 ## Architecture reference
 
-- [Blocks](https://flow-state.dev/docs/fundamentals/blocks) — Deep dive into all four block kinds
+- [Blocks](https://flow-state.dev/docs/fundamentals/blocks) — Deep dive into all five block kinds
 - [Flows](https://flow-state.dev/docs/fundamentals/flows) — defineFlow, actions, lifecycle hooks
 - [Sequencer DSL](https://flow-state.dev/docs/sequencers/overview) — Full method reference for the composition DSL
 - [State and Scopes](https://flow-state.dev/docs/fundamentals/state-and-scopes) — Scoped state, atomic operations, CAS

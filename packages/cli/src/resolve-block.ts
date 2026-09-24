@@ -10,6 +10,7 @@ import { EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR } from "./exit-codes";
 const VALID_BLOCK_KINDS: ReadonlySet<string> = new Set<BlockKind>([
   "handler",
   "generator",
+  "evaluator",
   "sequencer",
   "router",
 ]);

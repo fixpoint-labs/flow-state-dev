@@ -386,7 +386,7 @@ function buildTraceEmitters(
   traces: TraceStore | undefined,
   _getBlockIdentity?: () => {
     blockName?: string;
-    blockKind?: "handler" | "generator" | "sequencer" | "router";
+    blockKind?: "handler" | "generator" | "evaluator" | "sequencer" | "router";
     blockInstanceId?: string;
     parentBlockInstanceId?: string;
     phase?: "main" | "sideChain";
@@ -2382,6 +2382,15 @@ export async function createExecutionContext<
     return modelResolver(modelId, blockName);
   }) as ModelResolver;
   resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
+  // Evaluator strings resolve only through the flow's own resolver. When an
+  // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
+  // absent and the evaluator refuses the string; the default resolver is
+  // never substituted, since it would read keys the app did not configure.
+  const resolveEvaluationModel = modelResolver.resolveEvaluationModel;
+  if (resolveEvaluationModel !== undefined) {
+    resolveModel.resolveEvaluationModel = (modelId: string, blockName?: string) =>
+      resolveEvaluationModel.call(modelResolver, modelId, blockName);
+  }
 
   const readLiveItems = (): Array<OutputItem | BlockTraceItem> => {
     const typedResponse = responseRef.current as { getItems?: () => Array<OutputItem | BlockTraceItem> };
@@ -3880,7 +3889,7 @@ export async function createExecutionContext<
       stores.traces,
       () => (context as { _blockIdentity?: {
         blockName?: string;
-        blockKind?: "handler" | "generator" | "sequencer" | "router";
+        blockKind?: "handler" | "generator" | "evaluator" | "sequencer" | "router";
         blockInstanceId?: string;
         parentBlockInstanceId?: string;
         phase?: "main" | "sideChain";

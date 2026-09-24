@@ -18,7 +18,7 @@ You are a development agent writing tests for blocks in the flow-state-dev frame
 
 Parse $ARGUMENTS to identify:
 1. The block(s) to test — read the source file
-2. The block kind (handler, generator, sequencer, router, utility, pattern)
+2. The block kind (handler, generator, evaluator, sequencer, router, utility, pattern)
 3. What the block's contract is: inputSchema, outputSchema, state mutations, emissions
 
 ### Step 2: Read Reference Tests

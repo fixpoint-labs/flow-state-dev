@@ -435,6 +435,49 @@ generator({ name: "chat", model: "intent/chat", prompt: "..." });
 //    item.model = { actual: "openai/gpt-5.5", gateway: "vercel" }
 ```
 
+## Evaluation models
+
+An evaluator needs a model that supports evaluation, which is a separate capability from generating text. The AI SDK exposes it as `evaluationModel(...)` on providers that have it.
+
+Model strings resolve the way generator strings do. With the provider's package installed and its key set, the string goes to that provider directly. Otherwise it goes through a configured gateway. The difference is the door: the resolver asks for the provider's evaluation model, and if the provider or gateway has none, you get an error before anything is sent. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. With an older version installed, the error says to upgrade it.
+
+```ts
+evaluator({ name: "triage", model: "typesafe-ai/jev", questions });          // Jev, through Vercel's AI Gateway
+evaluator({ name: "triage", model: "openai/gpt-5.4-mini", questions });      // OpenAI's evaluation adapter
+evaluator({ name: "triage", model: openai.evaluationModel("gpt-5.4-mini"), questions });
+```
+
+We recommend Jev through the gateway. It reports its confidence, which the other adapters don't, and routing code can use that to hand a doubtful case to a person.
+
+If you have your own Jev key, install Jev's provider library yourself and pass its model:
+
+```bash
+pnpm add @ai-sdk/typesafe-ai
+```
+
+```ts
+import { typeSafeAi } from "@ai-sdk/typesafe-ai"; // reads TYPESAFE_AI_API_KEY
+
+evaluator({ name: "triage", model: typeSafeAi.evaluationModel("jev-latest"), questions });
+```
+
+flow-state.dev never installs that library, and the string `typesafe-ai/jev` always goes through the gateway, even when the library is installed. The gateway and the library name the model differently, so a string that switched paths would switch models.
+
+Passing a text model, like `openai("gpt-5.4-mini")`, is refused when the block is built:
+
+```text
+Evaluator "triage": the model can generate but not evaluate.
+Pass an evaluation model, e.g. openai.evaluationModel("gpt-5.4-mini"), or a model string.
+```
+
+Evaluation doesn't use intents, fallback arrays or `selectModel`. An evaluator names one model.
+
+### With a custom model resolver
+
+If you pass your own `modelResolver` to `createFlowState`, it resolves evaluator strings too, but only if it implements the optional `resolveEvaluationModel(modelId, blockName?)` method. Return an evaluation model from it (or a promise of one), or throw to refuse the string.
+
+Without that method, an evaluator with a model string fails before any call, and the error names the missing method. flow-state.dev doesn't fall back to its own resolver, because that would use keys and gateways your app never configured. Passing an evaluation model instance still works, since there is nothing to resolve. Generators on your resolver are unaffected.
+
 ## Retry and Fallback
 
 When a model call fails:

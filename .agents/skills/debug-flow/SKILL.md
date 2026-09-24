@@ -198,12 +198,13 @@ Summarize for the user:
 
 ## Architecture Quick Reference
 
-### The 4 Block Kinds
+### The 5 Block Kinds
 
 | Kind | Purpose | Key Behavior |
 |------|---------|-------------|
 | **handler** | Arbitrary logic | `execute(input, ctx) → output`. No model integration. |
 | **generator** | AI/LLM integration | Multi-step model loop with tool execution. Resolves model via `ctx.resolveModel()`. Streams text via `content.delta`. |
+| **evaluator** | Typed questions to a model | One `experimental_evaluate` call; returns `{ answers }`. Model strings resolve via `ctx.resolveModel.resolveEvaluationModel`. No retry, no streaming; trace row carries `evaluator`, `model`, `modelUsage`. |
 | **sequencer** | Block composition | Chains blocks via `.step()`. Supports `.parallel()`, `.forEach()`, `.rescue()`, `.branch()`, `.doWhile()`, `.sideChain()`. |
 | **router** | Dynamic dispatch | `execute(input, ctx)` returns one of N `routes` blocks to run. |
 

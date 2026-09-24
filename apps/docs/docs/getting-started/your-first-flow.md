@@ -27,7 +27,7 @@ If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-
 
 ## Step 1. A generator on its own
 
-A **generator** is one of the four block kinds. It calls an LLM. Every other block kind exists for the things around the LLM call — validation, dispatch, branching, persistence — but the generator is the one that actually talks to the model.
+A **generator** is one of the five block kinds. It calls an LLM. Every other block kind exists for the things around the LLM call — validation, dispatch, branching, persistence — but the generator is the one that actually talks to the model.
 
 ```ts title="src/flows/hello-chat/blocks.ts"
 import { generator } from "@flow-state-dev/core";
@@ -261,7 +261,7 @@ The shape of every flow you write will be the same. You'll add more blocks, some
 
 ## Where to go from here
 
-- **[Blocks](/docs/fundamentals/blocks)** — All four kinds in detail, including the rules for tool emission and sub-agents.
+- **[Blocks](/docs/fundamentals/blocks)** — All five kinds in detail, including the rules for tool emission and sub-agents.
 - **[Flows](/docs/fundamentals/flows)** — Actions, lifecycle hooks, authentication, resources.
 - **[State and Scopes](/docs/fundamentals/state-and-scopes)** — When to put data in `session` versus `user` versus a resource.
 - **[Sequencers](/docs/sequencers/overview)** — `parallel`, `sideChain`, loops, `rescue`, and conditional steps.

@@ -483,7 +483,7 @@ export type FlowDefinition<
    * is the other half, and it buys something different: block PORTABILITY — a
    * block that declares what it needs of any flow installing it, checked at
    * each. That second half is what costs the `TFlowConfigSchema` generic on
-   * all four block kinds and through the sequencer DSL. A reader working out
+   * every block kind and through the sequencer DSL. A reader working out
    * which lines exist for which reason can use that split: the bag is this
    * option, the factory's `config`, and the parse; everything threading a
    * schema through a block builder is portability.

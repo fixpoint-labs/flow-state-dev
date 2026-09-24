@@ -1,5 +1,7 @@
 export { handler } from "./handler";
 export { generator, providerTool } from "./generator";
+export { evaluator, choice, score, boolean } from "./evaluator";
+export type { EvaluatorConfig, EvaluatorDefinition, EvaluatorOutputSchema, EvaluatorQuestionsSlot } from "./evaluator";
 export { sequencer } from "./sequencer";
 export { router } from "./router";
 export { dispatcher, dispatchHandleSchema } from "./dispatcher";

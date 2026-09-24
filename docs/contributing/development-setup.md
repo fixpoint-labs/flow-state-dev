@@ -213,7 +213,7 @@ The testing package (`@flow-state-dev/testing`) provides framework-specific harn
 The best way to understand the framework is to read the reference flows:
 
 - **hello-chat** (`examples/hello-chat/src/flows/hello-chat/flow.ts`): Minimal chat flow showing generator, handler, sequencer, and defineFlow patterns
-- **chat-agent** (`apps/kitchen-sink/flows/chat-agent/flow.ts`): Comprehensive example covering all 4 block kinds, router, tools, resources, clientData, and lifecycle hooks
+- **chat-agent** (`apps/kitchen-sink/flows/chat-agent/flow.ts`): Comprehensive example: generators with tools, routing, resources, clientData, and lifecycle hooks
 
 ## Package-Level READMEs
 

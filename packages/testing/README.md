@@ -17,6 +17,7 @@ This package provides:
 - snapshot trace summaries (`snapshotTrace`)
 - scripted generator mocks (`mockGenerator`)
 - model-resolver mock adapter (`createMockModelResolver`)
+- scripted evaluation models for `evaluator` blocks (`mockEvaluationModel`)
 
 ## Public API
 
@@ -29,6 +30,7 @@ This package provides:
 - `snapshotTrace(result)`
 - `mockGenerator(options)`
 - `createMockModelResolver(options)`
+- `mockEvaluationModel(options?)`
 
 ## Quick usage
 
@@ -220,6 +222,35 @@ mockGenerator({
 Plain steps and predicate entries mix freely. Predicates win when they fire; otherwise the next plain step is consumed.
 
 When a returned step has `toolCalls` but no `text` / `structuredOutput`, the mock model resolver invokes each tool's `execute` closure and pulls the next script step — mirroring the AI SDK's internal multi-step loop.
+
+### Mock evaluation models
+
+`mockEvaluationModel` stands in for a provider's evaluation model. Pass it as an `evaluator`'s `model`. It returns the scripted answers from every call and records each call on `calls`:
+
+```ts
+import { evaluator, choice, boolean } from "@flow-state-dev/core";
+import { mockEvaluationModel, testBlock } from "@flow-state-dev/testing";
+
+const model = mockEvaluationModel({
+  answers: {
+    team: { type: "choice", choice: "billing", confidence: 0.94 },
+    urgent: { type: "boolean", probability: 0.2 },
+  },
+});
+const triage = evaluator({
+  name: "triage",
+  model,
+  questions: { team: choice("Which team?", { billing: null, technical: null }), urgent: boolean("Urgent?") },
+});
+
+const result = await testBlock(triage, { input: "I was charged twice" });
+// result.output.answers.team.confidence === 0.94
+// model.calls.length === 1
+```
+
+A scripted `confidence` is reported the way Jev reports it, so leave it out to model a provider that reports none. `error` makes every call reject, and `hold: true` keeps each call pending until its abort signal fires. To model a malformed result, script answers that don't match the questions; the evaluator fails with the AI SDK's validation error.
+
+`createMockModelResolver` has no `resolveEvaluationModel`, so an evaluator with a model **string** refuses to run on it. Use an evaluation model instance in tests.
 
 ### Tool-call observability
 

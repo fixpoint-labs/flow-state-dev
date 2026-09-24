@@ -12,7 +12,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Date: 2026-04-03 (broadened 2026-05-02 by FIX-503)
 - Scope: Blocks — handlers and composition.
 - Rule:
-  - A handler block must not instantiate or call any block (handler, generator, sequencer, router) inside its `execute` body.
+  - A handler block must not instantiate or call any block, of any kind, inside its `execute` body.
   - When a block needs another block's output and then acts on it, model it as a sequencer: upstream block as one step, consuming handler as the next.
   - Enforced at the type level: `BlockDefinition` exposes no `run`; `someBlock.run(input, ctx)` from a handler body is a TypeScript error. First-party substrate utilities that genuinely can't compose via sibling steps use `asRuntime(block).run(input, ctx)` and document the reason inline — the explicit `asRuntime` signs the deviation. Tests drive blocks with `runForTest(block, input, ctx)` from `@flow-state-dev/testing`.
 - Why: Calling a block inside a handler bypasses the substrate (streaming, retries, tool loops, observability, checkpoints) and makes the inner block invisible to the runtime.

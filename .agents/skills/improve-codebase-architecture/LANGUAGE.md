@@ -60,7 +60,7 @@ The architectural overlay above coexists with FSD's primary domain vocabulary. W
 
 | FSD concept | Acts as | Interface includes |
 |---|---|---|
-| **block** (handler / generator / sequencer / router) | a **module** | `name`, `inputSchema`, `outputSchema`, contract behavior, `retry`, `rescue`, `emit` flags, lifecycle hooks (`onStarted`/`onCompleted`/`onErrored`/`onFinished`) — *and* any state/resource invariants the block relies on. The `execute` body is the **implementation**. |
+| **block** (handler / generator / evaluator / sequencer / router) | a **module** | `name`, `inputSchema`, `outputSchema`, contract behavior, `retry`, `rescue`, `emit` flags, lifecycle hooks (`onStarted`/`onCompleted`/`onErrored`/`onFinished`) — *and* any state/resource invariants the block relies on. The `execute` body is the **implementation**. |
 | **generator** | a **deep module** by construction | The model-loop contract — `prompt`, `context`, `history`, `user`, `tools`, `maxIterations`, output emission flags. The provider plumbing (Vercel AI SDK) sits behind the seam. |
 | **sequencer** | a **module** composed of other modules | The chain's input → output transformation + its rescue/retry semantics. Internal `.step()` steps are **internal seams**; the sequencer's own `inputSchema`/`outputSchema` is the **external seam**. Don't expose intermediate step shapes through the external interface. |
 | **router** | a **module** with dynamic dispatch | The set of named routes + the selection contract. |

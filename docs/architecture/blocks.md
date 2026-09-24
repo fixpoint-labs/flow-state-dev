@@ -2,7 +2,7 @@
 
 Blocks are the execution units in Flow State Dev. Every piece of logic — from a simple data transform to a multi-turn LLM conversation — is a block.
 
-There are exactly four block kinds: **handler**, **generator**, **sequencer**, and **router**.
+There are exactly five block kinds: **handler**, **generator**, **evaluator**, **sequencer**, and **router**.
 
 ## Shared Contract
 
@@ -267,7 +267,7 @@ The file is YAML frontmatter (strict-validated) over a body split into line-anch
 ### Tool Loop
 
 - Generator owns the tool loop internally — bounded by `maxIterations` (or runtime default)
-- Tools are authored as blocks (`handler`, `generator`, `sequencer`, `router`)
+- Tools are authored as blocks, of any kind
 - Runtime compiles tool blocks into provider-native tool definitions internally
 - Tool execution invokes `tool.run(args, ctx)`, not direct function calls
 
@@ -286,6 +286,28 @@ Generators auto-emit items based on model output — but only when `itemVisibili
 - Final return value → `block_trace` (internal/devtools only)
 
 To run a generator silently (no session items, only `block_trace` via graph edges), omit `itemVisibility`. See [Item Visibility](#item-visibility) for the visibility model.
+
+## Evaluator
+
+An evaluator asks an evaluation model typed questions about one state and returns `{ answers }`, one answer per question id. It is a leaf like a handler, and it talks to a model like a generator, but it never generates: it makes exactly one AI SDK `experimental_evaluate` call.
+
+```ts
+const triage = evaluator({
+  name: "triage",
+  model: "typesafe-ai/jev",            // or an evaluation model instance
+  state: (input) => input.message,     // defaults to the input
+  questions: {
+    team: choice("Which team?", { billing: "…", technical: "…" }),
+    frustration: score("How frustrated?", ["Calm", "Annoyed", "Angry"]),
+    urgent: boolean("Urgent?"),
+  },
+});
+```
+
+- **Model fence.** An evaluation model instance is used as given. A language model or FSD generator model is refused when the block is built; intents, fallback arrays and `selectModel` are refused too. A model string resolves at first execution through `ctx.resolveModel.resolveEvaluationModel`, the optional hook on `ModelResolver`. `createModelResolver` implements it with the generator precedence (explicit provider, installed-and-keyed package, gateway) against each source's `evaluationModel(id)`, and refuses a source without one before any provider call. When an app's own resolver has no hook, the string is refused naming it; the framework never substitutes its default resolver.
+- **The seam.** `packages/core/src/models/evaluate.ts` is the only importer of the SDK's evaluation types. It calls `experimental_evaluate` with `maxRetries: 0` and the request's abort signal, and maps the result into FSD's answer types (`types/evaluation.ts`). `confidence` is lifted from `providerMetadata.typesafe.confidence[id]` when present and is otherwise absent; a boolean's `probability` is never copied into it.
+- **No policy inside.** No retry, no fallback, no gating. Branching on answers belongs to routers and sequencer steps; recovery to `.rescue`.
+- **Trace.** The `block_trace` row carries `blockKind: "evaluator"`, `evaluator: { model, questions }`, the answers as `output`, and `model` / `modelUsage` reported through the same runtime hook a generator uses, top-level and nested.
 
 ## Sequencer
 

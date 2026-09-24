@@ -230,7 +230,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
   <div class="cards">
     <div class="card" style="--tc: var(--code)">
       <h5>Layer 1</h5><span class="role">unopinionated framework</span>
-      <p>The substrate. Four block kinds, flows, sessions, resources, capabilities, the board, skills. Releasing. Not on the market. Other people can build on it. It can land inside other products.</p>
+      <p>The substrate. Five block kinds, flows, sessions, resources, capabilities, the board, skills. Releasing. Not on the market. Other people can build on it. It can land inside other products.</p>
     </div>
     <div class="card" style="--tc: var(--accent)">
       <h5>Workforce</h5><span class="role">opinions / component</span>
@@ -249,7 +249,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <text class="t-lbl f-code" x="34" y="40">JOB 1 &#183; EXISTS &#183; RELEASING</text>
         <text class="t-b" x="34" y="72">Layer 1</text>
         <text class="t-s" x="34" y="96">unopinionated framework</text>
-        <text class="t-xs" x="34" y="128">FOUR BLOCK KINDS &#183; FLOWS</text>
+        <text class="t-xs" x="34" y="128">FIVE BLOCK KINDS &#183; FLOWS</text>
         <text class="t-xs" x="34" y="146">SESSIONS &#183; RESOURCES</text>
         <text class="t-xs" x="34" y="164">CAPABILITIES &#183; BOARD &#183; SKILLS</text>
         <text class="t-xs" x="34" y="190">OTHER PEOPLE BUILD ON IT</text>
@@ -285,11 +285,11 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
 <section id="stack">
   <div class="sec-head"><span class="sec-num">02</span><h2>Who sits on whom</h2></div>
-  <p class="lede">Layer&nbsp;1 has substrate opinions only. Workforce packages a way to start. Conductor consumes both and adds a coding-product opinion. A new box on this figure is an opinion or a product, never a fifth block kind.</p>
+  <p class="lede">Layer&nbsp;1 has substrate opinions only. Workforce packages a way to start. Conductor consumes both and adds a coding-product opinion. A new box on this figure is an opinion or a product, never a new block kind.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 420" role="img" aria-label="A stack of three jobs. Top dashed band: Conductor, the user-product focus, unpublished, session owned by the workflow. Middle band: Workforce opinions as a shared floor and releasable component, with a later maybe peel-off for a Workforce user product drawn as a small dashed aside, not as a second install. Bottom solid band: Layer 1 substrate that exists &#8212; four block kinds, flows, sessions, resources, capabilities, task board, skills, dispatch, the Agent type. Arrows show Conductor sitting on opinions sitting on substrate. A note: do not lift session-owned-by-workflow into Layer 1.">
+      <svg viewBox="0 0 940 420" role="img" aria-label="A stack of three jobs. Top dashed band: Conductor, the user-product focus, unpublished, session owned by the workflow. Middle band: Workforce opinions as a shared floor and releasable component, with a later maybe peel-off for a Workforce user product drawn as a small dashed aside, not as a second install. Bottom solid band: Layer 1 substrate that exists &#8212; five block kinds, flows, sessions, resources, capabilities, task board, skills, dispatch, the Agent type. Arrows show Conductor sitting on opinions sitting on substrate. A note: do not lift session-owned-by-workflow into Layer 1.">
         <rect class="n-prop" x="16" y="16" width="908" height="100" rx="5"/>
         <text class="t-lbl" x="34" y="38">USER PRODUCT &#8212; UNPUBLISHED LAB</text>
         <rect class="n-box" x="34" y="52" width="520" height="48" rx="4"/>
@@ -316,7 +316,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-code" x="16" y="276" width="908" height="122" rx="5"/>
         <text class="t-lbl f-code" x="34" y="298">LAYER 1 &#8212; SUBSTRATE &#183; EXISTS &#183; DO NOT INVENT HERE</text>
-        <text class="t-s" x="34" y="322">handler &#183; generator &#183; sequencer &#183; router</text>
+        <text class="t-s" x="34" y="322">handler &#183; generator &#183; evaluator &#183; sequencer &#183; router</text>
         <text class="t-s" x="34" y="340">defineFlow / actions &#183; session carries flowKind &#183; resources (session / user / org)</text>
         <text class="t-s" x="34" y="358">capabilities &#183; task board &#183; skills runtime &#183; dispatch</text>
         <text class="t-s" x="34" y="376">Agent type in core &#8212; a named participant, not a persistent identity</text>
@@ -487,7 +487,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
       <thead><tr><th>The piece</th><th>Status</th><th>What the source actually is</th></tr></thead>
       <tbody>
         <tr><td>Layer&nbsp;1 packages</td><td><span class="tag t-real">exists</span></td><td><code>core</code>, <code>engine</code>, <code>orchestration</code>, and the rest of the published set. Publishing, pre-1.0 and not in lockstep &#8212; each package's own <code>package.json</code> carries its current version. Releasing. Not on the market.</td></tr>
-        <tr><td>Four block kinds, flows, sessions, resources</td><td><span class="tag t-real">exists</span></td><td>The substrate both jobs sit on. A session carries a <code>flowKind</code> and nothing that says who owns it.</td></tr>
+        <tr><td>Five block kinds, flows, sessions, resources</td><td><span class="tag t-real">exists</span></td><td>The substrate both jobs sit on. A session carries a <code>flowKind</code> and nothing that says who owns it.</td></tr>
         <tr><td>Task board, skills, dispatch</td><td><span class="tag t-real">exists</span></td><td>A <code>{ key }</code> dispatch makes a <strong>child</strong> of the current flow. Two forms reach a session that already exists, not one: <code>{ id }</code> names it outright, and <code>{ from: true }</code> delivers into the stamped sender &#8212; the reply direction, which is why a reply needs no id (<code>SessionTarget</code>, <code>packages/core/src/types/dispatch.ts</code>).</td></tr>
         <tr><td><code>waitForSideChain</code></td><td><span class="tag t-real">exists</span></td><td>Waits for background work on the same request. Not a wait on an addressed session.</td></tr>
         <tr><td><code>Agent</code> in core</td><td><span class="tag t-real">exists</span></td><td>A named participant. No <code>resources</code> field. No scope. Not a persistent identity.</td></tr>
@@ -514,7 +514,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <div class="tension">
     <h5>Do not invent a Layer 1 primitive</h5>
-    <p>Collaboration is a use of Relay, not a fifth block kind, not a second bus, not a new scope. If the door is missing a field, that is a Layer&nbsp;1 gap on the existing door. It is not a Workforce package.</p>
+    <p>Collaboration is a use of Relay, not a new block kind, not a second bus, not a new scope. If the door is missing a field, that is a Layer&nbsp;1 gap on the existing door. It is not a Workforce package.</p>
   </div>
 
   <div class="tension">

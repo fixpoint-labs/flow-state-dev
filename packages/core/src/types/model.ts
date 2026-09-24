@@ -1,5 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import type { ModelIdentity } from "@flow-state-dev/contracts";
+import type { EvaluationModel } from "./evaluation";
 
 // `ModelIdentity` is a pure shape consumed by the item taxonomy, so its
 // declaration lives in the zero-dependency `@flow-state-dev/contracts` layer.
@@ -347,4 +348,21 @@ export type ModelResolver = ((
     modelId: string,
     options?: { preferProvider?: string | string[] }
   ): string;
+
+  /**
+   * Resolves a model string to an evaluation model, for `evaluator` blocks.
+   * Optional: a resolver without it serves generators unchanged, and an
+   * evaluator whose `model` is a string refuses to run on it (before any
+   * provider call), naming this hook. An evaluator given an evaluation model
+   * instance never consults the resolver.
+   *
+   * Return the evaluation model, or throw to refuse the string. The
+   * framework never substitutes another resolver when this is absent.
+   * `createModelResolver` implements it with the same direct-then-gateway
+   * precedence as generator strings.
+   */
+  resolveEvaluationModel?(
+    modelId: string,
+    blockName?: string
+  ): EvaluationModel | Promise<EvaluationModel>;
 };

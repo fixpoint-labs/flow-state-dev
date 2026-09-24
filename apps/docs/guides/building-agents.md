@@ -13,7 +13,7 @@ The AI tooling ecosystem has narrowed "agent" to mean one specific thing: a mode
 
 Production agents have persistent state across conversations. They coordinate multiple models. They mix deterministic scaffolding with non-deterministic AI steps. They need structured output contracts, error recovery, and observability. Wrapping all of that in a single `agent()` builder means either the builder does too little (and you're back to writing glue code) or it does too much (and you're fighting its opinions).
 
-flow-state.dev takes a different approach. The four block kinds (handler, generator, sequencer, router) compose into any agent architecture. A generator with tools is the classic agentic loop. A sequencer with a generator step is a structured pipeline with AI in the middle. Nested sequencers with multiple generators are multi-agent systems. Same primitives, different compositions.
+flow-state.dev takes a different approach. The five block kinds (handler, generator, evaluator, sequencer, router) compose into any agent architecture. A generator with tools is the classic agentic loop. A sequencer with a generator step is a structured pipeline with AI in the middle. Nested sequencers with multiple generators are multi-agent systems. Same primitives, different compositions.
 
 Naming blocks honestly reflects what they actually do. A `generator` generates. A `sequencer` sequences. A `handler` handles. When you see a flow definition, you know what each piece contributes. "Agent" obscures that.
 
@@ -385,7 +385,7 @@ These patterns compose. A router can dispatch to sequencers. A sequencer can con
 
 ## Go deeper
 
-- [Blocks](/docs/fundamentals/blocks) -- Handler, generator, sequencer, router in detail
+- [Blocks](/docs/fundamentals/blocks) -- Every block kind in detail
 - [Sequencers](/docs/sequencers/overview) -- Control flow, side-chains, connectors
 - [Flows and Actions](/docs/fundamentals/flows) -- Flow definition, actions, lifecycle
 - [Patterns](/docs/patterns/overview) -- Coordinator, supervisor, plan-and-execute, response auditor

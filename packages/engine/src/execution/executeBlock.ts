@@ -138,6 +138,41 @@ async function executeByKind(
     }
   }
 
+  if (block.kind === "evaluator") {
+    // An evaluator reports usage and the model that answered through the same
+    // runtime hook a generator uses; capture both for the trace row. No
+    // generator lifecycle seams: an evaluator makes one call and streams
+    // nothing.
+    let modelUsage: GeneratorModelUsageMeta | undefined;
+    let modelIdentity: ModelIdentity | undefined;
+    const evaluatorCtx = {
+      ...ctx,
+      _runtimeHooks: {
+        ...ctx._runtimeHooks,
+        onGeneratorModelResult: (payload: {
+          model: string;
+          usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+          identity?: ModelIdentity;
+        }) => {
+          if (payload.identity !== undefined) {
+            modelIdentity = payload.identity;
+          }
+          if (payload.usage !== undefined) {
+            modelUsage = {
+              model: payload.model,
+              promptTokens: payload.usage.promptTokens,
+              completionTokens: payload.usage.completionTokens,
+              totalTokens: payload.usage.totalTokens
+            };
+          }
+          ctx._runtimeHooks?.onGeneratorModelResult?.(payload);
+        }
+      }
+    };
+    const output = await asRuntime(block).run(input, evaluatorCtx as any);
+    return { output, modelUsage, modelIdentity };
+  }
+
   if (
     block.kind === "handler" ||
     block.kind === "sequencer" ||

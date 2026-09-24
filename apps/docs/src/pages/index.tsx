@@ -92,7 +92,7 @@ const pillars: Pillar[] = [
   {
     num: "01",
     label: "Composable primitives",
-    body: "Four block types — generator, sequencer, handler, router — compose into any agentic architecture, paired with a typed state and resource system that gives your flows programmatic data persistence and continuity. No hidden layers. No opinions baked into the internals. Just building blocks, all the way down.",
+    body: "Five block kinds — generator, evaluator, sequencer, handler, router — compose into any agentic architecture, paired with a typed state and resource system that gives your flows programmatic data persistence and continuity. No hidden layers. No opinions baked into the internals. Just building blocks, all the way down.",
   },
   {
     num: "02",

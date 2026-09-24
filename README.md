@@ -40,7 +40,7 @@ That's a streaming chat with conversation history, session state, and atomic cou
 
 ## What you get
 
-**Four block primitives. Infinite compositions.**
+**Five block kinds. Infinite compositions.**
 
 | Block | What it does |
 |-------|-------------|
@@ -194,7 +194,7 @@ Resume after disconnect: `Last-Event-ID` or `starting_after` query param replays
 
 **Architecture** (`docs/architecture/`):
 - [Overview](docs/architecture/overview.md) — System architecture, data flow, core abstractions
-- [Blocks](docs/architecture/blocks.md) — Handler, generator, sequencer, router deep dive
+- [Blocks](docs/architecture/blocks.md) — Handler, generator, evaluator, sequencer, router deep dive
 - [Flows and Actions](docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle hooks
 - [State and Scopes](docs/architecture/state-and-scopes.md) — Four scopes, atomic ops, CAS concurrency
 - [Streaming](docs/architecture/streaming.md) — Item/content model, SSE protocol, resume semantics

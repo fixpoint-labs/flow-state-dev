@@ -19,7 +19,7 @@ The chat agent either answers in the turn or files the work to a durable board, 
 A multi-modal AI assistant — the flagship flow. Showcases:
 
 - `defineFlow` with `session` and `user` scope state
-- All 4 block kinds: `handler`, `generator`, `router`, `sequencer`
+- Block kinds: `handler`, `generator`, `router`, `sequencer`
 - Router decisions from both action input and `ctx.session.state`
 - Generator tool loop with handler-backed tools (`readArtifact`, `updateArtifact`)
 - Generator slots: `prompt`, `context`, `history`, `user`
