@@ -3875,21 +3875,27 @@ outside the lifecycle). Every review thread, every review list and every commit 
 the GitHub MCP. Conversation comments were read for #1944, #2025, #2033, #2065 and #2073. Linear was read
 over GraphQL for every child's state and for the FIX-1496 and FIX-1511 comments cited below.
 **Findings, endpoints and rounds** follow cycle 15's written rules and cycle 12's spent-wave
-definition, unchanged. Every round count is **derived** from review and commit timestamps. Spec and
-epic PRs end at merge, because the retained-spec contract (#1975) makes the merge the approval.
+definition, unchanged. Every round count is **derived** from review and commit timestamps.
+**Direction artifacts end at the human direction approval, and merge or close is recorded
+separately.** Approval was read from each PR's timeline (the `spec approved` label, an owner comment)
+and from the coordinator's in-session record. On six of the ten, no approval act was recorded apart
+from the merge. There, the owner's merge is the approval and the two coincide. *The first draft of
+this entry ended every direction row at merge. The recompute moved no round count, because no review
+wave landed between an approval and its merge. It did correct one row: #1957 was closed unmerged
+under the older never-merge contract, not merged.*
 
 | PR | Kind | Rounds | Endpoint | Feedback classes (deduped) | Felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
-| [#1944](https://github.com/fixpoint-labs/flow-state-dev/pull/1944) epic-spec FIX-1457 | epic | ~1 (+3 owner re-cuts, not rounds) | merge 09-21 22:10Z | missed-edge-case ×3 (1 *vacuous-assertion*: ER-20 was proved by a cross-spec review that never sees shipped code) · stale-restatement ×2 (`ownership.svg`'s count, `path.svg`'s critical path) · spec-ambiguity ×1 (ER-19's owner on the collapse path) · philosophy-drift ×1 (the sign-off re-asked a decided D5, four asks against three) · nit ×7 — *14 from 16 threads* | **yes** — the owner flipped D2, cancelled FIX-1458 and re-cut the epic to release QA, all after the objective gate | — owner direction, not review rework. Two self-caught echoes of the fold (`89c1a1d`, `89c12ca`) |
-| [#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033) epic amendment | epic (amendment) | **0 before merge** | merge 09-22 11:45:40Z | reviewed **after** merge: Codex clean at 11:46:51Z, Cursor CHANGES_REQUESTED at 11:48:33Z. stale-restatement ×3 (figures still `BLOCKED BY` unconditionally · "Not buildable in W5 today" beside Open 1 · PLAN step 6 contradicting itself) · spec-ambiguity ×1 (a build-order sentence against ER-26) · nit ×3 — *7 from 7*, none folded here; #2141 redrew the figures | **yes** — the recommendation rested on a premise its own settlement measured false | a direction artifact merged 71 s before its first automated review returned |
-| [#2141](https://github.com/fixpoint-labs/flow-state-dev/pull/2141) epic amendment 2 | epic (amendment) | ~1 | merge 09-24 17:53Z | stale-restatement ×2 (P1: ER-DevForce recorded PASS while the goal it cites still said the gate was red, a day after FIX-1515 fixed it · P2: the checklist intro still said nothing had been observed live) — *2 from 2*. Plus a pre-review send-back of four stale ER-26 lines in FIX-1497's spec (`a9587e1`) | no | **re-read a carried fact when writing it down**: FIX-1515 went Done 09-23 19:52Z and the record still carried it as open |
+| [#1944](https://github.com/fixpoint-labs/flow-state-dev/pull/1944) epic-spec FIX-1457 | epic | ~1 (+3 owner re-cuts, not rounds) | approval 09-20 01:02Z on `89c1a1d` (`spec approved` label, and the owner in session), withdrawn 14:26Z after the D2 flip; re-approved by merge 09-21 22:10Z | missed-edge-case ×3 (1 *vacuous-assertion*: ER-20 was proved by a cross-spec review that never sees shipped code) · stale-restatement ×2 (`ownership.svg`'s count, `path.svg`'s critical path) · spec-ambiguity ×1 (ER-19's owner on the collapse path) · philosophy-drift ×1 (the sign-off re-asked a decided D5, four asks against three) · nit ×7 — *14 from 16 threads* | **yes** — the owner flipped D2, cancelled FIX-1458 and re-cut the epic to release QA, all after the objective gate | — owner direction, not review rework. Two self-caught echoes of the fold (`89c1a1d`, `89c12ca`) |
+| [#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033) epic amendment | epic (amendment) | **0 before merge** | approval = merge 09-22 11:45:40Z (no separate act) | reviewed **after** merge: Codex clean at 11:46:51Z, Cursor CHANGES_REQUESTED at 11:48:33Z. stale-restatement ×3 (figures still `BLOCKED BY` unconditionally · "Not buildable in W5 today" beside Open 1 · PLAN step 6 contradicting itself) · spec-ambiguity ×1 (a build-order sentence against ER-26) · nit ×3 — *7 from 7*, none folded here; #2141 redrew the figures | **yes** — the recommendation rested on a premise its own settlement measured false | a direction artifact merged 71 s before its first automated review returned |
+| [#2141](https://github.com/fixpoint-labs/flow-state-dev/pull/2141) epic amendment 2 | epic (amendment) | ~1 | approval = merge 09-24 17:53Z | stale-restatement ×2 (P1: ER-DevForce recorded PASS while the goal it cites still said the gate was red, a day after FIX-1515 fixed it · P2: the checklist intro still said nothing had been observed live) — *2 from 2*. Plus a pre-review send-back of four stale ER-26 lines in FIX-1497's spec (`a9587e1`) | no | **re-read a carried fact when writing it down**: FIX-1515 went Done 09-23 19:52Z and the record still carried it as open |
 | [#1955](https://github.com/fixpoint-labs/flow-state-dev/pull/1955) explore FIX-1458 | spec | ~1 (+1 owner flip) | **close** 09-20 15:48Z (cancelled) | missed-edge-case ×3 (1 *vacuous-assertion*: BR-8's passing leg ran every request as `u_boot`, so it proved an unrelated caller can answer) · spec-ambiguity ×1 · nit ×4 — *8 from 8 threads and one Architect item recorded in `dc60e57`*. Author-found in the fold: the no-park control graded weaker than it read | **yes** — D1 flipped to Model B, then the issue was cancelled | — |
-| [#1957](https://github.com/fixpoint-labs/flow-state-dev/pull/1957) explore FIX-1467 | spec | ~1 | merge 09-20 16:22Z | spec-ambiguity ×3 (POC leg 4 asserted the opposite of BR-14; BR-10 promised a widening with no mechanism; read caching unpinned) · missed-edge-case ×3 (1 *vacuous-assertion*: an acceptance case no seat can reach) · over-engineered ×1 · nit ×4 — *11 from 13* | no | — D1's core premise was settled by running POC leg 5, not argued |
-| [#2025](https://github.com/fixpoint-labs/flow-state-dev/pull/2025) spec FIX-1481 | spec | **~2** | merge 09-22 02:14Z | design-off ×1 (the badge predicate: six threads, three reviewers) · missed-edge-case ×4 (1 *overclaim*: row 5 deferred to an issue that reads a different collection · 1 *vacuous-assertion*: a synthetic-flow VG · 1 retained POC check that goes red on the PR it enables) · docs-miss ×1 · nit ×3 — *9 from 15* | **yes** — the coordinator pushed `!mayWrite` and withdrew it; the Architect's two-field ask was wrong against the store; D2 rested on a BP-031 hole FIX-1442 had already closed | **the D2 premise came from the coordinator's stale checkout** (#2037's commit says so) |
-| [#2037](https://github.com/fixpoint-labs/flow-state-dev/pull/2037) spec amendment FIX-1481 | spec (amendment) | ~1 | merge 09-22 12:43Z | missed-edge-case ×1 (*overclaim*: the replacement premise about `handleListSessions` was wrong, a defect in the fix itself) · docs-miss ×1 (linked unlanded #2033 text, *"the same defect this PR exists to fix, reintroduced by the fix"*) · over-engineered ×1 · nit ×1 — *4 from 5*. Plus a self-driven BR-17 sweep: 3 occurrences where 1 was reported | no | — |
-| [#2023](https://github.com/fixpoint-labs/flow-state-dev/pull/2023) spec FIX-1496 | spec | ~1 | merge 09-22 11:43Z | missed-edge-case ×4 (3 *vacuous-assertion*: acceptance met by any passing test; `gap-check`'s regex could not match the canonical API; a planted red that proves a regex, not the wiring · 1 retained POC with no sunset) · over-engineered ×3 · spec-ambiguity ×1 · nit ×3 — *11 from 11*. Self-caught echo: D1's heading kept the pre-trim shape (`853c75d`) | no | — |
-| [#2045](https://github.com/fixpoint-labs/flow-state-dev/pull/2045) spec FIX-1497 | spec | **~2** (+ coordinator ruling, + owner Open 1) | merge 09-22 20:06Z | missed-edge-case ×6 (2 *vacuous-assertion*: a control that cannot isolate its leg; a readiness probe that accepts another process's `/healthz` · 1 *overclaim*: BR-5 asserted a refusal the design cannot make) · design-off ×1 (the acceptance needed one screen that cannot exist) · spec-ambiguity ×1 (S1 pointed at a POC file its own guardrail forbids) · philosophy-drift ×1 (a `package.json` in a retained POC) · stale-restatement ×1 (BR-16 → BR-19 renumber debris, from the Architect) · nit ×4 — *14 from 14 threads and one review body* | no | the worker routed A, B and C to the owner; the coordinator ruled all three, because a ratified rule closed one branch of each |
-| [#2138](https://github.com/fixpoint-labs/flow-state-dev/pull/2138) spec FIX-1502 | spec | ~1 | merge 09-24 17:52Z | missed-edge-case ×2 (1 *vacuous-assertion*: VG could not catch a bare client, since the lab has no resolver) — *2 from 2* | no | — |
+| [#1957](https://github.com/fixpoint-labs/flow-state-dev/pull/1957) explore FIX-1467 | spec | ~1 | approval 09-20 16:22:12Z (`spec approved` label); **closed unmerged** 16:22:22Z | spec-ambiguity ×3 (POC leg 4 asserted the opposite of BR-14; BR-10 promised a widening with no mechanism; read caching unpinned) · missed-edge-case ×3 (1 *vacuous-assertion*: an acceptance case no seat can reach) · over-engineered ×1 · nit ×4 — *11 from 13* | no | — D1's core premise was settled by running POC leg 5, not argued |
+| [#2025](https://github.com/fixpoint-labs/flow-state-dev/pull/2025) spec FIX-1481 | spec | **~2** | approval = merge 09-22 02:14Z | design-off ×1 (the badge predicate: six threads, three reviewers) · missed-edge-case ×4 (1 *overclaim*: row 5 deferred to an issue that reads a different collection · 1 *vacuous-assertion*: a synthetic-flow VG · 1 retained POC check that goes red on the PR it enables) · docs-miss ×1 · nit ×3 — *9 from 15* | **yes** — the coordinator pushed `!mayWrite` and withdrew it; the Architect's two-field ask was wrong against the store; D2 rested on a BP-031 hole FIX-1442 had already closed | **the D2 premise came from the coordinator's stale checkout** (#2037's commit says so) |
+| [#2037](https://github.com/fixpoint-labs/flow-state-dev/pull/2037) spec amendment FIX-1481 | spec (amendment) | ~1 | approval = merge 09-22 12:43Z | missed-edge-case ×1 (*overclaim*: the replacement premise about `handleListSessions` was wrong, a defect in the fix itself) · docs-miss ×1 (linked unlanded #2033 text, *"the same defect this PR exists to fix, reintroduced by the fix"*) · over-engineered ×1 · nit ×1 — *4 from 5*. Plus a self-driven BR-17 sweep: 3 occurrences where 1 was reported | no | — |
+| [#2023](https://github.com/fixpoint-labs/flow-state-dev/pull/2023) spec FIX-1496 | spec | ~1 | approval = merge 09-22 11:43Z | missed-edge-case ×4 (3 *vacuous-assertion*: acceptance met by any passing test; `gap-check`'s regex could not match the canonical API; a planted red that proves a regex, not the wiring · 1 retained POC with no sunset) · over-engineered ×3 · spec-ambiguity ×1 · nit ×3 — *11 from 11*. Self-caught echo: D1's heading kept the pre-trim shape (`853c75d`) | no | — |
+| [#2045](https://github.com/fixpoint-labs/flow-state-dev/pull/2045) spec FIX-1497 | spec | **~2** (+ coordinator ruling, + owner Open 1) | approval 09-22 17:10Z (owner answered Open 1), recorded on `daf0df14b` at 17:18Z; merge 20:06Z | missed-edge-case ×6 (2 *vacuous-assertion*: a control that cannot isolate its leg; a readiness probe that accepts another process's `/healthz` · 1 *overclaim*: BR-5 asserted a refusal the design cannot make) · design-off ×1 (the acceptance needed one screen that cannot exist) · spec-ambiguity ×1 (S1 pointed at a POC file its own guardrail forbids) · philosophy-drift ×1 (a `package.json` in a retained POC) · stale-restatement ×1 (BR-16 → BR-19 renumber debris, from the Architect) · nit ×4 — *14 from 14 threads and one review body* | no | the worker routed A, B and C to the owner; the coordinator ruled all three, because a ratified rule closed one branch of each |
+| [#2138](https://github.com/fixpoint-labs/flow-state-dev/pull/2138) spec FIX-1502 | spec | ~1 | approval = merge 09-24 17:52Z | missed-edge-case ×2 (1 *vacuous-assertion*: VG could not catch a bare client, since the lab has no resolver) — *2 from 2* | no | — |
 | [#1958](https://github.com/fixpoint-labs/flow-state-dev/pull/1958) impl FIX-1467 | impl | ~1 | merge 09-20 17:49Z | missed-edge-case ×5 (2 *overclaim*: the body claimed *all five guards clean* with one red; a dry run reported rows cleared) · over-engineered ×2 · nit ×5 — *12 from 15*. **Found after review by the isolated docs-writer, and again by the docs-editor: D2's silent off-switch.** Author-found in the fold: the wall's verifier *"agreed with the bug it exists to catch"* | no | the docs isolation acted as a second detector with different blind spots |
 | [#2032](https://github.com/fixpoint-labs/flow-state-dev/pull/2032) impl FIX-1481 PR-A | impl | ~1 | merge 09-22 13:07Z | missed-edge-case ×2 (the trim against BR-3/BR-4; a test pinning a known defect with no retirement) · docs-miss ×2 (bump, fragment length) · nit ×2 — *6 from 7* | no | — |
 | [#2039](https://github.com/fixpoint-labs/flow-state-dev/pull/2039) impl FIX-1481 PR-B | impl | ~1 | merge 09-22 13:14Z | missed-edge-case ×2 (1 *overclaim*: the tooltip promised "every write" refused) · docs-miss ×2 (both *overclaim*) · nit ×4 — *8 from 8*. Self-found after the fold: two framing sentences the fold's own change had falsified (`c65c0b7`) | no | — |
@@ -3946,16 +3952,23 @@ leg.
 
 After *"A check you cannot write that report for is not evidence yet."*:
 
-> **The unit is the assertion, not the leg.** A control that reddens its leg proves the leg can fail,
-> not that each assertion in it can: an assertion that passes on an absence, on an empty loop, or on
-> a state it never waited for stays green beside a red control.
+> **The unit is the assertion, not the leg:** every outcome the leg claims maps to an assertion, and
+> each assertion is shown able to fail — a control that reddens its leg proves neither, and an
+> assertion that passes on an absence, on an empty loop, or on a state it never waited for stays
+> green beside it.
+
+It is mirrored in one line each into the contracts that are actually dispatched or enforced: the
+Step 6 completeness gate, `implementer-prompt.md` and `spec-reviewer-prompt.md`. **Claim coverage is
+in the same sentence because two of the ten instances were omitted assertions, not weak ones**
+(#2065's decline was never asserted; #2051 never asserted that rejected work could not settle
+`completed`). A per-assertion rule alone passes those vacuously.
 
 **It clears the Step-3 gate.** *Generalizable*: any check with more than one assertion per control.
 *Grounded*: ten review-filed instances on three carrying artifacts whose authors reported their
 controls red (#2065 ×5, #2051 ×4, #2066 ×1). *Not already covered*: the paragraph never defines its
 unit, and the authors resolved it to the leg. BP-003 is not the home, since cycles 14–16 measured
 another sentence there at zero. *Altitude*: one sentence, in the paragraph this cycle is the first
-real measurement of. **What would change my mind:** if the next grading-heavy epic still shows
+real measurement of, plus its one-line mirrors. **What would change my mind:** if the next grading-heavy epic still shows
 vacuous assertions on legs whose authors report per-assertion perturbations, the unit is not the gap
 and the sentence should come out. **What being wrong costs:** one more sentence in a long paragraph,
 and more perturbations on goals with many assertions per leg.
@@ -4010,16 +4023,20 @@ Cycle 16 named the home: one line in `epic-lifecycle`'s dispatch rules.
 
 ### The recommended upstream fix B — one bullet in `epic-lifecycle` → *Your requests are dispatched too*
 
-> **A fact you write into a brief or a status line is read when you write it.** A rule's merge
-> state, an issue's state, what a handler does: read it from `origin/main`, Linear or the code at that
-> moment and say where, never from an earlier wake's record.
+> **A fact you write into a brief or a status line is read when you write it.** Read an issue's or a
+> PR's state from Linear or GitHub at that moment; get a rule's merge state or what the code does
+> from a fresh `scout` or worker lookup and cite its result — never from an earlier wake's record.
+
+The code half goes through a lookup, not a coordinator read, because the same skill keeps the
+coordinator to handles and status.
 
 **It clears the Step-3 gate.** *Generalizable*: any coordinator relaying another system's state.
 *Grounded*: the four instances above, plus cycle 16's two. *Not already covered*: BP-003 says a report
 is a claim, which covers what a worker hands back. Nothing covers what the coordinator hands down,
 and cycle 16 pre-registered this home for that reason. *Altitude*: one bullet in the skill the
 coordinator runs. **What would change my mind:** a third epic where the stale facts come from workers
-rather than the coordinator. **What being wrong costs:** one Linear or `git` read per brief.
+rather than the coordinator. **What being wrong costs:** one Linear read, or one scout lookup, per
+brief.
 
 ### Candidates considered and dropped
 
@@ -4041,7 +4058,8 @@ rather than the coordinator. **What being wrong costs:** one Linear or `git` rea
   leg *"an org-less read is refused at the transport door while the same read with an org lands"*
   sends its positive half through `act()`, which never reaches `resolvePrincipal`
   (`goals/devforce-lab/lab/host.mts:553-585` on `main`). #2141 records ER-DevForce re-proved on that
-  leg. Four Linear searches found no issue for it. This is the third merge over an open P1 in three
+  leg. Four Linear searches at collection time found no issue for it. The coordinator filed
+  FIX-1564 at wrap (child of FIX-1457) and held the wrap on it. This is the third merge over an open P1 in three
   cycles (#1391, #2091, #2073), and the second on a PR a Cursor agent wrote outside `issue-implement`.
 - **#2033 merged 71 s before its first automated review returned.** Cursor's four coherence findings
   landed on a merged PR, and #2141 later fixed the figures.
