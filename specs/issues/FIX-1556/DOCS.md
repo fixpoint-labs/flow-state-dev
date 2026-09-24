@@ -152,16 +152,25 @@ triumphant closer after each section.
 > evaluator and it does that third step with an evaluation model instead.
 >
 > ```ts title="src/activate.ts"
-> import { createSkillActivator } from "@flow-state-dev/orchestration";
+> import { createSkillActivator, skillEvaluator } from "@flow-state-dev/orchestration";
 >
 > export const activator = createSkillActivator({
->   evaluator: skillPicker, // an evaluator whose choice question lists your skills
+>   initialSkills,
+>   evaluator: skillEvaluator("typesafe-ai/jev"),
 > });
 > ```
 >
-> Slash commands and keywords still win when they match. If the evaluator is unsure or fails, no
-> skill activates; the activator doesn't fall back to another classifier. Leave the option out and
-> activation works exactly as it does today. See [Activation paths](/docs/skills/activation).
+> `skillEvaluator(model)` builds an evaluator with one choice question: which of these skills
+> fits the message, or none? If you'd rather build the evaluator yourself, give it
+> `skillQuestions`.
+>
+> Slash commands and keywords still win when they match. Otherwise the model's pick is final. A
+> skill it picks activates, and "no skill" activates nothing. The activator doesn't compare the
+> pick's confidence to a threshold, so the same code works on a model that reports none. An
+> evaluator error fails the activator, the same way a failed default classifier does, and it
+> doesn't fall back to that classifier. If you'd rather the turn go on without a skill, wrap the
+> activator in [`.rescue`](/docs/sequencers/composing-blocks). Leave the option out and activation
+> works exactly as it does today. See [Activation paths](/docs/skills/activation).
 >
 > ## Where to go next
 >
@@ -173,7 +182,9 @@ triumphant closer after each section.
 >   picks from.
 
 The two "Where to go next" bullets for index-time facets and for memory are added only if those
-pages exist on `main` at publication (BR-7). The `cascadingRouter` link target is FIX-1558's page.
+pages exist on `main` at publication (BR-7). The memory bullet, when added, names memory's helpers
+as FIX-1555 ships them, `captureEvaluator(model)` and `captureQuestions`, for example:
+"[Memory](/docs/…) to let capture decide what to remember with `captureEvaluator(model)`." The `cascadingRouter` link target is FIX-1558's page.
 
 ## UPDATE · `apps/docs/sidebarsGuides.ts` · top-level items
 
@@ -211,6 +222,6 @@ Insert `"routing-with-evaluators"` immediately before `"adding-skills-to-your-ap
 > | `classify` | `AI_GATEWAY_API_KEY` | Typed answers, with Jev's confidence on the choice and score |
 > | `route` | `AI_GATEWAY_API_KEY` | A clear ticket lands on a queue; an unclear one on review |
 > | `routeWithoutConfidence` | (the adapter's credential, named at implementation) | **Review, every time.** The model reports no confidence, so no edge opens. That is the point of this action |
-> | the activator action | `AI_GATEWAY_API_KEY` | The skill whose description fits, or none |
+> | the activator action | `AI_GATEWAY_API_KEY` | The skill whose description fits, or none when the model answers "no skill". An evaluator error fails the action |
 
 No package README changes: the example adds no exports.

@@ -94,5 +94,13 @@ amendment, and its placeholder is deleted rather than failing forever.
   (second-look finding, EM call). BR-16 to BR-18 became one rule. Leg (d) now proves no evaluator
   code loads at the load boundary; the import fence allows relative imports inside the example and
   covers `fsdev.config.ts`; the excerpt rule covers source snippets only.
+- **Cross-spec alignment against [#2208](https://github.com/fixpoint-labs/flow-state-dev/pull/2208)**
+  (FIX-1559 owns the activator; EM call: FIX-1559 wins). BR-13 and the guide now say an evaluator
+  error fails the activator (`.rescue` to carry on), there is no "unsure" state, an explicit "no
+  skill" activates nothing, and confidence never gates. BR-14's "nothing is imported" became
+  FIX-1559's definition: no evaluator block built or resolved, no value import of the helper in
+  the activator module; V3 and leg (d) spy on construction and resolution, not module import. The
+  guide and example use `skillEvaluator(model)` / `skillQuestions`, and memory's
+  `captureEvaluator(model)` / `captureQuestions` from FIX-1555.
 
 **Open: none.**
