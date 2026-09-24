@@ -289,6 +289,50 @@ const ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION = `
 ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
 `;
 
+/**
+ * FIX-1546: re-key a `schedule_index` created before rows carried their
+ * storage cell from `(user_id, key)` to `(cell, key)`.
+ *
+ * Every existing row is adopted as the person's own app-wide cell: every
+ * released version wrote index rows only from that cell, so the value is known,
+ * not guessed (BP-030). The cell is the engine's storage key for it — the user
+ * id with `\` and `:` escaped — so the next write from that cell updates the
+ * same row rather than adding a second one.
+ *
+ * One DO block, so it runs as one statement: it either completes or leaves the
+ * old table untouched. Idempotent — a table that already has `cell` is left
+ * alone. The primary key is found by lookup rather than by name, so a table
+ * whose constraint was named by hand is converted too. Runs after the `org_id`
+ * migration.
+ */
+const ADD_SCHEDULE_INDEX_CELL_MIGRATION = String.raw`
+DO $$
+DECLARE
+  pk TEXT;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'schedule_index'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'schedule_index' AND column_name = 'cell'
+  ) THEN
+    ALTER TABLE schedule_index ADD COLUMN cell TEXT;
+    UPDATE schedule_index
+       SET cell = replace(replace(user_id, '\', '\\'), ':', '\:')
+     WHERE cell IS NULL;
+    ALTER TABLE schedule_index ALTER COLUMN cell SET NOT NULL;
+    SELECT conname INTO pk
+      FROM pg_constraint
+     WHERE conrelid = 'schedule_index'::regclass AND contype = 'p';
+    IF pk IS NOT NULL THEN
+      EXECUTE format('ALTER TABLE schedule_index DROP CONSTRAINT %I', pk);
+    END IF;
+    ALTER TABLE schedule_index ADD PRIMARY KEY (cell, key);
+  END IF;
+END $$;
+`;
+
 const ADD_FLOW_ID_MIGRATION = `
 DO $$
 DECLARE
@@ -424,18 +468,20 @@ const SEQUENCER_CHECKPOINTS_INDEXES = [
 ];
 
 // Optional schedule index for `createPostgresScheduleIndex`. Keyed by
-// (user_id, key) — a derived read-model of per-user schedule resource
-// collections. `next_fire_at` is ms since epoch and is scanned/advanced
+// (cell, key) — the storage cell a schedule lives in plus its key, so one
+// schedule is one row (FIX-1546); `user_id` is who it runs as. A derived
+// read-model of schedule resource collections. `next_fire_at` is ms since epoch and is scanned/advanced
 // inside one transaction by claimDue (SELECT ... FOR UPDATE SKIP LOCKED).
 const SCHEDULE_INDEX_TABLE = `
 CREATE TABLE IF NOT EXISTS schedule_index (
-  user_id      TEXT NOT NULL,
+  cell         TEXT NOT NULL,
   key          TEXT NOT NULL,
+  user_id      TEXT NOT NULL,
   org_id       TEXT,
   cron         TEXT NOT NULL,
   timezone     TEXT,
   next_fire_at BIGINT NOT NULL,
-  PRIMARY KEY (user_id, key)
+  PRIMARY KEY (cell, key)
 );
 `;
 
@@ -624,6 +670,10 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // FIX-1442: add the nullable `org_id` column to a pre-attribution
   // `schedule_index`. No backfill — see the migration's note.
   ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION,
+
+  // FIX-1546: re-key a pre-cell `schedule_index` on (cell, key), adopting
+  // every existing row as its person's own cell. See the migration's note.
+  ADD_SCHEDULE_INDEX_CELL_MIGRATION,
 
   // FIX-1010: clear an invalid index left by an interrupted concurrent build
   // so it is rebuilt below rather than skipped by `IF NOT EXISTS`.

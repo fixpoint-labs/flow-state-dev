@@ -31,14 +31,27 @@ export function createBullmqScheduleIndex(
     opts.schedulerIdPrefix ?? DEFAULT_SCHEDULER_PREFIX;
   const flowKind = opts.flowKind;
 
-  function schedulerId(userId: string, key: string): string {
-    return `${schedulerPrefix}:${userId}:${key}`;
+  // Built from the row's identity, `(cell, key)`, so two cells' schedules
+  // with one key are two schedulers. Cells and keys both carry `:`, so the
+  // join has to be injective, and there are two forms:
+  //
+  //   - A one-part cell (a person's own cell: their id, escaped only when it
+  //     contains `:` or `\`) has no unescaped `:`, so `<prefix>:<cell>:<key>`
+  //     splits at the first unescaped `:`. This is the id every released
+  //     version wrote, key untouched, so nothing re-registers (BR-15).
+  //   - A multi-part cell (a seat, a flow-isolated cell) has unescaped `:`s,
+  //     so its key is escaped the same way and the id splits at the last
+  //     unescaped `:`. `@` after the prefix keeps this form apart from the
+  //     first, which always has `:` there.
+  function schedulerId(cell: string, key: string): string {
+    if (!hasUnescapedColon(cell)) return `${schedulerPrefix}:${cell}:${key}`;
+    return `${schedulerPrefix}@${cell}:${key.replace(/[\\:]/g, "\\$&")}`;
   }
 
   return {
     async upsert(row: ScheduleIndexRow): Promise<void> {
       await queue.upsertJobScheduler(
-        schedulerId(row.userId, row.key),
+        schedulerId(row.cell, row.key),
         {
           pattern: row.cron,
           ...(row.timezone ? { tz: row.timezone } : {}),
@@ -64,8 +77,17 @@ export function createBullmqScheduleIndex(
       return [];
     },
 
-    async remove(userId: string, key: string): Promise<void> {
-      await queue.removeJobScheduler(schedulerId(userId, key));
+    async remove({ cell, key }: { cell: string; key: string }): Promise<void> {
+      await queue.removeJobScheduler(schedulerId(cell, key));
     },
   };
+}
+
+/** True when `cell` has a `:` that no `\` escapes — a multi-part cell. */
+function hasUnescapedColon(cell: string): boolean {
+  for (let i = 0; i < cell.length; i++) {
+    if (cell[i] === "\\") i++;
+    else if (cell[i] === ":") return true;
+  }
+  return false;
 }

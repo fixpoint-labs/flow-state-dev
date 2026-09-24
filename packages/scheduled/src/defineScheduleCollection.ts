@@ -111,14 +111,17 @@ export function defineScheduleCollection(
       if (typed.enabled === false) return;
       const orgId = indexOrgFor(typed, ctx.orgId, ctx.scopeId, bareKey(key));
       if (orgId === null) return;
-      const row = rowFromState(ctx.scopeId, orgId, bareKey(key), typed);
+      const row = rowFromState(ctx.cell, ctx.scopeId, orgId, bareKey(key), typed);
       if (row !== null) await index.upsert(row);
     },
     onInstanceUpdated: async (key, state, _prev, ctx) => {
       const typed = state as ScheduleCollectionState;
       const k = bareKey(key);
+      // A row is identified by the cell it is stored in plus its key, so a
+      // remove here never reaches the same key in another cell.
+      const id = { cell: ctx.cell, key: k };
       if (typed.enabled === false) {
-        await index.remove(ctx.scopeId, k);
+        await index.remove(id);
         return;
       }
       // A rewrite that moves the binding is not an update to honour — it is an
@@ -128,10 +131,10 @@ export function defineScheduleCollection(
       // correctly (BR-19).
       const orgId = indexOrgFor(typed, ctx.orgId, ctx.scopeId, k);
       if (orgId === null) {
-        await index.remove(ctx.scopeId, k);
+        await index.remove(id);
         return;
       }
-      const row = rowFromState(ctx.scopeId, orgId, k, typed);
+      const row = rowFromState(ctx.cell, ctx.scopeId, orgId, k, typed);
       if (row !== null) {
         await index.upsert(row);
       } else {
@@ -139,11 +142,11 @@ export function defineScheduleCollection(
         // (carrying the pre-update, valid cron) so the stale row stops
         // firing — otherwise claimDue would advance the old expression
         // indefinitely.
-        await index.remove(ctx.scopeId, k);
+        await index.remove(id);
       }
     },
     onInstanceDeleted: async (key, ctx) => {
-      await index.remove(ctx.scopeId, bareKey(key));
+      await index.remove({ cell: ctx.cell, key: bareKey(key) });
     }
   });
 }
@@ -222,6 +225,7 @@ function indexOrgFor(
 }
 
 function rowFromState(
+  cell: string,
   userId: string,
   orgId: string,
   key: string,
@@ -236,6 +240,7 @@ function rowFromState(
     return null;
   }
   return {
+    cell,
     userId,
     orgId,
     key,

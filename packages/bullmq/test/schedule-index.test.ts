@@ -14,6 +14,7 @@ describe("createBullmqScheduleIndex", () => {
     const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
 
     await index.upsert({
+      cell: "user-1",
       userId: "user-1",
       key: "daily-report",
       cron: "0 9 * * *",
@@ -42,6 +43,7 @@ describe("createBullmqScheduleIndex", () => {
     const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
 
     await index.upsert({
+      cell: "user-1",
       userId: "user-1",
       key: "hourly",
       cron: "0 * * * *",
@@ -62,10 +64,61 @@ describe("createBullmqScheduleIndex", () => {
   it("remove calls queue.removeJobScheduler with correct id", async () => {
     const queue = createMockQueue();
     const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
-    await index.remove("user-1", "daily-report");
+    await index.remove({ cell: "user-1", key: "daily-report" });
     expect(queue.removeJobScheduler).toHaveBeenCalledWith(
       "fsd-sched:user-1:daily-report"
     );
+  });
+
+  /**
+   * The scheduler id is built from the row's identity. An app-wide row's cell
+   * is the person's own id, so its scheduler id is byte-identical to the one
+   * written before rows carried a cell and nothing re-registers (BR-15); two
+   * seats' rows with one key are two schedulers, and removing one leaves the
+   * other.
+   */
+  it("keys schedulers on the cell: app-wide ids unchanged, seats apart", async () => {
+    const queue = createMockQueue();
+    const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
+    const row = { userId: "user-1", key: "weekly", cron: "* * * * *", nextFireAt: 0 };
+
+    await index.upsert({ ...row, cell: "user-1" });
+    await index.upsert({ ...row, cell: "user-1:~org:acme", orgId: "acme" });
+    await index.upsert({ ...row, cell: "user-1:~org:globex", orgId: "globex" });
+    await index.remove({ cell: "user-1:~org:acme", key: "weekly" });
+
+    const ids = queue.upsertJobScheduler.mock.calls.map((c: unknown[]) => c[0]);
+    expect(ids[0]).toBe("fsd-sched:user-1:weekly");
+    expect(new Set(ids).size).toBe(3);
+    expect(queue.removeJobScheduler.mock.calls).toEqual([[ids[1]]]);
+  });
+
+  /**
+   * Cells and keys both carry `:`, so joining them raw let two different rows
+   * name one scheduler: the second upsert replaced the first, and removing
+   * either stopped both. An app-wide row whose key happens to read like a seat
+   * suffix must stay apart from that seat's row — and keep the id it had
+   * before rows carried a cell, key colons and all.
+   */
+  it("never gives two (cell, key) rows one scheduler id", async () => {
+    const queue = createMockQueue();
+    const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
+    const row = { userId: "u", cron: "* * * * *", nextFireAt: 0 };
+
+    await index.upsert({ ...row, cell: "u", key: "~org:acme:weekly" });
+    await index.upsert({ ...row, cell: "u:~org:acme", key: "weekly", orgId: "acme" });
+    await index.upsert({ ...row, cell: "u:~org:acme:weekly", key: "x" });
+    await index.upsert({ ...row, cell: "u:~org", key: "acme:weekly:x" });
+    await index.upsert({ ...row, cell: "u\\:a", key: "b" });
+    await index.upsert({ ...row, cell: "u\\\\", key: "a:b" });
+
+    const ids = queue.upsertJobScheduler.mock.calls.map((c: unknown[]) => c[0]);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Released app-wide ids are byte-identical, even with `:` in the key.
+    expect(ids[0]).toBe("fsd-sched:u:~org:acme:weekly");
+
+    await index.remove({ cell: "u:~org:acme", key: "weekly" });
+    expect(queue.removeJobScheduler.mock.calls).toEqual([[ids[1]]]);
   });
 
   it("uses custom scheduler id prefix", async () => {
@@ -76,6 +129,7 @@ describe("createBullmqScheduleIndex", () => {
     });
 
     await index.upsert({
+      cell: "u2",
       userId: "u2",
       key: "k1",
       cron: "* * * * *",
