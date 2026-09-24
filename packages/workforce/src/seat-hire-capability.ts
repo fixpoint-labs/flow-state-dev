@@ -35,10 +35,7 @@ import {
 /** The capability name a worker file spells under `capabilities:`. */
 export const SEAT_HIRE_CAPABILITY = "seat-hire";
 
-// The hire/fire sequence, its options type, the pin machinery and the two
-// resource keys now live in `./seat-hire-blocks` (FIX-1500 S1), so an action
-// can mount `hire` or `fire` with no model in the loop. Re-exported here so
-// every existing import of this module keeps working unchanged.
+/** Re-exported so existing imports of this module keep resolving. */
 export {
   createSeatHireBlocks,
   HIRED_ROSTER_RESOURCE,
