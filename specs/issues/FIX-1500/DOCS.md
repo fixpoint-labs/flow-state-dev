@@ -164,6 +164,14 @@ organization.)*
 > hire and fire its seats**. If you deploy it somewhere other people can reach, put sign-in in
 > front of it or remove the hire paths first.
 
+*(PR-B. After the organization paragraph.)*
+
+> **If you ran this app with a persistent store before it ran as `kitchen-sink`, wipe the store
+> and start fresh.** Earlier data isn't carried over. For the local filesystem profile, delete
+> `.fsdev/data` (or the whole `.fsdev` folder). For Postgres, point `FSD_DB_URL` at an empty
+> database. Until you do, the app refuses to start and names the channels it found under another
+> organization.
+
 *(PR-B. In the `workforce-admin` section: the example becomes `kitchen-sink:dev-token`, the
 address in the section's opening becomes `kitchen-sink.support.ada`, and this follows the example. Nothing here names a hire path PR-B doesn't ship.)*
 
