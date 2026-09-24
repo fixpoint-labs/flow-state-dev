@@ -6,15 +6,16 @@
  * single answer to two questions a reader will otherwise find answered twice:
  * what a row means, and what a runtime-hired seat is called.
  *
- * **Nothing here throws over a bad row, and nothing here repairs one.** A row
- * this version cannot read comes back as a reason. That is not politeness: a
- * stored row was written by a past runtime against code that has since moved,
- * so the boot that finds it must be able to skip it and serve, and a boot that
- * rewrote data it did not understand would destroy the evidence of why it did
- * not. The one thing that DOES throw is a bad org id, because that is this
- * deploy's mistake rather than a past one — see {@link seatAddress}. A reader
- * walking stored rows calls {@link hiredSeatManifestFromStored}, which turns
- * that throw into a reason too.
+ * **Nothing here throws over a bad stored row, and nothing here repairs one.**
+ * A row this version cannot read comes back as a reason. That is not
+ * politeness: a stored row was written by a past runtime against code that has
+ * since moved, so the boot that finds it must be able to skip it and serve,
+ * and a boot that rewrote data it did not understand would destroy the
+ * evidence of why it did not. The one thing that DOES throw is a bad org id,
+ * because that is this deploy's mistake rather than a past one — see
+ * {@link seatAddress}. A reader walking stored rows calls
+ * {@link hiredSeatManifestFromStored}, which turns that throw into a reason
+ * too.
  *
  * The import of `validateSegment` reaches into `../loader/` and is safe:
  * `loader/segments.ts` imports nothing at all. The package's root/loader split
@@ -268,6 +269,9 @@ export function hiredSeatManifestFromStored(
   try {
     return hiredSeatManifest(orgId, parsed.row);
   } catch (error) {
+    // Only the address can throw in there today (`seatAddress`). A new throw
+    // added to `hiredSeatManifest` becomes a skipped row here, so make it a
+    // reason there instead if it is not about the address.
     return { problem: error instanceof Error ? error.message : String(error) };
   }
 }
