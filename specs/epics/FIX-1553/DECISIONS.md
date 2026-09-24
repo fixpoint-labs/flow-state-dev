@@ -139,23 +139,6 @@ Round 2 on #2166 (owner lock relayed by the FSD Architect).
   proved in FIX-1554's own tests, so the wrap gate does not grow. Rejected: a hard dependency, or
   a consumer reaching Jev itself (ER-11 unchanged).
 
-<a name="aligned-after-merge"></a>
-## Aligned after merge
-
-The cross-spec coherence pass over the approved child specs, applied as a follow-up amendment
-to #2166. No new decision: each line conforms this set to a sign-off the owner already approved.
-
-- **Fail closed is scoped to gates** ([D2](#d2)). Source: FIX-1559 sign-off 1
-  ([its D2](../../issues/FIX-1559/DECISIONS.md#d2), #2208) and
-  [FIX-1555 D3](../../issues/FIX-1555/DECISIONS.md#d3) (#2195): the activator and memory read the
-  bare answer and never consult confidence.
-- **ER-11 reads "builds one unasked, or names or resolves a model"**, and consumers that own
-  their question ship a `<x>Evaluator(model)` helper ([D3](#d3)). Source:
-  [FIX-1555 D4](../../issues/FIX-1555/DECISIONS.md#d4) (owner, review round 1) and
-  [FIX-1559 D3](../../issues/FIX-1559/DECISIONS.md#d3), which mirrors it.
-- **Each child's goal proves its own issue; the lead measure reads only FIX-1556's assembled
-  goal** (ER-15, [PLAN.md](PLAN.md#what-each-issue-entails)).
-
 ## How it got here
 
 - **Lab (Sep 18 to 22)** — #1903 moved from OpenRouter Decisions to `experimental_evaluate`.
@@ -164,6 +147,6 @@ to #2166. No new decision: each line conforms this set to a sign-off the owner a
 - **Drafted (Sep 24)** — FIX-1560 folded; four cards.
 - **Review round 1 (Sep 24)** — every cascade edge fails closed; leg (f) scoped; the kind's case recorded.
 - **Review round 2 (Sep 24)** — owner adds direct Jev as an optional peer beside Gateway.
-- **Aligned after merge (Sep 24)** — fail closed scoped to gates, ER-11 narrowed, the helper rule; see [above](#aligned-after-merge).
+- **Aligned after merge (Sep 24)** — fail closed scoped to gates, ER-11 narrowed, the helper rule — a follow-up PR from `main`; lineage in [EVOLUTION.md](EVOLUTION.md).
 
 **Open: none.**
