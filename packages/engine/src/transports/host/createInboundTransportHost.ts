@@ -5,6 +5,10 @@
  * action-dispatch machinery. It is the runtime surface every adapter
  * (HTTP, MCP, webhook, scheduled, custom) sees — adapters never touch
  * `runAction` directly.
+ *
+ * Principal resolution is also answered here for in-process callers
+ * (`resolveInProcessPrincipal`, FIX-1551), through the same code, and this
+ * module is the only place `source: "cli"` can be produced.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../../registry/flow-registry";
@@ -44,12 +48,13 @@ import {
 } from "../concurrency/arbiter";
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
 import {
+  defaultBodyUserIdPrincipalResolver,
   hasLegacyBodyOrgId,
   isDefaultBodyUserIdPrincipalResolver
 } from "../auth/defaultBodyUserIdPrincipalResolver";
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
-import { INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
+import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
   combineSignals,
   createInProcessDispatcher,
@@ -166,6 +171,262 @@ async function terminateUnenqueuedRequest(
   } catch {
     // Best-effort cleanup; the original dispatch error is what propagates.
   }
+}
+
+/**
+ * Contexts the engine's in-process entry point built itself (FIX-1551).
+ *
+ * `source: "cli"` is reserved: the host refuses it on any context that is not
+ * in this set. Module-private on purpose — never exported, never keyed through
+ * `Symbol.for`, never on the host adapters receive — so the only code that can
+ * add to it is {@link resolveInProcessPrincipal}, which no network adapter is
+ * handed. A source string alone is not enough: the host is shared and each
+ * adapter builds its own resolution context, so an adapter declaring any
+ * source of its own could still stamp `cli` on the context it resolves.
+ */
+const inProcessAsks = new WeakSet<PrincipalResolutionContext>();
+
+/** An answer to "who is this caller", with whether the framework supplied it. */
+type PrincipalResolution = {
+  principal: ResolvedPrincipal;
+  /**
+   * True when the resolver that ran is the framework default, so the
+   * organization is the reserved development one rather than a verified value.
+   */
+  isDevelopmentDefault: boolean;
+};
+
+/**
+ * Build the one place the framework decides who an inbound caller is:
+ * resolver precedence, the user fallback and `requireUser`, and the
+ * organization rules. Every inbound transport's host and the in-process entry
+ * point call this, so a terminal and an HTTP request cannot get different
+ * answers to the same question.
+ *
+ * `warn` reports deployment configuration once per resolution instance. The
+ * in-process entry point passes none: it reports the identity it used itself.
+ */
+function createPrincipalResolution(options: {
+  registry: FlowRegistry;
+  resolvePrincipal: PrincipalResolver;
+  warn?: (message: string, context: Record<string, unknown>) => void;
+}): (context: PrincipalResolutionContext) => Promise<PrincipalResolution> {
+  const { registry, resolvePrincipal, warn } = options;
+
+  // Both warnings below are once per host, not once per request. They report a
+  // deployment's configuration — "this app has no authentication", "this app's
+  // clients still send an org" — which is the same fact on every request, and a
+  // per-request line would bury it in the very logs an operator reads to find it.
+  let warnedDevelopmentDefault = false;
+  let warnedLegacyBodyOrg = false;
+
+  /**
+   * The organization this request runs under, or a refusal.
+   *
+   * The single place the framework decides an organization, for every inbound
+   * transport (FIX-1442). Two sources and no third: a configured resolver's
+   * verified value, or — only when the app configures no authentication at all
+   * — the reserved development default.
+   *
+   * A configured resolver is held to the full contract. It cannot decline to
+   * name an organization and have the framework guess one, and it cannot claim
+   * {@link DEFAULT_ORG_ID}: that identity means "nobody authenticated here", so
+   * an authenticated principal holding it would put verified callers into the
+   * same boundary as unauthenticated ones.
+   */
+  const resolveOrgIdentity = (
+    context: PrincipalResolutionContext,
+    isDevelopmentDefault: boolean,
+    resolvedOrgId: string | undefined
+  ): string => {
+    if (isDevelopmentDefault) {
+      if (warn !== undefined && hasLegacyBodyOrgId(context)) {
+        if (!warnedLegacyBodyOrg) {
+          warnedLegacyBodyOrg = true;
+          // Presence, never the value — it names somebody's organization.
+          warn(
+            "[flow-state] a request body still carries an `orgId` field; it is ignored. " +
+              "The organization comes from authentication.resolvePrincipal, or from " +
+              "DEFAULT_ORG_ID when no resolver is configured. Remove it from your client.",
+            { source: context.source }
+          );
+        }
+      }
+      if (warn !== undefined && !warnedDevelopmentDefault) {
+        warnedDevelopmentDefault = true;
+        warn(
+          `[flow-state] no authentication.resolvePrincipal is configured; running under the ` +
+            `development organization "${DEFAULT_ORG_ID}". Configure a resolver that returns a ` +
+            `verified orgId before serving more than one organization.`,
+          { source: context.source }
+        );
+      }
+      return DEFAULT_ORG_ID;
+    }
+
+    if (resolvedOrgId === undefined) {
+      throw new PrincipalResolutionError(
+        "Request requires a verified organization: authentication.resolvePrincipal " +
+          "returned no usable orgId. Return a nonempty orgId from the resolver.",
+        { status: 401 }
+      );
+    }
+    if (resolvedOrgId === DEFAULT_ORG_ID) {
+      throw new PrincipalResolutionError(
+        `Request requires a verified organization: "${DEFAULT_ORG_ID}" is reserved for ` +
+          `unauthenticated single-organization development and cannot be claimed by a ` +
+          `configured resolver. Return this deployment's own organization id.`,
+        { status: 401 }
+      );
+    }
+    return resolvedOrgId;
+  };
+
+  return async (context: PrincipalResolutionContext): Promise<PrincipalResolution> => {
+    // `cli` is reserved for the in-process entry point (FIX-1551). Refused
+    // before any resolver runs, whatever source the adapter that built this
+    // context declared — a resolver branching on `source === "cli"` must never
+    // see a network request.
+    if (context.source === CLI_SOURCE && !inProcessAsks.has(context)) {
+      throw new PrincipalResolutionError(
+        `source "${CLI_SOURCE}" is reserved for the engine's in-process entry point ` +
+          `(fsdev run and fsdev chat); a transport adapter cannot resolve a request under it.`,
+        { status: 401 }
+      );
+    }
+
+    // Per-flow `authentication.resolvePrincipal` wins over the host-level
+    // fallback when the flow is registered and configured. Adapters never
+    // touch this; they always call `host.resolvePrincipal` and the host
+    // routes per-flow overrides transparently. The precedence itself lives in
+    // `pickPrincipalResolver` so the route-level guard's enforce/skip decision
+    // cannot drift from the resolver actually called here.
+    const flow = registry.get(context.envelope.flowKind);
+    const flowAuth = flow?.authentication;
+    const resolver = pickPrincipalResolver(
+      registry,
+      context.envelope.flowKind,
+      resolvePrincipal
+    );
+    const requireUser = flow?.requireUser ?? true;
+    const defaultUserId = flowAuth?.defaultUserId;
+
+    // Whether the resolver that actually ran is the framework default — i.e.
+    // this flow authenticates nobody. That is the ONE case where the framework
+    // supplies the organization instead of reading a verified one, so it is
+    // decided from the resolver that ran rather than from the shape of what it
+    // returned. A configured resolver that happens to return nothing is an
+    // authentication failure, not an invitation to fall back to development
+    // identity (BR-2).
+    const isDevelopmentDefault = isDefaultBodyUserIdPrincipalResolver(resolver);
+
+    const result = await Promise.resolve(resolver(context));
+    let userId: string | undefined;
+    let orgId: string | undefined;
+    if (result !== null && result !== undefined) {
+      userId =
+        typeof result.userId === "string" && result.userId.length > 0
+          ? result.userId
+          : undefined;
+      orgId = isValidOrgId(result.orgId) ? result.orgId : undefined;
+    }
+
+    if (userId === undefined && defaultUserId !== undefined && defaultUserId.length > 0) {
+      userId = defaultUserId;
+    }
+
+    if (userId === undefined) {
+      if (requireUser) {
+        throw new PrincipalResolutionError(
+          "Action request requires non-empty userId",
+          { status: 401 }
+        );
+      }
+      // Flow opted out of user identity but the host has nowhere to route
+      // user-keyed runtime state. Authors must either return a userId from
+      // the resolver or set `authentication.defaultUserId`. Surface this as
+      // a 500 because it's a configuration mistake, not a caller error.
+      throw new PrincipalResolutionError(
+        `Flow "${context.envelope.flowKind}" has authentication.requireUser: false ` +
+        `but no userId was resolved. Set authentication.defaultUserId or return a ` +
+        `userId from authentication.resolvePrincipal.`,
+        { status: 500 }
+      );
+    }
+
+    return {
+      principal: { userId, orgId: resolveOrgIdentity(context, isDevelopmentDefault, orgId) },
+      isDevelopmentDefault
+    };
+  };
+}
+
+/** What an in-process caller asks: the question an HTTP action request asks, minus the request. */
+export interface InProcessPrincipalQuestion {
+  /** The flow instance address (a singleton's kind, or a collection member's id). */
+  flowKind: string;
+  /** The action the caller is about to run. */
+  action: string;
+  /** The action input, as the resolver would see it on an HTTP request. */
+  input: unknown;
+  /**
+   * The user the local caller names, the way an unauthenticated HTTP caller
+   * names one in its body. A resolver that authenticates ignores it; the
+   * framework default returns it.
+   */
+  userId: string;
+}
+
+/** Who an in-process caller is, and where that answer came from. */
+export interface InProcessPrincipal extends ResolvedPrincipal {
+  /**
+   * `resolver` when a configured resolver named the organization;
+   * `development-default` when the flow authenticates nobody and the framework
+   * supplied {@link DEFAULT_ORG_ID}.
+   */
+  from: "resolver" | "development-default";
+}
+
+/**
+ * Who an in-process caller is, answered by the same resolution every inbound
+ * transport's host uses: a flow's own resolver before `resolvePrincipal`, the
+ * user fallback, and the organization rules. `fsdev run` and `fsdev chat` ask
+ * this before they write anything.
+ *
+ * The resolver sees `source: "cli"`, no `request`, and the question's `userId`
+ * as the body's. That source is reserved: only this function can produce a
+ * context the host accepts it on. Refusals are the host's own
+ * `PrincipalResolutionError`s (or whatever the resolver threw), unchanged — a
+ * resolver that needs a credential refuses here exactly as it refuses an HTTP
+ * caller without one.
+ *
+ * In-process only. No route, header, query or environment variable reaches it.
+ * `FlowState.resolveInProcessPrincipal` calls it with the app's own registry
+ * and host resolver; pass a bare `registry` for flows with no host resolver.
+ */
+export async function resolveInProcessPrincipal(
+  options: { registry: FlowRegistry; resolvePrincipal?: PrincipalResolver },
+  question: InProcessPrincipalQuestion
+): Promise<InProcessPrincipal> {
+  const resolution = createPrincipalResolution({
+    registry: options.registry,
+    resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver
+  });
+  const context: PrincipalResolutionContext = {
+    source: CLI_SOURCE,
+    envelope: {
+      flowKind: question.flowKind,
+      action: question.action,
+      input: question.input,
+      metadata: { body: { userId: question.userId } }
+    }
+  };
+  inProcessAsks.add(context);
+  const { principal, isDevelopmentDefault } = await resolution(context);
+  return {
+    ...principal,
+    from: isDevelopmentDefault ? "development-default" : "resolver"
+  };
 }
 
 /**
@@ -921,143 +1182,17 @@ export function createInboundTransportHost(
     }
   };
 
-  // Both warnings below are once per host, not once per request. They report a
-  // deployment's configuration — "this app has no authentication", "this app's
-  // clients still send an org" — which is the same fact on every request, and a
-  // per-request line would bury it in the very logs an operator reads to find it.
-  let warnedDevelopmentDefault = false;
-  let warnedLegacyBodyOrg = false;
-
-  /**
-   * The organization this request runs under, or a refusal.
-   *
-   * The single place the framework decides an organization, for every inbound
-   * transport (FIX-1442). Two sources and no third: a configured resolver's
-   * verified value, or — only when the app configures no authentication at all
-   * — the reserved development default.
-   *
-   * A configured resolver is held to the full contract. It cannot decline to
-   * name an organization and have the framework guess one, and it cannot claim
-   * {@link DEFAULT_ORG_ID}: that identity means "nobody authenticated here", so
-   * an authenticated principal holding it would put verified callers into the
-   * same boundary as unauthenticated ones.
-   */
-  const resolveOrgIdentity = (
-    context: PrincipalResolutionContext,
-    isDevelopmentDefault: boolean,
-    resolvedOrgId: string | undefined
-  ): string => {
-    if (isDevelopmentDefault) {
-      if (hasLegacyBodyOrgId(context)) {
-        if (!warnedLegacyBodyOrg) {
-          warnedLegacyBodyOrg = true;
-          // Presence, never the value — it names somebody's organization.
-          logSafely(
-            runtimeConfig.logger,
-            "warn",
-            "[flow-state] a request body still carries an `orgId` field; it is ignored. " +
-              "The organization comes from authentication.resolvePrincipal, or from " +
-              "DEFAULT_ORG_ID when no resolver is configured. Remove it from your client.",
-            { source: context.source }
-          );
-        }
-      }
-      if (!warnedDevelopmentDefault) {
-        warnedDevelopmentDefault = true;
-        logSafely(
-          runtimeConfig.logger,
-          "warn",
-          `[flow-state] no authentication.resolvePrincipal is configured; running under the ` +
-            `development organization "${DEFAULT_ORG_ID}". Configure a resolver that returns a ` +
-            `verified orgId before serving more than one organization.`,
-          { source: context.source }
-        );
-      }
-      return DEFAULT_ORG_ID;
-    }
-
-    if (resolvedOrgId === undefined) {
-      throw new PrincipalResolutionError(
-        "Request requires a verified organization: authentication.resolvePrincipal " +
-          "returned no usable orgId. Return a nonempty orgId from the resolver.",
-        { status: 401 }
-      );
-    }
-    if (resolvedOrgId === DEFAULT_ORG_ID) {
-      throw new PrincipalResolutionError(
-        `Request requires a verified organization: "${DEFAULT_ORG_ID}" is reserved for ` +
-          `unauthenticated single-organization development and cannot be claimed by a ` +
-          `configured resolver. Return this deployment's own organization id.`,
-        { status: 401 }
-      );
-    }
-    return resolvedOrgId;
-  };
+  // The host's resolution is the shared one, reporting configuration through
+  // this host's logger. See `createPrincipalResolution`.
+  const resolution = createPrincipalResolution({
+    registry,
+    resolvePrincipal,
+    warn: (message, context) => logSafely(runtimeConfig.logger, "warn", message, context)
+  });
 
   const resolve = async (
     context: PrincipalResolutionContext
-  ): Promise<ResolvedPrincipal> => {
-    // Per-flow `authentication.resolvePrincipal` wins over the host-level
-    // fallback when the flow is registered and configured. Adapters never
-    // touch this; they always call `host.resolvePrincipal` and the host
-    // routes per-flow overrides transparently. The precedence itself lives in
-    // `pickPrincipalResolver` so the route-level guard's enforce/skip decision
-    // cannot drift from the resolver actually called here.
-    const flow = registry.get(context.envelope.flowKind);
-    const flowAuth = flow?.authentication;
-    const resolver = pickPrincipalResolver(
-      registry,
-      context.envelope.flowKind,
-      resolvePrincipal
-    );
-    const requireUser = flow?.requireUser ?? true;
-    const defaultUserId = flowAuth?.defaultUserId;
-
-    // Whether the resolver that actually ran is the framework default — i.e.
-    // this flow authenticates nobody. That is the ONE case where the framework
-    // supplies the organization instead of reading a verified one, so it is
-    // decided from the resolver that ran rather than from the shape of what it
-    // returned. A configured resolver that happens to return nothing is an
-    // authentication failure, not an invitation to fall back to development
-    // identity (BR-2).
-    const isDevelopmentDefault = isDefaultBodyUserIdPrincipalResolver(resolver);
-
-    const result = await Promise.resolve(resolver(context));
-    let userId: string | undefined;
-    let orgId: string | undefined;
-    if (result !== null && result !== undefined) {
-      userId =
-        typeof result.userId === "string" && result.userId.length > 0
-          ? result.userId
-          : undefined;
-      orgId = isValidOrgId(result.orgId) ? result.orgId : undefined;
-    }
-
-    if (userId === undefined && defaultUserId !== undefined && defaultUserId.length > 0) {
-      userId = defaultUserId;
-    }
-
-    if (userId === undefined) {
-      if (requireUser) {
-        throw new PrincipalResolutionError(
-          "Action request requires non-empty userId",
-          { status: 401 }
-        );
-      }
-      // Flow opted out of user identity but the host has nowhere to route
-      // user-keyed runtime state. Authors must either return a userId from
-      // the resolver or set `authentication.defaultUserId`. Surface this as
-      // a 500 because it's a configuration mistake, not a caller error.
-      throw new PrincipalResolutionError(
-        `Flow "${context.envelope.flowKind}" has authentication.requireUser: false ` +
-        `but no userId was resolved. Set authentication.defaultUserId or return a ` +
-        `userId from authentication.resolvePrincipal.`,
-        { status: 500 }
-      );
-    }
-
-    return { userId, orgId: resolveOrgIdentity(context, isDevelopmentDefault, orgId) };
-  };
+  ): Promise<ResolvedPrincipal> => (await resolution(context)).principal;
 
   return {
     registry,

@@ -338,6 +338,9 @@ export const flowstate = createFlowState({
 
 Per-flow `defineFlow({ authentication })` always wins over this fallback.
 
+`fsdev run` and `fsdev chat` ask the same resolvers, with `source: "cli"` and no request. See
+[Who a run is](/docs/cli/configuration#who-a-run-is).
+
 ## What a resolver protects
 
 Configuring `resolvePrincipal` covers the whole flow API, not just action

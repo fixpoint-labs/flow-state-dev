@@ -1,0 +1,7 @@
+{
+  "manager": "support.mara",
+  "action": "run",
+  "seatPrefix": "support.pat",
+  "message": "Hire {seat}, an agent seat that takes refunds.",
+  "expect": { "userId": "devuser", "orgId": "kitchen-sink", "from": "resolver" }
+}

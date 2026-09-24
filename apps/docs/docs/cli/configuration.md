@@ -114,6 +114,47 @@ Three caveats follow from running your real wiring from the terminal:
 - **A colocated queue worker starts for the run.** If your config declares a queue worker alongside the stores (a BullMQ worker, say), a `fsdev run` starts that worker for the duration of the run and drains it on dispose.
 - **Concurrent writes can lose an update.** The app and the CLI can write the same `.fsdev/data` at once. Filesystem writes are torn-write-safe across processes, so you won't read a half-written record. But two processes updating the same record can still race, and one update can be lost.
 
+## Who a run is
+
+Every run executes as a user in an organization, the same as a request to your server. When a
+config loads, the CLI asks your app who it is, the same way your server asks for every request:
+through your `resolvePrincipal`, the flow's own if it has one, otherwise the one you passed to
+`createFlowState`. Whatever that returns is who the run is.
+
+The CLI's question carries no request and no credential. Your resolver sees `source: "cli"`.
+The framework reserves that value for `fsdev run` and `fsdev chat`: a transport adapter that
+stamps it, including one you wrote, is refused before your resolver runs. So a resolver that
+wants the terminal to get a particular identity can check for it:
+
+```ts title="fsdev.config.ts"
+resolvePrincipal: async (ctx) =>
+  ctx.source === "cli"
+    ? { userId: "local-dev", orgId: "acme" }
+    : readSession(ctx.request),
+```
+
+An app with no resolver runs as `cli-user` in the development organization, `DEFAULT_ORG_ID`.
+
+**When the resolver wants a credential.** A resolver that checks a bearer token or a signature
+has nothing to check, so it refuses, and the run stops before it writes anything. The error names
+the flow. Pass `--org` to say which organization to run in yourself:
+
+```bash
+fsdev run billing refund -i '{"id":"r_1"}' --org acme --user support-bot
+```
+
+`--org` skips your resolver entirely. It is for the person at the keyboard, who already holds the
+store credentials the CLI is using. `fsdev serve` and `fsdev dev` have no such flag: requests that
+arrive over the network always go through your resolver. `--user` on its own keeps the
+organization your resolver gives and changes only the user.
+
+Sessions keep the user and organization they were created with. Resuming one with `--session`
+as a different user or organization is refused before anything is written, the same as it would
+be over HTTP.
+
+`--capture` records who the run was, under `command.principal`, including whether your resolver,
+a flag, or the development default decided it.
+
 ## Runtime requirements
 
 A `.ts` config needs a runtime that can load TypeScript. Inside the framework monorepo, tsx handles that. In a consumer repo, you need one of:

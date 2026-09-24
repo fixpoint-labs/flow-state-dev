@@ -20,6 +20,7 @@ import type { BuiltinCommand, BuiltinContext } from "./registry";
 import { executeTurn, type RunningTurn } from "./turn";
 import type { ChatRenderer } from "./render";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR } from "../exit-codes";
+import { checkSessionOwner, type CliPrincipal } from "../principal";
 
 /** Validates that an existing session is safe to bind to `target` (§4.4 guard). */
 export type SessionGuard = (
@@ -39,7 +40,11 @@ export interface ChatLoopParams {
   renderer: ChatRenderer;
   stores: StoreRegistry;
   runtimeConfig: RuntimeConfig;
-  userId: string;
+  /**
+   * Who a turn runs as, asked for that turn's target and text. Rejects with the
+   * refusal to show when the app's resolver refuses the terminal.
+   */
+  principalFor(target: FlowActionTarget, text: string): Promise<CliPrincipal>;
   /** Plain-data runtime snapshot for `/status`. */
   runtime: { source: string; store: string };
   validateSessionForTarget: SessionGuard;
@@ -63,7 +68,7 @@ export function decideIdleInterrupt(armed: boolean): { action: "warn" | "exit"; 
 export async function runChatLoop(params: ChatLoopParams): Promise<number> {
   const {
     state, registry, targets, builtins, renderer, stores, runtimeConfig,
-    userId, runtime, validateSessionForTarget, input, output, isTTY,
+    principalFor, runtime, validateSessionForTarget, input, output, isTTY,
   } = params;
 
   const builtinCtx: BuiltinContext = {
@@ -153,8 +158,38 @@ export async function runChatLoop(params: ChatLoopParams): Promise<number> {
           return false;
         }
 
+        // Who this turn is, before anything is written. A refusal fails this
+        // turn only; the next one, maybe on another target, asks again.
+        let principal: CliPrincipal;
+        try {
+          principal = await principalFor(target, dispatch.text);
+        } catch (err) {
+          renderer.onSystem(err instanceof Error ? err.message : String(err));
+          failed = true;
+          return false;
+        }
+        state.principals.set(target.flowKind, principal);
+
+        // A session another user or organization owns is never run against.
+        const ownerRefusal = await checkSessionOwner(stores, sessionId, principal);
+        if (ownerRefusal !== undefined) {
+          const fresh = newSessionId();
+          state.sessions.set(target.flowKind, fresh);
+          renderer.onSystem(`${ownerRefusal} Rotated to a fresh session (${fresh}); resend to continue.`);
+          failed = true;
+          return false;
+        }
+
         currentTurn = executeTurn({
-          flow, target, text: dispatch.text, sessionId, userId, stores, runtimeConfig, renderer,
+          flow,
+          target,
+          text: dispatch.text,
+          sessionId,
+          userId: principal.userId,
+          orgId: principal.orgId,
+          stores,
+          runtimeConfig,
+          renderer,
         });
 
         // While the turn streams, pause readline and drop raw mode so the terminal

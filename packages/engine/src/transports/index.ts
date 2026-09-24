@@ -68,7 +68,10 @@ export {
 
 export {
   createInboundTransportHost,
-  type CreateInboundTransportHostOptions
+  resolveInProcessPrincipal,
+  type CreateInboundTransportHostOptions,
+  type InProcessPrincipal,
+  type InProcessPrincipalQuestion
 } from "./host/createInboundTransportHost";
 
 export {

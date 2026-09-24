@@ -41,6 +41,7 @@ That's a full API with action execution, session management, SSE streaming with 
 - `ready(): Promise<void>` — eager warmup, idempotent.
 - `dispose(): Promise<void>` — drain in-process background work, close the worker, release pooled resources.
 - `register(flow)` / `unregister(id)` — add or remove one flow after startup.
+- `resolveInProcessPrincipal({ flowKind, action, input, userId })` — who an in-process caller is, answered through the same resolvers and organization rules as the HTTP routes. The resolver sees `source: "cli"` and no request; `fsdev run` and `fsdev chat` use it. Resolves `{ userId, orgId, from: "resolver" | "development-default" }`, or rejects with the resolver's refusal. For a bare registry with no `FlowState`, call the exported `resolveInProcessPrincipal({ registry }, question)`. `source: "cli"` is reserved: every inbound host refuses it on a context this entry point did not build.
 - `activeProfile`, `settings`, `meta` — read-only diagnostics.
 
 Construction is synchronous; stores initialize lazily and memoized on the first `getRouter()` / `ready()`. There's no top-level await, so the same instance works in a Next.js Route Handler.

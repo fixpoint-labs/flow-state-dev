@@ -106,7 +106,7 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
   -d '{"userId":"you","input":{"seatId":"support.bo","flow":"desk-clerk","settings":{"desk":"back"},"instructions":"You work the back desk."}}'
 ```
 
-Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
+Over HTTP, because the admin flow checks a token and the CLI carries none.
 
 Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
 

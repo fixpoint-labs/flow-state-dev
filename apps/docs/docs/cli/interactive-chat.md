@@ -52,7 +52,7 @@ Anything after `/` that no built-in claims is sent to the flow unchanged. That's
 
 Each flow kind gets its own session within a run, so conversation history and state don't bleed across a `/use` switch. Switch away and back, and the first flow's session resumes where it left off. History persists in the engine's stores — the same SQLite database (`.fsdev/data/fsdev.db`) the DevTool reads in the discovery path — so a conversation survives restarts of the session.
 
-Turns and the engine identity that owns them default to `cli-user`. The DevTool defaults to `devuser`. If you want a chat session to show up in the DevTool's session list, or to resume a session across the two surfaces, align them — pass `--user devuser` to `fsdev chat`, or set the DevTool's user to `cli-user`.
+Turns run as whoever your app's resolver says, asked once per turn for that turn's flow. With no resolver, that is `cli-user`, while the DevTool defaults to `devuser`. To see a chat session in the DevTool's session list, or resume one across the two, align them with `--user devuser`. A turn whose flow refuses the terminal fails on its own; the session carries on. `/status` shows the organization the last turn ran in.
 
 `--session <id>` resumes a specific session for the initially bound flow. A session that belongs to a different flow is rejected rather than silently reused, since the engine routes state by the session's flow.
 
