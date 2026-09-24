@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 344" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: seven rules by five issues. The product decisions are decided by FIX-1522 and consumed by FIX-1538. The pin and fence, ER-1, is built by FIX-1529 and consumed by FIX-1534, FIX-1535 and FIX-1538. The drain refusal, ER-2, is built by FIX-1534 and consumed by FIX-1538. The debug listing, ER-3, is built by FIX-1535 and consumed by FIX-1538. The per-org cell, ER-4, the migration, ER-5, and the assembled proof, ER-15, are built by FIX-1538; FIX-1534 and FIX-1535 consume the proof.">
+     aria-label="Who owns what: seven rules by five issues. The product decisions are decided by FIX-1522 and consumed by FIX-1538. The pin and fence, ER-1, is built by FIX-1529 and consumed by FIX-1534, FIX-1535 and FIX-1538. The drain refusal, ER-2, is built by FIX-1534 and consumed by FIX-1538. The debug listing, ER-3, is built by FIX-1535 and consumed by FIX-1538. The per-org cell, ER-4, the upgrade, ER-5, and the assembled proof, ER-15, are built by FIX-1538; FIX-1534 and FIX-1535 consume the proof.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -65,7 +65,7 @@
     <path class="grid" d="M16 262 L924 262"/>
   </g>
   <g id="r6">
-    <text class="t-row" x="16" y="286">ER-5 &#183; migration, nothing silently lost</text>
+    <text class="t-row" x="16" y="286">ER-5 &#183; upgrade, nothing silently lost</text>
     <rect class="own" x="812" y="270" width="104" height="24" rx="3"/><text class="t-own" x="822" y="286">builds</text>
     <path class="grid" d="M16 300 L924 300"/>
   </g>

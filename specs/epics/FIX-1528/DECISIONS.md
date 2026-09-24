@@ -41,7 +41,7 @@ three remaining issues are polish.
 |---|---|
 | **Instead of** | Re-keying the engine's user scope to (user, org) for every flow · or a Workforce-side copy of the data in a second store |
 | **Because** | The product owner decided a private team is not portable. The Architect separates three planes: the person's cross-org data, org-bound data, and a hired seat's private data. Only the third is this epic's. Re-keying every flow would decide the first plane too, which the product owner has not decided. A second store is invent-killed |
-| **Locks in** | FIX-1538 changes where a pinned instance resolves user-scoped data, and nothing else. It owns the upgrade: a person in one org keeps what their seats saved once the operator runs its copy step, a seat stops reading their app-wide data, and nothing is silently moved or dropped ([ER-5](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | FIX-1538 changes where a pinned instance resolves user-scoped data, and nothing else. It owns the upgrade: a person in one org keeps their seats' seat-only resource data once the operator runs its copy step (not a seat's user state or app-shared resources, unless the operator can attribute them), a seat stops reading their app-wide data, and nothing is silently moved or dropped ([ER-5](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 The change is narrow enough to skip an end-state POC: only the shared user bucket leaks
 ([EVOLUTION.md](EVOLUTION.md), third row). The file-level evidence moves to FIX-1538's spec.
@@ -66,7 +66,7 @@ The change is narrow enough to skip an end-state POC: only the shared user bucke
 
 ## Who owns what
 
-![Who owns what: seven cross-cutting rules by five issues. The pin and fence rule is built by FIX-1529 and consumed by the other three children; the drain rule by FIX-1534; the debug rule by FIX-1535; the stored-data cell, the migration and the assembled proof by FIX-1538; the product decisions by FIX-1522.](figures/ownership.svg)
+![Who owns what: seven cross-cutting rules by five issues. The pin and fence rule is built by FIX-1529 and consumed by the other three children; the drain rule by FIX-1534; the debug rule by FIX-1535; the stored-data cell, the upgrade and the assembled proof by FIX-1538; the product decisions by FIX-1522.](figures/ownership.svg)
 
 Every rule has one owner, and FIX-1529's pin is the one every other child consumes without
 re-deciding. FIX-1538 owns the proof, so it is the only column that reads every other row.
