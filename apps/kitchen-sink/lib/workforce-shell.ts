@@ -4,8 +4,12 @@
  *
  * A leaf module on purpose (BP-019): the page is a client bundle and the flow
  * is server code, and both import these. Nothing here imports anything, so the
- * page gets the names without pulling the flow, or the workforce package, into
- * the browser.
+ * page gets the names without pulling the flow into the browser.
+ *
+ * The hired roster's key is not here. It is the workforce package's own
+ * `HIRED_ROSTER_RESOURCE`, because the rail's hire runs the package's sequence,
+ * which reads the roster under that key; the flow, the panel and the rail
+ * import it from the package, whose root is isomorphic.
  *
  * The kind names and board ids are written down rather than derived, because
  * the only place that knows them at run time is the server-side tree under
@@ -28,12 +32,6 @@ export const CHANNEL_KINDS = ["channel", "digest"] as const;
  * `workforce/flows/workers/`.
  */
 export const SEAT_KINDS = ["agent", "desk-clerk", "followup-runner"] as const;
-
-/**
- * The key the shell's flow declares the hired roster under. One path segment,
- * because the collection read route takes no slash in a ref.
- */
-export const ROSTER_REF = "roster";
 
 /** The key the shell's flow declares the boot's skipped-seat report under. */
 export const ROSTER_BOOT_REPORT_REF = "rosterBootReport";

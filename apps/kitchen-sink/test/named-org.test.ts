@@ -8,16 +8,12 @@
  * route-level authentication exactly as a browser's does. Promoted from the
  * spec POC (`specs/issues/FIX-1500/poc/named-org/`).
  *
- * Two things are substituted, both below the wiring under test:
- *
- *   - The model. `KITCHEN_SINK_TEST_MODE=1` makes the config build its model
- *     resolver from `test/mock-flowstate`, which this file mocks with a
- *     scripted `agent-answer`, so a seat's tool calls are fixed.
- *   - The rail's hire door. The action that mounts `createSeatHireBlocks` on
- *     the rail's flow is not in this app yet. A stand-in flow that carries only
- *     that action, built from the app's own `kitchenSinkSeatHireOptions`, is
- *     registered into the running FlowState. It declares no resolver, so it
- *     takes the host fallback as the rail's flow does.
+ * One thing is substituted, below the wiring under test: the model.
+ * `KITCHEN_SINK_TEST_MODE=1` makes the config build its model resolver from
+ * `test/mock-flowstate`, which this file mocks with a scripted `agent-answer`,
+ * so a seat's tool calls are fixed. The rail's hire door is the real one:
+ * `chat-agent`'s `hireSeat` action, which declares no resolver and so takes
+ * the host fallback.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1500/PLAN.md`), and the red
  * state each was seen in before its green was trusted:
@@ -35,6 +31,17 @@
  *       channel is moved, rebound or deleted. Red: remove the guard in `fsdev.config.ts` — the boot fails with the
  *       bare `channel "support.ada-wren" could not be opened — Request failed
  *       (403)`, which names neither the cause nor the fix.
+ *   V11 (inside V18's hire case) A rail hire whose body and input both name
+ *       `orgId: "globex"` lands in the session's organization. The assertion
+ *       is where the seat ended up, not that the call succeeded. Red: have
+ *       the sequence read the input's `orgId` — the seat registers at
+ *       `globex.support.pat` and the `kitchen-sink` address is empty.
+ *   V14 A rail hire survives the process that made it, at node level. (a) The
+ *       row is in the durable store, read out of band. (b) A second boot over
+ *       the same location serves the seat and the rail reads its row. The
+ *       negative control is part of the case: a third boot over an EMPTY
+ *       location must not have it, or (b) could be passing off a cache in
+ *       this process rather than the store.
  *   V22 With `acme:t1,kitchen-sink:t2`, the `acme` token is refused (401) and
  *       named in the boot log, and the `kitchen-sink` token's `fire` releases a
  *       rail hire and a mara hire. Red: accept the `acme` binding — its token
@@ -44,18 +51,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { defineFlow, DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFilesystemStores, createFlowState, filesystemStores, type FlowState } from "@flow-state-dev/engine";
 import { createSessionClient } from "@flow-state-dev/client";
-import {
-  createSeatHireBlocks,
-  defineHiredRosterCollection,
-  defineSeatInventoryCollection,
-  openChannels,
-  HIRED_ROSTER_RESOURCE,
-  SEAT_INVENTORY_RESOURCE,
-} from "@flow-state-dev/workforce";
+import { openChannels, HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
 
 type ScriptStep =
   | { toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> }
@@ -78,7 +77,8 @@ vi.mock("@/test/mock-flowstate", async () => {
 });
 
 const ORG = "kitchen-sink";
-const RAIL = "rail-standin";
+/** The flow the rail's session runs on, and the one carrying its hire door. */
+const RAIL = "chat-agent";
 const ADDR = (seatId: string) => `${ORG}.${seatId}`;
 
 type Router = Awaited<ReturnType<FlowState["getRouter"]>>;
@@ -120,22 +120,6 @@ async function bootApp(options: { dataDir?: string; tokens?: string; steps?: Scr
   return { flowstate, runtime, router, log };
 }
 
-/** The rail's hire door, reduced to what the rail's flow will carry, from the app's own options. */
-async function registerRailStandIn(flowstate: FlowState): Promise<void> {
-  const { kitchenSinkSeatHireOptions } = await import("@/workforce/hire");
-  const seatHire = createSeatHireBlocks(kitchenSinkSeatHireOptions);
-  const rail = defineFlow({
-    kind: RAIL,
-    requireUser: true,
-    resources: {
-      [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
-      [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection(),
-    },
-    actions: { hireSeat: { block: seatHire.hire } },
-  });
-  flowstate.register(rail() as FlowInstance);
-}
-
 // ---------------------------------------------------------------------------
 // Requests, as the browser makes them.
 // ---------------------------------------------------------------------------
@@ -175,9 +159,11 @@ async function act(router: Router, flowId: string, action: string, sessionId: st
   return call(router, "POST", [flowId, "actions", action], { userId: "someone-else", sessionId, input, ...extra }, headers);
 }
 
-async function hireFromRail(router: Router, seatId: string, extra: Record<string, unknown> = {}) {
+/** Hire through the rail's door. `orgId` names another organization in the body and in the input, as a caller could. */
+async function hireFromRail(router: Router, seatId: string, orgId?: string) {
   const session = await openSession(router, RAIL);
-  const hired = await act(router, RAIL, "hireSeat", session.id!, { seatId, flow: "agent", instructions: "Takes refunds." }, extra);
+  const named = orgId === undefined ? {} : { orgId };
+  const hired = await act(router, RAIL, "hireSeat", session.id!, { seatId, flow: "agent", instructions: "Takes refunds.", ...named }, named);
   return { session, hired };
 }
 
@@ -204,27 +190,24 @@ describe("V18 · one organization, from the host resolver", () => {
   });
 
   it("lands a rail hire in kitchen-sink, reads it back on the rail and the assistant, and mara's discover lists it", async () => {
-    const { flowstate, runtime, router } = await bootApp({
+    const { runtime, router } = await bootApp({
       steps: [{ toolCalls: [{ toolCallId: "d1", toolName: "discover", args: {} }] }, { text: "done" }],
     });
-    await registerRailStandIn(flowstate);
 
-    const { session, hired } = await hireFromRail(router, "support.pat", { orgId: "globex" });
+    const { session, hired } = await hireFromRail(router, "support.pat", "globex");
     expect(session.orgId).toBe(ORG);
     expect(hired.text).not.toMatch(/Organization id|"type":"error"/);
     // Where the seat ended up, not whether the call said ok.
     expect(runtime.registry.get(ADDR("support.pat"))?.kind).toBe("agent");
     expect(runtime.registry.get("globex.support.pat")).toBeUndefined();
 
-    // The rail's own read, through its own session.
-    const onRail = await call(router, "GET", ["sessions", session.id!, "resources", HIRED_ROSTER_RESOURCE, "support.pat"]);
-    expect(onRail.status, onRail.text).toBe(200);
-    expect(onRail.text).toContain("Takes refunds.");
-    // The assistant's roster panel reads the same organization's rows.
-    const chat = await openSession(router, "chat-agent");
-    const onAssistant = await call(router, "GET", ["sessions", chat.id!, "resources", "roster", "support.pat"]);
-    expect(onAssistant.status, onAssistant.text).toBe(200);
-    expect(onAssistant.text).toContain("Takes refunds.");
+    // The rail's own read, through the session that hired, and through
+    // another of the assistant's sessions: the same organization's row.
+    for (const sessionId of [session.id!, (await openSession(router, RAIL)).id!]) {
+      const onRail = await call(router, "GET", ["sessions", sessionId, "resources", HIRED_ROSTER_RESOURCE, "support.pat"]);
+      expect(onRail.status, onRail.text).toBe(200);
+      expect(onRail.text).toContain("Takes refunds.");
+    }
 
     // The hired seat opens for the visitor: its pin is kitchen-sink, and so are they.
     const opened = await openSession(router, ADDR("support.pat"));
@@ -237,13 +220,50 @@ describe("V18 · one organization, from the host resolver", () => {
   });
 });
 
+describe("V14 · a rail hire outlives the process that made it", () => {
+  /** End a boot the way a process exit would, so the next import builds a new one. */
+  async function shutDown(flowstate: FlowState): Promise<void> {
+    await flowstate.dispose();
+    delete (globalThis as { __fsdFlowstate?: FlowState }).__fsdFlowstate;
+  }
+
+  it("is in the store out of band, is served by a fresh boot over it, and not by one over an empty store", async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "ks-rail-hire-"));
+    const emptyDir = await mkdtemp(path.join(tmpdir(), "ks-rail-hire-empty-"));
+    cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
+    cleanups.push(() => rm(emptyDir, { recursive: true, force: true }));
+
+    const first = await bootApp({ dataDir });
+    const { hired } = await hireFromRail(first.router, "support.pat");
+    expect(hired.text).not.toMatch(/"type":"error"/);
+    await shutDown(first.flowstate);
+
+    // (a) Out of band: a store handle this test opened, not the runtime's.
+    const rows = await storeAt(dataDir).resourceState.getByPrefix("org", ORG, "workforce/roster/");
+    expect(Object.keys(rows)).toEqual(["workforce/roster/support.pat"]);
+    expect(rows["workforce/roster/support.pat"]!.state).toMatchObject({ flow: "agent", instructions: "Takes refunds." });
+
+    // (b) A new boot over the same location serves the seat, and the rail reads it.
+    const second = await bootApp({ dataDir });
+    expect(second.runtime.registry.get(ADDR("support.pat"))?.kind).toBe("agent");
+    const rail = await openSession(second.router, RAIL);
+    const read = await call(second.router, "GET", ["sessions", rail.id!, "resources", HIRED_ROSTER_RESOURCE, "support.pat"]);
+    expect(read.status, read.text).toBe(200);
+    expect(read.text).toContain("Takes refunds.");
+    await shutDown(second.flowstate);
+
+    // The control: the same boot over an empty location has no such seat.
+    const empty = await bootApp({ dataDir: emptyDir });
+    expect(empty.runtime.registry.get(ADDR("support.pat"))).toBeUndefined();
+  }, 30_000); // Three boots of the whole app.
+});
+
 describe("V22 · every admin token is bound to kitchen-sink", () => {
   it("refuses and names an acme token, and the kitchen-sink token fires a rail hire and a mara hire", async () => {
-    const { flowstate, runtime, router, log } = await bootApp({
+    const { runtime, router, log } = await bootApp({
       tokens: "acme:t1,kitchen-sink:t2",
       steps: hireScript("support.quinn"),
     });
-    await registerRailStandIn(flowstate);
 
     expect(log.join("\n")).toMatch(/names organization "acme"/);
 

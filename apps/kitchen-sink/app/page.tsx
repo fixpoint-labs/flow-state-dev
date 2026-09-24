@@ -47,6 +47,7 @@ import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/f
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { TeamPanel } from "@/components/team-panel";
+import { SeatPane } from "@/components/seat-pane";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
@@ -80,6 +81,11 @@ type MobilePanel = "chat" | "artifacts";
  * is organization-scoped either way.
  */
 const SHOW_SEATS_IN_RAIL = true;
+
+/** Whether a navigator leaf is a seat, and so opens into its detail. */
+function isSeatKind(kind: string): boolean {
+  return (SEAT_KINDS as readonly string[]).includes(kind);
+}
 
 /**
  * The rail's sections. How deep each kind goes is read off the flow's declared
@@ -175,6 +181,10 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   const [isRailDrawerOpen, setIsRailDrawerOpen] = useState(false);
   const [isTeamSheetOpen, setIsTeamSheetOpen] = useState(false);
   const [picked, setPicked] = useState<PickedSession | null>(null);
+  // Hires made from the rail. The rail and the roster panel are keyed on it:
+  // neither publishes a refresh, so a hire remounts both, and each reads the
+  // seats again on mount.
+  const [hires, setHires] = useState(0);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
     const stored = sessionStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -219,8 +229,11 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   // backend each render.
   const resourceClient = useMemo(() => createResourceClient({ baseUrl: "" }), []);
   // The panels read through the assistant's session, because that flow is the
-  // one declaring the roster and the boards.
+  // one declaring the roster and the boards. Its organization, from its own
+  // record, is the one a seat's address is read against.
   const panelSessionId = flow.activeSessionId;
+  const panelOrgId = session.detail?.orgId;
+  const handleHired = useCallback(() => setHires((n) => n + 1), []);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
@@ -342,7 +355,8 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   const railSlots = useMemo(
     () => ({
       // "New session" sits inside the assistant's own leaf, the one place a
-      // new conversation can be started from this page.
+      // new conversation can be started from this page. An open seat shows
+      // its kind, its instructions and "Hire another".
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW_KIND ? (
           <AssistantLeafToolbar
@@ -351,9 +365,22 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
             disabled={flow.isLoading}
             onNewSession={handleNewSession}
           />
+        ) : isSeatKind(leaf.kind) ? (
+          panelSessionId === undefined || panelOrgId === undefined ? (
+            <p className="text-xs text-muted-foreground">Loading…</p>
+          ) : (
+            <SeatPane
+              sessionId={panelSessionId}
+              orgId={panelOrgId}
+              kind={leaf.kind}
+              address={leaf.address}
+              resourceClient={resourceClient}
+              onHired={handleHired}
+            />
+          )
         ) : null,
     }),
-    [handleNewSession, flow.isLoading]
+    [handleNewSession, flow.isLoading, panelSessionId, panelOrgId, resourceClient, handleHired]
   );
 
   const handleSelectedModelChange = useCallback(
@@ -427,6 +454,7 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
 
   const teamPanel = (
     <TeamPanel
+      key={hires}
       sessionId={panelSessionId}
       resourceClient={resourceClient}
       top={
@@ -470,6 +498,7 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
         aria-label="Channels, seats and conversations"
       >
         <Rail
+          key={hires}
           slots={railSlots}
           selectedSessionId={picked?.sessionId ?? flow.activeSessionId}
           onSelectSession={handleSelectSession}

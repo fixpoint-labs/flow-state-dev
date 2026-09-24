@@ -1,7 +1,9 @@
 /**
  * The rebuilt shell, against the built app: the rail browses channels and
- * seats to the depth each flow declares, the panel stands beside the stream,
- * and the three regions give way in the right order as the window narrows.
+ * seats to the depth each flow declares, a seat opens into its kind and
+ * instructions and can hire another of its kind, the panel stands beside the
+ * stream, and the three regions give way in the right order as the window
+ * narrows.
  *
  * These open the app as `devuser`, not a per-test user, because that is who
  * the boot opens the channels for: a fresh user would see no channel
@@ -13,7 +15,7 @@
  * only the request count catches it.
  */
 import type { Page, Request } from "@playwright/test";
-import { test, expect } from "./fixtures";
+import { test, expect, openKitchenSink } from "./fixtures";
 
 const SEAT = "support.ada";
 
@@ -122,6 +124,77 @@ test("expanded all the way in the 256px rail, three levels still indent inside o
     .evaluate((el) => parseFloat(getComputedStyle(el).paddingLeft));
   expect(instance).toBeGreaterThan(kind);
   expect(session).toBeGreaterThan(instance);
+});
+
+/**
+ * VG, the completion gate for hiring from the rail (`specs/issues/FIX-1500`).
+ *
+ * Both seats are named on purpose. `support.iris` is declared in a worker file,
+ * so opening it proves the kind comes from the row the rail already holds; the
+ * hired seat proves the instructions come back from the roster. Nothing here
+ * restarts the server: this suite runs one in-memory server, where a restart
+ * could not fail honestly. Durability is checked at node level instead.
+ *
+ * Red states produced before this was trusted:
+ *   - Serve the hired seat's instructions from state the page kept at hire
+ *     time: the DOM passes, and the collection-route assertion fails.
+ *   - Reload the page after the hire: the no-reload marker is gone.
+ *   - Hire through a user-owned path (the operator's `workforce-admin` door):
+ *     the hired seat never appears.
+ */
+test("VG · open a declared seat, hire another of its kind, and open the hire without a reload", async ({
+  page,
+  sessionId,
+  consoleErrors: _consoleErrors,
+}) => {
+  const DECLARED = "support.iris";
+  const seatId = `support.vg-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  // The app runs as one organization, and a hired seat's address starts with it.
+  const address = `kitchen-sink.${seatId}`;
+  const instructions = `Answers refund questions for ${seatId}.`;
+  const requests: Request[] = [];
+  page.on("request", (request) => requests.push(request));
+
+  await openKitchenSink(page, sessionId);
+  await page.evaluate(() => {
+    (window as { __noReload?: boolean }).__noReload = true;
+  });
+
+  // A declared seat: its kind, and no roster row to read instructions from.
+  await row(page, "agent").click();
+  await row(page, DECLARED).click();
+  const declared = rail(page).locator(`ul[data-leaf="${DECLARED}"]`);
+  await expect(declared.locator("[data-seat-kind]")).toHaveText("agent");
+  await expect(declared.locator('[data-state="not-published"]')).toBeVisible();
+
+  // Hire another of its kind, with instructions.
+  await declared.getByRole("button", { name: "Hire another" }).click();
+  await declared.getByLabel("Seat id").fill(seatId);
+  await declared.getByLabel("Instructions").fill(instructions);
+  await declared.getByRole("button", { name: "Hire", exact: true }).click();
+
+  // The rail and the roster are remounted, so the form is gone and the hire is listed.
+  await expect(rail(page).getByRole("form")).toHaveCount(0);
+  await expect(page.getByTestId("roster-panel")).toContainText(seatId);
+  await row(page, "agent").click();
+  await row(page, address).click();
+
+  // The hired seat: its kind, and the instructions it was hired with.
+  const hired = rail(page).locator(`ul[data-leaf="${address}"]`);
+  await expect(hired.locator("[data-seat-kind]")).toHaveText("agent");
+  await expect(hired.locator('[data-state="text"]')).toHaveText(instructions);
+  expect(await page.evaluate(() => (window as { __noReload?: boolean }).__noReload)).toBe(true);
+
+  // The instructions arrived from the roster collection's item route.
+  const itemPath = `/api/flows/sessions/${sessionId}/resources/hiredRoster/${seatId}`;
+  const itemRead = requests.find((r) => r.method() === "GET" && new URL(r.url()).pathname === itemPath);
+  expect(itemRead, `no GET ${itemPath}`).toBeDefined();
+  expect(await (await itemRead!.response())!.text()).toContain(instructions);
+
+  // And no data request went to a developer-tool route or an app-private API:
+  // every API call is the framework's own `/api/flows` surface, none of it debug.
+  const apiPaths = requests.map((r) => new URL(r.url()).pathname).filter((path) => path.startsWith("/api/"));
+  expect(apiPaths.filter((path) => !/^\/api\/flows(\/|$)/.test(path) || path.includes("/debug/"))).toEqual([]);
 });
 
 for (const { width, rail: railShown, panel: panelShown } of [

@@ -99,7 +99,7 @@ Adding a seat means adding a folder and restarting; adding a kind means adding a
 
 Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.bo`), and is still there after `pnpm build && pnpm start`.
 
-The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no working hire path. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
+The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no operator hire path. The rail's **Hire another** and mara's `hire` tool (below) need no token. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
 
 ```bash
 export WORKFORCE_ADMIN_TOKENS="kitchen-sink:dev-token"
@@ -113,6 +113,8 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
 Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
 
 The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
+
+The admin action's `fire` also releases a seat hired from the rail, or by a seat's own `hire` tool. A seat the admin action hires does not appear in the rail.
 
 The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. A request with no token gets `401`:
 
@@ -155,6 +157,7 @@ The wiring is the part to copy: in an app whose seats run under an organization 
 ## Web Application (`app/`)
 
 - Three-column layout: a `FlowNavigator` rail over channels, seats and the assistant's conversations; the stream; and a standing panel with the roster and the channel boards (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too
+- **Seats**: Open a seat to see its kind, and for a seat hired here, its instructions. **Hire another** adds a seat of the same kind to the app's organization. It appears in the rail and the roster without a reload (the rail folds closed as it re-reads), and it is still there after a restart on a persistent store
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
 - **Client data bar**: Live display of mode status, request count, user preferences
