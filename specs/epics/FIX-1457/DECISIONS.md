@@ -52,7 +52,7 @@ flowchart TD
 |---|---|
 | **Instead of** | The three *surfaces* — reference app, live view, real configuration — whose first leg has now left the set · or a "polish" epic with no pass/fail bar, which is how *looks good* becomes a done condition |
 | **Because** | A QA epic's whole product is **evidence**, and evidence has to be falsifiable. Three named proofs each say what must pass and on what: the inspector is green on a live hire, a Lab shipped something real, two seats collaborated. Each can fail; *polished* cannot |
-| **Locks in** | **[ER-Devtool](BUSINESS-RULES.md#er-devtool), [ER-DevForce](BUSINESS-RULES.md#er-devforce), [ER-Collab](BUSINESS-RULES.md#er-collab)** replace ER-19, which is retired. Every proof runs against a **live hired Workforce** ([ER-3](BUSINESS-RULES.md)) and composes rather than extends ([ER-4](BUSINESS-RULES.md)). **The set is open** ([ER-23](BUSINESS-RULES.md)) — and **as of 2026-09-24 ER-DevForce and ER-Collab have passed**, while ER-Devtool stands at row 4 passed live, row 5 in spec ([D10](#d10)) and row 6 proved by automated checks with its live read carried ([D11](#d11)) |
+| **Locks in** | **[ER-Devtool](BUSINESS-RULES.md#er-devtool), [ER-DevForce](BUSINESS-RULES.md#er-devforce), [ER-Collab](BUSINESS-RULES.md#er-collab)** replace ER-19, which is retired. Every proof runs against a **live hired Workforce** ([ER-3](BUSINESS-RULES.md)) and composes rather than extends ([ER-4](BUSINESS-RULES.md)). **The set is open** ([ER-23](BUSINESS-RULES.md)) — and **as of 2026-09-24 ER-DevForce and ER-Collab have passed** (#2051, with its gate re-proved by FIX-1515's #2073; #2065), while ER-Devtool stands at row 4 passed live, row 5 in spec ([D10](#d10)) and row 6 proved by automated checks with its live read carried ([D11](#d11)) |
 
 **What would change my mind:** a ship date inside this cycle that the three proofs cannot fit. Then
 the bar is cut deliberately to one proof and the other two become named launch follow-ups — not
@@ -224,7 +224,9 @@ have satisfied the reading the owner declined; it is exactly the mechanism of th
 ![Who owns what: a matrix of seven cross-cutting rules against the three exit-proof columns of the set plus a fourth column for the finished exploration FIX-1467. As of 2026-09-24 two proof columns read PASS — the DevForce proof path, FIX-1496, and the multi-seat collab scenario, FIX-1497 — and the Devtool checklist, held jointly by FIX-1481 and FIX-1502, still reads HELD. ER-1's owner is FIX-1497; ER-2's is FIX-1481; ER-3's is FIX-1496, which stood the live hired Workforce up; ER-4 is marked builds it in all three proof columns; ER-18 is marked MET by FIX-1467; ER-26 is marked MET, discharged by FIX-1496, and consumed by the other two for their runs. Notes record that on the Devtool checklist row 4 passed live, row 5 is FIX-1502's to build in W5 under D10, row 6 is proved by FIX-1481's automated checks with its live read carried to the first real hire with a sealed document and FIX-1547 as the mitigation under D11, and rows 1 to 3 ride FIX-1320. The figure's aria-label carries every cell.](figures/ownership.svg)
 
 **Two of the three proof cells are green, and the third is held.** ER-DevForce passed on
-[#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051) and ER-Collab on
+[#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051), with its BR-10 and BR-17 gate
+re-proved by FIX-1515 ([#2073](https://github.com/fixpoint-labs/flow-state-dev/pull/2073)) and
+re-run green on `95049473f` on 2026-09-24. ER-Collab passed on
 [#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065), both run after #2051 stood the
 live hire up, which is what met [ER-26](BUSINESS-RULES.md#er-26). ER-Devtool is **held, not
 passed**: row 4 passed live ([#2066](https://github.com/fixpoint-labs/flow-state-dev/pull/2066)),
