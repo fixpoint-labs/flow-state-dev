@@ -1,19 +1,22 @@
 # devtool-workforce-visibility › it shows the checklist rows
 
-**Issue:** FIX-1481, the VG check in its `PLAN.md → Checks`. It covers ER-Devtool checklist **rows 4 and 6** (epic FIX-1457). Rows 1–3 belong to FIX-1320 and row 5 to FIX-1502, and this check neither builds nor grades them.
+**Issue:** FIX-1481 (rows 4 and 6, the VG check in its `PLAN.md → Checks`) and FIX-1502 (row 5, the VG check in its `PLAN.md → Checks`). It covers ER-Devtool checklist **rows 4 and 5** (epic FIX-1457). Rows 1–3 belong to FIX-1320, and this check neither builds nor grades them. Row 6's live read is deferred ([D11](../../../specs/epics/FIX-1457/DECISIONS.md#d11)).
 
-**Outcome:** A person running a hired Workforce under `fsdev dev` opens the shipped DevTool and, without opening an expander, can say **why a row is parked** (checklist row 4).
+**Outcome:** A person running a hired Workforce under `fsdev dev` opens the shipped DevTool and, without opening an expander, can say **why a row is parked** (checklist row 4), and — from a channel's session, with the debug endpoints off — **every seat and channel registered in the organization, and who is in which** (checklist row 5).
 
-**What a PASS claims, and what it does not.** A PASS means row 4 was graded on a live hire and held. It does **not** mean the checklist is green. Row 6 (which of a seat's documents can be written, and which are sealed) is **not graded**, pending an owner decision on its subject. Every verdict says so in its own words. Row 6 becomes a separate leg of this goal once it has a subject, and FIX-1481 does not close on row 4 alone. The claim is narrowed rather than failed because `goal:all` knows only PASS, FAIL and TIMEOUT. A row with no subject is not a failure, and reporting it as one made every sweep red.
+**What a PASS claims, and what it does not.** A PASS means rows 4 and 5 were graded on a live hire and held. It does **not** mean the checklist is green. Row 6 (which of a seat's documents can be written, and which are sealed) is **not read live**: on 2026-09-24 the owner deferred its live read until a real hire declares a sealed document ([epic D11](../../../specs/epics/FIX-1457/DECISIONS.md#d11)). Row 6 is proved by FIX-1481's automated checks (V2, V3 and V5), and FIX-1547 is the mitigation — a test that a hired team's reference reaches the debug snapshot as `writable: false`. Row 6 stays outside this goal's claim, and every verdict says so in its own words. The claim is narrowed rather than failed because `goal:all` knows only PASS, FAIL and TIMEOUT, and a row whose live read was deferred is not a failure.
 
-**Input:** `fixtures/input.json` holds the piece of work and the question the seat will park on. It is held out. The hire is `goals/multi-seat-collab/lab/`, and its desks and seat ids are read off its tree at run time. The fixture's desk is checked against the desks that tree declares before anything runs. The reason is then graded against the reason the ledger holds for the row, not against the fixture's sentence, so swapping the sentence still passes a correct view.
+Row 5 means **registered in this organization**, not **working now** ([FIX-1502 D2](../../../specs/issues/FIX-1502/DECISIONS.md#d2)). A fired seat is still listed. The check grades that the tab says what the store holds, not that the store is current.
 
-**Which hire each row is read on:** VG may read the two rows on two different live hires, each through the shipped `fsdev dev` and DevTool. That is the epic coordinator's ruling of 2026-09-22.
+**Input:** `fixtures/input.json` holds the piece of work and the question the seat will park on. It is held out. The hire is `goals/multi-seat-collab/lab/`, and its desks, seat ids, channel and members are read off its tree at run time. The fixture's desk is checked against the desks that tree declares before anything runs. The reason is then graded against the reason the ledger holds for the row, not against the fixture's sentence, so swapping the sentence still passes a correct view. Row 5 needs no fixture: its expected rows are derived from the tree, and its foreign organization's ids are generated per run.
 
-- **Row 4** is read on `multi-seat-collab` (FIX-1497). Its builder seat parks on a question by design, and nothing here makes it park. The hire is served by that lab's own `fsdev.config.mts` and driven by that lab's own driver. This check adds only the reading.
-- **Row 6 is not graded, and it is outside this goal's claim until it has a subject.** The run says so on every verdict, as a note rather than a failure. No live hire in the repository declares a sealed document: there is no `references/` file and no `ro` grant. `devforce-lab`'s handbook looked like the natural subject, but moving it under `references/` changes what that lab's graded legs read. ER-3 forbids a document that exists only so this inspection has something to show. Giving `multi-seat-collab`'s seats a document was also tried. The hire installs a document only when the seat's **kind** declares it, and that lab's kind declares none. So every working route needs kind code whose only purpose is giving row 6 a subject, which is the line ER-Devtool draws. **Whether to cross it is the owner's decision, and it is pending.** Until that decision is made, row 6 is *not graded*. That is not a failure of the row-6 code, which is proved by FIX-1481's own checks (V2, V3, V5).
+**Which hire each row is read on:** both rows are read on `multi-seat-collab` (FIX-1497), served by that lab's own `fsdev.config.mts` through the shipped `fsdev dev` and DevTool, in one Chromium. They are two serves of the same config, because they need the debug endpoints in opposite states:
 
-**Signal:** One run of the shipped `fsdev dev` over the hire's config, then Chromium on the shipped DevTool bundle, rebuilt at the start of the run.
+- **Row 4** is read on a serve with `fsdev dev`'s default debug setting, because the lab's own driver reads the ledger over the debug route to find the parked row. Its builder seat parks on a question by design, and nothing here makes it park.
+- **Row 5** is read on a serve with **`FSDEV_DEBUG_ENDPOINTS=0`**, because row 5 must be green on the production read alone. The lab's config opens its inventory at boot, in-process, the way the inventory docs show any app doing it (`channelInstances(…, { inventory: true })`, `openChannels`, then `openInventory`), and refuses to serve if that reports a problem. Nothing is driven: the rows exist because the app booted.
+- **Row 6 is not read live** ([D11](../../../specs/epics/FIX-1457/DECISIONS.md#d11)). No hire in the repository declares a sealed document, and giving one a subject needs kind code whose only job is the inspection, which ER-Devtool forbids.
+
+**Signal:** Chromium on the shipped DevTool bundle, rebuilt at the start of the run.
 
 - **Row 4.** First the positive record: the ledger holds the row `parked`, with a non-empty reason, parked by the seat whose own file answers for the fixture's desk, in a known run. Then, on screen, that run is opened from the navigator (kind, then seat, then the seat's session, then the run it spawned), and its Tasks tab is read with **no expander open**. That no expander is open is counted in the same read, not assumed. Passes when:
   - the row's Status cell reads a `TaskStatus` value, namely `parked`;
@@ -22,7 +25,13 @@
   - when the text is clamped, the cell's title carries the whole reason.
 
   Graded at a 1600×1000 window, the same one `multi-seat-collab`'s own check uses for this screen. Widths of 1440px and 1280px are measured and noted, not graded (see Findings).
-- **Row 6.** Not graded, and not part of the claim (above).
+- **Row 5**, in six steps (`row5.mts`). Every failure line names its step.
+  1. **Plant a foreign organization.** Before the server starts, one seat row and one channel row are written under a second organization into the lab's database through the store's own API, with ids generated for the run and checked against the tree. They are read back before anything else.
+  2. **Serve** the lab with `FSDEV_DEBUG_ENDPOINTS=0`.
+  3. **The positive record.** Read straight out of the store, never through a route: the lab's organization holds exactly one seat row per hired seat with the kind it was hired into, one channel row whose members are the channel's own, and one membership row per member. Zero rows fails here, before the screen. The internal seat writer, asked over HTTP, is refused as an action the public map does not define, and the store does not move. Then the server is stopped and booted a second time over the same database: no row changes, and the channel keeps its first registration time.
+  4. **The screen.** From the navigator, the channel kind, then the channel's session, then the Inventory tab (`aria-selected`), read with no expander open, counted in the same read. Rows are read by id inside the tab, by column heading: each seat's Kind and Channels equal what its seat row and membership rows hold; the channel's Kind, Members and Registered equal its row; each section's row count equals the store's. The foreign organization's ids appear **nowhere in the page's HTML**.
+  5. **In view on both axes**, by row 4's bound, for every cell on every graded row.
+  6. **The production read.** The network log shows a 200 on the production collection read for each collection rendered, under the ref the channel's manifest gives it. No debug read succeeded, and none was aimed at an inventory collection. The debug Resources surface reports the endpoints disabled. (The DevTool's own Resources panel asks `/debug/resources` for every session it opens; with the endpoints off that request is refused, which is what "reports disabled" reads.)
 
 **Anti-game:** The hollow passes:
 
@@ -30,21 +39,23 @@
 - Reading it with the expander open.
 - Finding the reason's text *somewhere* on the page.
 - Passing on a row that never carried a reason.
+- For row 5: an empty tab graded as "nothing wrong" — step 3 grades the store against the tree first, and a zero fails there. Text found somewhere on the page — step 4 reads cells on the row with that id. Rows read off the debug panel — steps 2 and 6. A view that reads every organization — step 1's rows are stored and must be absent. A grade against the fixture rather than the store — step 3 grades the store against the tree, step 4 the screen against the store. Rows present but scrolled away — step 5. A reader that drops the bearer token is **not** caught here: the lab configures no principal resolver, so FIX-1502's V3a owns it.
 
-So the check reads the cell under the `Reason` heading, in the active Tasks panel, on the row with this id. It counts open expanders in the same read. It grades the reason against the ledger's value only after asserting that value exists. When the column is missing, it opens the expander and says whether the reason is there, so "only in the expander" is named apart from "nowhere". A reason that is in the DOM but scrolled or clipped out of sight, horizontally or vertically, fails the visible-area bound. The Tasks panel is read only after the Tasks tab reports `aria-selected`.
+So the row-4 check reads the cell under the `Reason` heading, in the active Tasks panel, on the row with this id. It counts open expanders in the same read. It grades the reason against the ledger's value only after asserting that value exists. When the column is missing, it opens the expander and says whether the reason is there, so "only in the expander" is named apart from "nowhere". A reason that is in the DOM but scrolled or clipped out of sight, horizontally or vertically, fails the visible-area bound. The Tasks panel is read only after the Tasks tab reports `aria-selected`.
 
 **Model:** n/a. The seat bodies are deterministic.
 
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/the-checklist-rows/run.mts`. The run builds the DevTool bundle first. On a clean checkout, run `pnpm --filter @flow-state-dev/devtool build` once before it. The run reads the hire in `goals/multi-seat-collab/` (FIX-1497).
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/the-checklist-rows/run.mts`. The run builds the DevTool bundle first. On a clean checkout, run `pnpm --filter @flow-state-dev/devtool build` once before it. The run reads the hire in `goals/multi-seat-collab/` (FIX-1497). Every served run goes through `goals/lib/env.mts`'s `intentFreeEnv`.
 
 **Controls:** Each one runs as `GOAL_CONTROL=<name>` on the same command. The lab's config reads the same variable. Each control must fail at exactly the legs named, and the run checks that itself. The row-6 line is the same under every control and is left out of that self-check.
 
-- `silent-park`: the lab's worker parks with no reason. It must fail **row 4** only, at the positive record: the hire parked the row with no reason, so there is none for the screen to show.
+- `silent-park`: the lab's worker parks with no reason. It must fail **row 4** only, at the positive record: the hire parked the row with no reason, so there is none for the screen to show. Row 5 stays green.
+- `no-inventory`: the lab boots, opens its channel, and does not open its inventory. It must fail **row 5 only, at step 3**, and every row-5 line it prints must be at step 3: the organization holds no rows, so the screen is never judged. Row 4 stays green, so the leg is separable.
 
-The two view-side reds have no named control, because producing them means changing what is on screen. Each was produced by hand once and reverted (see the verdict log):
+The view-side and server-side reds have no named control, because producing them means changing code. Each was produced by hand once and reverted (see the verdict log):
 
-- `showReason` forced to `false` in `task-collections-view.tsx`, which is the view before FIX-1481's PR-A. Row 4 must fail and say the reason is **only inside the row's expander**.
-- A style that pushes the Tasks table 3000px down its pane, so the row sits below what the pane shows. Row 4 must fail on **vertical visibility**.
+- Row 4: `showReason` forced to `false` in `task-collections-view.tsx`; a style that pushes the Tasks table 3000px down its pane.
+- Row 5: the browser read removed from the three collections; one collection listed but unreadable; the view pointed at the debug read, with the debug endpoints off and on; the tab pushed 3000px down its pane; the route made to read a second organization too; a channel that re-stamps its registration time on every boot; a boot whose inventory reports a problem.
 
 ## Findings
 

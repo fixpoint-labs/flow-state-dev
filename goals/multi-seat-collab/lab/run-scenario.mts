@@ -48,6 +48,8 @@ export interface ServedLab {
   /** Everything the server has printed so far. */
   log(): string;
   stop(): void;
+  /** Resolves once the server process has exited — after `stop()`, before booting again over its database. */
+  exited(): Promise<void>;
 }
 
 /**
@@ -55,11 +57,18 @@ export interface ServedLab {
  * **our** server — not for whichever process answers on the port.
  *
  * @param options.control The `GOAL_CONTROL` the server's config reads, or `""`.
- * @param options.workDir A fresh directory; the server's SQLite file goes here.
+ * @param options.workDir The server's working directory; its SQLite file goes
+ *   here. Pass the same one twice to boot a second time over the same database.
+ * @param options.debugEndpoints `false` serves with `FSDEV_DEBUG_ENDPOINTS=0`.
+ *   Left out, `fsdev dev`'s own default (on) holds.
  * @throws If the server exits before it is ready, naming the DevTool build when
  *   that is why.
  */
-export async function serveLab(options: { control: string; workDir: string }): Promise<ServedLab> {
+export async function serveLab(options: {
+  control: string;
+  workDir: string;
+  debugEndpoints?: boolean;
+}): Promise<ServedLab> {
   mkdirSync(options.workDir, { recursive: true });
   const outbox = join(options.workDir, "work.ndjson");
   writeFileSync(outbox, "", "utf8");
@@ -86,13 +95,19 @@ export async function serveLab(options: { control: string; workDir: string }): P
       env: intentFreeEnv(process.env, {
         GOAL_CONTROL: options.control,
         MULTI_SEAT_COLLAB_OUTBOX: outbox,
+        ...(options.debugEndpoints === false ? { FSDEV_DEBUG_ENDPOINTS: "0" } : {}),
       }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
   child.stderr?.on("data", (chunk) => (log += String(chunk)));
-  child.on("exit", (code, signal) => (exited = `code ${code}, signal ${signal}`));
+  const exitedPromise = new Promise<void>((resolve) =>
+    child.on("exit", (code, signal) => {
+      exited = `code ${code}, signal ${signal}`;
+      resolve();
+    }),
+  );
 
   for (let i = 0; i < 240; i += 1) {
     if (exited !== undefined) break;
@@ -106,6 +121,7 @@ export async function serveLab(options: { control: string; workDir: string }): P
           stop: () => {
             child.kill("SIGTERM");
           },
+          exited: () => exitedPromise,
         };
       }
     } catch {
@@ -204,6 +220,8 @@ export class Scenario {
    * Open the channel through the workforce package's own `openChannels`, over
    * the server's HTTP session route — the only route that takes a channel's
    * state at create — and create each seat's working session the same way.
+   * The config's boot has already opened the channel; `openChannels` meets
+   * that session and leaves it as it is.
    */
   async open(): Promise<void> {
     const client = {

@@ -20,13 +20,20 @@
  *    runs proves something other than what is claimed.
  */
 
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { runAction } from "@flow-state-dev/engine";
 import {
+  CHANNEL_KIND,
   channelBoard,
   channelBoardIds,
   channelInstances,
   hireWorkforce,
+  openChannels,
+  openInventory,
   type ChannelManifest,
+  type InventoryActionRequest,
+  type OpenChannelsOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { fileURLToPath } from "node:url";
@@ -38,6 +45,9 @@ export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
 /** Who the lab runs as — one person, one principal (ER-1, D7). */
 export const LAB_USER_ID = "u_multi_seat_collab";
+
+/** The served database, relative to the server's working directory. */
+export const LAB_DB_PATH = ".fsdev/data/multi-seat-collab.db";
 
 /** Everything the tree says, read once and refused whole if any of it did not load. */
 export interface LabTree {
@@ -147,7 +157,114 @@ export function hireLab(options: HireLabOptions): Record<string, FlowInstance> {
     channelBoards: channelBoardIds([tree.channel]),
   });
   return {
-    ...Object.fromEntries(channelInstances([tree.channel]).map((instance) => [instance.kind, instance])),
+    // The inventory's writer half on the built-in channel kind, as the
+    // inventory docs tell every app to build it. `openLab` runs the write.
+    ...Object.fromEntries(
+      channelInstances([tree.channel], { inventory: true }).map((instance) => [instance.kind, instance]),
+    ),
     ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
   };
+}
+
+/** The organization every lab session runs in: the lab configures no resolver. */
+export const LAB_ORG_ID = DEFAULT_ORG_ID;
+
+/** The part of a served `FlowState` the boot needs. */
+export interface LabServer {
+  getRouter(): Promise<unknown>;
+  getRuntime(): Promise<{ stores: unknown; runtimeConfig: unknown }>;
+}
+
+/**
+ * The documented boot, in-process, after the server is built: open the
+ * channel, then — unless `inventory` is off — open the inventory, under the
+ * organization the lab's sessions run in.
+ *
+ * Opening the channel here rather than leaving it to the driver is what lets
+ * the inventory follow it: a channel registers from its own open session. The
+ * driver still calls `openChannels`, which meets this session and leaves it
+ * as it is.
+ *
+ * @throws Naming every problem `openInventory` reported. A half-registered
+ *   organization is not served, because a check graded on half of one proves
+ *   nothing.
+ */
+export async function openLab(
+  server: LabServer,
+  options: { tree: LabTree; flows: Record<string, FlowInstance>; inventory: boolean },
+): Promise<void> {
+  const { tree, flows } = options;
+  const router = (await server.getRouter()) as Record<string, (request: Request, context: unknown) => Promise<Response>>;
+
+  // The session route, over this process's own router: the server is the
+  // app, so a loopback hands the request straight to the handler.
+  const call = async (method: "GET" | "POST" | "DELETE", path: string[], body?: unknown) => {
+    const url = `http://multi-seat-collab.local/api/flows/${path.map(encodeURIComponent).join("/")}`;
+    const response = await router[method]!(
+      new Request(url, {
+        method,
+        headers: { "content-type": "application/json" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      }),
+      { params: { path } },
+    );
+    const text = await response.text();
+    return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
+  };
+  const client: OpenChannelsOptions["client"] = {
+    createSession: async (create) => {
+      const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
+      if (status >= 400) {
+        throw Object.assign(new Error(`create session ${create.sessionId}: ${status} ${JSON.stringify(body)}`), {
+          status,
+        });
+      }
+      return body;
+    },
+    getSession: async (sessionId) => {
+      const { status, body } = await call("GET", ["sessions", sessionId]);
+      if (status >= 400) throw new Error(`read session ${sessionId}: ${status}`);
+      return body?.session ?? body;
+    },
+    deleteSession: async (sessionId) => {
+      await call("DELETE", ["sessions", sessionId]);
+    },
+  };
+  await openChannels([tree.channel], { client, userId: LAB_USER_ID });
+  if (!options.inventory) return;
+
+  const runtime = await server.getRuntime();
+  const run = async (request: InventoryActionRequest): Promise<unknown> => {
+    const flow = flows[request.flowKind];
+    if (flow === undefined) throw new Error(`no flow is served under "${request.flowKind}"`);
+    const result = (await runAction({
+      flow,
+      actionName: request.action,
+      input: request.input,
+      userId: request.userId,
+      orgId: request.orgId,
+      sessionId: request.sessionId,
+      source: request.source,
+      stores: runtime.stores,
+      runtimeConfig: runtime.runtimeConfig,
+    } as never)) as { error?: unknown };
+    if (result?.error !== undefined) {
+      throw result.error instanceof Error ? result.error : new Error(String(result.error));
+    }
+    return result;
+  };
+  const seats = tree.roster.workers.map((worker) => {
+    const seat = flows[worker.id];
+    if (seat === undefined) throw new Error(`seat "${worker.id}" was not hired`);
+    return { id: seat.id, kind: seat.kind };
+  });
+  const binding = await openInventory(
+    { seats, channels: [tree.channel] },
+    { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+  );
+  if (binding.problems.length > 0) {
+    throw new Error(
+      `the lab's inventory did not register, so the lab will not serve:\n  - ${binding.problems.join("\n  - ")}`,
+    );
+  }
 }
