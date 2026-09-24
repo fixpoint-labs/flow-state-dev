@@ -58,8 +58,10 @@ produce, don't add ceremony.
   `over-engineered` · `spec-ambiguity` · `philosophy-drift` · `docs-miss` ·
   `stale-restatement` · `nit` — the ledger header defines each),
   whether the design was flagged "felt off" (by a reviewer or the challenger), and one
-  line: "what upstream change would have prevented this." Append to
-  `docs/internal/cycle-ledger.md` (create it if absent; one row per PR).
+  line: "what upstream change would have prevented this." Write the cycle as a new file,
+  `docs/internal/cycle-ledger/cycle-NN.md` (next number, two digits; one row per PR), and add
+  its row to the index table in `docs/internal/cycle-ledger.md`. Read the index first, then
+  only the earlier cycle files you are scoring against: the whole ledger is too large to load.
 - **Sample the epic PR, not only its children.** An epic-spec is a coordination artifact
   reviewed on its own PR, and it carries a rework class its child specs don't (cycle 2's
   `stale-restatement`, 11 of 18 findings, was entirely epic-PR review). Collect the epic PR

@@ -1,6 +1,6 @@
 # Epic wrap detail — Conductor, L0–L4 (LAB-68)
 
-Per-instance evidence behind [cycle 6 of the cycle ledger](../cycle-ledger.md#cycle-6--conductor-epic-wrap-lab-68-2026-08-18).
+Per-instance evidence behind [cycle 6 of the cycle ledger](../cycle-ledger/cycle-06.md).
 The ledger carries the counts and the conclusion; the enumeration lives here so the
 instrument stays scannable.
 
