@@ -7,11 +7,11 @@ each hands the next, and what is deliberately not next. Each epic's own plan own
 
 ## The arc — as of 2026-09-24
 
-There is one lane and no bar yet. FIX-1553 was filed on Sep 24, sits outside the current cycle,
-and is In Spec Review on [PR #2166](https://github.com/fixpoint-labs/flow-state-dev/pull/2166). Its bar starts when that
-direction is approved. The arc becomes a figure when a second epic gives it
-an order to show. Until then a picture of one unstarted lane would say nothing this sentence
-doesn't.
+There is one lane, and its bar started on Sep 24, when FIX-1553's direction was approved and its
+epic spec merged ([PR #2166](https://github.com/fixpoint-labs/flow-state-dev/pull/2166)). The bar is open and the now
+line sits at its start, because none of the six child issues has begun. The epic sits outside the
+current cycle. The arc becomes a figure when a second epic gives it an order to show. Until then a
+picture of one open bar would say nothing this sentence doesn't.
 
 | Epic | Consumes | Releases |
 |---|---|---|
