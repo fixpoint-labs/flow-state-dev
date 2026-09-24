@@ -8,9 +8,11 @@
  * the command — there is no second place to edit.
  *
  * This subtree is the whole of the app's Layer 2 usage. Nothing in `app/`
- * reaches into it. Two edges lead in: `fsdev.config.ts`, which awaits the hire
- * below and spreads the seats into the map it serves, and the
- * `workforce-admin` flow, which hires against `kitchenSinkKinds`. That first
+ * reaches into it. Three edges lead in: `fsdev.config.ts`, which awaits the
+ * hire below and spreads the seats into the map it serves, the
+ * `workforce-admin` flow, which hires against `kitchenSinkKinds`, and the
+ * `chat-agent` flow, whose `hireSeat` action (the rail's "Hire another") runs
+ * on `kitchenSinkSeatHireOptions`. That first
  * edge is what makes the demonstration real — until it existed the bundler
  * never resolved `workforce.gen.ts`'s imports, so the claim this tree exists
  * to prove (a generated module of static imports survives a production build)

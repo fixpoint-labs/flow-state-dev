@@ -15,7 +15,7 @@
  *     answers "unknown resource".
  */
 import { describe, expect, it } from "vitest";
-import { channelBoard, channelBoardIds } from "@flow-state-dev/workforce";
+import { channelBoard, channelBoardIds, HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
 import { readChannelsDirectory } from "@flow-state-dev/workforce/loader";
 
 import chatAgentFlow from "../flows/chat-agent/flow";
@@ -24,7 +24,6 @@ import { channelKinds } from "../workforce/workforce.gen";
 import {
   CHANNEL_KINDS,
   ROSTER_BOOT_REPORT_REF,
-  ROSTER_REF,
   SEAT_KINDS,
   SHELL_BOARDS,
 } from "../lib/workforce-shell";
@@ -56,7 +55,7 @@ describe("the shell's flow declares what the panel reads", () => {
     .resources ?? {};
 
   const cases: [label: string, ref: string][] = [
-    ["the roster", ROSTER_REF],
+    ["the roster", HIRED_ROSTER_RESOURCE],
     ["the boot report", ROSTER_BOOT_REPORT_REF],
     ...SHELL_BOARDS.map((board): [string, string] => [`board ${board.ref}`, board.ref]),
   ];
@@ -68,7 +67,7 @@ describe("the shell's flow declares what the panel reads", () => {
   });
 
   it("uses refs the collection route can address: one path segment each", () => {
-    for (const ref of [ROSTER_REF, ROSTER_BOOT_REPORT_REF, ...SHELL_BOARDS.map((b) => b.ref)]) {
+    for (const ref of [HIRED_ROSTER_RESOURCE, ROSTER_BOOT_REPORT_REF, ...SHELL_BOARDS.map((b) => b.ref)]) {
       expect(ref).not.toContain("/");
     }
   });

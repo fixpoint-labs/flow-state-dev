@@ -6,8 +6,12 @@
  * Each one is org-scoped, so a chat-agent session reads its own
  * organization's rows and no other's.
  *
- * - `roster` — the hired roster, from the same factory the admin flow and the
- *   boot reload use, so there is one declaration of that contract.
+ * - `HIRED_ROSTER_RESOURCE` — the hired roster, from the same factory the
+ *   admin flow and the boot reload use, so there is one declaration of that
+ *   contract. Declared under the package's key, not a name of this app's,
+ *   because the rail's hire (`flow.ts`) runs the package's hire sequence, which
+ *   reads the roster from there; a second key for the same collection would
+ *   be refused as a resource collision.
  * - `rosterBootReport` — what the last boot could not bring back, one row per
  *   organization. The boot writes it (`lib/roster-reload-report.ts`); nothing
  *   in this flow does. The key and the row's schema are declared in
@@ -17,13 +21,16 @@
  *   it is the same declaration the channel itself holds.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
-import { channelBoard, defineHiredRosterCollection } from "@flow-state-dev/workforce";
+import {
+  channelBoard,
+  defineHiredRosterCollection,
+  HIRED_ROSTER_RESOURCE,
+} from "@flow-state-dev/workforce";
 
 import { rosterBootReportSchema } from "@/lib/roster-boot-report-schema";
 import {
   ROSTER_BOOT_REPORT_PREFIX,
   ROSTER_BOOT_REPORT_REF,
-  ROSTER_REF,
   SHELL_BOARDS,
 } from "@/lib/workforce-shell";
 
@@ -41,7 +48,7 @@ export const rosterBootReportCollection = defineResourceCollection({
 
 /** Spread into the shell flow's `resources`. */
 export const workforcePanelResources = {
-  [ROSTER_REF]: defineHiredRosterCollection(),
+  [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
   [ROSTER_BOOT_REPORT_REF]: rosterBootReportCollection,
   ...Object.fromEntries(
     SHELL_BOARDS.map(({ channelId, board }) => {

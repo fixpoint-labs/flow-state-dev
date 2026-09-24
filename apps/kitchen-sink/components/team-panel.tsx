@@ -11,6 +11,7 @@
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { BoardColumns, Roster, type PanelRowSource } from "@flow-state-dev/react";
+import { HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
 
 import {
   ROSTER_BOOT_REPORT_REF,
@@ -55,7 +56,12 @@ export function TeamPanel({ sessionId, resourceClient, top }: TeamPanelProps) {
         {sessionId === undefined ? (
           <p className="px-2 text-xs text-muted-foreground">Loading…</p>
         ) : (
-          <Roster sessionId={sessionId} resourceClient={resourceClient} problems={report.problems} />
+          <Roster
+            sessionId={sessionId}
+            collectionRef={HIRED_ROSTER_RESOURCE}
+            resourceClient={resourceClient}
+            problems={report.problems}
+          />
         )}
       </section>
       {SHELL_BOARDS.map((board) => (
