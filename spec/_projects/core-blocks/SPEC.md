@@ -12,7 +12,7 @@ utility, `cascadingRouter`.
 |---|---|
 | **Winning when** | An author asks a model a typed question about state (*which skill?*, *which facet?*, *keep this memory?*) with a core block and gets a typed answer. When the model can't back that answer with a confidence, the route stops instead of taking a branch. Code that routes this way still runs when no evaluation-capable model is configured |
 | **The read** | The three named consumer seams (skill activation tier 3, index-time facets, memory capture) that use `evaluator` when it is present and fall back when it isn't. Zero today; three is done. Plus one check that shows a missing confidence refuses the route rather than choosing a branch |
-| **Now** | 0 done · 0 in flight · 1 not started. The first epic, FIX-1553, was filed on Sep 24 and is in Backlog. Its spec is being written now. The project is outside the current cycle and is not on the W4 / Workforce critical path |
+| **Now** | 0 done · 0 in flight · 1 not started. The first epic, FIX-1553, was filed on Sep 24 and is In Spec Review: its epic spec is up for direction review on [PR #2166](https://github.com/fixpoint-labs/flow-state-dev/pull/2166). The project is outside the current cycle and is not on the W4 / Workforce critical path |
 | **Kill line** | If no consumer does measurably better with `evaluator` than with the classifier it has once both are available, the fifth kind has not earned its place in core. What changes is the kind count. The seams can stay |
 
 ![The territory: new core kinds and the utilities that compose them are in the project. The consumer seams sit beside them, installed in other packages. The substrate is below the fence. The Evaluation System, a dispatcher kind, a System One package and a Decisions client are outside.](figures/territory.svg)
@@ -25,7 +25,7 @@ above the line only because it composes the new kind. It is a utility, not a kin
 
 | Epic | Outcome it owns | State | Surface |
 |---|---|---|---|
-| [FIX-1553](https://linear.app/fixpoint-labs/issue/FIX-1553) · **evaluator + cascadingRouter** | Adds `evaluator` as a core kind and `cascadingRouter` as a fail-closed utility, and wires the three consumer seams to prefer it | **not started**: Linear Backlog. Epic spec being written on `epic/evaluator` | Epic PR pending |
+| [FIX-1553](https://linear.app/fixpoint-labs/issue/FIX-1553) · **evaluator + cascadingRouter** | Adds `evaluator` as a core kind and `cascadingRouter` as a fail-closed utility, and wires the three consumer seams to prefer it | **not started**: Linear In Spec Review. Epic spec on `epic/evaluator`, awaiting direction approval | [PR #2166](https://github.com/fixpoint-labs/flow-state-dev/pull/2166) · [`specs/epics/FIX-1553/SPEC.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/epic/evaluator/specs/epics/FIX-1553/SPEC.md) |
 
 0 done · 0 in flight · 1 not started. Status comes from Linear and child implementation PRs at
 each refresh, never from this file. An epic spec merging means its direction was approved. It does
