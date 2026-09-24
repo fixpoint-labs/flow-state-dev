@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Two rows, today and after. Today every app, with or without Workforce, passes through a roster check at definition and again at registration. After, definition runs no roster check, and registration runs the roster fence only in a registry that holds Workforce's private roster writer."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .n-on  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-ok  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ah    { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+    .t-g   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <!-- TODAY -->
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · EVERY APP</text>
+    <rect class="n-in" x="16" y="36" width="194" height="70" rx="5"/>
+    <text class="t-b" x="30" y="60">an app flow</text>
+    <text class="t-s" x="30" y="78">[tenant]/**</text>
+    <text class="t-s" x="30" y="92">workforce/roster/[owner]/notes</text>
+    <path class="ln" d="M210 71 H232"/><path class="ah" d="M232 67 l8 4 -8 4z"/>
+    <rect class="n-gone" x="242" y="36" width="250" height="70" rx="5"/>
+    <text class="t-lbl" x="256" y="54">CORE · DEFINE</text>
+    <text class="t-b" x="256" y="74">roster check</text>
+    <text class="t-x" x="256" y="94">notes refused here</text>
+    <path class="ln" d="M492 71 H538"/><path class="ah" d="M538 67 l8 4 -8 4z"/>
+    <rect class="n-gone" x="548" y="36" width="250" height="70" rx="5"/>
+    <text class="t-lbl" x="562" y="54">ENGINE · REGISTER</text>
+    <text class="t-b" x="562" y="74">roster check, always</text>
+    <text class="t-x" x="562" y="94">[tenant]/** refused here</text>
+    <text class="t-x" x="812" y="76">app won't start</text>
+  </g>
+
+  <line class="rule" x1="16" y1="130" x2="924" y2="130"/>
+
+  <!-- AFTER -->
+  <g id="after">
+    <text class="t-lbl" x="16" y="154">AFTER</text>
+    <rect class="n-in" x="16" y="166" width="194" height="60" rx="5"/>
+    <text class="t-b" x="30" y="190">app without</text>
+    <text class="t-b" x="30" y="208">Workforce's writer</text>
+    <path class="ln" d="M210 196 H232"/><path class="ah" d="M232 192 l8 4 -8 4z"/>
+    <rect class="n-box" x="242" y="166" width="250" height="60" rx="5"/>
+    <text class="t-lbl" x="256" y="184">CORE · DEFINE</text>
+    <text class="t-b" x="256" y="206">generic checks only</text>
+    <path class="ln" d="M492 196 H538"/><path class="ah" d="M538 192 l8 4 -8 4z"/>
+    <rect class="n-box" x="548" y="166" width="250" height="60" rx="5"/>
+    <text class="t-lbl" x="562" y="184">ENGINE · REGISTER</text>
+    <text class="t-b" x="562" y="206">fence not armed</text>
+    <text class="t-g" x="812" y="200">admitted</text>
+
+    <rect class="n-in" x="16" y="246" width="194" height="60" rx="5"/>
+    <text class="t-b" x="30" y="270">app with Workforce's</text>
+    <text class="t-b" x="30" y="288">private roster writer</text>
+    <path class="ln" d="M210 276 H232"/><path class="ah" d="M232 272 l8 4 -8 4z"/>
+    <rect class="n-box" x="242" y="246" width="250" height="60" rx="5"/>
+    <text class="t-lbl" x="256" y="264">CORE · DEFINE</text>
+    <text class="t-b" x="256" y="286">generic checks only</text>
+    <path class="ln" d="M492 276 H538"/><path class="ah" d="M538 272 l8 4 -8 4z"/>
+    <rect class="n-on" x="548" y="246" width="250" height="60" rx="5"/>
+    <text class="t-lbl" x="562" y="264">ENGINE · HIRE PLANE</text>
+    <text class="t-b" x="562" y="286">fence armed · same rules</text>
+    <text class="t-x" x="812" y="280">overlap refused</text>
+  </g>
+</svg>
