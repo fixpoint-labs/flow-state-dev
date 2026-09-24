@@ -27,6 +27,29 @@
  *
  * These keys are a public surface. Moving one is a breaking change for any app
  * whose rows are already persisted, because nothing here ever deletes a row.
+ *
+ * ## The browser read
+ *
+ * All three declare `client.state.read`, so the collection-state route
+ * (`GET /sessions/:id/resources/:ref`) serves their rows to a browser instead
+ * of refusing with `403 State read not permitted`. That is how the DevTool's
+ * Inventory tab — and any app's own browser code — names the organization's
+ * seats, channels and memberships.
+ *
+ * What it opens is exactly the SESSION'S organization's rows and no other's.
+ * The route resolves rows through the session's stored `orgId`, and a session
+ * binds its org from the resolved principal when it is created — never from
+ * the request body, query or headers. The axis is `scope`: an org-scoped row
+ * is shared within its org by definition, so its own members reading it
+ * reveals nothing they could not already be told. The hired roster beside
+ * these carries the same read on the same terms, and
+ * `cross-org-collection-read.test.ts` fails if another org's rows come back
+ * for any of them.
+ *
+ * Each read names its fields with `expose` rather than the identity default
+ * (BP-015), so a key added to a row later stays server-side until someone adds
+ * it to the list. A row means *was registered in this organization*, not *is
+ * open now*: nothing deletes one, so a reader must label it that way.
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
@@ -121,13 +144,25 @@ export type MembershipIndexRow = z.infer<typeof membershipIndexRowSchema>;
 const SHARED_ACROSS_FLOWS = false;
 
 /**
+ * The fields each collection's browser read publishes — every field its row
+ * schema declares today, named rather than defaulted (BP-015). A key a later
+ * change adds to a row stays server-side until it is added here too.
+ */
+export const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind"] as const;
+/** @see SEAT_INVENTORY_CLIENT_FIELDS */
+export const CHANNEL_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
+/** @see SEAT_INVENTORY_CLIENT_FIELDS */
+export const MEMBERSHIP_INDEX_CLIENT_FIELDS = ["seatId", "channelId"] as const;
+
+/**
  * The seat inventory — one row per registered seat, at `inventory/seats/*`.
  *
  * Install it under any block's `resources` map. Org-scoped: every flow in the
  * org reads the same rows, and a flow under a different `orgId` reads none.
  *
- * Takes no options. The prefix, the scope and the sharing are the contract
- * other layers join against, not app settings.
+ * Takes no options. The prefix, the scope, the sharing and the browser read
+ * (see the module header) are the contract other layers join against, not app
+ * settings.
  *
  * @example
  *   resources: { seats: defineSeatInventoryCollection() }
@@ -138,6 +173,7 @@ export function defineSeatInventoryCollection() {
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
     stateSchema: seatInventoryRowSchema,
+    client: { state: { read: true }, expose: SEAT_INVENTORY_CLIENT_FIELDS },
   });
 }
 
@@ -156,6 +192,7 @@ export function defineChannelInventoryCollection() {
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
     stateSchema: channelInventoryRowSchema,
+    client: { state: { read: true }, expose: CHANNEL_INVENTORY_CLIENT_FIELDS },
   });
 }
 
@@ -176,6 +213,7 @@ export function defineMembershipIndexCollection() {
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
     stateSchema: membershipIndexRowSchema,
+    client: { state: { read: true }, expose: MEMBERSHIP_INDEX_CLIENT_FIELDS },
   });
 }
 
