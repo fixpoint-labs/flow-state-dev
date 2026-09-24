@@ -4,6 +4,12 @@
  * These routes implement the content fetch and mutation endpoints gated by
  * the `client` config declared on resource definitions. Only resources with
  * an explicit `client` configuration are accessible.
+ *
+ * Every handler that lists, reads, writes or deletes a collection key asks
+ * {@link ownerKeyAdmits} for the session's user, the fence the resource
+ * handle applies to a run: a row keyed to an owner is absent from a read and
+ * refused on a write, except through its owner-private collection, to its
+ * owner.
  */
 import type {
   CollectionClientConfig,
@@ -28,6 +34,7 @@ import {
   parseResourceWriteState,
 } from "../resources/normalize-resource-state";
 import { ValidationError } from "../errors/flow-error";
+import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
@@ -165,6 +172,9 @@ export async function handleGetCollectionItemContent(
       return jsonResponse(400, { error: `Topic "${route.topic}" does not match collection pattern` });
     }
   }
+  if (!ownerKeyAdmits(config, storageKey, session.userId)) {
+    return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
+  }
 
   // FIX-858: projected collections have no stored content — the state is read
   // through the app store and the content is template-rendered from it.
@@ -244,6 +254,9 @@ export async function handleCreateCollectionItem(
   }
 
   const storageKey = resolveCollectionKey(config.pattern, topic.trim());
+  if (!ownerKeyAdmits(config, storageKey, session.userId)) {
+    return jsonResponse(403, { error: OWNER_ROW_REFUSAL });
+  }
 
   // Only session-scoped for now (Phase 1 simplification)
   if (scope !== "session") {
@@ -367,6 +380,9 @@ export async function handleUpdateResourceContent(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
+  if (!ownerKeyAdmits(config, storageKey, session.userId)) {
+    return jsonResponse(403, { error: OWNER_ROW_REFUSAL });
+  }
   // FIX-1068: addressed by the key's owner, so read and write land where a
   // block would rather than where the named route would.
   const scopeId = sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId);
@@ -467,11 +483,13 @@ export async function handleListCollectionState(
       extCtx
     );
     const items = await Promise.all(
-      hits.map(async (hit) => ({
-        topic: extractBareTopic(config.pattern, hit.storageKey),
-        storageKey: hit.storageKey,
-        clientData: await applyClientData(config, hit.state as JsonObject),
-      }))
+      hits
+        .filter((hit) => ownerKeyAdmits(config, hit.storageKey, session.userId))
+        .map(async (hit) => ({
+          topic: extractBareTopic(config.pattern, hit.storageKey),
+          storageKey: hit.storageKey,
+          clientData: await applyClientData(config, hit.state as JsonObject),
+        }))
     );
     return jsonResponse(200, { items, ...(nextCursor !== undefined ? { nextCursor } : {}) });
   }
@@ -502,6 +520,7 @@ export async function handleListCollectionState(
   }
   const matchedKeys = Object.keys(persisted)
     .filter((k) => matchesPattern(config.pattern, k))
+    .filter((k) => ownerKeyAdmits(config, k, session.userId))
     .filter((k) => topicPrefix === undefined || k.startsWith(topicPrefix))
     .sort();
 
@@ -571,6 +590,10 @@ export async function handleGetCollectionItemState(
         error: `Topic "${route.topic}" does not match collection pattern`
       });
     }
+  }
+  if (!ownerKeyAdmits(config, storageKey, session.userId)) {
+    // Read as not present, the answer an absent topic gets.
+    return jsonResponse(200, null);
   }
 
   let value: JsonObject | undefined;
@@ -759,6 +782,9 @@ export async function handleDeleteCollectionItem(
   let storageKey = route.topic;
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
+  }
+  if (!ownerKeyAdmits(config, storageKey, session.userId)) {
+    return jsonResponse(403, { error: OWNER_ROW_REFUSAL });
   }
   // Conflict before anything is deleted — the create route's rule, mirrored.
   // `undefined` means no live row, i.e. `expectedVersion: 0`, so an absent key

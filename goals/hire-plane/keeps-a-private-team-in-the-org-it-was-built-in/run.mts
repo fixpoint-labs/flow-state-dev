@@ -190,7 +190,7 @@ const boardFlow = defineFlow({
 
 const privateRoster = defineHiredRosterPrivateCollection();
 
-/** Hires a private `research` seat for the session's user, through the branded writer. */
+/** Hires a private `research` seat for the session's user, through the owner-private roster collection. */
 const hire = handler({
   name: "hire",
   inputSchema: z.object({}),

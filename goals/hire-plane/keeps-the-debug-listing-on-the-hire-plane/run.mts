@@ -48,7 +48,7 @@ const verified = {
   },
 };
 
-// Writes the session user's private hire row through the branded writer, and
+// Writes the session user's private hire row through the owner-private roster, and
 // one org-visible row through the org roster, the way a hire does.
 const hire = handler({
   name: "hire",

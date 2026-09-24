@@ -3,9 +3,9 @@
  *
  * The pin is `{ orgId, userId? }` from the row, never from the address. A
  * legacy row binds the cell it was read from. A row that names another org
- * is a problem and is not minted. A deep roster collection is refused at
- * definition, because the private sub-prefix only hides rows from the
- * browser pattern.
+ * is a problem and is not minted. A deep roster collection is refused once a
+ * registry holds the private writer, because the private sub-prefix only
+ * hides rows from the browser pattern.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
@@ -128,41 +128,51 @@ describe("hire row pin", () => {
     expect(seats[0]!.ownerPin).toEqual({ orgId: "acme" });
   });
 
-  it("refuses a workforce/roster/** collection, and still allows the two roster patterns", () => {
-    expect(() =>
-      defineResourceCollection({
-        pattern: "workforce/roster/**",
-        scope: "org",
-        stateSchema: z.object({}),
-      })
-    ).toThrow(/user-owned roster rows/);
-    expect(() =>
-      defineResourceCollection({
-        pattern: "workforce/**",
-        scope: "org",
-        stateSchema: z.object({}),
-      })
-    ).toThrow(/user-owned roster rows/);
+  it("refuses a deep roster collection beside the private writer, and not in an app without it", () => {
+    const flowWith = (kind: string, resources: Record<string, unknown>) =>
+      defineFlow({
+        kind,
+        resources: resources as never,
+        actions: {
+          ping: {
+            inputSchema: z.object({}),
+            block: handler({
+              name: `${kind}-ping`,
+              inputSchema: z.object({}),
+              outputSchema: z.object({ ok: z.boolean() }),
+              execute: () => ({ ok: true }),
+            }),
+          },
+        },
+      })();
     expect(defineHiredRosterCollection().pattern).toBe("workforce/roster/*");
     expect(defineHiredRosterPrivateCollection().pattern).toBe("workforce/roster/[owner]/[seat]");
     expect(defineHiredRosterPrivateCollection().client?.state?.read).not.toBe(true);
-    expect(() =>
-      defineResourceCollection({
-        pattern: "workforce/roster/[owner]/notes",
-        scope: "org",
-        stateSchema: z.object({}),
-      })
-    ).toThrow(/user-owned roster rows/);
-    expect(() =>
-      defineResourceCollection({
-        pattern: "workforce/roster/*/*",
-        scope: "org",
-        stateSchema: z.object({}),
-      })
-    ).toThrow(/user-owned roster rows/);
+
+    for (const pattern of [
+      "workforce/roster/**",
+      "workforce/**",
+      "workforce/roster/[owner]/notes",
+      "workforce/roster/*/*",
+    ]) {
+      const deep = () =>
+        defineResourceCollection({ pattern, scope: "org", stateSchema: z.object({}).passthrough() });
+
+      const withoutWriter = createFlowRegistry();
+      withoutWriter.register(flowWith("deep", { deep: deep() }));
+      expect(withoutWriter.get("deep")).toBeDefined();
+
+      const armed = createFlowRegistry();
+      armed.register(flowWith("hires", { roster: defineHiredRosterPrivateCollection() }));
+      expect(() => armed.register(flowWith("deep", { deep: deep() }))).toThrow(
+        `Collection pattern "${pattern}" can reach the rows of owner-private collection "workforce/roster/[owner]/[seat]".`
+      );
+      expect(armed.get("deep")).toBeUndefined();
+    }
   });
 
-  it("registers the branded private writer and refuses a hand-built copy of its pattern", () => {
+  it("declares the private writer owner-private, and refuses a hand-built copy of its pattern beside it", () => {
+    expect(defineHiredRosterPrivateCollection().ownerPrivate).toEqual({ param: "owner" });
     const registry = createFlowRegistry();
     const ping = handler({
       name: "ping",
@@ -170,12 +180,12 @@ describe("hire row pin", () => {
       outputSchema: z.object({ ok: z.boolean() }),
       execute: () => ({ ok: true }),
     });
-    const branded = defineFlow({
-      kind: "branded-writer",
+    const writer = defineFlow({
+      kind: "private-writer",
       resources: { roster: defineHiredRosterPrivateCollection() },
       actions: { ping: { inputSchema: z.object({}), block: ping } },
     })();
-    expect(() => registry.register(branded)).not.toThrow();
+    expect(() => registry.register(writer)).not.toThrow();
 
     const copy = defineFlow({
       kind: "copied-writer",
@@ -188,7 +198,9 @@ describe("hire row pin", () => {
       },
       actions: { ping: { inputSchema: z.object({}), block: ping } },
     })();
-    expect(() => registry.register(copy)).toThrow(/cannot be redeclared/);
+    expect(() => registry.register(copy)).toThrow(
+      'Collection pattern "workforce/roster/[owner]/[seat]" can reach the rows of owner-private collection "workforce/roster/[owner]/[seat]".'
+    );
   });
 
   it("gives alice and bob different addresses for the same seat id, and the pin stays the row", () => {

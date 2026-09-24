@@ -12,9 +12,9 @@
  * production client semantics live elsewhere. Off-by-default at the route
  * gate (`debugEndpointsEnabled` / `FSDEV_DEBUG_ENDPOINTS=1`).
  *
- * It does not bypass the hire plane. These reads go to the store, not the
- * resource handle, so every collection key they surface is checked against
- * the collection's pattern and against {@link privateRosterAdmits} for the
+ * It does not bypass the owner-private key fence. These reads go to the store,
+ * not the resource handle, so every collection key they surface is checked
+ * against the collection's pattern and against {@link ownerKeyAdmits} for the
  * session's user: the same fence the handle applies to a run in that session.
  */
 import type {
@@ -36,7 +36,7 @@ import {
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { resolveRecordOwner } from "../context/record-owner";
-import { privateRosterAdmits } from "../context/hire-plane";
+import { ownerKeyAdmits } from "../resources/owner-private";
 import { isJsonObject } from "../utils/json-helpers";
 import { extractBareTopic, isResourceConfig } from "./route-utils";
 
@@ -277,8 +277,9 @@ function groupResources(flow: ResourceFlowLike): ResourceGroup[] {
 
 /**
  * Whether the session's user may see `storageKey` as an item of `config`: the
- * key matches the collection's pattern and the hire plane admits it. A run in
- * the same session sees exactly these keys through the resource handle.
+ * key matches the collection's pattern and the owner-private key fence admits
+ * it. A run in the same session sees exactly these keys through the resource
+ * handle.
  */
 function collectionKeyVisible(
   config: ResourceCollectionConfig,
@@ -287,7 +288,7 @@ function collectionKeyVisible(
 ): boolean {
   return (
     matchesPattern(config.pattern, storageKey) &&
-    privateRosterAdmits(config, storageKey, userId)
+    ownerKeyAdmits(config, storageKey, userId)
   );
 }
 
@@ -693,7 +694,7 @@ export async function lookupDebugContent(opts: {
     const config = group.config as ResourceCollectionConfig;
     const storageKey = joinPatternTopic(config.pattern, topic);
     // A topic outside what the session can list is absent, whether it misses
-    // the pattern or belongs to another user's private hire row.
+    // the pattern or is a row keyed to an owner the session may not read.
     if (!collectionKeyVisible(config, storageKey, session.userId)) {
       return { ok: false, kind: "content_not_found" };
     }

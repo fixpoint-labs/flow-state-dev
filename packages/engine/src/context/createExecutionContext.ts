@@ -102,6 +102,7 @@ import {
   UserBindingMismatchError
 } from "./binding-errors";
 import { refuseInstancePin } from "./hire-plane";
+import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
   outputItemToSessionItem,
   createSessionItemViews,
@@ -1232,6 +1233,9 @@ export async function createExecutionContext<
   // decides that correctly, so re-check each returned key against it and keep
   // only the ones this bucket is the address for. Without this the surviving
   // copy depends on which collection was declared first.
+  //
+  // Every prefix load passes through here, so it is also where another user's
+  // owner-private row is kept out of the run's cache (`ownerKeyMaySeed`).
   const retainOwnedKeys = <T>(
     scope: ContentScopeType,
     scopeId: string,
@@ -1239,6 +1243,7 @@ export async function createExecutionContext<
   ): Record<string, T> => {
     const owned: Record<string, T> = {};
     for (const [key, value] of Object.entries(rows)) {
+      if (!ownerKeyMaySeed(key, userId)) continue;
       if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
     }
     return owned;

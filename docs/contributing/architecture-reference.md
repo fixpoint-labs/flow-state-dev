@@ -163,6 +163,7 @@ Purposes and default models live in the catalog — don't restate them here.
 - `defineFlow` merges block-declared resources into the flow's `resources` map; flow-level wins over block-level
 - Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
 - Collection snapshots emit `count` always and `prefetched` when `prefetchWindow > 0`; per-item `clientData` is gated by `client.state.read`. Lazy reads via `GET /sessions/:id/resources/:ref` and a flow-static manifest at `GET /sessions/:id/manifest` (FIX-427).
+- A key segment beginning `~` belongs to an owner-private collection (`ownerPrivate: { param }`), in every app: no other collection reads or writes it, and a key's first one names its owner. A registry that has held one refuses, for good, any flow whose collection in the same scope can reach its keys → [Resources and client data](../architecture/resources-and-client-data.md#owner-private-collections)
 
 → [Resources and Client Data](../architecture/resources-and-client-data.md)
 

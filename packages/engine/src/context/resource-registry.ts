@@ -32,12 +32,11 @@ import {
   getPatternPrefix,
   extractBareTopic,
   isProjectedResourceCollection,
-  isHiredRosterPrivateCollection,
   readProjectedRecord,
   searchProjectedRecords,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
-import { privateRosterAdmits } from "./hire-plane";
+import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
@@ -743,25 +742,25 @@ export function filterFlowLevelEager(
 }
 
 /**
- * Limit the private roster writer to the session user's own rows.
+ * Fence owner keys on a collection handle.
  *
- * The brand admits the collection onto a flow. It does not let that flow list
- * every user. A key outside `workforce/roster/~<escaped user>/` is absent for
- * get and refused for write. The user id is escaped the same way the stored
- * key is, so `bob` is not a prefix of `bob/x`. The message does not say
- * whether another user's row exists.
+ * An owner-private collection sees only the session user's own rows. Every
+ * other collection sees none of any owner's rows, whatever this process
+ * registered. A fenced key is absent for list, count and `getOptional`, and
+ * refused for `get` and every write; the message does not say whether the row
+ * exists. The decision is {@link ownerKeyAdmits}. Every collection pattern has
+ * a wildcard or parameter segment, and so can resolve onto a key with a
+ * segment beginning `~`, so every handle is wrapped.
  */
-function scopePrivateRosterToCaller(
+function fenceOwnerKeys(
   handle: ResourceCollectionRef<JsonObject>,
   userId: string | undefined,
 ): ResourceCollectionRef<JsonObject> {
-  if (!isHiredRosterPrivateCollection(handle.config)) return handle;
-  const admits = (storageKey: string): boolean =>
-    privateRosterAdmits(handle.config, storageKey, userId);
+  const admits = (storageKey: string): boolean => ownerKeyAdmits(handle.config, storageKey, userId);
   const own = (key: string | Record<string, string>): boolean =>
     admits(resolveCollectionKey(handle.pattern, key));
   const refuse = (): never => {
-    throw new Error("A hired-seat row is readable only by the user it belongs to.");
+    throw new Error(OWNER_ROW_REFUSAL);
   };
   return {
     ...handle,
@@ -1376,6 +1375,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             `Key "${storageKey}" does not match projected collection pattern "${pattern}"`
           );
         }
+        if (!ownerKeyAdmits(extConfig, storageKey, options.actorUserId)) {
+          throw new Error(OWNER_ROW_REFUSAL);
+        }
         const state = await readThrough(storageKey);
         if (state === undefined) {
           throw new Error(
@@ -1387,6 +1389,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       async getOptional(key: string): Promise<ProjectedResourceRef<JsonObject> | undefined> {
         const storageKey = resolveCollectionKey(pattern, key);
         if (!matchesPattern(pattern, storageKey)) return undefined;
+        if (!ownerKeyAdmits(extConfig, storageKey, options.actorUserId)) return undefined;
         const state = await readThrough(storageKey);
         return state === undefined ? undefined : makeRef(storageKey);
       },
@@ -1397,7 +1400,8 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         // BP-033). A bare string is `{ search }` shorthand.
         const q: ResourceQuery = typeof query === "string" ? { search: query } : query ?? {};
         const { hits, nextCursor } = await searchProjectedRecords<JsonObject>(extConfig, q, externalCtx());
-        const items = hits.map((hit) => {
+        const admitted = hits.filter((hit) => ownerKeyAdmits(extConfig, hit.storageKey, options.actorUserId));
+        const items = admitted.map((hit) => {
           // Seed the per-request cache so each ref's synchronous `.state`
           // resolves against the searched state, exactly like a read-through get.
           cache.set(hit.storageKey, hit.state);
@@ -1958,14 +1962,14 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           }
         };
 
-        handles[resourceName] = scopePrivateRosterToCaller(
+        handles[resourceName] = fenceOwnerKeys(
           lazyHandle,
           options.actorUserId,
         ) as unknown as ResourceRef<JsonObject>;
         continue;
       }
 
-      handles[resourceName] = scopePrivateRosterToCaller(
+      handles[resourceName] = fenceOwnerKeys(
         nsHandle,
         options.actorUserId,
       ) as unknown as ResourceRef<JsonObject>;

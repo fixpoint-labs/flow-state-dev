@@ -19,8 +19,8 @@ export {
   normalizeResourcePath,
   resolveCollectionKey,
   validatePattern,
-  assertRosterCollectionIsNotDeep,
   encodeUserSegment,
+  ownerSegment,
   isHiredRosterPrivateCollection,
   markHiredRosterPrivateCollection,
   HIRED_ROSTER_BROWSER_PATTERN,
@@ -74,6 +74,15 @@ export type CollectionHookContext = {
 export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   /** Glob-style pattern: `files/*`, `files/**`, or `[topic]/observations`. */
   pattern: string;
+  /**
+   * Make each row readable and writable only by the user it belongs to.
+   * `param` names the pattern parameter that holds the owner; key it with
+   * `ownerSegment(userId)`. A row is served only to the user its owner segment
+   * names, and no other collection in the app reads or writes it. The pattern
+   * must declare `param` exactly once and must not use `**`, and the collection
+   * has no browser read.
+   */
+  ownerPrivate?: { param: string };
   /**
    * Intrinsic scope this collection lives in. Required for new collections —
    * mirrors `defineResource({ scope })`.
@@ -317,7 +326,7 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
 // ---------------------------------------------------------------------------
 
 import { z } from "zod";
-import { assertRosterCollectionIsNotDeep, validatePattern } from "./collection-patterns";
+import { extractPatternParams, validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
 import { validateReactTo } from "./resource-change";
 import { edgeListSchema } from "../graph";
@@ -332,7 +341,7 @@ export function defineResourceCollection<
   ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
 > {
   validatePattern(config.pattern);
-  assertRosterCollectionIsNotDeep(config);
+  if (config.ownerPrivate !== undefined) assertOwnerPrivateShape(config);
 
   if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
     throw new Error(
@@ -437,6 +446,43 @@ export function defineResourceCollection<
     AsStateObject<TStateSchema["_output"]>,
     ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
   >;
+}
+
+/**
+ * The shape an owner-private declaration needs, checked when it is defined.
+ *
+ * The owner has to sit at one known segment, so the pattern names the
+ * parameter exactly once, as a whole segment, and has no `**`. No browser read
+ * of state or content: those routes would serve rows to every member of the
+ * scope. Engine enforces who reads which row; this only refuses a declaration
+ * that could not be enforced.
+ */
+function assertOwnerPrivateShape(
+  config: Pick<ResourceCollectionConfig, "pattern" | "ownerPrivate"> & {
+    client?: { state?: { read?: boolean }; content?: { read?: boolean; prefetch?: boolean } };
+  }
+): void {
+  const { pattern, client } = config;
+  const param = config.ownerPrivate?.param;
+  const named = `Owner-private collection "${pattern}"`;
+  if (
+    client?.state?.read === true ||
+    client?.content?.read === true ||
+    client?.content?.prefetch === true
+  ) {
+    throw new Error(`${named} must not enable a browser read.`);
+  }
+  const segments = pattern.split("/");
+  if (
+    typeof param !== "string" ||
+    extractPatternParams(pattern).filter((name) => name === param).length !== 1 ||
+    !segments.includes(`[${param}]`)
+  ) {
+    throw new Error(`${named} must declare parameter "${String(param)}" exactly once.`);
+  }
+  if (segments.includes("**")) {
+    throw new Error(`${named} must not use "**": its owner sits at one segment.`);
+  }
 }
 
 // ---------------------------------------------------------------------------
