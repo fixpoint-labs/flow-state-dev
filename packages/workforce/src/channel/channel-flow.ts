@@ -543,20 +543,12 @@ const channelRefusalNoteSchema = z.object({
  * Absorb one member's delivery refusal so the remaining members are still
  * attempted, carrying the reason out as this block's own output.
  *
- * **Nothing about a channel's session is written here, deliberately.** The
- * obvious home for a delivery outcome — `ctx.session.appendJournal` — writes
- * the WHOLE session record back with `"any"` and no compare-and-swap, and this
- * rescue runs in the separate `onPosted` request, holding the session snapshot
- * that request loaded. A post that landed in between is inside the state being
- * written back, so recording the failure would silently erase it — the one
- * thing a channel promises never happens. `setMetadata` has the same shape.
- *
- * The only concurrency-safe write a block has is a state verb (`pushState` and
- * friends, which the store applies as a delta), and a delivery outcome is not a
- * channel fact to widen every channel's declared state with. So the reason
- * travels in this request's own item log, alongside the rest of the fan-out's
- * trace, and nowhere else. An unrecorded delivery failure is a far smaller loss
- * than a vanished post.
+ * **Nothing about a channel's session is written here.** A delivery outcome
+ * is not a channel fact to widen every channel's declared state with, so the
+ * reason travels in this request's own item log, alongside the rest of the
+ * fan-out's trace, and nowhere else. (`ctx.session.appendJournal` re-reads the
+ * record and commits at its version, so it would no longer erase a post that
+ * landed in between; the item log is kept because that is where the trace is.)
  */
 const noteDeliveryRefusal = handler({
   name: "channel-delivery-refused",
