@@ -14,7 +14,7 @@ Feature · `workforce` + `react` + kitchen-sink · large · 4 PRs, 2 merged · e
 | **opens a seat in the rail** | Reads its name in a roster list, and that is all there is. Its kind and its instructions are nowhere in the human rail | Opens it and reads its kind. A seat hired here also shows its instructions; a seat declared in a file says its instructions are not published. Skills, channels and boards come with [FIX-1539](https://linear.app/fixpoint-labs/issue/FIX-1539) |
 | **wants a second seat of a kind they already have** | Needs an operator's bearer token and something that speaks HTTP. In a clone with no token configured there is **no hire path at all** — the door is not registered | Hires it from the seat surface. The new seat appears in the same list, without a page reload and without opening the developer tool |
 | **restarts the app after hiring** | Cannot tell whether anything survived, because nothing in the human rail ever showed the seat in the first place | Comes back to the same rail and the seat is there, rebuilt from durable organization state rather than from the process that hired it |
-| **runs a deployment that configures operator tokens** | The rail reads the development organization and shows none of what was hired under a token: correct, empty, and unexplained | The rail hires **and** reads one organization, so the two can no longer disagree. It is kitchen-sink's one named organization. A token bound to it can fire what the rail hires, and the docs say what the rail does not show |
+| **runs a deployment that configures operator tokens** | The rail reads the development organization and shows none of what was hired under a token: correct, empty, and unexplained | The rail hires **and** reads one organization, so the two can no longer disagree. It is kitchen-sink's one named organization. Operator tokens are pinned to it, so an operator can fire what the rail hires, and the docs say what the rail does not show |
 | **opens a deployed kitchen-sink without signing in** | Can hire nothing. The app runs under the framework's development organization, and every hire there is refused | **Can hire seats through the rail, and hire and fire them through mara**, in the one organization every visitor shares ([D6](DECISIONS.md#d6)). That is the exposure the owner accepted until [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) brings real identity |
 
 The pieces of a Workforce all exist and none of them meet. A person can be shown a roster, or
@@ -47,8 +47,10 @@ runs as without it, the hire arrow would be refused.
 +   instructions   Takes escalations.
 ```
 
-**What the app's own wiring gains.** First, one organization for every request, named in the
-app and read from nothing the caller sends:
+**What the app's own wiring gains.** First, one organization as the host's fallback for every
+flow without a resolver of its own, named in the app and read from nothing the caller sends. The
+operator's `workforce-admin` door keeps its credential check, and its organization is pinned to
+the same one:
 
 ```diff
   createFlowState({
@@ -93,9 +95,9 @@ with the options object mara's tools use too:
 - **The rail itself.** One `FlowNavigator`, sections by kind, depth from cardinality — the epic's
   D8 and [FIX-1477](https://linear.app/fixpoint-labs/issue/FIX-1477)'s. This issue adds what a seat
   row opens *into*; it does not add a second navigator or fork a tree browser.
-- **The operator's hire door.** `workforce-admin` keeps its bearer credential, its organization
-  from that credential, its user-owned rows and its fail-closed registration. This issue does not
-  touch it.
+- **The operator's hire door.** `workforce-admin` keeps its bearer credential, its user-owned
+  rows and its fail-closed registration. The one change is its organization: a token may name only
+  kitchen-sink's ([E3](DECISIONS.md#e3)).
 - **What a durable hire *is*.** The rail's hire runs the sequence the `workforce` package already
   ships for its catalog `hire` tool, through a model-free export of it: the same roster
   collection, the same `create()`-not-`upsert()` refusal of a duplicate, the same compensating
@@ -114,8 +116,12 @@ with the options object mara's tools use too:
    development organization (every hire refused) and over waiting for FIX-1503
    ([epic D9](../../epics/FIX-1455/DECISIONS.md#d9)). If wrong: anyone
    who can open a deployed kitchen-sink has been hiring and firing seats in an organization every
-   visitor shares, and a persistent deployment's earlier conversations are left behind in the
-   old organization.
+   visitor shares.
+
+**Open: [H1](DECISIONS.md#h1) · on a deployment that already has data, carry earlier
+conversations into the new organization, or leave them behind?** Channels work again either way
+(V19). This question is only about history. The recommendation is to leave it behind: unread,
+not deleted, so a migration can still come later. Cost of being wrong: low.
 2. **[D1](DECISIONS.md#d1) · The rail's hire door is an action on the flow the rail's own session
    already runs on, not the operator's credentialed flow reached from a browser.** Approved. If
    wrong: anybody who can open a kitchen-sink deployment can hire a seat into its one
@@ -126,14 +132,16 @@ with the options object mara's tools use too:
    view than the issue's outcome 2 promises, and a file-declared seat shows no instructions yet.
 
 **What this amendment asks.** Approve the record of D6 by merging it. It also records the
-engineering calls that follow from D6: one resolver for the whole app, the operator's door
-unchanged, a constant user ([E3](DECISIONS.md#e3)), and a new PR-B that carries them.
+engineering calls that follow from D6: one fallback resolver for every flow without its own, the
+operator's door pinned to the same organization, a constant user ([E3](DECISIONS.md#e3)), and a
+new PR-B that carries them. Answer H1.
 **Newly locked in:** an anonymous visitor to a kitchen-sink deployment can hire and fire seats
 in its one organization. **News a reader would not look for:** the spec used to say that an app
 authenticating nobody could hire. It could not, because the development organization is not a
 legal seat address. Every place that claim was made has been corrected
 ([EVOLUTION.md](EVOLUTION.md#amendment-named-org)). A persistent deployment written before PR-B
-fails its first boot unless PR-B handles it, and PR-B's plan requires that it does (V19). FIX-1475's BR-35 is still overtaken in
+fails its first boot unless PR-B handles it. PR-B's plan requires its channels to be open and
+readable afterwards (V19). A boot that merely stops failing does not pass. FIX-1475's BR-35 is still overtaken in
 code ([EVOLUTION.md](EVOLUTION.md#br35-overtaken)).
 
 The reasoning, what each rejected and what each locks in is in [DECISIONS.md](DECISIONS.md); the

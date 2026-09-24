@@ -41,7 +41,7 @@ it would in the app.
 
 ## Legs
 
-Observed on `origin/main` `95049473f`. All eight legs pass green.
+Observed on `origin/main` `95049473f`, and re-run unchanged on `d6738d922` for the review fold. All eight legs pass green.
 
 | Leg | Claim | Green | Planted control → red |
 |---|---|---|---|
@@ -49,7 +49,7 @@ Observed on `origin/main` `95049473f`. All eight legs pass green.
 | N2 | Hire and read agree on the org, and a body `orgId: "globex"` changes nothing | Nothing at `globex.support.pat`. The row is readable through the hire's own session on a bodyless read route | `POC_SPLIT=1` gives the rail's flow a resolver that names `globex` for bodyless routes and `kitchen-sink` for actions. The engine refuses the hire: `Session … is bound to org globex but request supplied org kitchen-sink`. Nothing lands |
 | N3 | A file-declared seat (mara) runs in the named org, so its `discover` lists the rail's hire | mara's session is bound to `kitchen-sink`. The stream of a `discover`-only request contains `kitchen-sink.support.pat` | `POC_SEAT_ORG=globex` resolves seat-addressed requests to another org: `discover` does not list the hire. N5 and N6 go red too, because they also run mara |
 | N4 | A restart (fresh registry, fresh router, same stores) brings the hire back through the boot's own reload | `stores.org.list()` includes `kitchen-sink`. `admitReloadedSeats` admits `kitchen-sink.support.pat`, `isFromRoster` is true, and the rail's read finds it | `POC_RELOAD_EMPTY=1` boots the second process on empty stores: `expected [] to include 'kitchen-sink'` |
-| N5 | The operator's `workforce-admin` fire releases a rail hire and a seat-tool hire when its token is bound to the named org (FIX-1527 BR-10) | Both fires return `"released":true`, and both addresses are gone | `POC_ADMIN_ORG=acme` binds the token to another org: `This organization hired no seat …` |
+| N5 | The operator's `workforce-admin` fire releases a rail hire and a seat-tool hire when its token is bound to the named org (FIX-1527 BR-10) | Both fires return `"released":true`, and both addresses are gone | `POC_ADMIN_ORG=acme` binds the token to another org: `This organization hired no seat …`. This is why PR-B pins the admin token to the named org (V22) |
 | N6 | The capability's `fire` releases only an address this app registered from a roster row, because the shared options' `unregister` goes through `workforceRegistrar.isFromRoster` | A same-kind registration at the hired address that the roster did not make is left in place: `"released":false`, and the registry still holds it | `POC_UNGUARDED=1` passes `unregister` straight through: `"released":true`, and that registration is released |
 | N7 | A user id the resolver can name on **every** route keeps one visitor's session usable across create, action and read | Constant `devuser`: create 201, action ok, and the read finds the row | `POC_USER_POLICY=body` reads the user from the body when there is one. Session create has no body in route-level auth, so the session is owned by `devuser`. The action then names `e2e-user-1` and is refused: `Session … is owned by user devuser but request supplied user e2e-user-1` |
 | N8 | *(characterization)* The first named-org boot over a store the shipped app wrote | The channel open fails: `channel "support.ada-wren" could not be opened — Request failed (403)`. The session is still bound to `__fsd_default_org__`. `fsdev.config.ts` awaits that open at module scope, so the boot fails | `POC_N8_FIRST=named` makes the first boot named-org too: `opened` |

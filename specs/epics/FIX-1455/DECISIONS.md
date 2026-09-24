@@ -151,7 +151,7 @@ stops at kind → instances and a seat's sessions are reached from the panel, wh
 level and costs the card nothing else: the depth is still derived, and it is still one component.
 
 <a name="d9"></a>
-## D9 · Kitchen-sink's host names one organization, and every caller runs under it
+## D9 · Kitchen-sink's host names one organization, the fallback for every flow without a resolver of its own
 
 | | |
 |---|---|

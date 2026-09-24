@@ -4,7 +4,7 @@
 
 What was considered, what was chosen, and what each locks in. Three decisions are the product
 owner's: the hire door ([D1](#d1)), the scope ([D5](#d5)), and the one organization kitchen-sink
-runs as ([D6](#d6)). The rest are engineering calls,
+runs as ([D6](#d6)). One question, [H1](#h1), is open. The rest are engineering calls,
 recorded under [Decided, not asked](#decided-not-asked). The issue's Architect fences are locked
 input and are not reopened here: one navigator and depth from cardinality
 ([epic D8](../../epics/FIX-1455/DECISIONS.md#d8)), the organization from the principal or the
@@ -102,18 +102,19 @@ and the POC that settled it.
 - **What would change my mind:** as in D9. FIX-1503 lands before PR-B ships, or a deployment is
   reachable by people who must not hire.
 - **Cost of being wrong: low to moderate, and mostly reversible.** Reverting means removing one
-  resolver. Two things stay behind. Seats visitors hired remain until someone fires them. And on
-  a persistent store, conversations and channels recorded before PR-B belong to the old
-  organization and stop being reachable (POC N8). [PLAN → PR-B](PLAN.md#pr-plan) handles the
-  boot side of that.
+  resolver. Seats visitors hired remain until someone fires them. On a persistent store, records
+  written before PR-B belong to the old organization. PR-B makes the channels usable again (V19),
+  and whether earlier conversation history carries over is [open](#open).
 
 **How it is set** (engineering, [`poc/named-org/`](poc/named-org/README.md)). Kitchen-sink's
 runtime assembly gets one host-level `resolvePrincipal`. It returns one constant organization and
-one constant user and reads neither from the request (BP-031). Every flow that declares no
-resolver of its own resolves through it: the rail's flow, every seat, every channel. So the
-rail's hire, the rail's read, a seat's `discover` and the boot's reload all land in the same
-organization, and none of them has to be told which one. `workforce-admin` keeps its own
-credential-bound resolver ([E3](#e3)).
+one constant user and reads neither from the request (BP-031). **It is the host's fallback: every
+flow that declares no resolver of its own resolves through it**, which covers the rail's flow,
+every seat and every channel. So the rail's hire, the rail's read, a seat's `discover` and the
+boot's reload all land in the same organization, and none of them has to be told which one.
+**Two flows keep a resolver of their own, and neither splits D1** ([E3](#e3)).
+`workforce-admin` keeps its credential check, and its organization is pinned to the named one.
+`weekly-digest` keeps its own, but it never hires and never reads the roster.
 
 <a name="decided-not-asked"></a>
 ## Decided, not asked
@@ -142,17 +143,27 @@ credential-bound resolver ([E3](#e3)).
   source — so it is not a second ask. Engineering call, taken by the epic coordinator at this
   amendment.
 <a name="e3"></a>
-- **E3 · Where D6's organization is set, and what does not move with it.** It is one host-level
-  resolver passed to `createFlowState` in `apps/kitchen-sink/fsdev.config.ts`, not one resolver
-  per flow. Seats are minted from shared kinds that take no authentication option, so a
-  per-flow resolver would miss them, and `discover` would then read a different organization from
-  the one the rail hired into. The POC's N3 control shows exactly that. **`workforce-admin` does
-  not move.** Its organization still comes from the credential, so FIX-1475's two-customer story
-  stands. To fire rail and mara hires, an operator uses a token bound to the kitchen-sink
-  organization ([FIX-1527](https://linear.app/fixpoint-labs/issue/FIX-1527) BR-10).
-  **`weekly-digest` does not move either.** Its own resolver still wins, and its scheduled path
-  keeps `org_test`. It neither hires nor reads the roster, so it cannot split D1. **The user is a
-  constant too.** A resolver other than the framework's default turns on ownership checks for
+- **E3 · Where D6's organization is set, and the two flows that keep their own resolver.** It
+  is one host-level resolver passed to `createFlowState` in `apps/kitchen-sink/fsdev.config.ts`,
+  not one resolver per flow. It is the **fallback** for every flow without a resolver of its own.
+  Seats are minted from shared kinds that take no authentication option, so a per-flow resolver
+  would miss them, and `discover` would then read a different organization from the one the rail
+  hired into. The POC's N3 control shows exactly that. D1's invariant is about the rail's hire
+  and the rail's read. **Both run on the rail's own flow, which has no resolver, so both take the
+  fallback.** The two exceptions:
+  - **`workforce-admin` keeps its own resolver, and its organization is pinned.** Today a token's
+    organization is whatever its `WORKFORCE_ADMIN_TOKENS` entry names
+    (`apps/kitchen-sink/lib/workforce-admin-auth.ts:82`, returned at `:150`). The README's
+    example is `acme:dev-token`. A token bound anywhere else would fire into a roster the rail
+    never wrote, and it would miss every rail and mara hire (POC N5's red). So PR-B accepts only
+    entries that name `KITCHEN_SINK_ORG_ID`, and refuses the rest at boot, fail-closed and
+    logged, the way the shared-token collision is refused today (S10, V22). The credential
+    still authenticates the operator. FIX-1475's two-customer example goes for this app
+    ([EVOLUTION](EVOLUTION.md#named-org-review)).
+  - **`weekly-digest` keeps its own resolver.** Its scheduled path stays on `org_test`. It never
+    hires and never reads the roster, so it cannot split D1.
+
+  **The user is a constant too.** A resolver other than the framework's default turns on ownership checks for
   every read route. Those routes carry no body, so a user read from the body breaks the session
   it just created (N7). Engineering call, taken by the epic coordinator at this amendment.
 <a name="d4"></a>
@@ -215,7 +226,7 @@ named-organization amendment. Each of its legs has a planted control that was se
 | The hire sequence's `ctx.org` is the session's bound organization, and an action whose organization differs from its session's is refused | **CONFIRMED by execution** (N1, N2). The split control is refused with `Session … is bound to org globex but request supplied org kitchen-sink` (`packages/engine/src/context/createExecutionContext.ts:757`–`:759`). The earlier wording, *"including an unauthenticated session on the default one"*, was true of the binding and false of the hire, because the hire refuses that organization | [D1](#d1)'s "hire and read are one organization" |
 | One host-level resolver puts the rail, the seats and the boot's reload in one named organization. A rail hire is then read by the rail, listed by a seat's `discover`, reloaded after a restart, and released by an operator whose token names that organization | **CONFIRMED** (N1 to N5) | [D6](#d6), [E3](#e3) |
 | The capability's `fire` releases an address only when the registrar recorded it as roster-minted, provided the shared options route `unregister` through `isFromRoster` | **CONFIRMED** (N6). Without that guard, it released a registration the roster never made | FIX-1527's shared options object, [PLAN → Reuse](PLAN.md#reuse) |
-| The first named-organization boot over a store the shipped app wrote cannot open its channels | **CONFIRMED** (N8): `could not be opened — Request failed (403)` | PR-B's upgrade step ([PLAN](PLAN.md#pr-plan)) |
+| The first named-organization boot over a store the shipped app wrote cannot open its channels | **CONFIRMED** (N8): `could not be opened — Request failed (403)` | PR-B's upgrade step and V19. The history question is [open](#open) |
 
 ## How it got here
 
@@ -239,5 +250,30 @@ named-organization amendment. Each of its legs has a planted control that was se
 <a name="open"></a>
 ## Open
 
-**None.** The forks this spec carried are closed as [D5](#d5) and [D6](#d6), by the product
-owner.
+<a name="h1"></a>
+### H1 · On a deployment that already has data: carry earlier conversations into the new organization, or leave them behind?
+
+**Plain terms.** A kitchen-sink deployment with a persistent store has conversations and
+channels recorded under the old placeholder organization. After PR-B, the app runs as the named
+organization and cannot see those records. The channels themselves are rebuilt and work either
+way: PR-B has to guarantee that (V19). This question is only about the **history**. Either
+earlier conversations still show up, or the app starts with a clean slate.
+
+**The trade-off.** Carrying history over means a one-time rewrite of every stored record from one
+organization to another. That is a data migration in a reference app, and it moves records whose
+owner nobody verified. Leaving it behind costs whoever runs a persistent deployment their earlier
+chats and channel threads. No hired seat is lost, because no hire ever succeeded under the old
+organization.
+
+**Recommendation: leave it behind.** Kitchen-sink is a reference, and most copies run on the
+in-memory store, where there is nothing to carry. The persistent deployments are ours. A
+migration would be code nobody copies, written for data nobody depends on.
+
+**What would change my mind:** a kitchen-sink deployment whose conversation history someone
+outside the team is relying on, such as a demo environment with a customer's threads in it.
+
+**Cost of being wrong: low.** If we leave it behind and someone wanted it, the old records are
+still in the store, unread rather than deleted, so a migration can be written later. If we
+migrate and nobody wanted it, we have maintained a one-off script for nothing.
+
+The other forks this spec carried are closed as [D5](#d5) and [D6](#d6), by the product owner.

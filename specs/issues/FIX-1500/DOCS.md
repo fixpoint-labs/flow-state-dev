@@ -157,19 +157,27 @@ API table row:
 organization.)*
 
 > This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both are set in
-> `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request, so every page,
-> seat and channel lands in that organization and nobody calling the app can pick another. It is
+> `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request. It applies to
+> every flow that doesn't bring its own resolver, which means every page, seat and channel, so
+> nobody calling the app can pick another organization. It is
 > a stand-in for real sign-in, and it means **anyone who can open a deployed copy of this app can
 > hire and fire its seats**. If you deploy it somewhere other people can reach, put sign-in in
 > front of it or remove the hire paths first.
 
-*(PR-B. In the `workforce-admin` section, after the `WORKFORCE_ADMIN_TOKENS` example.)*
+*(PR-B. In the `workforce-admin` section: the example becomes `kitchen-sink:dev-token`, the
+address in the section's opening becomes `kitchen-sink.support.ada`, and this follows the example. Nothing here names a hire path PR-B doesn't ship.)*
 
-> A token bound to `kitchen-sink` administers the seats the rest of the app hires: its `fire`
-> releases a seat hired from the rail or by a seat's own `hire` tool. A seat the admin action
-> hires belongs to the operator who hired it and does not appear in the rail. A token bound to
-> any other organization, like `acme` above, administers that organization's seats, which this
-> app's pages never show.
+> The admin action has a credential of its own, but not an organization of its own. Every token
+> has to name `kitchen-sink`. An entry naming any other organization is refused when the app
+> starts, and the refusal is logged, so a token can never quietly administer an organization this
+> app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
+
+*(PR-D. In the `workforce-admin` section, after PR-B's paragraph. This is where the rail's hire
+lands, so the sentence ships with its path. The admin fire of mara's hires is already in
+FIX-1527's README section.)*
+
+> The admin action's `fire` also releases a seat hired from the rail, or by a seat's own `hire`
+> tool. A seat the admin action hires does not appear in the rail.
 
 *(PR-D. After the rail's own introduction, which FIX-1477's draft owns.)*
 
@@ -181,6 +189,7 @@ organization.)*
 
 Each operation publishes with the PR whose behaviour it describes. The `durable-hire.md`
 section and the workforce README went with PR-A, and the react README with PR-C. The kitchen-sink
-README's organization paragraph and admin note go with PR-B, and its rail paragraph with PR-D.
+README's organization paragraph and the pinned-token paragraph go with PR-B. The rail paragraph
+and the admin-fire sentence go with PR-D, because each names a path PR-D ships.
 Reconcile each against the built behaviour first, in particular the organization paragraph,
 which is a promise about who can do what in a deployed copy.

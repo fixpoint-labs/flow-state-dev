@@ -59,7 +59,7 @@ Replace the sentence that lists the seats:
 
 *(Replacement for the paragraph above, once FIX-1500's PR-B has landed.)*
 
-> **Mara hires in the app's one organization.** This app runs every request as the
+> **Mara hires in the app's one organization.** This app runs its pages and seats as the
 > `kitchen-sink` organization, so ask her in the browser and the seat is hired there, where the
 > rail and `discover` both see it. `fsdev run` is the exception: the CLI always runs as the
 > framework's development organization, whose name is not a legal seat address, so a hire from
