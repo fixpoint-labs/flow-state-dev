@@ -1,0 +1,22 @@
+# FIX-1459 · Evolution
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · **Evolution**
+
+None of these predecessors has a retained set on `main`; each is cited at its approved branch.
+
+| Prior intent and precise source | Treatment | Why / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| FIX-1394 ratify, "Ratified: **C**" and ER-2: one file, `PACKAGE.md`, with colocated `blocks/`, instructions and tools, no documents; source [`RATIFY.md` → Ratified: C](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-1394-matrix/spec/FIX-1394/RATIFY.md#ratified-c-scoped-to-instructions-and-tools) | **Retained** | Owner-approved; the ratify's probes showed it working on the real path | This set builds it | New convention; nothing existing moves |
+| FIX-1394 ratify, "What C actually adds": the reader compiles instructions into a **capability preset** a seat selects | **Amended**: instructions travel on the hire step's per-worker settings instead | A preset must be installed on the whole kind and switched off per worker (`default: []`), which the POC had to do by hand; the hire step already carries per-worker instructions (the team's), skills and blocks | [Decided, not asked](DECISIONS.md#decided-not-asked) · PLAN S3, S9 | Same observable result for the worker |
+| FIX-1394 ratify, the C dialect's `attach: [seat, library]` and on-demand activation in library mode | **Amended**: no `attach:` key; library mode is take-by-name, always on | Folder position already states scope; on-demand needs a mid-conversation grant nothing provides | [D2](DECISIONS.md#d2) | An on-demand mode can be added later without changing the file |
+| FIX-1394 ratify, "Decided · build it": keep the parse separate from the walk; the tool half has no run-time route | **Retained** | Owner's authorship constraint | PLAN S4 and its guardrail · BR-28 | — |
+| FIX-1394 D1, "A package *supplies* capability; the seat's own file still *grants* it"; source `origin/spec/FIX-1394:spec/FIX-1394/DECISIONS.md#d1`; and this ticket's own outcome, "a package naming a tool the seat doesn't grant fails loudly" | **Superseded**, pending the owner's card | FIX-1464, locked by the owner on 2026-09-19, makes choosing a grant and names this clash as open | [D1](DECISIONS.md#d1) | `tools: []` withholds as before; workers that chose tool-bearing presets without listing tools gain them (BR-4, BR-8) |
+| FIX-1388 D2 and BR-16: a seat picks presets, and selecting a tool-bearing preset without listing its tools does not grant them; source `origin/spec/FIX-1388:spec/FIX-1388/DECISIONS.md#d2`, `…/BUSINESS-RULES.md` | **D2 retained, BR-16 superseded** | Same as above; this is the half of FIX-1464 about presets | [D1](DECISIONS.md#d1) · PLAN S2, S13 | As above; plus a migration note on the capabilities page |
+| FIX-1393: a block that declares `tools:` drops a capability's catalog tools (core's fence) | **Retained** in core; the agent kind adds the chosen tools back itself | The fence protects every generator, not just workers. The grant change is a workforce rule | PLAN S2 | Core unchanged |
+| FIX-1416 D2: a `blocks/` folder registers a name; the seat's `tools:` grants its use, explicitly rejecting a folder that grants by itself | **Amended**: retained for a worker's own and team `blocks/`; a package's `blocks/` is registration **and** grant, because holding the package is the choice | D1 | BR-1 | A worker's own `blocks/` behaves exactly as today |
+| FIX-1464 (Explore, no spec): select implies tools; empty vs omitted open | **Absorbed** | Built here so the two rules never disagree; its open question answered | [D1](DECISIONS.md#d1) | FIX-1464 closes with this set if D1 holds |
+
+**One word moves.** The ratify used *attached* for always-on and *held* for activate-on-demand. This set has no on-demand mode, and uses *held* for a package a worker has, always on.
+
+Before implementation, compare these intents with current code: several are approved designs, and
+FIX-1416 in particular shipped stricter than its spec.
