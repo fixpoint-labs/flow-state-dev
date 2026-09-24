@@ -1,0 +1,53 @@
+--- a/apps/kitchen-sink/workforce/hire.ts
++++ b/apps/kitchen-sink/workforce/hire.ts
+@@ -16,6 +16,11 @@
+  * was asserted and untested (FIX-1429).
+  */
+ import {
++  createSeatHireCapability,
++  createWorkforceCapability,
++  HIRED_ROSTER_RESOURCE,
++  SEAT_INVENTORY_RESOURCE,
++  type HireOptions,
+   channelBoardIds,
+   channelInstances,
+   defineAgentWorkerFlow,
+@@ -30,6 +35,7 @@
+ import { dirname } from "node:path";
+ 
+ import notify from "./channel-notify";
++import { workforceRegistrar } from "../lib/workforce-registrar";
+ import { blocks, channelKinds, kinds, resourceModules, seatBlocks } from "./workforce.gen";
+ 
+ /**
+@@ -55,7 +61,20 @@
+  * of its keys in `tools:` can call it. The app decides what the catalog holds;
+  * each seat decides which of it to use, and a key nobody names reaches nobody.
+  */
+-const agent = defineAgentWorkerFlow({ uses: capabilities, catalog: blocks });
++const hireKinds: NonNullable<HireOptions["kinds"]> = { ...kinds };
++const seatHire = createSeatHireCapability({
++  kinds: hireKinds,
++  register: (seat, pin) => workforceRegistrar.registerFromRoster(seat, { pin }),
++  unregister: (id) => workforceRegistrar.unregister(id),
++  kindAt: (id) => workforceRegistrar.kindAt(id),
++});
++const discoverDoor = createWorkforceCapability({
++  roster: { workers: [], channels: [] },
++  inventory: { seats: SEAT_INVENTORY_RESOURCE },
++  hiredRoster: HIRED_ROSTER_RESOURCE,
++});
++const agent = defineAgentWorkerFlow({ uses: [...capabilities, seatHire, discoverDoor], catalog: blocks });
++hireKinds.agent = agent;
+ 
+ /**
+  * The kinds a seat may be hired into — generated, plus the built-in `agent`
+@@ -67,7 +86,7 @@
+  * a seat hired over `workforce-admin` would carry a different tool catalog from
+  * its file-declared neighbours for no reason anyone stated.
+  */
+-export const kitchenSinkKinds = { ...kinds, agent };
++export const kitchenSinkKinds = hireKinds;
+ 
+ /** This directory — the workforce root, read at run time the way Markdown always is. */
+ export const workforceRoot = dirname(fileURLToPath(import.meta.url));

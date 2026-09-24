@@ -1,0 +1,93 @@
+<svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels over kitchen-sink's agent kind. Today the kind carries the team's research capability and the desk-note block, its seats iris and otto name what they use, and no seat can hire; hiring happens only through the operator's token-guarded admin action. After, the same kind also carries seat-hire and discover. A new seat, mara, names hire and fire; iris and otto are unchanged and still cannot hire. Mara's hire writes a row to the same org roster the boot reload and the operator's fire already read, plus an inventory row discover lists. The hire passes an organization gate: under a named organization it goes through, under the development default organization every kitchen-sink seat request runs under today it is refused and nothing is written.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-old  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-new  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-in   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .arrow  { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .gate   { stroke:var(--gone); stroke-width:2; stroke-dasharray:5 3; }
+    .divider { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4; }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--ink-2)"/>
+    </marker>
+  </defs>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="20">TODAY</text>
+    <rect class="n-box" x="16" y="30" width="330" height="92" rx="6"/>
+    <text class="t-lbl" x="28" y="48">THE AGENT KIND · uses</text>
+    <rect class="n-old" x="28" y="56" width="140" height="26" rx="4"/>
+    <text class="t-s" x="38" y="73">research capability</text>
+    <rect class="n-old" x="178" y="56" width="156" height="26" rx="4"/>
+    <text class="t-s" x="188" y="73">catalog · desk-note</text>
+    <text class="t-s" x="28" y="108">no seat on it can hire</text>
+
+    <rect class="n-old" x="16" y="136" width="160" height="46" rx="5"/>
+    <text class="t-b" x="28" y="156">iris</text>
+    <text class="t-s" x="28" y="172">tools: [desk-summary]</text>
+    <rect class="n-old" x="186" y="136" width="160" height="46" rx="5"/>
+    <text class="t-b" x="198" y="156">otto</text>
+    <text class="t-s" x="198" y="172">tools: [desk-note]</text>
+
+    <rect class="n-in" x="16" y="206" width="330" height="46" rx="5"/>
+    <text class="t-b" x="28" y="226">operator admin action</text>
+    <text class="t-s" x="28" y="242">token → named org · the only way to hire</text>
+  </g>
+
+  <line class="divider" x1="370" y1="12" x2="370" y2="318"/>
+
+  <g id="after">
+    <text class="t-lbl" x="388" y="20">AFTER</text>
+    <rect class="n-box" x="388" y="30" width="536" height="92" rx="6"/>
+    <text class="t-lbl" x="400" y="48">THE SAME AGENT KIND · uses</text>
+    <rect class="n-old" x="400" y="56" width="100" height="26" rx="4"/>
+    <text class="t-s" x="410" y="73">research</text>
+    <rect class="n-old" x="508" y="56" width="100" height="26" rx="4"/>
+    <text class="t-s" x="518" y="73">desk-note</text>
+    <rect class="n-new" x="616" y="56" width="180" height="26" rx="4"/>
+    <text class="t-s" x="626" y="73">seat-hire · hire, fire</text>
+    <rect class="n-new" x="804" y="56" width="108" height="26" rx="4"/>
+    <text class="t-s" x="814" y="73">discover</text>
+    <text class="t-s" x="400" y="108">catalog offers hire and fire · a seat still has to name them</text>
+
+    <rect class="n-old" x="388" y="136" width="140" height="46" rx="5"/>
+    <text class="t-b" x="400" y="156">iris · otto</text>
+    <text class="t-s" x="400" y="172">unchanged · no hire</text>
+    <rect class="n-new" x="540" y="136" width="170" height="46" rx="5"/>
+    <text class="t-b" x="552" y="156">mara · new seat</text>
+    <text class="t-s" x="552" y="172">tools: [hire, fire]</text>
+
+    <path class="arrow" d="M590 182 L560 228" marker-end="url(#h)"/>
+    <path class="arrow" d="M660 182 L720 228" marker-end="url(#h)"/>
+    <line class="gate" x1="540" y1="206" x2="760" y2="206"/>
+    <text class="t-gone" x="400" y="203">org gate ·</text>
+    <text class="t-gone" x="400" y="216">default org refused</text>
+    <text class="t-gone" x="770" y="203">named org</text>
+    <text class="t-gone" x="770" y="216">passes</text>
+
+    <rect class="n-old" x="388" y="232" width="260" height="58" rx="5"/>
+    <text class="t-b" x="400" y="252">org roster · workforce/roster/*</text>
+    <text class="t-s" x="400" y="268">same rows the boot reload and</text>
+    <text class="t-s" x="400" y="282">the operator's fire already read</text>
+    <rect class="n-new" x="660" y="232" width="264" height="58" rx="5"/>
+    <text class="t-b" x="672" y="252">inventory · inventory/seats/*</text>
+    <text class="t-s" x="672" y="268">discover lists the hire here</text>
+    <text class="t-s" x="672" y="282">fire leaves the row · FIX-1540</text>
+
+    <text class="t-s" x="388" y="312">no new store · no new API · no new kind</text>
+  </g>
+</svg>
