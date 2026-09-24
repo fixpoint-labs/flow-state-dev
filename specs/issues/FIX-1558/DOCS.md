@@ -113,8 +113,8 @@ its evaluators carry their own.
 > const triage = sequencer({ name: "triage" }).step(department).step(pickTeam);
 > ```
 >
-> Here the leaves receive the evaluator's output rather than the original input. Add
-> `.connectInput(...)` on a leaf if it needs the ticket.
+> Here the leaves receive the evaluator's answers, not the ticket, so write them to work from
+> the answer.
 >
 > **When the call fails.** A provider error or a refused model fails the router with that error.
 > It doesn't go to `ambiguous`, because an outage isn't the model being unsure. To send failures
@@ -147,7 +147,7 @@ selector only reads the gate's verdict, so resume replays the answer instead of 
 
 ## CREATE · `.changeset/cascading-router.md`
 
-> `minor` for `@flow-state-dev/core`.
+> `patch` for `@flow-state-dev/core`.
 >
 > New utility: `utility.cascadingRouter` (FIX-1558). Walks a tree of `evaluator` choice questions
 > and runs a block at the leaf. An edge opens only on a matching answer with the model's reported

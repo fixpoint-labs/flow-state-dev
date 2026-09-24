@@ -30,6 +30,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | **Instead of** | The lab's shape: the cascade takes `model`, writes each level's choice question from the branch descriptions, and calls evaluate inside the router |
 | **Because** | Epic D3: a consumer takes an evaluator block and never names a model, because the block is where a model is chosen and refused. Each level being its own block also gives each level its own model and `state`, its own trace row, and replay on resume. A router that calls a model inside its selector breaks the router's purity contract: on resume it asks again and may pick differently (`docs/architecture/execution-and-errors.md`) |
 | **Locks in** | A level is `{ ask, on, branches }`: an evaluator, the id of one of its choice questions, and one branch per option. Branch keys are typed against that question's options, so a typo fails to compile. The cascade owns no model, no resolver and no SDK import |
+| **How the input rides along** | The evaluator returns only its answers, yet every leaf gets the ticket. Each level is a sequencer: its evaluator step, then the gate step, which reads the level's own input from `ctx.parent.input` (public, on every block's context) and returns `{ input, verdict }`, then a router whose leaves unwrap `input`. A deeper level takes that envelope and unwraps it on its evaluator step. The cascade is a sequencer around the root level, because the steps of a run's first block see no `ctx.parent.input`. Proved end to end on #2206 by the [carrier POC](poc/input-carrier/README.md), resume included |
 
 **What would change my mind:** authors consistently writing one-question evaluators only to feed
 a cascade. Then a `question:` shorthand that builds that evaluator is worth adding, and it's additive.
@@ -80,6 +81,9 @@ low-confidence routes they didn't expect. Then a required floor is the fix, and 
 | Extending `intentRouter` with an evaluator option | One level, a self-reported score, and it throws with no fallback. The tree and the fail-closed exit are the point |
 | Passing the reason to the `ambiguous` block | Changes the block's input from the cascade's own. The trace carries it. Follow-up if review queues need it |
 | Score or boolean edges | A choice with bands says the same thing and keeps one gate |
+| Carrying the input on a `.parallel()` rail beside the evaluator | The public sequencer has no pass-through rail; supplying one takes an identity handler (AGENTS.md) |
+| One handler that calls the evaluator and returns `{ input, answers }`, as `intentRouter` does | The evaluator stops being its own traced step, so resume asks the model again. It is the deviation `intentRouter` signs with `asRuntime` |
+| Keeping the input in sequencer state with a `.tap` per level | Works in principle, but adds a step and a state schema to every level for what the gate reads for free. Not tried |
 
 <a name="settled"></a>
 ## Settled
@@ -91,11 +95,20 @@ low-confidence routes they didn't expect. Then a required floor is the fix, and 
   when the provider's metadata carries logprobs; Jev's library fills confidence from its API and
   drops it when the API sends `null`. The planted control fails as it should. So the epic's D2
   holds: on those adapters every edge lands on `ambiguous`.
+- **A leaf can receive the cascade's original input with the public API, and each evaluator
+  stays its own traced step.** **CONFIRMED** on #2206's branch by the POC
+  ([`poc/input-carrier`](poc/input-carrier/README.md)): a leaf two levels down gets the ticket,
+  as the action's root block and under `testBlock` too; a suspended leaf resumes without calling
+  either evaluator again. Its two controls pin the two traps: leaves without the unwrap get the
+  envelope, and a level run as the first block of a run sees no input.
 
 ## How it got here
 
 - **Draft** — framed as the one place that decides on an evaluator's answer; levels are
   author-built evaluators read through one pure gate, errors propagate, no default floor; one PR
   in core plus a real-model goal for epic leg (c).
+- **Review round 1** (Codex) — the draft's `.parallel()` carrier couldn't be built with the
+  public API; replaced by the gate reading `ctx.parent.input`, proved by a POC ([D1](#d1)).
+  Changeset `patch`, not `minor`. V4 narrowed to what can be checked at build.
 
 **Open: none.**
