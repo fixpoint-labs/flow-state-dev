@@ -323,8 +323,13 @@ export async function handleListActiveRequests(
   };
   // An entry owned by an instance with a resolver of its own is judged on that
   // resolver's word instead, the one its request routes take.
+  //
+  // Both verdicts judge the caller's identity, and one identity can hold rows
+  // in several tenants, so the tenant is checked first and on its own
+  // (FIX-682). `listAll` spans every tenant; nothing upstream narrows it.
   const entries: ActiveRequestEntry[] = [];
   for (const entry of all) {
+    if (!tenantMatches(entry.tenantId, ctx.tenantId)) continue;
     const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, entry);
     if (own ?? hostRuleAdmits(entry)) entries.push(entry);
   }

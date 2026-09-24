@@ -79,17 +79,24 @@ async function boot(hostResolver?: ResolvePrincipalFn) {
   };
   const { stores } = await state.getRuntime();
 
-  const headers = (token?: string): Record<string, string> => ({
+  const headers = (token?: string, tenant?: string): Record<string, string> => ({
     "content-type": "application/json",
     ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+    ...(tenant === undefined ? {} : { "x-tenant-id": tenant }),
   });
 
   /** Open a session on `flowId` as `token`; returns the status and the session id. */
-  const open = async (flowId: string, sessionId: string, token?: string, userId = OPERATOR) => {
+  const open = async (
+    flowId: string,
+    sessionId: string,
+    token?: string,
+    userId = OPERATOR,
+    tenant?: string
+  ) => {
     const response = await router.POST(
       new Request(`http://test/api/flows/${flowId}/sessions`, {
         method: "POST",
-        headers: headers(token),
+        headers: headers(token, tenant),
         body: JSON.stringify({ sessionId, userId }),
       }),
       { params: { path: [flowId, "sessions"] } }
@@ -98,24 +105,24 @@ async function boot(hostResolver?: ResolvePrincipalFn) {
   };
 
   /** `GET /api/flows/<path>` as `token`: the status and the parsed body. */
-  const get = async (path: string[], token?: string) => {
+  const get = async (path: string[], token?: string, tenant?: string) => {
     const response = await router.GET(
-      new Request(`http://test/api/flows/${path.join("/")}`, { headers: headers(token) }),
+      new Request(`http://test/api/flows/${path.join("/")}`, { headers: headers(token, tenant) }),
       { params: { path } }
     );
     return { status: response.status, json: (await response.json()) as Record<string, unknown> };
   };
 
   /** The session listing as `token`: status and the sorted session ids. */
-  const sessions = async (token?: string) => {
-    const { status, json } = await get(["sessions"], token);
+  const sessions = async (token?: string, tenant?: string) => {
+    const { status, json } = await get(["sessions"], token, tenant);
     const rows = (json.sessions ?? []) as { id: string }[];
     return { status, ids: rows.map((row) => row.id).sort() };
   };
 
   /** The active-request listing as `token`: status and the sorted request ids. */
-  const active = async (token?: string) => {
-    const { status, json } = await get(["active-requests"], token);
+  const active = async (token?: string, tenant?: string) => {
+    const { status, json } = await get(["active-requests"], token, tenant);
     const rows = (json.entries ?? []) as { requestId: string }[];
     return { status, ids: rows.map((row) => row.requestId).sort() };
   };
@@ -123,7 +130,7 @@ async function boot(hostResolver?: ResolvePrincipalFn) {
   /** An in-flight request owned by `flowId`, as `runAction` registers one. */
   const running = async (
     requestId: string,
-    owner: { flowId: string; flowKind: string; userId: string; orgId: string }
+    owner: { flowId: string; flowKind: string; userId: string; orgId: string; tenantId?: string }
   ) => {
     const now = Date.now();
     await stores.activeRequests.register({
@@ -134,6 +141,7 @@ async function boot(hostResolver?: ResolvePrincipalFn) {
       actionName: "ping",
       userId: owner.userId,
       orgId: owner.orgId,
+      ...(owner.tenantId === undefined ? {} : { tenantId: owner.tenantId }),
       source: "http",
       startedAt: now,
       lastHeartbeatAt: now,
@@ -269,5 +277,86 @@ describe("with a host resolver, the listings show a seat's rows to the caller it
     expect(await h.sessions()).toEqual({ status: 200, ids: ["s-app"] });
     expect(await h.active()).toEqual({ status: 200, ids: ["r-app"] });
     expect(await h.sessions("tok-bravo")).toEqual({ status: 200, ids: ["s-app"] });
+  });
+});
+
+describe("the listings stay inside the caller's tenant", () => {
+  const TENANT_A = "tenant-a";
+  const TENANT_B = "tenant-b";
+
+  /**
+   * One seat and one open flow, each with a session and an in-flight request
+   * in both tenants, owned by the same user and organization. Only the tenant
+   * tells the two apart, so an owner check alone cannot.
+   */
+  async function bootTwoTenants(hostResolver?: ResolvePrincipalFn) {
+    const h = await boot(hostResolver);
+    h.state.register(seatWith("acme.support", tokenResolver({ "tok-acme": "acme" })), {
+      pin: ACME_PIN,
+    });
+    const appOrg = hostResolver === undefined ? "__fsd_default_org__" : "acme";
+    for (const tenant of [TENANT_A, TENANT_B]) {
+      expect(await h.open("acme.support", `s-seat-${tenant}`, "tok-acme", OPERATOR, tenant)).toBe(201);
+      expect(await h.open("app", `s-app-${tenant}`, undefined, VISITOR, tenant)).toBe(201);
+      await h.running(`r-seat-${tenant}`, {
+        flowId: "acme.support",
+        flowKind: "seat",
+        userId: OPERATOR,
+        orgId: "acme",
+        tenantId: tenant,
+      });
+      await h.running(`r-app-${tenant}`, {
+        flowId: "app",
+        flowKind: "app",
+        userId: VISITOR,
+        orgId: appOrg,
+        tenantId: tenant,
+      });
+    }
+    return h;
+  }
+
+  it("lists a seat's in-flight requests from the caller's tenant only", async () => {
+    const h = await bootTwoTenants();
+
+    expect(await h.active("tok-acme", TENANT_A)).toEqual({
+      status: 200,
+      ids: ["r-app-tenant-a", "r-seat-tenant-a"],
+    });
+  });
+
+  it("lists an open flow's in-flight requests from the caller's tenant only", async () => {
+    const h = await bootTwoTenants();
+
+    expect(await h.active(undefined, TENANT_A)).toEqual({ status: 200, ids: ["r-app-tenant-a"] });
+  });
+
+  it("lists the host principal's in-flight requests from the caller's tenant only", async () => {
+    const h = await bootTwoTenants(() => ({ userId: VISITOR, orgId: "acme" }));
+
+    expect(await h.active(undefined, TENANT_A)).toEqual({ status: 200, ids: ["r-app-tenant-a"] });
+    expect(await h.active("tok-acme", TENANT_A)).toEqual({
+      status: 200,
+      ids: ["r-app-tenant-a", "r-seat-tenant-a"],
+    });
+  });
+
+  it("lists sessions from the caller's tenant only, on every path", async () => {
+    const mixed = await bootTwoTenants();
+    expect(await mixed.sessions("tok-acme", TENANT_A)).toEqual({
+      status: 200,
+      ids: ["s-app-tenant-a", "s-seat-tenant-a"],
+    });
+    expect(await mixed.sessions(undefined, TENANT_A)).toEqual({ status: 200, ids: ["s-app-tenant-a"] });
+
+    // With a host resolver, `tok-acme` names someone other than the host
+    // principal, so the store query runs unscoped by owner. It stays scoped
+    // by tenant.
+    const hosted = await bootTwoTenants(() => ({ userId: VISITOR, orgId: "acme" }));
+    expect(await hosted.sessions("tok-acme", TENANT_A)).toEqual({
+      status: 200,
+      ids: ["s-app-tenant-a", "s-seat-tenant-a"],
+    });
+    expect(await hosted.sessions(undefined, TENANT_A)).toEqual({ status: 200, ids: ["s-app-tenant-a"] });
   });
 });

@@ -25,6 +25,7 @@ import {
 } from "./route-utils";
 import {
   resolveSessionStorageKey,
+  tenantMatches,
   toBareSessionId
 } from "../stores/scope-keys";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
@@ -226,8 +227,13 @@ export async function handleListSessions(
   // session and action doors take: in a mixed app `allowed` would withhold it
   // from everyone, and with a host resolver `principal` may not be who that
   // instance says the caller is.
+  //
+  // The store query is tenant-scoped on every path, scoped or not. The check
+  // is repeated per row so neither verdict can admit a row from another tenant
+  // (FIX-682) if that ever stops being true.
   const visible: SessionRecord[] = [];
   for (const s of sessions) {
+    if (!tenantMatches(s.tenantId, ctx.tenantId)) continue;
     const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, s);
     if (own ?? hostRuleAdmits(s)) visible.push(s);
   }
