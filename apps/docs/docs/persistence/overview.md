@@ -190,7 +190,7 @@ A seat keeps what it saves for a person under a user-scope key for its organizat
 Copying is optional and offline, with writers quiesced and a backup taken, as in the procedure above. It copies only data you can show a seat wrote.
 
 1. **List the keys.** For each seat kind, the user-scoped resources and collections it declares without `flowIsolation: true`. Strike the keys a flow that is not a hired seat also declares, and the person's `users` row. Those stay where they are, so the seat starts without them. Copy a struck key only if your own records show a seat wrote it.
-2. **List the people and their organizations.** Hired seat addresses start with their organization (`acme.research`, `acme.~alice.research`). Include seats you have since fired: their addresses are still in `sessions.flow_id`, so `SELECT DISTINCT flow_id FROM sessions WHERE flow_id LIKE 'acme.%'` lists every address used in `acme`, then keep the ones that were hired seats.
+2. **List the people and their organizations.** Hired seat addresses start with their organization (`acme.research`, `acme.~alice.research`). Include seats you have since fired. Their addresses remain in `sessions.flow_id`, so `SELECT DISTINCT flow_id FROM sessions WHERE flow_id LIKE 'acme.%'` lists every address used in `acme`. Keep the ones that were hired seats.
 
    ```sql
    SELECT user_id, COUNT(DISTINCT org_id) AS orgs, GROUP_CONCAT(DISTINCT org_id) AS which
