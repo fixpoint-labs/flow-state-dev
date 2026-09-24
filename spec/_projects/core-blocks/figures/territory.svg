@@ -1,0 +1,61 @@
+<svg viewBox="0 0 940 332" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The territory: Core Blocks owns new core block kinds, today the evaluator as the fifth kind beside generator, and the utilities that compose them, today cascadingRouter, which fails closed. Consumer seams in skill activation, index-time facets and memory capture take an evaluator when present. Below the fence is the substrate assembled but owned elsewhere: the AI SDK evaluate call, the model registry, and the four existing kinds. To the right, outside the project: the Evaluation System test harness, a dispatcher core kind, a System One package, and a parallel Decisions client. The fence is one test: does it need a model call no existing kind can make?">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-seam { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-out  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 4; fill:none; }
+    .t-fence{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="owned">
+    <rect class="n-own" x="16" y="16" width="620" height="100" rx="6"/>
+    <text class="t-lbl" x="32" y="36">THIS PROJECT · CORE KINDS AND THE UTILITIES THAT COMPOSE THEM</text>
+    <text class="t-b"  x="32" y="60">evaluator · the fifth core kind, peer of generator</text>
+    <text class="t-s"  x="32" y="78">state + questions → typed answers, over the AI SDK evaluate call</text>
+    <text class="t-b"  x="32" y="100">cascadingRouter · a utility, fails closed; the tree lives in code</text>
+  </g>
+
+  <g id="seams">
+    <rect class="n-seam" x="16" y="128" width="620" height="54" rx="6"/>
+    <text class="t-lbl" x="32" y="148">CONSUMER SEAMS · INSTALLED IN OTHER PACKAGES, PREFER-WHEN-PRESENT</text>
+    <text class="t-s"  x="32" y="170">skill activation tier 3 · index-time facets · memory capture</text>
+  </g>
+
+  <g id="not-here">
+    <rect class="n-out" x="656" y="16" width="268" height="166" rx="6"/>
+    <text class="t-lbl" x="672" y="36">NOT HERE</text>
+    <text class="t-out" x="672" y="60">Evaluation System · test-eval harness</text>
+    <text class="t-out" x="672" y="82">dispatcher as a core kind</text>
+    <text class="t-out" x="672" y="104">a System One package</text>
+    <text class="t-out" x="672" y="126">a parallel Decisions client</text>
+    <text class="t-out" x="672" y="148">RAG as the resource-search story</text>
+    <text class="t-s"   x="672" y="170">the handler extender keeps dispatch</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M16 206 H924"/>
+    <text class="t-fence" x="16" y="200">Does it need a model call no existing kind can make?  Yes → a core kind, above.  No → an extender or utility.</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="n-sub" x="16" y="222" width="908" height="94" rx="6"/>
+    <text class="t-lbl" x="32" y="242">SUBSTRATE · ASSEMBLED HERE, OWNED ELSEWHERE</text>
+    <text class="t-b"  x="32" y="266">AI SDK experimental_evaluate · the provider:model registry</text>
+    <text class="t-b"  x="32" y="290">handler · generator · sequencer · router</text>
+    <text class="t-s"  x="32" y="308">the four kinds stay as they are; nothing here migrates onto evaluate wholesale</text>
+  </g>
+</svg>
