@@ -90,5 +90,6 @@ one in the code that pays it.
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-09-24 | ccb971b64 | n/a | PASS | FIX-1564: BR-17's positive half now goes through the same router as the refusal, carrying the lab's verified bearer on a fresh session, and is graded on the seat's own facts. Before this it was a direct `runAction` that never reached the resolver, so a door that refused everything passed. Three red states each go red: resolver refuses every bearer, bearer dropped (401), org-less probe given the bearer (answered, not refused). All seven legs green; all five controls red. |
 | 2026-09-22 | c76ac5969 | n/a | PASS | Option 1 (FIX-1515): lab host wires a fail-closed verified principal. Org-less HTTP read is 401 with "verified organization"; same read with an org lands. All seven legs green; all five controls red, each on clauses traceable to its one perturbation. |
 | 2026-09-17 | 4d7a5749f | n/a | PASS | All seven legs green; all five controls red, each on clauses traceable to its one perturbation. |
