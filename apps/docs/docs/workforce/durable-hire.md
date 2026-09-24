@@ -44,7 +44,7 @@ The files on this page go in your app's own source tree, under `src/flows/`, whe
 
 A hire writes durable state that belongs to an organization, so the organization has to come from something the framework can trust, not from the request body. Configure [`resolvePrincipal`](../server/authentication.md) on the flow and the action's `orgId` comes from there. An `orgId` in the body is ignored, so a caller can't hire into another organization by naming it in the input.
 
-A hired seat is pinned to that organization, and every request to it is checked against the pin. The principal for that check comes from the seat's own `authentication` when it has one, and from the host's otherwise. With neither, the default resolver supplies no verified principal, and opening the seat answers `404 Unknown flow` even for the person who hired it. So put the resolver that verified the hire on the seat itself, where you register it, as `registerSeat` [below](#reaching-the-flowstate) does. A host-level resolver would also reach the seat, but it applies to every flow the host serves, so an admin credential check there locks out callers of your other flows who don't carry that credential.
+A hired seat is pinned to that organization, and every request to it is checked against the pin. The principal for that check comes from the seat's own `authentication` when it has one, and from the host's otherwise. With neither, every caller counts as the default organization, which never matches the pin, so opening the seat answers `404 Unknown flow` even for the person who hired it. So put the resolver that verified the hire on the seat itself, where you register it, as `registerSeat` [below](#reaching-the-flowstate) does. The seat then answers only callers that resolver accepts. If members should call the seat with their own sign-in, register it with a resolver that verifies them and names the same organization. Don't install it host-wide instead: a host-level resolver applies to every flow the app serves.
 
 ```ts title="src/flows/workforce-admin/authentication.ts"
 import type { AuthenticationConfig } from "@flow-state-dev/core/types";
@@ -176,7 +176,7 @@ export default workforceAdmin();
 | `allowKinds?` | The subset of `kinds` these handlers may mint. |
 | `channelBoards?` | Channel board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
 
-The seats these handlers and the `seat-hire` tools hire are always org-visible: every member of the organization can call one, and its roster row, `instructions` included, is readable by a browser in that organization. For a seat only one member can reach, write the hire yourself as in [Hiring a seat only one member can reach](#hiring-a-seat-only-one-member-can-reach).
+The seats these handlers and the `seat-hire` tools hire are always org-visible: pinned to the organization and no user, so any caller the seat's resolver places in that organization can call one, and its roster row, `instructions` included, is readable by a browser in that organization. For a seat only one member can reach, write the hire yourself as in [Hiring a seat only one member can reach](#hiring-a-seat-only-one-member-can-reach).
 
 Both handlers take the organization from the principal your `resolvePrincipal` returns for the session, as [above](#the-organization-has-to-come-from-the-credential). A session whose principal names no organization, which includes every session on a flow with no `resolvePrincipal`, belongs to the framework's default organization. That id can't start a seat address, so every hire there is refused before anything is written:
 
@@ -369,7 +369,7 @@ The roster is organization-scoped, so that `getOptional` is also the fence. Anot
 
 ### Hiring a seat only one member can reach
 
-The hire above is org-visible. Every member of the organization can call the seat, and its row is one a browser in that organization can read. To hire a seat that belongs to one member, change the hire like this, in the handler and in `flow.ts`:
+The hire above is org-visible: the seat is pinned to the organization and no user, and its row is one a browser in that organization can read. With `registerSeat` as written, the seat answers any caller holding that organization's admin token. To let members call it with their own sign-in, register it with a resolver that verifies them, as described [above](#the-organization-has-to-come-from-the-credential). To hire a seat that belongs to one member, change the hire like this, in the handler and in `flow.ts`:
 
 - **Stamp the owner on the row.** Pass `ownerUserId` to `toHiredSeatRow`, and keep `owningOrgId`, the organization the hire runs under: that stamp is what lets a reload refuse the row if it is ever read under another organization. `hiredSeatManifest` then pins the record to that user as well as the organization, and registering with that pin is what closes the seat to everyone else.
 - **Put the owner in the address.** `seatAddress(orgId, seatId, userId)` returns `<orgId>.~<user>.<seatId>`, so two members can each hire `research` without colliding.
@@ -422,11 +422,12 @@ Once registered, the seat answers its owner only. Any other member gets `404 Unk
 
 ## Calling a hired seat
 
-The seat answers immediately, on the same route as any other flow. Its address carries the organization that hired it:
+The seat answers immediately, on the same route as any other flow. Its address carries the organization that hired it. With `registerSeat` as written, it answers the admin token that hired it:
 
 ```bash
 curl -X POST localhost:3000/api/flows/acme.support.ada/actions/answer \
   -H 'content-type: application/json' \
+  -H "authorization: Bearer $ADMIN_TOKEN" \
   -d '{"userId":"you","input":{"note":"is the printer fixed?"}}'
 ```
 
