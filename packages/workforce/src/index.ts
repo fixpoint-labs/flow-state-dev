@@ -54,12 +54,14 @@ export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export {
   createSeatHireCapability,
+  createSeatHireBlocks,
   hiredSeatOwnerPinFromRosterOwner,
   registerHiredSeat,
   HIRED_ROSTER_RESOURCE,
   SEAT_HIRE_CAPABILITY,
   SEAT_INVENTORY_RESOURCE,
   type HiredSeatOwnerPin,
+  type SeatHireBlocks,
   type SeatHireCapabilityOptions,
 } from "./seat-hire-capability";
 export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
