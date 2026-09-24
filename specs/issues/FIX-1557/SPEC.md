@@ -34,7 +34,11 @@ write path, once per body, and the search path has none.
     pattern: "tickets/*",
     scope: "user",
 -   stateSchema: z.object({ title: z.string() }),
-+   stateSchema: z.object({ title: z.string(), facets: ticketFacets.nullable().default(null) }),
++   stateSchema: z.object({
++     title: z.string(),
++     facets: ticketFacets.nullable().default(null),
++     indexedAs: z.string().nullable().default(null),  // which write the facets may describe
++   }),
 +   reactTo: { contentUpdated: indexFacets(triage) },  // triage: the app's evaluator block
   });
 
@@ -52,7 +56,7 @@ flowchart LR
   W["body written · any writer in a flow turn"] --> R["collection reaction"]
   R -->|"blocking"| C["clear facets"]
   R -->|"side chain"| E["app's evaluator · one call"]
-  E -->|"body unchanged"| S["store answers as facets"]
+  E -->|"still the latest write · one atomic update"| S["store answers as facets"]
   E -.->|"fails or body moved on"| N["leave facets empty"]
   Q["search"] --> F["filter stored facets · no model"]
 ```

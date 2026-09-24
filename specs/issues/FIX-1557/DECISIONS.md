@@ -43,8 +43,9 @@ doesn't fire. That is a missing primitive, not a recipe.
 | | |
 |---|---|
 | **Instead of** | Classifying inside the save, so a failed evaluate fails the write turn · or leaving the old facets in place until new ones arrive |
-| **Because** | A reaction is atomic by default: a throw fails the writing turn, after the body is already stored. An outage would fail the save and leave old answers on new text, the one wrong result a deterministic search can't detect. Clearing first makes every failure look the same: no facets. The side chain keeps the save independent of the model. The current-body check stops a slow classification landing over a newer write |
-| **Locks in** | A document written during an outage is invisible to facet search, not wrong in it, until reindex runs. The side chain drains before the turn ends, so the next turn's search sees the facets. The failure shows in the trace, not the user's stream |
+| **Because** | A reaction is atomic by default: a throw fails the writing turn, after the body is already stored. An outage would fail the save and leave old answers on new text, the one wrong result a deterministic search can't detect. Clearing first makes every failure look the same: no facets. The side chain keeps the save independent of the model. The current-body rule stops a slow classification landing over a newer write |
+| **How "current" is enforced** | Checking the body and then writing facets is two steps, and a newer write can land between them: its reaction clears the facets, the older side chain restores its own, and if the newer classification then fails the stale answers stay (review on #2210). So every body write gets a **generation token**: the reaction's blocking step writes a fresh one in the same state write that clears `facets`. The side chain stores facets only through `ref.updateState(s => s.indexedAs === mine ? { ...s, facets } : s)`. That updater runs inside the resource CAS driver (`runResourceCAS`, `packages/engine/src/stores/resource-cas.ts`) against the stored row and re-runs against the winner's row on a version conflict, so the token check and the write commit together or not at all. **No new primitive:** `updateState` ships on every collection instance. The blocking step writes the token before it reads the body, so the reaction whose token is current also read the body last: two concurrent turns whose reactions land out of order still classify the newest body. Between a newer body landing and its reaction's clear, a search can briefly see the older answers; that reaction runs before its turn completes. If it fails, the write turn fails and says so |
+| **Locks in** | A document written during an outage is invisible to facet search, not wrong in it, until reindex runs. The side chain drains before the turn ends, so the next turn's search sees the facets. The failure shows in the trace, not the user's stream. The collection's state carries `indexedAs` beside `facets`. The atomic guarantee is the store's: memory, SQLite and Postgres check the version on the row; the filesystem store locks each record in-process only, so two processes over one directory can still interleave |
 
 **What would change my mind:** an app where a save must not complete unless it is classified (a
 compliance label, say). Then that app binds the same reaction blocking, and the docs say how.
@@ -94,11 +95,21 @@ answers is dead weight, and dropping them at write is cheaper.
   (`packages/engine/src/context/reactive-dispatch.ts`); the resources docs say the same.
 - **A side-chain failure doesn't fail the turn, and the side chain drains before the turn ends.**
   **CONFIRMED** from `apps/docs/docs/sequencers/composing-blocks.md` and the reactive-blocks page.
+- **A collection instance's `updateState` is a conditional write.** **CONFIRMED** from `main`: it
+  runs the updater through `persistNamespaceInstanceState` into `runResourceCAS`, which hands it
+  the stored row, writes at that row's version, and on a conflict refreshes and re-runs it
+  (`packages/engine/src/context/resource-registry.ts`, `packages/engine/src/stores/resource-cas.ts`).
+  A `contentUpdated` payload carries only `key` and `ref`, no content version
+  (`reactive-dispatch.ts`), so the token is minted by the reaction, not read from the write.
 
 ## How it got here
 
 - **Draft** — framed as the one consumer with no host package; shipped as a recipe on shipped
   primitives with a runnable example and leg (e); clear-then-classify beside the write; answers
   stored as given.
+- **Review round 1** — Codex found the current-body check and the facet write were two steps a
+  newer write could land between, restoring stale facets that survive a failed reclassify. D2 now
+  stores through a generation token (`indexedAs`) and a CAS-conditional `updateState`, with the
+  token written before the body is read. BR-5 and V9 cover it.
 
 **Open: none.**

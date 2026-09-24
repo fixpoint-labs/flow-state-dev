@@ -16,7 +16,7 @@ ones this issue owns.
 | BR-2 | Facets are stored | Each is FSD's answer as the evaluator returned it: the choice, score or probability, plus `confidence` and `probabilities` only when the model gave them. Nothing added, nothing removed ([D3](DECISIONS.md#d3), ER-3) | V1 · V4 |
 | BR-3 | A body is rewritten | The old facets are cleared before the new classification starts, in the blocking part of the reaction ([D2](DECISIONS.md#d2)) | V3 |
 | BR-4 | The evaluator fails or is refused while classifying | The write turn still succeeds. The document has no facets. The failure is in the trace, not the user's stream | V3 |
-| BR-5 | The body is written again before the first classification finishes | Only answers about the current body are stored. A classification of a superseded body is discarded | V5 |
+| BR-5 | The body is written again before the first classification finishes, at any point in it: while the model runs, or between the check that the body is current and the facet write | Only answers about the current body are stored. A classification of a superseded body is discarded, and no interleaving of the two writes brings its answers back after the newer write cleared them. ([D2](DECISIONS.md#d2)) | V5 · V9 |
 | BR-6 | Storing facets writes the document's state | No classification runs because of it: a state write never fires the content reaction | V6 |
 | BR-7 | A document is created with state but no body | Nothing is classified until a body is written | V1 |
 

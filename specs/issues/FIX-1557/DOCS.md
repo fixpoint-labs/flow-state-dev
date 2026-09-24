@@ -43,7 +43,11 @@ Replace the paragraph's last two sentences with:
 >   const tickets = defineResourceCollection({
 >     pattern: "tickets/*",
 >     scope: "user",
->     stateSchema: z.object({ title: z.string(), facets: facetsSchema.nullable().default(null) }),
+>     stateSchema: z.object({
+>       title: z.string(),
+>       facets: facetsSchema.nullable().default(null),
+>       indexedAs: z.string().nullable().default(null),
+>     }),
 >     reactTo: { contentUpdated: indexFacets(triage) },
 >   });
 >   // … actions: write, search, reindex
@@ -66,8 +70,11 @@ Replace the paragraph's last two sentences with:
 > - **It classifies on a side chain.** A failed or refused model call shows up in the trace
 >   and doesn't fail the save. The side chain finishes before the turn ends, so the next turn's
 >   search sees the new facets.
-> - **It stores only answers about the current body.** If the body is written again while the
->   first classification is running, the first answers are thrown away.
+> - **It stores only answers about the current body.** Each write stamps the document with a
+>   fresh token, and the answers are stored with `updateState`, which checks that token and
+>   writes in one step. If the body is written again while the first classification is running,
+>   the first answers are thrown away. Reading the body and then calling `patchState` looks the
+>   same and isn't: a second write can land between the two.
 >
 > Storing the facets is a state write, so it doesn't fire `contentUpdated` again. No loop.
 >

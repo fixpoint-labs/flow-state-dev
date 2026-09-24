@@ -13,8 +13,8 @@ package changes; no changeset.
 | ID | Where · role | Change | Rules |
 |---|---|---|---|
 | S1 | `examples/guides/index-time-facets/` · package scaffold | New private example, shaped like `examples/guides/board-lifecycle/`: `package.json`, `fsdev.config.ts`, `vitest.config.ts`, `tsconfig.json`, `README.md`. The config builds the evaluator (model named here, once) and passes it to the flow | BR-17 |
-| S2 | the example · the collection | A user-scoped collection with the body as content and a nullable `facets` field in state (BP-023). No client content-edit grant. `reactTo.contentUpdated` bound to S3 | BR-1 BR-6 BR-7 BR-16 |
-| S3 | the example · the reaction | A sequencer on the content-change payload. Blocking: clear `facets`, read the body. Side chain: the passed evaluator on the body, then store its `answers` as `facets` only if the body still equals what was classified | BR-1 to BR-5 |
+| S2 | the example · the collection | A user-scoped collection with the body as content, a nullable `facets` field and a nullable `indexedAs` generation token in state (BP-023). No client content-edit grant. `reactTo.contentUpdated` bound to S3 | BR-1 BR-6 BR-7 BR-16 |
+| S3 | the example · the reaction | A sequencer on the content-change payload. Blocking: one state write that clears `facets` and sets a fresh `indexedAs`, and only then read the body. Side chain: the passed evaluator on the body; store its `answers` only through `ref.updateState` conditioned on `indexedAs` still being this write's token (the CAS driver makes check and write one step, [D2](DECISIONS.md#d2)) | BR-1 to BR-5 |
 | S4 | the example · search | A handler: facet values plus an optional minimum confidence in, matching keys out. Lists the collection and filters stored answers. The same handler is offered to agents as a tool | BR-8 to BR-12 |
 | S5 | the example · reindex | An action that runs S3's classify step over documents with no facets, or over all with `force` | BR-14 BR-15 |
 | S6 | the example · the flow | `defineFlow` with actions `write`, `search`, `reindex`, built by a factory that takes the evaluator block | BR-17 |
@@ -52,20 +52,22 @@ S7 grows with S3 to S5. S9 only if FIX-1556 has merged; otherwise note it on FIX
 | V2 | S4 | BR-8, BR-9, BR-12: after two writes with different answers, a search returns only the match; the mock call counter does not move during the search, and the search turn's trace has no evaluator or generator row. An unclassified document never matches. The tool form returns the same |
 | V3 | S3 | BR-3, BR-4: write a body (classified), then rewrite it with a throwing mock. The write turn succeeds, `facets` is null, and the old match is gone from search. **Control:** a reaction without the clear step fails this check |
 | V4 | S4 | BR-10, BR-11, D3: same choice stored with confidence 0.9, with 0.3, and with none. No minimum: all three match. Minimum 0.5: only the first |
-| V5 | S3 | BR-5: a mock that holds the first classification open; a second write lands; release the first. Stored facets are the second body's answers. **Control:** drop the still-current check and it fails |
+| V5 | S3 | BR-5: a mock that holds the first classification open; a second write lands; release the first. Stored facets are the second body's answers. **Control:** store without the token condition and it fails |
+| V9 | S3 | BR-5, D2, the interleaving V5 can't reach. A store wrapper in the test (never a seam in the example, which apps copy) parks the facet write of body A's side chain *after* its classification returned. While parked, body B is written; its blocking step clears and re-tokens; its classification throws. Release A's write. Passes when `facets` is null and a search for A's answers misses. **Negative control:** the same run with the reaction storing by `patchState({ facets })` after a body-equality check (the pre-review recipe) ends with A's facets on body B, so the check fails. |
 | V6 | S3 | BR-6: after one write, the mock call count is 1 and stays 1 once facets are stored |
 | V7 | S5 | BR-14, BR-15: reindex classifies only unfaceted documents; `force` reclassifies all |
 | V8 | S1 · S6 | BR-16 to BR-18: the collection grants no client content update; the example's source imports no lab, kitchen-sink, `intentClassifier` or generator; `git diff --stat origin/main -- packages/` is empty. **Negative control:** a planted lab import fails it |
 | VG | S8 | **Goal, real model, leg (e)** (ER-13): `pnpm tsx goals/index-time-facets/found-without-a-model-call/run.mts`, Jev via the gateway, else `openai.evaluationModel(...)`. On one store, turn 1 writes held-out documents; turn 2 searches for a facet value turn 1 stored. Passes when that document is returned and turn 2's trace has no evaluator or generator row and zero token usage. **Anti-game:** take the search value from stored facets; never assert a label. **Control:** `GOAL_CONTROL=classify-at-query` routes search through the evaluator and must fail |
 
-One check per decision: D1 is V8, D2 is V3 and V5, D3 is V4. BP-035's second paths: failure (V3),
-concurrency (V5), legacy documents (V7).
+One check per decision: D1 is V8, D2 is V3, V5 and V9, D3 is V4. BP-035's second paths: failure (V3),
+concurrency (V5, V9), legacy documents (V7).
 
 ## Pinned names
 
 | Where | Name | Why pinned |
 |---|---|---|
 | Stored field | `facets`, nullable, default null, keyed by question id | The docs teach it; a later FIX-1482 filter reads it |
+| Stored field | `indexedAs`, nullable string, default null: the token of the write the facets may describe | The docs teach it ([D2](DECISIONS.md#d2)) |
 | Example directory | `examples/guides/index-time-facets/` | The docs link it |
 | Example actions | `write`, `search`, `reindex` | The docs and the goal call them |
 | Goal directory | `goals/index-time-facets/found-without-a-model-call/` | FIX-1556's assembled goal calls it for leg (e) |
@@ -79,6 +81,8 @@ Everything else is yours to name.
 | Nothing under `packages/` changes | [D1](DECISIONS.md#d1). A needed package change means the recipe is wrong; raise it to the epic, don't add surface |
 | The model is named once, at the app edge; the flow takes the block | Epic D3 and ER-11. The example is what apps copy |
 | Clear in the blocking step, classify on the side chain, store only if the body is current | [D2](DECISIONS.md#d2). Each of the three alone still lets stale answers through |
+| "Current" is the token, checked inside `updateState`, never a read followed by `patchState` | [D2](DECISIONS.md#d2). A separate check and write is the race V9 forces |
+| The token is written before the body is read, in that order | [D2](DECISIONS.md#d2). It is what makes the last token also the last read, so reactions landing out of order still classify the newest body |
 | No confidence floor and no default at write; confidence read only at search | [D3](DECISIONS.md#d3), ER-3 |
 | The search path calls no block but the search handler | ER-6. The goal's control exists because a search that "just checks" with the evaluator passes every other test |
 | Docs snippets are cut from the example's tested source | A snippet that drifted from a tested file is how a recipe teaches a bug |
@@ -95,12 +99,14 @@ flow(evaluator):
   docs collection: state { title, facets = null }, body = content
     on content written → index(change)
   index(change):                                   blocking
-    patch facets = null                            D2 · BR-3
-    body ← read content of change.key
+    token ← fresh id
+    patch { facets = null, indexedAs = token }     one write · D2 · BR-3
+    body ← read content of change.key              after the token, never before
     side chain:
       answers ← evaluator(body).answers            one call
-      if read content of change.key == body:       BR-5
-        patch facets = answers                     stored as given · D3
+      updateState(s → s.indexedAs == token         check and write in one CAS
+                    ? { ...s, facets = answers }   stored as given · D3
+                    : s)                           newer write owns it · BR-5
   search(values, minConfidence?):                  no model
     list docs → keep where every value matches facets[q].choice
                 and (no minimum or facets[q].confidence ≥ minimum)
