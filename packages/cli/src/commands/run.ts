@@ -101,8 +101,8 @@ export function registerRunCommand(program: Command): void {
     .option("-f, --input-file <path>", "Path to JSON input file")
     .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("-s, --session <id>", "Session ID for reuse across invocations")
-    .option("--org <id>", "Run in this organization instead of asking the app's resolver (local only)")
-    .option("-u, --user <id>", "Run as this user (without --org, the app's resolver still names the organization)")
+    .option("--org <id>", "Run in this organization and skip the app's resolver")
+    .option("-u, --user <id>", "Run as this user. The organization comes from the app's resolver unless you also pass --org. Default: the user your app's resolver returns, or cli-user if the app has none or you pass --org")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
@@ -136,7 +136,7 @@ export interface RunCommandOptions {
   seedSession?: string;
   /** `--org`: run in this organization; the app's resolver is not asked. */
   org?: string;
-  /** `--user`: run as this user. Without `--org`, the resolver still names the organization. */
+  /** `--user`: run as this user. The organization comes from the app's resolver unless `--org` is also given. */
   user?: string;
   flowDir?: string[];
   /** Explicit `--dotenv <path>` entries to load before the cwd `.env.local` walk-up. */

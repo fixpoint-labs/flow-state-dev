@@ -47,8 +47,8 @@ Options:
 | `-f, --input-file <path>` | JSON input from file |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
 | `-s, --session <id>` | Session ID for reuse across invocations |
-| `--org <id>` | Run in this organization instead of asking the app's resolver. Local only; see [Who a run is](#who-a-run-is) |
-| `-u, --user <id>` | Run as this user. Without `--org`, the app's resolver still decides the organization |
+| `--org <id>` | Run in this organization and skip the app's resolver. See [Who a run is](#who-a-run-is) |
+| `-u, --user <id>` | Run as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
@@ -210,8 +210,8 @@ Options:
 |------|-------------|
 | `-s, --session <id>` | Resume an engine session for the initially bound flow |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
-| `-u, --user <id>` | Run turns as this user (default: the app's resolver's user, or `cli-user` with no resolver) |
-| `--org <id>` | Run turns in this organization instead of asking the app's resolver. Local only |
+| `-u, --user <id>` | Run turns as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
+| `--org <id>` | Run turns in this organization and skip the app's resolver. See [Who a run is](#who-a-run-is) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `--quiet` / `--log-level <level>` | Stderr runtime-log discipline (default level `warn`) |
