@@ -46,6 +46,16 @@ export type InventoryDeclarations = Record<InventoryCollection, InventoryDeclara
 const INVENTORY_PAGE_SIZE = 200;
 
 /**
+ * The most pages one collection read follows — the same bound the shipped
+ * panel readers use (`MAX_PAGES` in `@flow-state-dev/react`'s panel reads),
+ * 200,000 rows at this page size. A guard against a transport that hands back
+ * a `nextCursor` forever, not a size anyone is expected to reach; hitting it,
+ * or seeing one cursor twice, ends the read as failed rather than loading
+ * forever or showing a list that looks whole.
+ */
+const INVENTORY_MAX_PAGES = 1000;
+
+/**
  * Find the three collections in a session's manifest, by pattern.
  *
  * The manifest lists only collections with some client affordance, so one
@@ -108,10 +118,15 @@ export async function readEveryPage(
   ref: string,
 ): Promise<InventoryRead> {
   const rows: unknown[] = [];
+  const seen = new Set<string>();
   let pagesRead = 0;
   let cursor: string | undefined;
+  const stopped = (message: string): InventoryRead => ({ status: "failed", message, pagesRead, rowsRead: rows.length });
   try {
     do {
+      if (pagesRead >= INVENTORY_MAX_PAGES) {
+        return stopped(`the server kept returning more pages after ${INVENTORY_MAX_PAGES}, so the read stopped`);
+      }
       const page = await client.listCollectionItems(sessionId, ref, {
         limit: INVENTORY_PAGE_SIZE,
         ...(cursor === undefined ? {} : { cursor }),
@@ -119,6 +134,10 @@ export async function readEveryPage(
       rows.push(...page.items.map((item) => item.clientData));
       pagesRead += 1;
       cursor = page.nextCursor;
+      if (cursor !== undefined) {
+        if (seen.has(cursor)) return stopped(`the server returned the same page cursor twice, so the read stopped`);
+        seen.add(cursor);
+      }
     } while (cursor !== undefined);
   } catch (error) {
     return { status: "failed", ...describeFailure(error), pagesRead, rowsRead: rows.length };

@@ -22,6 +22,11 @@
  *   must not use: expected [ 'Open' ] to deeply equal []`. The first cut of
  *   this scan read `textContent` and stayed GREEN under that mutation, because
  *   it glues "eng.queue" onto "Open" and the word boundary never fires.
+ * - The pagination guard removed (no page bound, no repeated-cursor check) →
+ *   `expected 'the read never stopped' to match /same page cursor twice/`,
+ *   `… to match /after 1000/`, and in the tab `expected 'Registered
+ *   seatsThe seats read failed…' to contain 'same page cursor twice'` — the
+ *   stubs' own backstops stop the loop, so the red state cannot hang the suite.
  * - BR-9/BR-10: a failed read returned as an empty one → the 403 and the
  *   later-page cases fail with `expected 'loaded' to be 'failed'`, the 404 case
  *   with `expected 'Registered channels0No channels regis…' to contain '(404)'`.
@@ -35,6 +40,7 @@ import {
   InventoryTabTrigger,
 } from "../src/react/components/workspace/inventory-view";
 import { Tabs, TabsList, TabsTrigger } from "../src/react/components/ui/tabs";
+import { readEveryPage } from "../src/react/lib/inventory";
 
 const SESSION = "eng.queue";
 const TOKEN = "tok-inventory";
@@ -85,6 +91,10 @@ function serve(server: Server) {
         const ref = decodeURIComponent(read[1]!);
         const cursor = new URLSearchParams(read[2]).get("cursor");
         const pages = server.pages[ref] ?? [];
+        // A backstop for a reader with no pagination guard: without it that
+        // reader loops on resolved promises and never yields to a timeout.
+        const asked = seen.filter((s) => s.url.includes(`/resources/${encodeURIComponent(ref)}?`)).length;
+        if (asked > 2_000) return json(500, { error: "the stub stopped answering after 2000 pages" });
         const index = cursor === null ? 0 : Number(cursor.replace("page-", ""));
         const page = pages[index] ?? { items: [] };
         if (page.status !== undefined) return json(page.status, { error: page.error ?? "failed" });
@@ -355,6 +365,65 @@ describe("V3 · reading every page, and failing out loud (BR-9, BR-10, BR-11)", 
       expect(section(name).dataset.inventoryStatus).toBe("loaded");
       expect(section(name).textContent).toMatch(EMPTY_TEXT);
     }
+  });
+});
+
+describe("V3 · a cursor that never ends is a failed read, not a hang (BR-9, BR-24)", () => {
+  // A bounded timeout on each case, so the red state (no guard) fails here
+  // instead of hanging the suite.
+  it("ends as failed when the server returns the same cursor twice", { timeout: 5_000 }, async () => {
+    let calls = 0;
+    const read = await readEveryPage(
+      {
+        listCollectionItems: async () => {
+          calls += 1;
+          if (calls > 5_000) throw new Error("the read never stopped");
+          return { items: [{ topic: `t${calls}`, clientData: { id: `s${calls}` } }], nextCursor: "stuck" };
+        },
+      },
+      SESSION,
+      REFS.seats,
+    );
+    expect(read.status, JSON.stringify(read)).toBe("failed");
+    expect(read.status === "failed" && read.message).toMatch(/same page cursor twice/);
+    expect(calls, "pages asked for").toBe(2);
+  });
+
+  it("ends as failed after the page bound when every cursor is new", { timeout: 5_000 }, async () => {
+    let calls = 0;
+    const read = await readEveryPage(
+      {
+        listCollectionItems: async () => {
+          calls += 1;
+          if (calls > 5_000) throw new Error("the read never stopped");
+          return { items: [], nextCursor: `c${calls}` };
+        },
+      },
+      SESSION,
+      REFS.seats,
+    );
+    expect(read.status, JSON.stringify(read).slice(0, 200)).toBe("failed");
+    expect(read.status === "failed" && read.message).toMatch(/after 1000/);
+    expect(calls, "pages asked for").toBe(1000);
+  });
+
+  it("shows the stuck read in the tab as a failure, never loading or empty", { timeout: 5_000 }, async () => {
+    serve({
+      manifest: ALL_THREE,
+      pages: {
+        // Page 0 points at page 0 again: the same cursor, forever.
+        [REFS.seats]: [{ items: [SEATS[0]], nextCursor: "page-0" }],
+        [REFS.channels]: [{ items: [CHANNEL] }],
+        [REFS.memberships]: [{ items: MEMBERSHIPS }],
+      },
+    });
+    renderWorkspace();
+    await openPanel();
+    const seats = section("seats");
+    expect(seats.dataset.inventoryStatus).toBe("failed");
+    expect(seats.textContent).toContain("same page cursor twice");
+    expect(seats.textContent).not.toMatch(EMPTY_TEXT);
+    expect(seats.querySelector("table")).toBeNull();
   });
 });
 
