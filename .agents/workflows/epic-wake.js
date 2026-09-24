@@ -1635,9 +1635,14 @@ function historicalSpecFor(row) {
   return !!(row.specMerged && row.approvedHeadSha && row.specPr)
 }
 
-/** Direction approval is head-bound; merge completion is a separate observation. */
+/**
+ * Direction approval is head-bound. Merging the spec PR is itself approval: the owner signs off by
+ * merging, with no label or comment needed, and the merged head is the approved head. The other
+ * channels still approve an open spec, which a MERGE-ONLY worker then merges.
+ */
 function specApprovalFor(row, fresh, refreshedLive) {
   if (historicalSpecFor(row)) return true
+  if (specMergedFor(row, fresh, refreshedLive)) return true
   if (!refreshedLive || (fresh.humanChangesRequested && !specMergedFor(row, fresh, refreshedLive))) return false
   const currentHeadApproved = !!fresh.headSha && fresh.approvedHeadSha === fresh.headSha
   return (currentHeadApproved && !!(fresh.specApproved || fresh.specApprovedByLabel)) ||
@@ -1844,7 +1849,7 @@ const GATE_SCHEMA = {
     },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
-    approvedHeadSha: { type: ['string', 'null'], description: 'Source commit the human actually reviewed and approved, not the current head inferred from label presence. For merged originals recover the historical approved source commit.' },
+    approvedHeadSha: { type: ['string', 'null'], description: 'Source commit the human actually reviewed and approved, not the current head inferred from label presence. For a merged PR, the head it was merged at (merging is approval).' },
     specMerged: { type: 'boolean', description: 'Observed this original spec PR merged; never infer from approval, closure, or an implementation PR.' },
     newReviewEvents: { type: 'boolean', description: 'Review activity STRICTLY NEWER than the activity cursor it was given' },
     latestActivityAt: { type: ['string', 'null'], description: 'ISO timestamp of the newest comment/review seen — the real cursor, since comments never move the head SHA' },
@@ -1934,7 +1939,7 @@ const PR_STATE_SCHEMA = {
         'Every review on the spec PR, plus every comment you would treat as approving. The wake classifies these. Copy each body from its first character. Empty means no comment/review approval.',
       items: APPROVAL_ARTIFACT_SCHEMA,
     },
-    approvedHeadSha: { type: ['string', 'null'], description: 'The source head actually approved by the human. For an already merged spec, recover its historical approval, not an implementation head.' },
+    approvedHeadSha: { type: ['string', 'null'], description: 'The source head actually approved by the human. For a merged spec, the head it was merged at (merging is approval), not an implementation head.' },
     specMerged: { type: 'boolean', description: 'The SPEC PR was observed merged. Separate from merged, which describes implementation.' },
     specApprovedByLabel: {
       type: 'boolean',
@@ -2297,7 +2302,7 @@ if (carriedForward.size) {
 const [gate, linear, prScan] = await parallel([
   () =>
     agent(
-      `Scan epic PR #${epic.prNumber} for objective approval AND spec merge. Report specMerged from actual PR merge metadata, never closure or labels. Report approvedHeadSha as the exact source revision a human approval names. A later push invalidates an open-spec approval. For an already merged original, recover the historical human approval and source head from its review record even if labels or the source branch were deleted. Never substitute main's current SHA or the merge commit for the reviewed source head. Never infer approval from merge alone or from body prose.\n` +
+      `Scan epic PR #${epic.prNumber} for objective approval AND spec merge. Report specMerged from actual PR merge metadata, never closure or labels. A merge of the epic PR IS approval — no label or comment is needed. Report approvedHeadSha as the exact source revision a human approval names; for a merged PR with no earlier approval, that is the PR's head at merge. A later push invalidates an open-spec approval. For an already merged original, recover the source head even if labels or the source branch were deleted. Never substitute main's current SHA or the merge commit for the reviewed source head. Never infer approval from closure or from body prose.\n` +
         authorshipScan +
         (approvalOwner
           ? `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL **and \`${approvalOwner}\` applied it**. Two independent checks, and conflating them is the bug this wording exists to prevent:\n` +
@@ -2365,7 +2370,7 @@ const [gate, linear, prScan] = await parallel([
                 )
                 .join('') +
               `\nFor EVERY issue above:\n` +
-              `Read PR comments, reviews, check-runs and merge metadata. Report specMerged for the SPEC PR, separately from merged for implementation. headSha is the SPEC source head whenever a spec exists, not the implementation head. Report approvedHeadSha as the source revision a human approval names. Any human's latest CHANGES_REQUESTED vetoes open-spec approval — a bot or an agent-marked review does not. For merged originals recover historical approval and source-head provenance even after branch deletion or label removal. Never infer approval from merge alone or from body prose.\n` +
+              `Read PR comments, reviews, check-runs and merge metadata. Report specMerged for the SPEC PR, separately from merged for implementation. headSha is the SPEC source head whenever a spec exists, not the implementation head. A merge of the spec PR IS approval — no label or comment is needed. Report approvedHeadSha as the source revision a human approval names; for a merged spec PR with no earlier approval, that is the PR's head at merge. Any human's latest CHANGES_REQUESTED vetoes open-spec approval — a bot or an agent-marked review does not. For merged originals recover source-head provenance even after branch deletion or label removal. Never infer approval from closure or from body prose.\n` +
               authorshipScan +
               (approvalOwner
                 ? `SEPARATELY report specApprovedByLabel:true only for a \`spec approved\` label that \`${approvalOwner}\` applied to the reviewed source head. Read the most recent labeling event and require that exact owner's login, not merely any human. Establish approvedHeadSha from the event and PR timeline; a label left on a later push is stale. Unreadable provenance or an unknown reviewed revision means FALSE, not inherited approval.\n`
@@ -2419,8 +2424,9 @@ if (gate) {
   gate.suspectOwnerApproval = rewritten.suspectOwnerApproval
 }
 
-// Approval authorizes the coordinator to dispatch spec merge under the canonical worker contract.
-// It does not release children until that merge is observed. Landed originals are historical
+// Approval on an open spec authorizes the coordinator to dispatch spec merge under the canonical
+// worker contract; a merge the owner made themselves is approval and merge at once. Children are not
+// released until a merge is observed. Landed originals are historical
 // provenance: labels or a deleted source branch cannot revoke the intent already on main.
 const scanned = !!gate
 const gateUsable = !!(gate && gate.headSha)
@@ -2682,8 +2688,9 @@ const refreshed = [...rows, ...discovered].map((row) => {
   const resolvedSpecPr = row.specMerged || fresh.specPr == null ? row.specPr : fresh.specPr
   const route = routeFor(row, li, observedInLinear, resolvedSpecPr)
   const specMerged = specMergedFor(row, fresh, refreshedLive)
+  // A merge observed on an earlier wake whose scout has since died keeps the head it recorded.
   const approvedHeadSha = scanApproved
-    ? historicalSpecFor(row) ? row.approvedHeadSha : fresh.headSha
+    ? historicalSpecFor(row) ? row.approvedHeadSha : fresh.headSha || row.approvedHeadSha || null
     : null
   return {
     ...row,
