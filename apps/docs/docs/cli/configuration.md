@@ -116,15 +116,14 @@ Three caveats follow from running your real wiring from the terminal:
 
 ## Who a run is
 
-Every run executes as a user in an organization, the same as a request to your server. When a
-config loads, the CLI asks your app who it is, the same way your server asks for every request:
-through your `resolvePrincipal`, the flow's own if it has one, otherwise the one you passed to
-`createFlowState`. Whatever that returns is who the run is.
+Every run executes as a user in an organization, like a request to your server. `fsdev run` and
+`fsdev chat` ask your app's resolver for both. That is the flow's own resolver,
+`defineFlow({ authentication: { resolvePrincipal } })`, when it has one, and otherwise the
+`resolvePrincipal` you passed to `createFlowState`. Whatever the resolver returns is who the run is.
 
-The CLI's question carries no request and no credential. Your resolver sees `source: "cli"`.
-The framework reserves that value for `fsdev run` and `fsdev chat`: a transport adapter that
-stamps it, including one you wrote, is refused before your resolver runs. So a resolver that
-wants the terminal to get a particular identity can check for it:
+Your resolver sees `source: "cli"`, with no `request` and no credential. Only `fsdev run` and
+`fsdev chat` produce that source. A request from any transport that claims it, including a custom
+adapter you wrote, is refused before your resolver runs. So it's safe to branch on:
 
 ```ts title="fsdev.config.ts"
 resolvePrincipal: async (ctx) =>
@@ -133,27 +132,63 @@ resolvePrincipal: async (ctx) =>
     : readSession(ctx.request),
 ```
 
-An app with no resolver runs as `cli-user` in the development organization, `DEFAULT_ORG_ID`.
+With no resolver configured anywhere, a run is `cli-user` in the development organization,
+`DEFAULT_ORG_ID`. That is also who a run is with no config at all, when flows come from directory
+discovery or you pass `--no-config`. A configured resolver can't claim that organization: one that
+returns `DEFAULT_ORG_ID` is refused, from the terminal as over HTTP. See
+[Every request runs in an organization](/docs/server/authentication#every-request-runs-in-an-organization).
 
 **When the resolver wants a credential.** A resolver that checks a bearer token or a signature
-has nothing to check, so it refuses, and the run stops before it writes anything. The error names
-the flow. Pass `--org` to say which organization to run in yourself:
+has nothing to check, so it refuses. `fsdev run` stops before it writes anything and exits with
+code `2`. The error names the flow and includes the resolver's own message:
+
+```text
+Flow "admin" refused this terminal: Action request requires non-empty userId
+The CLI carries no credential, so a resolver that checks one refuses it. Pass --org <id> to name the organization yourself. Nothing was written.
+```
+
+Pass `--org` to say which organization to run in yourself:
 
 ```bash
 fsdev run billing refund -i '{"id":"r_1"}' --org acme --user support-bot
 ```
 
-`--org` skips your resolver entirely. It is for the person at the keyboard, who already holds the
-store credentials the CLI is using. `fsdev serve` and `fsdev dev` have no such flag: requests that
-arrive over the network always go through your resolver. `--user` on its own keeps the
-organization your resolver gives and changes only the user.
+`--org` skips your resolver entirely and runs as `--user`, or `cli-user` without it. It can't be
+blank or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag, so requests that arrive
+over the network always go through your resolver.
 
-Sessions keep the user and organization they were created with. Resuming one with `--session`
-as a different user or organization is refused before anything is written, the same as it would
-be over HTTP.
+`--user` on its own asks your resolver as usual, keeps the organization it returns, and replaces
+only the user. A resolver that refuses the terminal refuses it with `--user` too.
 
-`--capture` records who the run was, under `command.principal`, including whether your resolver,
-a flag, or the development default decided it.
+**Identities a run can't take.** `fsdev run` refuses each of these with exit code `2` before
+anything is written:
+
+- A session belongs to the user and organization it was created with. Resuming one with
+  `--session` as anyone else is refused, as it would be over HTTP. Use a new session id.
+- A [hired seat](/docs/workforce/durable-hire#who-can-reach-a-hired-seat) runs only for the owner
+  it's pinned to. A run whose user or organization falls outside that pin is refused, whether the
+  identity came from your resolver or from `--user` and `--org`. Name the owner with `--org`, plus
+  `--user` for a seat one member owns.
+- A session stored before organizations were required is refused and left unchanged. The message
+  points to the upgrade steps in
+  [Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to).
+
+**Seeing who a run was.** Unless you pass `--quiet`, `fsdev run` prints one line to stderr before
+the action runs:
+
+```text
+[fsdev] running as bob (named by --user) in organization acme-dev (from the app's resolver)
+```
+
+`--capture <path>` records the same identity under `command.principal`:
+
+```json
+{ "userId": "bob", "orgId": "acme-dev", "from": "resolver" }
+```
+
+`from` says where the organization came from: `resolver`, `flag` (`--org`), or
+`development-default` (no resolver configured). It doesn't describe the user. Whether `--user`
+named the user shows only on the stderr line.
 
 ## Runtime requirements
 
