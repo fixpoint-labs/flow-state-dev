@@ -101,6 +101,7 @@ const RAIL_THEME = {
   "--fsd-nav-muted-fg": "var(--color-muted-foreground)",
   "--fsd-nav-selected-bg": "var(--color-accent)",
   "--fsd-nav-selected-fg": "var(--color-accent-foreground)",
+  "--fsd-nav-guide": "var(--color-border)",
 } as CSSProperties;
 
 /**
@@ -341,8 +342,8 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
 
   const railSlots = useMemo(
     () => ({
-      // "New session" sits inside the assistant's own leaf, the one place a
-      // new conversation can be started from this page.
+      // "New session" sits on the assistant's own row, the one place a new
+      // conversation can be started from this page.
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW_KIND ? (
           <AssistantLeafToolbar
@@ -587,8 +588,8 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
 }
 
 /**
- * The strip inside the assistant's open leaf: "New session", plus a handle on
- * the leaf's re-read for as long as the leaf is open.
+ * The assistant's open leaf's action, on its row: "New session", plus a
+ * handle on the leaf's re-read for as long as the leaf is open.
  */
 function AssistantLeafToolbar({
   leaf,
@@ -611,13 +612,13 @@ function AssistantLeafToolbar({
   return (
     <Button
       variant="ghost"
-      size="sm"
-      className="h-7 w-full justify-start gap-2 text-xs"
+      size="icon-xs"
+      aria-label="New session"
+      title="New session"
       onClick={() => void onNewSession(leaf)}
       disabled={disabled}
     >
-      <Plus className="h-3.5 w-3.5" />
-      New session
+      <Plus className="size-3.5" />
     </Button>
   );
 }

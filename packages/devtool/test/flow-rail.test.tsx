@@ -366,6 +366,44 @@ describe("the tool's three affordances, as slots", () => {
     });
     expect(created.authorization).toBe(`Bearer ${BEARER}`);
   });
+
+  it("says a failed start on the row it was pressed on, adding no line under it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST") {
+          return new Response(JSON.stringify({ error: "Seat is not accepting sessions" }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        const body = url.includes("/api/flows/sessions") ? { sessions: [] } : { flows: FLOWS };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+
+    mount();
+    await waitFor(() => expect(kindRow("engineer")).toBeTruthy());
+    await click(kindRow("engineer"));
+    await click(instanceRow("engineer-b"));
+    await waitFor(() => expect(screen.queryByTitle("New session")).toBeTruthy());
+
+    await click(screen.getByTitle("New session"));
+
+    const alert = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[role="alert"]');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    // On the row it was pressed on, announced, and not a line of its own.
+    expect(instanceRow("engineer-b").parentElement!.contains(alert)).toBe(true);
+    expect(alert.textContent).toContain("Request failed (500)");
+    expect(document.querySelector('[data-leaf="engineer-b"]')!.contains(alert)).toBe(false);
+  });
 });
 
 describe("the async fence around starting a session", () => {

@@ -106,7 +106,9 @@ A board column is grouped by task status. An empty board says so, and names the 
 
 The components ship with no CSS framework and no icon set. Style them with:
 
-- **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator, `--fsd-panel-*` for the roster and the board columns. Set them on any ancestor.
+- **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator,
+  `--fsd-panel-*` for the roster and the board columns. Set them on any ancestor.
+  `--fsd-nav-guide` colours the dashed lines that show the navigator's tree.
 - **Slots** for the parts that are yours, such as what a row shows beside its name, what sits in a section header, or what an empty section says.
 
 ## Where each component reads from
@@ -117,7 +119,7 @@ What a component reads decides what it shows and when it updates.
 
 **A standing collection.** The roster and the board columns read a collection that lives outside any one session. Everyone in the organization sees the same rows. They read it when they mount and don't watch it afterwards, so a change somebody else makes appears the next time the panel mounts. To read again on demand, change the component's React `key`.
 
-**The flow list.** The navigator reads your server's flow list, plus a session list for each leaf you open. Like the panels, it reads on mount and doesn't watch. A `leafToolbar` slot is handed a `refresh` function that re-reads that leaf's sessions.
+**The flow list.** The navigator reads your server's flow list, plus a session list for each leaf you open. A leaf is a row whose sessions you can open: a single-instance flow's row, or one copy of a flow that has many. Like the panels, it reads on mount and doesn't watch. The `leafToolbar` slot draws on an open leaf's own row, shown when the row is pointed at or focused, and is handed a `refresh` function that re-reads that leaf's sessions, so a refresh button sits right next to the thing it refreshes.
 
 ## Limits
 

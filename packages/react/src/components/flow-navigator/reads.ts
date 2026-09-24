@@ -107,9 +107,11 @@ export type LeafSessions = {
 /**
  * The session list for ONE leaf.
  *
- * Mounted only while its leaf is open, which is what keeps a kind row holding
+ * Reads only while its leaf is open, which is what keeps a kind row holding
  * forty instances from costing forty requests: the fetch lives at the level
- * that is a leaf, and a collection's kind row is not one.
+ * that is a leaf, a collection's kind row is not one, and a closed leaf asks
+ * for nothing. Closing is part of the read's identity, so it retires a read
+ * still in flight exactly as unmounting would.
  *
  * The fence answers the two hazards a leaf read has, and an "is this still the
  * open leaf?" comparison answers only the first of them. A response can outlive
@@ -128,7 +130,9 @@ export function useLeafSessions(
    * (FIX-1440). Part of the read's identity: turning it on is a different
    * question, so the answer to the previous one is retired rather than merged.
    */
-  includeDispatchRuns: boolean
+  includeDispatchRuns: boolean,
+  /** Whether the leaf is open. A closed leaf reads nothing and holds nothing. */
+  isOpen: boolean
 ): LeafSessions {
   const [sessions, setSessions] = useState<readonly SessionSummary[]>(EMPTY_SESSIONS);
   const [isLoading, setIsLoading] = useState(true);
@@ -138,7 +142,7 @@ export function useLeafSessions(
   const { address, cardinality } = leaf;
 
   const fence = useReadFence(
-    [source, address, cardinality, userId, includeDispatchRuns],
+    [source, address, cardinality, userId, includeDispatchRuns, isOpen],
     () => {
       setSessions(EMPTY_SESSIONS);
       setError(null);
@@ -149,6 +153,7 @@ export function useLeafSessions(
   const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
 
   const read = useCallback(async () => {
+    if (!isOpen) return;
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
     setIsLoading(true);
@@ -172,7 +177,7 @@ export function useLeafSessions(
     } finally {
       if (stillCurrent()) setIsLoading(false);
     }
-  }, [fence, source, address, cardinality, userId, includeDispatchRuns]);
+  }, [fence, isOpen, source, address, cardinality, userId, includeDispatchRuns]);
 
   useEffect(() => {
     void read();

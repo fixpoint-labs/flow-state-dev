@@ -26,10 +26,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Check,
+  CircleAlert,
   Copy,
   Inbox,
   Plus,
   RefreshCw,
+  type LucideIcon,
 } from "lucide-react";
 import {
   FlowNavigator,
@@ -71,7 +73,46 @@ const THEME = {
   "--fsd-nav-font-size": "13px",
   "--fsd-nav-note-font-size": "10px",
   "--fsd-nav-section-font-size": "10px",
+  "--fsd-nav-guide": "rgb(51 65 85)",
 } as React.CSSProperties;
+
+/**
+ * How much of lucide's 24-unit grid each rail icon's drawing covers.
+ *
+ * One icon set fills its box unevenly: copy's drawing spans 20 units, plus's
+ * 14. Give them the same box and copy is drawn half as big again, which is
+ * what a row of them looks like. So each is sized by its drawing instead.
+ */
+const DRAWN_EXTENT = new Map<LucideIcon, number>([
+  [Copy, 20],
+  [Check, 16],
+  [RefreshCw, 18],
+  [Plus, 14],
+  [ArrowUpRight, 10],
+  [CircleAlert, 20],
+]);
+
+/** The size every rail icon's drawing covers, in pixels. */
+const DRAWN_SIZE = 11;
+
+/**
+ * A rail icon, sized so its drawing covers `DRAWN_SIZE` with one stroke width.
+ *
+ * Sized inline on purpose: the `Button`'s rule for an svg without a `size-`
+ * class overrides a width or height class, which is how a declared `h-3 w-3`
+ * ends up drawn at 16px.
+ */
+function RailIcon({ icon: Icon, className }: { icon: LucideIcon; className?: string }) {
+  const box = (DRAWN_SIZE * 24) / DRAWN_EXTENT.get(Icon)!;
+  return (
+    <Icon
+      className={className}
+      style={{ width: box, height: box }}
+      strokeWidth={1.5}
+      absoluteStrokeWidth
+    />
+  );
+}
 
 export type FlowRailProps = {
   /** Bumped by the panel when a session's metadata changed out of band. */
@@ -252,7 +293,7 @@ function DispatchRunProvenance({
         data-open-parent-session={parentSessionId}
         onClick={() => void openParent()}
       >
-        <ArrowUpRight className="h-3 w-3 text-slate-500" />
+        <RailIcon icon={ArrowUpRight} className="text-slate-500" />
       </Button>
     </>
   );
@@ -276,20 +317,25 @@ function CopyInstanceId({ flowId }: { flowId: string }) {
       }}
     >
       {copied ? (
-        <Check className="h-3 w-3 text-green-400" />
+        <RailIcon icon={Check} className="text-green-400" />
       ) : (
-        <Copy className="h-3 w-3 text-slate-500" />
+        <RailIcon icon={Copy} className="text-slate-500" />
       )}
     </Button>
   );
 }
 
 /**
- * The strip above an open leaf's sessions: refresh, and start one.
+ * An open leaf's actions, on the leaf's own row: refresh, and start one.
  *
- * The failed and empty states are the navigator's and are not repeated here —
- * it draws its own retry line and its own "no sessions yet", and a second copy
- * of either would disagree with the first the moment one of them changed.
+ * The navigator draws them after the row's copy button and does the aligning,
+ * so they are bare buttons. A failed start is said on the row too, as an icon
+ * whose text is announced and shown on hover, rather than a line under it.
+ *
+ * The failed and empty states of the LIST are the navigator's and are not
+ * repeated here — it draws its own retry line and its own "no sessions yet",
+ * and a second copy of either would disagree with the first the moment one of
+ * them changed.
  */
 function LeafToolbar({
   leaf,
@@ -346,36 +392,36 @@ function LeafToolbar({
         refresh={refresh}
         sessionRefreshKey={sessionRefreshKey}
       />
-      <div className="flex items-center justify-end gap-1 py-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-5 w-5 p-0"
-          onClick={() => {
-            refresh();
-            onRefreshActiveSession?.();
-          }}
-          title="Refresh sessions"
-        >
-          <RefreshCw
-            className={`h-3 w-3 text-slate-500 ${leaf.isLoading ? "animate-spin" : ""}`}
-          />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-5 w-5 p-0"
-          onClick={() => void handleCreate()}
-          title="New session"
-        >
-          <Plus className="h-3 w-3 text-slate-500" />
-        </Button>
-      </div>
       {error !== null && (
-        <p role="alert" className="py-1 text-[10px] text-red-400">
-          {error}
-        </p>
+        <span role="alert" title={error} className="inline-flex text-red-400">
+          <RailIcon icon={CircleAlert} />
+          <span className="sr-only">{error}</span>
+        </span>
       )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-5 w-5 p-0"
+        onClick={() => {
+          refresh();
+          onRefreshActiveSession?.();
+        }}
+        title="Refresh sessions"
+      >
+        <RailIcon
+          icon={RefreshCw}
+          className={`text-slate-500 ${leaf.isLoading ? "animate-spin" : ""}`}
+        />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-5 w-5 p-0"
+        onClick={() => void handleCreate()}
+        title="New session"
+      >
+        <RailIcon icon={Plus} className="text-slate-500" />
+      </Button>
     </>
   );
 }

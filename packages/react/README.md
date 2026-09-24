@@ -413,9 +413,15 @@ Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers 
 
 The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
 
-The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` beside any row's name, `leafToolbar` inside an open instance, and `emptySection` for a section whose kinds the server does not have.
+The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` at the end of any row, `leafToolbar` at the end of an open leaf's row, and `emptySection` for a section whose kinds the server does not have.
 
-`leafToolbar` is handed that instance's session list, a `refresh` for it, and the flow-list entry the row was drawn from. The entry carries what the flow declares — its actions, for example — so the toolbar can render them without fetching the flow list itself.
+A leaf is a row whose sessions you can open: a singleton's row, or one copy under a collection. While a leaf is open, `leafToolbar` is handed its session list, a `refresh` for it, and the flow-list entry the row was drawn from, and whatever it returns sits on that same row, after `rowTrailing`'s content. It has to fit on one line, so give it icon buttons with an `aria-label` rather than text buttons. It is mounted when the leaf opens and unmounted when it closes.
+
+What `rowTrailing` and `leafToolbar` return shows when someone points at the row or moves keyboard focus into it, and stays shown on the selected row and on touch screens, which have no hover. Hidden content keeps its space and stays reachable with Tab, so nothing on the row moves when it appears. There is no setting to keep it always visible, so put anything a reader must see at a glance in the row's label rather than in a slot.
+
+Both slots draw on the same row, so draw their icons at one visual size. Matching the icons' boxes isn't always enough: icon sets draw some shapes larger than others inside the same box, a copy icon beside a plus, for example, so size each one until the drawings match.
+
+Every level of the tree starts its labels on one column, whether or not a row can expand. A dashed line runs down from each open row past everything under it. Set `--fsd-nav-guide` to colour it, or to `transparent` to hide it; the lines take no space either way. A session with no title shows a shortened id with the full id in its tooltip.
 
 Before you put this in front of end users: the flow listing it reads carries no organization, and the framework does not guard that route. Anyone who can reach your app can read the list unless you put your own check in front of it, so treat it as public information about your deployment's shape. There is no `orgId` prop.
 

@@ -50,7 +50,7 @@ describe("useLeafSessions · a response outliving its leaf", () => {
     const source = deferredSource();
     const { result, rerender } = renderHook(
       ({ address }: { address: string }) =>
-        useLeafSessions(source as never, leaf(address), "u"),
+        useLeafSessions(source as never, leaf(address), "u", false, true),
       { initialProps: { address: "seat-a" } }
     );
 
@@ -76,7 +76,7 @@ describe("useLeafSessions · two reads of ONE leaf racing", () => {
   it("never lets an older response overwrite a newer one for the same leaf", async () => {
     const source = deferredSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("seat-a"), "u")
+      useLeafSessions(source as never, leaf("seat-a"), "u", false, true)
     );
 
     await waitFor(() => expect(source.pending).toHaveLength(1));
