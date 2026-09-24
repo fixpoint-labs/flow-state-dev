@@ -12,3 +12,5 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-09-24 | c21ca3ba2 | intent/chat → vercel/anthropic/claude-sonnet-5 | **PASS** | Principal `devuser`/`kitchen-sink`/`resolver`. mara hired `support.patmufzb4j2` (address `kitchen-sink.support.patmufzb4j2`). The filesystem store holds `workforce/roster/support.patmufzb4j2` under `kitchen-sink` and nothing under `__fsd_default_org__`. Run on a fresh `.fsdev/data`: a store written before PR-B is refused at boot by design. |
+| 2026-09-24 | c21ca3ba2 + control | intent/chat → vercel/anthropic/claude-sonnet-5 | **FAIL (expected)** | Control: the CLI's ask replaced with the old placeholder answer. Ran as `cli-user` in `__fsd_default_org__`, and the hire was refused with `Organization id "__fsd_default_org__" must be lowercase letters…`. Red on (a) the principal and (c) no roster row under `kitchen-sink`. |

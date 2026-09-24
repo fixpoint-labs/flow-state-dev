@@ -144,7 +144,7 @@ A hire names a kind this app already carries (`agent`, `desk-clerk` or `followup
 
 Firing releases the address, and `discover` stops listing the seat. The seat's row in the live inventory stays, because that list records what was ever registered.
 
-**From the CLI, mara can't hire.** A hired seat's address starts with its organization. In the app she runs as `kitchen-sink`, like every seat, so a hire through the app lands there. `fsdev run` doesn't use the app's resolver: it runs every seat under the framework's development organization, and that name is deliberately not a legal address, so the hire is refused and nothing is written. Ask her from the CLI anyway and she tells you the hire was refused, quoting the refusal, which names the organization:
+**From the CLI, mara hires too.** A hired seat's address starts with its organization. In the app she runs as `kitchen-sink`, like every seat, and `fsdev run` asks the app's resolver the same question, so it runs as the same `devuser` in `kitchen-sink` and the hire lands where the app's pages see it:
 
 ```bash
 pnpm fsdev run support.mara run -i '{"message":"Hire support.pat, an agent seat that takes refunds."}'
