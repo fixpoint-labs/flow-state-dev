@@ -70,7 +70,7 @@ answers what, and the route between them.
 |---|---|---|---|
 | BR-19 | The change is reviewed against the epic's fences | No L1 type, no second work plane, no multi-human machinery, no new substrate, nothing under `packages/` | Diff gate: every changed path inside `goals/` or `specs/issues/FIX-1497/` |
 | BR-20 | The proof ships | `TaskStatus` has gained no value — not for *handed-off*, not for *notified*, not for *waiting on you* | Asserted inside the goal on the exported status union, so a later widening fails here |
-| BR-21 | The graded run is scheduled | It waits on a live hired Workforce ([ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26)) — **but not this spec and not its implementation PR**, both of which proceed now | Stated here so the fence is not read wider than it is; the plan sequences the run last |
+| BR-21 | The graded run is scheduled | It waits on a live hired Workforce ([ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26)) — **but not this spec and not its implementation PR**, both of which proceed now. **The fence lifted on 2026-09-22** ([#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051)) and **the graded run passed** ([#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065)) | Stated here so the fence is not read wider than it is; the plan sequences the run last |
 
 ## Known properties — true, not covered, and not to be re-proposed
 

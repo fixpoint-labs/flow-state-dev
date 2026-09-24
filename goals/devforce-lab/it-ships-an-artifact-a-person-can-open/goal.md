@@ -157,3 +157,11 @@ being refused at the door; that gate last passed 2026-09-17, before it. This iss
 [BR-10](../../../specs/issues/FIX-1496/BUSINESS-RULES.md) delegates its whole proof to that leg, so
 BR-10 is **not** currently proved by anything. Raised to the owner rather than patched here: fixing it
 means changing what an existing check claims, which `PLAN.md` S6 and `BR-17` both put out of scope.
+
+**Resolved by [FIX-1515](https://linear.app/fixpoint-labs/issue/FIX-1515)
+([#2073](https://github.com/fixpoint-labs/flow-state-dev/pull/2073), merged 2026-09-23 as
+`02196cee6`).** The lab host now wires a fail-closed verified principal, so an org-less read is
+refused (401) and the same read with an org lands. The sibling gate is PASS at `c76ac5969` in its
+own verdict log, which re-proves BR-10 and BR-17. **Re-run on `origin/main` at `95049473f`,
+2026-09-24: PASS**, all legs green, including *"an org-less read is refused at the transport door
+while the same read with an org lands"*. The paragraph above is kept as history.
