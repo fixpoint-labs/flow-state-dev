@@ -1,0 +1,74 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Two panels, today and after. Today the refunds worker names a capability preset and then lists the same tools again under tools, and every bundle of instructions plus tools is TypeScript written in app code outside the tree. After, the worker folder holds packages/refunds with a PACKAGE.md and one block, a team packages folder offers escalation which the worker takes with packages: [escalation], the duplicated tools line is gone, and tools: [] is the one line that withholds everything."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .out   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; stroke-dasharray:4 3; }
+    .gone  { fill:none; stroke:var(--gone); stroke-width:1.4; }
+    .fence { stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-x   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; text-decoration:line-through; }
+    .t-a   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <text class="t-lbl" x="20" y="24">TODAY</text>
+    <rect class="panel" x="16" y="34" width="440" height="350" rx="6"/>
+    <text class="t-s" x="30" y="56">workforce/teams/support/workers/refunds-clerk/</text>
+    <rect class="n-box" x="30" y="66" width="412" height="112" rx="5"/>
+    <text class="t-lbl" x="42" y="84">WORKER.MD</text>
+    <text class="t-b" x="42" y="104">capabilities: { billing: [lookups] }</text>
+    <text class="t-b" x="42" y="124">tools: [lookup-invoice, lookup-customer,</text>
+    <text class="t-b" x="42" y="140">        issue-refund]</text>
+    <text class="t-s" x="42" y="164">the preset's tools, written a second time</text>
+
+    <line class="fence" x1="30" y1="200" x2="442" y2="200"/>
+    <text class="t-lbl" x="30" y="218">OUTSIDE THE TREE · APP CODE</text>
+    <rect class="out" x="30" y="228" width="412" height="96" rx="5"/>
+    <text class="t-b" x="42" y="250">defineCapability({ name: "billing",</text>
+    <text class="t-b" x="42" y="268">  presets: { lookups: {...}, default: [] } })</text>
+    <text class="t-b" x="42" y="286">defineAgentWorkerFlow({ uses: [billing] })</text>
+    <text class="t-s" x="42" y="310">an engineer writes this, for every worker's bundle</text>
+    <text class="t-s" x="30" y="356">A skill can carry the text, and never the tool.</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="488" y="24">AFTER</text>
+    <rect class="panel" x="484" y="34" width="440" height="350" rx="6"/>
+    <text class="t-s" x="498" y="56">workforce/teams/support/</text>
+    <rect class="new" x="498" y="66" width="412" height="56" rx="5"/>
+    <text class="t-lbl" x="510" y="84">PACKAGES/ESCALATION/ · OFFERED TO THE TEAM</text>
+    <text class="t-b" x="510" y="104">PACKAGE.md   blocks/page-oncall.ts</text>
+
+    <text class="t-s" x="498" y="144">workers/refunds-clerk/</text>
+    <rect class="n-box" x="498" y="154" width="412" height="82" rx="5"/>
+    <text class="t-lbl" x="510" y="172">WORKER.MD</text>
+    <text class="t-a" x="510" y="192">packages: [escalation]</text>
+    <text class="t-b" x="510" y="210">capabilities: { billing: [lookups] }</text>
+    <text class="t-x" x="510" y="228">tools: [lookup-invoice, …]</text>
+    <path class="arrow" d="M 700 188 C 760 170, 790 140, 780 122"/>
+
+    <rect class="new" x="498" y="248" width="412" height="56" rx="5"/>
+    <text class="t-lbl" x="510" y="266">PACKAGES/REFUNDS/ · HELD BY THIS WORKER</text>
+    <text class="t-b" x="510" y="286">PACKAGE.md   blocks/issue-refund.ts</text>
+
+    <rect class="gone" x="498" y="318" width="412" height="44" rx="5"/>
+    <text class="t-b" x="510" y="338">tools: []</text>
+    <text class="t-s" x="580" y="338">the one line that withholds everything:</text>
+    <text class="t-s" x="580" y="354">text still arrives, no tool is callable</text>
+  </g>
+</svg>
