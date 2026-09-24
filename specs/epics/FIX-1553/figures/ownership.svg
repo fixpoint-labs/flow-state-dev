@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 408" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: eight cross-cutting rules by six issues. FIX-1554 builds the kind and its refusal, decides the answer shape, and updates the block-kind count in every doc. FIX-1558 builds the fail-closed gate. FIX-1559 builds the optional evaluator slot that FIX-1557 and FIX-1555 copy. FIX-1557 builds facets and FIX-1555 the memory seam. FIX-1556 builds the teaching page and the assembled proof, with FIX-1557 and FIX-1555 each supplying one leg. Every rule has exactly one owner.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .grid  { stroke:var(--rule); stroke-width:1; }
+    .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .dec   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-sub { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-dec { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-con { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="408"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#183; ONE OWNER PER RULE</text>
+  <g id="columns">
+    <text class="t-col" x="330" y="46">FIX-1554</text><text class="t-sub" x="330" y="60">evaluator kind</text>
+    <text class="t-col" x="430" y="46">FIX-1558</text><text class="t-sub" x="430" y="60">cascadingRouter</text>
+    <text class="t-col" x="530" y="46">FIX-1559</text><text class="t-sub" x="530" y="60">skill activator</text>
+    <text class="t-col" x="630" y="46">FIX-1557</text><text class="t-sub" x="630" y="60">facets</text>
+    <text class="t-col" x="730" y="46">FIX-1555</text><text class="t-sub" x="730" y="60">memory seam</text>
+    <text class="t-col" x="830" y="46">FIX-1556</text><text class="t-sub" x="830" y="60">docs and proof</text>
+    <path class="grid" d="M16 70 L924 70"/>
+  </g>
+  <g id="r1">
+    <text class="t-row" x="16" y="94">ER-1, ER-2 &#183; the kind and its refusal</text>
+    <rect class="own" x="322" y="78" width="88" height="24" rx="3"/><text class="t-own" x="332" y="94">builds</text>
+    <text class="t-con" x="432" y="94">consumes</text>
+    <text class="t-con" x="532" y="94">consumes</text>
+    <text class="t-con" x="632" y="94">consumes</text>
+    <text class="t-con" x="732" y="94">consumes</text>
+    <text class="t-con" x="832" y="94">consumes</text>
+    <path class="grid" d="M16 108 L924 108"/>
+  </g>
+  <g id="r2">
+    <text class="t-row" x="16" y="132">ER-3 &#183; confidence only if given</text>
+    <rect class="dec" x="322" y="116" width="88" height="24" rx="3"/><text class="t-dec" x="332" y="132">decides</text>
+    <text class="t-con" x="432" y="132">consumes</text>
+    <text class="t-con" x="532" y="132">consumes</text>
+    <text class="t-con" x="632" y="132">consumes</text>
+    <text class="t-con" x="732" y="132">consumes</text>
+    <path class="grid" d="M16 146 L924 146"/>
+  </g>
+  <g id="r3">
+    <text class="t-row" x="16" y="170">ER-4 &#183; a gated edge fails closed</text>
+    <rect class="own" x="422" y="154" width="88" height="24" rx="3"/><text class="t-own" x="432" y="170">builds</text>
+    <text class="t-con" x="832" y="170">consumes</text>
+    <path class="grid" d="M16 184 L924 184"/>
+  </g>
+  <g id="r4">
+    <text class="t-row" x="16" y="208">ER-5 &#183; the optional evaluator slot</text>
+    <rect class="own" x="522" y="192" width="88" height="24" rx="3"/><text class="t-own" x="532" y="208">builds</text>
+    <text class="t-con" x="632" y="208">consumes</text>
+    <text class="t-con" x="732" y="208">consumes</text>
+    <path class="grid" d="M16 222 L924 222"/>
+  </g>
+  <g id="r5">
+    <text class="t-row" x="16" y="246">ER-6 &#183; facets at write, no model at read</text>
+    <rect class="own" x="622" y="230" width="88" height="24" rx="3"/><text class="t-own" x="632" y="246">builds</text>
+    <path class="grid" d="M16 260 L924 260"/>
+  </g>
+  <g id="r6">
+    <text class="t-row" x="16" y="284">ER-7 &#183; memory works with no evaluator</text>
+    <rect class="own" x="722" y="268" width="88" height="24" rx="3"/><text class="t-own" x="732" y="284">builds</text>
+    <path class="grid" d="M16 298 L924 298"/>
+  </g>
+  <g id="r7">
+    <text class="t-row" x="16" y="322">ER-8 &#183; five kinds in every doc</text>
+    <rect class="own" x="322" y="306" width="88" height="24" rx="3"/><text class="t-own" x="332" y="322">builds</text>
+    <text class="t-con" x="832" y="322">consumes</text>
+    <path class="grid" d="M16 336 L924 336"/>
+  </g>
+  <g id="r8">
+    <text class="t-row" x="16" y="360">ER-15, ER-16 &#183; teach page and proof</text>
+    <text class="t-con" x="632" y="360">leg (e)</text>
+    <text class="t-con" x="732" y="360">leg (f)</text>
+    <rect class="own" x="822" y="344" width="88" height="24" rx="3"/><text class="t-own" x="832" y="360">builds</text>
+    <path class="grid" d="M16 374 L924 374"/>
+  </g>
+  <text class="t-sub" x="16" y="396">builds: owns and ships it &#183; decides: owns the call another row builds on &#183; consumes: uses it as is, must not re-decide</text>
+</svg>

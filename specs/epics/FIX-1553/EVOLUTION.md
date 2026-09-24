@@ -1,0 +1,17 @@
+# FIX-1553 · Evolution
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · **Evolution**
+
+Only lineage that spans more than one child. The kind's own type and trace changes belong in
+FIX-1554's evolution record; the activator's in FIX-1559's.
+
+| Prior intent and precise source | Treatment | Reason / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| Exactly four block kinds. Sources: `docs/architecture/blocks.md` line 5; `docs/architecture/overview.md` § blocks and constraints; `docs/contributing/architecture-reference.md`; `CLAUDE.md` Key Architectural Constraints; `docs/philosophy.md` "What FSD is" and tenet 2; `BlockKind` in `packages/core/src/types/block.ts` | **Amended**: five | Owner lock on FIX-1553 (2026-09-21, evaluator is a peer of `generator`; 2026-09-24, filed). Dispatcher stays a handler extender, so the count is five, not six | ER-1 and ER-8, built by FIX-1554 | Existing blocks are unchanged. Trace and item readers that switch on `blockKind` must accept the new value; FIX-1554's record lists them |
+| Tier 3 of the opt-in skill activator is a generator classifier ([FIX-421](https://linear.app/fixpoint-labs/issue/FIX-421), Done). Source: `createSkillClassifierSequencer` in `packages/orchestration/src/skills/skill-activator.ts` | **Retained** as the default, extended | Linear says "replace" and also "skills still work with no evaluator"; the stock kind and the kitchen-sink run it today | [D4](DECISIONS.md#d4) and ER-5, built by FIX-1559 | Apps that pass nothing see no change. Retiring the generator classifier is a later cut |
+| The stock agent kind has no every-turn classifier and no keyword tier; its per-seat `enableLlmClassifier` defaults off ([FIX-1362](https://linear.app/fixpoint-labs/issue/FIX-1362), [FIX-1363](https://linear.app/fixpoint-labs/issue/FIX-1363), Done). Source: `packages/workforce/src/agent-worker-flow.ts`, `skills.enableLlmClassifier` | **Retained** | Owner stamp on #1723 and #1724, restated on FIX-1559 | ER-11 | Untouched |
+| Memory attaches to an app's own kind through `uses` and resources ([FIX-1364](https://linear.app/fixpoint-labs/issue/FIX-1364), Done) | **Retained**, consumed | FIX-1555 adds a runtime seam; it does not re-cut attach | ER-7, built by FIX-1555 | Memory with no evaluator behaves as today |
+| The DNM lab on [#1903](https://github.com/fixpoint-labs/flow-state-dev/pull/1903) at `b33a072`: a `handler` stand-in, "a fifth published block kind" out of scope, `evaluatedRouter` reserved as a later name | **Superseded** by the owner locks | The lab was scoped to prove shape, not to ship. The kind is now in scope, and the router name is `cascadingRouter` only | The set; ER-9 keeps the lab unpromoted | The lab stays a draft and is never merged. Its seams (`classifier` on the activator and on memory) are evidence for D3, not code to lift unreviewed |
+
+Nothing is wholly superseded that shipped. Re-check each row against current code before
+implementing.
