@@ -36,14 +36,6 @@ describe("continuation item persists and round-trips through SQLite (FIX-865)", 
 
   beforeEach(() => {
     process.env.FSDEV_TRACE_OBSERVABILITY = "true";
-    // This flow declares no generator intents; an ambient FSDEV_DEFAULT_MODEL/
-    // FSDEV_INTENT_* override (e.g. from a dev shell profile) would otherwise
-    // make createModelResolver throw on a mismatch it has no bearing on here.
-    for (const key of Object.keys(process.env)) {
-      if (key === "FSDEV_DEFAULT_MODEL" || key.startsWith("FSDEV_INTENT_")) {
-        delete process.env[key];
-      }
-    }
   });
   afterEach(() => {
     process.env = { ...originalEnv };

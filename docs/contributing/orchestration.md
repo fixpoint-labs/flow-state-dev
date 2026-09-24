@@ -360,14 +360,23 @@ being wrong in that direction is one unnecessary document rather than ungated co
 
 | Gate | Human direction signal | Release condition | Blocks |
 |---|---|---|---|
-| **Spec approval** | In-session human go-ahead on the reviewed head, a non-owner non-author human approving comment or review with no agent header, or an owner-applied `spec approved` label bound to that head. An owner-login review or comment is not this signal | Approval plus required repository checks and confirmed spec PR merge | Implementing the issue |
-| **Epic objective** | In-session human go-ahead on the reviewed head, a non-owner non-author human approving comment or review with no agent header, or an owner-applied `epic approved` label bound to that head. An owner-login review or comment is not this signal | Approval plus required repository checks and confirmed epic spec PR merge | Ramping the epic's children |
+| **Spec approval** | The owner merging the spec PR, in-session human go-ahead on the reviewed head, a non-owner non-author human approving comment or review with no agent header, or an owner-applied `spec approved` label bound to that head. An owner-login review or comment is not this signal | Confirmed spec PR merge (an owner merge is approval and merge at once; any other approval still needs required checks and a MERGE-ONLY merge) | Implementing the issue |
+| **Epic objective** | The owner merging the epic spec PR, in-session human go-ahead on the reviewed head, a non-owner non-author human approving comment or review with no agent header, or an owner-applied `epic approved` label bound to that head. An owner-login review or comment is not this signal | Confirmed epic spec PR merge (an owner merge is approval and merge at once; any other approval still needs required checks and a MERGE-ONLY merge) | Ramping the epic's children |
 
 Approval signs off **direction**, not finished implementation detail. Ask it as a
 business decision using [`asking-for-decisions.md`](asking-for-decisions.md): the
 outcome, hard-to-reverse calls, recommendation, and what could change that recommendation.
 Only spec-route issues have a spec gate; bugs keep their direct implementation route,
 but still wait for their parent epic's release condition.
+
+**Merging the spec PR is approval.** When the owner merges a spec or epic spec PR, that
+merge is the sign-off: no `spec approved` / `epic approved` label and no approving comment
+is needed. The approved head is the head that merged. `epic-wake` reads an observed merge
+of the tracked spec PR as approved, so the next wake releases implementation (or the epic's
+ramp) with no gate left to ask. Only a merge counts: a PR closed without merging is neither
+approval nor merge. Agents still merge a spec only through MERGE-ONLY, after one of the
+other channels below has approved it, so this channel never lets an agent approve its own
+spec.
 
 **In-session approval is a human channel.** Record the user's explicit go-ahead as
 `approvedInSession:<reviewed head>`; it authorizes only that revision and becomes stale
@@ -430,8 +439,8 @@ Collapse reviews to each human reviewer's latest effective state. An outstanding
 and repository requirements after any push. A material direction change requires fresh
 human approval; do not carry standing approval into a follow-up amendment.
 
-**Approval is not merge.** A label is a direction signal, never evidence that GitHub
-merged the PR. Required CI, required approvals and required review-thread resolution
+**Approval is not merge, but merge is approval.** A label or comment is a direction signal,
+never evidence that GitHub merged the PR. Required CI, required approvals and required review-thread resolution
 still apply at merge time. After merge, observe the merged PR and retained revision
 before dispatching implementation. Missing checks or a failed merge leave the issue
 waiting, not implementing. Spec merge authorization does **not** authorize any
@@ -659,6 +668,7 @@ project-content mirror. Do not migrate project lifecycle or historical closed sp
 ## Merging and amending a spec
 
 1. Obtain human direction approval for the reviewed head under [Gates](#gates-direction-approval-then-confirmed-merge).
+   If the owner approves by merging the PR, that merge is the whole of steps 1–3: skip to 4.
 2. **The coordinator authorizes and schedules; it never mechanically merges.** Dispatch
    a bounded **MERGE-ONLY** assignment to the existing `epic-agent` for an epic spec or
    `issue-worker` for an issue spec, passing the exact PR, reviewed source head, and

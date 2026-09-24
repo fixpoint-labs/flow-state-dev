@@ -626,7 +626,7 @@ A bot `CHANGES_REQUESTED` does not supply or revoke human direction approval or 
 
 #### 6.5.5 Sign-off
 
-Human sign-off approves the reviewed head, not future revisions. Follow [`orchestration.md`](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge) → Gates and "Merging and amending a spec": no self-approval, no standing label approving a changed head. After approval and required checks, merge the spec and confirm the merge before implementation. If checks or required threads block merge, report that wait. Material amendments need renewed direction approval; implementation PR merge remains a separate human gate.
+Human sign-off approves the reviewed head, not future revisions. The owner merging the spec PR is itself sign-off, with no label or comment needed; the merged head is the approved one. Follow [`orchestration.md`](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge) → Gates and "Merging and amending a spec": no self-approval, no standing label approving a changed head. After approval and required checks, merge the spec and confirm the merge before implementation. If checks or required threads block merge, report that wait. Material amendments need renewed direction approval; implementation PR merge remains a separate human gate.
 
 ### Step 7: Reframe the Issue Description
 

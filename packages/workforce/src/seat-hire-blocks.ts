@@ -12,11 +12,17 @@
 
 import { handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core";
-import type { BlockDefinition, FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type {
+  BlockDefinition,
+  FlowInstance,
+  InstanceOwnerPin,
+  ResourceCollectionRef,
+} from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
 import type { HiredSeatRow } from "./roster/collections";
+import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
 import { hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
 
 /** Registry key the capability installs the durable roster under. */
@@ -26,49 +32,16 @@ export const HIRED_ROSTER_RESOURCE = "hiredRoster";
 export const SEAT_INVENTORY_RESOURCE = "seatInventory";
 
 /**
- * The owner pin a hired-seat register must carry (FIX-1529 / F2-PLAN).
+ * The owner pin a hired-seat register must carry: another name for core's
+ * `InstanceOwnerPin`, `{ orgId, userId? }`.
  *
  * Derived from the hire row's roster owner, never from the address. `orgId`
  * is the owning org. `userId` is present only when that row is user-owned.
  */
-export interface HiredSeatOwnerPin {
-  orgId: string;
-  userId?: string;
-}
+export type HiredSeatOwnerPin = InstanceOwnerPin;
 
-/**
- * Project a hire row's roster owner into the pin registration requires.
- *
- * @throws when `orgId` is missing — an unpinned hired-seat register is
- * refused rather than admitted as shared.
- */
-export function hiredSeatOwnerPinFromRosterOwner(
-  owner: { orgId?: string | null; userId?: string | null },
-): HiredSeatOwnerPin {
-  if (typeof owner.orgId !== "string" || owner.orgId.length === 0) {
-    throw new Error(
-      "A hired seat cannot be registered without an owner pin { orgId, userId? } derived from the hire row's roster owner.",
-    );
-  }
-  return typeof owner.userId === "string" && owner.userId.length > 0
-    ? { orgId: owner.orgId, userId: owner.userId }
-    : { orgId: owner.orgId };
-}
-
-/**
- * Admit a hired seat only with a pin from its hire row's roster owner.
- *
- * This is the hire writer's register path. Omitting the pin refuses. Engine
- * `register(flow, { pin })` is FIX-1529; this gate exists so seat-hire cannot
- * leave an unpinned path in the meantime.
- */
-export function registerHiredSeat(
-  register: (seat: FlowInstance, pin: HiredSeatOwnerPin) => void,
-  seat: FlowInstance,
-  pin: HiredSeatOwnerPin | undefined,
-): void {
-  register(seat, hiredSeatOwnerPinFromRosterOwner(pin ?? {}));
-}
+/** The one owner-pin gate lives with the roster; re-exported here by name. */
+export { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat };
 
 export interface SeatHireCapabilityOptions {
   /**
@@ -81,10 +54,9 @@ export interface SeatHireCapabilityOptions {
   kinds?: HireOptions["kinds"];
   /**
    * Admit a minted seat at its address, with the owner pin from the hire
-   * row's roster owner. Hire refuses rather than call this without a pin
-   * (FIX-1529 / F2-PLAN). A hire that answers is a hire that was written
-   * down, so the roster row is created first; if this throws the row is
-   * deleted.
+   * row's roster owner. Hire refuses rather than call this without a pin.
+   * A hire that answers is a hire that was written down, so the roster row
+   * is created first; if this throws the row is deleted.
    */
   register: (seat: FlowInstance, pin: HiredSeatOwnerPin) => void;
   /**

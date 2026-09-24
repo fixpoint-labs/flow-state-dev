@@ -15,8 +15,7 @@
  *
  * The `chat` action's generator resolves through the `chat` intent below,
  * which falls back to openai/gpt-5.4-mini and auto-detects the provider from
- * `OPENAI_API_KEY`. Declaring the intent also lets `fsdev`'s `FSDEV_DEFAULT_MODEL`
- * override apply cleanly instead of erroring on a flow with no intents.
+ * `OPENAI_API_KEY`.
  */
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import researchTeamFlow from "./src/flow";

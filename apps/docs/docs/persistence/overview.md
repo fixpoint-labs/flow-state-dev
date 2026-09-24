@@ -282,6 +282,8 @@ Copying is optional and offline, with writers quiesced and a backup taken, as in
    ```
 
    Do the same for `resource_content`, keeping the content as it is. State and content for one key move together, deletion markers included.
+
+   A copied schedule is not in the schedule index yet. Write it once from the seat, for example by re-saving it, so its index row is created under the seat's cell. The original schedule and its index row stay where they were, like every other original.
 6. **Leave everything else.** A person with seats in two or more organizations has one mixed copy of their seats' data. Copying it into either organization would hand that organization what the other one's seats saved, so it stays where it is, and those seats start empty. Note each such person, and each key you struck in step 1, in your record of the upgrade.
 
 Ids containing `:` or `\` are escaped in the new key the same way as in the other keys on this page. The original rows stay. Remove them only for keys no other flow declares, and only after you have read the copies back through a seat.

@@ -220,6 +220,56 @@ function migrateAddScheduleIndexOrgId(db: Database.Database): void {
   }
 }
 
+/**
+ * Re-key a `schedule_index` created before rows carried their storage cell
+ * (FIX-1546) from `(user_id, key)` to `(cell, key)`.
+ *
+ * Every existing row is adopted as the person's own app-wide cell: every
+ * released version wrote index rows only from that cell, so the value is known,
+ * not guessed (BP-030). The cell is the engine's storage key for it — the user
+ * id with `\` and `:` escaped — so the next write from that cell updates the
+ * same row rather than adding a second one.
+ *
+ * SQLite cannot change a primary key in place, so the table is rebuilt inside
+ * one transaction: it either completes or leaves the old table untouched.
+ * Idempotent — a table that already has `cell` is left alone. Runs after the
+ * `org_id` migration, so the old table always has that column to copy.
+ *
+ * The check runs twice. The first, outside the lock, keeps an already-migrated
+ * database from taking a write lock on every start. The second, inside the
+ * `IMMEDIATE` transaction, is the one that decides: two processes starting on
+ * one legacy file can both pass the first, and the one that takes the lock
+ * second must see the finished migration rather than rebuild it — a rebuild
+ * recomputes every cell from `user_id`, moving any seat row written since.
+ */
+function migrateScheduleIndexCell(db: Database.Database): void {
+  const needsCell = (): boolean => {
+    const tableExists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get("schedule_index");
+    if (tableExists === undefined) return false;
+    const cols = db
+      .prepare("SELECT name FROM pragma_table_info(?)")
+      .all("schedule_index") as Array<{ name: string }>;
+    return !cols.some((c) => c.name === "cell");
+  };
+  if (!needsCell()) return;
+
+  db.transaction(() => {
+    if (!needsCell()) return;
+    db.exec("ALTER TABLE schedule_index RENAME TO schedule_index_pre_cell");
+    db.exec("DROP INDEX IF EXISTS idx_schedule_index_next_fire_at");
+    db.exec(SCHEDULE_INDEX_TABLE);
+    db.exec(`
+      INSERT INTO schedule_index (cell, key, user_id, org_id, cron, timezone, next_fire_at)
+      SELECT replace(replace(user_id, '\\', '\\\\'), ':', '\\:'),
+             key, user_id, org_id, cron, timezone, next_fire_at
+        FROM schedule_index_pre_cell
+    `);
+    db.exec("DROP TABLE schedule_index_pre_cell");
+  }).immediate();
+}
+
 function migrateAddTenantId(db: Database.Database): void {
   for (const tableName of ["sessions", "requests", "active_requests"]) {
     const tableExists = db
@@ -417,18 +467,21 @@ CREATE INDEX IF NOT EXISTS idx_trace_events_request_id ON trace_events(request_i
 `;
 
 // FIX-581: optional schedule index for `createSQLiteScheduleIndex`.
-// Keyed by (user_id, key) and scanned by `next_fire_at` each cron tick.
+// Keyed by (cell, key) — the storage cell the schedule lives in plus its
+// key, so one schedule is one row (FIX-1546). `user_id` is who it runs as.
+// Scanned by `next_fire_at` each cron tick.
 // Schedule rows are tiny + `WITHOUT ROWID` keeps the PK-clustered layout
 // compact.
 const SCHEDULE_INDEX_TABLE = `
 CREATE TABLE IF NOT EXISTS schedule_index (
-  user_id      TEXT NOT NULL,
+  cell         TEXT NOT NULL,
   key          TEXT NOT NULL,
+  user_id      TEXT NOT NULL,
   org_id       TEXT,
   cron         TEXT NOT NULL,
   timezone     TEXT,
   next_fire_at INTEGER NOT NULL,
-  PRIMARY KEY (user_id, key)
+  PRIMARY KEY (cell, key)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at ON schedule_index (next_fire_at);
 `;
@@ -619,6 +672,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   migrateAddSuspensionStatusColumns(db);
   migrateAddResourceStateVersioning(db);
   migrateAddScheduleIndexOrgId(db);
+  migrateScheduleIndexCell(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);

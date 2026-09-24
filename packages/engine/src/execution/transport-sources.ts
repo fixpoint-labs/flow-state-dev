@@ -37,6 +37,15 @@ export const TASK_SOURCE = "task";
 export const INTERNAL_SOURCE = "internal";
 
 /**
+ * Stamped only by the engine's in-process principal entry point, which
+ * `fsdev run` and `fsdev chat` use (FIX-1551). Reserved: the host refuses it on
+ * any context that entry point did not build, so a transport adapter can never
+ * resolve a network request under it. It delivers `public` dispatches like any
+ * caller-facing source.
+ */
+export const CLI_SOURCE = "cli";
+
+/**
  * The dispatch type a source delivers. **A dispatch's type is decided by which
  * door it came through**, never by anything in its body — which is what makes
  * the entry map a caller cannot pick a boundary. Every caller-facing transport

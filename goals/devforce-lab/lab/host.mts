@@ -61,7 +61,7 @@ import {
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { fileURLToPath } from "node:url";
 import { LEDGER_ID } from "./board.mts";
-import { INSPECT_ENTRY } from "./seat-config.mts";
+import { INSPECT_ENTRY, SEAT_FACTS_COMPONENT } from "./seat-config.mts";
 import { defineImplementPhase } from "./phase.mts";
 import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
 import {
@@ -263,13 +263,15 @@ export interface Lab {
   /**
    * Read one seat's own view of itself.
    *
-   * `omitOrg` sends the request through the transport door with no org at all,
-   * which BR-17 says is refused before anything runs. The refusal is returned
-   * rather than thrown, so it can be graded on its wording.
+   * `door` sends the request through the transport door instead of a direct
+   * `runAction`: `"org-less"` with no credential at all, which BR-17 says is
+   * refused before anything runs, and `"bearer"` with the lab's verified
+   * bearer, which takes its org from that bearer and lands. A refusal is
+   * returned rather than thrown, so it can be graded on its wording.
    */
   inspect(
     seatId: string,
-    options?: { omitOrg?: boolean },
+    options?: { door?: "org-less" | "bearer" },
   ): Promise<{ facts?: Record<string, unknown>; error?: string }>;
   dispose(): Promise<void>;
 }
@@ -352,7 +354,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
   } as never);
 
-  const router = await state.getRouter();
   const runtime = await state.getRuntime();
 
   // `createFlowState` builds its own `RuntimeConfig` and takes no logger
@@ -362,6 +363,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (options.logger !== undefined) {
     (runtime.runtimeConfig as { logger?: unknown }).logger = options.logger;
   }
+  // After the logger is set, so the router the door probes run through is
+  // built with it too.
+  const router = await state.getRouter();
 
   /** The session the EM seat's actions run in — one per seat, stable across a run. */
   const sessionFor = (seatId: string): string => `s_${seatId.replace(/\./g, "_")}`;
@@ -550,7 +554,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       );
     },
 
-    inspect: async (seatId: string, inspectOptions?: { omitOrg?: boolean }) => {
+    inspect: async (seatId: string, inspectOptions?: { door?: "org-less" | "bearer" }) => {
       if (seatId in seats === false) throw new Error(`no seat "${seatId}" was hired`);
 
       // BR-17 is about the DOOR, and the door is the transport host: a bare
@@ -558,25 +562,64 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // happily — and, because a file-declared document's body is static
       // content rather than stored state, it even reads the document. The
       // refusal this rule names therefore has to be asked for where it lives.
-      // The host is wired with `resolveLabPrincipal`, so this request has
-      // nothing to fall back to: no bearer, no verified org, 401.
-      if (inspectOptions?.omitOrg === true) {
-        // A session id nothing has used, and that is load-bearing:
-        // `validateDispatch` satisfies the org requirement from an EXISTING
-        // session's stored org binding. Reusing the ordinary session would hand
-        // the request the very org this probe is withholding, and the refusal
-        // would never fire — a green that means nothing.
-        const segments = [seatId, `no-org-${seatId}`, "actions", INSPECT_ENTRY];
+      // The host is wired with `resolveLabPrincipal`, so an org-less request
+      // has nothing to fall back to: no bearer, no verified org, 401. Its
+      // positive half goes through the SAME door carrying the lab's bearer, so
+      // a door that refused everything cannot pass as one that refused only
+      // the unverified.
+      if (inspectOptions?.door !== undefined) {
+        const bearer = inspectOptions.door === "bearer";
+        // A session id nothing has used, one per probe, and that is
+        // load-bearing: `validateDispatch` satisfies the org requirement from
+        // an EXISTING session's stored org binding. Reusing the ordinary
+        // session would hand the org-less probe the very org it is withholding
+        // (the refusal would never fire), and would let the bearer probe land
+        // on a stored org rather than the verified one — a green that means
+        // nothing either way.
+        const segments = [seatId, `${inspectOptions.door}-${seatId}`, "actions", INSPECT_ENTRY];
         const request = new Request(`http://lab/api/flows/${segments.join("/")}`, {
           method: "POST",
+          // The inline stream, because the plain POST acks 202 with no output
+          // and the positive half is graded on the seat's facts.
+          headers: {
+            accept: "text/event-stream",
+            ...(bearer ? { authorization: `Bearer ${LAB_PRINCIPAL_SECRET}` } : {}),
+          },
           body: JSON.stringify({ userId: LAB_USER_ID, input: {} }),
         });
         const response = await (router as any).POST(request, { params: { path: segments } });
-        const text = await response.text();
-        const json = text.length > 0 ? JSON.parse(text) : undefined;
-        return response.status >= 400
-          ? { error: `${response.status}: ${JSON.stringify(json)}` }
-          : { facts: (json ?? {}) as Record<string, unknown> };
+        const text: string = await response.text();
+        if (response.status >= 400) {
+          const json = text.length > 0 ? JSON.parse(text) : undefined;
+          return { error: `${response.status}: ${JSON.stringify(json)}` };
+        }
+        const events = text
+          .split("\n")
+          .filter((line) => line.startsWith("data: "))
+          .map(
+            (line) =>
+              JSON.parse(line.slice(6)) as {
+                type: string;
+                item?: { type?: string; component?: string; data?: Record<string, unknown> };
+              },
+          );
+        // The facts come off the client-visible component the entry emits, by
+        // name, not off any trace item: trace items are not for clients, and
+        // are not captured at all when trace observability is off.
+        const facts = events
+          .filter(
+            (event) =>
+              event.item?.type === "component" && event.item.component === SEAT_FACTS_COMPONENT,
+          )
+          .at(-1)?.item?.data;
+        const completed = events.some((event) => event.type === "request.completed");
+        if (completed && facts !== undefined) return { facts };
+        const seen = events.map((event) => event.type).join(", ");
+        return {
+          error: completed
+            ? `request.completed fired with no ${SEAT_FACTS_COMPONENT} component (events: ${seen})`
+            : `request.completed never fired (events: ${seen})`,
+        };
       }
 
       const result = await act(seatId, INSPECT_ENTRY, {});

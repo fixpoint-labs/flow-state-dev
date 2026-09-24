@@ -810,6 +810,14 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
      * can correlate mutations back to the owning entity.
      */
     scopeId: string;
+    /**
+     * The storage cell a concrete instance key is persisted under — the same
+     * per-key ownership resolution the persisters use, so a key a narrower
+     * overlapping collection owns reports that collection's cell. Surfaced to
+     * lifecycle hooks as `CollectionHookContext.cell`, so a hook never
+     * re-derives where its rows live.
+     */
+    cellOf: (storageKey: string) => string;
     configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     readResourceContent: () => Record<string, string>;
@@ -1419,16 +1427,17 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       // LRU tracking: storageKey → last access timestamp
       const lruAccess = new Map<string, number>();
 
-      /** Populated hook context for lifecycle callbacks. */
-      const hookCtx: CollectionHookContext = {
+      /** Populated hook context for a lifecycle callback on one instance key. */
+      const hookCtx = (storageKey: string): CollectionHookContext => ({
         log: (_message: string) => {
           // Hook log messages are available for debugging; runtime logger
           // integration is handled at a higher level when available.
         },
         scopeType: options.scope,
         scopeId: options.scopeId,
+        cell: options.cellOf(storageKey),
         orgId: options.orgId,
-      };
+      });
 
       // FIX-701: prefix for this collection's list/count reads (e.g. "files/").
       const nsPatternPrefix = getPatternPrefix(nsConfig.pattern);
@@ -1478,7 +1487,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           }
           recordEagerRead("get", storageKey);
           lruAccess.set(storageKey, Date.now());
-          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx(storageKey));
         },
 
         async getOptional(key: string | Record<string, string>): Promise<ResourceRef<JsonObject> | undefined> {
@@ -1491,7 +1500,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           }
           recordEagerRead("getOptional", storageKey);
           lruAccess.set(storageKey, Date.now());
-          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx(storageKey));
         },
 
         async create(
@@ -1656,17 +1665,17 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
           if (wasUpdate) {
             if (nsConfig.onInstanceUpdated) {
-              await nsConfig.onInstanceUpdated(storageKey, state, prevState ?? {}, hookCtx);
+              await nsConfig.onInstanceUpdated(storageKey, state, prevState ?? {}, hookCtx(storageKey));
             }
             await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, state), { state, prevState, evicted: false });
           } else {
             if (nsConfig.onInstanceCreated) {
-              await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
+              await nsConfig.onInstanceCreated(storageKey, state, hookCtx(storageKey));
             }
             await options.onResourceChanged?.(storageKey, "created", await liveProjection(nsConfig, state), { state, prevState: undefined, evicted: false });
           }
 
-          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx(storageKey));
         },
 
         async getOrCreate(
@@ -1682,7 +1691,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           const resources = options.readResources();
           if (storageKey in resources) {
             lruAccess.set(storageKey, Date.now());
-            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx(storageKey));
           }
           try {
             return await nsHandle.create(key, initial);
@@ -1696,7 +1705,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             // off the conflict, so the ref below reads the real instance.
             if (!(err instanceof ResourceAlreadyExistsError)) throw err;
             lruAccess.set(storageKey, Date.now());
-            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx(storageKey));
           }
         },
 
@@ -1760,13 +1769,13 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
             lruAccess.set(storageKey, Date.now());
             if (!committed) {
-              return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+              return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx(storageKey));
             }
             if (nsConfig.onInstanceUpdated) {
-              await nsConfig.onInstanceUpdated(storageKey, postState, reported, hookCtx);
+              await nsConfig.onInstanceUpdated(storageKey, postState, reported, hookCtx(storageKey));
             }
             await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, postState), { state: postState, prevState: reported, evicted: false });
-            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx(storageKey));
           };
 
           if (storageKey in options.readResources()) {
@@ -1805,7 +1814,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
               const fullPrefix = nsPrefix.length > 0 ? `${nsPrefix}/${prefix}` : prefix;
               if (!storageKey.startsWith(fullPrefix)) continue;
             }
-            instances.push(createNamespaceInstanceRef(storageKey, nsConfig, hookCtx));
+            instances.push(createNamespaceInstanceRef(storageKey, nsConfig, hookCtx(storageKey)));
           }
 
           return instances;
@@ -1841,7 +1850,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           lruAccess.delete(storageKey);
 
           if (nsConfig.onInstanceDeleted) {
-            await nsConfig.onInstanceDeleted(storageKey, hookCtx);
+            await nsConfig.onInstanceDeleted(storageKey, hookCtx(storageKey));
           }
 
           // A live collection streams deletes too (delta `null`) so the client
@@ -2211,7 +2220,7 @@ async function evictInstance(
   policy: "lru" | "oldest",
   lruAccess: Map<string, number>,
   deleteResourceKey: (key: string) => Promise<boolean>,
-  hookCtx: CollectionHookContext,
+  hookCtx: (storageKey: string) => CollectionHookContext,
   // FIX-751: fired after the per-key delete with `evicted: true` so a reactive
   // `deleted` binding can distinguish a capacity eviction from an explicit
   // delete. Omitted by callers that don't wire the seam (mock registries).
@@ -2255,7 +2264,7 @@ async function evictInstance(
   lruAccess.delete(evictKey);
 
   if (nsConfig.onInstanceDeleted) {
-    await nsConfig.onInstanceDeleted(evictKey, hookCtx);
+    await nsConfig.onInstanceDeleted(evictKey, hookCtx(evictKey));
   }
 
   // A live collection streams evictions too (delta `null`) so the client

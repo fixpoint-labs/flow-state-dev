@@ -69,7 +69,8 @@ Take the single action the dispatch calls for:
   Keep authored figures, assets, and POCs with this set. Open the epic PR and link it from
   Linear; do not publish a full-content mirror. Return handles for human sign-off.
   Approval must bind to the reviewed head; no agent approval or stale-label bypass.
-  The coordinator schedules a separate authorized MERGE-ONLY assignment before children start.
+  The coordinator schedules a separate authorized MERGE-ONLY assignment before children start,
+  unless the owner merged the PR themselves: that merge is the approval.
 
   **Issues that don't exist yet are placeholders.** The set is usually written before most of
   its issues are filed. A node in the dependency graph, a row in the set table and a lane in

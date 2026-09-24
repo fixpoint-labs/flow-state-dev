@@ -54,8 +54,8 @@ export interface RunHarnessOptions {
   /** Env for the child. Intent-ladder overrides are stripped unless `keepIntents`. */
   env?: Record<string, string>;
   /**
-   * Keep `FSDEV_DEFAULT_MODEL` / `FSDEV_INTENT_*`. Default false: a harness that
-   * builds its own bare resolver throws if they're set. Set true only when the
+   * Keep `FSDEV_DEFAULT_MODEL` / `FSDEV_INTENT_*`. Default false: they replace
+   * the models a harness would otherwise resolve. Set true only when the
    * harness deliberately runs on the app's configured ladder.
    */
   keepIntents?: boolean;

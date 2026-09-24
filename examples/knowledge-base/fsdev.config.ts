@@ -13,24 +13,8 @@
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
 import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
 import { postgresStores } from "@flow-state-dev/store-postgres";
-import type { ModelResolver } from "@flow-state-dev/core";
 import knowledgeFlow from "./src/flow";
 import path from "node:path";
-
-/**
- * `knowledge` has no generator actions — pure CRUD, no model calls. Passing
- * an explicit resolver (rather than relying on `createFlowState`'s
- * auto-built one) skips `createModelResolver`'s `FSDEV_DEFAULT_MODEL` /
- * `FSDEV_INTENT_*` env scan, which throws when an ambient env sets
- * `FSDEV_DEFAULT_MODEL` but no intents are declared — a real
- * misconfiguration for a model-using app, a no-op here.
- */
-function neverResolvesAModel(): never {
-  throw new Error("knowledge-base example: no generator actions are configured; this flow never resolves a model.");
-}
-const modelResolver = Object.assign(neverResolvesAModel, {
-  resolveId: neverResolvesAModel,
-}) as ModelResolver;
 
 // Select prod when either Postgres URL the adapter honors is set — not just
 // DATABASE_URL — else a FSD_DB_URL-only deploy silently picks in-memory dev
@@ -49,7 +33,6 @@ if (profile === "prod" && !process.env.KB_MCP_SECRET) {
 
 export default createFlowState({
   flows: { knowledge: knowledgeFlow },
-  modelResolver,
   adapters: [createMcpTransportAdapter()], // mounts POST /api/flows/knowledge/mcp
   stores: {
     dev: { primary: filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") }) },

@@ -9,6 +9,7 @@ import {
   createFlowRegistry,
   createModelResolver,
   ownsRecord,
+  resolveInProcessPrincipal,
   type FlowRegistry,
   type RequestRecord,
   type RuntimeConfig,
@@ -27,6 +28,13 @@ import { createBuiltinRegistry } from "../chat/registry";
 import { createPlainTextRenderer } from "../chat/render";
 import { runChatLoop, type SessionGuard } from "../chat/loop";
 import { collectValues } from "../cli-options";
+import {
+  askFlowState,
+  resolveCliPrincipal,
+  validatePrincipalFlags,
+  type AskPrincipal,
+  type PrincipalFlags,
+} from "../principal";
 
 /** Registers the `chat` subcommand on the given commander program. */
 export function registerChatCommand(program: Command): void {
@@ -35,7 +43,8 @@ export function registerChatCommand(program: Command): void {
     .description("Start an interactive chat session over a flow")
     .option("-s, --session <id>", "Resume an engine session for the initially bound flow")
     .option("-m, --model <model>", "Override model for generator blocks run in this process")
-    .option("-u, --user <id>", "Engine identity for sessions and turns (default: cli-user)")
+    .option("-u, --user <id>", "Run turns as this user. The organization comes from the app's resolver unless you also pass --org. Default: the user your app's resolver returns, or cli-user if the app has none or you pass --org")
+    .option("--org <id>", "Run turns in this organization and skip the app's resolver")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
@@ -60,6 +69,8 @@ export function registerChatCommand(program: Command): void {
 export interface ChatCommandOptions {
   session?: string;
   user?: string;
+  /** `--org`: run every turn in this organization; the app's resolver is not asked. */
+  org?: string;
   model?: string;
   flowDir?: string[];
   dotenv?: string[];
@@ -129,6 +140,11 @@ export async function executeChatCommand(
   actionName: string | undefined,
   options: ChatCommandInternalOptions,
 ): Promise<void> {
+  // Identity flags are refused before anything loads; each turn asks the app
+  // for its own identity (below).
+  const principalFlags: PrincipalFlags = { org: options.org, user: options.user };
+  validatePrincipalFlags(principalFlags);
+
   const resolved = await resolveRuntimeSource({
     cwd: options.cwd,
     config: options.config,
@@ -137,6 +153,7 @@ export async function executeChatCommand(
   });
 
   let registry: FlowRegistry;
+  let askPrincipal: AskPrincipal;
   let stores: StoreRegistry;
   let baseRuntimeConfig: RuntimeConfig | undefined;
   let configDefault: string | undefined;
@@ -158,6 +175,7 @@ export async function executeChatCommand(
       );
     }
     registry = runtime.registry;
+    askPrincipal = askFlowState(resolved.flowState, resolved.configPath);
     stores = options.stores ?? runtime.stores;
     baseRuntimeConfig = runtime.runtimeConfig;
     configDefault = runtime.chat?.default;
@@ -179,6 +197,8 @@ export async function executeChatCommand(
     }
     registry = createFlowRegistry();
     registry.registerMany(resolved.flows);
+    const discovered = registry;
+    askPrincipal = (question) => resolveInProcessPrincipal({ registry: discovered }, question);
     if (options.stores !== undefined) {
       stores = options.stores;
     } else {
@@ -224,8 +244,6 @@ export async function executeChatCommand(
       baseRuntimeConfig !== undefined
         ? { ...baseRuntimeConfig, modelResolver, logger }
         : { modelResolver, logger };
-
-    const userId = options.user ?? "cli-user";
 
     // Session guard (§4.4): reject an existing session owned by another flow
     // instance, or whose completed-request history belongs to one.
@@ -295,7 +313,14 @@ export async function executeChatCommand(
       renderer,
       stores,
       runtimeConfig,
-      userId,
+      // Asked per turn, for that turn's target, as HTTP asks per request.
+      principalFor: (target, text) =>
+        resolveCliPrincipal(
+          askPrincipal,
+          { flowKind: target.flowKind, action: target.actionName, input: { message: text } },
+          principalFlags,
+          (id) => registry.pinOf(id),
+        ),
       runtime: runtimeSnapshot,
       validateSessionForTarget,
       input,

@@ -168,12 +168,23 @@ describe("createModelResolver — env override validation", () => {
     ).not.toThrow();
   });
 
-  it("throws when FSDEV_DEFAULT_MODEL is set with no declared intents", () => {
+  // Env vars are ambient: a container that pins the model for `fsdev` must not
+  // crash a host that declares no intents and resolves no model.
+  it("does not throw when FSDEV_DEFAULT_MODEL is set with no declared intents", () => {
+    const resolver = createModelResolver({
+      env: { FSDEV_DEFAULT_MODEL: "openai/gpt-5-nano" },
+      providers: { openai: mockProvider() },
+    });
+    // The override still lands as the host's defaultModel for an intent fallback.
+    expect(resolver.resolveId("intent/anything")).toBe("openai/gpt-5-nano");
+  });
+
+  it("still throws on a malformed FSDEV_DEFAULT_MODEL with no declared intents", () => {
     expect(() =>
       createModelResolver({
-        env: { FSDEV_DEFAULT_MODEL: "openai/gpt-5" },
+        env: { FSDEV_DEFAULT_MODEL: "intent/chat" },
       })
-    ).toThrow(/FSDEV_DEFAULT_MODEL was set, but no intents are declared/);
+    ).toThrow(/FSDEV_DEFAULT_MODEL must be a 'provider\/model'/);
   });
 
   it("ignores unrelated env vars", () => {

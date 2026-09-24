@@ -114,6 +114,12 @@ const status: BuiltinCommand = {
     ctx.write(target ? `Target:  ${target.flowKind} · ${target.actionName}` : "Target:  (none — /use <flow> to bind)");
     ctx.write(`Session: ${activeSessionId(ctx.state) ?? "(none)"}`);
     ctx.write(`Turns:   ${ctx.state.turns}`);
+    const principal = target !== undefined ? ctx.state.principals.get(target.flowKind) : undefined;
+    ctx.write(
+      principal !== undefined
+        ? `Org:     ${principal.orgId} (user ${principal.userId}, ${principal.from})`
+        : "Org:     (asked on each turn)",
+    );
     ctx.write(`Source:  ${ctx.runtime.source}`);
     ctx.write(`Store:   ${ctx.runtime.store}`);
     return { ok: true };

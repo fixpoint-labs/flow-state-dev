@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { executeTurn } from "../src/chat/turn";
 import { createPlainTextRenderer } from "../src/chat/render";
@@ -62,6 +62,7 @@ describe("executeTurn", () => {
       target: chatbotTarget,
       sessionId: "sess_chatbot",
       userId: "cli-user",
+      orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: { modelResolver },
       renderer,
@@ -91,6 +92,7 @@ describe("executeTurn", () => {
       text: "hang",
       sessionId: "sess_abort",
       userId: "cli-user",
+      orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: {},
       renderer,
@@ -120,6 +122,7 @@ describe("executeTurn", () => {
       text: "hang",
       sessionId: "sess_race",
       userId: "cli-user",
+      orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: {},
       renderer,
@@ -166,6 +169,7 @@ describe("executeTurn", () => {
       text: "hang",
       sessionId: "sess_flaky",
       userId: "cli-user",
+      orgId: DEFAULT_ORG_ID,
       stores: flakyStores,
       runtimeConfig: {},
       renderer,
@@ -199,6 +203,7 @@ describe("executeTurn", () => {
       text: "hang",
       sessionId: "sess_recover_slow",
       userId: "cli-user",
+      orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: {},
       renderer,
@@ -214,6 +219,7 @@ describe("executeTurn", () => {
       text: "hello",
       sessionId: "sess_recover_chat",
       userId: "cli-user",
+      orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: { modelResolver },
       renderer,
@@ -251,6 +257,7 @@ describe("executeTurn", () => {
       text: "hi",
       sessionId: "sess_strict",
       userId: "cli-user",
+      orgId: DEFAULT_ORG_ID,
       stores,
       runtimeConfig: {},
       renderer,
