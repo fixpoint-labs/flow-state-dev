@@ -38,7 +38,10 @@ Sidebar: Workforce, directly after `capabilities-on-disk`. Frontmatter `sidebar_
 >
 > Every block in `blocks/` is a tool of the package, written the way any block in a
 > [`blocks/` folder](./code-on-disk.md#blocks-a-worker-can-call) is. A package with no `blocks/`
-> folder is fine: it is instructions and nothing else.
+> folder is fine: it is instructions and nothing else. If that's all you need, a
+> [skill](../skills/overview.md) listed under the worker's `skills: active:` does the same job and
+> can also stay out of the prompt until it's relevant. Reach for a package when a tool travels with
+> the words.
 >
 > Run `fsdev gen` after adding or removing a block, as you would for any other `blocks/` folder.
 > Editing `PACKAGE.md` needs a restart and nothing more.
