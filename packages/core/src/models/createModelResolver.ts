@@ -30,6 +30,7 @@ import {
 } from "./providerDetection";
 import { createFallbackModel, type FallbackModelEntry } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
+import { markEvaluationModelGateway } from "./evaluationModelGateway";
 import { reorderByPreference, normalizePreference } from "./reorderByPreference";
 import { warnOnceDev } from "../helpers/deprecation";
 
@@ -125,6 +126,14 @@ const GATEWAY_PACKAGES: Record<string, PackageInfo> = {
   vercel: { pkg: "@ai-sdk/gateway", factory: "createGateway" },
   openrouter: { pkg: "@openrouter/ai-sdk-provider", factory: "createOpenRouter" },
 };
+
+/**
+ * Providers whose model strings an evaluator always resolves through a
+ * gateway, never through a provider registered under `providers` or an
+ * installed package. `typesafe-ai/jev` names the gateway's Jev; direct Jev
+ * is an evaluation model instance the author builds (spec D2).
+ */
+const GATEWAY_ONLY_EVALUATION_PROVIDERS: ReadonlySet<string> = new Set(["typesafe-ai"]);
 
 const _require = createRequire(import.meta.url);
 const _cwdRequire = createRequire(new URL(`file://${process.cwd()}/`));
@@ -1055,6 +1064,11 @@ export function createModelResolver(
   // each source's `evaluationModel(id)`. A source without one is refused
   // before any provider call. Intents are refused: an evaluator names one
   // model. The AI SDK's global default provider is never consulted.
+  //
+  // One exception: a `typesafe-ai/...` string always resolves through a
+  // gateway (GATEWAY_ONLY_EVALUATION_PROVIDERS). `create-model-resolver-
+  // evaluation-parity.test.ts` holds the two paths to the same source for
+  // every other string.
   // -------------------------------------------------------------------------
 
   function noProviderError(providerName: string): Error {
@@ -1142,20 +1156,32 @@ export function createModelResolver(
         `No API key found for gateway "${gwType}". ` +
           `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
       );
-      return evaluationModelFrom(
-        gateway,
-        `${providerName}/${modelId}`,
-        `Gateway "${gwType}"`,
-        modelString,
-        gatewayPackageName(gwType)
+      return markEvaluationModelGateway(
+        evaluationModelFrom(
+          gateway,
+          `${providerName}/${modelId}`,
+          `Gateway "${gwType}"`,
+          modelString,
+          gatewayPackageName(gwType)
+        ),
+        gwType
       );
     }
 
-    const explicit = options?.providers?.[providerName];
+    // A `typesafe-ai/...` string always means the gateway (spec D2), even
+    // when the app registered Jev's library under `providers["typesafe-ai"]`.
+    // The library names the model differently (`jev-latest`, not `jev`) and
+    // bills a different account, so routing by what is registered would call
+    // a different model. Direct Jev is an evaluation model instance the
+    // author passes to the evaluator. This is the one place the evaluation
+    // path's precedence departs from a generator string's.
+    const gatewayOnly = GATEWAY_ONLY_EVALUATION_PROVIDERS.has(providerName);
+
+    const explicit = gatewayOnly ? undefined : options?.providers?.[providerName];
     if (explicit !== undefined) {
       return evaluationModelFrom(explicit, modelId, `Provider "${providerName}"`, modelString);
     }
-    if (isPackageProviderAvailable(providerName)) {
+    if (!gatewayOnly && isPackageProviderAvailable(providerName)) {
       const provider = await loadPackageProvider(providerName);
       return evaluationModelFrom(
         provider,
@@ -1174,12 +1200,15 @@ export function createModelResolver(
       gw.apiKey,
       `No API key found for gateway "${gw.gatewayType}" while falling back from direct "${providerName}".`
     );
-    return evaluationModelFrom(
-      gateway,
-      `${providerName}/${modelId}`,
-      `Gateway "${gw.gatewayType}"`,
-      modelString,
-      gatewayPackageName(gw.gatewayType)
+    return markEvaluationModelGateway(
+      evaluationModelFrom(
+        gateway,
+        `${providerName}/${modelId}`,
+        `Gateway "${gw.gatewayType}"`,
+        modelString,
+        gatewayPackageName(gw.gatewayType)
+      ),
+      gw.gatewayType
     );
   }
 

@@ -25,6 +25,7 @@ import type {
   EvaluatorQuestions,
 } from "../types/evaluation";
 import type { GeneratorModelUsage } from "../types/model";
+import { evaluationModelGateway } from "./evaluationModelGateway";
 
 type SdkEvaluationModel = Exclude<Experimental_EvaluationModel, string>;
 
@@ -109,10 +110,19 @@ export async function runEvaluation(options: RunEvaluationOptions): Promise<Eval
   const confidence = reportedConfidence(
     result.providerMetadata as Record<string, Record<string, unknown>> | undefined
   );
-  const answers: EvaluatorAnswers = {};
-  for (const [id, raw] of Object.entries(result.answers)) {
-    answers[id] = toFsdAnswer(raw as Record<string, unknown>, confidence?.[id]);
-  }
+  // Built from entries, not by assignment into `{}`: a question id such as
+  // `__proto__` must become an own key of the answer map, not a prototype
+  // write. Confidence is read only from the metadata's own keys for the same
+  // reason.
+  const answers: EvaluatorAnswers = Object.fromEntries(
+    Object.entries(result.answers).map(([id, raw]) => [
+      id,
+      toFsdAnswer(
+        raw as Record<string, unknown>,
+        confidence !== undefined && Object.hasOwn(confidence, id) ? confidence[id] : undefined
+      ),
+    ])
+  );
 
   const { inputTokens, outputTokens } = result.usage;
   const usage: GeneratorModelUsage | undefined =
@@ -124,9 +134,13 @@ export async function runEvaluation(options: RunEvaluationOptions): Promise<Eval
           totalTokens: (inputTokens ?? 0) + (outputTokens ?? 0),
         };
 
+  // Same identity shape a generator reports: `requested` only when it
+  // differs from `actual`, and the gateway whenever one routed the call.
   const actual = result.response.modelId;
-  const identity: ModelIdentity =
-    actual === options.requested ? { actual } : { actual, requested: options.requested };
+  const identity: ModelIdentity = { actual };
+  if (actual !== options.requested) identity.requested = options.requested;
+  const gateway = evaluationModelGateway(options.model);
+  if (gateway !== undefined) identity.gateway = gateway;
 
   return { answers, usage, identity };
 }

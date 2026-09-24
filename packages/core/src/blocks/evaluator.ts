@@ -27,8 +27,12 @@ import type {
   BlockContext,
   BlockDefinition,
   ConnectorFn,
-  DeclaredResourceEntry
+  DeclaredResourceEntry,
+  InferBlockResources,
+  InferFlowConfigFromSchema,
+  InferStateFromSchema
 } from "../types/block";
+import type { AnyResourceRef } from "../types/resource";
 import type {
   BooleanQuestion,
   ChoiceQuestion,
@@ -38,7 +42,16 @@ import type {
   EvaluatorQuestions,
   ScoreQuestion
 } from "../types/evaluation";
-import type { UsesEntry } from "../capability/types";
+import type {
+  InferCapabilities,
+  InferCapabilityOwnState,
+  InferCapabilityResources,
+  InferCapabilitySequencerState,
+  InferCapabilitySessionState,
+  MergeTargetSchemas,
+  Prettify,
+  UsesEntry,
+} from "../capability/types";
 import { parseModelString } from "../models/providerDetection";
 import { runEvaluation } from "../models/evaluate";
 import { buildBlock } from "./internal/build-block";
@@ -229,22 +242,55 @@ async function resolveModelString(
 // ---------------------------------------------------------------------------
 
 /** A static question set, or one computed per execution from the input and context. */
-export type EvaluatorQuestionsSlot<TInput, TQuestions extends EvaluatorQuestions> =
+export type EvaluatorQuestionsSlot<
+  TInput,
+  TQuestions extends EvaluatorQuestions,
+  TContext = BlockContext,
+> =
   | TQuestions
-  | ((input: TInput, ctx: BlockContext) => TQuestions | Promise<TQuestions>);
+  | ((input: TInput, ctx: TContext) => TQuestions | Promise<TQuestions>);
 
 /**
  * Config for {@link evaluator}. Scope schemas, `resources`, `uses`,
- * `connectInput` and the shared block fields work as on a handler. There is
- * no `retry`: an evaluator makes one call per run.
+ * `connectInput` and the shared block fields work as on a handler, and they
+ * type the `ctx` the `questions` and `state` callbacks receive the way they
+ * type a handler's `execute`. There is no `retry`: an evaluator makes one
+ * call per run.
+ *
+ * The type parameters after `TQuestions` mirror `HandlerConfig`'s; they are
+ * inferred from the declarations, not written by hand.
  */
 export interface EvaluatorConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   TQuestions extends EvaluatorQuestions = EvaluatorQuestions,
+  TRequestStateSchema extends ZodTypeAny | undefined = undefined,
+  TSessionStateSchema extends ZodTypeAny | undefined = undefined,
+  TUserStateSchema extends ZodTypeAny | undefined = undefined,
+  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
+  TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentInputSchema extends ZodTypeAny | undefined = undefined,
+  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  TUses extends readonly UsesEntry[] = readonly [],
+  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
+  TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
+  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
+  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
+  TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
+  TParentInput = TParentInputSchema extends ZodTypeAny ? z.infer<TParentInputSchema> : unknown,
+  TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
+  TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
+  TStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentStateSchema extends ZodTypeAny | undefined = undefined,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
+  TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
 > extends Omit<
   BlockConfig<TInputSchema, ZodTypeAny, TInput, EvaluatorOutput<TQuestions>>,
-  "execute" | "outputSchema" | "retry" | "validateChunk" | "cacheable"
+  "execute" | "outputSchema" | "retry" | "validateChunk" | "cacheable" | "stateSchema" | "flowConfigSchema"
 > {
   /**
    * Which model answers: a model string (resolved through the app's model
@@ -254,28 +300,47 @@ export interface EvaluatorConfig<
    */
   model: string | EvaluationModel;
   /** The questions. Ids become the keys of `answers`. */
-  questions: EvaluatorQuestionsSlot<TInput, TQuestions>;
+  questions: EvaluatorQuestionsSlot<
+    TInput,
+    TQuestions,
+    BlockContext<
+      TRequestState, TSessionState, TUserState, TOrgState,
+      TResources, TSequencerState, TParentInput, TMergedTargetSchemas,
+      TCapabilities, TSelfState, TParentState, TFlowConfig
+    >
+  >;
   /**
    * What the model evaluates: a string, an array or a plain object. Defaults
    * to the block's input.
    */
-  state?: (input: TInput, ctx: BlockContext) => EvaluationInput | Promise<EvaluationInput>;
-  requestStateSchema?: ZodTypeAny;
-  sessionStateSchema?: ZodTypeAny;
-  userStateSchema?: ZodTypeAny;
-  orgStateSchema?: ZodTypeAny;
-  sequencerStateSchema?: ZodTypeAny;
-  parentInputSchema?: ZodTypeAny;
+  state?: (
+    input: TInput,
+    ctx: BlockContext<
+      TRequestState, TSessionState, TUserState, TOrgState,
+      TResources, TSequencerState, TParentInput, TMergedTargetSchemas,
+      TCapabilities, TSelfState, TParentState, TFlowConfig
+    >
+  ) => EvaluationInput | Promise<EvaluationInput>;
+  /** What this block requires of the flow that installs it; types `ctx.flow.config`. */
+  flowConfigSchema?: TFlowConfigSchema;
+  requestStateSchema?: TRequestStateSchema;
+  sessionStateSchema?: TSessionStateSchema;
+  userStateSchema?: TUserStateSchema;
+  orgStateSchema?: TOrgStateSchema;
+  sequencerStateSchema?: TSequencerStateSchema;
+  parentInputSchema?: TParentInputSchema;
+  /** This block's own request-scoped state, exposed via `ctx.self`. */
+  stateSchema?: TStateSchema;
   /** Expected shape of the immediate parent's own state. */
-  parentStateSchema?: ZodTypeAny;
-  resources?: Record<string, DeclaredResourceEntry>;
+  parentStateSchema?: TParentStateSchema;
+  resources?: TResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
-  targetStateSchemas?: Record<string, ZodTypeAny>;
+  targetStateSchemas?: TTargetSchemas;
   /**
    * Capabilities to install: resources, state and helpers. Capabilities
    * cannot supply an evaluator's model, tools or context.
    */
-  uses?: readonly UsesEntry[];
+  uses?: TUses;
 }
 
 /**
@@ -325,8 +390,39 @@ export function evaluator<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   const TQuestions extends EvaluatorQuestions = EvaluatorQuestions,
+  TRequestStateSchema extends ZodTypeAny | undefined = undefined,
+  TSessionStateSchema extends ZodTypeAny | undefined = undefined,
+  TUserStateSchema extends ZodTypeAny | undefined = undefined,
+  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
+  TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentInputSchema extends ZodTypeAny | undefined = undefined,
+  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  TUses extends readonly UsesEntry[] = readonly [],
+  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
+  TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
+  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
+  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
+  TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
+  TParentInput = TParentInputSchema extends ZodTypeAny ? z.infer<TParentInputSchema> : unknown,
+  TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
+  TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
+  TStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentStateSchema extends ZodTypeAny | undefined = undefined,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
+  TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+  TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
+  TFlowConfig extends object = InferFlowConfigFromSchema<TFlowConfigSchema>,
 >(
-  config: EvaluatorConfig<TInputSchema, TInput, TQuestions>
+  config: EvaluatorConfig<
+    TInputSchema, TInput, TQuestions,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
+    TResourceDefs, TTargetSchemas, TUses,
+    TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
+    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState,
+    TFlowConfigSchema, TFlowConfig
+  >
 ): EvaluatorDefinition<TInputSchema, TInput, TQuestions> {
   const blockName = config.name;
   checkModelConfig(blockName, config.model);
@@ -336,12 +432,19 @@ export function evaluator<
 
   const { declaredResources, resolvedCapabilities, stateSchema } = resolveCapabilities(config, "evaluator");
 
+  // The callbacks are typed by the block's declarations; at runtime they
+  // receive the block's ctx, as a handler's `execute` does.
+  const questionsSlot = config.questions as EvaluatorQuestionsSlot<TInput, TQuestions>;
+  const stateFn = config.state as
+    | ((input: TInput, ctx: BlockContext) => EvaluationInput | Promise<EvaluationInput>)
+    | undefined;
+
   const execute = async (input: TInput, ctx: BlockContext): Promise<EvaluatorOutput<TQuestions>> => {
     const questions =
-      typeof config.questions === "function" ? await config.questions(input, ctx) : config.questions;
+      typeof questionsSlot === "function" ? await questionsSlot(input, ctx) : questionsSlot;
     checkQuestions(blockName, questions);
 
-    const state = config.state !== undefined ? await config.state(input, ctx) : input;
+    const state = stateFn !== undefined ? await stateFn(input, ctx) : input;
     checkState(blockName, state);
 
     const requestedModel =

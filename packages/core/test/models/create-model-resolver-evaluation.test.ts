@@ -107,6 +107,41 @@ describe("createModelResolver — resolveEvaluationModel", () => {
     expect(gateway.evaluationModelIds).toEqual(["typesafe-ai/jev", "typesafe-ai/jev"]);
   });
 
+  it("routes typesafe-ai/jev through the gateway even when Jev's library is registered as a provider (D2)", async () => {
+    // The library names Jev `jev-latest` and bills the author's own account;
+    // `typesafe-ai/jev` names the gateway's Jev. Registering the library must
+    // not quietly change which model and which account a string reaches.
+    const typesafe = Object.assign(vi.fn(), {
+      languageModel: vi.fn(),
+      evaluationModel: vi.fn((id: string) => evaluationModel("typesafe-ai.evaluation", id)),
+    });
+    const gateway = evaluationGateway();
+    const resolver = createModelResolver({
+      providers: { "typesafe-ai": typesafe },
+      gateways: { vercel: gateway.instance },
+    });
+
+    const model = await resolver.resolveEvaluationModel!("typesafe-ai/jev");
+
+    expect(gateway.evaluationModelIds).toEqual(["typesafe-ai/jev"]);
+    expect(model.provider).toBe("gateway");
+    expect(typesafe.evaluationModel).not.toHaveBeenCalled();
+    expect(typesafe).not.toHaveBeenCalled();
+  });
+
+  it("refuses typesafe-ai/jev with no gateway rather than use a registered Jev library (D2)", async () => {
+    const typesafe = Object.assign(vi.fn(), {
+      languageModel: vi.fn(),
+      evaluationModel: vi.fn((id: string) => evaluationModel("typesafe-ai.evaluation", id)),
+    });
+    const resolver = createModelResolver({ providers: { "typesafe-ai": typesafe } });
+
+    await expect(resolver.resolveEvaluationModel!("typesafe-ai/jev")).rejects.toThrow(
+      /No provider available for "typesafe-ai"/
+    );
+    expect(typesafe.evaluationModel).not.toHaveBeenCalled();
+  });
+
   it("does not load Jev's library for a typesafe-ai string even with its key set (BR-8, D2)", async () => {
     vi.stubEnv("TYPESAFE_AI_API_KEY", "ts-test");
     const resolver = createModelResolver({ keys: { "typesafe-ai": "ts-test" } });

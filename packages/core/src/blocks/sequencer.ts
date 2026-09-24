@@ -22,6 +22,7 @@ import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../err
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
+import { stashEvaluatorModelResult } from "./internal/evaluator-model-result";
 import type { ReplayLog } from "./internal/replay-log";
 import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import type { StepOutcome } from "./internal/arg-shapes";
@@ -237,25 +238,6 @@ type GeneratorModelUsageMeta = {
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
 };
-
-/**
- * Stash an evaluator's usage and model identity on its scoped ctx, where the
- * `output` phase of `_withExecutionScope` reads them onto the block_trace row.
- * Runs on success and failure, so a failed evaluation that returned usage
- * still records it.
- */
-function stashEvaluatorModelResult(
-  scopedCtx: BlockContext,
-  usage: GeneratorModelUsageMeta | undefined,
-  identity: ModelIdentity | undefined
-): void {
-  if (usage !== undefined) {
-    (scopedCtx as { _generatorModelUsage?: GeneratorModelUsageMeta })._generatorModelUsage = usage;
-  }
-  if (identity !== undefined) {
-    (scopedCtx as { _generatorModelIdentity?: ModelIdentity })._generatorModelIdentity = identity;
-  }
-}
 
 /**
  * Emits a state_snapshot item at sequencer step boundaries (FIX-401).

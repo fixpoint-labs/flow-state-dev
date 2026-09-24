@@ -306,6 +306,38 @@ describe("evaluator — answers (BR-16 to BR-19)", () => {
     }
     expect("probabilities" in output.answers.frustration).toBe(false);
   });
+
+  it("keeps an answer whose question id is __proto__ as an own key, with its confidence, and leaves the map's prototype alone", async () => {
+    // A question set built from data (e.g. ids from input) can carry any
+    // string id. Assigning into `{}` would hit the prototype setter: the
+    // answer would vanish and the model's answer would become the prototype.
+    const questions = Object.fromEntries([
+      ["__proto__", boolean("Is this a prototype?")],
+      ["urgent", boolean("Urgent?")],
+    ]);
+    const { model } = mockEvaluationModel({
+      answers: JSON.parse(
+        '{"__proto__": {"type": "boolean", "probability": 0.7}, "urgent": {"type": "boolean", "probability": 0.1}}'
+      ),
+      providerMetadata: { typesafe: { confidence: JSON.parse('{"__proto__": 0.6}') } },
+    });
+
+    const output = await runForTest(
+      evaluator({ name: "dynamic", model, questions: () => questions }),
+      "x",
+      spyContext().ctx
+    );
+
+    expect(Object.keys(output.answers).sort()).toEqual(["__proto__", "urgent"]);
+    expect(Object.getOwnPropertyDescriptor(output.answers, "__proto__")?.value).toEqual({
+      type: "boolean",
+      probability: 0.7,
+      confidence: 0.6,
+    });
+    expect(Object.getPrototypeOf(output.answers)).toBe(Object.prototype);
+    // No confidence is read from the metadata map's prototype either.
+    expect("confidence" in output.answers.urgent).toBe(false);
+  });
 });
 
 describe("evaluator — failures (BR-14, BR-20, BR-21)", () => {

@@ -6,8 +6,10 @@
 import {
   boolean,
   choice,
+  createModelResolver,
   defineFlow,
   evaluator,
+  generator,
   handler,
   sequencer,
   DEFAULT_ORG_ID
@@ -163,6 +165,77 @@ describe("evaluator in the runtime — trace (BR-23, BR-24, BR-27)", () => {
     const { traces } = await run(pipeline, { requestId: "req_eval_legacy" });
     expect(traces.map((t) => t.blockKind).sort()).toEqual(["handler", "sequencer"]);
     expect(traces.every((t) => t.evaluator === undefined)).toBe(true);
+  });
+
+  it("names the gateway that routed the call on the row's model identity, as a generator's row does", async () => {
+    // A gateway serving Jev: every evaluation model it hands out answers the
+    // same way. The row must say the call went through "vercel", for both the
+    // bare string (gateway fallback) and the explicit gateway string.
+    const gateway = {
+      languageModel: vi.fn(),
+      evaluationModel: (id: string) => mockEvaluationModel({ answers, modelId: id, provider: "gateway" }),
+    };
+    const modelResolver = createModelResolver({ gateways: { vercel: gateway } });
+
+    const bare = await run(triage("typesafe-ai/jev"), { requestId: "req_eval_gw_bare", modelResolver });
+    expect(bare.result.error).toBeUndefined();
+    expect(bare.traces.find((t) => t.blockName === "triage")!.model).toEqual({
+      actual: "typesafe-ai/jev",
+      gateway: "vercel",
+    });
+
+    const explicit = await run(triage("vercel/typesafe-ai/jev"), { requestId: "req_eval_gw_explicit", modelResolver });
+    expect(explicit.result.error).toBeUndefined();
+    expect(explicit.traces.find((t) => t.blockName === "triage")!.model).toEqual({
+      actual: "typesafe-ai/jev",
+      requested: "vercel/typesafe-ai/jev",
+      gateway: "vercel",
+    });
+  });
+
+  it("records usage and identity on its own row when a generator calls it as a tool, leaving the generator's row its own", async () => {
+    const evalModel = mockEvaluationModel({ answers, usage: { inputTokens: 12, outputTokens: 3 }, modelId: "jev-latest" });
+    let steps = 0;
+    const agentModel: GeneratorModel = {
+      modelId: "agent-model",
+      async generate() {
+        throw new Error("legacy generate must not be called on a step-capable model");
+      },
+      async generateStep() {
+        steps += 1;
+        return steps === 1
+          ? {
+              toolCalls: [{ toolCallId: "c1", toolName: "triage", args: { message: "I was charged twice" } }],
+              finishReason: "tool-calls",
+              usage: { promptTokens: 100, completionTokens: 5, totalTokens: 105 },
+            }
+          : { text: "routed", finishReason: "stop", usage: { promptTokens: 120, completionTokens: 2, totalTokens: 122 } };
+      },
+    } as GeneratorModel;
+    const agent = generator({
+      name: "agent",
+      model: agentModel,
+      prompt: "route the ticket",
+      tools: [triage(evalModel)],
+    });
+
+    const { result, traces } = await run(agent, { requestId: "req_eval_tool" });
+
+    expect(result.error).toBeUndefined();
+    expect(evalModel.calls).toHaveLength(1);
+    const toolRow = traces.find((t) => t.blockName === "triage")!;
+    expect(toolRow.blockKind).toBe("evaluator");
+    expect(toolRow.modelUsage).toMatchObject({
+      model: "mock.evaluation/jev-latest",
+      promptTokens: 12,
+      completionTokens: 3,
+      totalTokens: 15,
+    });
+    expect(toolRow.model).toEqual({ actual: "jev-latest", requested: "mock.evaluation/jev-latest" });
+    // The generator's row keeps its own model.
+    const agentRow = traces.find((t) => t.blockName === "agent")!;
+    expect(agentRow.model?.actual).not.toBe("jev-latest");
+    expect(agentRow.modelUsage?.model).not.toBe("mock.evaluation/jev-latest");
   });
 });
 
