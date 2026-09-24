@@ -39,19 +39,23 @@ Each block names the PR that publishes it ([PLAN](PLAN.md#the-pr-plan)).
 > including a worker that never loaded the owner-private collection.
 >
 > **Overlaps fail at startup.** Once a flow declaring an owner-private collection is registered,
-> the app refuses to start if any flow declares a collection whose pattern could reach its keys,
-> whichever registers first:
+> the app refuses to start if any flow declares a collection in the same scope whose pattern
+> could reach its keys, whichever registers first:
 >
 > ```
 > Collection pattern "[tenant]/**" can reach the rows of owner-private collection
 > "drafts/[owner]/[id]". Only that collection reads or writes them, each for the user it belongs to.
 > ```
 >
-> Declaring the same owner-private collection on several flows is fine.
+> Declaring the same owner-private collection on several flows is fine, and so is a collection
+> in another scope, which can't reach these rows.
 >
-> **Limits.** The pattern must declare the named parameter and must not use `**`. An
-> owner-private collection has no browser read (`client.state.read`), so the browser collection
-> routes never serve it. Don't use `~` at the start of a key segment anywhere else.
+> **Limits.** The pattern must declare the named parameter exactly once and must not use `**`.
+> An owner-private collection has no browser read: `client.state.read`, `client.content.read`
+> and `client.content.prefetch` are each refused when it is defined, so the browser routes never
+> return its rows. A key's first segment starting with `~` is its owner, so no segment before
+> the owner parameter may start with `~`; segments after it may. Don't use `~` at the start of a
+> key segment anywhere else.
 
 ## PR-A · UPDATE · `apps/docs/docs/workforce/durable-hire.md` · "Hiring a seat only one member can reach", after the paragraph ending "each seat's `ownerPin` carries the user."
 
@@ -65,7 +69,7 @@ collection reaches only the calling user's own rows…"), the quoted error becom
 > every process over the store, and no other collection in your app can list or write it.
 >
 > Once a flow declaring the private collection is registered, the app refuses to start if any
-> flow declares a collection that could reach a user-owned row: `workforce/roster/**`,
+> flow declares an org-scoped collection that could reach a user-owned row: `workforce/roster/**`,
 > `workforce/roster/[owner]/notes`, a copy of `workforce/roster/[owner]/[seat]`, or a wide
 > pattern such as `[tenant]/**`. For the org roster, declare `workforce/roster/*`, which only
 > ever sees org-visible rows.
@@ -80,21 +84,23 @@ Replace the row's last two sentences with:
 
 ## PR-A · UPDATE · `docs/architecture/resources-and-client-data.md` · new subsection "Owner-private collections"
 
-> A collection declaring `ownerPrivate: { param }` owns every key whose segment at that
-> parameter begins `~`. Core validates the declaration's shape at definition (the parameter is
-> in the pattern, no `**`, no browser read). Engine enforces it in one module, with two fences:
+> A collection declaring `ownerPrivate: { param }` owns every key whose first segment beginning
+> `~` sits at that parameter. Core validates the declaration's shape at definition (the
+> parameter occurs exactly once, no `**`, no browser read of state or content). Engine enforces
+> it in one module, with two fences:
 >
-> - **The key fence, always on.** A key with any segment beginning `~` is served only through an
->   owner-private collection, only when that segment sits at its owner parameter, and only to
->   the user `ownerSegment` encodes there. Every other collection lists without it, reads it as
->   absent and is refused on write: through the resource handle, the request-start seed cache,
->   projected collections, the browser resource routes, `/state` and the debug endpoints. It
->   reads only the key, so it holds in every process over the store.
+> - **The key fence, always on.** A key's first segment beginning `~` is its owner. A key with
+>   one is served only through an owner-private collection, only when that segment sits at its
+>   owner parameter, and only to the user `ownerSegment` encodes there. Later `~` segments are
+>   data. Every other collection lists without it, reads it as absent and is refused on write:
+>   through the resource handle, the request-start seed cache, projected collections, the
+>   browser resource routes, `/state` and the debug endpoints. It reads only the key, so it holds
+>   in every process over the store.
 > - **The startup fence, armed by a declaration.** Once `FlowRegistry` holds a flow declaring an
->   owner-private collection, it refuses any flow declaring another collection whose pattern can
->   reach its keys, checking flows it already holds and every later one. It is never cleared,
->   even across unregister, for the reason the participants map is kept: the rows outlive the
->   registration.
+>   owner-private collection, it refuses any flow declaring another collection in the same scope
+>   whose pattern can reach its keys, checking flows it already holds and every later one. It is
+>   never cleared, even across unregister, for the reason the participants map is kept: the rows
+>   outlive the registration.
 >
 > Workforce's private roster collection is the first consumer. Engine knows it only as an
 > owner-private collection.
@@ -102,8 +108,9 @@ Replace the row's last two sentences with:
 ## PR-A · UPDATE · `docs/contributing/architecture-reference.md` · "Resources and Client Data", new bullet
 
 > - A key segment beginning `~` belongs to an owner-private collection (`ownerPrivate: { param }`),
->   in every app: no other collection reads or writes it. A registry that has held one refuses,
->   for good, any flow whose collection can reach its keys →
+>   in every app: no other collection reads or writes it, and a key's first one names its owner.
+>   A registry that has held one refuses, for good, any flow whose collection in the same scope
+>   can reach its keys →
 >   [Resources and client data](../architecture/resources-and-client-data.md#owner-private-collections)
 
 ## PR-B · UPDATE · Engine's references to the instance pin
@@ -120,13 +127,14 @@ Replace the row's last two sentences with:
 
 ## Changesets
 
-- **PR-A** · `@flow-state-dev/core` minor, `@flow-state-dev/engine` minor, `@flow-state-dev/workforce` patch:
+- **PR-A** · `@flow-state-dev/core` minor, `@flow-state-dev/engine` minor, `@flow-state-dev/workforce` minor
+  (its refusal strings change, which a consumer can trip over):
 
   ```md
   Resource collections can be declared owner-private with `ownerPrivate: { param }`, and `ownerSegment(userId)` builds the owner key segment. Key segments beginning `~` are reserved for owner-private collections in every app. `defineResourceCollection` and flow registration no longer refuse collection patterns on Workforce's account, and `@flow-state-dev/core` no longer exports `assertRosterCollectionIsNotDeep`. Workforce's private roster collection is now owner-private; its refusal messages name the owner-private collection instead of the roster.
   ```
 - **PR-B** · `@flow-state-dev/engine` minor: `InstancePinMismatchError.reason` is `"owning-user"` where it was `"roster-owner"`.
-- **PR-C** · `@flow-state-dev/core` minor: the roster patterns move to `@flow-state-dev/workforce`; `HIRED_ROSTER_PRIVATE_BRAND`, `markHiredRosterPrivateCollection` and `isHiredRosterPrivateCollection` are removed.
+- **PR-C** · `@flow-state-dev/core` minor, `@flow-state-dev/workforce` patch (it gains the two exports): the roster patterns move to `@flow-state-dev/workforce`; `HIRED_ROSTER_PRIVATE_BRAND`, `markHiredRosterPrivateCollection` and `isHiredRosterPrivateCollection` are removed.
 
 ## Publication ownership
 

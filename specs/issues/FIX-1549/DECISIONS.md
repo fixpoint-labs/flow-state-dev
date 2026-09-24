@@ -3,8 +3,8 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 What was considered, what was chosen, why, and what each choice locks in. This is the amended
-set: [D3](#d3) is Jake's lock and supersedes [D2](#d2)'s placement. [D5](#d5) is the one call
-still asked. Everything else is context for them.
+set: [D3](#d3) and [D5](#d5) are Jake's locks, and D3 supersedes [D2](#d2)'s placement. Nothing is
+asked. Everything else is context for them.
 
 ## The tree
 
@@ -14,11 +14,11 @@ flowchart TD
   D3 --> D4["D4 · owner-private collection<br/>declared on Core's collection config, enforced by Engine"]
   D3 --> D6["D6 · the instance pin is already generic<br/>renamed, not redesigned"]
   D4 --> D1["D1 · rows fenced by key in every process<br/>startup refusal armed by any owner-private collection"]
-  D4 --> D5["D5 · ASKED · the owner marker is a ~ segment<br/>reserved in every app"]
+  D4 --> D5["D5 · Jake's lock<br/>a key's first ~ segment is its owner<br/>~ reserved in every app"]
   D3 -.->|"supersedes"| D2["D2 · Engine hire-plane owns the roster fence"]
   D4 -.->|"rejected"| X1["declaration on an Engine type<br/>Workforce cannot reach Engine at runtime"]
   D4 -.->|"rejected"| X2["registration hook Workforce installs<br/>policy code in L2, but no L1 fence under it"]
-  D5 -.->|"alternative"| X3["fence only declared prefixes<br/>fails open where the declaration is absent"]
+  D5 -.->|"rejected"| X3["fence only declared prefixes<br/>fails open where the declaration is absent"]
   D1 -.->|"rejected"| X5["arming alone<br/>a process without the declaration reads the rows"]
 ```
 
@@ -77,15 +77,22 @@ Unchanged in substance from the approved D1. Amended in words only: "Workforce's
 is now "any owner-private collection", and the reserved shape is [D5](#d5)'s.
 
 <a name="d5"></a>
-## D5 · ASKED · The owner marker is generic key syntax: a key segment beginning `~` is an owner segment, in every app
+## D5 · Jake's lock: `~` is reserved key syntax in every app, and a key's first segment beginning `~` is its owner
 
 | | |
 |---|---|
+| **Locked by** | Jake, product owner, 2026-09-24, answering this amendment's ask on [#2207](https://github.com/fixpoint-labs/flow-state-dev/pull/2207): **"Reserve ~"** |
 | **Instead of** | Fencing only the prefixes of owner-private collections a process has registered |
 | **Because** | Engine can no longer hard-code `workforce/roster/~` ([D3](#d3)), and a fence that learns its prefixes from declarations is blind in a process that never loaded them. That is the leak [poc/unarmed-leak](poc/unarmed-leak/README.md) proved. A marker in the key itself is what lets the fence hold in every process with no vocabulary. `~` is the marker because Workforce's stored rows already carry it: nothing is migrated (BP-030) |
-| **Locks in** | Every app gives up key segments that begin `~`. A write of one through any collection that is not owner-private is refused, loudly. Nothing on `main` writes such a key except the private roster |
+| **Locks in** | Every app gives up key segments that begin `~`, except at and after an owner-private collection's owner parameter. Through any other collection a write of one is refused loudly, and a read finds nothing. Nothing on `main` writes such a key except the private roster |
 
-The six-part ask is in [SPEC → Sign off](SPEC.md#sign-off).
+**Why the first `~` segment.** The owner has to be read off the key alone, or a process without
+the declaration can't tell whose row it holds. Taking the first `~` segment gives every key at
+most one owner, the same in every process. An owner-private collection is served only when that
+segment is its owner parameter; a `~` segment after it is ordinary data. That matters for rows
+already stored: Workforce's row schema accepts a seat id such as `~research`, so
+`workforce/roster/~alice/~research` can exist, and it reads back unmigrated (BR-22). Refusing
+every second `~` segment would have made it unreadable.
 
 <a name="d6"></a>
 ## D6 · The instance pin is already the generic seam; it is renamed, not redesigned
@@ -118,23 +125,36 @@ policy.
   would be config for one message.
 - **"Cannot be redeclared" folds into the overlap refusal.** An undeclared copy of the private
   pattern is an overlapping collection, refused with the same sentence as `workforce/roster/**`.
-- **The browser-read refusal moves to definition.** It is a shape rule on the declaration, so
-  Core's generic define-time check owns it, like `client`'s own checks. Workforce's collection
-  never sets a browser read.
-- **An owner-private pattern cannot contain `**`.** The owner has to sit at one known segment for
-  the overlap test and the key fence to agree.
+- **The browser-read refusal moves to definition, and covers every browser read.** It is a shape
+  rule on the declaration, so Core's generic define-time check owns it, like `client`'s own
+  checks. `client.state.read`, `client.content.read` and `client.content.prefetch` are
+  independent, and each serves rows to the browser, so all three are refused. Workforce's
+  collection sets none.
+- **An owner-private pattern cannot contain `**`, and names its owner parameter exactly once.**
+  The owner has to sit at one known segment for the overlap test and the key fence to agree.
+  `drafts/[owner]/[owner]` is a valid pattern today, but every key it resolves would carry the
+  owner twice.
+- **The startup fence compares collections within one scope.** Storage is routed by a
+  collection's scope, and patterns may overlap across scopes
+  ([resource collections](../../../docs/architecture/resource-collections.md#patterns)). A
+  session-scoped `[tenant]/**` cannot reach an org-scoped roster row, so it registers beside
+  Workforce, where `main` refuses it. The key fence still governs its keys (BR-24).
 - **Identical owner-private declarations on several flows are admitted.** Same pattern, parameter
   and scope is one collection declared twice, as Workforce does per flow. Owner-private
   collections that overlap otherwise are refused.
 - **`encodeUserSegment` stays in Core.** It is generic, and the owner segment is built from it.
   `ownerSegment(userId)` joins it. The roster patterns and the brand move to Workforce; the brand
   is deleted once Engine no longer reads it.
+- **The vocabulary guard checks coupling, not words.** It fails on an import from Workforce, a
+  roster symbol, the `workforce/roster` key, the `"roster-owner"` reason or a `hire-plane`
+  module. A word ban would also catch ordinary English ("an operator's seat") and task-board
+  vocabulary, and turn future prose into CI failures. PR-B still rewords Engine's Workforce
+  prose; review checks that.
 - **The trace store's `_roster.json` stays.** It is a list of trace request ids, not Workforce's
-  roster, and renaming the persisted file would orphan existing trace directories. The vocabulary
-  guard allowlists that one file.
-- **Task-board words in Engine are not this issue.** `runAction` speaks of a board's seat; its one
-  "seat" is reworded here so the guard can hold, but `gatedBy` and `boardId` are orchestration's,
-  and belong to their own audit ([PLAN → Follow-ups](PLAN.md#follow-ups)).
+  roster, and renaming the persisted file would orphan existing trace directories.
+- **Task-board words in Engine are not this issue.** `runAction` speaks of a board's seat, and
+  `gatedBy` and `boardId` are orchestration's. They belong to their own audit
+  ([PLAN → Follow-ups](PLAN.md#follow-ups)).
 
 ## Considered and dropped
 
@@ -170,5 +190,6 @@ policy.
 - **Amendment · D3 pivot** — Jake put #2196 on hold: hiring is not a Layer-1 concept. He chose
   "Re-spec, lift all". D2 is superseded; D4, D5 and D6 carry the lift; D1 is re-worded, not
   re-decided. One PR becomes three ([PLAN](PLAN.md#the-pr-plan)).
+- **D5 locked** — Jake chose "Reserve ~" on 2026-09-24.
 
-**Open: [D5](#d5).**
+**Open: none.**
