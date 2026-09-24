@@ -38,10 +38,11 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import type { Client, FlowListEntry, RecoveryClient, SessionClient } from "@flow-state-dev/client";
+import type { Client, FlowListEntry, RecoveryClient, ResourceClient, SessionClient } from "@flow-state-dev/client";
 import {
   createDevToolClient,
   createDevToolRecoveryClient,
+  createDevToolResourceClient,
   createDevToolSessionClient,
   type DevToolConfig,
 } from "../lib/client";
@@ -63,6 +64,8 @@ type DevToolState = {
   client: Client;
   sessionClient: SessionClient;
   recoveryClient: RecoveryClient;
+  /** The production resource read (manifest + collection state), bearer-aware like the rest. */
+  resourceClient: ResourceClient;
   /** The EXACT instance id the workspace is on. Never a kind. */
   activeFlowId: string | null;
   activeSessionId: string | null;
@@ -88,6 +91,7 @@ function buildClients(config: DevToolConfig, baseUrl: string | undefined) {
     client: createDevToolClient(config, baseUrl),
     sessionClient: createDevToolSessionClient(baseUrl, config.bearerToken),
     recoveryClient: createDevToolRecoveryClient(baseUrl, config.bearerToken),
+    resourceClient: createDevToolResourceClient(baseUrl, config.bearerToken),
   };
 }
 

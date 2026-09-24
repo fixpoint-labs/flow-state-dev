@@ -97,7 +97,7 @@ curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
 
 Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
 
-Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the operator who hired it (`kitchen-sink.~workforce-admin.support.ada`), and is still there after `pnpm build && pnpm start`.
+Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.bo`), and is still there after `pnpm build && pnpm start`.
 
 The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set, so a default run of this app has no working hire path. It takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names — never what the request body says:
 
@@ -113,6 +113,15 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
 Over HTTP rather than through `fsdev run`, because the CLI sends a fixed user and no organization, and this action needs one.
 
 The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
+
+The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. A request with no token gets `401`:
+
+```bash
+curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.bo/actions/answer \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer dev-token" \
+  -d '{"userId":"you","input":{"note":"Where is my order?"}}'
+```
 
 Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
 

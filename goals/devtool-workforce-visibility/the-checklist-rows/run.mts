@@ -1,26 +1,29 @@
 /**
- * Goal check: ER-Devtool checklist row 4, graded on a live hire off the
- * shipped DevTool. Row 6 is not graded yet (below).
+ * Goal check: ER-Devtool checklist rows 4 and 5, graded on a live hire off the
+ * shipped DevTool. Row 6's live read is deferred (below).
  *
  * Real path, no model, out of CI. See goal.md for the contract.
  *
- * Row 4 (a parked row says why, with nothing expanded) is read on the
- * `multi-seat-collab` hire, whose builder seat parks on a question by design.
- * The hire is served by the ordinary `fsdev dev` over that lab's own config and
- * driven through that lab's own driver, so nothing here stands a workforce up
- * or shapes one for the inspection. This file only reads the screen.
+ * Both rows are read on the `multi-seat-collab` hire, served by the ordinary
+ * `fsdev dev` over that lab's own config, so nothing here stands a workforce
+ * up or shapes one for the inspection.
  *
- * Row 6 (a sealed document is told apart from a writable one) is not graded,
- * pending an owner decision on its subject. No live hire in the repository
- * declares a sealed document, and ER-3 rules out adding one only so this check
- * has something to look at. The goal's claim is therefore row 4 alone: a PASS
- * means row 4 was graded and held, and says in its own words that row 6 was
- * not graded. Row 6 becomes a separate leg here once it has a subject. The
- * sweep has only PASS and FAIL, so a row that cannot be graded is left out of
- * the claim rather than reported as a failure it is not.
+ * - Row 4 (a parked row says why, with nothing expanded): the builder seat
+ *   parks on a question by design, driven through the lab's own driver. This
+ *   file only reads the screen.
+ * - Row 5 (the organization's seats, channels and who is in which): read from
+ *   the channel's session on a second serve of the same config with the debug
+ *   endpoints off, because row 4's driver reads the ledger over the debug
+ *   route and row 5 must be green without it. See `row5.mts`.
+ *
+ * Row 6 (a sealed document is told apart from a writable one) is outside this
+ * goal's claim. The owner deferred its live read until a real hire declares a
+ * sealed document (epic FIX-1457 D11); FIX-1481's automated checks prove the
+ * row-6 code. Every verdict says so as a note, not a failure.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/the-checklist-rows/run.mts
  * Controls: GOAL_CONTROL=silent-park (must FAIL at row 4 only)
+ *           GOAL_CONTROL=no-inventory (must FAIL at row 5 only, at step 3)
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -32,6 +35,7 @@ import { launchChromium } from "../../lib/playwright.mts";
 import { readLabTree } from "../../multi-seat-collab/lab/host.mts";
 import { Scenario, serveLab } from "../../multi-seat-collab/lab/run-scenario.mts";
 import { WORKER_KIND } from "../../multi-seat-collab/lab/workforce/flows/workers/worker.mts";
+import { gradeRow5 } from "./row5.mts";
 
 type Fixture = {
   row4: { piece: { goal: string; desk: string; asks: string } };
@@ -41,18 +45,22 @@ const fixture = loadFixture<Fixture>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SHOTS = goalTmpDir("checklist-rows");
 
-/** The legs each control must redden, and only those. */
-const EXPECTED: Record<string, readonly string[]> = {
-  "silent-park": ["row 4"],
+/**
+ * The legs each control must redden, and only those — and, where a step is
+ * named, every line it reddens on that leg must be at that step.
+ */
+const EXPECTED: Record<string, ReadonlyArray<{ leg: string; step?: string }>> = {
+  "silent-park": [{ leg: "row 4" }],
+  "no-inventory": [{ leg: "row 5", step: "step 3" }],
 };
 
 /**
  * What the run says about row 6 on every verdict, green or red. Not a failure:
- * the row is outside this goal's claim until it has a subject.
+ * the row is outside this goal's claim (epic FIX-1457 D11).
  */
 const ROW6_STATUS =
-  "row 6 not graded, pending an owner decision on its subject (no live hire declares a sealed " +
-  "document); a separate leg is added when it has one. Not a failure of the row-6 code";
+  "row 6 not graded live: the owner deferred its live read until a real hire declares a sealed " +
+  "document (epic FIX-1457 D11). FIX-1481's automated checks prove the row-6 code; not a failure";
 
 /**
  * The smallest visible area that counts as legible: 40px of the cell's width,
@@ -244,6 +252,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
   const served = await serveLab({ control: CONTROL, workDir: join(SHOTS, "server") });
   let browser: Browser | undefined;
   let row4Evidence = "";
+  let row5Evidence = "";
   try {
     browser = await launchChromium();
     const lab = new Scenario(served, tree);
@@ -350,12 +359,24 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       }
       await page.close();
     }
+
+    // ---- row 5: its own serve of the same config, debug off (row5.mts) ----
+    const row5 = await gradeRow5({
+      browser,
+      tree,
+      control: CONTROL,
+      workDir: join(SHOTS, "server-row5"),
+      shots: SHOTS,
+    });
+    failures.push(...row5.failures);
+    notes.push(...row5.notes);
+    row5Evidence = row5.evidence;
   } finally {
     await browser?.close().catch(() => {});
     served.stop();
   }
 
-  // ---- row 6: outside the claim until it has a subject (see the header) ----
+  // ---- row 6: outside the claim, its live read deferred (see the header) ----
   notes.push(ROW6_STATUS);
 
   // ---- the controls grade themselves ---------------------------------------
@@ -363,17 +384,22 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
     const expected = EXPECTED[CONTROL];
     if (expected === undefined) throw new Error(`unknown control "${CONTROL}"`);
     const graded = [...failures];
-    const offLeg = graded.filter((line) => !expected.some((leg) => line.startsWith(`[${leg}]`)));
-    const missing = expected.filter((leg) => !graded.some((line) => line.startsWith(`[${leg}]`)));
+    const at = ({ leg, step }: { leg: string; step?: string }) =>
+      step === undefined ? `[${leg}]` : `[${leg}] ${step}`;
+    const named = (want: { leg: string; step?: string }) =>
+      want.step === undefined ? want.leg : `${want.leg} at ${want.step}`;
+    const offLeg = graded.filter((line) => !expected.some((want) => line.startsWith(at(want))));
+    const missing = expected.filter((want) => !graded.some((line) => line.startsWith(at(want))));
     if (missing.length > 0 || offLeg.length > 0) {
       failures.push(
-        `the ${CONTROL} control must redden ${expected.join(" and ")} and nothing else` +
-          (missing.length > 0 ? `; never reddened: ${missing.join(", ")}` : "") +
+        `the ${CONTROL} control must redden ${expected.map(named).join(" and ")} and nothing else` +
+          (missing.length > 0 ? `; never reddened: ${missing.map(named).join(", ")}` : "") +
           (offLeg.length > 0 ? `; reddened elsewhere: ${offLeg.join(" | ")}` : ""),
       );
     }
   }
 
+  if (row5Evidence !== "") notes.unshift(`row 5 PASS: ${row5Evidence}`);
   if (row4Evidence !== "") notes.unshift(`row 4 PASS: ${row4Evidence}`);
   notes.push(`screenshots: ${SHOTS}`);
   // Notes ride along with a red verdict so a failure is read with them; on a

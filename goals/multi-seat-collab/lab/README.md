@@ -36,11 +36,11 @@ against what the ledger holds.
 | File | What it is |
 |---|---|
 | `workforce/` | The scenario, whole: one `CHANNEL.md` declaring `boards: [work]` and its three members, three `WORKER.md`. The two worker files name the `worker` kind and the desk each answers for (`build`, `review`) — spelled unlike any seat id, so a check that confused a routing key with a seat could not pass. **No file names the ledger the framework mints.** |
-| `host.mts` | Reads the tree, refuses it whole if anything did not load, and hires. Takes the desk → seat map as an argument and never reads one off the tree. |
+| `host.mts` | Reads the tree, refuses it whole if anything did not load, and hires. Takes the desk → seat map as an argument and never reads one off the tree. `openLab` is the boot: it opens the channel and then the organization's inventory, in-process, as the inventory docs show any app doing it, and throws when the inventory reports a problem. |
 | `workforce/flows/workers/` | The two kinds, one file each, basename = the kind a `WORKER.md` names in its `flow:` line. `planner.mts` has one action, a dispatch into the channel's own `fileTask`. `worker.mts` has the channel's board with a desk-narrowed claim, a same-flow hand-off per desk, `onReview: "exit"`, a `drain` action, and the person's door: `answer`, over the board's unpark-and-drain step. The loader does not walk `flows/`. |
 | `workforce/flows/piece.mts` | The row's input contract, the one piece both kinds share. Beside the kinds rather than among them, since a file under `flows/workers/` reads as a kind. |
-| `fsdev.config.mts` | Everything `fsdev dev` serves: one `FlowState` over SQLite, and the app's desk → seat map. `GOAL_CONTROL` perturbs it here. |
-| `run-scenario.mts` | The driver the check uses: spawns `fsdev dev`, opens the channel through `openChannels` over the HTTP session route, and files, drains and answers over the action route. Reports; grades nothing. |
+| `fsdev.config.mts` | Everything `fsdev dev` serves: one `FlowState` over SQLite, the app's desk → seat map, and the boot (`openLab`) before the first request. `GOAL_CONTROL` perturbs it here; `no-inventory` skips the inventory half of the boot. |
+| `run-scenario.mts` | The driver the check uses: spawns `fsdev dev` (optionally with `FSDEV_DEBUG_ENDPOINTS=0`), meets the channel the boot opened through `openChannels` over the HTTP session route, and files, drains and answers over the action route. Reports; grades nothing. |
 | `diff-check.mts` | The fence: every path this change touches is under `goals/` or the spec folder. |
 
 ## What the lab owns rather than the framework

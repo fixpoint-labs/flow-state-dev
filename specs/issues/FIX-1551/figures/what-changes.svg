@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 320" role="img" aria-label="Two panels. Today, a browser request goes through the app's resolver and lands in the kitchen-sink organization, while fsdev run skips the resolver and lands in the placeholder organization, where a seat hire is refused. After, fsdev run asks the same resolver and lands in kitchen-sink too; a developer who passes --org acme lands in acme, which the app's own callers cannot see."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-res { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-org { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-bad { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-own { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .panel { fill:none; stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-e   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; font-style:italic; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .a     { fill:none; stroke:var(--ink-2); stroke-width:1.4; }
+    .a-new { fill:none; stroke:var(--accent); stroke-width:1.8; }
+    .a-bad { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .a-own { fill:none; stroke:var(--prose); stroke-width:1.4; }
+    .mk    { fill:var(--ink-2); } .mkn { fill:var(--accent); } .mkb { fill:var(--gone); } .mko { fill:var(--prose); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="320"/>
+
+  <g id="today">
+    <rect class="panel" x="12" y="12" width="450" height="296" rx="6"/>
+    <text class="t-lbl" x="28" y="34">TODAY</text>
+    <rect class="n-box" x="26" y="52" width="136" height="48" rx="5"/>
+    <text class="t-b" x="38" y="73">Browser / HTTP</text>
+    <text class="t-s" x="38" y="89">any app caller</text>
+    <rect class="n-res" x="188" y="52" width="124" height="48" rx="5"/>
+    <text class="t-b" x="200" y="73">app's resolver</text>
+    <text class="t-s" x="200" y="89">host code</text>
+    <rect class="n-org" x="336" y="52" width="118" height="48" rx="5"/>
+    <text class="t-lbl" x="346" y="70">ORG</text>
+    <text class="t-b" x="346" y="89">kitchen-sink</text>
+    <path class="a" d="M162,76 L179,76"/><path class="mk" d="M178,72 L186,76 L178,80 z"/>
+    <path class="a" d="M312,76 L327,76"/><path class="mk" d="M326,72 L334,76 L326,80 z"/>
+    <rect class="n-box" x="26" y="150" width="136" height="48" rx="5"/>
+    <text class="t-b" x="38" y="171">fsdev run / chat</text>
+    <text class="t-s" x="38" y="187">in-process</text>
+    <rect class="n-bad" x="336" y="150" width="118" height="48" rx="5"/>
+    <text class="t-lbl" x="345" y="168">ORG</text>
+    <text class="t-s" x="341" y="187">__fsd_default_org__</text>
+    <path class="a-bad" d="M162,174 L327,174"/><path class="mkb" d="M326,170 L334,174 L326,178 z"/>
+    <text class="t-e" x="190" y="166">hard-coded, never asks</text>
+    <text class="t-bad" x="454" y="220" text-anchor="end">a seat hire is refused here</text>
+    <text class="t-bad" x="454" y="235" text-anchor="end">and the app can't read it</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="12" width="450" height="296" rx="6"/>
+    <text class="t-lbl" x="494" y="34">AFTER</text>
+    <rect class="n-box" x="492" y="52" width="136" height="48" rx="5"/>
+    <text class="t-b" x="504" y="73">Browser / HTTP</text>
+    <text class="t-s" x="504" y="89">any app caller</text>
+    <rect class="n-res" x="654" y="52" width="124" height="48" rx="5"/>
+    <text class="t-b" x="666" y="73">app's resolver</text>
+    <text class="t-s" x="666" y="89">same answer</text>
+    <rect class="n-org" x="802" y="52" width="118" height="48" rx="5"/>
+    <text class="t-lbl" x="812" y="70">ORG</text>
+    <text class="t-b" x="812" y="89">kitchen-sink</text>
+    <path class="a" d="M628,76 L645,76"/><path class="mk" d="M644,72 L652,76 L644,80 z"/>
+    <path class="a" d="M778,76 L793,76"/><path class="mk" d="M792,72 L800,76 L792,80 z"/>
+    <rect class="n-box" x="492" y="150" width="136" height="48" rx="5"/>
+    <text class="t-b" x="504" y="171">fsdev run / chat</text>
+    <text class="t-s" x="504" y="187">in-process</text>
+    <path class="a-new" d="M628,166 L694,107.3"/><path class="mkn" d="M696.7,110.3 L700,102 L691.3,104.3 z"/>
+    <text class="t-e" x="672" y="146">asks the same question,</text>
+    <text class="t-e" x="672" y="160">with no credential</text>
+    <rect class="n-box" x="492" y="240" width="136" height="48" rx="5"/>
+    <text class="t-b" x="504" y="261">… --org acme</text>
+    <text class="t-s" x="504" y="277">developer names it</text>
+    <rect class="n-own" x="802" y="240" width="118" height="48" rx="5"/>
+    <text class="t-lbl" x="812" y="258">ORG</text>
+    <text class="t-b" x="812" y="277">acme</text>
+    <path class="a-own" d="M628,264 L793,264"/><path class="mko" d="M792,260 L800,264 L792,268 z"/>
+    <text class="t-e" x="648" y="256">resolver not asked</text>
+    <text class="t-e" x="648" y="284">the app's callers can't see it</text>
+  </g>
+</svg>

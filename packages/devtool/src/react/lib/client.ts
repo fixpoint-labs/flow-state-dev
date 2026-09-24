@@ -22,12 +22,14 @@ import {
   createClient,
   createSessionClient,
   createRecoveryClient,
+  createResourceClient,
   createSSEClient,
   type Client,
   type ClientFetch,
   type ExecuteActionResponse,
   type SessionClient,
   type RecoveryClient,
+  type ResourceClient,
   type CreateSSEClientOptions,
   type RequestStreamHandle,
 } from "@flow-state-dev/client";
@@ -70,6 +72,17 @@ export function createDevToolSessionClient(baseUrl?: string, bearerToken?: strin
 
 export function createDevToolRecoveryClient(baseUrl?: string, bearerToken?: string): RecoveryClient {
   return createRecoveryClient({ baseUrl, fetcher: bearerFetcher(bearerToken) });
+}
+
+/**
+ * The production resource read — the session's manifest and the
+ * collection-state route, the same doors an app's own browser code uses. Built
+ * here so it carries the bearer token like every other DevTool client; a bare
+ * `createResourceClient()` would pass every unauthenticated check and 401 in
+ * any app with a principal resolver.
+ */
+export function createDevToolResourceClient(baseUrl?: string, bearerToken?: string): ResourceClient {
+  return createResourceClient({ baseUrl, fetcher: bearerFetcher(bearerToken) });
 }
 
 /** Open a request's SSE stream on the instance that owns it. */

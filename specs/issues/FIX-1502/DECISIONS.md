@@ -5,9 +5,9 @@
 Two decisions are the sign-off surface. **The scope itself is not one of them**: the owner
 answered the epic's [Open 1](../../epics/FIX-1457/DECISIONS.md#open) on **2026-09-24 with (a)**
 — row 5 is satisfied by a channel session's view of the whole organization, build it in W5. That
-answer is recorded on [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) and is landing
-in the epic's `DECISIONS.md` through an amendment in flight. This spec builds on it and does not
-reopen it.
+answer is recorded on [FIX-1502](https://linear.app/fixpoint-labs/issue/FIX-1502) and in the
+epic as [D10](../../epics/FIX-1457/DECISIONS.md#d10). This spec builds on it and does not reopen
+it.
 
 ## The tree
 
@@ -77,7 +77,7 @@ Then row 5 waits on FIX-1485, and this spec ships the read with the label and no
 
 | Alternative | Why not |
 |---|---|
-| An organization-level surface apart from any session | The owner answered (a) on 2026-09-24 |
+| An organization-level surface apart from any session | The owner answered (a) on 2026-09-24 ([epic D10](../../epics/FIX-1457/DECISIONS.md#d10)) |
 | Wait for [FIX-1486](https://linear.app/fixpoint-labs/issue/FIX-1486) | Its subject is choosing among organizations; one person, one organization does not need it |
 | The debug Resources panel as the green path | Off outside `fsdev dev`, and `fsdev dev` turns it on by default, so a check reading it would pass while production readers are refused. Named as an invent-kill on the issue |
 | A generic browser for every readable collection | Duplicates the debug panel on another route, and a table of raw rows does not answer *which channels is this seat in* |
