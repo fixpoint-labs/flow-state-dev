@@ -96,3 +96,68 @@ describe("CollectionHookContext.cell", () => {
     expect(stored?.state).toEqual({ text: "hi" });
   });
 });
+
+/**
+ * Storage decides a key's cell by the longest declared prefix that owns it, not
+ * by which handle wrote it. A broad shared collection writing a key that a
+ * narrower isolated one owns stores the row in the isolated cell, so the hook
+ * has to report that cell too — or a mirror files the row under the wrong
+ * (cell, key) and can never find it again to remove.
+ */
+describe("CollectionHookContext.cell with overlapping collections", () => {
+  it("is the cell the concrete key is stored in, not the writing collection's", async () => {
+    const seen: Array<{ key: string; cell: string }> = [];
+    const onInstanceCreated = (key: string, _state: unknown, ctx: CollectionHookContext) => {
+      seen.push({ key, cell: ctx.cell });
+    };
+    const all = defineResourceCollection({
+      pattern: "sched/**",
+      scope: "user",
+      stateSchema: z.object({ text: z.string() }),
+      onInstanceCreated,
+    });
+    const priv = defineResourceCollection({
+      pattern: "sched/private/*",
+      scope: "user",
+      flowIsolation: true,
+      stateSchema: z.object({ text: z.string() }),
+      onInstanceCreated,
+    });
+    const write = handler({
+      name: "write",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      resources: { all, priv },
+      execute: async (_input, ctx) => {
+        const broad = ctx.resources.all as unknown as ResourceCollectionRef;
+        await broad.create("private/x", { text: "hi" });
+        await broad.create("public", { text: "hi" });
+        return { ok: true };
+      },
+    });
+    const flow = defineFlow({
+      kind: "sched",
+      resources: { all, priv },
+      actions: { write: { inputSchema: z.object({}), block: write } },
+    })() as FlowInstance;
+    const stores = createInMemoryStores();
+    const result = await runAction({
+      flow,
+      actionName: "write",
+      input: {},
+      userId: "alice",
+      orgId: "acme",
+      stores,
+      runtimeConfig: {},
+    });
+    expect(result.error).toBeUndefined();
+
+    expect(seen).toEqual([
+      { key: "sched/private/x", cell: "alice:sched" },
+      { key: "sched/public", cell: "alice" },
+    ]);
+    for (const { key, cell } of seen) {
+      expect((await stores.resourceState.get("user", cell, key))?.state).toEqual({ text: "hi" });
+    }
+  });
+});

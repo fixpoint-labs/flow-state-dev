@@ -87,12 +87,38 @@ describe("createBullmqScheduleIndex", () => {
     await index.upsert({ ...row, cell: "user-1:~org:globex", orgId: "globex" });
     await index.remove({ cell: "user-1:~org:acme", key: "weekly" });
 
-    expect(queue.upsertJobScheduler.mock.calls.map((c: unknown[]) => c[0])).toEqual([
-      "fsd-sched:user-1:weekly",
-      "fsd-sched:user-1:~org:acme:weekly",
-      "fsd-sched:user-1:~org:globex:weekly",
-    ]);
-    expect(queue.removeJobScheduler.mock.calls).toEqual([["fsd-sched:user-1:~org:acme:weekly"]]);
+    const ids = queue.upsertJobScheduler.mock.calls.map((c: unknown[]) => c[0]);
+    expect(ids[0]).toBe("fsd-sched:user-1:weekly");
+    expect(new Set(ids).size).toBe(3);
+    expect(queue.removeJobScheduler.mock.calls).toEqual([[ids[1]]]);
+  });
+
+  /**
+   * Cells and keys both carry `:`, so joining them raw let two different rows
+   * name one scheduler: the second upsert replaced the first, and removing
+   * either stopped both. An app-wide row whose key happens to read like a seat
+   * suffix must stay apart from that seat's row — and keep the id it had
+   * before rows carried a cell, key colons and all.
+   */
+  it("never gives two (cell, key) rows one scheduler id", async () => {
+    const queue = createMockQueue();
+    const index = createBullmqScheduleIndex(queue, { flowKind: "weekly-digest" });
+    const row = { userId: "u", cron: "* * * * *", nextFireAt: 0 };
+
+    await index.upsert({ ...row, cell: "u", key: "~org:acme:weekly" });
+    await index.upsert({ ...row, cell: "u:~org:acme", key: "weekly", orgId: "acme" });
+    await index.upsert({ ...row, cell: "u:~org:acme:weekly", key: "x" });
+    await index.upsert({ ...row, cell: "u:~org", key: "acme:weekly:x" });
+    await index.upsert({ ...row, cell: "u\\:a", key: "b" });
+    await index.upsert({ ...row, cell: "u\\\\", key: "a:b" });
+
+    const ids = queue.upsertJobScheduler.mock.calls.map((c: unknown[]) => c[0]);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Released app-wide ids are byte-identical, even with `:` in the key.
+    expect(ids[0]).toBe("fsd-sched:u:~org:acme:weekly");
+
+    await index.remove({ cell: "u:~org:acme", key: "weekly" });
+    expect(queue.removeJobScheduler.mock.calls).toEqual([[ids[1]]]);
   });
 
   it("uses custom scheduler id prefix", async () => {

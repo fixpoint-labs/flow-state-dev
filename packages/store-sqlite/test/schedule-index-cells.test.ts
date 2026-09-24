@@ -257,3 +257,61 @@ describe("upgrading a schedule index written before rows carried a cell", () => 
     expect(rows.every((r) => r.next_fire_at > 1000)).toBe(true);
   });
 });
+
+/**
+ * Two processes starting against one legacy database file both look for the
+ * `cell` column before either takes the write lock. The one that loses the
+ * race must see the finished migration once it holds the lock — rebuilding an
+ * already re-keyed table would recompute every cell from `user_id`, moving a
+ * seat row the winner has since written into the person's app-wide cell (or
+ * colliding with the app-wide row and failing startup).
+ */
+describe("two connections upgrading one legacy database at once", () => {
+  it("the second leaves the first's migration, and rows written since, alone", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+    const dir = mkdtempSync(join(tmpdir(), "fsd-sched-cell-"));
+    const file = join(dir, "db.sqlite");
+    const seed = new Database(file);
+    seedLegacy(seed);
+    seed.close();
+
+    const first = new Database(file);
+    const second = new Database(file);
+    try {
+      // Let `second` get as far as the rebuild's transaction — past any check
+      // made before the lock — then let `first` migrate and write a seat row.
+      const originalTransaction = second.transaction.bind(second);
+      let interleaved = false;
+      second.transaction = ((fn: (...args: unknown[]) => unknown) => {
+        if (!interleaved) {
+          interleaved = true;
+          initializeSchema(first);
+          first
+            .prepare(
+              "INSERT INTO schedule_index (cell, key, user_id, org_id, cron, timezone, next_fire_at) VALUES ('alice:~org:acme', 'weekly', 'alice', 'acme', '0 9 * * MON', NULL, 2000)"
+            )
+            .run();
+        }
+        return originalTransaction(fn);
+      }) as typeof second.transaction;
+
+      initializeSchema(second);
+
+      const rows = second
+        .prepare("SELECT cell, user_id, next_fire_at FROM schedule_index ORDER BY cell")
+        .all() as Array<{ cell: string; user_id: string; next_fire_at: number }>;
+      expect(rows.map((r) => [r.cell, r.user_id])).toEqual([
+        ["a\\:b", "a:b"],
+        ["alice", "alice"],
+        ["alice:~org:acme", "alice"],
+        ["c\\\\d", "c\\d"],
+      ]);
+    } finally {
+      first.close();
+      second.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

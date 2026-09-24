@@ -49,8 +49,10 @@ export type CollectionHookContext = {
    */
   scopeId: string;
   /**
-   * The storage cell this collection's rows are persisted under: the exact
-   * scope key the engine writes the instance at. It differs from `scopeId`
+   * The storage cell this instance is persisted under: the exact scope key
+   * the engine writes the instance at. Resolved per instance key, so when a
+   * narrower overlapping collection owns the key, it is that collection's cell
+   * even if a broader handle did the write. It differs from `scopeId`
    * whenever storage is partitioned below the bare identity — a flow-isolated
    * collection (`<id>:<flow>`), a hired seat's (org, person) cell
    * (`<person>:~org:<org>`), or an identity whose id needs escaping. Two

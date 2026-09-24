@@ -234,19 +234,29 @@ function migrateAddScheduleIndexOrgId(db: Database.Database): void {
  * one transaction: it either completes or leaves the old table untouched.
  * Idempotent — a table that already has `cell` is left alone. Runs after the
  * `org_id` migration, so the old table always has that column to copy.
+ *
+ * The check runs twice. The first, outside the lock, keeps an already-migrated
+ * database from taking a write lock on every start. The second, inside the
+ * `IMMEDIATE` transaction, is the one that decides: two processes starting on
+ * one legacy file can both pass the first, and the one that takes the lock
+ * second must see the finished migration rather than rebuild it — a rebuild
+ * recomputes every cell from `user_id`, moving any seat row written since.
  */
 function migrateScheduleIndexCell(db: Database.Database): void {
-  const tableExists = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-    .get("schedule_index");
-  if (tableExists === undefined) return;
-
-  const cols = db
-    .prepare("SELECT name FROM pragma_table_info(?)")
-    .all("schedule_index") as Array<{ name: string }>;
-  if (cols.some((c) => c.name === "cell")) return;
+  const needsCell = (): boolean => {
+    const tableExists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get("schedule_index");
+    if (tableExists === undefined) return false;
+    const cols = db
+      .prepare("SELECT name FROM pragma_table_info(?)")
+      .all("schedule_index") as Array<{ name: string }>;
+    return !cols.some((c) => c.name === "cell");
+  };
+  if (!needsCell()) return;
 
   db.transaction(() => {
+    if (!needsCell()) return;
     db.exec("ALTER TABLE schedule_index RENAME TO schedule_index_pre_cell");
     db.exec("DROP INDEX IF EXISTS idx_schedule_index_next_fire_at");
     db.exec(SCHEDULE_INDEX_TABLE);
