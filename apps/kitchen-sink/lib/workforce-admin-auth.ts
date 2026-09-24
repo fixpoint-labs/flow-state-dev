@@ -24,7 +24,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { extractBearerToken, PrincipalResolutionError } from "@flow-state-dev/engine";
-import type { ResolvePrincipalFn } from "@flow-state-dev/core/types";
+import type { FlowInstance, ResolvePrincipalFn } from "@flow-state-dev/core/types";
 
 /** The env var holding `<org>:<token>` pairs. */
 export const ADMIN_TOKENS_ENV = "WORKFORCE_ADMIN_TOKENS";
@@ -149,4 +149,38 @@ export function adminPrincipalResolver(): ResolvePrincipalFn | undefined {
     }
     return { userId: ADMIN_USER_ID, orgId };
   };
+}
+
+/**
+ * A seat hired from a roster row, resolving its callers with the admin
+ * credential that hired it.
+ *
+ * A roster hire pins the seat to the organization and user the admin
+ * credential resolved, and every request to the seat is checked against that
+ * pin. So the seat has to resolve its callers the same way. With no resolver
+ * of its own it falls to the framework default, which names the default
+ * organization, and the pin refuses even the operator who just hired it.
+ *
+ * **On the seat instance, and nowhere wider.** A host-level resolver would put
+ * every open flow in this app (`chat-agent`, the channels, the file-declared
+ * seats) behind the admin token. A resolver on the kind would do the same to
+ * the file-declared seats of that kind, which run unpinned for `devuser`. The
+ * instance is the one place that covers exactly the pinned seats.
+ *
+ * The pin is untouched: this only decides who the caller IS, from the verified
+ * token. Whether that caller may reach the seat is still the pin's call, so
+ * another organization's credential is refused as before.
+ *
+ * Returned unchanged when no credential is configured — nothing can resolve
+ * the pinned organization, so the pin refuses everyone — and when the seat's
+ * kind names a resolver of its own, which is that kind's decision to make.
+ */
+export function withAdminAuthentication(
+  seat: FlowInstance,
+  resolvePrincipal: ResolvePrincipalFn | undefined
+): FlowInstance {
+  if (resolvePrincipal === undefined || seat.authentication?.resolvePrincipal !== undefined) {
+    return seat;
+  }
+  return { ...seat, authentication: { ...seat.authentication, resolvePrincipal } };
 }
