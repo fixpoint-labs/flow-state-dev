@@ -413,9 +413,11 @@ Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers 
 
 The navigator reads through a `client` and a `sessionClient`. Pass your own through those props when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Left out, the navigator builds its own pair against the nearest `FlowProvider`'s `baseUrl` and `userId`.
 
-The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` at the end of any row, `leafToolbar` at the end of an open leaf's row, and `emptySection` for a section whose kinds the server does not have.
+The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` at the end of any row, `leafToolbar` at the end of an open leaf's row, `leafDetail` under an open leaf's row, and `emptySection` for a section whose kinds the server does not have.
 
 While a leaf is open, `leafToolbar` is called with the leaf's `kind`, `address` and `cardinality`, its `sessions`, `isLoading` and `error`, and a `refresh` that re-reads the sessions. What it returns sits on the leaf's own row, after `rowTrailing`'s content. It mounts when the leaf opens and unmounts when it closes. It shares one line with the row's label, so give it icon buttons with an `aria-label` rather than text buttons.
+
+`leafDetail` is called with the same leaf, and what it returns sits on its own lines directly under the open leaf's row, above its sessions, starting at the leaf's label column. It's always shown while the leaf is open, and it wraps to the rail's width. Use it for what doesn't fit on a row, such as a leaf's details or a short form. It also mounts when the leaf opens and unmounts when it closes.
 
 ```tsx
 <FlowNavigator

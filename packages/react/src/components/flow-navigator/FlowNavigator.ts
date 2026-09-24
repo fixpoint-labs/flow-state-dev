@@ -117,6 +117,14 @@ export type FlowNavigatorSlots = {
    * buttons with an `aria-label`, not text.
    */
   readonly leafToolbar?: (leaf: FlowNavigatorLeafState) => ReactNode;
+  /**
+   * What an open leaf shows about itself, on its own lines directly under the
+   * leaf's row and above its sessions, starting at the leaf's label column.
+   * Handed the same state as `leafToolbar`, and mounted and unmounted with the
+   * leaf the same way. It is always shown while the leaf is open, and it wraps
+   * to the rail's width: for detail and forms that don't fit on a row.
+   */
+  readonly leafDetail?: (leaf: FlowNavigatorLeafState) => ReactNode;
   /** What a section covering no registered kind says. */
   readonly emptySection?: (section: FlowNavigatorSection) => ReactNode;
 };
@@ -314,6 +322,20 @@ function Row(props: {
   );
 }
 
+/**
+ * An open leaf's detail block: starts on the leaf row's label column and wraps
+ * to whatever width the rail leaves it, so it never pushes the rail wider.
+ */
+function detailStyle(depth: number): Record<string, unknown> {
+  return {
+    boxSizing: "border-box",
+    minWidth: 0,
+    padding: `2px 8px 4px ${8 + depth * INDENT_STEP + INDENT_STEP}px`,
+    overflowWrap: "anywhere",
+    fontSize: "var(--fsd-nav-note-font-size, 11px)"
+  };
+}
+
 /** A note stands in for the rows at `depth`, so it starts on their label column. */
 function noteStyle(depth: number): Record<string, unknown> {
   return {
@@ -486,7 +508,9 @@ function SessionList(props: {
  * replaced and keeps focus. What waits for the leaf to open is the read: a
  * closed leaf asks the server nothing, and closing retires a read in flight.
  * The host's toolbar joins the row's own trailing content, so it draws on
- * this row and mounts and unmounts with the leaf.
+ * this row and mounts and unmounts with the leaf. The host's detail, when it
+ * gives one, sits on its own lines between the row and the sessions, so the
+ * row stays one line whatever the detail holds.
  */
 function LeafRow(props: {
   readonly leaf: FlowNavigatorLeaf;
@@ -506,15 +530,15 @@ function LeafRow(props: {
     isOpen
   );
 
-  const toolbar = isOpen
-    ? context.slots.leafToolbar?.({
-        ...leaf,
-        sessions: state.sessions,
-        isLoading: state.isLoading,
-        error: state.error,
-        refresh: state.refresh
-      })
-    : null;
+  const leafState: FlowNavigatorLeafState = {
+    ...leaf,
+    sessions: state.sessions,
+    isLoading: state.isLoading,
+    error: state.error,
+    refresh: state.refresh
+  };
+  const toolbar = isOpen ? context.slots.leafToolbar?.(leafState) : null;
+  const detail = isOpen ? context.slots.leafDetail?.(leafState) : null;
 
   return createElement(
     "li",
@@ -532,6 +556,13 @@ function LeafRow(props: {
           ? null
           : createElement(Fragment, null, trailing, toolbar)
     }),
+    isBlank(detail)
+      ? null
+      : createElement(
+          "div",
+          { "data-leaf-detail": leaf.address, style: detailStyle(depth) },
+          detail
+        ),
     isOpen ? createElement(SessionList, { leaf, depth: depth + 1, state, context }) : null
   );
 }

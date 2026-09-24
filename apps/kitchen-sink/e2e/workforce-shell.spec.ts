@@ -147,12 +147,17 @@ const ROW_BUTTON = "button[data-kind], button[data-instance-id], button[data-ses
 
 /**
  * Tag every host action in the rail: anything interactive that is not a row's
- * own button or the component's Retry. Returns how many there are.
+ * own button, the component's Retry, or inside an open leaf's detail block,
+ * which is content under the row rather than an action on it. Returns how
+ * many there are.
  */
 const markActions = (nav: Locator) =>
   nav.evaluate((root, rowButton) => {
     const actions = [...root.querySelectorAll("button, a[href]")].filter(
-      (el) => !el.matches(rowButton) && el.textContent?.trim() !== "Retry",
+      (el) =>
+        !el.matches(rowButton) &&
+        el.textContent?.trim() !== "Retry" &&
+        el.closest("[data-leaf-detail]") === null,
     );
     actions.forEach((el, i) => el.setAttribute("data-vg-action", String(i)));
     return actions.length;
@@ -483,6 +488,53 @@ async function checkRail(
   await test.info().attach(shot.file, { path, contentType: "image/png" });
 }
 
+/**
+ * G9: an open seat's detail sits under its row, not on it. The open seat's row
+ * stays one line, the height of a closed seat's, every detail starts below its
+ * row, and neither the rows nor the details run past the rail.
+ */
+async function checkLeafDetail(nav: Locator, name: string, openSeat: string, closedSeat: string): Promise<void> {
+  // The detail is on the open row's line when it isn't under it, so the two
+  // rows are measured as they are drawn: one open, one closed.
+  await nav.locator(`[data-instance-id="${closedSeat}"][aria-expanded="true"]`).click();
+  const m = await nav.evaluate(
+    (root, seats) => {
+      const frameOf = (address: string) =>
+        root.querySelector(`[data-instance-id="${CSS.escape(address)}"]`)!.parentElement!.getBoundingClientRect();
+      const railRect = root.getBoundingClientRect();
+      const details = [...root.querySelectorAll<HTMLElement>("[data-leaf-detail]")].map((detail) => {
+        const frame = detail.previousElementSibling!.getBoundingClientRect();
+        const box = detail.getBoundingClientRect();
+        return {
+          address: detail.dataset.leafDetail!,
+          below: box.top >= frame.bottom - 0.5,
+          inside:
+            box.left >= railRect.left - 0.5 &&
+            box.right <= railRect.right + 0.5 &&
+            frame.right <= railRect.right + 0.5 &&
+            detail.scrollWidth <= detail.clientWidth + 1,
+        };
+      });
+      return {
+        openHeight: frameOf(seats.open).height,
+        closedHeight: frameOf(seats.closed).height,
+        details,
+        railOverflows: root.scrollWidth > root.clientWidth + 1,
+      };
+    },
+    { open: openSeat, closed: closedSeat },
+  );
+  const misplaced = m.details.filter((d) => !d.below || !d.inside);
+  const ok =
+    m.details.some((d) => d.address === openSeat) &&
+    Math.abs(m.openHeight - m.closedHeight) <= 0.5 &&
+    misplaced.length === 0 &&
+    !m.railOverflows;
+  const line = `${name} · G9 an open seat's row stays one line and its detail sits below it, inside the rail — open ${openSeat} row ${m.openHeight.toFixed(1)}px vs closed ${closedSeat} ${m.closedHeight.toFixed(1)}px; ${m.details.length - misplaced.length} of ${m.details.length} details below their row and inside the rail${misplaced.length ? ` (not: ${misplaced.map((d) => d.address).join(", ")})` : ""}; rail overflows: ${m.railOverflows}`;
+  test.info().annotations.push({ type: ok ? "pass" : "fail", description: line });
+  expect.soft(ok, line).toBe(true);
+}
+
 /** G8's last clause: a screen with no hover pointer shows every row's actions. */
 async function checkTouch(
   browser: Browser,
@@ -538,6 +590,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
     container: rail(page),
     file: "rail-kitchen-sink.png",
   });
+  await checkLeafDetail(shellNav, "/", SEAT, "support.grace");
   await checkTouch(browser, openShellRail, "/");
 
   // The developer tool's rail, narrowed to the same 256px.
@@ -607,7 +660,7 @@ test("VG · open a declared seat, hire another of its kind, and open the hire wi
   // A declared seat: its kind, and no roster row to read instructions from.
   await row(page, "agent").click();
   await row(page, DECLARED).click();
-  const declared = rail(page).locator(`ul[data-leaf="${DECLARED}"]`);
+  const declared = rail(page).locator(`[data-leaf-detail="${DECLARED}"]`);
   await expect(declared.locator("[data-seat-kind]")).toHaveText("agent");
   await expect(declared.locator('[data-state="not-published"]')).toBeVisible();
 
@@ -624,7 +677,7 @@ test("VG · open a declared seat, hire another of its kind, and open the hire wi
   await row(page, address).click();
 
   // The hired seat: its kind, and the instructions it was hired with.
-  const hired = rail(page).locator(`ul[data-leaf="${address}"]`);
+  const hired = rail(page).locator(`[data-leaf-detail="${address}"]`);
   await expect(hired.locator("[data-seat-kind]")).toHaveText("agent");
   await expect(hired.locator('[data-state="text"]')).toHaveText(instructions);
   expect(await page.evaluate(() => (window as { __noReload?: boolean }).__noReload)).toBe(true);

@@ -613,6 +613,73 @@ describe("FlowNavigator · an open leaf's toolbar sits on the leaf's own row (BR
   });
 });
 
+describe("FlowNavigator · an open leaf's detail sits on its own line under the row", () => {
+  const flows = [entry("chat", "chat", "singleton"), entry("seat-a", "agent", "collection")];
+  const follows = (a: Node, b: Node) =>
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  const detailOf = (address: string) =>
+    document.querySelector<HTMLElement>(`[data-detail="${address}"]`);
+
+  it("draws it under an open leaf's row, outside the row, and only while the leaf is open", async () => {
+    const server = fakeServer(flows, [{ id: "s1", kind: "agent", owner: "seat-a" }]);
+    mount(server, {
+      slots: {
+        leafDetail: (leaf: { address: string; kind: string }) =>
+          createElement("div", { "data-detail": leaf.address }, `About ${leaf.kind}`),
+      },
+    });
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    // Closed: nothing to show, and nothing mounted.
+    expect(detailOf("seat-a")).toBeNull();
+
+    await click(instanceRow("seat-a"));
+    const detail = await waitFor(() => {
+      expect(detailOf("seat-a")).toBeTruthy();
+      return detailOf("seat-a")!;
+    });
+    expect(detail.textContent).toBe("About agent");
+    // Its own line: not in the row's frame, so the row stays one line, and
+    // between the row and the leaf's sessions.
+    const frame = instanceRow("seat-a").parentElement!;
+    expect(frame.contains(detail)).toBe(false);
+    expect(follows(frame, detail)).toBe(true);
+    await waitFor(() => expect(screen.queryByText("s1")).toBeTruthy());
+    expect(follows(detail, document.querySelector('[data-leaf="seat-a"]')!)).toBe(true);
+
+    // A singleton's kind row is its leaf, so its detail is drawn under that row.
+    await click(kindRow("chat"));
+    const chatDetail = await waitFor(() => {
+      expect(detailOf("chat")).toBeTruthy();
+      return detailOf("chat")!;
+    });
+    expect(kindRow("chat").parentElement!.contains(chatDetail)).toBe(false);
+    expect(follows(kindRow("chat").parentElement!, chatDetail)).toBe(true);
+
+    await click(instanceRow("seat-a"));
+    expect(detailOf("seat-a")).toBeNull();
+    expect(detailOf("chat")).toBeTruthy();
+  });
+
+  it("draws nothing extra under an open leaf when the host gives no detail", async () => {
+    const server = fakeServer(flows, []);
+    mount(server);
+
+    await waitFor(() => expect(kindRow("agent")).toBeTruthy());
+    await click(kindRow("agent"));
+    await click(instanceRow("seat-a"));
+    await waitFor(() => expect(screen.queryByText("No sessions yet")).toBeTruthy());
+
+    // The row's frame, then its sessions. Nothing between them.
+    const item = instanceRow("seat-a").closest("li")!;
+    expect(Array.from(item.children)).toEqual([
+      instanceRow("seat-a").parentElement,
+      item.querySelector(':scope > [data-leaf="seat-a"]'),
+    ]);
+  });
+});
+
 describe("FlowNavigator · session labels (BR-16 – BR-19)", () => {
   const sessionRow = (id: string) =>
     document.querySelector<HTMLElement>(`[data-session-id="${id}"]`)!;

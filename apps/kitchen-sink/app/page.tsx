@@ -411,9 +411,8 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
 
   const railSlots = useMemo(
     () => ({
-      // "New session" sits inside the assistant's own leaf, the one place a
-      // new conversation can be started from this page. An open seat shows
-      // its kind, its instructions and "Hire another".
+      // "New session" sits on the assistant's own row, the one place a new
+      // conversation can be started from this page.
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW_KIND ? (
           <AssistantLeafToolbar
@@ -422,7 +421,11 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
             disabled={flow.isLoading}
             onNewSession={handleNewSession}
           />
-        ) : isSeatKind(leaf.kind) ? (
+        ) : null,
+      // An open seat shows its kind, its instructions and "Hire another"
+      // under its row.
+      leafDetail: (leaf: FlowNavigatorLeafState) =>
+        isSeatKind(leaf.kind) ? (
           panelSessionId === undefined || panelOrgId === undefined ? (
             <p className="text-xs text-muted-foreground">Loading…</p>
           ) : (
@@ -715,7 +718,10 @@ function Rail({
   selectedSessionId,
   onSelectSession,
 }: {
-  slots: { leafToolbar: (leaf: FlowNavigatorLeafState) => React.ReactNode };
+  slots: {
+    leafToolbar: (leaf: FlowNavigatorLeafState) => React.ReactNode;
+    leafDetail: (leaf: FlowNavigatorLeafState) => React.ReactNode;
+  };
   selectedSessionId: string | undefined;
   onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
 }) {

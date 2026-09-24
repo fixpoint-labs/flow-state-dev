@@ -159,7 +159,7 @@ The wiring is the part to copy: in an app whose seats run under an organization 
 ## Web Application (`app/`)
 
 - Three-column layout: a `FlowNavigator` rail over channels, seats and the assistant's conversations; the stream; and a standing panel with the roster and the channel boards (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too
-- **Seats**: Open a seat to see its kind. A seat hired while the app runs also shows its instructions. A seat declared in a folder doesn't. **Hire another** adds a seat of the same kind to the app's organization. It appears in the rail and the roster without a reload (the rail collapses briefly while it refreshes), and it is still there after a restart on a persistent store. Hires run on a conversation of their own, listed as **Seat hires**, so they never land in yours
+- **Seats**: Open a seat in the rail to see its kind, under its row. A seat hired while the app runs also shows its instructions. A seat declared in a folder doesn't. **Hire another** adds a seat of the same kind to the app's organization. It appears in the rail and the roster without a reload (the rail collapses briefly while it refreshes), and it is still there after a restart on a persistent store. Hires run on a conversation of their own, listed as **Seat hires**, so they never land in yours
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
 - **Client data bar**: Live display of mode status, request count, user preferences

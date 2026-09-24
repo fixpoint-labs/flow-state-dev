@@ -108,7 +108,7 @@ The components ship with no CSS framework and no icon set. Style them with:
 
 - **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator,
   `--fsd-panel-*` for the roster and the board columns. Set them on any ancestor.
-- **Slots** for the parts that are yours. The navigator's are `rowTrailing` at the end of a row, `leafToolbar` on an open leaf's row, `sectionHeader` beside a section label, and `emptySection` for a section whose kinds your server doesn't have.
+- **Slots** for the parts that are yours. The navigator's are `rowTrailing` at the end of a row, `leafToolbar` on an open leaf's row, `leafDetail` under an open leaf's row for content that doesn't fit on it, `sectionHeader` beside a section label, and `emptySection` for a section whose kinds your server doesn't have.
 
 The navigator draws a dashed line down from each open row, past the rows under it, and indents each level by the width of the expand arrow. `--fsd-nav-guide` sets the line colour. Set it to `transparent` to hide the lines.
 
