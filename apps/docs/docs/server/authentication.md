@@ -369,7 +369,10 @@ GET /api/flows/sessions/abc123   alice's, acting for acme           -> 200
 Listing endpoints scope to the caller instead of rejecting. `GET
 /api/flows/sessions` returns the caller's sessions. The `userId` query
 parameter still works as a filter, but it can only narrow that set, never
-widen it.
+widen it. On a flow with its own resolver, a session is listed when that
+resolver identifies the caller as its owner, the same test that lets them
+open it. If you also set a host-level resolver and it rejects the caller, the
+listing answers `401`, whatever the flow's own resolver would say.
 
 `POST /api/flows/:flowId/sessions` takes the new session's `userId` and
 `orgId` from the principal. An `orgId` in the request body is never consulted,
@@ -388,10 +391,12 @@ Flows are checked independently. On a server where one flow configures a
 resolver and another doesn't, the second flow's sessions stay open.
 
 The two endpoints that span every flow, `GET /api/flows/sessions` and `GET
-/api/flows/active-requests`, need a host-level resolver to identify the caller.
-Without one they keep working, but they only return rows for the flows that
-have no resolver of their own. A flow that authenticates doesn't get its
-sessions listed to an anonymous caller.
+/api/flows/active-requests`, need a host-level resolver to identify the caller
+for the flows that have no resolver of their own. Without one, both endpoints
+still answer, and rows from those flows go to any caller. Rows from a flow with
+its own resolver go only to the caller that resolver identifies as the row's
+owner, the same caller who could open that session or request. A caller the
+flow's resolver rejects gets no error, just none of that flow's rows.
 
 ### Addressed routes, and what they scope by
 
