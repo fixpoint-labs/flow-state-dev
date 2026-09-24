@@ -48,7 +48,7 @@ For gateways and the full set of options, see [Setting Up Models](/docs/getting-
 
 ## 3. Define a flow
 
-Every piece of logic in flow-state.dev is a **block** — a typed unit of work. There are four block kinds: handler, generator, sequencer, router. You'll meet all four eventually. The quick-start uses one: a generator, which calls the LLM.
+Every piece of logic in flow-state.dev is a **block** — a typed unit of work. There are five block kinds: handler, generator, evaluator, sequencer, router. You'll meet all four eventually. The quick-start uses one: a generator, which calls the LLM.
 
 A **flow** mounts blocks under named actions and packages everything for the server. `defineFlow` returns the flow factory; calling it with no arguments gives you the registerable instance.
 
@@ -202,4 +202,4 @@ Or open the visual inspector with `fsdev dev` — see the [DevTool guide](/docs/
 - **[Anatomy of a Flow](/guides/anatomy-of-a-flow)** — Mental model without a project to build.
 - **[Block options](/docs/configuration/blocks)** and **[Flow options](/docs/configuration/flow)** — field catalogs next to those concepts.
 - **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools.
-- **[Blocks](/docs/fundamentals/blocks)** — The four block kinds in depth.
+- **[Blocks](/docs/fundamentals/blocks)** — The five block kinds in depth.

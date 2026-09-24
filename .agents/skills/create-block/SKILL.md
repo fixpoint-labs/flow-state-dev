@@ -16,7 +16,7 @@ You are a development agent creating a new block in the flow-state-dev framework
 
 Parse $ARGUMENTS to determine:
 
-1. **Block kind** — exactly one of: `handler`, `generator`, `sequencer`, `router`
+1. **Block kind** — exactly one of: `handler`, `generator`, `evaluator`, `sequencer`, `router`
 2. **Whether this is a utility block** — a pre-built factory in `packages/core/src/utility/` that wraps a generator or handler with a config interface
 3. **Package location**:
    - Utility blocks: `packages/core/src/utility/<name>.ts`
@@ -210,7 +210,7 @@ const agentNoTools = generator({
 ```
 
 **Key capability rules:**
-- `uses` works on all block kinds (handler, generator, sequencer, router)
+- `uses` works on every block kind
 - Resources declared in capabilities are auto-merged into `declaredResources`
 - `ctx.cap.<name>` provides the capability's `fns` at runtime (memoized)
 - Presets with `default: [...]` are active unless explicitly disabled

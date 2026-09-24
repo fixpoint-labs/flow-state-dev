@@ -10,7 +10,7 @@ You can interleave deterministic and non-deterministic steps. Validate input wit
 
 ## Sequencers compose blocks
 
-A **block** is the unit of work: a handler (deterministic logic), a generator (LLM call), a router (runtime dispatch), or another sequencer. See [Blocks](/docs/fundamentals/blocks) for the four block kinds. Sequencers compose them:
+A **block** is the unit of work: a handler (deterministic logic), a generator (LLM call), an evaluator (typed questions to a model), a router (runtime dispatch), or another sequencer. See [Blocks](/docs/fundamentals/blocks) for the five block kinds. Sequencers compose them:
 
 ```ts
 import { handler, generator, sequencer } from "@flow-state-dev/core";

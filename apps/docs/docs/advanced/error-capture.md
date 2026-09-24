@@ -47,7 +47,7 @@ The callback is read-only. Its return value is ignored, and the runtime calls it
 | `sessionId` | `string?` | Present for session-bound requests. |
 | `orgId` | `string?` | The organization the request ran in. Optional in the type; set on every event. |
 | `blockName` | `string?` | The failing block (the leaf, not the enclosing sequencer). |
-| `blockKind` | `"handler" \| "generator" \| "sequencer" \| "router"?` | |
+| `blockKind` | `"handler" \| "generator" \| "evaluator" \| "sequencer" \| "router"?` | |
 | `blockInstanceId` | `string?` | Deterministic per block instance. Useful for correlating retries. |
 | `blockPath` | `string?` | Structural path in the execution tree, e.g. `root/step[0]`. |
 | `attempt` | `number?` | 0-indexed retry attempt, set only under a retry policy. |

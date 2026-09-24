@@ -148,6 +148,9 @@ export type StructureShape =
  *   the value — otherwise the connector was a no-op and the source is the
  *   effective input.
  * - `generator` is populated post-config-resolution for generator blocks.
+ * - `evaluator` is populated for evaluator blocks once their question set is
+ *   known: the requested model and the questions asked. The answers are the
+ *   block's `output`.
  *   Optional nested object so consumers read with optional chaining.
  * - `output` is set on completion. Carries the BlockValue (inline / ref /
  *   structure) so pass-through composers don't duplicate content at every
@@ -185,14 +188,26 @@ export type ResourceLoadRecord = {
   templateSource?: string;
 };
 
+/**
+ * One question as recorded on an evaluator's `block_trace` row. Mirrors the
+ * question the block asked: its type, its instructions, and its options
+ * (choice), levels (score) or true/false descriptions (boolean).
+ */
+export type EvaluatorTraceQuestion = {
+  type: "choice" | "score" | "boolean";
+  instructions: unknown;
+  criteria?: unknown;
+};
+
 export type BlockTraceItem = OutputItemBase & {
   type: "block_trace";
   blockName: string;
-  blockKind: "generator" | "handler" | "sequencer" | "router";
+  blockKind: "generator" | "evaluator" | "handler" | "sequencer" | "router";
   blockInstanceId: string;
   status: "in_progress" | "completed" | "failed" | "planned";
   /**
-   * Resolved identity of the model that actually ran for generator blocks.
+   * Resolved identity of the model that actually ran for generator and
+   * evaluator blocks.
    * Sibling of `generator.model` (the requested string) and
    * `modelUsage.model` (the token-accounting key, also requested-string).
    * Populated even when the generator emits no items, so audit/replay/billing
@@ -216,6 +231,15 @@ export type BlockTraceItem = OutputItemBase & {
     templateSource?: string;
     /** Parsed, Zod-validated frontmatter, present for PromptFile prompts. */
     templateFrontmatter?: Record<string, unknown>;
+  };
+  /**
+   * What an evaluator block asked: the requested model (a model string, or
+   * `provider/modelId` for an evaluation model instance) and the question
+   * set, keyed by question id. Absent for other kinds.
+   */
+  evaluator?: {
+    model: string;
+    questions: Record<string, EvaluatorTraceQuestion>;
   };
   modelUsage?: {
     model: string;

@@ -66,8 +66,10 @@ async function executeByKind(
   // enters execution. Nested sequencer/router children trigger their own
   // resolution via the core sequencer/router code paths.
   resolveActiveStatusMessage(block, input, ctx);
-  if (block.kind === "generator") {
-    const seams = options.internalSeams;
+  if (block.kind === "generator" || block.kind === "evaluator") {
+    // Generators and evaluators report usage and the model that answered
+    // through the same runtime hook; one capture serves both. The kinds
+    // differ only in what runs around the block (below).
     let modelUsage: GeneratorModelUsageMeta | undefined;
     let modelIdentity: ModelIdentity | undefined;
     const runtimeHooks = {
@@ -116,6 +118,15 @@ async function executeByKind(
       ...ctx,
       _runtimeHooks: runtimeHooks
     };
+
+    if (block.kind === "evaluator") {
+      // An evaluator makes one call and streams nothing: no generator
+      // lifecycle seams and no output hint to forward.
+      const output = await asRuntime(block).run(input, generatorCtx as any);
+      return { output, modelUsage, modelIdentity };
+    }
+
+    const seams = options.internalSeams;
     await emitGeneratorLifecycleSeam(seams, "before_execute", options.metadata);
     try {
       const output = await asRuntime(block).run(input, generatorCtx as any);

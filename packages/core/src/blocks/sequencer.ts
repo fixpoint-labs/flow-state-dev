@@ -1,6 +1,7 @@
 import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, RescueHandlerSpec } from "../types/block";
 import { asRuntime } from "../types/block";
+import type { ModelIdentity } from "../types/model";
 import type { BlockValue, BlockValueInternal, OutputItem, StructureShape } from "../items/types";
 import { SuspensionError } from "../errors/suspension-error";
 import type {
@@ -21,6 +22,7 @@ import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../err
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
+import { stashEvaluatorModelResult } from "./internal/evaluator-model-result";
 import type { ReplayLog } from "./internal/replay-log";
 import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import type { StepOutcome } from "./internal/arg-shapes";
@@ -488,9 +490,12 @@ export async function executeBlock(
     scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input, block.transient);
     resolveActiveStatusMessage(block, input, scopedCtx);
 
-    // For generator blocks, intercept onGeneratorModelResult to capture token usage.
+    // For generator and evaluator blocks, intercept onGeneratorModelResult to
+    // capture token usage. Evaluators also report the model identity that
+    // answered, which is stashed for the trace row alongside usage.
     let modelUsage: GeneratorModelUsageMeta | undefined;
-    const execCtx = block.kind === "generator"
+    let evaluatorModelIdentity: ModelIdentity | undefined;
+    const execCtx = block.kind === "generator" || block.kind === "evaluator"
       ? {
           ...scopedCtx,
           _runtimeHooks: {
@@ -505,7 +510,11 @@ export async function executeBlock(
                 cacheCreationInputTokens?: number;
               };
               providerMetadata?: Record<string, Record<string, unknown>>;
+              identity?: ModelIdentity;
             }) => {
+              if (block.kind === "evaluator" && payload.identity !== undefined) {
+                evaluatorModelIdentity = payload.identity;
+              }
               if (payload.usage) {
                 const anthropic = payload.providerMetadata?.anthropic ?? {};
                 // Prefer the adapter-normalised usage fields; fall back to
@@ -556,6 +565,9 @@ export async function executeBlock(
           (scopedCtx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = generatorHint;
         }
       }
+      if (block.kind === "evaluator") {
+        stashEvaluatorModelResult(scopedCtx, modelUsage, evaluatorModelIdentity);
+      }
 
       return output;
     } catch (error) {
@@ -566,6 +578,9 @@ export async function executeBlock(
       // shared block_trace row before emitting item.done.
       if (block.kind === "generator" && modelUsage !== undefined) {
         (scopedCtx as { _generatorModelUsage?: GeneratorModelUsageMeta })._generatorModelUsage = modelUsage;
+      }
+      if (block.kind === "evaluator") {
+        stashEvaluatorModelResult(scopedCtx, modelUsage, evaluatorModelIdentity);
       }
 
       // FIX-742: block-level rescue for scoped (in-flow) child invocations — run

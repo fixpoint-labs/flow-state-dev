@@ -1,6 +1,6 @@
 # Architecture Overview
 
-`@flow-state-dev` gives you four composable block primitives — **handler**, **generator**, **sequencer**, **router** — and a runtime that handles execution, streaming, state persistence, retries, and client rendering so you don't have to.
+`@flow-state-dev` gives you five composable block kinds — **handler**, **generator**, **evaluator**, **sequencer**, **router** — and a runtime that handles execution, streaming, state persistence, retries, and client rendering so you don't have to.
 
 You define flows composed of blocks. The framework does the rest.
 
@@ -77,14 +77,15 @@ core ─────────────────────────
 
 ## Core abstractions
 
-### Blocks — the four primitives
+### Blocks — the five kinds
 
-Every piece of logic in the framework is one of exactly four block kinds:
+Every piece of logic in the framework is one of exactly five block kinds:
 
 | Kind | What it does | When to use it |
 |------|-------------|----------------|
 | **handler** | `input → execute → output` | Validation, data transforms, state mutations, tool implementations |
 | **generator** | LLM call with framework-managed tool loop | Chat, structured extraction, agent tool use, any AI generation |
+| **evaluator** | Typed questions to an evaluation model, one call | Classification, triage, scoring: any model call your code branches on |
 | **sequencer** | Fluent DSL composing blocks into pipelines | Building multi-step workflows with branching, parallelism, error recovery |
 | **router** | Runtime block selection based on input or state | Dispatching to different pipelines based on mode, intent, or conditions |
 
@@ -193,7 +194,7 @@ Key points:
 
 These decisions are canonical and cannot change without architecture review:
 
-- Block kinds are exactly: `handler`, `generator`, `sequencer`, `router`
+- Block kinds are exactly: `handler`, `generator`, `evaluator`, `sequencer`, `router`
 - Actions are flow-level (`defineFlow({ actions })`)
 - Required caller input: `userId`
 - Stream model: item/content lifecycle (no part-envelope model)

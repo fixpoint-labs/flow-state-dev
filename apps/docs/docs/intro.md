@@ -39,13 +39,14 @@ export default defineFlow({
 
 From that definition you get streaming with resume, conversation history, tool loops, atomic state operations, typed client-visible state, and error recovery.
 
-## Four block kinds
+## Five block kinds
 
-Every piece of logic is one of four kinds. Same typed contract: input in, output out. Any block composes with any other.
+Every piece of logic is one of five kinds. Same typed contract: input in, output out. Any block composes with any other.
 
 | Kind | What it does |
 |------|----------------|
 | **Generator** | Calls a model. The framework handles prompt assembly, tool loops, and streaming. |
+| **Evaluator** | Asks a model typed questions (which option, what score, yes or no) and returns typed answers. |
 | **Handler** | Deterministic compute: validate, transform, mutate state, implement a tool. |
 | **Sequencer** | Chains blocks: steps, parallel work, loops, rescue. A sequencer is itself a block. |
 | **Router** | Picks one child block at runtime (mode switch, intent routing). |

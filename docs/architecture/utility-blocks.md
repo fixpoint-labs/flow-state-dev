@@ -2,7 +2,7 @@
 
 Utility blocks are pre-built factories that wrap the core block primitives (generator, handler, sequencer, router) into specialized capabilities. Each utility returns a standard `BlockDefinition` — composable in sequencers, routers, and flows like any other block.
 
-They are not a fifth block kind. The factory picks one of the four primitives and fills in the prompt, schema, and wiring that every call site would otherwise repeat.
+They are not a new block kind. The factory picks one of the existing kinds and fills in the prompt, schema, and wiring that every call site would otherwise repeat.
 
 ## The idea in 30 seconds
 

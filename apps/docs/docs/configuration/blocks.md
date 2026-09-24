@@ -1,18 +1,18 @@
 ---
 title: Block options
 sidebar_label: Block options
-description: Shared block fields plus generator, handler, sequencer, and router options.
+description: Shared block fields plus generator, evaluator, handler, sequencer, and router options.
 ---
 
 # Block options
 
-Every block takes a config object. Shared fields live on every kind. Generators, handlers, sequencers, and routers add their own.
+Every block takes a config object. Shared fields live on every kind. Generators, evaluators, handlers, sequencers, and routers add their own.
 
 Narrative: [Blocks](/docs/fundamentals/blocks), [Sequencers](/docs/sequencers/overview), [Generator context](/docs/advanced/generator-context).
 
 ## Shared fields
 
-These appear on handlers, generators, routers, and (where noted) sequencers.
+These appear on handlers, generators, evaluators, routers, and (where noted) sequencers. Evaluators take no `retry` or `cacheable`.
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
@@ -114,6 +114,19 @@ Unset means the generator does **not** auto-emit conversational items. Only type
 |-------|------|---------|--------------|
 | `maxIterations` | `number` | — | Stop the tool loop after this many rounds. |
 | `runTools` | `boolean` | — | When `false`, the model may propose tools but they are not executed. |
+
+## Evaluator
+
+`evaluator({ ... })` asks an evaluation model typed questions about one state and returns `{ answers }`.
+
+| Field | Type | Default | What it does |
+|-------|------|---------|--------------|
+| `model` | model string or evaluation model instance | required | Which model answers. A string resolves through the same providers and gateways as a generator's. Intents, arrays and `selectModel` aren't accepted. |
+| `questions` | map of `choice` / `score` / `boolean`, or `(input, ctx) => map` | required | The questions. Ids become the keys of `answers`. |
+| `state` | `(input, ctx) => string \| array \| object` | the input | What the model evaluates. |
+| `uses` | capability list | — | Resources, state and helpers. Capabilities don't supply an evaluator's model. |
+
+Scope schemas, `resources`, and the [shared fields](#shared-fields) work the same as on a handler. There is no `retry`: one call per run. When the call fails, the block fails like any other. To recover, use `.rescue` in a sequencer. It runs a recovery block you supply and uses that block's output in place of the failed one. It doesn't rerun the evaluator.
 
 ## Handler
 

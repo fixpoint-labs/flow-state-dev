@@ -21,6 +21,7 @@
   --k-generator:#AE7A22;
   --k-sequencer:#2C7C69;
   --k-router:   #A9544F;
+  --k-evaluator:#6E57A0;
   --warn:       #9A6410;
   --shadow:     0 1px 2px rgba(26,29,33,.06), 0 8px 24px -16px rgba(26,29,33,.28);
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -45,6 +46,7 @@
     --k-generator:#DEAC5E;
     --k-sequencer:#5DBBA1;
     --k-router:   #DE8A84;
+    --k-evaluator:#B5A2DE;
     --warn:       #D8A44B;
     --shadow:     0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
     color-scheme: dark;
@@ -66,6 +68,7 @@
   --k-generator:#DEAC5E;
   --k-sequencer:#5DBBA1;
   --k-router:   #DE8A84;
+  --k-evaluator:#B5A2DE;
   --warn:       #D8A44B;
   --shadow:     0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
   color-scheme: dark;
@@ -211,7 +214,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <a href="#packages">05 · Package inventory</a>
     <a href="#boundaries">06 · Locked boundaries</a>
     <a class="grp">The primitives</a>
-    <a href="#blocks">07 · Four block kinds</a>
+    <a href="#blocks">07 · Five block kinds</a>
     <a href="#dsl">08 · Sequencer DSL</a>
     <a href="#flows">09 · Flows &amp; actions</a>
     <a href="#state">10 · State &amp; scopes</a>
@@ -288,7 +291,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
         <rect class="n-acc" x="36" y="100" width="244" height="66" rx="4"/>
         <text class="t-b" x="48" y="120">core</text>
-        <text class="t-s" x="48" y="135">handler, generator, sequencer, router</text>
+        <text class="t-s" x="48" y="135">the five block kinds</text>
         <text class="t-s" x="48" y="150">flows, capabilities, resources</text>
         <path class="ln" d="M158,166 L158,180" marker-end="url(#a1)"/>
 
@@ -531,7 +534,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <rect class="n-box" x="24" y="136" width="294" height="88" rx="4"/>
         <text class="t-acc" x="38" y="156">what runs?</text>
         <text class="t-b" x="38" y="178">blocks</text>
-        <text class="t-xs" x="38" y="196">HANDLER · GENERATOR · SEQUENCER · ROUTER</text>
+        <text class="t-xs" x="38" y="196">FIVE KINDS, FROM HANDLER TO ROUTER</text>
         <text class="t-xs" x="38" y="212">ONE run(input, ctx) — NOTHING ELSE TO LEARN</text>
 
         <rect class="n-box" x="330" y="136" width="294" height="88" rx="4"/>
@@ -759,7 +762,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <thead><tr><th>Package</th><th>Tier</th><th class="num">LOC</th><th class="num">Files</th><th>What it owns</th><th>Workspace deps</th></tr></thead>
     <tbody>
       <tr><td><code>contracts</code></td><td>Foundation</td><td class="num">2,350</td><td class="num">19</td><td>Item taxonomy, pure item helpers, leaf types, block-instance-id. Zero dependencies of any kind.</td><td>—</td></tr>
-      <tr><td><code>core</code></td><td>Foundation</td><td class="num">34,054</td><td class="num">160</td><td>The four block builders, <code>defineFlow</code>, capabilities, resources, items, prompt assembly, model resolution, 11 utility factories, the graph layer.</td><td>contracts</td></tr>
+      <tr><td><code>core</code></td><td>Foundation</td><td class="num">34,054</td><td class="num">160</td><td>The five block builders, <code>defineFlow</code>, capabilities, resources, items, prompt assembly, model resolution, 11 utility factories, the graph layer.</td><td>contracts</td></tr>
       <tr><td><code>engine</code></td><td>Runtime</td><td class="num">42,218</td><td class="num">167</td><td>Block dispatch, retry, rescue, side chains, scopes and CAS, stores, SSE streaming, HTTP routes, transports, durability, recovery, voice pipeline.</td><td>core</td></tr>
       <tr><td><code>orchestration</code></td><td>Composition</td><td class="num">20,347</td><td class="num">89</td><td>Task schema + state machine, <code>TaskCollection</code>, five dispatchers, the task-board primitive, goal-seek loop, flow policy, and the whole skills runtime.</td><td>core</td></tr>
       <tr><td><code>patterns</code></td><td>Composition</td><td class="num">8,058</td><td class="num">54</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
@@ -858,19 +861,20 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="blocks">
-  <div class="sec-head"><span class="sec-num">07</span><h2>Four block kinds</h2></div>
-  <p class="lede">The whole framework rests on this: every piece of logic is exactly one of four kinds, and all four share one execution contract. That uniformity is what makes composition free.</p>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Five block kinds</h2></div>
+  <p class="lede">The whole framework rests on this: every piece of logic is exactly one of five kinds, and all five share one execution contract. That uniformity is what makes composition free.</p>
 
   <div class="kind-key">
     <span><i class="sw" style="background:var(--k-handler)"></i>handler</span>
     <span><i class="sw" style="background:var(--k-generator)"></i>generator</span>
+    <span><i class="sw" style="background:var(--k-evaluator)"></i>evaluator</span>
     <span><i class="sw" style="background:var(--k-sequencer)"></i>sequencer</span>
     <span><i class="sw" style="background:var(--k-router)"></i>router</span>
   </div>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 900 388" role="img" aria-label="Diagram of the four block kinds sharing one run signature, above an example showing a sequencer whose steps are themselves blocks, including a nested router with two branches and a generator whose tools are also blocks.">
+      <svg viewBox="0 0 900 388" role="img" aria-label="Diagram of the five block kinds sharing one run signature, above an example showing a sequencer whose steps are themselves blocks, including a nested router with two branches and a generator whose tools are also blocks.">
         <defs>
           <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
         </defs>
@@ -879,41 +883,50 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-b" x="450" y="38" text-anchor="middle">block.run(input, ctx) → output</text>
         <text class="t-s" x="450" y="52" text-anchor="middle">one entry point · schema validation, retry, rescue, tracing and lifecycle hooks applied by the runtime, never by the block</text>
 
-        <rect class="n-box" x="40" y="80" width="192" height="106" rx="4"/>
-        <rect x="40" y="80" width="192" height="4" fill="var(--k-handler)"/>
-        <text class="t-b" x="54" y="104" fill="var(--k-handler)">handler</text>
-        <text class="t-xs" x="54" y="118">LEAF</text>
-        <text class="t-s" x="54" y="136">input → execute → output</text>
-        <text class="t-s" x="54" y="152">validation, transforms,</text>
-        <text class="t-s" x="54" y="166">state writes, tool bodies</text>
-        <text class="t-s" x="54" y="180">never calls another block</text>
+        <rect class="n-box" x="40" y="80" width="152" height="106" rx="4"/>
+        <rect x="40" y="80" width="152" height="4" fill="var(--k-handler)"/>
+        <text class="t-b" x="52" y="104" fill="var(--k-handler)">handler</text>
+        <text class="t-xs" x="52" y="118">LEAF</text>
+        <text class="t-s" x="52" y="136">input → output</text>
+        <text class="t-s" x="52" y="150">validation, transforms</text>
+        <text class="t-s" x="52" y="164">state writes, tools</text>
+        <text class="t-s" x="52" y="178">never calls a block</text>
 
-        <rect class="n-box" x="248" y="80" width="192" height="106" rx="4"/>
-        <rect x="248" y="80" width="192" height="4" fill="var(--k-generator)"/>
-        <text class="t-b" x="262" y="104" fill="var(--k-generator)">generator</text>
-        <text class="t-xs" x="262" y="118">LEAF · OWNS A LOOP</text>
-        <text class="t-s" x="262" y="136">four prompt slots, then</text>
-        <text class="t-s" x="262" y="152">a bounded tool loop</text>
-        <text class="t-s" x="262" y="166">emits message, reasoning,</text>
-        <text class="t-s" x="262" y="180">tool_output automatically</text>
+        <rect class="n-box" x="207" y="80" width="152" height="106" rx="4"/>
+        <rect x="207" y="80" width="152" height="4" fill="var(--k-generator)"/>
+        <text class="t-b" x="219" y="104" fill="var(--k-generator)">generator</text>
+        <text class="t-xs" x="219" y="118">LEAF · OWNS A LOOP</text>
+        <text class="t-s" x="219" y="136">four prompt slots,</text>
+        <text class="t-s" x="219" y="150">a bounded tool loop</text>
+        <text class="t-s" x="219" y="164">emits message and</text>
+        <text class="t-s" x="219" y="178">tool_output items</text>
 
-        <rect class="n-box" x="456" y="80" width="192" height="106" rx="4"/>
-        <rect x="456" y="80" width="192" height="4" fill="var(--k-sequencer)"/>
-        <text class="t-b" x="470" y="104" fill="var(--k-sequencer)">sequencer</text>
-        <text class="t-xs" x="470" y="118">COMPOSITE</text>
-        <text class="t-s" x="470" y="136">20-method fluent DSL</text>
-        <text class="t-s" x="470" y="152">branching, loops, parallel,</text>
-        <text class="t-s" x="470" y="166">side chains, rescue</text>
-        <text class="t-s" x="470" y="180">carries its own state schema</text>
+        <rect class="n-box" x="374" y="80" width="152" height="106" rx="4"/>
+        <rect x="374" y="80" width="152" height="4" fill="var(--k-evaluator)"/>
+        <text class="t-b" x="386" y="104" fill="var(--k-evaluator)">evaluator</text>
+        <text class="t-xs" x="386" y="118">LEAF · ONE CALL</text>
+        <text class="t-s" x="386" y="136">typed questions:</text>
+        <text class="t-s" x="386" y="150">choice, score, yes/no</text>
+        <text class="t-s" x="386" y="164">confidence only</text>
+        <text class="t-s" x="386" y="178">when the model gave it</text>
 
-        <rect class="n-box" x="664" y="80" width="192" height="106" rx="4"/>
-        <rect x="664" y="80" width="192" height="4" fill="var(--k-router)"/>
-        <text class="t-b" x="678" y="104" fill="var(--k-router)">router</text>
-        <text class="t-xs" x="678" y="118">COMPOSITE</text>
-        <text class="t-s" x="678" y="136">selects a block at runtime</text>
-        <text class="t-s" x="678" y="152">from input or state</text>
-        <text class="t-s" x="678" y="166">records router_decision</text>
-        <text class="t-s" x="678" y="180">must be pure if resumable</text>
+        <rect class="n-box" x="541" y="80" width="152" height="106" rx="4"/>
+        <rect x="541" y="80" width="152" height="4" fill="var(--k-sequencer)"/>
+        <text class="t-b" x="553" y="104" fill="var(--k-sequencer)">sequencer</text>
+        <text class="t-xs" x="553" y="118">COMPOSITE</text>
+        <text class="t-s" x="553" y="136">20-method fluent DSL</text>
+        <text class="t-s" x="553" y="150">branches, loops,</text>
+        <text class="t-s" x="553" y="164">parallel, side chains</text>
+        <text class="t-s" x="553" y="178">own state schema</text>
+
+        <rect class="n-box" x="708" y="80" width="152" height="106" rx="4"/>
+        <rect x="708" y="80" width="152" height="4" fill="var(--k-router)"/>
+        <text class="t-b" x="720" y="104" fill="var(--k-router)">router</text>
+        <text class="t-xs" x="720" y="118">COMPOSITE</text>
+        <text class="t-s" x="720" y="136">selects a block</text>
+        <text class="t-s" x="720" y="150">from input or state</text>
+        <text class="t-s" x="720" y="164">records its decision</text>
+        <text class="t-s" x="720" y="178">pure if resumable</text>
 
         <text class="t-lbl" x="40" y="210">Because the contract is uniform, any kind nests inside any composite</text>
         <rect x="40" y="218" width="820" height="150" rx="5" fill="none" stroke="var(--k-sequencer)" stroke-width="1.4"/>

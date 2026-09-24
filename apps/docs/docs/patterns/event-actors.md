@@ -30,7 +30,7 @@ Each actor task drains through a wrapped sequencer:
 TaskWorkerInput
   → stashTaskId          (record taskId so reEmit can read its depth)
   → unwrapToEntry        (pass entry to user actor body)
-  → actor.block          (user code — handler/generator/sequencer/router)
+  → actor.block          (user code — any block kind)
   → reEmitIfEnabled      (append output entries, spawn next-depth tasks)
 ```
 

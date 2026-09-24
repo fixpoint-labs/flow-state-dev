@@ -221,7 +221,7 @@ Status is a request-scoped single slot. The latest `emit.status` value wins; the
 
 ### Declarative: `activeStatusMessage`
 
-Every block config (handler, generator, sequencer, router) accepts an `activeStatusMessage` field. It's resolved at block start and fed into `emit.status` automatically.
+Every block config, of every kind, accepts an `activeStatusMessage` field. It's resolved at block start and fed into `emit.status` automatically.
 
 ```ts
 handler({

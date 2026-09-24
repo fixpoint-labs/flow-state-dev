@@ -5,11 +5,13 @@
  * `gateway/provider/model`, or `intent/<name>`) into resolved
  * {@link GeneratorModel} instances. Handles automatic provider/gateway
  * package loading, availability detection, intent fallback chains, and
- * per-call provider preference overrides.
+ * per-call provider preference overrides. Also resolves model strings to
+ * evaluation models for `evaluator` blocks (`resolveEvaluationModel`).
  */
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import type { GeneratorModel, ModelResolver, ResolveModelCallOptions } from "../types/model";
+import type { EvaluationModel } from "../types/evaluation";
 import type {
   RetryPolicy,
   GatewayConfig,
@@ -28,6 +30,7 @@ import {
 } from "./providerDetection";
 import { createFallbackModel, type FallbackModelEntry } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
+import { markEvaluationModelGateway } from "./evaluationModelGateway";
 import { reorderByPreference, normalizePreference } from "./reorderByPreference";
 import { warnOnceDev } from "../helpers/deprecation";
 
@@ -123,6 +126,14 @@ const GATEWAY_PACKAGES: Record<string, PackageInfo> = {
   vercel: { pkg: "@ai-sdk/gateway", factory: "createGateway" },
   openrouter: { pkg: "@openrouter/ai-sdk-provider", factory: "createOpenRouter" },
 };
+
+/**
+ * Providers whose model strings an evaluator always resolves through a
+ * gateway, never through a provider registered under `providers` or an
+ * installed package. `typesafe-ai/jev` names the gateway's Jev; direct Jev
+ * is an evaluation model instance the author builds (spec D2).
+ */
+const GATEWAY_ONLY_EVALUATION_PROVIDERS: ReadonlySet<string> = new Set(["typesafe-ai"]);
 
 const _require = createRequire(import.meta.url);
 const _cwdRequire = createRequire(new URL(`file://${process.cwd()}/`));
@@ -950,13 +961,7 @@ export function createModelResolver(
           if (directError && !directFailed) {
             throw directError;
           }
-          throw new Error(
-            `No provider available for "${providerName}". Tried: ` +
-              `${directFailed ? "direct package (failed to load)" : "direct package (not installed)"}` +
-              `, gateways (none configured for this provider). ` +
-              `Install the provider package, set its API key, or configure a gateway ` +
-              `(e.g. AI_GATEWAY_API_KEY).`
-          );
+          throw noProviderError(providerName);
         }
       }
     }
@@ -1047,6 +1052,162 @@ export function createModelResolver(
     return result;
   }
 
+  // -------------------------------------------------------------------------
+  // Evaluation path (evaluator blocks)
+  //
+  // Same precedence as a generator string (explicit provider instance, then
+  // an installed-and-keyed provider package, then a gateway), but through
+  // each source's `evaluationModel(id)`. A source without one is refused
+  // before any provider call. Intents are refused: an evaluator names one
+  // model. The AI SDK's global default provider is never consulted.
+  //
+  // One exception: a `typesafe-ai/...` string always resolves through a
+  // gateway (GATEWAY_ONLY_EVALUATION_PROVIDERS). `create-model-resolver-
+  // evaluation-parity.test.ts` holds the two paths to the same source for
+  // every other string.
+  // -------------------------------------------------------------------------
+
+  function noProviderError(providerName: string): Error {
+    const directFailed = directLoadFailed.has(providerName);
+    return new Error(
+      `No provider available for "${providerName}". Tried: ` +
+        `${directFailed ? "direct package (failed to load)" : "direct package (not installed)"}` +
+        `, gateways (none configured for this provider). ` +
+        `Install the provider package, set its API key, or configure a gateway ` +
+        `(e.g. AI_GATEWAY_API_KEY).`
+    );
+  }
+
+  /**
+   * Call `source.evaluationModel(id)`, or refuse naming the source. When the
+   * source was loaded from an installed package, the refusal names the
+   * package: an older release of a provider or gateway package can predate
+   * evaluation support while its text models still work.
+   */
+  function evaluationModelFrom(
+    source: unknown,
+    id: string,
+    sourceLabel: string,
+    modelString: string,
+    packageName?: string
+  ): EvaluationModel {
+    const factory = (source as { evaluationModel?: unknown } | null | undefined)?.evaluationModel;
+    if (typeof factory !== "function") {
+      throw new Error(
+        `${sourceLabel} does not support evaluation models, so "${modelString}" cannot be used by an evaluator. ` +
+          (packageName !== undefined
+            ? `The installed "${packageName}" has no evaluationModel; upgrade it to a release with evaluation support, `
+            : `Use a provider or gateway with evaluation support, `) +
+          `or pass an evaluation model instance.`
+      );
+    }
+    return factory.call(source, id) as EvaluationModel;
+  }
+
+  /** The package behind a gateway, unless the app passed its own gateway instance. */
+  function gatewayPackageName(gwType: string): string | undefined {
+    const entry = options?.gateways?.[gwType];
+    if (entry != null && !isGatewayConfig(entry)) return undefined;
+    return GATEWAY_PACKAGES[gwType]?.pkg;
+  }
+
+  /** The gateway instance for `gwType`: cached (explicit or already loaded), else loaded from its package. */
+  async function gatewayInstance(
+    gwType: string,
+    apiKey: string | undefined,
+    missingKeyMessage: string
+  ): Promise<Record<string, unknown>> {
+    const cached = gatewayCache.get(gwType);
+    if (cached !== undefined) return cached.gateway;
+    if (!apiKey) throw new Error(missingKeyMessage);
+    ensureGatewayPackageAvailable(gwType);
+    return (await loadGateway(gwType, apiKey)).gateway;
+  }
+
+  async function resolveEvaluationModel(modelString: string): Promise<EvaluationModel> {
+    const parsed = parseModelString(modelString);
+    if (parsed.type === "intent") {
+      throw new Error(
+        `"${modelString}" is an intent. An evaluator takes one model string, not an intent.`
+      );
+    }
+    const providerName = parsed.provider!;
+    const modelId = parsed.modelId!;
+
+    if (parsed.type === "gateway") {
+      const gwType = parsed.gateway!;
+      if (!gatewayCache.has(gwType) && !GATEWAY_PACKAGES[gwType]) {
+        throw new Error(
+          `Unknown gateway "${gwType}". Known gateways: ${Object.keys(GATEWAY_PACKAGES).join(", ")}`
+        );
+      }
+      const gwEntry = options?.gateways?.[gwType];
+      const apiKey =
+        (isGatewayConfig(gwEntry) ? gwEntry.apiKey : undefined) ??
+        process.env[GATEWAY_ENV_VARS[gwType] ?? ""] ??
+        undefined;
+      const gateway = await gatewayInstance(
+        gwType,
+        apiKey,
+        `No API key found for gateway "${gwType}". ` +
+          `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
+      );
+      return markEvaluationModelGateway(
+        evaluationModelFrom(
+          gateway,
+          `${providerName}/${modelId}`,
+          `Gateway "${gwType}"`,
+          modelString,
+          gatewayPackageName(gwType)
+        ),
+        gwType
+      );
+    }
+
+    // A `typesafe-ai/...` string always means the gateway (spec D2), even
+    // when the app registered Jev's library under `providers["typesafe-ai"]`.
+    // The library names the model differently (`jev-latest`, not `jev`) and
+    // bills a different account, so routing by what is registered would call
+    // a different model. Direct Jev is an evaluation model instance the
+    // author passes to the evaluator. This is the one place the evaluation
+    // path's precedence departs from a generator string's.
+    const gatewayOnly = GATEWAY_ONLY_EVALUATION_PROVIDERS.has(providerName);
+
+    const explicit = gatewayOnly ? undefined : options?.providers?.[providerName];
+    if (explicit !== undefined) {
+      return evaluationModelFrom(explicit, modelId, `Provider "${providerName}"`, modelString);
+    }
+    if (!gatewayOnly && isPackageProviderAvailable(providerName)) {
+      const provider = await loadPackageProvider(providerName);
+      return evaluationModelFrom(
+        provider,
+        modelId,
+        `Provider "${providerName}"`,
+        modelString,
+        PROVIDER_PACKAGES[providerName]?.pkg
+      );
+    }
+    const gw = findGatewayForProvider(providerName);
+    if (gw === undefined) {
+      throw noProviderError(providerName);
+    }
+    const gateway = await gatewayInstance(
+      gw.gatewayType,
+      gw.apiKey,
+      `No API key found for gateway "${gw.gatewayType}" while falling back from direct "${providerName}".`
+    );
+    return markEvaluationModelGateway(
+      evaluationModelFrom(
+        gateway,
+        `${providerName}/${modelId}`,
+        `Gateway "${gw.gatewayType}"`,
+        modelString,
+        gatewayPackageName(gw.gatewayType)
+      ),
+      gw.gatewayType
+    );
+  }
+
   const resolver = ((
     modelId: string,
     _blockName?: string,
@@ -1092,6 +1253,8 @@ export function createModelResolver(
     }
     return options?.defaultModel ?? modelId;
   };
+
+  resolver.resolveEvaluationModel = (modelId: string) => resolveEvaluationModel(modelId);
 
   return resolver;
 }

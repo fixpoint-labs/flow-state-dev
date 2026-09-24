@@ -260,7 +260,7 @@ the project-spec exception above is unchanged.
 
 ## Key Architectural Constraints
 
-- Block kinds: exactly `handler`, `generator`, `sequencer`, `router`
+- Block kinds: exactly `handler`, `generator`, `evaluator`, `sequencer`, `router`
 - Actions are flow-level: `defineFlow({ actions })`
 - Required caller input: `userId`
 - Streaming: SSE item/content model with sequence-number resume

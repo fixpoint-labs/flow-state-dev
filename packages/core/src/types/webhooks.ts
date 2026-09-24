@@ -177,7 +177,7 @@ export function validateWebhookConfig(
       if (binding.block === null || typeof binding.block !== "object") {
         throw new Error(
           `Flow "${flowKind}" webhook subscription "${provider}.${eventKey}" must declare a ` +
-            `\`block\` (the handler — handler/generator/sequencer/router) to run for the event.`
+            `\`block\` (the handler — any block kind) to run for the event.`
         );
       }
 

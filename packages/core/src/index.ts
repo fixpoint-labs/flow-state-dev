@@ -213,7 +213,15 @@ export { collapseToCanonicalLog } from "./items/canonical-log";
 export {
   dispatcher,
   dispatchHandleSchema,
+  boolean,
+  choice,
+  evaluator,
   generator,
+  score,
+  type EvaluatorConfig,
+  type EvaluatorDefinition,
+  type EvaluatorOutputSchema,
+  type EvaluatorQuestionsSlot,
   handler,
   providerTool,
   router,
@@ -371,6 +379,22 @@ export type {
   PrepareStepResult,
   ProviderTool
 } from "./types/model";
+export type {
+  BooleanAnswer,
+  BooleanQuestion,
+  ChoiceAnswer,
+  ChoiceQuestion,
+  EvaluationInput,
+  EvaluationModel,
+  EvaluationQuestionType,
+  EvaluatorAnswer,
+  EvaluatorAnswers,
+  EvaluatorOutput,
+  EvaluatorQuestion,
+  EvaluatorQuestions,
+  ScoreAnswer,
+  ScoreQuestion
+} from "./types/evaluation";
 
 // Cross-pattern benchmark contract types (shared by patterns + testing engine)
 export type {

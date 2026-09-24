@@ -40,6 +40,14 @@ export {
 } from "./mocks/mockGenerator";
 
 export {
+  mockEvaluationModel,
+  type MockEvaluationAnswer,
+  type MockEvaluationCall,
+  type MockEvaluationModel,
+  type MockEvaluationModelOptions
+} from "./mocks/mockEvaluationModel";
+
+export {
   evalBlock,
   evalFlow,
   exactMatch,

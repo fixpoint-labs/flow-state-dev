@@ -12,7 +12,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Locked Contracts (Phase 1)
 
-- Block kinds only: `handler`, `generator`, `sequencer`, `router` → [Blocks](../architecture/blocks.md)
+- Block kinds only: `handler`, `generator`, `evaluator`, `sequencer`, `router` → [Blocks](../architecture/blocks.md)
 - Actions are flow-level only (`defineFlow({ actions })`) → [Flows](../architecture/flows-and-actions.md)
 - Required caller input: `userId`
 - Stream model: item/content lifecycle; no part-envelope model → [Streaming](../architecture/streaming.md)

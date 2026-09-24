@@ -36,7 +36,7 @@ pnpm test
 
 The architecture has locked contracts. Don't change these without explicit discussion:
 
-- Block kinds: exactly `handler`, `generator`, `sequencer`, `router`
+- Block kinds: exactly `handler`, `generator`, `evaluator`, `sequencer`, `router`
 - Actions are flow-level: `defineFlow({ actions })`
 - Required caller input: `userId`
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)

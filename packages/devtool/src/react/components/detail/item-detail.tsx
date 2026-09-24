@@ -187,6 +187,27 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
       {/* Resolved generator config */}
       {debugPayload && <DebugPayloadSection payload={debugPayload} />}
 
+      {/* Evaluator — the model asked, the questions, and the answers */}
+      {traceItem?.evaluator && (
+        <CollapsibleSection title="Evaluator" defaultOpen>
+          <MetadataRow label="Model" value={traceItem.evaluator.model} />
+          {traceItem.model?.actual && <MetadataRow label="Answered by" value={traceItem.model.actual} />}
+          <div className="mt-1">
+            <span className="text-[10px] text-slate-600 uppercase">Questions</span>
+            <JsonViewer data={traceItem.evaluator.questions} className="mt-0.5" />
+          </div>
+          {traceItem.output?.kind === "inline" && traceItem.output.value !== undefined && (
+            <div className="mt-1">
+              <span className="text-[10px] text-slate-600 uppercase">Answers</span>
+              <JsonViewer
+                data={(traceItem.output.value as { answers?: unknown }).answers}
+                className="mt-0.5"
+              />
+            </div>
+          )}
+        </CollapsibleSection>
+      )}
+
       {/* State snapshots timeline (sequencers) */}
       {node.stateSnapshots && node.stateSnapshots.length > 0 && (
         <SequencerStateSection snapshots={node.stateSnapshots} />

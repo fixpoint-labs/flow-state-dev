@@ -7,7 +7,7 @@ export type SnapshotTrace = {
   actionName?: string;
   steps: Array<{
     blockName: string;
-    blockKind: "handler" | "generator" | "sequencer" | "router";
+    blockKind: "handler" | "generator" | "evaluator" | "sequencer" | "router";
     phase: "main" | "sideChain";
     inputSummary: unknown;
     outputSummary: unknown;
@@ -23,11 +23,15 @@ export type SnapshotTrace = {
   }>;
 };
 
-function inferBlockKind(stepName: string): "handler" | "generator" | "sequencer" | "router" {
+function inferBlockKind(stepName: string): "handler" | "generator" | "evaluator" | "sequencer" | "router" {
   const lowered = stepName.toLowerCase();
 
   if (lowered.includes("router")) {
     return "router";
+  }
+
+  if (lowered.includes("evaluator")) {
+    return "evaluator";
   }
 
   if (lowered.includes("generator")) {

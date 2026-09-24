@@ -24,6 +24,7 @@ import {
   SuspensionTimeoutError,
 } from "../../errors/suspension-error";
 import { emitToolOutputAround } from "./emit-tool-output";
+import { runEvaluatorCapturingModelResult } from "./evaluator-model-result";
 import {
   buildCacheKey,
   getInFlightMap,
@@ -123,8 +124,17 @@ export function buildToolExecutor(
       }
       try {
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
+        // An evaluator tool reports its usage and model identity onto its
+        // own trace row. Only inside an execution scope: without one,
+        // `scopedCtx` is the generator's own ctx and there is no row.
+        const runTool = (): Promise<unknown> =>
+          tool.kind === "evaluator" && scopedCtx !== ctx
+            ? runEvaluatorCapturingModelResult(scopedCtx, (execCtx) =>
+                Promise.resolve(asRuntime(tool).run(args, execCtx)),
+              )
+            : Promise.resolve(asRuntime(tool).run(args, scopedCtx));
         const output = await runWithRetry(
-          () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+          () => withTimeout(runTool(), timeoutMs, `tool:${tool.name}`),
           retry,
         );
         await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);

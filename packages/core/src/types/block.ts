@@ -27,7 +27,12 @@ import type {
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage, ModelIdentity } from "./model";
 
-export type BlockKind = "handler" | "generator" | "sequencer" | "router";
+/**
+ * The five block kinds. `handler` runs code, `generator` asks a model to write,
+ * `evaluator` asks an evaluation model typed questions, and `sequencer` and
+ * `router` compose other blocks.
+ */
+export type BlockKind = "handler" | "generator" | "evaluator" | "sequencer" | "router";
 
 /**
  * Phase tag for {@link BlockContext._runtimeHooks.onBlockTraceCapture}. Each
@@ -40,10 +45,12 @@ export type BlockKind = "handler" | "generator" | "sequencer" | "router";
  * - `generator` — fired post-config-resolution for generator blocks. Patches
  *   `generator: { model, tools, prompt, user?, history? }`. Last write wins
  *   on chained model calls (multi-step tool loops).
+ * - `evaluator` — fired by evaluator blocks once the question set is known,
+ *   before model resolution. Patches `evaluator: { model, questions }`.
  * - `output` — fired at completion. Patches `output`, `status`, `completedAt`,
  *   `duration`, `error?`, `modelUsage?`. Triggers item.done after the patch.
  */
-export type BlockTraceCapturePhase = "added" | "input" | "generator" | "output";
+export type BlockTraceCapturePhase = "added" | "input" | "generator" | "evaluator" | "output";
 
 /**
  * Payload variant for one phase of {@link BlockContext._runtimeHooks.onBlockTraceCapture}.
@@ -62,6 +69,7 @@ export type BlockTraceCapturePayload = {
     input?: { source: import("../items/types").BlockValueInternal<unknown>; connected?: unknown };
     output?: import("../items/types").BlockValueInternal<unknown>;
     generator?: BlockTraceItem["generator"];
+    evaluator?: BlockTraceItem["evaluator"];
     modelUsage?: BlockTraceItem["modelUsage"];
     model?: BlockTraceItem["model"];
     /**
@@ -934,10 +942,10 @@ export interface BlockConfig<
    * Distinct from `defineFlow({ configSchema })`, which declares what the bag
    * IS and parses and freezes it. The two coexist; neither replaces the other,
    * and they buy different things: that one is the bag, this one is block
-   * portability. The generic plumbing this slot needs on all four kinds is the
+   * portability. The generic plumbing this slot needs on every block kind is the
    * price of the second — see `FlowDefinition.configSchema` for the split.
    *
-   * Declared on all four block kinds — a sequencer's connectors and taps read
+   * Declared on every block kind — a sequencer's connectors and taps read
    * `ctx.flow.config` like anything else.
    */
   flowConfigSchema?: ZodTypeAny;

@@ -199,6 +199,23 @@ export type {
 } from "./model";
 
 export type {
+  BooleanAnswer,
+  BooleanQuestion,
+  ChoiceAnswer,
+  ChoiceQuestion,
+  EvaluationInput,
+  EvaluationModel,
+  EvaluationQuestionType,
+  EvaluatorAnswer,
+  EvaluatorAnswers,
+  EvaluatorOutput,
+  EvaluatorQuestion,
+  EvaluatorQuestions,
+  ScoreAnswer,
+  ScoreQuestion
+} from "./evaluation";
+
+export type {
   AnchoredPath,
   CollectionClientConfig,
   CollectionClientContentConfig,

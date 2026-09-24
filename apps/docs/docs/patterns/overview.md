@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Patterns Overview
 
-The framework gives you four block primitives: `handler`, `generator`, `sequencer`, and `router`. Those primitives compose into higher-level building blocks, and those build into full agentic architectures. There are three tiers.
+The framework gives you five block kinds: `handler`, `generator`, `evaluator`, `sequencer`, and `router`. Those primitives compose into higher-level building blocks, and those build into full agentic architectures. There are three tiers.
 
 ## The architecture hierarchy
 

@@ -491,5 +491,5 @@ pnpm --filter @flow-state-dev/fsdev test
 ## Architecture reference
 
 - [Flows](https://flow-state.dev/docs/fundamentals/flows) — defineFlow, actions, lifecycle
-- [Blocks](https://flow-state.dev/docs/fundamentals/blocks) — The four block kinds
+- [Blocks](https://flow-state.dev/docs/fundamentals/blocks) — The five block kinds
 - [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, event taxonomy

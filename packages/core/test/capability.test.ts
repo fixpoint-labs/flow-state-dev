@@ -607,7 +607,7 @@ describe("mergeSurfaceInto", () => {
   // --- block-kind-agnostic fields work on every kind ---
 
   it("resources work on every block kind", () => {
-    for (const kind of ["handler", "generator", "sequencer", "router"] as BlockKind[]) {
+    for (const kind of ["handler", "generator", "evaluator", "sequencer", "router"] as BlockKind[]) {
       const acc = makeSurface();
       expect(() =>
         mergeSurfaceInto(
@@ -623,7 +623,7 @@ describe("mergeSurfaceInto", () => {
   });
 
   it("sessionStateSchema works on every block kind", () => {
-    for (const kind of ["handler", "generator", "sequencer", "router"] as BlockKind[]) {
+    for (const kind of ["handler", "generator", "evaluator", "sequencer", "router"] as BlockKind[]) {
       const acc = makeSurface();
       const schema = z.object({ x: z.string() });
       expect(() =>
@@ -640,7 +640,7 @@ describe("mergeSurfaceInto", () => {
   });
 
   it("targetStateSchemas work on every block kind", () => {
-    for (const kind of ["handler", "generator", "sequencer", "router"] as BlockKind[]) {
+    for (const kind of ["handler", "generator", "evaluator", "sequencer", "router"] as BlockKind[]) {
       const acc = makeSurface();
       const schema = z.object({ val: z.number() });
       expect(() =>

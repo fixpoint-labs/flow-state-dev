@@ -280,8 +280,8 @@ type DocState = StateOf<typeof docResource>;  // { byId: Record<string, { title:
 | `StateOf<T>` | State type from a schema, resource, or scope config |
 | `ContextOf<T, Kind>` | Context handle type for a scope or resource |
 | `ResourceContext<T>` | Resource context type |
-| `BlockDefinition` | The block interface itself — return type of `handler()`, `generator()`, `sequencer()`, and `router()`. Use when an app-level factory needs to accept or return "any block" without restating the framework's generics. |
-| `BlockKind` | `"handler" \| "generator" \| "sequencer" \| "router"` — the discriminant on `block.kind`. |
+| `BlockDefinition` | The block interface itself — return type of `handler()`, `generator()`, `evaluator()`, `sequencer()`, and `router()`. Use when an app-level factory needs to accept or return "any block" without restating the framework's generics. |
+| `BlockKind` | `"handler" \| "generator" \| "evaluator" \| "sequencer" \| "router"` — the discriminant on `block.kind`. |
 | `BlockContext` | The full block-context interface — what `ctx` resolves to inside `execute`. |
 | `BlockResult<TOutput>` | The handler `execute` return-value union. |
 | `SessionScopeHandle<TState>` | The shape of `ctx.session` — typed `state`, `patchState`, `setStateRecord`, etc. `UserScopeHandle`, `OrgScopeHandle`, and `RequestScopeHandle` are siblings for the other scopes. |
