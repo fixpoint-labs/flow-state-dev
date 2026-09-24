@@ -12,3 +12,5 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-09-24 | 211679a | typesafe-ai/jev (Vercel AI Gateway) | PASS | team=billing (confidence 1), frustration=0.98 (confidence 0.95), urgent P(true)=0.84, no confidence key; trace row kind evaluator, answered by typesafe-ai/jev, 509 tokens; openai("gpt-5.4-mini") refused at build, 0 requests. |
+| 2026-09-24 | 211679a | typesafe-ai/jev (Vercel AI Gateway) | FAIL (expected) | `GOAL_CONTROL=synthetic-confidence`: `a3: urgent carries a confidence Jev does not report for booleans: {"type":"boolean","probability":0.85,"confidence":0}`. Only a3 failed. |
