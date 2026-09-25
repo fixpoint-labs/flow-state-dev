@@ -87,7 +87,7 @@ out anything worth keeping. In a chatty agent most turns hold nothing ("ok", "th
 that again"), and the observer runs anyway.
 
 You can put an evaluator in front of it. An evaluator is a block that asks a model a question
-with known answers and gets a typed answer back ([Blocks](../fundamentals/blocks)). Memory
+with known answers and gets a typed answer back ([Evaluator](/docs/fundamentals/blocks#evaluator)). Memory
 ships the question and a helper that builds the block; you choose the model:
 
 ```ts

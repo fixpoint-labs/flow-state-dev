@@ -973,7 +973,7 @@ Compare this to the manual `intentClassifier` + `router` approach above — the 
 
 ### cascadingRouter — a decision tree that fails closed {#cascadingrouter}
 
-Some routing takes more than one question. Which team gets this ticket, and then, if it's billing, how urgent is it. `cascadingRouter` walks a tree like that. Each level asks one [evaluator](/docs/fundamentals/blocks#evaluator--the-questions-you-already-know) a choice question, and each answer picks the next level or a block to run.
+Some routing takes more than one question. Which team gets this ticket, and then, if it's billing, how urgent is it. `cascadingRouter` walks a tree like that. Each level asks one [evaluator](/docs/fundamentals/blocks#evaluator) a choice question, and each answer picks the next level or a block to run.
 
 The point is what happens when the model isn't sure. Every edge in the tree opens only if the model chose that option **and** reported how confident it is. If an edge has a `minConfidence`, the confidence also has to reach it. Anything else goes to the `ambiguous` block you supply, at whatever level it happened.
 

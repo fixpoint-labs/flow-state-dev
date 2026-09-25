@@ -28,13 +28,13 @@ and the change is the whole of this file:
 
 | File | At issue altitude | At epic altitude | Budget |
 |---|---|---|---|
-| `SPEC.md` | What changes, for whom | The objective as before/after for the **teams** who feel it · **what's in the box** · **the set, as of review** · **the dependency graph** · what stays as it is · sign-off on the objective | ~900 |
+| `SPEC.md` | The goal, what changes, for whom | **The goal and how we'll know it's met** · the objective as before/after for the **teams** who feel it · **what's in the box** · **the set, as of review** · **the dependency graph** · what stays as it is · sign-off on the objective | ~1,050 |
 | `DECISIONS.md` | D-n cards, the tree | The **cross-cutting calls** as cards · an **ownership matrix** of rule × issue · what was **decided in review** so no child reopens it · what the end-state POC showed | ~1,300 |
 | `BUSINESS-RULES.md` | BR-n: when → then → proved by | **ER-n: the rules every child obeys**, with owner and where each is checked · what no child may do · how the set is run · what done means | ~800 |
 | `PLAN.md` | Surfaces, DAG, checks, guardrails — for the implementer | **Sequencing, not building**: **the path** as lanes against time · what each issue consumes, delivers and releases · what unblocks what · coordination seams · not-children · the wrap | ~900 |
 | `DOCS.md` | Concrete proposed prose for the issue's changed surface | Shared reader narrative, destination operations, and which issue publishes each specific | Changed material only |
 | `EVOLUTION.md` (conditional) | Relevant predecessor decisions/rules | Cross-epic or multi-issue lineage, without duplicating child-specific evolution | Relevant lineage only |
-| `figures/` | One figure the PR body carries | Three the PR body carries: the box, the ownership matrix, the path | — |
+| `figures/` | One SVG the PR body carries (what changes); *how we'll know* is an inline mermaid fence, not a file | Three SVGs the PR body carries (the box, the ownership matrix, the path), plus the inline *how we'll know* fence | — |
 
 **The nav line is the same at both altitudes.** The third line of every document is
 `[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)` with
@@ -62,7 +62,7 @@ design nobody signed off. Cross-cutting decisions only.
 
 | Was | Now |
 |---|---|
-| §1 Purpose & objective, the holistic necessity check | `SPEC.md` — the teams table, *what's in the box*, the set with *why the set needs it*, the sign-off |
+| §1 Purpose & objective, the holistic necessity check | `SPEC.md` — the goal and how we'll know it's met, the teams table, *what's in the box*, the set with *why the set needs it*, the sign-off |
 | §2 Themes | `DECISIONS.md` — the cross-cutting calls as cards, and *decided in review* |
 | §3 Shape of the whole (the POC) | `DECISIONS.md` — *what the end-state POC showed*, four lines |
 | §4 Running index | `SPEC.md` — the reviewed set with links to live Linear status and implementation PRs |
@@ -87,7 +87,9 @@ issues, in a retained document set. It is not any one issue's implementation des
 
 **In scope to challenge:**
 
-- The objective — is this body of work worth doing, and is the outcome the right one?
+- The objective and **the goal** in `SPEC.md` — is this body of work worth doing, and is the
+  goal the real need at full size, or a smaller one the set could meet while the need stays
+  unmet? Would the proof's check fail if the goal were not met?
 - **Whether the set overbuilds.** Each issue can earn its place while the whole is too much.
   That question can only be asked here.
 - A cross-cutting decision in `DECISIONS.md` — shared surface, naming, sequencing, contracts.
@@ -117,9 +119,11 @@ Optional comments are triaged, not a reason to grind to zero or restart the desi
 
 *(Authored for the reviewed revision, with dated status and pinned figures. After merge,
 leave this original review record intact; a follow-up amendment describes its own delta.
-Budget ~450 prose words above the fold. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
+Budget ~525 prose words above the fold. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
 
-The teams table from `SPEC.md`. **What's in the box**, pinned, with its sentence. **Why now.**
+The teams table from `SPEC.md`. Then **the goal** in its one sentence, the *how we'll know*
+figure as a mermaid fence with its sentence, and one line naming which issue's goal check
+proves it and the control that must fail. **What's in the box**, pinned, with its sentence. **Why now.**
 **The set** in one line each, with as-of counts and links to live Linear/PR state. **The
 path**, pinned, with a sentence — this is what a reader arriving mid-epic wants first. **Who owns
 what**, pinned, with a sentence. Then **Sign off**: the objective and the one or two cross-cutting
@@ -135,6 +139,24 @@ the links line and the collapsed contract.
 > | **derives totals from the stream** | Defends against duplicates by hand | Counts each item once, with no code of their own |
 > | **has a connection go silently dead** | Never reconnects, because nothing noticed | Notices within a heartbeat and resumes |
 > | **wants their own reconnect policy** | Writes it | Still writes it; the default is one line to override |
+>
+> **Goal:** an app built on FSD that does nothing special survives a dropped *or silently dead*
+> connection, and its user sees the answer they would have seen anyway.
+>
+> ```mermaid
+> flowchart LR
+>   A["a real app · a real streamed answer"] --> L1["leg a · drop the connection"]
+>   A --> L2["leg b · let it die silently"]
+>   L1 --> T["the transcript the client assembled"]
+>   L2 --> T
+>   T -->|"equals the uninterrupted run, both legs"| P["PASS · the epic's goal is met"]
+>   C["control · heartbeats off"] -.-> L2
+>   L2 -.->|"under the control"| F["must FAIL · leg b never resumes"]
+> ```
+>
+> Two legs, because resume alone passes leg a and still leaves the user staring at a dead
+> answer. Proved by the reconnect proof issue's goal check; why this goal and not a smaller one:
+> [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met).
 >
 > <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/end-state.svg" width="940" alt="What's in the box: resume and heartbeats; composed in by the app: reconnect policy; not built: offline queueing and a durable history" />
 >
@@ -201,18 +223,26 @@ Sections, in order:
 2. **Teams, before and after** — a table: a team that… · today · after this epic. Three to
    five rows. This is the objective stated in observable behaviour.
 3. **Why now**, in a paragraph.
-4. **What's in the box** — the one figure: in the box · composed in by the app · replaced in
+4. **The goal, and how we'll know it's met** — the same four parts as an issue spec
+   ([`spec-template.md`](spec-template.md#the-goal-and-how-well-know-its-met)): the goal in one
+   sentence, *is it the right goal?*, the figure, and *how we verify*. At this altitude the
+   goal is the epic's outcome, *smaller, and rejected* is usually a subset of the issues
+   passing on their own, and *how we verify* names **which child's goal check** proves the
+   whole (a proof issue, per [`orchestration.md`](orchestration.md)), not a check of its own.
+   Each child spec still states its own goal, and says in *the real need* which part of this
+   one it carries.
+5. **What's in the box** — the one figure: in the box · composed in by the app · replaced in
    one line · not built. And its sentence.
-5. **The set · as of `<date>`** — the reviewed snapshot: issue · what it delivers · why the set needs
+6. **The set · as of `<date>`** — the reviewed snapshot: issue · what it delivers · why the set needs
    it · status with PR links. Then the counts line and the holistic necessity check in a
    paragraph: whether N is really N−1, and the collapse trigger if one was named. **A bug row
    carries no spec PR by design** ([`orchestration.md`](orchestration.md) → "Which issues get
    a spec"); an empty cell there is correct.
-6. **How the issues flow into each other** — the dependency graph as mermaid, edges labelled
+7. **How the issues flow into each other** — the dependency graph as mermaid, edges labelled
    with what one issue hands the next, inputs from other epics dashed, unfiled issues as
    placeholders. Then the legend sentence.
-7. **What stays as it is** — the neighbours the set deliberately leaves alone.
-8. **Sign off** — the objective and the cross-cutting calls that pass the filters, each linking
+8. **What stays as it is** — the neighbours the set deliberately leaves alone.
+9. **Sign off** — the goal first, then the objective and the cross-cutting calls that pass the filters, each linking
    its card, each with *If wrong:*. **Open: none**, or the live forks named.
 
 > # FIX-770 · Stream resilience: a dropped connection is a non-event
@@ -233,6 +263,40 @@ Sections, in order:
 > **Why now.** Mobile is the first surface every app built on FSD ships to, and each of them is
 > re-implementing the same defence. The cost isn't a crash; it's every app carrying stream
 > hygiene code that belongs in the transport.
+>
+> ## The goal, and how we'll know it's met
+>
+> **An app built on FSD that does nothing special survives a dropped or silently dead
+> connection, and its user sees the answer they would have seen anyway.**
+>
+> | Is it the right goal? | |
+> |---|---|
+> | **The real need** | Every team shipping to phones is re-implementing stream hygiene. They need to stop, not to get a better tool for doing it |
+> | **Smaller, and rejected** | "Resume ships." FIX-775 alone meets it, and a connection that dies without closing never triggers a resume, so the user still waits on a dead answer |
+> | **Bigger, and not this epic's** | "The app works offline." Queueing and a durable history make a stream into a store. Its own epic, if ever |
+> | **Not done if** | Every child is Done and the proof's goal check hasn't run · the proof only ever drops the connection cleanly · an app has to add code to pass |
+>
+> ```mermaid
+> flowchart LR
+>   A["a real app · a real streamed answer"] --> L1["leg a · drop the connection"]
+>   A --> L2["leg b · let it die silently"]
+>   L1 --> T["the transcript the client assembled"]
+>   L2 --> T
+>   T -->|"equals the uninterrupted run, both legs"| P["PASS · the epic's goal is met"]
+>   C["control · heartbeats off"] -.-> L2
+>   L2 -.->|"under the control"| F["must FAIL · leg b never resumes"]
+> ```
+>
+> Leg b is the one the smaller goal would have skipped. With heartbeats switched off it must
+> fail, which is what makes its PASS mean something.
+>
+> | How we verify | |
+> |---|---|
+> | **Goal check** | The reconnect proof issue's goal check (FIX-XXX), real model, in an app that sets nothing. Run at the proof's completion; its verdict is the epic's wrap condition ([ER-13](BUSINESS-RULES.md)) |
+> | **Signal** | Both legs: the assembled transcript equals the uninterrupted run, with no duplicate and no gap. Leg b resumes within one heartbeat interval |
+> | **Input** | A held-out prompt; the drop point and the death point are chosen at random each run |
+> | **Anti-game** | Don't assert on a child's own output, or run in an app with custom reconnect code. Both pass while a plain app still breaks |
+> | **Control that must fail** | Heartbeats off: leg b must FAIL. Today's `main`: both legs must FAIL |
 >
 > ## What's in the box
 >
@@ -287,6 +351,10 @@ Sections, in order:
 >
 > ## Sign off
 >
+> **[The goal](#the-goal-and-how-well-know-its-met), at that size:** dropped *and* silently
+> dead, in an app that sets nothing. If wrong: we wrap an epic whose users still hit a dead
+> answer, or we carry a proof leg nobody needed.
+>
 > 1. **[D1](DECISIONS.md#d1) · A dropped connection is worth three issues and a proof, now.**
 >    If wrong: a cycle on resilience nobody notices, which the proof exists to make impossible
 >    to miss.
@@ -302,8 +370,9 @@ Sections, in order:
 
 **Under [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md) the sign-off is stricter**: it
 carries that skill's five objective lines — Outcome · Proof · Lead measure · Not doing · Kill
-line — and the objective gate is refused without them. They sit between the teams table and *what's
-in the box*; `epic-pm` is canonical for what each line owes.
+line — and the objective gate is refused without them. **Outcome** and **Proof** are the goal
+sentence and *how we verify* above; the other three sit between the teams table and *what's in
+the box*. `epic-pm` is canonical for what each line owes.
 
 ---
 
@@ -470,7 +539,7 @@ no child may do · how the set is run · the proof (what done means).
 >
 > | # | The epic is done when | Proved by |
 > |---|---|---|
-> | ER-14 | A real client, on the real path, drops mid-stream and reconnects, and the transcript has no gap and no duplicate | The proof issue's goal check, real model |
+> | ER-14 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: both legs pass, and leg b fails under its control | The proof issue's goal check, real model |
 > | ER-15 | The docs teach reconnect as something an app gets, not something it builds | FIX-776's docs PR: the streaming overview leads with it |
 
 ---

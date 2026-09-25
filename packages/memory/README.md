@@ -140,8 +140,8 @@ The system implements the read-side `MemoryProvider` contract: `recall(ctx, cue?
 
 `system()` takes an optional `evaluator` block. Before the observer runs, it answers memory's
 one question: `remember` runs the observer as usual, `skip` writes nothing and marks the
-messages read. `captureEvaluator(model)` builds that block on the model you pick; install the
-provider for whichever model you pick. Without an evaluator, every captured turn runs the observer.
+messages read. `captureEvaluator(model)` builds that block on an evaluation model you choose, and
+you install that model's provider. Without an evaluator, every captured turn runs the observer.
 
 ```ts
 import { system, captureEvaluator } from '@flow-state-dev/memory'
@@ -154,6 +154,7 @@ const mem = system({
 ```
 
 To customise the block, build it with core's `evaluator()` and `questions: captureQuestions`.
+See [Deciding which turns to observe](https://flow-state.dev/docs/memory/configuration#deciding-which-turns-to-observe).
 
 ## Where it came from
 

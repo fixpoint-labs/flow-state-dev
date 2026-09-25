@@ -1,0 +1,73 @@
+<svg viewBox="0 0 940 390" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, shipped in kitchen-sink: talk from the page, a channel composer and transcript and a seat composer (FIX-1585); a desk clerk that answers from a model or files the note to a board (FIX-1589); a board panel where a person picks up an escalations row and runs the followups drain (FIX-1591). A fence says every browser verb is an action a flow already declares, and the only package change is FIX-1585's transcript expose line. Composed in by the app: the model, keyless in the browser checks and real in one goal; the one kind-to-action map. Replaced in one line: the model, and a kind's answering action in the map. Not built: Assistant tools that post or ask, channel admin, verified identity, a post that wakes member seats (FIX-1590, a follow-on), Layer 1 Channel, Notify or Dispatcher substrate, a kitchen-sink-only messaging API, live updates of other people's posts.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .out   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .door  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .fence { stroke:var(--code); stroke-width:2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-d   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="390"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="580" height="230" rx="6"/>
+    <text class="t-lbl" x="32" y="38">IN THE BOX &#183; SHIPPED IN KITCHEN-SINK</text>
+    <rect class="door" x="32" y="50" width="270" height="62" rx="4"/>
+    <text class="t-b" x="44" y="70">talk from the page</text>
+    <text class="t-s" x="44" y="88">channel composer + transcript, seat composer</text>
+    <text class="t-ok" x="44" y="103">FIX-1585</text>
+    <rect class="door" x="310" y="50" width="270" height="62" rx="4"/>
+    <text class="t-b" x="322" y="70">the clerk answers, or files</text>
+    <text class="t-s" x="322" y="88">a model reply, or a row on a desk board</text>
+    <text class="t-ok" x="322" y="103">FIX-1589</text>
+    <rect class="door" x="32" y="120" width="548" height="62" rx="4"/>
+    <text class="t-b" x="44" y="140">the boards work</text>
+    <text class="t-s" x="44" y="158">a person picks up escalations; run followups from the board panel</text>
+    <text class="t-ok" x="44" y="173">FIX-1591</text>
+    <path class="fence" d="M32 200 L580 200"/>
+    <text class="t-ok" x="32" y="218">THE FENCE &#183; every browser verb is an action a flow already declares</text>
+    <text class="t-s" x="32" y="234">one package line in the whole set: the channel transcript's expose (FIX-1585 D1)</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="612" y="16" width="312" height="230" rx="6"/>
+    <text class="t-lbl" x="628" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-d" x="628" y="66">the model</text>
+    <text class="t-s" x="628" y="82">deterministic in the browser checks,</text>
+    <text class="t-s" x="628" y="96">real in the clerk's one goal</text>
+    <text class="t-d" x="628" y="126">one kind-to-action map</text>
+    <text class="t-s" x="628" y="142">desk-clerk: answer &#183; agent: run</text>
+    <text class="t-s" x="628" y="156">followup-runner: none</text>
+    <text class="t-d" x="628" y="186">the notify stub, unchanged</text>
+    <text class="t-s" x="628" y="202">names each member, wakes none</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="app" x="16" y="260" width="908" height="50" rx="6"/>
+    <text class="t-lbl" x="32" y="280">REPLACED IN ONE LINE</text>
+    <text class="t-d" x="32" y="300">the model: one string</text>
+    <text class="t-d" x="400" y="300">a kind's answering action: one line in the map</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="out" x="16" y="324" width="908" height="54" rx="6"/>
+    <text class="t-lbl" x="32" y="344">NOT BUILT</text>
+    <text class="t-go" x="32" y="360">Assistant tools that post or ask &#183; channel admin (FIX-1415) &#183; verified identity (FIX-1493) &#183; a post that wakes seats (FIX-1590)</text>
+    <text class="t-go" x="32" y="373">Layer 1 Channel / Notify / Dispatcher &#183; a kitchen-sink-only messaging API &#183; live updates of others' posts</text>
+  </g>
+</svg>

@@ -201,9 +201,9 @@ can watch it:
 pnpm fsdev run routing-with-evaluators routeWithoutConfidence -i '{"message":"I was charged twice for March"}'
 ```
 
-Every ticket goes to review. The trace shows why: the model chose `billing`, and the verdict at the first level is `ambiguous` with the
-reason `no-confidence`. If you're on one of those models and want to branch on the bare answer,
-run an evaluator and follow it with a plain
+Every ticket goes to review. The trace shows why: the model chose `billing`, and the verdict at
+the first level is `ambiguous` with the reason `no-confidence`. If you're on one of those models
+and want to branch on the bare answer, run an evaluator and follow it with a plain
 [`router`](/docs/fundamentals/blocks#router--runtime-dispatch) that reads `answers.team.choice`.
 
 ## Step 3: let the skill activator use an evaluator
@@ -256,7 +256,7 @@ pick's confidence to a threshold, so the same code works on a model that reports
 evaluator error fails the activator, the same way a failed default classifier does, and it
 doesn't fall back to that classifier. If you'd rather the turn go on without a skill, wrap the
 activator in [`.rescue`](/docs/sequencers/composing-blocks#rescue--catch-errors-route-to-recovery).
-Leave `evaluator` out and tier 3 uses the default classifier. The example's `skillActivator()`
+Leave `evaluator` out and the activator's third tier uses the default classifier. The example's `skillActivator()`
 with no model does that. See
 [Activation paths](/docs/skills/activation#tier-3-with-an-evaluator).
 
@@ -268,9 +268,13 @@ That message names no keyword, so the evaluator picks `outage-status` by its des
 
 ## Where to go next
 
-- [Blocks: Evaluator](/docs/fundamentals/blocks#evaluator--the-questions-you-already-know) for
+- [Blocks: Evaluator](/docs/fundamentals/blocks#evaluator) for
   every option and the full answer shape.
 - [`cascadingRouter`](/docs/patterns/utility-blocks/core#cascadingrouter) for how an
   `ambiguous` result shows up in the trace, and when to reach for `intentRouter` instead.
 - [Adding skills to your app](/guides/adding-skills-to-your-app) to build the catalog the
   activator picks from.
+- [Find by facets](/docs/resources/searching#find-by-facets) to run an evaluator once when a
+  document is written, then search its answers with no model call.
+- [Deciding which turns to observe](/docs/memory/configuration#deciding-which-turns-to-observe)
+  to put an evaluator in front of memory capture.
