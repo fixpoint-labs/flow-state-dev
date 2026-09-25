@@ -302,7 +302,9 @@ section is what stops that. It has four parts, in order, and none is optional.
    spec must pin before the check exists:
    - **Goal check** — the `goals/<describe>/<it>/` path, model or `n/a`, who runs it and when
      (the implementing agent, at completion), and where the verdict lands (the implementation
-     PR's goal verdict).
+     PR's goal verdict). If it needs a real browser, say so: the implementer tries it first,
+     and hands it to `fsd-qa` over the mailbox only if it can't
+     ([`agent-mailbox`](../../.agents/skills/agent-mailbox/SKILL.md) → "Hand a browser check to `fsd-qa`").
    - **Signal** — the observable pass condition, with its threshold.
    - **Input** — the fixture, and what a different valid input would look like; a correct
      implementation must pass on it too.
