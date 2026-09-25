@@ -95,8 +95,8 @@ function typescriptExtension(entry: string): string | undefined {
   return TYPESCRIPT_EXTENSIONS.find((extension) => entry.endsWith(extension));
 }
 
-/** One file found in a `blocks/` slot, before it is attached to any seat. */
-interface SlotFile {
+/** One file found in a `blocks/` slot, before it is attached to any seat or package. */
+export interface SlotFile {
   name: string;
   path: string;
   importPath: string;
@@ -108,8 +108,11 @@ interface SlotFile {
  * An absent slot is silent — most folders have none. A slot that is there and
  * cannot be walked is reported under its own path, because the files beneath it
  * cannot be named individually.
+ *
+ * Shared with the package door, which reads a package's `blocks/` by the same
+ * rules: one file per block, one level deep, a validated basename, no symlink.
  */
-async function readBlocksSlot(
+export async function readBlocksSlot(
   slotDir: string,
   slotPath: string,
   problems: string[],
