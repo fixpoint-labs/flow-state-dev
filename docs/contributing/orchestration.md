@@ -683,7 +683,8 @@ project-content mirror. Do not migrate project lifecycle or historical closed sp
    This is an assignment to an existing worker, not a new workflow action.
 3. **The worker executes only that authorized spec merge.** Re-read human approval,
    the current head, required repository checks/approvals, and required review-thread
-   policy. If any requirement is unmet, return the specific blocker without merging.
+   policy, and confirm an automated review has returned on the current head sha.
+   If any requirement is unmet, return the specific blocker without merging.
    Merge with an **atomic expected-head precondition** matching the supplied reviewed
    SHA (for example, `gh pr merge <PR> --match-head-commit <SHA>`); a prior head read
    alone is not sufficient. Observe the merged PR and return its PR number, reviewed
