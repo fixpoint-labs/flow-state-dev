@@ -6,7 +6,7 @@ test mode, so the model is kitchen-sink's scripted resolver and no key is read. 
 HTTP routes the page calls, in-process, on the dev (in-memory) profile.
 
 `wiring.patch` is applied for the run and reverted after. It holds the smallest version of the
-design: `seatId` imposed by the hire, a `post-to-channel` tool dispatching the channel's own
+design: `seatId` imposed by the hire (now FIX-1589's key; the patch stands in for it), a `post-to-channel` tool dispatching the channel's own
 `post`, otto naming the tool, a scripted `agent-answer`, and, **as a stand-in for FIX-1590**, an
 internal `receive` on the agent kind plus a notify slot that wakes otto on a person's post. The
 stand-in is not a proposal for FIX-1590's shape.
@@ -23,7 +23,7 @@ cd ../.. && git apply -R specs/issues/FIX-1594/poc/seat-posts/wiring.patch
 |---|---|---|
 | P1 | Talked to directly, otto's scripted tool call (no text, so the real tool runs) lands a line in `support.desk` with `author: support.otto`, `principal: devuser` | Held |
 | P2 | Woken by a person's post through an internal dispatch, the same call lands the same line, and otto's line does not wake otto again | Held: one `receive` run, source `internal` |
-| P3 | A scripted `author` argument is refused by the tool's closed input; no line is written | Held. Under the scripted model the whole turn fails |
+| P3 | A scripted `author` argument is refused by the tool's closed input; no line is written | Held: no line, and the `post-to-channel` call failed with `Unrecognized key(s) in object: 'author'`. Under the scripted model the whole turn fails. Red state: with `.strict()` removed from the tool's input, the author is stripped, a line is written and P3 fails |
 | P4 | A channel otto is not in (`support.ada-wren`) refuses the post and writes nothing | Held, **and the seat's turn never sees the refusal**: the dispatch returns before the post runs. This is D3's cost |
 | P5 | `support.iris`, which does not name the tool, makes the same scripted call and posts nothing | Held |
 

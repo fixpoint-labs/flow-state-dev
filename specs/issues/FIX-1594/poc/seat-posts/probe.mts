@@ -12,7 +12,7 @@
  *   KITCHEN_SINK_TEST_MODE=1 NEGATIVE=1 pnpm exec tsx ../../specs/issues/FIX-1594/poc/seat-posts/probe.mts
  *   cd ../.. && git apply -R specs/issues/FIX-1594/poc/seat-posts/wiring.patch
  *
- * NEGATIVE=1 makes the tool drop the author; P1 and P2 must go red.
+ * NEGATIVE=1 makes the tool drop the author; P1, P2 and P4 must go red.
  */
 import { createClient, createSessionClient } from "../../../../../packages/client/src/index.ts";
 
@@ -86,7 +86,16 @@ await otto.sendAction("run", { message: `[poc:reply support.desk][poc:forge] ${D
 await sleep(2000);
 const after3 = (await lines("support.desk")).slice(before3);
 const req3 = (await requestsOn(s3.id)).at(-1);
-check("P3", after3.every((l) => l.author !== "support.iris"), `lines written: ${text(after3)}; otto's turn: ${req3?.status}`);
+const snap3 = await sessions.getSessionState(s3.id, { includeItems: true });
+// The refusal must be the tool's own closed input naming `author`, on the post-to-channel call itself.
+const refused3 = ((snap3.items ?? []) as Array<{ type?: string; blockName?: string; status?: string; error?: { message?: string } }>)
+  .find((i) => i.type === "tool_output" && i.blockName === "post-to-channel" && i.status === "failed");
+const why3 = refused3?.error?.message ?? "";
+check(
+  "P3",
+  after3.length === 0 && req3?.status === "failed" && /Unrecognized key.*'author'/.test(why3),
+  `lines written: ${after3.length}; otto's turn: ${req3?.status}; the post-to-channel call failed with: ${why3 || "nothing"}`,
+);
 
 // P4 — a channel otto is not a member of refuses the post; nothing is appended there.
 const before4 = (await lines("support.ada-wren")).length;

@@ -2,10 +2,14 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs**
 
-Four destinations, no new page, no sidebar change. The channels page gets one section on a seat
-posting back. The worker-contract table gains its new row in the published page and the package
-README. Kitchen-sink's README gets the epic's channel half, which this issue publishes last
-([epic DOCS](../../epics/FIX-1592/DOCS.md), ER-19).
+Three destinations, no new page, no sidebar change. The channels page and the workforce README
+each get one section on a seat posting back. Kitchen-sink's README gets the epic's channel half,
+which this issue publishes last ([epic DOCS](../../epics/FIX-1592/DOCS.md), ER-19).
+
+`seatId` is FIX-1589's, so its documentation moves there with it: the contract row in
+`workers-on-disk.md` and the workforce README, the refused-key lists, and the admission contract
+and imposed-key section of `docs/architecture/workforce-default-worker-kind.md`. This issue's
+pages name the key and link to FIX-1589's text rather than restating it.
 
 Voice rules most at risk here: no sentence opening with "This", no em-dash chains, and say
 plainly that the name on a seat's line is still unverified.
@@ -31,40 +35,25 @@ tools: [post-to-channel]
 
 The model calls `post-to-channel` with the channel's id and what to say. The tool posts through
 that channel's own `post`, and the line's `author` is the seat's own id. The model cannot set it:
-the tool takes no `author`, and the hire writes the seat's id into its settings. A seat that
-doesn't name the tool is never offered it.
+the tool takes no `author`, and it reads the seat's `seatId`, which the hire writes into every
+seat's settings. A seat that doesn't name the tool is never offered it.
 
 A post a seat writes carries a seat as its author, so the fan-out can tell it from a person's
 post. That is how two agents in one channel avoid answering each other forever: a seat's post
 wakes no seat.
 
-Three limits:
+Four limits:
 
 - The seat must be a member. The channel refuses any other author and writes nothing, and the
   seat is not told: the tool reports that it handed the post over, not that it landed. The
   refusal is on the channel's own request log.
 - Only the built-in channel kind takes these posts. A kind of your own would need a `post` that
   another flow can call.
+- It needs dispatch to run in process. If your host hands dispatch to an external queue, a
+  delivery into the channel's existing session is refused before it is queued, and the tool call
+  fails saying so.
 - The name is still a claim the channel can't check. The server set it, but the line is stored
   with `authorVerified: false`, like any other.
-
-## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · the paragraph starting "`workerConfigSchema()` is the set of settings"
-
-Add, after "…when its team wrote one.":
-
-It also carries `seatId`, the seat's own address, so a block running inside the seat can tell
-which seat it is.
-
-And add `seatId:` to the refused keys in line 59's list and in the hire's refusal list at line 204.
-
-## UPDATE · `packages/workforce/README.md` · the contract table under "A worker kind is an ordinary flow"
-
-Add a row:
-
-| `seatId` | The seat's own address, e.g. `support.otto`. Imposed on every seat by the hire, from the record; a worker file that writes `seatId:` is refused. Blocks read it to act as the seat, as `post-to-channel` does for a line's author. |
-
-And in the sentence under the table, add `seatId` to "`seatSkills` and `seatTools` always".
-Add `seatId:` to the refused keys at line 88.
 
 ## UPDATE · `packages/workforce/README.md` · new `### Posting to a channel from a seat`, after "Hire and fire as catalog tools"
 
@@ -74,7 +63,9 @@ The channel-post capability puts one tool, `post-to-channel`, on a worker kind's
 names it in `tools:` to use it. Its input is `{ channel, body }` and nothing else. The line is
 posted through the built-in channel kind's `post`, with the seat's `seatId` as `author`, so the
 channel's member check applies and the fan-out sees a seat's post. The tool returns once the post
-is handed to the channel; a refusal lands on the channel's request, not in the seat's turn.
+is handed to the channel. A refusal by the channel lands on the channel's request, not in the
+seat's turn; a refusal at dispatch fails the call. It works only where dispatch runs in process:
+behind an external dispatcher, a delivery into an existing session is refused.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · the support team's channels, the opening's channel paragraph
 
