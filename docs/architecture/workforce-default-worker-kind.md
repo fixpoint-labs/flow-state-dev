@@ -134,7 +134,8 @@ one place they meet. Like `teamInstructions`, the key is imposed **only when a s
 kind that hand-declared the older contract still hires every seat that holds nothing, and is refused
 at boot, naming the key, only when one of its seats does. Every problem a package can cause (a name
 no library offers, a block name another tool already uses, a block that declares a store) is a
-start-time refusal naming the seat and the package.
+start-time refusal naming the seat and the package, except a clash with a tool a preset builds per
+turn, which cannot be known at start and fails that turn with the framework's duplicate-name error.
 
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
 `prompt: [default, teamInstructions, instructions, package instructions]` — the framework's default
