@@ -213,6 +213,34 @@ describe("only what the worker's own file picked grants", () => {
     expect(await offered(seat("eng.caller"))).toEqual(["dial"]);
   });
 
+  // The grant resolves a function-valued preset itself. The framework's own
+  // capability path must not resolve it a second time only to drop the result
+  // behind the fence: a resolver may be costly or have effects.
+  it("resolves a function-valued picked preset once per tool resolution", async () => {
+    let resolved = 0;
+    const counted = defineCapability({
+      name: "counted",
+      presets: {
+        line: {
+          tools: () => {
+            resolved += 1;
+            return [dial];
+          }
+        },
+        default: []
+      }
+    });
+    const seat = hire(
+      [record({ id: "eng.counter", declared: { capabilities: { counted: ["line"] } } })],
+      { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [counted] }) }
+    );
+
+    const before = resolved;
+    expect(await offered(seat("eng.counter"))).toEqual(["dial"]);
+    // One turn with a text answer is one model step, so one tool resolution.
+    expect(resolved - before).toBe(1);
+  });
+
   // The kind switching a preset on is the app's default, not the worker's
   // choice. A worker that picks nothing from it gains nothing — and neither
   // does one that picks a DIFFERENT preset of the same capability.
