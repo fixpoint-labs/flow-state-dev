@@ -977,6 +977,8 @@ Some routing takes more than one question. Which team gets this ticket, and then
 
 The point is what happens when the model isn't sure. Every edge in the tree opens only if the model chose that option **and** reported how confident it is. If an edge has a `minConfidence`, the confidence also has to reach it. Anything else goes to the `ambiguous` block you supply, at whatever level it happened.
 
+For a worked tree, including what happens on a model with no confidence, see [Routing with evaluators](/guides/routing-with-evaluators).
+
 ```ts
 import { evaluator, choice, utility } from "@flow-state-dev/core";
 

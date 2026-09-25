@@ -443,9 +443,11 @@ Model strings resolve the way generator strings do. With the provider's package 
 
 ```ts
 evaluator({ name: "triage", model: "typesafe-ai/jev", questions });          // Jev, through Vercel's AI Gateway
-evaluator({ name: "triage", model: "openai/gpt-5.4-mini", questions });      // OpenAI's evaluation adapter
+evaluator({ name: "triage", model: "openai/gpt-5.4-mini", questions });      // OpenAI direct: needs @ai-sdk/openai and OPENAI_API_KEY
 evaluator({ name: "triage", model: openai.evaluationModel("gpt-5.4-mini"), questions });
 ```
+
+The gateway serves Jev as an evaluation model, but not OpenAI's. Without `@ai-sdk/openai` installed and `OPENAI_API_KEY` set, `"openai/gpt-5.4-mini"` falls through to the gateway, which rejects the call because that id is a language model there. To reach OpenAI's evaluation adapter with only a gateway key, pass an instance pointed at the gateway's OpenAI-compatible endpoint: `createOpenAI({ baseURL: "https://ai-gateway.vercel.sh/v1", apiKey: process.env.AI_GATEWAY_API_KEY }).evaluationModel("openai/gpt-5.4-mini")`.
 
 We recommend Jev through the gateway. It reports its confidence, which the other adapters don't, and routing code can use that to hand a doubtful case to a person.
 

@@ -25,6 +25,7 @@ const sidebars: SidebarsConfig = {
     },
     "human-in-the-loop",
     "prompts-as-markdown",
+    "routing-with-evaluators",
     "adding-skills-to-your-app",
     "projects-on-org-scope",
     "writing-ui-stories",

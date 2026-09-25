@@ -485,6 +485,40 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
 
+  examples/guides/routing-with-evaluators:
+    dependencies:
+      '@ai-sdk/openai':
+        specifier: ^4.0.75
+        version: 4.0.75(zod@3.25.76)
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
+      '@flow-state-dev/engine':
+        specifier: workspace:*
+        version: link:../../../packages/engine
+      '@flow-state-dev/orchestration':
+        specifier: workspace:*
+        version: link:../../../packages/orchestration
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../../../packages/testing
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
+
   examples/hello-chat:
     dependencies:
       '@ai-sdk/openai':

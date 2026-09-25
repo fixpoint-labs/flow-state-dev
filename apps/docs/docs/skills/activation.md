@@ -67,6 +67,8 @@ A turn that hits tier 1 or 2 pays no LLM cost for the classification. A turn tha
 
 An [evaluator](/docs/fundamentals/blocks#evaluator--the-questions-you-already-know) is a block that asks an evaluation model a question with known answers. Give the activator one, and tier 3 asks it: which of these skills fits the message, or none?
 
+[Routing with evaluators](/guides/routing-with-evaluators) walks through it end to end.
+
 ```ts
 import { createSkillActivator, skillEvaluator } from "@flow-state-dev/orchestration";
 
@@ -91,12 +93,13 @@ Unlike the default classifier, it activates at most one skill per turn (keyword 
 To name the block yourself, change what it evaluates, or give it `uses`, build it from `skillQuestions`:
 
 ```ts
+import { openai } from "@ai-sdk/openai";
 import { evaluator } from "@flow-state-dev/core";
 import { skillQuestions } from "@flow-state-dev/orchestration";
 
 const pickSkill = evaluator({
   name: "pick-skill",
-  model: "openai/gpt-5.4-mini",
+  model: openai.evaluationModel("gpt-5.4-mini"),
   state: (input) => input.message,
   questions: skillQuestions,
 });
