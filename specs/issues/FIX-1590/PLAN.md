@@ -16,7 +16,7 @@ when FIX-1589's implementation merges (ER-14); S1 also waits for FIX-1459 (ER-11
 | S4 | kitchen-sink · `workforce/hire.ts` | Hire the seats before building the channel kinds, and hand S3 each seat's id and kind | BR-1 BR-6 |
 | S5 | kitchen-sink · the rail (`app/page.tsx`) | `includeDispatchRuns` on the `FlowNavigator`, so a seat's channel conversation is listed | BR-8 |
 | S6 | kitchen-sink · the scripted model (`lib/e2e-mock-script.ts`) | A `[scenario:wake]` scenario for the agent kind's generators, which FIX-1585's S9 maps. One reply carrying the marker | BR-1 BR-8 |
-| S7 | kitchen-sink · e2e | The wake scenario in FIX-1585's talk spec file, not `workforce-shell.spec.ts` | BR-1 BR-2 BR-8 BR-9 |
+| S7 | kitchen-sink · e2e | The wake scenario in FIX-1585's talk spec file, not `workforce-shell.spec.ts`. It is the CI regression on every PR; S8 drives the same scenario as the goal check, adding the control and the verdict, so there is one harness, not two | BR-1 BR-2 BR-8 BR-9 |
 | S8 | `goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met); `run.mts` drives a real browser against the production build. `GOAL_CONTROL=name-only-notify` swaps S3 back to the stub | BR-1 BR-2 BR-8 BR-9 |
 | S9 | Docs and release note | [DOCS.md](DOCS.md)'s operations; one `minor` changeset for `@flow-state-dev/workforce` (the agent kind gains `onChannelPost`). kitchen-sink is private: no changeset | — |
 
@@ -108,8 +108,8 @@ the design moved.
 - **FIX-1594** is specced against this receiver. If it has merged a spec, check its reading of
   the heard turn and the channel id before building S1.
 - `utility.keyedRouter` with a `fallback` fits S3; the POC used a plain router.
-- Re-run `poc/wake-premises/probe.mts` against current `main` with the patch before starting. A
-  W-row that flips is a spec finding.
+- Re-running `poc/wake-premises/probe.mts` is optional: V3 ports W1–W6 as tests. Re-run it only if
+  the dispatch or listing premises look changed on current `main`.
 
 ## Follow-ups
 

@@ -19,26 +19,33 @@ dispatcher reaches it. Calling it from a client is refused, the same as any inte
 import { dispatcher, utility } from "@flow-state-dev/core";
 import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
 
-const agentSeats = seats.filter((seat) => seat.kind === "agent");
+// Your app's one kind map already says which entry each kind answers on.
+// Its wake column says which internal entry, if any, wakes a seat of that kind.
+//   seatKinds = { agent: { wake: "onChannelPost" }, "desk-clerk": { wake: null }, ... }
 
 const wakeAgents = utility.keyedRouter({
   name: "wake-agents",
   inputSchema: channelNotifyInputSchema,
   blocks: Object.fromEntries(
-    agentSeats.map((seat) => [
-      seat.id,
-      dispatcher({
-        name: `wake-${seat.id}`,
-        flowKind: seat.id,                       // the seat's own address
-        action: "onChannelPost",
-        inputSchema: channelNotifyInputSchema,
-        session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` },
-      }),
-    ]),
+    seats.flatMap((seat) => {
+      const wake = seatKinds[seat.kind]?.wake;
+      if (wake == null) return [];               // this kind wakes on nothing
+      return [[
+        seat.id,
+        dispatcher({
+          name: `wake-${seat.id}`,
+          flowKind: seat.id,                     // the seat's own address
+          action: wake,
+          inputSchema: channelNotifyInputSchema,
+          session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` },
+        }),
+      ]];
+    }),
   ),
-  // a post a seat wrote wakes nobody, and a member with no dispatcher falls through
-  select: (post) => (post.author === undefined ? post.member : ""),
-  fallback: wakeMember,                         // everyone else: the handler above
+  // Any author means a seat wrote the post: never wake anyone for it.
+  // No author: wake the member if it has a dispatcher. Everything else falls back.
+  select: (post) => (post.author !== undefined ? "" : post.member),
+  fallback: notifyMember,                        // today's name-only line
 });
 
 channelInstances(channels, { kinds: { channel: defineChannelFlow({ notify: wakeAgents }) } });
