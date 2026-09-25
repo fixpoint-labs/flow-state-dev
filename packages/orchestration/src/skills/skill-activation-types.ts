@@ -49,3 +49,10 @@ export const skillActivatorStateSchema = z.object({
   /** Classifier-tier aggregate confidence, when classifier ran. */
   classifierConfidence: z.number().min(0).max(1).nullable().default(null),
 });
+
+/**
+ * The evaluator tier's "no skill" option key. Uppercase with an underscore,
+ * so it lies outside the skill-name grammar (lowercase letters, digits,
+ * single hyphens) and can never collide with a real skill, `none` included.
+ */
+export const NO_SKILL = "NO_SKILL";

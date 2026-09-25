@@ -156,6 +156,16 @@ export {
   createSkillActivator,
   type SkillActivatorOptions,
 } from "./skill-activator";
+// Tier 3 on an evaluation model: the helper that builds the activator's
+// evaluator, and the question a hand-built one asks.
+export {
+  skillEvaluator,
+  skillQuestions,
+  skillEvaluatorInputSchema,
+  type SkillEvaluatorBlock,
+  type SkillEvaluatorInput,
+  type SkillQuestions,
+} from "./skill-evaluator";
 // Public runtime shapes mirroring the SkillActivationSource / MatchedSkill
 // types in @flow-state-dev/core. Useful for consumers writing their own
 // apply handlers or inspecting `activeSkills` entries from clientData.

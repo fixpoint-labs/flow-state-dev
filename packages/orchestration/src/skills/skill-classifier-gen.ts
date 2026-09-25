@@ -13,11 +13,8 @@
 
 import { z } from "zod";
 import { generator, handler, sequencer } from "@flow-state-dev/core";
-import type {
-  ResourceCollectionRef,
-} from "@flow-state-dev/core/types";
-import type { SkillState } from "@flow-state-dev/core";
 import { resolveResourceCollection } from "../tasks";
+import { listOfferedSkills } from "./skill-catalog";
 import {
   skillActivatorStateSchema,
   matchedSkillSchema,
@@ -56,33 +53,6 @@ export interface SkillClassifierOptions {
   allowed?: readonly string[];
 }
 
-/** List enabled skills (capped) with their description for the prompt. */
-async function listSkillsForPrompt(
-  collection: ResourceCollectionRef | undefined,
-  cap: number,
-  allowedSet: Set<string> | undefined,
-): Promise<Array<{ name: string; description: string }>> {
-  if (!collection) return [];
-  const out: Array<{ name: string; description: string }> = [];
-  const seen = new Set<string>();
-  for (const ref of await collection.list()) {
-    if (out.length >= cap) break;
-    if (!ref.path.endsWith("/SKILL.md")) continue;
-    const segments = ref.path.split("/");
-    if (segments.length < 2) continue;
-    const skillName = segments[segments.length - 2]!;
-    if (seen.has(skillName)) continue;
-    seen.add(skillName);
-    if (allowedSet && !allowedSet.has(skillName)) continue;
-    const state = ref.state as unknown as SkillState;
-    if (state.disableModelInvocation) continue;
-    let desc = state.description ?? "";
-    if (state.whenToUse) desc = `${desc}\n${state.whenToUse}`;
-    out.push({ name: skillName, description: desc });
-  }
-  return out;
-}
-
 /**
  * Build the tier-3 classifier — generator call + apply handler wrapped in
  * a sequencer. The sequencer is what `skillActivator`'s `tapIf` targets.
@@ -100,7 +70,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     itemVisibility: { client: false, history: false },
     prompt: async (_input, ctx) => {
       const collection = resolveResourceCollection(ctx, opts.collectionKey);
-      const skills = await listSkillsForPrompt(collection, cap, allowedSet);
+      const skills = await listOfferedSkills(collection, cap, allowedSet);
       if (skills.length === 0) {
         return [
           "You classify a single user message: which (if any) of the available skills applies?",
@@ -130,19 +100,11 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     sequencerStateSchema: skillActivatorStateSchema,
     execute: async (input, ctx) => {
       const collection = resolveResourceCollection(ctx, opts.collectionKey);
-      const validNames = new Set<string>();
-      if (collection) {
-        for (const ref of await collection.list()) {
-          if (!ref.path.endsWith("/SKILL.md")) continue;
-          const segments = ref.path.split("/");
-          if (segments.length < 2) continue;
-          const skillName = segments[segments.length - 2]!;
-          if (allowedSet && !allowedSet.has(skillName)) continue;
-          const state = ref.state as unknown as SkillState;
-          if (state.disableModelInvocation) continue;
-          validNames.add(skillName);
-        }
-      }
+      const validNames = new Set(
+        (await listOfferedSkills(collection, Number.POSITIVE_INFINITY, allowedSet)).map(
+          (s) => s.name,
+        ),
+      );
 
       const filteredSkills = input.activeSkills
         .filter((s) => validNames.has(s.name) && s.confidence >= threshold)

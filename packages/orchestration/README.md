@@ -518,6 +518,12 @@ generator({
 });
 ```
 
+The up-front activator, `createSkillActivator`, picks skills before the generator runs: slash,
+then keywords, then a classifier. Pass `evaluator: skillEvaluator(model)` to run that last tier
+on an evaluation model. It picks one skill or none, and its answer is final.
+`skillQuestions` builds the same question for an evaluator you construct yourself. See
+[Activation paths](https://flow-state.dev/docs/skills/activation).
+
 `initialSkills` also takes a **function of the execution**, for a catalog that
 belongs to the flow copy rather than to the definition — two registered copies
 then seed two different sets. Pair it with `collectionConfig: { flowIsolation: true }`
