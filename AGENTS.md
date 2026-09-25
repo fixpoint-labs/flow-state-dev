@@ -87,7 +87,7 @@ First trial surface: the single hardest conflict in `cross-spec-review` (it flag
 
 Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md`) or `model:` / `effort:` on a skill; or per-dispatch via the Agent tool's model override. Standing worker agents: **`spec-implementer`** (Sonnet), **`poc-agent`** (Sonnet — settles one disputed factual claim with a throwaway POC when a spec review loops on it; see `orchestration.md` → "Settling a disputed claim"), **`scout`** (Haiku), **`issue-manager`** (Sonnet — files/organizes Linear issues for discovered gaps and blockers; see below).
 
-**File discovered work, don't scope-creep it.** When work surfaces a gap, a follow-up, or a blocker that isn't the current task's job, file it through the **`issue-manager`** agent (related to the current issue, in the current project — it duplicate-checks, writes it PM-shaped, wires blocked-by/blocks/relates/parent, and returns a ready/blocked verdict). Under `epic-lifecycle`, a filed issue that belongs under the epic and is unblocked can be pulled into the active set (still gated at its own spec-approval).
+**File discovered work, don't scope-creep it.** When work surfaces a gap, a follow-up, or a blocker that isn't the current task's job, file it through the **`issue-manager`** agent (related to the current issue, in the current project — it duplicate-checks, writes it PM-shaped, wires blocked-by/blocks/relates/parent, and returns a ready/blocked verdict). Under `epic-lifecycle`, a filed issue that belongs under the epic can be pulled into the active set (still gated at its own spec-approval); a blocked-by relation holds only its implementation, never its spec work.
 
 ## Verifying flow changes during development
 

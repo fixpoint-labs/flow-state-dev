@@ -39,7 +39,9 @@ inherit these unless told otherwise).
    for a soft link; **parent/sub-issue** if it's a child of the current issue. Verify
    each related issue exists and is the right one.
 5. **Assess ready vs. blocked.** *Ready* = no open / in-progress blocker (nothing it's
-   `blocked-by` is still unmerged). *Blocked* = name the blocker and its state.
+   `blocked-by` is still unmerged). *Blocked* = name the blocker and its state. On GraphQL, an
+   issue's blockers are its `inverseRelations` of type `blocks` (`issue` is the blocker), never
+   its own `relations` — those are the issues *it* blocks.
 
 ## Escalate rather than guess (the Sonnet guardrail)
 

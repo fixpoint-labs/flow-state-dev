@@ -73,6 +73,7 @@ Before starting work, check:
 2. **Full spec approved and merged?** Require the five documents under `specs/issues/<ISSUE-ID>/`, applicable evolution, human approval bound to the reviewed head, and confirmed merge after required checks and review-thread policy. A merged spec PR satisfies both: the owner's merge is the approval. Follow [`orchestration.md`](../../../docs/contributing/orchestration.md#merging-and-amending-a-spec) → "Merging and amending a spec". A standing label does not approve a changed head; invoking this skill is not a merge bypass. If approval exists but merge is pending, only an explicitly authorized `implement` backstop may execute that canonical merge contract before creating the implementation branch, then continue and return the matching `specMerge` receipt. Otherwise return the exact merge wait for the coordinator to dispatch `issue-worker` **MERGE-ONLY**; do not start implementation. Bugs and brief-backed issues with no spec PR skip this gate.
 
 3. **Dependencies resolved?** Check blocking issues:
+   - **Read the direction, don't infer it.** On the GraphQL channel, this issue's blockers are its `inverseRelations` of type `blocks` (the node's `issue` is the blocker); its own `relations` of type `blocks` are issues *it* blocks. Reading `relations` as blocked-by inverts the dependency — the prerequisite parks and its dependents run first.
    - If blockers are still "In Progress" or "Todo" → tell the user what's blocking and stop
    - If blockers are "Done" but code isn't on main → check if there's a merged PR. If not, flag it
 

@@ -559,7 +559,7 @@ cloud vs. local" for how to detect the environment and the full fallback design.
 
 ## Boundaries
 
-- **Discovered gaps/blockers** during the work get **filed via the `issue-manager` agent** (related to this issue, same project) — never dropped or scope-crept into it. It returns a ready/blocked verdict; under `epic-lifecycle`, an unblocked related one can join the epic's active set.
+- **Discovered gaps/blockers** during the work get **filed via the `issue-manager` agent** (related to this issue, same project) — never dropped or scope-crept into it. It returns a ready/blocked verdict; under `epic-lifecycle`, a related one can join the epic's active set — blocked or not, since a blocked-by relation holds only its implementation.
 - One issue. For several related issues in parallel, use `epic-lifecycle` (it composes
   this skill, one worktree per issue, under a shared epic).
 - This is the *coordinated, single-session, event-driven* lifecycle — one session
