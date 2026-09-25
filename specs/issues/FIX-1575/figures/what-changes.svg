@@ -1,0 +1,69 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="Two columns, today and after, split by a dashed Layer 1 / Layer 2 line. Workforce sits above the line in both. Today, below the line, Core and Engine prose calls a board's dispatcher a seat, the task envelope's key the dispatcher's seat on the roster, and a pinned instance a hired seat. After, the same prose says assignee and owner-pinned instance. Boards, tasks and boardId are unchanged in both. Two public names that still carry seat words, the envelope's seat field and the discovery domains seats and channels, are drawn dashed as follow-up issues."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.4; }
+    .n-ok  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-fu  { fill:var(--surface); stroke:var(--accent); stroke-width:1.4; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+    .t-g   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+    .t-a   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .layer { stroke:var(--accent); stroke-width:1.4; stroke-dasharray:6 4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+  <line class="rule" x1="470" y1="12" x2="470" y2="368"/>
+  <line class="layer" x1="16" y1="100" x2="924" y2="100"/>
+  <text class="t-a" x="16" y="94">LAYER 2</text>
+  <text class="t-a" x="16" y="115">LAYER 1 · CORE · ENGINE · THEIR DOCS</text>
+  <g id="today">
+    <text class="t-lbl" x="16" y="26">TODAY</text>
+    <rect class="n-in" x="16" y="34" width="440" height="46" rx="5"/>
+    <text class="t-b" x="30" y="54">Workforce</text>
+    <text class="t-s" x="30" y="70">hires seats, keeps a roster</text>
+    <rect class="n-gone" x="16" y="126" width="440" height="138" rx="5"/>
+    <text class="t-lbl" x="30" y="144">PROSE · 82 LINES</text>
+    <text class="t-s" x="30" y="166">"a task dispatcher is a seat on a task board"</text>
+    <text class="t-s" x="30" y="184">"the dispatcher's seat on the roster"</text>
+    <text class="t-s" x="30" y="202">"but the seat is held by board X"</text>
+    <text class="t-s" x="30" y="220">"a hired instance ... from the hire row"</text>
+    <text class="t-x" x="30" y="250">Workforce words teach the Layer 1 mechanism</text>
+    <rect class="n-ok" x="16" y="276" width="440" height="36" rx="5"/>
+    <text class="t-s" x="30" y="298">boards · tasks · boardId · gatedBy · claim gate</text>
+    <rect class="n-box" x="16" y="322" width="440" height="36" rx="5"/>
+    <text class="t-s" x="30" y="344">seat field · "seats" and "channels" domains</text>
+  </g>
+  <g id="after">
+    <text class="t-lbl" x="484" y="26">AFTER</text>
+    <rect class="n-in" x="484" y="34" width="440" height="46" rx="5"/>
+    <text class="t-b" x="498" y="54">Workforce</text>
+    <text class="t-s" x="498" y="70">unchanged; named in Layer 1 only as a consumer</text>
+    <rect class="n-box" x="484" y="126" width="440" height="138" rx="5"/>
+    <text class="t-lbl" x="498" y="144">PROSE · REWORDED</text>
+    <text class="t-s" x="498" y="166">"sits in a board's workers under an assignee"</text>
+    <text class="t-s" x="498" y="184">"the assignee the board routed the row to"</text>
+    <text class="t-s" x="498" y="202">"but the dispatcher is held by board X"</text>
+    <text class="t-s" x="498" y="220">"an owner-pinned instance"</text>
+    <text class="t-g" x="498" y="250">no name, type, key or behaviour moves</text>
+    <rect class="n-ok" x="484" y="276" width="440" height="36" rx="5"/>
+    <text class="t-s" x="498" y="298">boards · tasks · boardId · gatedBy · claim gate (D1)</text>
+    <rect class="n-fu" x="484" y="322" width="214" height="36" rx="5"/>
+    <text class="t-s" x="496" y="338">TaskDispatchInput.seat</text>
+    <text class="t-a" x="496" y="352">FOLLOW-UP · D2</text>
+    <rect class="n-fu" x="710" y="322" width="214" height="36" rx="5"/>
+    <text class="t-s" x="722" y="338">MANIFEST_DOMAINS</text>
+    <text class="t-a" x="722" y="352">FOLLOW-UP · D2</text>
+  </g>
+</svg>

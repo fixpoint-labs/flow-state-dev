@@ -249,8 +249,8 @@ const EMPTY_FLOW_CONFIG: Readonly<Record<string, unknown>> = Object.freeze({});
 /**
  * The flow's declared `configSchema`, closed so an undeclared key is an error.
  *
- * A plain `z.object(...).parse()` DROPS a key nobody declared, so a roster
- * with a typo'd knob would parse clean and the copy would run on a default —
+ * A plain `z.object(...).parse()` DROPS a key nobody declared, so a config
+ * bag with a typo'd knob would parse clean and the copy would run on a default —
  * precisely what the declared-or-refused rule promises will not happen, and
  * TypeScript's excess-property check never sees a bag loaded from a file.
  * Closing it inside the framework rather than asking authors to write
@@ -805,7 +805,7 @@ function validateEntryMaps(
  * ever reach it through its board's gate — the row re-read, the claim verified,
  * the task scope marked, the ticket re-minted. The board cannot install that
  * gate itself, because the flow owns the entry, so it binds the gate onto the
- * hand-off it holds at the seat (`bindTaskDispatcher`) and this walk applies
+ * hand-off it holds for the assignee (`bindTaskDispatcher`) and this walk applies
  * it: the returned map carries `gate(entry)` in place of each entry a board
  * addresses. A task dispatcher no board holds, an entry no board addresses, and
  * two boards addressing one entry are each refused by name — every one of them
@@ -828,10 +828,10 @@ function resolveDispatchTargets(
   // `taskBoard()` instances can spell the same `boardId` over different
   // ledgers, and only one of their gates can front the entry.
   const gatedBy = new Map<string, TaskBinding>();
-  // Entries some seat hands off to under a policy that shares one child across
+  // Entries some dispatcher hands off to under a policy that shares one child across
   // rows (`per-worker`, or a `key`). Two rows dispatched into one session
   // interleave their writes under the `allow` default, so these default to
-  // `queue` unless the author chose a policy. A `per-task` seat lands every row
+  // `queue` unless the author chose a policy. A `per-task` dispatcher lands every row
   // in a session of its own and keeps the flow default.
   const sharedChild = new Set<string>();
 
@@ -864,14 +864,14 @@ function resolveDispatchTargets(
         throw new Error(
           `Flow "${kind}" reaches block "${block.name}", which hands off to ${label}, but the ` +
             `flow declares no such task entry. Add \`task: { actions: { ${address.action}: { block } } }\` ` +
-            `to the flow — the block that runs each row this seat hands off.`
+            `to the flow — the block that runs each row this dispatcher hands off.`
         );
       }
       const binding = taskBindingOf(block);
       if (binding === undefined) {
         throw new Error(
           `Flow "${kind}" reaches block "${block.name}", which hands off to ${label}, but no ` +
-            `task board holds it. A task dispatcher is a seat: put it under a board's ` +
+            `task board holds it. A task dispatcher belongs to a board: put it under a board's ` +
             `\`workers\`, which is the only place a claim on a durable row is minted.`
         );
       }
@@ -915,7 +915,7 @@ function resolveDispatchTargets(
       `Flow "${kind}" declares task entry "${name}", but no task board reachable from the ` +
         `flow hands off to it. Only a board can dispatch a task — it mints the claim the entry ` +
         `runs under — so an entry without one could never be reached. Add a ` +
-        `\`dispatcher({ action: "${name}", session })\` seat to a board the flow ` +
+        `\`dispatcher({ action: "${name}", session })\` to the \`workers\` of a board the flow ` +
         `reaches, or remove the entry.`
     );
   }

@@ -223,7 +223,7 @@ async function reconcileDroppedDelivery(
  * Refuse any dispatcher reachable from `roots` whose address the flow does not
  * declare — and, for a task dispatcher, one the entry's own board does not
  * hold. Target existence is not routability for a hand-off: the entry runs
- * behind ONE board's gate, so a seat another board holds would claim a row on
+ * behind ONE board's gate, so a dispatcher another board holds would claim a row on
  * its ledger and have the child refuse it at the gate, after the dispatch was
  * accepted, leaving the row `in_progress` until lease recovery. `defineFlow`
  * refuses that statically; this is the same rule for a core it never walked.
@@ -273,7 +273,7 @@ function assertDispatchersRoutable(
             throw new ValidationError(
               `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
                 `hands off to task:"${address.action}", which is gated for board ` +
-                `"${gatedBy?.boardId ?? "<none>"}", but the seat is held by ` +
+                `"${gatedBy?.boardId ?? "<none>"}", but the dispatcher is held by ` +
                 (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
                 `. One entry settles against one ledger; a row claimed on another board's ledger ` +
                 `would be refused at this gate after the dispatch was accepted. Hand off from the ` +

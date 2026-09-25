@@ -9,7 +9,7 @@ import type { RuntimeConfig } from "../../runtime-config";
 import type { ResponseEmitter } from "../../streaming/response-emitter";
 import type { ExecutionResult } from "../../execution/types";
 import { runAction } from "../../execution/runAction";
-import { UnknownFlowError } from "../../context/hire-plane";
+import { UnknownFlowError } from "../../context/instance-pin";
 import type {
   DispatchEnvelope,
   FlowDispatchHandle,

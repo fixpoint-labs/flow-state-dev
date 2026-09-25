@@ -16,7 +16,7 @@ import {
 } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowRegistry, createFlowState, inMemoryStores, runAction } from "../src";
-import { InstancePinMismatchError } from "../src/context/hire-plane";
+import { InstancePinMismatchError } from "../src/context/instance-pin";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const readable = { client: { state: { read: true } } } as const;

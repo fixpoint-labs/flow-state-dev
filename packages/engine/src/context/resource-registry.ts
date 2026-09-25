@@ -928,8 +928,8 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
      */
     orgId: string;
     /**
-     * The session's user, when this registry is built for a run. The private
-     * roster writer uses it to keep each caller on their own rows.
+     * The session's user, when this registry is built for a run. The
+     * owner-private key fence uses it to serve each caller only their own rows.
      */
     actorUserId?: string;
   }

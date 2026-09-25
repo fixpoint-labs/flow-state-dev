@@ -51,7 +51,7 @@ The carve-out is not a loophole. A block holds a control only because it
 composed the capability that carries it — that composition *is* the
 declaration — and a control is typically built inside the capability and never
 exported, so no `tools:` list could name it back in. Fencing one would leave a
-seat advertising a tool in its prompt that it cannot call.
+block advertising a tool in its prompt that it cannot call.
 
 One capability may declare both, and the two shipped cases do:
 `createSkillsLibrary` registers the app catalog through `tools` and its own
@@ -72,14 +72,13 @@ Canonical test: `packages/core/test/generator-tools-fence.test.ts`, which
 observes the list the *model* receives rather than an intermediate resolver
 result — the fence's whole claim is about what the model can call.
 
-**A worker-colocated tool is not an exemption from this fence.** `workforce`
-lets a block sit in one seat's own `blocks/` folder, and that registers the name
-for that seat — it does not grant its use. The seat still names the block in its
-`tools:`, and the hire step resolves that name to the block before the kind
-builds the seat's declaration, so what reaches the generator is one declared
-list whose halves it cannot tell apart. Nothing crosses the fence that the seat
-did not declare, and core is untouched: registration is a `workforce` concern,
-and the fence stays exactly as literal as it reads above.
+**A tool registered per instance is not an exemption from this fence.** A
+higher layer may register a block for one flow instance only (Workforce does,
+from an instance's own `blocks/` folder). Registration makes the name
+resolvable; it does not grant its use. The instance still names the block in
+its `tools:`, and what reaches the generator is one declared list. Core is
+untouched by per-instance registration, and the fence stays exactly as literal
+as it reads above.
 
 ## Generator singletons (model, providerOptions, caching)
 

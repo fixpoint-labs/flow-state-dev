@@ -34,7 +34,7 @@ function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
  *
  * **The tool edge is here because a board can be handed to a model as a tool**
  * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a board
- * reached only that way was invisible to the walk: its dispatcher seats went
+ * reached only that way was invisible to the walk: its dispatchers went
  * unresolved, so the first time the model called the tool the board failed on
  * a configuration the author had every reason to think was supported
  * (FIX-1074).

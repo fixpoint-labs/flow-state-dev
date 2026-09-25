@@ -86,7 +86,7 @@ const ALLOWED: RouteAuthResult = {};
  * - `host` — spans every flow and user (listings). No single owner, so the
  *   handler scopes its results to the caller instead.
  */
-type RouteSubject =
+export type RouteSubject =
   | { kind: "exempt" }
   | { kind: "session"; sessionId: string }
   | { kind: "request"; requestId: string }
@@ -99,8 +99,12 @@ type RouteSubject =
  * `ParsedFlowRoute["kind"]` — the `never` assignment at the end makes a newly
  * added route a compile error here, so no route can be introduced without
  * deciding how it is authorized.
+ *
+ * Exported (module-level only, not from `routes/index.ts`) so the user-route
+ * scoping test can derive its route set from this classification rather than
+ * from a hand-maintained list.
  */
-function routeSubject(route: ParsedFlowRoute): RouteSubject {
+export function routeSubject(route: ParsedFlowRoute): RouteSubject {
   switch (route.kind) {
     case "not_found":
     case "list_flows":
@@ -152,6 +156,11 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "create_session":
       return { kind: "flow", flowKind: route.flowKind };
 
+    // User-addressed. The guard checks only the path's `userId`; the handler
+    // scopes by tenant, organization and the anonymous allow-list. A route
+    // added here needs an entry in the user-route scoping table
+    // (`test/user-route-scoping.test.ts`), which fails until it has one and
+    // then probes it with cross-org, cross-tenant and anonymous callers.
     case "user_stream":
     case "check_interrupted_requests":
       return { kind: "user", userId: route.userId };

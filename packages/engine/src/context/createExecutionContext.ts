@@ -101,7 +101,7 @@ import {
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./binding-errors";
-import { refuseInstancePin } from "./hire-plane";
+import { refuseInstancePin } from "./instance-pin";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
   outputItemToSessionItem,
@@ -574,8 +574,8 @@ export async function createExecutionContext<
   // Storage keys — namespaced by the resolved INSTANCE id when the flow opts
   // into per-flow isolation for user/org scope. Bare identity ids otherwise.
   // Two registered copies of one collection definition therefore keep separate
-  // private scope records (FIX-1323). A hired seat — an instance carrying the
-  // owner pin from its hire row — keys its shared user data at the (org,
+  // private scope records (FIX-1323). An owner-pinned instance — one
+  // registered with an owner pin — keys its shared user data at the (org,
   // person) cell, the org taken from that pin and never from the request
   // (FIX-1538). See `packages/engine/src/stores/scope-keys.ts` and FIX-431.
   const userKey = resolveUserStorageKey(userId, flow);
@@ -769,14 +769,14 @@ export async function createExecutionContext<
 
   // The user record is created only now, after every refusal above (BR-9,
   // FIX-1538). A caller outside the pin must not leave even an empty record
-  // in the cell it would have keyed — for a hired seat that cell is keyed by
-  // the pin's org, so an early write would plant a record in another org's
-  // or another person's cell.
+  // in the cell it would have keyed — for an owner-pinned instance that cell
+  // is keyed by the pin's org, so an early write would plant a record in
+  // another org's or another person's cell.
   let userRecord = loadedUser;
   if (userRecord === undefined) {
     // `id` is the storage key (namespaced when isolated, the (org, person)
-    // cell for a hired seat); `userId` stays as the bare identity so listing
-    // and cross-reference by userId work across every record shape.
+    // cell for an owner-pinned instance); `userId` stays as the bare identity
+    // so listing and cross-reference by userId work across every record shape.
     userRecord = {
       id: userKey,
       userId,

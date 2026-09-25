@@ -196,7 +196,7 @@ One operation runs *from inside a block* through the same host, installed on
 `RuntimeConfig.requestHost` by `createFlowState` (and as a last resort by the
 HTTP handlers): `dispatchOperation`, which the dispatch seam uses for an
 `internal` or `task` dispatch — a `dispatcher()` block, or a task board's
-hand-off at a dispatcher seat. The seam (`engine/context/create-request-host.ts`)
+hand-off at a dispatcher in its `workers`. The seam (`engine/context/create-request-host.ts`)
 resolves the entry, derives or adopts the child session and writes its record,
 and assembles the envelope with the source and the server-assembled
 `metadata.dispatch`; `createDispatchOperation({ host })`

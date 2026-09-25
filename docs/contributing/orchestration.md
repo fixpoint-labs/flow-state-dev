@@ -378,6 +378,12 @@ approval nor merge. Agents still merge a spec only through MERGE-ONLY, after one
 other channels below has approved it, so this channel never lets an agent approve its own
 spec.
 
+**A merge-ready head has been reviewed.** Automated review runs when a PR is opened ready
+or leaves draft, so a PR marked ready in the same breath as its merge merges a head no
+reviewer saw. Take a PR out of draft when its work is ready for review, not when it is
+ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once that
+review and the required checks have returned on its current head.
+
 **In-session approval is a human channel.** Record the user's explicit go-ahead as
 `approvedInSession:<reviewed head>`; it authorizes only that revision and becomes stale
 when the head changes. Recording this human decision is not an agent-authored
