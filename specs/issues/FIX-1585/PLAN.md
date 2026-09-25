@@ -15,7 +15,7 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 | S4 | kitchen-sink · the picked-session panel (`app/page.tsx`) | A channel: render `clientData.session.transcript` (label per BR-8) in place of the item stream, plus a composer calling `post` with `{ body }` only (D2). A seat: keep the stream, add a composer calling S3's action with `{ [field]: text }`; no optimistic question. A kind with "none": no composer, the reason instead. **Remove** the "Read only… go to the assistant" note | BR-1 BR-2 BR-4 BR-5 BR-8 BR-9 BR-12–BR-15 BR-17 |
 | S5 | kitchen-sink · the rail's seat rows | "New conversation" in the leaf toolbar slot, as the assistant row has: create a session on the seat's address, open it | BR-16 BR-17 |
 | S6 | kitchen-sink · e2e | A new spec file for the talk scenarios. `workforce-shell.spec.ts` is untouched and its header claim ("nothing here writes to a channel") stays true | BR-1 BR-2 BR-12 BR-13 BR-15 BR-16 BR-20 |
-| S7 | Docs and release note | [DOCS.md](DOCS.md)'s operations; one `minor` changeset for `@flow-state-dev/workforce` (a client now receives new data). kitchen-sink is private: no changeset | — |
+| S7 | Docs and release note | [DOCS.md](DOCS.md)'s operations; one `patch` changeset for `@flow-state-dev/workforce` (additive: a client now receives new data, and no existing code can trip over it). kitchen-sink is private: no changeset | — |
 
 ## Sequence
 
@@ -35,7 +35,7 @@ flowchart TD
 |---|---|---|
 | V1 | S1 | Workforce test: after a post, the session snapshot's `clientData.session` is exactly `{ transcript }` with the line (P7–P8 as a test). Red state: drop the `expose`. A hand-written kind with no `expose` still posts (BR-11) |
 | V2 | S3 | The drift test in `test/workforce-shell.test.ts`: every seat kind has an entry; each named action exists on that kind and its input is exactly one required string field named as written; "none" only where the kind has no such action. Red states: drop `followup-runner`'s entry; misname `note` |
-| V3 | S1 S2 | kitchen-sink flow test through the real config: a post with no author lands with principal `devuser` on `support.desk` and not on `support.ada-wren` (BR-3); the app's notify block is called once per `desk` member (BR-6); a `digest` post lands and `read` still returns the tail (BR-7) |
+| V3 | S1 S2 | kitchen-sink flow test through the real config: a post with no author lands with principal `devuser` on `support.desk` and not on `support.ada-wren` (BR-3); the app's notify block is called once per `desk` member (BR-6); a `digest` post lands with no `principal`, no notify call, and `read` still returns the tail (BR-7) |
 | V4 | S2 | `digest`'s client data is exactly `{ transcript }` (BR-10) |
 | V5 | S4 S5 | Component tests on the panel: label order (BR-8); whitespace disables send (BR-4); a refused post shows its reason and keeps the text (BR-5, BR-17); an `agent` seat sends `{ message }` to `run` (BR-14); a transcript re-read after an own post picks up a line written meanwhile (BR-9); a failed "New conversation" shows the error in the seat's row, opens nothing, and leaves the button usable (BR-17) |
 | V6 | S6 | **Goal check, real page, production build:** open `support.desk` from the rail, send a unique line, see it labelled `devuser` in that panel; reload, still there. Asserts on its own unique text, because other tests share the channel |
@@ -86,8 +86,8 @@ picked panel:
 
 **POC:** [`poc/talk-premises/`](poc/talk-premises/README.md), on the real kitchen-sink wiring. It
 showed a post leaves nothing renderable in the stream (P3), which is what moved the design to
-D1; that `author: "devuser"` is refused (P4, D2); that the served schemas carry each
-kind's input fields today, the basis inference would need and D3 declines on purpose (P6);
+D1; that `author: "devuser"` is refused (P4, D2); that the served schemas would support
+inference today, one one-string action per kind, which D3 declines on purpose (P6);
 and that D1's one line is sufficient and exposes nothing else (P7–P8, red on `main`). Every other premise held.
 
 ## At implement time

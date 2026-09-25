@@ -16,7 +16,7 @@ into work.
 | BR-4 | The composer holds nothing but whitespace | Send is disabled. Nothing is posted | V5 |
 | BR-5 | A post is refused (the session is not an open channel, or the post waited past the queue budget) | The panel shows the reason, the text stays in the composer, and nothing is appended | V5 |
 | BR-6 | A browser post lands in a channel with a notify block | Every declared member is notified once. No one is skipped, because the poster is not a member (FIX-1476 BR-16a). No second fan-out exists | V3 |
-| BR-7 | A post is sent to the `digest` channel (`support.noticeboard`) | It lands through that kind's own `post` and shows in its panel. The kind's `read` still returns only the tail | V3 · V4 |
+| BR-7 | A post is sent to the `digest` channel (`support.noticeboard`) | It lands through that kind's own `post` and shows in its panel as unattributed, because that kind stores no principal. No one is notified: the kind has no notify step. Its `read` still returns only the tail | V3 · V4 |
 
 ## Reading a channel
 

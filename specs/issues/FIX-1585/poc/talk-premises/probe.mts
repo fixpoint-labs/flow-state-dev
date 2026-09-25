@@ -122,16 +122,34 @@ for (let attempt = 0; attempt < 25 && reply === undefined; attempt++) {
 }
 check("P5", reply !== undefined, `seat reply item: ${text(reply).slice(0, 200)}; item types: ${seatTypes.join(",")}`);
 
-// P6 — the served flow list names each seat kind's actions and their input fields.
+// P6 — the served flow list names each seat kind's actions and their input fields, and each
+// kind has exactly the one-string-field action D3 writes down for it (none for followup-runner).
+// Red if a kind gains a second one-string action, which is the ambiguity D3 guards against.
+const expectedAnswer: Record<string, { action: string; field: string } | null> = {
+  agent: { action: "run", field: "message" },
+  "desk-clerk": { action: "answer", field: "note" },
+  "followup-runner": null,
+};
+type ServedSchema = { type: string; fields?: Record<string, { type: string; required?: boolean }> };
 const flows = await channel.listFlows();
-for (const kind of ["agent", "desk-clerk", "followup-runner"]) {
+for (const [kind, expected] of Object.entries(expectedAnswer)) {
   const entry = flows.find((f) => f.kind === kind);
+  if (entry === undefined) {
+    check(`P6:${kind}`, false, "no instance listed");
+    continue;
+  }
+  const schemas = (entry.actionSchemas ?? {}) as Record<string, ServedSchema>;
+  const oneString = Object.entries(schemas)
+    .filter(([, schema]) => {
+      const fields = Object.entries(schema.fields ?? {});
+      return fields.length === 1 && fields[0][1].type === "string" && fields[0][1].required === true;
+    })
+    .map(([action, schema]) => `${action}{${Object.keys(schema.fields ?? {})[0]}}`);
+  const want = expected === null ? [] : [`${expected.action}{${expected.field}}`];
   check(
     `P6:${kind}`,
-    entry !== undefined,
-    entry === undefined
-      ? "no instance listed"
-      : `actions=${entry.actions.join(",")} schemas=${text(entry.actionSchemas)}`,
+    oneString.join(",") === want.join(","),
+    `one-string actions=[${oneString.join(",")}] expected=[${want.join(",")}]; actions=${entry.actions.join(",")} schemas=${text(entry.actionSchemas)}`,
   );
 }
 

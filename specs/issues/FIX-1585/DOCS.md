@@ -61,7 +61,8 @@ Replace the **Session management** bullet with:
   the rail. A seat's row has **New conversation** too
 - **Channels**: Open one in the rail to read its transcript and post to it. Your post calls the
   channel's own `post` action, the same one `fsdev run` calls, and it appears as `devuser`,
-  the one user this app runs as. Every member is notified. Lines a seat posts show up the next
+  the one user this app runs as. Every member is notified. `support.noticeboard` is the
+  exception: its `digest` kind keeps no poster and notifies no one. Lines a seat posts show up the next
   time the channel is read
 - **Seats**: Open a seat's conversation to talk to it. The composer calls the action the seat's
   kind answers with: `answer` for `desk-clerk` seats, `run` for `agent` seats. `support.wren`
