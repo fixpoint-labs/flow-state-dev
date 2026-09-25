@@ -6,7 +6,7 @@ stored answers with no model call.
 
 | File | What it shows |
 |------|---------------|
-| `src/facets.ts` | The questions, the stored answer shape, and the match a search runs. |
+| `src/facets.ts` | The questions, the ticket state schema (and its type), and the match a search runs. |
 | `src/index-facets.ts` | The `contentUpdated` reaction: clear, classify on a side chain, store only if still current. Copy this one. |
 | `src/flow.ts` | The collection and the `write`, `search` and `reindex` actions. The flow takes the evaluator; it never names a model. |
 | `fsdev.config.ts` | Where the model is named: Jev through Vercel's AI Gateway when `AI_GATEWAY_API_KEY` is set, `openai/gpt-5.4-mini` otherwise. |

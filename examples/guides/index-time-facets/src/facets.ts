@@ -62,6 +62,15 @@ export const ticketFacetsSchema = z.object({
   status: choiceAnswerSchema(statusKeys),
 }) as unknown as z.ZodType<TicketFacets>;
 
+/** A ticket's stored state: the collection's `stateSchema`, and the one source of its type. */
+export const ticketStateSchema = z.object({
+  title: z.string(),
+  facets: ticketFacetsSchema.nullable().default(null),
+  indexedAs: z.string().nullable().default(null), // which write the facets may describe
+});
+
+export type TicketState = z.infer<typeof ticketStateSchema>;
+
 /** What a facet search asks: facet values, and optionally a minimum confidence. */
 export const facetQuerySchema = z.object({
   topic: z.enum(topicKeys).optional().describe("Only tickets about this topic"),

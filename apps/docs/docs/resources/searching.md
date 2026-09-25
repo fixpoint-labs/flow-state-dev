@@ -83,18 +83,20 @@ export const ticketQuestions = {
   status: choice("Is the customer's problem still open?", STATUSES), // open | closed
 };
 
+export const ticketStateSchema = z.object({
+  title: z.string(),
+  facets: ticketFacetsSchema.nullable().default(null),
+  indexedAs: z.string().nullable().default(null), // which write the facets may describe
+});
+
 export function ticketsFlow(triage: TicketEvaluator) {
   const tickets = defineResourceCollection({
     pattern: "tickets/*",
     scope: "user",
-    stateSchema: z.object({
-      title: z.string(),
-      facets: ticketFacetsSchema.nullable().default(null),
-      indexedAs: z.string().nullable().default(null), // which write the facets may describe
-    }),
+    stateSchema: ticketStateSchema,
     reactTo: { contentUpdated: indexFacets(triage) },
   });
-  // … actions: write, search, reindex
+  // … actions: write, search, reindex, each declaring resources: { tickets }
 }
 ```
 
@@ -114,7 +116,7 @@ The store step is the one to get exactly right:
 
 ```ts
 await ref.updateState((state) =>
-  state.indexedAs === token ? { ...state, facets: answers } : state,
+  state.indexedAs === token ? { ...state, facets: answers as TicketFacets } : state,
 );
 ```
 

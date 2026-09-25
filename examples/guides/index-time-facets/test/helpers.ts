@@ -28,12 +28,12 @@ import { z } from "zod";
 import {
   facetQuerySchema,
   matchesFacets,
-  ticketFacetsSchema,
+  ticketStateSchema,
   ticketQuestions,
   type TicketEvaluator,
   type TicketFacets,
+  type TicketState,
 } from "../src/facets";
-import type { TicketState } from "../src/index-facets";
 
 /** What the scripted model does for one body. */
 export type BodyScript = {
@@ -174,11 +174,7 @@ export function controlFlow(triage: TicketEvaluator, variant: BrokenVariant) {
   const tickets = defineResourceCollection({
     pattern: "tickets/*",
     scope: "user",
-    stateSchema: z.object({
-      title: z.string(),
-      facets: ticketFacetsSchema.nullable().default(null),
-      indexedAs: z.string().nullable().default(null),
-    }),
+    stateSchema: ticketStateSchema,
     reactTo: { contentUpdated: brokenReaction(triage, variant) },
   });
   const write = handler({

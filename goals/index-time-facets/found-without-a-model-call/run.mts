@@ -34,9 +34,12 @@ import {
   type StoreRegistry,
 } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { ticketQuestions, type FacetQuery } from "../../../examples/guides/index-time-facets/src/facets.ts";
+import {
+  ticketQuestions,
+  type FacetQuery,
+  type TicketState,
+} from "../../../examples/guides/index-time-facets/src/facets.ts";
 import { ticketsFlow } from "../../../examples/guides/index-time-facets/src/flow.ts";
-import type { TicketState } from "../../../examples/guides/index-time-facets/src/index-facets.ts";
 import { loadFixture, runGoal, stripIntentOverrides, type GoalResult } from "../../lib/index.mts";
 
 type Fixture = { tickets: Array<{ key: string; title: string; body: string }> };

@@ -22,18 +22,15 @@ import { handler, resourceContentChangeSchema, sequencer } from "@flow-state-dev
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { TicketEvaluator, TicketFacets } from "./facets";
-
-/** The ticket's stored state, as the reaction reads and writes it. */
-export type TicketState = {
-  title: string;
-  facets: TicketFacets | null;
-  indexedAs: string | null;
-};
+import type { TicketEvaluator, TicketFacets, TicketState } from "./facets";
 
 /**
- * The collection, read through `ctx.resources`. Declaring it on these blocks
- * would form a definition cycle with the collection's own `reactTo`.
+ * The collection, read through `ctx.resources` and typed from its schema.
+ *
+ * These blocks are the one place the collection can't be declared with
+ * `resources: { tickets }`: the collection's `reactTo` needs these blocks to
+ * exist when it is defined, so they can't also need the collection. Every
+ * other block in the example declares it.
  */
 function ticketsOf(ctx: { resources: unknown }): ResourceCollectionRef<TicketState> {
   return (ctx.resources as { tickets: ResourceCollectionRef<TicketState> }).tickets;

@@ -17,7 +17,7 @@ import { z } from "zod";
 import {
   facetQuerySchema,
   matchesFacets,
-  ticketFacetsSchema,
+  ticketStateSchema,
   type TicketEvaluator,
 } from "./facets";
 import { indexFacets } from "./index-facets";
@@ -32,11 +32,7 @@ export function ticketsFlow(triage: TicketEvaluator) {
   const tickets = defineResourceCollection({
     pattern: "tickets/*",
     scope: "user",
-    stateSchema: z.object({
-      title: z.string(),
-      facets: ticketFacetsSchema.nullable().default(null),
-      indexedAs: z.string().nullable().default(null), // which write the facets may describe
-    }),
+    stateSchema: ticketStateSchema, // title, facets (null until classified), indexedAs
     reactTo: { contentUpdated: indexFacets(triage) },
   });
 
@@ -62,7 +58,11 @@ export function ticketsFlow(triage: TicketEvaluator) {
     },
   });
 
-  /** The facet search. Offer this block to an agent as a tool, too. */
+  /**
+   * The facet search. Offer this block to an agent as a tool, too. Keep it
+   * registered as a flow action as well: resources declared only on a
+   * generator's tool don't register with the flow.
+   */
   const search = handler({
     name: "search-tickets",
     description:
