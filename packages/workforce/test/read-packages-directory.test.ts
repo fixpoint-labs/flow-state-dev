@@ -12,7 +12,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readPackagesDirectory } from "../src/loader/read-packages-directory";
 import { readWorkforce } from "../src/loader/read-workforce";
 import { readDeclaredRoster } from "../src/loader/read-declared-roster";
@@ -23,6 +23,7 @@ beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "read-packages-"));
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -178,6 +179,55 @@ describe("readPackagesDirectory refuses what a package may not be", () => {
       "org/packages/no-file",
       "teams/support/packages/extra/PACKAGE.md",
       "teams/support/workers/clerk/packages/docs/references"
+    ]);
+  });
+});
+
+describe("readPackagesDirectory files a PACKAGE.md it cannot read", () => {
+  // Classified as a file, then the read fails (vanished, EACCES). Running as
+  // root makes a chmod useless, so the read is failed at the fs seam. The
+  // failure is one package's: the rest of the run, and every caller above it,
+  // must still come back.
+  function failReadOf(relative: string): void {
+    const target = path.join(root, ...relative.split("/"));
+    const real = fs.readFile.bind(fs);
+    vi.spyOn(fs, "readFile").mockImplementation(((file: Parameters<typeof real>[0], ...rest: unknown[]) => {
+      if (String(file) === target) {
+        const err = new Error(`EACCES: permission denied, open '${target}'`);
+        (err as NodeJS.ErrnoException).code = "EACCES";
+        return Promise.reject(err);
+      }
+      return (real as (...args: unknown[]) => unknown)(file, ...rest);
+    }) as unknown as typeof fs.readFile);
+  }
+
+  it("refuses that one package and still returns the others", async () => {
+    await writeGoodTree();
+    failReadOf("teams/support/packages/escalation/PACKAGE.md");
+
+    const { packages, errors } = await readPackagesDirectory(root);
+    expect(packages.map((p) => p.path)).toEqual([
+      "org/packages/house-style",
+      "teams/support/workers/clerk/packages/refunds"
+    ]);
+    expect(errors.map((e) => [e.kind, e.path])).toEqual([
+      ["package-load-failed", "teams/support/packages/escalation/PACKAGE.md"]
+    ]);
+    expect(errors[0]!.error.message).toBe(
+      'PACKAGE.md "teams/support/packages/escalation/PACKAGE.md" could not be read: ' +
+        "EACCES: permission denied, open '" +
+        path.join(root, "teams/support/packages/escalation/PACKAGE.md") +
+        "'"
+    );
+  });
+
+  it("does not take readDeclaredRoster down with it", async () => {
+    await writeGoodTree();
+    failReadOf("teams/support/packages/escalation/PACKAGE.md");
+
+    const { problems } = await readDeclaredRoster(root);
+    expect(problems.map((p) => [p.layer, p.path])).toEqual([
+      ["package", "teams/support/packages/escalation/PACKAGE.md"]
     ]);
   });
 });

@@ -275,8 +275,20 @@ async function readPackageFolder(
   if (md.kind !== "file") return undefined;
 
   // Read even when an entry beside it was refused, so a bad file in a folder
-  // that is also wrongly shaped is named in the same run.
-  const read = readPackage(await fs.readFile(file, "utf8"));
+  // that is also wrongly shaped is named in the same run. A file that vanished
+  // or turned unreadable since it was classified is this package's failure, not
+  // the run's.
+  let read: ReturnType<typeof readPackage>;
+  try {
+    read = readPackage(await fs.readFile(file, "utf8"));
+  } catch (error) {
+    errors.push({
+      path: filePath,
+      error: unreadable(PACKAGE_MD, filePath, error as Error),
+      kind: "package-load-failed",
+    });
+    return undefined;
+  }
   if ("refusal" in read) {
     errors.push({
       path: filePath,
