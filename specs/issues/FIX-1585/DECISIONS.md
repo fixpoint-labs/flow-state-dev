@@ -37,6 +37,32 @@ surface was proved missing. P3 and the absent output path are that proof.
 client, not just browsers. Then (a) is the wrong fix too, the panel waits for a projection the
 package chooses, and this issue shrinks to the seat half.
 
+### Open in review: is the transcript just the post requests?
+
+Asked in review: a post is a request, and a reply is another post, so why keep a second copy in
+state? Traced in code, the answer is yes, it is the post requests.
+
+![A post is request R1 on the channel session. It appends to state and starts R2, which notifies members and runs no seat. Asking a seat is R3 on the seat's own session.](figures/post-lifecycle.svg)
+
+A post and an ask are each one request on a different session. Nothing carries a seat's reply into
+the channel today.
+
+![Field by field, a transcript line against the post request that wrote it](figures/line-vs-request.svg)
+
+Every field of a line is copied from its request or is a constant. The one new thing is its id,
+and that id does not point back to the request.
+
+![The channel session's seven requests in order, of which two completed posts become transcript lines](figures/session-log.svg)
+
+The transcript is this log, filtered to completed `post` requests. A seat's reply would be one
+more post carrying its author.
+
+![Three places the transcript could live: A in state, B in the request log, C as an item each post emits](figures/three-homes.svg)
+
+C matches the model above and how the assistant's chat already works. It costs a bigger package
+change than D1's one line. A seat's `read` also sees only a window, the last 50 requests by
+default, and fan-outs count toward it.
+
 <a name="d2"></a>
 ## D2 · A browser post is from `devuser`: sent with no `author`, and the line's server-set `principal` is its label
 
