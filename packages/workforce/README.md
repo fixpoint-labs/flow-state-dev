@@ -1302,7 +1302,7 @@ single hyphens, up to 64 characters, and no dots, since a dot is what joins the 
 Register the seats yourself, one at a time, with each seat's `ownerPin`, and add any refusal to
 `problems`. The other seats still start.
 
-You pass the organizations to reload. It does not discover them.
+You pass the organizations to reload; `reloadHiredSeats` does not discover them.
 
 `problems` is the part to handle rather than log, the same shape `openInventory` returns. A row naming a kind you no longer ship, or carrying a
 setting that kind no longer accepts, comes back here with its reason instead of throwing. The other

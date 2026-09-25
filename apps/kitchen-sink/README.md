@@ -122,7 +122,7 @@ The admin action has a credential of its own, but not an organization of its own
 
 The admin flow also has a `fire` action. It removes any seat hired while the app runs: from the web app's rail, by a seat's own `hire` tool (see [A seat that hires](#a-seat-that-hires)), or by the admin action itself. Seats the admin action hires don't show in the rail.
 
-The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The seat carries the admin flow's resolver, so a request with no token, or a token it doesn't recognise, gets `401` from that resolver before the pin is checked:
+The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The seat carries the admin flow's resolver, so a request with no token, or a token it doesn't recognize, gets `401` from that resolver before the pin is checked. Call it with any configured token:
 
 ```bash
 curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.bo/actions/answer \

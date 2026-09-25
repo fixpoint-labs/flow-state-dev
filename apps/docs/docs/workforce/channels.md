@@ -259,7 +259,7 @@ Compare on `author`, not `principal`: `principal` is the id the channel was open
 
 The delivery runs in its own request, outside the post's turn, so a slow notification never delays the next post. A delivery that fails is recorded and the rest are still attempted; the post stays written either way, because the transcript is the durable record and waking people is best-effort.
 
-Your block supplies the addresses. Declare a dispatcher, like the one in [Posting and reading](#posting-and-reading), for each recipient in the notify block, with `flowKind` set to that recipient's address, and choose which one runs from `input.member`.
+Your app supplies the addresses. The `notify` slot takes any block, so to reach real recipients, make it a router rather than a handler. Declare one dispatcher per recipient, like the one in [Posting and reading](#posting-and-reading), with `flowKind` set to that recipient's address. Pick which one runs from `input.member`. [`utility.keyedRouter`](../fundamentals/blocks.md#keyedrouter) does that lookup, and its `fallback` takes any member you have no dispatcher for.
 
 ## Holding a board
 
