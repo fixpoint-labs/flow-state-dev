@@ -296,7 +296,7 @@ When you read history yourself and want the earlier turns only, pass `includeInF
 const earlier = await ctx.session.items.history({ includeInFlight: false, limit: { turns: 3 } });
 ```
 
-Only `items.history()` reads this option. The other item views ignore it.
+`items.all()`, `items.client()` and `items.selectForContext()` accept it too.
 
 The bare `number` form has different meanings across views: in `items.history()` it counts turns, in `items.all()` and `items.client()` it counts items. Use the explicit `{ turns: N }` form when you want to be unambiguous in new code:
 

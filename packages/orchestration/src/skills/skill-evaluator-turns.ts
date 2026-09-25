@@ -2,9 +2,9 @@
  * The earlier turns `skillEvaluator(model, { recentMessages })` asks for, and
  * how the evaluator tier reads them.
  *
- * The helper records how many turns its block wants; the tier looks that up
- * and, only when the evaluator is about to run, reads the turns from the
- * session. Both sides import this module, which holds no core evaluator
+ * The helper records how many turns its block wants on the block's config;
+ * the tier reads that and, only when the evaluator is about to run, reads the
+ * turns from the session. Both sides import this module, which holds no core evaluator
  * values, so the tier still reaches the helper module by type only.
  *
  * A turn is one completed earlier request: the user's message and every user
@@ -28,19 +28,23 @@ export const recentMessageSchema = z.object({
   text: z.string(),
 });
 
-const askedTurns = new WeakMap<object, number>();
+// On the block's config, not keyed by the block: `.rescue()`, `.connectInput()`
+// and the other chaining methods rebuild the block into a new object, but
+// carry its config forward (symbol keys included).
+const RECENT_TURNS = Symbol("skillEvaluator.recentTurns");
 
-/** Record that `block` wants the last `turns` earlier turns. */
-export function rememberRecentTurns(block: object, turns: number): void {
-  askedTurns.set(block, turns);
+/** The config entry that records a block wants the last `turns` earlier turns. */
+export function recentTurnsConfig(turns: number): { [RECENT_TURNS]: number } {
+  return { [RECENT_TURNS]: turns };
 }
 
 /**
  * How many earlier turns `block` asked for: `0` for a block not built by
  * `skillEvaluator(model, { recentMessages })`, which is handed none.
  */
-export function recentTurnsFor(block: object): number {
-  return askedTurns.get(block) ?? 0;
+export function recentTurnsFor(block: { config: object }): number {
+  const turns = (block.config as { [RECENT_TURNS]?: unknown })[RECENT_TURNS];
+  return typeof turns === "number" ? turns : 0;
 }
 
 /**
@@ -54,7 +58,7 @@ export async function readRecentMessages(
 ): Promise<RecentMessage[]> {
   const messages = await ctx.session.items.history({
     includeInFlight: false,
-    limit: turns,
+    limit: { turns },
     itemTypes: ["message"],
     roles: ["user", "assistant"],
   });

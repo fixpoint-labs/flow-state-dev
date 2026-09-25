@@ -761,6 +761,35 @@ describe("recentMessages: the evaluator sees the earlier turns", () => {
     });
     expect(activeSkills?.map((s) => s.name)).toEqual(["research"]);
   });
+
+  // Chaining rebuilds the block into a new object, so the count must ride
+  // the block itself, not its identity: a rescued evaluator still sees turns.
+  const chained: Array<[string, (b: ReturnType<typeof skillEvaluator>) => unknown]> = [
+    [".rescue()", (b) => b.rescue([{ block: handler({ name: "skip-skills", execute: () => ({ skipped: true }) }) }])],
+    [".connectInput()", (b) => b.connectInput((input: unknown) => input as never)],
+    [".mapModelOutput()", (b) => b.mapModelOutput(() => "picked")],
+  ];
+  for (const [label, chain] of chained) {
+    it(`the count survives ${label} on the skillEvaluator block itself`, async () => {
+      const model = mockEvaluationModel({ answers: pick("research") });
+      const s = sessionHarness(
+        createSkillActivator({
+          initialSkills: catalog,
+          evaluator: chain(skillEvaluator(model, { recentMessages: 1 })) as never,
+        }),
+      );
+      await s.say("superconductors are neat", [OFFER]);
+      await s.ask(FOLLOW_UP);
+
+      expect(model.calls[0]!.state).toEqual({
+        recentMessages: [
+          { role: "user", text: "superconductors are neat" },
+          { role: "assistant", text: OFFER },
+        ],
+        message: FOLLOW_UP,
+      });
+    });
+  }
 });
 
 /**
@@ -812,7 +841,7 @@ describe("recentMessages: when it reads, and what it keeps", () => {
     await s.say("superconductors are neat", [OFFER]);
     await s.ask(MISS);
     expect(spy.reads).toEqual([
-      { includeInFlight: false, limit: 3, itemTypes: ["message"], roles: ["user", "assistant"] },
+      { includeInFlight: false, limit: { turns: 3 }, itemTypes: ["message"], roles: ["user", "assistant"] },
     ]);
   });
 

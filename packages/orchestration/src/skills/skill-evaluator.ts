@@ -23,7 +23,7 @@ import { NO_SKILL } from "./skill-activation-types";
 import type { OfferedSkill } from "./skill-catalog";
 import {
   recentMessageSchema,
-  rememberRecentTurns,
+  recentTurnsConfig,
   type RecentMessage,
 } from "./skill-evaluator-turns";
 
@@ -127,7 +127,8 @@ export function skillEvaluator(
       `skillEvaluator: "recentMessages" must be a non-negative integer (got ${typeof turns === "string" ? JSON.stringify(turns) : String(turns)}).`,
     );
   }
-  const block = evaluator({
+  return evaluator({
+    ...(turns > 0 ? recentTurnsConfig(turns) : {}),
     name: "skill-evaluator",
     model,
     inputSchema: skillEvaluatorInputSchema,
@@ -135,6 +136,4 @@ export function skillEvaluator(
       turns > 0 ? { recentMessages: input.recentMessages ?? [], message: input.message } : input.message,
     questions: skillQuestions,
   });
-  if (turns > 0) rememberRecentTurns(block, turns);
-  return block;
 }

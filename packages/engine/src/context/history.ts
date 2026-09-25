@@ -463,8 +463,9 @@ export function createSessionItemViews(
       : undefined;
 
     // Merge prior request items (loaded eagerly at context creation) with
-    // live items from the current request's response emitter.
-    const liveItems = options.readLiveItems?.() ?? [];
+    // live items from the current request's response emitter, unless the
+    // caller asked for prior items only.
+    const liveItems = query?.includeInFlight === false ? [] : options.readLiveItems?.() ?? [];
     const liveSessionItems = liveItems.map(outputItemToSessionItem);
     const deduplicatedLive = liveSessionItems.filter((i) => !priorIds.has(i.id));
     const allItems = [...priorItems, ...deduplicatedLive];

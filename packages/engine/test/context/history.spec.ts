@@ -543,6 +543,20 @@ describe("createSessionItemViews", () => {
     ]);
   });
 
+  it("all(), client() and selectForContext() honor includeInFlight: false too; omitted, they keep live items", () => {
+    const live = makeMessage("req_now", "live text", 300, 0) as unknown as OutputItem;
+    const views9 = createSessionItemViews(priorItems, priorRequests, {
+      tokenCounter: mockTokenCounter,
+      resolveModelId,
+      readLiveItems: () => [live],
+    });
+
+    for (const view of [views9.all, views9.client, views9.selectForContext]) {
+      expect(view().map((i) => i.id)).toEqual(["item_1", "item_2", live.id]);
+      expect(view({ includeInFlight: false }).map((i) => i.id)).toEqual(["item_1", "item_2"]);
+    }
+  });
+
   it("selectForContext() returns items unfiltered by visibility", () => {
     const blockTrace = makeSessionItem("item_bt2", "block_trace", "req4");
     const views8 = createSessionItemViews(
