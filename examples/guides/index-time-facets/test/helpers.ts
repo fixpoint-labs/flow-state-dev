@@ -1,21 +1,8 @@
 /**
  * Test helpers: a per-body scripted evaluation model on the testing package's
- * mock, a way to run turns against one shared store, and the three broken
- * reactions the negative controls run.
- *
- * The broken reactions live here, never in `src/`: the example is what apps
- * copy, so it carries no seam for swapping the reaction out.
+ * mock, and a way to run turns against one shared store.
  */
-import {
-  defineFlow,
-  defineResourceCollection,
-  evaluator,
-  handler,
-  resourceContentChangeSchema,
-  sequencer,
-  type EvaluationModel,
-} from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { evaluator, type EvaluationModel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import {
   mockEvaluationModel,
@@ -23,24 +10,12 @@ import {
   type MockEvaluationAnswer,
   type MockEvaluationCall,
 } from "@flow-state-dev/testing";
-import { randomUUID } from "node:crypto";
-import { z } from "zod";
-import {
-  facetQuerySchema,
-  matchesFacets,
-  ticketStateSchema,
-  ticketQuestions,
-  type TicketEvaluator,
-  type TicketFacets,
-  type TicketState,
-} from "../src/facets";
+import { ticketQuestions, type TicketEvaluator, type TicketState } from "../src/facets";
 
 /** What the scripted model does for one body. */
 export type BodyScript = {
   answers?: Record<string, MockEvaluationAnswer>;
   error?: Error;
-  /** Hold the call open until this resolves. */
-  gate?: Promise<void>;
 };
 
 export type ScriptedModel = EvaluationModel & { calls: string[] };
@@ -62,7 +37,6 @@ export function scriptedModel(byBody: (body: string) => BodyScript): ScriptedMod
       const body = String(call.state);
       calls.push(body);
       const script = byBody(body);
-      if (script.gate !== undefined) await script.gate;
       return mockEvaluationModel({ answers: script.answers, error: script.error }).doEvaluate(
         call as never,
       );
@@ -85,15 +59,6 @@ export const OUTAGE_CLOSED: Record<string, MockEvaluationAnswer> = {
   status: { type: "choice", choice: "closed", confidence: 0.7 },
 };
 
-/** A deferred promise, for holding a call or a write open. */
-export function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void;
-  const promise = new Promise<void>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
-}
-
 export const USER = "u";
 
 /** Run one action as its own turn against a shared store. */
@@ -111,94 +76,4 @@ export async function turn(
 export async function storedTicket(stores: StoreRegistry, key: string): Promise<TicketState | undefined> {
   const row = await stores.resourceState.get("user", USER, `tickets/${key}`);
   return row?.state as TicketState | undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Broken reactions for the negative controls
-// ---------------------------------------------------------------------------
-
-/**
- * How a control reaction goes wrong:
- * - `no-clear`: old facets stay while the new body is classified;
- * - `no-token`: answers are stored unconditionally;
- * - `body-check`: the pre-review recipe, a body-equality check followed by a
- *   separate `patchState`.
- */
-export type BrokenVariant = "no-clear" | "no-token" | "body-check";
-
-function ticketsOf(ctx: { resources: unknown }): ResourceCollectionRef<TicketState> {
-  return (ctx.resources as { tickets: ResourceCollectionRef<TicketState> }).tickets;
-}
-
-function brokenReaction(triage: TicketEvaluator, variant: BrokenVariant) {
-  const stamped = z.object({ key: z.string(), token: z.string(), body: z.string() });
-  const stamp = handler({
-    name: "control-stamp",
-    inputSchema: resourceContentChangeSchema(),
-    outputSchema: stamped,
-    execute: async (change, ctx) => {
-      const ref = await ticketsOf(ctx).get(change.key);
-      const token = randomUUID();
-      if (variant === "no-clear") await ref.patchState({ indexedAs: token });
-      else await ref.patchState({ facets: null, indexedAs: token });
-      return { key: change.key, token, body: (await ref.readContent()) ?? "" };
-    },
-  });
-  const store = handler({
-    name: "control-store",
-    inputSchema: z.object({ answers: z.record(z.string(), z.unknown()) }),
-    parentInputSchema: stamped,
-    execute: async ({ answers }, ctx) => {
-      const { key, token, body } = ctx.parent!.input;
-      const ref = await ticketsOf(ctx).get(key);
-      const facets = answers as TicketFacets;
-      if (variant === "no-token") {
-        await ref.patchState({ facets });
-      } else if (variant === "body-check") {
-        if ((await ref.readContent()) === body) await ref.patchState({ facets });
-      } else {
-        await ref.updateState((s) => (s.indexedAs === token ? { ...s, facets } : s));
-      }
-    },
-  });
-  const classify = sequencer({ name: "control-classify", inputSchema: stamped })
-    .step((s) => s.body, triage)
-    .step(store);
-  return sequencer({ name: "control-index", inputSchema: resourceContentChangeSchema() })
-    .step(stamp)
-    .sideChain(classify);
-}
-
-/** The example's write and search, around a broken reaction. */
-export function controlFlow(triage: TicketEvaluator, variant: BrokenVariant) {
-  const tickets = defineResourceCollection({
-    pattern: "tickets/*",
-    scope: "user",
-    stateSchema: ticketStateSchema,
-    reactTo: { contentUpdated: brokenReaction(triage, variant) },
-  });
-  const write = handler({
-    name: "write-ticket",
-    inputSchema: z.object({ key: z.string(), body: z.string() }),
-    resources: { tickets },
-    execute: async (input, ctx) => {
-      const ref = await ctx.resources.tickets.getOrCreate(input.key, { title: input.key });
-      await ref.writeContent(input.body);
-      return { key: input.key };
-    },
-  });
-  const search = handler({
-    name: "search-tickets",
-    inputSchema: facetQuerySchema,
-    resources: { tickets },
-    execute: async (query, ctx) => ({
-      keys: (await ctx.resources.tickets.list())
-        .filter((t) => matchesFacets(t.state.facets, query))
-        .map((t) => t.path.slice("tickets/".length)),
-    }),
-  });
-  return defineFlow({
-    kind: "index-time-facets-control",
-    actions: { write: { block: write }, search: { block: search } },
-  })();
 }

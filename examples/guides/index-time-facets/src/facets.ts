@@ -1,18 +1,21 @@
 /**
- * The questions a ticket is classified by, the stored shape of their answers,
- * and the deterministic match a facet search runs.
+ * The questions a ticket is classified by, and the types that follow from
+ * them.
  *
- * The questions belong to the app. The answers are stored exactly as the
- * evaluator returned them (FSD's `EvaluatorAnswers` type): a choice, plus
- * `probabilities` and `confidence` only when the model reported them. Nothing
- * is added or dropped at write; certainty is asked for at search.
+ * The questions belong to the app. `defineFacetedCollection` reads them off
+ * the evaluator: the stored facets are the evaluator's answers, exactly as
+ * returned (a choice, plus `probabilities` and `confidence` only when the
+ * model reported them), and a search takes one optional value per choice
+ * question.
  */
 import {
   choice,
   type EvaluatorAnswers,
   type EvaluatorDefinition,
+  type FacetedState,
+  type FacetSearchInput,
 } from "@flow-state-dev/core";
-import { z } from "zod";
+import type { z } from "zod";
 
 const TOPICS = {
   billing: "Payments, charges, refunds and invoices",
@@ -32,82 +35,18 @@ export const ticketQuestions = {
 };
 
 export type TicketQuestions = typeof ticketQuestions;
-export type TicketTopic = keyof typeof TOPICS;
-export type TicketStatus = keyof typeof STATUSES;
 
 /** Stored facets: the evaluator's answers, keyed by question id. */
 export type TicketFacets = EvaluatorAnswers<TicketQuestions>;
+
+/** A ticket's stored state: its title, plus the facets and token the collection adds. */
+export type TicketState = FacetedState<{ title: string }, TicketFacets>;
+
+/** What a facet search asks: facet values, and optionally a minimum confidence. */
+export type FacetQuery = FacetSearchInput<TicketFacets>;
 
 /**
  * The evaluator block the flow takes. The app builds it where it names its
  * model; its input is the ticket body.
  */
 export type TicketEvaluator = EvaluatorDefinition<z.ZodTypeAny, string, TicketQuestions>;
-
-const topicKeys = Object.keys(TOPICS) as [TicketTopic, ...TicketTopic[]];
-const statusKeys = Object.keys(STATUSES) as [TicketStatus, ...TicketStatus[]];
-
-function choiceAnswerSchema<T extends string>(keys: [T, ...T[]]) {
-  return z.object({
-    type: z.literal("choice"),
-    choice: z.enum(keys),
-    probabilities: z.record(z.string(), z.number()).optional(),
-    confidence: z.number().optional(),
-  });
-}
-
-/** Zod schema for {@link TicketFacets}, used in the collection's state. */
-export const ticketFacetsSchema = z.object({
-  topic: choiceAnswerSchema(topicKeys),
-  status: choiceAnswerSchema(statusKeys),
-}) as unknown as z.ZodType<TicketFacets>;
-
-/** A ticket's stored state: the collection's `stateSchema`, and the one source of its type. */
-export const ticketStateSchema = z.object({
-  title: z.string(),
-  facets: ticketFacetsSchema.nullable().default(null),
-  indexedAs: z.string().nullable().default(null), // which write the facets may describe
-});
-
-export type TicketState = z.infer<typeof ticketStateSchema>;
-
-/** What a facet search asks: facet values, and optionally a minimum confidence. */
-export const facetQuerySchema = z.object({
-  topic: z.enum(topicKeys).optional().describe("Only tickets about this topic"),
-  status: z.enum(statusKeys).optional().describe("Only tickets with this status"),
-  minConfidence: z
-    .number()
-    .min(0)
-    .max(1)
-    .optional()
-    .describe("Only answers the model reported at least this confidence for"),
-});
-
-export type FacetQuery = z.infer<typeof facetQuerySchema>;
-
-/**
- * True when stored facets satisfy every value the query names. A ticket with
- * no facets (never classified, failed, or cleared) never matches. A minimum
- * confidence applies to the answers the query names; an answer that carries
- * no confidence fails it.
- *
- * `undefined` is a ticket stored before the `facets` field existed: the
- * schema's default fills it only on the next write, so a read can still see
- * the old shape. It counts as unindexed, the same as `null`.
- */
-export function matchesFacets(facets: TicketFacets | null | undefined, query: FacetQuery): boolean {
-  if (facets == null) return false;
-  const wanted: Array<[keyof TicketFacets, string | undefined]> = [
-    ["topic", query.topic],
-    ["status", query.status],
-  ];
-  for (const [id, value] of wanted) {
-    if (value === undefined) continue;
-    const answer = facets[id];
-    if (answer.choice !== value) return false;
-    if (query.minConfidence !== undefined) {
-      if (answer.confidence === undefined || answer.confidence < query.minConfidence) return false;
-    }
-  }
-  return true;
-}

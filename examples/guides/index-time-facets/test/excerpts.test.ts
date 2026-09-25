@@ -13,10 +13,10 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = join(__dirname, "..");
 const GUIDE = join(ROOT, "../../../apps/docs/docs/resources/searching.md");
-const SOURCE = ["src/facets.ts", "src/index-facets.ts", "src/flow.ts"];
+const SOURCE = ["src/facets.ts", "src/flow.ts"];
 
 /** First lines of the excerpts that must be verbatim cuts of the source. */
-const CHECKED = ["export const ticketQuestions = {", "await ref.updateState((state) =>"];
+const CHECKED = ["export const ticketQuestions = {", "export function ticketsFlow(triage: TicketEvaluator) {"];
 
 function normalize(text: string): string[] {
   return text
@@ -57,7 +57,7 @@ describe("the guide's excerpts are cut from the example", () => {
   }
 
   it("negative control: a drifted line is caught", () => {
-    const drifted = normalize(excerpts[1]!.replace("state.indexedAs === token", "state.body === body"));
-    expect(firstMissing(drifted, source)).toContain("state.body === body");
+    const drifted = normalize(excerpts[1]!.replace("evaluator: triage", "questions: ticketQuestions"));
+    expect(firstMissing(drifted, source)).toContain("questions: ticketQuestions");
   });
 });

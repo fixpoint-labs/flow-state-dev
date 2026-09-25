@@ -495,3 +495,5 @@ For a read-only view of data the app already owns, see [projected collections](.
 For relationships between resources or entities rather than many instances of one shape, see [Edges](./edges).
 
 To find instances by path, content, or relevance once a collection holds many of them, see [Searching resources](./searching).
+
+To classify each instance's body once when it's written, and search the answers without a model call, define the collection with `defineFacetedCollection`. See [Find by facets](./searching#find-by-facets).
