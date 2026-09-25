@@ -135,7 +135,9 @@ Rules, all cheap to check:
 - **Two is the ceiling**, and the second one needs a reason.
 
 **On a spec or epic PR, blocks 1 and 2 take a fixed shape, and the diagram is already
-spoken for.** The problem and the solution are one **people table** — *someone who… · today ·
+spoken for.** They open on **the goal**: one sentence, the *how we'll know it's met* figure as
+a mermaid fence, and one line naming the goal check and the control that must fail. Then the
+problem and the solution are one **people table** — *someone who… · today ·
 after* (a spec) or *a team that… · today · after this epic* (an epic) — cut from the spec's own
 `SPEC.md`. Under it goes the spec's figure, as a raw image pinned to the commit that holds it
 ([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence: the *what
@@ -417,9 +419,9 @@ collapsed **How to review this** section.
 
 | PR kind | The one question | The human judges | Automated review helps most on | Do **not** report |
 |---|---|---|---|---|
-| **Spec PR** (`spec/<ISSUE-ID>`, merges after approval/checks) | Is this the right approach? | The numbered decisions, scope, whether it's worth building | Design-invalidating constraints, missing rules, documentation promises, predecessor treatment and experimental isolation | Unpinned names/layout, local structure, test names, pixel-level figures, sketch and POC production polish |
-| **Epic PR** (`epic/<name>`, merges after approval/checks) | Is this body of work worth doing — and does the set overbuild? | The objective, set size and cross-cutting decisions | Conflicting decisions, rule ownership, missing/unnecessary issues, shared documentation ownership and lineage | Single-issue design details and routine status movement since the dated snapshot |
-| **Implementation PR** (`fix/<ISSUE-ID>`, merges) | Is this correct, and does it match the approved direction? | The implementation decisions and their ramifications, what was subtracted, whether the goal was actually *proved* | Correctness, second paths (BP-035), auth/routing from caller-controllable input (BP-031), legacy-shape tolerance (BP-030), concurrency and null boundaries | Re-litigating a Decision the spec already settled and a human approved; style the codebase has already settled |
+| **Spec PR** (`spec/<ISSUE-ID>`, merges after approval/checks) | Is this the right approach? | The goal's size and its check, the numbered decisions, scope, whether it's worth building | Design-invalidating constraints, missing rules, documentation promises, predecessor treatment and experimental isolation | Unpinned names/layout, local structure, test names, pixel-level figures, sketch and POC production polish |
+| **Epic PR** (`epic/<name>`, merges after approval/checks) | Is this body of work worth doing — and does the set overbuild? | The goal's size and the proof that checks it, set size and cross-cutting decisions | Conflicting decisions, rule ownership, missing/unnecessary issues, shared documentation ownership and lineage | Single-issue design details and routine status movement since the dated snapshot |
+| **Implementation PR** (`fix/<ISSUE-ID>`, merges) | Is this correct, and does it match the approved direction? | The implementation decisions and their ramifications, what was subtracted, whether the goal was actually *proved*: a PASS on the spec's goal check, after its control was seen to FAIL | Correctness, second paths (BP-035), auth/routing from caller-controllable input (BP-031), legacy-shape tolerance (BP-030), concurrency and null boundaries | Re-litigating a Decision the spec already settled and a human approved; style the codebase has already settled |
 
 **The implementation row is the asymmetry worth noticing.** On a spec or epic PR we are
 asking a reviewer to aim *higher* than its default. On an implementation PR we want its
@@ -437,7 +439,7 @@ and publish it, and account for the relevant predecessors in `EVOLUTION.md`.
 
 ## Where each block is authored
 
-- **Spec PR** — blocks 1–3 are `SPEC.md`'s people table, its figure, and the decisions that
+- **Spec PR** — blocks 1–3 are `SPEC.md`'s goal block, its people table, its figure, and the decisions that
   passed the filters in compact form, condensed by `issue-spec` Step 6; the instance and the
   contract are [`spec-template.md`](spec-template.md) → "The PR body" and "How to review this".
 - **Epic PR** — authored by `epic-agent` for its reviewed revision; later meaningful

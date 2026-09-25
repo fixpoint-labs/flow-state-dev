@@ -5,7 +5,7 @@ A spec has three readers with different needs, so it is not one document. It is 
 
 | File | Reader | Reads it to | Budget (prose words, fences excluded) |
 |---|---|---|---|
-| **`SPEC.md`** | The product owner | See who feels the change, before and after, and sign off | ~700 |
+| **`SPEC.md`** | The product owner | See the goal and how we'll know it's met, who feels the change, and sign off | ~850 |
 | **`DECISIONS.md`** | Whoever asks *why* — the owner on demand, the reviewer, the implementer when a rule bites | See what was considered, what was chosen, what lost, and what each choice locks in | ~900 |
 | **`BUSINESS-RULES.md`** | A human reviewer, then the implementer | Check the cases: when → then → proved by | ~900 |
 | **`PLAN.md`** | The implementing agent | Build it: surfaces, order, checks, pinned names, guardrails | ~1,000 |
@@ -31,6 +31,11 @@ line of each file, links the siblings; append `[Evolution](EVOLUTION.md)` only w
 exists. Authored `assets/` and `poc/<experiment>/` stay beside `figures/` under this owner.
 The storage, authority and lifecycle contract is
 [`orchestration.md` → Spec retention and authority](orchestration.md#spec-retention-and-authority).
+
+**The goal comes first.** `SPEC.md` opens on the goal in one sentence, a check that it is the
+right goal, a figure of how we'll know it's met, and the exact check that proves it, with a
+control that must fail. The PR body carries the same block. A reader who stops there knows what
+done means and how it will be proved. See [`SPEC.md` → The goal](#the-goal-and-how-well-know-its-met).
 
 **The pictures carry the meaning; the prose reads them.** The spec, decisions and rules open on
 a table or figure, and every figure has one sentence under it saying what to look at. What a
@@ -100,6 +105,8 @@ answering one question: **is this the right approach?**
 
 **In scope to challenge:**
 
+- **The goal** in `SPEC.md` — is it the real need at full size, or a smaller goal that would
+  let us call this done early? Would the named check fail if the goal were not met?
 - The problem framing in `SPEC.md` — are we solving the right thing, for the people named?
 - The approach — will it work, does it fit the architecture and `docs/philosophy.md`?
 - Any numbered **decision** in `DECISIONS.md` — that's the sign-off surface.
@@ -150,10 +157,12 @@ Optional comments do not require another design round merely to reach zero comme
 
 *(Authored fresh for every spec PR. The layout and the rules are
 [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md); what follows is the spec-PR instance.
-Budget ~400 prose words above the fold. The body is not another spec document: every line
+Budget ~475 prose words above the fold. The body is not another spec document: every line
 in it is in `SPEC.md` too, shorter.)*
 
-The people table from `SPEC.md`, cut to five rows. The *what changes* figure, as a pinned raw
+**The goal**, in its one sentence, then the *how we'll know* figure (a mermaid fence, pasted
+as text) with its sentence, then one line naming the goal check and the control that must
+fail. Then the people table from `SPEC.md`, cut to five rows. The *what changes* figure, as a pinned raw
 image ([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence. One line
 on **how**. Then **Sign off**: the decisions, numbered, hardest first, each a bold line and an
 *If wrong:* clause, with the one to weigh named and a pointer to the decisions doc. Then
@@ -163,6 +172,23 @@ it builds on, and that merge follows approval and required checks. Then the coll
 
 > ```md
 > # spec(FIX-775): resume a stream after a disconnect
+>
+> **Goal:** a client that loses its connection mid-answer reconnects and ends up with exactly
+> the answer it would have had, with nothing repeated and nothing missing.
+>
+> ```mermaid
+> flowchart LR
+>   I["a real streamed answer · held-out"] --> D["drop at a random item · reconnect on the real path"]
+>   D --> T["the transcript the client assembled"]
+>   T -->|"equals the uninterrupted run, item for item"| P["PASS · goal met"]
+>   C["control · server ignores the cursor"] -.-> D
+>   T -.->|"under the control"| F["must FAIL · duplicates named"]
+> ```
+>
+> The check reads what the client assembled, not what the server meant to send. Under the
+> control it must fail, or it proves nothing. Check: `goals/resume-after-disconnect/reconnect-midstream/`,
+> real model, control `GOAL_CONTROL=ignore-cursor`. Why this goal and not a smaller one:
+> [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met).
 >
 > | Someone who… | Today | After |
 > |---|---|---|
@@ -180,6 +206,9 @@ it builds on, and that merge follows approval and required checks. Then the coll
 > stream seam skips everything up to it. Nothing upstream of that seam learns resume exists.
 >
 > ## Sign off
+>
+> **The goal, at that size.** If wrong: we ship a resume the user can't feel, or hold the issue
+> open for a need it was never meant to meet.
 >
 > 1. **The cursor rides both a header and a query param; the query param wins.** If wrong: a
 >    public string format we don't validate, locked in, with two entry points to keep in step.
@@ -227,23 +256,100 @@ The document the product owner reads. It answers *who feels this, what do they s
 after, and what am I signing*, in observable behaviour with no file paths. Sections, in order:
 
 1. **The header line** — kind · packages · size · PR count · epic, and sibling links.
-2. **People, before and after** — a table: someone who… · today · after. Three to six rows.
+2. **The goal, and how we'll know it's met** — the section below this list says what it owes.
+   It comes first because every other section is judged against it.
+3. **People, before and after** — a table: someone who… · today · after. Three to six rows.
    Each row is a person doing one thing and what they see. This table is the spec's problem
    statement and its solution statement at once, and the PR body cuts it to five rows.
-3. **What changes** — the one figure, with its sentence. Then any surface a person edits, **as
+4. **What changes** — the one figure, with its sentence. Then any surface a person edits, **as
    a diff**: a config file, a worker file, a call site. The diff is the highest-density form we
    have for a file-shaped surface, and it is what a person will actually type.
-4. **Optionally, one more figure** where a quantity carries the argument — what a turn costs,
+5. **Optionally, one more figure** where a quantity carries the argument — what a turn costs,
    what a request carries — and **one mermaid** for the mechanism as a path through layers.
-5. **What stays as it is** — the neighbours a reader would otherwise assume changed.
-6. **Sign off** — the numbered decisions as one-liners linking to their cards, each with
-   *If wrong:*, and the one to weigh named. **Open: none**, or the live forks named.
+6. **What stays as it is** — the neighbours a reader would otherwise assume changed.
+7. **Sign off** — **the goal first**, unnumbered, with its *If wrong:*: approval certifies the
+   goal's size as much as the approach. Then the numbered decisions as one-liners linking to
+   their cards, each with *If wrong:*, and the one to weigh named. **Open: none**, or the live
+   forks named.
+
+### The goal, and how we'll know it's met
+
+A spec that doesn't say what done looks like gets declared done when the code is merged. This
+section is what stops that. It has four parts, in order, and none is optional.
+
+1. **The goal** — one sentence: what someone can do or see after this that they can't now. In
+   their terms, observable, no framework vocabulary. The same sentence is the goal check's
+   **Outcome** in `goal.md` ([`goals/README.md`](../../goals/README.md)).
+2. **Is it the right goal?** — a table with three rows, sometimes four:
+   - **The real need** — what the requester or the epic actually needs, in their words, linked.
+     The goal must meet it, not a part of it that happens to be easier.
+   - **Smaller, and rejected** — the undersold goal: the weaker version that would let us call
+     this done early, and why it falls short of the real need. Name it even when it is obvious.
+     If the smaller goal is what we are shipping, say so, and it becomes the sign-off's hardest
+     line.
+   - **Bigger, and not this issue's** (when there is one) — the neighbouring goal a reader
+     might expect, and who owns it.
+   - **Not done if** — the states that look done and aren't: the suite is green but the goal
+     check never ran; it passes only on the easy input; something downstream hides the failure.
+3. **How we'll know** — the figure, a mermaid `flowchart LR` of the goal check: what is run, on
+   what input, what outcome counts as PASS, and the control that must FAIL, as a dashed path.
+   One sentence under it saying what the check reads. This figure goes in the PR body
+   ([`spec-figures.md`](spec-figures.md)).
+4. **How we verify** — a table with these rows, each specific enough to run:
+   - **Goal check** — the `goals/<describe>/<it>/` path, model or `n/a`, who runs it and when
+     (the implementing agent, at completion), and where the verdict lands (the implementation
+     PR's goal verdict).
+   - **Signal** — the observable pass condition, with its threshold.
+   - **Input** — the fixture, and what a different valid input would look like; a correct
+     implementation must pass on it too.
+   - **Anti-game** — what a hollow pass would look like, and therefore what the check must not
+     assert on.
+   - **Control that must fail** — a named `GOAL_CONTROL`, or today's `main` when the feature is
+     absent there, and the leg it must fail. The implementation PR shows this FAIL before the
+     PASS counts. A check nobody has seen fail has verified nothing (BP-003).
+
+**When no goal check applies** (a pure refactor, docs only), the goal and *is it the right
+goal?* still apply. Replace the figure and table with one line on what proves the goal instead,
+and why no goal check fits, with the same *control that must fail* where one exists. "No goal
+check" is a statement with a reason, never a blank.
 
 > # FIX-775 · Resume a stream after a disconnect
 >
 > **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > Feature · `engine` + `client` · medium · 1 PR · no epic
+>
+> ## The goal, and how we'll know it's met
+>
+> **A client that loses its connection mid-answer reconnects and ends up with exactly the
+> answer it would have had, with nothing repeated and nothing missing.**
+>
+> | Is it the right goal? | |
+> |---|---|
+> | **The real need** | Apps on phones survive a network blip without the user noticing ([FIX-770](https://linear.app/…/FIX-770), the epic's objective) |
+> | **Smaller, and rejected** | "The server accepts a resume cursor." Hittable while the client still renders duplicates, so nobody would notice we shipped it |
+> | **Bigger, and not this issue's** | "A connection that dies silently is noticed and resumed." Needs heartbeats; FIX-776 owns it |
+> | **Not done if** | The suite is green and the goal check never ran on a real model · it passes only when the drop lands between items · the client dedupes to hide duplicates the server still sends |
+>
+> ```mermaid
+> flowchart LR
+>   I["a real streamed answer · held-out"] --> D["drop at a random item · reconnect on the real path"]
+>   D --> T["the transcript the client assembled"]
+>   T -->|"equals the uninterrupted run, item for item"| P["PASS · goal met"]
+>   C["control · server ignores the cursor"] -.-> D
+>   T -.->|"under the control"| F["must FAIL · duplicates named"]
+> ```
+>
+> The check reads what the client assembled, not what the server meant to send. The dashed path
+> is the same run with resume switched off, and it must fail.
+>
+> | How we verify | |
+> |---|---|
+> | **Goal check** | `goals/resume-after-disconnect/reconnect-midstream/` · real model · run by the implementer at completion · verdict in the implementation PR |
+> | **Signal** | The assembled transcript equals the uninterrupted run: zero duplicate items, zero missing items |
+> | **Input** | A recorded prompt with a long answer. A different prompt, or a drop at a different item, must pass too |
+> | **Anti-game** | Don't assert on the seam's filter output or on a mocked stream. Both pass while the client still double-renders |
+> | **Control that must fail** | `GOAL_CONTROL=ignore-cursor`, and today's `main`. Both must FAIL on the duplicates leg, and the PR shows it before the PASS |
 >
 > ## Three people, before and after
 >
@@ -306,6 +412,10 @@ after, and what am I signing*, in observable behaviour with no file paths. Secti
 >   and it stays the store's job.
 >
 > ## Sign off
+>
+> **[The goal](#the-goal-and-how-well-know-its-met), at that size:** nothing repeated and nothing
+> missing, measured on what the client assembled. If wrong: we ship a resume the user can't
+> feel, or hold the issue open for heartbeats it was never meant to deliver.
 >
 > 1. **[D1](DECISIONS.md#d1) · The cursor is `{requestId}:{sequence}`, on `Last-Event-ID` and on
 >    `starting_after`; the query param wins.** If wrong: a public string format we don't
@@ -505,8 +615,9 @@ mermaid companion when the figure could be misread. Then the **failure taxonomy*
 >
 > ## Acceptance criteria this issue owns
 >
-> A client that drops mid-stream and reconnects assembles a transcript equal to the
-> uninterrupted one, item for item, on a real model. That is the goal check the plan runs last.
+> [The goal](SPEC.md#the-goal-and-how-well-know-its-met): a client that drops mid-stream and
+> reconnects assembles a transcript equal to the uninterrupted one, item for item, on a real
+> model, and the same run fails under its control. The plan runs it last.
 
 BR-7 is the one row that spells out a rule rather than a case, and only because getting it
 backwards produces a confidently wrong test. The rest name **which** behaviours hold and let the
@@ -526,8 +637,9 @@ No figures, no prose that restates the spec. Sections, in order:
 3. **Sequence** — one mermaid DAG over the surface IDs, and the seam. **A PR plan for a Large
    issue** is a table of sub-PRs with `depends_on`; the lifecycle reads it as executable routing,
    so a one-PR issue carries none.
-4. **Checks** — a table: ID · runs after which surface · passes when. One goal check on the real
-   path, or a stated "no goal check applies" with the reason. **One check per decision** at
+4. **Checks** — a table: ID · runs after which surface · passes when. The goal check is the
+   one `SPEC.md` → *The goal* names, cited by path rather than restated, and its control's FAIL
+   is part of passing it. Or a stated "no goal check applies" with the reason. **One check per decision** at
    least, and the second path (BP-035) named.
 5. **Pinned names** — the few names the spec fixes, each with why. Everything else is the
    implementer's.
@@ -580,7 +692,7 @@ No figures, no prose that restates the spec. Sections, in order:
 > | V2 | S2 | BR-1, BR-5, BR-6. BR-7 asserted on the invariant: increasing, no duplicates, **not** contiguous |
 > | V3 | S3 | BR-9, BR-10; BR-11 unchanged |
 > | V4 | S4 | BR-8. Reload mid-request end to end |
-> | VG | S4 | Goal, real model: kill the connection halfway through a streamed response, reconnect; the assembled transcript equals the uninterrupted one item for item. `goals/resume-after-disconnect/reconnect-midstream/run.mts` |
+> | VG | S4 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/resume-after-disconnect/reconnect-midstream/run.mts` PASSES on a real model, after the same run FAILED under `GOAL_CONTROL=ignore-cursor` |
 > | V5 | S5 | The helper is gone and nothing imports it |
 >
 > ## Pinned names · the only two

@@ -283,7 +283,9 @@ Agent tool (general-purpose, model: sonnet):
       with no failing-output evidence is rejected — require re-demonstration. (Exceptions:
       pure characterization/parity holding pre-existing tests green; trivial mechanical edits.)
     - GOAL proven: if the spec names a goal check, confirm it ran on a real model and passed
-      (a green CI suite is not evidence); if it wasn't, that's a must-fix — run it before
+      (a green CI suite is not evidence), AFTER its named control was run and failed on the
+      leg the spec says; and that none of `SPEC.md`'s *not done if* states holds. A PASS with
+      no control FAIL is unproven. If it wasn't run, that's a must-fix — run it before
       presenting. Honor a documented "no goal check applies" only if no user-observable
       outcome was introduced. For bugs, verify diagnose's real-path confirmation instead.
   Full template: ../issue-implement/spec-reviewer-prompt.md.
