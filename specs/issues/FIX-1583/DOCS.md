@@ -4,8 +4,9 @@
 
 Facets already have a home: "Find by facets" on the resources searching page, owned by FIX-1557
 under the epic's [ownership table](../../epics/FIX-1553/DOCS.md#ownership). This issue changes
-what that section teaches (use the utility, [D2](DECISIONS.md#d2)) and adds the utility to the
-utility-blocks reference beside `cascadingRouter`. No new page and no sidebar change. The
+what that section teaches (use the definer, [D2](DECISIONS.md#d2)) and points the collections
+page at it. `defineFacetedCollection` is a collection definer, not a utility block, so it is not
+added to the utility-blocks reference ([D1](DECISIONS.md#d1)). No new page and no sidebar change. The
 section's opening two paragraphs ("Some searches aren't about words…", "Facets move the question
 to write time…"), "Classifying the search instead" and the "Choosing a tool" bullet are
 unchanged and not repeated here. Snippets are cut from the example once it's built (its
@@ -16,12 +17,12 @@ unchanged and not repeated here. Snippets are cut from the example once it's bui
 
 Replace that span with:
 
-> `utility.facetedCollection` gives you a collection that does this for you. You bring the
+> `defineFacetedCollection` defines a collection that does this for you. You bring the
 > fields you'd store anyway and an evaluator that asks your questions. It returns the
 > collection, a search block and a reindex block.
 >
 > ```ts
-> import { choice, evaluator, utility } from "@flow-state-dev/core";
+> import { choice, defineFacetedCollection, evaluator } from "@flow-state-dev/core";
 >
 > export const ticketQuestions = {
 >   topic: choice("What is this support ticket about?", TOPICS), // billing | outage | other
@@ -30,7 +31,7 @@ Replace that span with:
 >
 > const triage = evaluator({ name: "ticket-facets", model: "typesafe-ai/jev", questions: ticketQuestions });
 >
-> const tickets = utility.facetedCollection({
+> const tickets = defineFacetedCollection({
 >   name: "tickets",
 >   pattern: "tickets/*",
 >   scope: "user",
@@ -50,12 +51,17 @@ Replace that span with:
 > ```
 >
 > Build the evaluator where you configure the app, so the model is named in one place. The
-> utility never picks a model. It reads the questions off the evaluator, so they have to be a
+> definer never picks a model. It reads the questions off the evaluator, so they have to be a
 > fixed object rather than a function.
 >
 > `name` is the key the collection is registered under. Pass `tickets.resources` to the flow so
 > it is always registered under that key, even when the search is only ever used as an agent's
-> tool.
+> tool. `tickets.resources` also carries anything your evaluator declares, so it is available
+> when the evaluator runs.
+>
+> A few shapes are refused when the collection is defined, each with the reason: a key pattern
+> with parameters such as `[topic]/observations` (use a wildcard pattern like `tickets/*`), an
+> evaluator whose questions are a function, and an evaluator that needs flow config.
 >
 > ### What it does on every write
 >
@@ -104,7 +110,7 @@ Replace that span with:
 > stored on each document's `facets`, where your own code can read them.
 >
 > On a [projected collection](/docs/resources/projected-collections), where your own database
-> holds the rows, pass facet values in the `filter` of your list query instead. The utility
+> holds the rows, pass facet values in the `filter` of your list query instead. The definer
 > doesn't build projected collections.
 
 ## UPDATE · `apps/docs/docs/resources/searching.md` · "### Reindexing"
@@ -122,73 +128,39 @@ Replace the section with:
 > outside a flow turn, so nothing would reclassify them. Write bodies through an action instead.
 >
 > If you already store facets with a hand-written reaction, switching keeps them. Delete
-> `facets` and `indexedAs` from your `stateSchema` (the utility adds both), replace the
-> collection definition with `utility.facetedCollection`, and existing documents are found as
+> `facets` and `indexedAs` from your `stateSchema` (the definer adds both), replace the
+> collection definition with `defineFacetedCollection`, and existing documents are found as
 > before, with no reindex.
 >
-> If your text lives in state rather than the body, the utility doesn't fit. Bind `created` and
+> If your text lives in state rather than the body, the definer doesn't fit. Bind `created` and
 > `stateUpdated` yourself, with a `when` that checks the text fields changed; the
-> [utility's source](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/core/src/utility/faceted-collection.ts)
+> [definer's source](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/core/src/types/faceted-collection.ts)
 > shows the three rules to keep.
 
-## UPDATE · `apps/docs/docs/patterns/utility-blocks/core.md` · quick overview table
+## UPDATE · `apps/docs/docs/resources/collections.md` · "See also"
 
-Add after the `upsertResource` row:
+Add after the searching line:
 
-> | [`facetedCollection`](#facetedcollection) | collection + blocks | A resource collection that classifies each body once when written, with a search that runs no model |
+> To classify each instance's body once when it's written and search the answers without a
+> model call, define the collection with `defineFacetedCollection`. See
+> [Find by facets](./searching#find-by-facets).
 
-In "Default models", extend the `cascadingRouter` sentence: "…each evaluator in its tree
-carries its own, and `facetedCollection` uses the evaluator you pass it."
+## UPDATE · `packages/core/README.md` · resource definers
 
-## UPDATE · `apps/docs/docs/patterns/utility-blocks/core.md` · new section after `upsertResource`
+Add after the `defineResourceCollection(config)` bullet:
 
-> ### facetedCollection — classify on write, search without a model {#facetedcollection}
->
-> `facetedCollection` defines a resource collection whose documents are classified once, when
-> their body is written, by an [evaluator](/docs/fundamentals/blocks#evaluator--the-questions-you-already-know)
-> you provide. It returns the collection plus two blocks: a search over the stored answers that
-> makes no model call, and a reindex. [Find by facets](/docs/resources/searching#find-by-facets)
-> walks through it end to end.
->
-> ```ts
-> const tickets = utility.facetedCollection({
->   name: "tickets",
->   pattern: "tickets/*",
->   scope: "user",
->   stateSchema: z.object({ title: z.string() }),
->   evaluator: triage,
-> });
-> // tickets.collection · tickets.search · tickets.reindex · tickets.resources
-> ```
->
-> **Config reference:**
->
-> | Option | Required | Description |
-> |--------|----------|-------------|
-> | `name` | Yes | Key the collection is registered under on `ctx.resources` |
-> | `evaluator` | Yes | An evaluator block with a fixed question set. Its questions become the facets |
-> | `stateSchema` | Yes | Your own fields, as an object schema. `facets` and `indexedAs` are added |
-> | `pattern`, `scope`, other collection options | — | As for `defineResourceCollection` |
->
-> It refuses, when built: an evaluator whose questions are a function; a `stateSchema` that
-> already has `facets` or `indexedAs`; a `reactTo.contentUpdated` binding (it owns that one;
-> other `reactTo` kinds pass through); `client.content.create` or `client.content.update`; and a
-> question named `minConfidence`.
-
-## UPDATE · `packages/core/README.md` · "Utility block factories"
-
-Add after the `cascadingRouter` bullet:
-
-> - `utility.facetedCollection(config)` — Defines a resource collection whose bodies are
+> - `defineFacetedCollection(config)` — Defines a resource collection whose bodies are
 >   classified once on write by the evaluator you pass, storing its answers as `facets`. Returns
 >   `{ collection, search, reindex, resources }`: a search over stored answers with optional
 >   `minConfidence` and no model call, and a reindex for rows without facets (`force` for all).
->   Refuses client body edits and a second `contentUpdated` binding when built.
+>   `resources` also carries the evaluator's declared resources. Refuses, when built, client body
+>   edits, a second `contentUpdated` binding, parameterized key patterns, and an evaluator with
+>   computed questions or a `flowConfigSchema`.
 
 ## UPDATE · `examples/guides/index-time-facets/README.md`
 
 Replace the description of `src/index-facets.ts` and the copy instructions with one line: "The
-collection, its indexing and its search come from `utility.facetedCollection`; `src/flow.ts`
+collection, its indexing and its search come from `defineFacetedCollection`; `src/flow.ts`
 shows the whole setup." Commands are unchanged.
 
 ## Voice notes for the writer

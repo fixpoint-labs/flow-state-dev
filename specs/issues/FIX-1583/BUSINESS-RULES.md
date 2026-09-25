@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-The cases, written as rules. They bind `utility.facetedCollection` and the example built on it.
+The cases, written as rules. They bind `defineFacetedCollection` and the example built on it.
 *Proved by* names the check in [PLAN.md](PLAN.md#checks). Writing, searching and reindexing
 carry FIX-1557's rules over unchanged ([its rules](../FIX-1557/BUSINESS-RULES.md), cited per
 row); what is new is that the utility enforces them, and the build-time refusals. The epic's
@@ -18,6 +18,9 @@ rules (ER-n, [epic](../../epics/FIX-1553/BUSINESS-RULES.md)) bind here too.
 | BR-4 | The app's config grants `client.content.create` or `client.content.update` | Refused when built: a client body edit runs no reaction, so facets would go stale unseen ([D3](DECISIONS.md#d3)). Client reads and deletes are allowed | VB |
 | BR-5 | The app's `stateSchema` is not an object, or already declares `facets` or `indexedAs` | Refused when built. The message says the utility adds both, so an app moving off the recipe deletes them from its schema | VB |
 | BR-6 | A question id is `minConfidence` | Refused when built: it would collide with the search option | VB |
+| BR-26 | The `pattern` is parameterized (for example `[topic]/observations`) | Refused when built: a content change carries such a row's full path, and a string key can't address it. The message names wildcard patterns as the supported shape | VB |
+| BR-27 | The evaluator declares resources, directly or through static capabilities | They are carried into the returned `resources`, beside the collection, so registering `resources` on the flow registers them however the search and reindex are mounted. An accessor that collides with `name` is refused when built | VB · V13 |
+| BR-28 | The evaluator declares something that can't be carried to the flow: a `flowConfigSchema`, or a lazy single resource (the flow refuses lazy singles at flow level) | Refused when built, naming the declaration. The reaction never runs without what its evaluator declared | VB |
 | BR-7 | The utility is built | It names, resolves and builds no model, and calls nothing at build time ([epic D3](../../epics/FIX-1553/DECISIONS.md#d3), ER-11) | V8 |
 
 ## Writing
@@ -67,7 +70,7 @@ rules (ER-n, [epic](../../epics/FIX-1553/BUSINESS-RULES.md)) bind here too.
 
 A classification failure is never a write failure: the row has no facets, and a facet search
 treats that as no match. Nothing retries or falls back. Reindex is how a row recovers. A
-*wiring* failure is different: a misconfigured utility is refused when built (BR-1 to BR-6), and
+*wiring* failure is different: a misconfigured definer is refused when built (BR-1 to BR-6, BR-26 to BR-28), and
 a collection registered under the wrong accessor fails its first write (BR-14). Both are loud,
 because they will never fix themselves.
 

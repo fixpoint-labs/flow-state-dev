@@ -15,16 +15,16 @@ generalised over the app's questions, not a new design. Read it before writing a
 
 | ID | Where · role | Change | Rules |
 |---|---|---|---|
-| S1 | `packages/core/src/utility/faceted-collection.ts` · the factory | New. `facetedCollection(config)` → `{ collection, search, reindex, resources }`. Builds, in order: the stamped-change schema, the blocking clear-and-stamp handler and the store-if-current handler (both read `ctx.resources[name]`, undeclared: they exist before the collection), the reaction sequencer (`.step(clear)` then `.sideChainIf(non-empty body, classify → store)`), then the collection with `reactTo: { ...app bindings, contentUpdated: reaction }`, then `search` and `reindex`, which declare `resources: { [name]: collection }`. Build-time refusals BR-1 to BR-6 | BR-1 to BR-22 |
+| S1 | `packages/core/src/types/faceted-collection.ts` (beside `resource-collection.ts`; move it if the block imports cycle) · the definer | New. `defineFacetedCollection(config)` → `{ collection, search, reindex, resources }`. Builds, in order: the stamped-change schema, the blocking clear-and-stamp handler and the store-if-current handler (both read `ctx.resources[name]`, undeclared: they exist before the collection), the reaction sequencer (`.step(clear)` then `.sideChainIf(non-empty body, classify → store)`), then the collection with `reactTo: { ...app bindings, contentUpdated: reaction }`, then `search` and `reindex`, which declare `resources: { [name]: collection }`. `resources` is `{ [name]: collection, ...evaluator.declaredResources }` (BR-27). Build-time refusals BR-1 to BR-6 and BR-26 to BR-28 | BR-1 to BR-22, BR-26 to BR-28 |
 | S2 | the same file · schemas from questions | From the evaluator's static questions: the stored facets schema (choice → enum of option keys; score and boolean → their answer shape; `confidence` and `probabilities` optional) and the search input (one optional enum per choice question, plus `minConfidence` 0–1). The app's `stateSchema` is extended with `facets: …nullable().default(null)` and `indexedAs: z.string().nullable().default(null)` (BP-023) | BR-5 BR-8 BR-19 BR-20 |
 | S3 | `packages/core/src/blocks/evaluator.ts` · internal accessor | A core-internal helper, beside `assertEvaluatorBlock`, returning an evaluator block's static questions or `undefined` when they are computed per call. Not exported from the package root | BR-1 BR-2 |
-| S4 | `packages/core/src/utility/index.ts` | Export `facetedCollection` and its config and result types | — |
+| S4 | `packages/core/src/index.ts` | Export `defineFacetedCollection` and its config and result types from the root, next to `defineResourceCollection`. Not in `utility`: that namespace returns one block (`docs/architecture/utility-blocks.md`) | D1 |
 | S5 | `packages/engine/test/faceted-collection.test.ts` | Behaviour on real in-memory stores and `runAction`, ported from the example's `facets.test.ts` (V1 to V7, V9) plus V10 to V12. Mock evaluation model; no key. Where `cascadingRouter`'s runtime tests already live | all writing / searching / reindexing |
-| S6 | `packages/core/test/faceted-collection.test.ts` + `.test-d.ts` | Build-time refusals (VB); typed search options and facets from the questions (VT) | BR-1 to BR-6 BR-19 |
+| S6 | `packages/core/test/faceted-collection.test.ts` + `.test-d.ts` | Build-time refusals (VB); typed search options and facets from the questions (VT) | BR-1 to BR-6 BR-19 BR-26 to BR-28 |
 | S7 | `examples/guides/index-time-facets/` | `src/flow.ts` builds its collection with the utility; `ticketsFlow(triage)` keeps its signature and its three actions. Delete `src/index-facets.ts`; `src/facets.ts` keeps the questions and whatever types the goal imports. Its `facets.test.ts` shrinks to a flow-level smoke (write then search) — the mechanism's tests moved to S5. `fence.test.ts` and `excerpts.test.ts` stay, pointed at the new source | D2 |
 | S8 | `goals/index-time-facets/found-without-a-model-call/run.mts` | Behaviour unchanged. Only the type imports from the example follow S7 | ER-15 (e) |
-| S9 | Docs | Publish [DOCS.md](DOCS.md): searching page, utility-blocks page, core README, example README | BR-4 D2 |
-| S10 | `.changeset/*.md` | `@flow-state-dev/core` minor: new `utility.facetedCollection` | — |
+| S9 | Docs | Publish [DOCS.md](DOCS.md): searching page, collections page, core README, example README | BR-4 D2 |
+| S10 | `.changeset/*.md` | `@flow-state-dev/core` **patch**: new `defineFacetedCollection` (additive; AGENTS.md → Changesets) | — |
 
 **Removed:** `examples/guides/index-time-facets/src/index-facets.ts`, the example's copied search
 and matcher, and the searching page's "copy it rather than rewriting it" walkthrough. Nothing
@@ -61,21 +61,22 @@ Grow S5 alongside S1, one behaviour per red-green slice: V1 first, then V3, V5, 
 | V7 | S1 | BR-16, BR-21, BR-22: reindex classifies only rows without facets, including a raw legacy row with no `facets` key; `force` reclassifies all |
 | V10 | S1 | BR-3: an app `stateUpdated` binding still fires beside the utility's reaction |
 | V11 | S1 | BR-14: collection registered under a different accessor → the first body write fails and the message names `resources`. **Control:** registered under `name`, it succeeds |
+| V13 | S1 | BR-27: an evaluator that declares a resource (a collection it reads in `state`) runs from the reaction in a flow whose only actions are `write` and `search`, with the flow registering only `resources`. **Control:** `resources` without the carried entry fails the read |
 | V12 | S1 | BR-23: rows written by the recipe's reaction (seed the store with its exact stored shape) are found by the utility's search with no evaluator call |
-| VB | S6 | BR-1 to BR-6: each misconfiguration throws when built, with its named reason; a valid config builds and calls nothing |
+| VB | S6 | BR-1 to BR-6, BR-26 to BR-28: each misconfiguration throws when built, with its named reason (including a `[topic]/observations` pattern, an evaluator with a `flowConfigSchema`, one with a lazy single resource, and one whose resource accessor equals `name`); a valid config builds and calls nothing |
 | VT | S6 | BR-19, BR-20: search options are the choice questions' option keys, typed; a boolean question has no option; facets are `EvaluatorAnswers<questions>` |
 | V8 | S1 · S7 | BR-7, BR-24, BR-25: the utility's file imports core modules only; `defineResourceCollection`'s `reactTo` type and `validateReactTo` are unchanged (`git diff origin/main -- packages/core/src/types/resource-change.ts` empty); the example imports no lab or kitchen-sink. **Negative control:** a planted lab import fails the fence |
 | VX | S7 | The example's tests pass; `excerpts.test.ts` finds every checked docs excerpt in the new source |
 | VG | S8 | **Goal, real model, leg (e)** (ER-13): `pnpm tsx goals/index-time-facets/found-without-a-model-call/run.mts`, Jev via the gateway else OpenAI's evaluation model. Passes as on #2234, now through the utility. **Control:** `GOAL_CONTROL=classify-at-query` still fails |
 
-One check per decision: D1 is V8 and V11, D2 is V12 and VX, D3 is VB. BP-035's second paths:
+One check per decision: D1 is V8, V11, V13 and VB, D2 is V12 and VX, D3 is VB. BP-035's second paths:
 failure (V3), concurrency (V5, V9), legacy rows (V7, V12), wiring (V11).
 
 ## Pinned names
 
 | Where | Name | Why pinned |
 |---|---|---|
-| Export | `utility.facetedCollection` | The docs and README teach it |
+| Export | `defineFacetedCollection` | The docs and README teach it |
 | Result | `collection`, `search`, `reindex`, `resources` | The docs use each |
 | Config | `name`, `evaluator`; the collection's own fields pass through | The docs show them |
 | Stored fields | `facets`, `indexedAs` | Identical to the recipe, so a recipe app moves without a reindex ([D2](DECISIONS.md#d2)) |
@@ -104,8 +105,8 @@ Reconcile and publish [DOCS.md](DOCS.md) after V1 to V5 pass, cutting each snipp
 ## Sketch · pseudocode, illustrative, react to the shape
 
 ```
-facetedCollection({ name, evaluator, stateSchema, reactTo, client, ...rest }):
-  refuse BR-1..BR-6
+defineFacetedCollection({ name, evaluator, stateSchema, reactTo, client, ...rest }):
+  refuse BR-1..BR-6, BR-26..BR-28      parameterized pattern, uncarriable evaluator declarations
   questions ← static questions of evaluator
   facets    ← answers schema from questions
   clear     ← handler: ref = ctx.resources[name] or throw BR-14
@@ -118,7 +119,8 @@ facetedCollection({ name, evaluator, stateSchema, reactTo, client, ...rest }):
                  reactTo: { ...reactTo, contentUpdated: reaction } })
   search    ← handler(resources { [name]: collection }): list → keep matching → keys
   reindex   ← sequencer(select rows: force or facets == null) .forEach(reaction)
-  return { collection, search, reindex, resources: { [name]: collection } }
+  return { collection, search, reindex,
+           resources: { [name]: collection, ...evaluator.declaredResources } }   BR-27
 ```
 
 **POC:** none. Every premise the design rests on is either shipped and tested on `main` (the
@@ -142,4 +144,4 @@ No counted facts, so no checker applies.
 ## Notes from review
 
 - **Reindex concurrency (implementer's discretion).** The recipe's `reindex` runs `.forEach(reaction)` with no concurrency cap. That is fine for the guide, but a large `force` backfill would fire every evaluator call at once. A `maxConcurrency` on reindex only is allowed if it leaves BR-21 and BR-22 unchanged.
-- **Weight versus `cascadingRouter`.** The two are peers in placement only. `facetedCollection` owns a resource, its client grants and its registration, so expect core VB/VT tests plus engine V1 to V12, not a single block's surface.
+- **Weight versus `cascadingRouter`.** The two are peers in placement only. `defineFacetedCollection` owns a resource, its client grants and its registration, so expect core VB/VT tests plus engine V1 to V13, not a single block's surface.

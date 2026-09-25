@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 340" role="img" aria-label="Two panels. Today: the app's own code holds all five pieces of index-time facets, copied from the example: the stored fields, the reaction with its three rules, the search and the reindex. After: the app writes its own fields and its evaluator block and makes one call; the core utility holds the stored fields, the reaction's three rules, the search and the reindex, tested once. The model stays in the app." xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 940 340" role="img" aria-label="Two panels. Today: the app's own code holds all five pieces of index-time facets, copied from the example: the stored fields, the reaction with its three rules, the search and the reindex. After: the app writes its own fields and its evaluator block and makes one call; core's defineFacetedCollection holds the stored fields, the reaction's three rules, the search and the reindex, tested once. The model stays in the app." xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -50,17 +50,17 @@
     <rect class="n-prose" x="478" y="52" width="434" height="62" rx="5"/>
     <text class="t-b" x="492" y="74">the app writes</text>
     <text class="t-s" x="492" y="92">its own fields · its evaluator block, its model</text>
-    <text class="t-s" x="492" y="106">utility.facetedCollection({ …your collection, evaluator })</text>
+    <text class="t-s" x="492" y="106">defineFacetedCollection({ …your collection, evaluator })</text>
     <path class="arr" d="M695,114 L695,134"/>
     <path class="arr" d="M690,128 L695,134 L700,128"/>
     <rect class="n-code" x="478" y="136" width="434" height="176" rx="5"/>
-    <text class="t-b" x="492" y="158">core utility · tested once</text>
+    <text class="t-b" x="492" y="158">core definer · tested once</text>
     <text class="t-c" x="492" y="178">collection · your fields + facets, indexedAs</text>
     <text class="t-c" x="492" y="196">its reaction · the three rules, built in</text>
     <text class="t-c" x="492" y="214">search · typed options, no model call</text>
     <text class="t-c" x="492" y="232">reindex · unfaceted rows, or all with force</text>
     <text class="t-c" x="492" y="250">resources · to register it with the flow</text>
-    <text class="t-s" x="492" y="280">refused when built: no client body edits,</text>
-    <text class="t-s" x="492" y="296">no second body reaction, no dynamic questions</text>
+    <text class="t-s" x="492" y="280">refused when built: client body edits, parameterized</text>
+    <text class="t-s" x="492" y="296">keys, a second body reaction, dynamic questions</text>
   </g>
 </svg>

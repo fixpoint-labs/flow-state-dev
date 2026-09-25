@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Feature · `core` (one utility) + the example and docs moved onto it · medium · 1 PR · epic
+Feature · `core` (one collection definer) + the example and docs moved onto it · medium · 1 PR · epic
 [FIX-1553](../../epics/FIX-1553/SPEC.md) · follows [FIX-1557](../FIX-1557/SPEC.md) (merged,
 [#2234](https://github.com/fixpoint-labs/flow-state-dev/pull/2234)) and supersedes its
 [D1](../FIX-1557/DECISIONS.md#d1)
@@ -20,7 +20,7 @@ Feature · `core` (one utility) + the example and docs moved onto it · medium �
 
 ## What changes
 
-![Two panels. Today the app's own code holds all five pieces, copied from the example: stored fields, the reaction with its three rules, search and reindex. After, the app writes its own fields and evaluator and makes one call; the core utility holds the stored fields, the reaction's three rules, search and reindex, tested once.](figures/what-changes.svg)
+![Two panels. Today the app's own code holds all five pieces, copied from the example: stored fields, the reaction with its three rules, search and reindex. After, the app writes its own fields and evaluator and makes one call; core's defineFacetedCollection holds the stored fields, the reaction's three rules, search and reindex, tested once.](figures/what-changes.svg)
 
 Look at where the three rules sit: in every app's copy today, in one tested place after.
 
@@ -29,7 +29,7 @@ Look at where the three rules sit: in every app's copy today, in one tested plac
 ```diff
 - import { indexFacets } from "./index-facets";             // the copied reaction
 - import { ticketStateSchema, facetQuerySchema, matchesFacets } from "./facets";
-+ import { utility } from "@flow-state-dev/core";
++ import { defineFacetedCollection } from "@flow-state-dev/core";
 
 - const tickets = defineResourceCollection({
 -   pattern: "tickets/*",
@@ -39,7 +39,7 @@ Look at where the three rules sit: in every app's copy today, in one tested plac
 - });
 - const search = handler({ /* list, matchesFacets, keys */ });
 - const reindex = sequencer({ /* pick unfaceted, run indexFacets on each */ });
-+ const tickets = utility.facetedCollection({
++ const tickets = defineFacetedCollection({
 +   name: "tickets",                                         // the accessor it registers under
 +   pattern: "tickets/*",
 +   scope: "user",
@@ -64,7 +64,7 @@ Look at where the three rules sit: in every app's copy today, in one tested plac
 
 ```mermaid
 flowchart LR
-  A["app: fields + evaluator block"] --> U["utility.facetedCollection"]
+  A["app: fields + evaluator block"] --> U["defineFacetedCollection"]
   U --> C["collection with its own reaction"]
   U --> S["search block · no model"]
   U --> R["reindex block"]
@@ -87,10 +87,10 @@ around.
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · Ships in core's `utility` namespace, beside `cascadingRouter`, as a
-   factory that owns the collection. No lazy `reactTo`, no new package.** If wrong: collections
-   the factory can't express (projected, a second body reaction) stay on hand-wiring until it
-   grows.
+1. **[D1](DECISIONS.md#d1) · Ships in core as `defineFacetedCollection`, a definer beside
+   `defineResourceCollection` that owns the collection. No lazy `reactTo`, no new package.** If
+   wrong: collections it can't express (projected, parameterized keys, a second body reaction)
+   stay on hand-wiring until it grows.
 2. **[D2](DECISIONS.md#d2) · The example and docs move onto the utility. The hand-wired reaction
    stops being taught as code to copy; stored field names stay the same.** If wrong: someone who
    needs a custom shape has the utility's source, not a docs walkthrough.
