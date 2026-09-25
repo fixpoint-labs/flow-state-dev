@@ -236,10 +236,32 @@ const appendPost = handler({
     // client reads a channel by filtering its session's items to
     // `channel-post`, the way it reads any conversation. Nothing is copied into
     // state — a second record of the post could only disagree with the first.
-    ctx.emit.component(CHANNEL_POST_COMPONENT, line);
+    //
+    await emitChannelPostLine(ctx, line);
     return line;
   }
 });
+
+/**
+ * Keep a post's line as its `channel-post` item, and resolve only once the
+ * item is stored.
+ *
+ * The item is the only copy of the line, so this uses the awaited emitter and
+ * rejects when the write does. `ctx.emit.component` drops its write's outcome,
+ * which would let a post hand back a line no read will ever show. A context
+ * without the awaited emitter cannot confirm the line was kept, so that is a
+ * failure too, never a fall back to the fire-and-forget emitter.
+ *
+ * @param ctx The post's block context.
+ * @param line The line, exactly as `read` and a page should see it.
+ */
+export async function emitChannelPostLine(ctx: BlockContext, line: Record<string, unknown>): Promise<void> {
+  const emit = ctx._emitComponentAwaited;
+  if (emit === undefined) {
+    throw new Error("channel post: this context cannot confirm a line was kept, so it posts nothing");
+  }
+  await emit.call(ctx, CHANNEL_POST_COMPONENT, line);
+}
 
 /**
  * The posted lines inside this request's history window, oldest first.
@@ -247,12 +269,16 @@ const appendPost = handler({
  * Inside a block every item arrives wrapped, so the component name and its
  * data sit under `payload`. A malformed `channel-post` item is skipped rather
  * than failing the read: the transcript is what parses as a line.
+ *
+ * @param ctx The reading block's context.
+ * @param schema The line schema of the kind reading them.
+ * @returns Each `channel-post` item's data that parses under `schema`.
  */
-function postedLines(ctx: BlockContext): ChannelTranscriptLine[] {
+export function readChannelPostLines<T>(ctx: BlockContext, schema: z.ZodType<T>): T[] {
   return ctx.session.items.all({ itemTypes: ["component"] }).flatMap((item) => {
     const payload = item.payload as { component?: unknown; data?: unknown } | undefined;
     if (payload?.component !== CHANNEL_POST_COMPONENT) return [];
-    const line = channelTranscriptLineSchema.safeParse(payload.data);
+    const line = schema.safeParse(payload.data);
     return line.success ? [line.data] : [];
   });
 }
@@ -295,7 +321,7 @@ const readChannelFor = (boardIds: readonly string[]) =>
         // schema. The rows never come back here either way: reading a board is
         // a board read.
         ...(boards.length === 0 ? {} : { boards }),
-        transcript: withoutRepeats([...channel.transcript, ...postedLines(ctx)])
+        transcript: withoutRepeats([...channel.transcript, ...readChannelPostLines(ctx, channelTranscriptLineSchema)])
       };
     }
   });

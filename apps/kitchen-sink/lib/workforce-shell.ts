@@ -27,6 +27,11 @@ export const SHELL_FLOW_KIND = "chat-agent";
  */
 export const CHANNEL_KINDS = ["channel", "digest"] as const;
 
+/** Whether a picked flow kind is a channel kind, whose panel shows a transcript rather than a conversation. */
+export function isChannelKind(kind: string): boolean {
+  return (CHANNEL_KINDS as readonly string[]).includes(kind);
+}
+
 /**
  * The seat kinds: the built-in `agent`, plus every kind under
  * `workforce/flows/workers/`.

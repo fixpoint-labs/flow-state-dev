@@ -12,6 +12,9 @@
  *     as it was" case fails.
  *   - read the transcript from `state.transcript` only: the legacy-then-items
  *     and the window cases fail.
+ *   - emit the line through `ctx.emit.component`, not awaited: the
+ *     cannot-be-written case fails. The post succeeds and the write's error
+ *     surfaces only as an unhandled rejection.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -128,6 +131,43 @@ describe("a channel post is one channel-post item", () => {
       const result = await call(instance, runtime, "post", { body: "not mine", author: "marketing.intern" });
       expect(result.error).toBeDefined();
       expect(await postedLines(runtime.stores, CHANNEL)).toEqual([]);
+    } finally {
+      await state.dispose();
+    }
+  });
+});
+
+describe("a post returns only once its line is stored", () => {
+  // The item is the only record of a line, so a post that hands back its line
+  // while the write that keeps it failed would be reporting a line no read
+  // will ever show. The failure has to reach the caller.
+  it("fails when the line's item cannot be written", async () => {
+    const { instance, state } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, ["engineering.lead"]);
+
+      // The store accepts every write except the flush that carries the line.
+      const request = runtime.stores.request;
+      const persistEvents = request.persistEvents.bind(request);
+      const flushEvents = request.flushEvents.bind(request);
+      let lineQueued = false;
+      request.persistEvents = (requestId, events) => {
+        if (events.some((e) => e.type === "item.done" && (e as { item?: { component?: string } }).item?.component === "channel-post")) {
+          lineQueued = true;
+        }
+        persistEvents(requestId, events);
+      };
+      request.flushEvents = async (requestId) => {
+        if (lineQueued) {
+          lineQueued = false;
+          throw new Error("store unavailable");
+        }
+        await flushEvents(requestId);
+      };
+
+      const result = await call(instance, runtime, "post", { body: "keep me" });
+      expect(result.error?.message ?? "").toContain("store unavailable");
     } finally {
       await state.dispose();
     }

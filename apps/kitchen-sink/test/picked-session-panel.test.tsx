@@ -17,6 +17,11 @@
  *   - send `{ body, author: "devuser" }` from the channel composer: the
  *     channel case fails on the recorded input.
  *   - point `agent` at `answer`: the agent case fails.
+ *   - settle on the session's `isStreaming` rather than the send's own
+ *     request's status: the settles-on-its-own-request case fails (the text
+ *     clears when another request's stream closes).
+ *   - leave the composer unkeyed by session: the switching-picks case fails
+ *     (the first seat's draft is still there).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -27,10 +32,20 @@ afterEach(cleanup);
 
 type Item = Record<string, unknown>;
 
-function session(over: { items?: Item[]; isStreaming?: boolean; sendAction?: ReturnType<typeof vi.fn> } = {}) {
+function session(
+  over: {
+    sessionId?: string;
+    items?: Item[];
+    isStreaming?: boolean;
+    isStuck?: boolean;
+    sendAction?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
   return {
+    sessionId: over.sessionId ?? "sess-a",
     items: over.items ?? [],
     isStreaming: over.isStreaming ?? false,
+    isStuck: over.isStuck ?? false,
     isFinishing: false,
     isLoading: false,
     statusMessage: "",
@@ -47,8 +62,18 @@ const line = (id: string, body: string, who: { author?: string; principal?: stri
   data: { id, at: 1, authorVerified: false, body, ...who },
 });
 
+/** The server's answer for each request id; anything unlisted is still running. */
+let statuses: Record<string, string> = {};
+const requestStatus = vi.fn(async (id: string) => statuses[id] ?? "in_progress");
+afterEach(() => {
+  statuses = {};
+  requestStatus.mockClear();
+});
+
 function panel(kind: string, s: never) {
-  return render(<PickedSessionPanel session={s} kind={kind} conversation={<div data-testid="stream-items" />} />);
+  return render(
+    <PickedSessionPanel session={s} kind={kind} requestStatus={requestStatus} conversation={<div data-testid="stream-items" />} />,
+  );
 }
 
 async function type(label: string, text: string) {
@@ -119,6 +144,7 @@ describe("a channel's panel", () => {
           items: [{ id: "e", type: "error", requestId: "req-refused", message: "channel-not-bound: not an open channel" }],
         })}
         kind="channel"
+        requestStatus={requestStatus}
         conversation={null}
       />,
     );
@@ -133,16 +159,69 @@ describe("a channel's panel", () => {
     expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe("please keep me");
 
     // A post the server keeps clears the composer.
+    statuses["req-kept"] = "completed";
     sendAction.mockResolvedValueOnce({ status: "in_progress", request: { id: "req-kept" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(3));
     view.rerender(
-      <PickedSessionPanel session={session({ sendAction, items: [line("k", "please keep me", { principal: "devuser" })] })} kind="channel" conversation={null} />,
+      <PickedSessionPanel
+        session={session({
+          sendAction,
+          items: [line("k", "please keep me", { principal: "devuser" })],
+        })}
+        kind="channel"
+        requestStatus={requestStatus}
+        conversation={null}
+      />,
     );
     await waitFor(() =>
       expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe(""),
     );
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("a send settles on its own request", () => {
+  it("keeps the text while another request ends, and shows the failure when its own does", async () => {
+    const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-mine" } }));
+    const view = panel("channel", session({ sendAction, isStreaming: true }));
+    await type("Post to this channel", "not yet kept");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
+
+    // Some other request on this session finishes: the stream closes, with no
+    // error item for this send. That says nothing about this send.
+    view.rerender(
+      <PickedSessionPanel
+        session={session({ sendAction, isStreaming: false })}
+        kind="channel"
+        requestStatus={requestStatus}
+      />,
+    );
+    // This send is still running, so nothing settles.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe("not yet kept");
+    expect(screen.queryByRole("alert")).toBeNull();
+    // It asked the server about this send, not about the session.
+    expect(requestStatus).toHaveBeenCalledWith("req-mine");
+
+    // This send's own request then fails, with no error item: the failure
+    // shows once the next check sees it, and the text stays.
+    statuses["req-mine"] = "failed";
+    expect((await screen.findByRole("alert", undefined, { timeout: 2000 })).textContent).toContain("failed");
+    expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe("not yet kept");
+  });
+});
+
+describe("switching picks", () => {
+  it("starts the next session's composer empty, with nothing pending and no failure", async () => {
+    const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
+    const view = panel("agent", session({ sessionId: "sess-a", sendAction }));
+    await type("Message this seat", "meant for the first seat");
+
+    view.rerender(<PickedSessionPanel session={session({ sessionId: "sess-b", sendAction })} kind="agent" requestStatus={requestStatus} />);
+    expect((screen.getByLabelText("Message this seat") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

@@ -422,7 +422,7 @@ That map is the whole registration surface. There is no second API, and a custom
 
 The factory the framework ships builds only the built-in kind, so a kind of your own is a flow you write: its own state, its own post, its own read. It cannot hold a board: `boards:` on a record naming your kind is refused by name when you bind the roster.
 
-A kind of your own shows on a page the same way when its `post` emits the line as a `channel-post` component item: `ctx.emit.component("channel-post", line)`.
+A kind of your own shows on a page the same way when its `post` keeps the line as a `channel-post` item: `await emitChannelPostLine(ctx, line)`. It resolves once the item is stored and throws if the write fails, so a post never hands back a line nothing kept. Its `read` gets the posted lines back with `readChannelPostLines(ctx, yourLineSchema)`.
 
 Different members, a different charter and a different set of boards are not a diverging workflow; they are all one kind. A different `read` is.
 

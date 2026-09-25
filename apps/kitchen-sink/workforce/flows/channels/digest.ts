@@ -25,8 +25,7 @@
  * name when the roster binds.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
-import { CHANNEL_POST_COMPONENT } from "@flow-state-dev/workforce";
+import { emitChannelPostLine, readChannelPostLines } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /**
@@ -95,20 +94,6 @@ const digestReadOutputSchema = z.object({
   total: z.number(),
 });
 
-/**
- * The notices this session's posts left, oldest first: its `channel-post`
- * items inside the history window. Inside a block each item arrives wrapped,
- * so the component and its data sit under `payload`.
- */
-function postedNotices(ctx: BlockContext): DigestLine[] {
-  return ctx.session.items.all({ itemTypes: ["component"] }).flatMap((item) => {
-    const payload = item.payload as { component?: unknown; data?: unknown } | undefined;
-    if (payload?.component !== CHANNEL_POST_COMPONENT) return [];
-    const line = digestLineSchema.safeParse(payload.data);
-    return line.success ? [line.data] : [];
-  });
-}
-
 /** Is this session state a `digest` channel somebody opened? */
 function openDigest(
   state: unknown,
@@ -152,7 +137,8 @@ const post = handler({
 
     // The notice is this request's own item, the same way the built-in kind
     // keeps a line, so a page shows this channel exactly as it shows any other.
-    ctx.emit.component(CHANNEL_POST_COMPONENT, line);
+    // Awaited: the item is the only copy, so a failed write fails the post.
+    await emitChannelPostLine(ctx, line);
     return line;
   },
 });
@@ -170,7 +156,7 @@ const read = handler({
     // whole transcript. `total` is reported so a reader can tell a short
     // channel from a truncated one; it counts what this read can see, which
     // on a long-lived channel is the notices inside the history window.
-    const notices = [...channel.transcript, ...postedNotices(ctx)];
+    const notices = [...channel.transcript, ...readChannelPostLines(ctx, digestLineSchema)];
     return {
       id: ctx.session.identity.id,
       members: channel.members,

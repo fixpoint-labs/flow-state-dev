@@ -18,30 +18,30 @@
  * person's line or message, so what shows after a reload is what showed
  * before it.
  */
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { useSession } from "@flow-state-dev/react";
-import { CHANNEL_POST_COMPONENT } from "@flow-state-dev/workforce";
+import { CHANNEL_POST_COMPONENT, type ChannelTranscriptLine } from "@flow-state-dev/workforce";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CHANNEL_KINDS, seatAskFor } from "@/lib/workforce-shell";
+import { isChannelKind, seatAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
 
-/** One channel line as its `channel-post` item carries it. */
-type ChannelLine = { id: string; at?: number; author?: string; principal?: string; body: string };
+/** Reads one request's own status from the server, by id. */
+export type RequestStatusLookup = (requestId: string) => Promise<string>;
 
 /** Who a line names: its author claim, else the server's principal, else nobody. */
-export function lineLabel(line: Pick<ChannelLine, "author" | "principal">): string {
+export function lineLabel(line: Pick<ChannelTranscriptLine, "author" | "principal">): string {
   return line.author ?? line.principal ?? "unattributed";
 }
 
 /** The session's `channel-post` lines, in the order the session holds them. */
-function channelLines(items: Session["items"]): ChannelLine[] {
+function channelLines(items: Session["items"]): ChannelTranscriptLine[] {
   return items.flatMap((item) => {
     const component = item as { type: string; component?: string; data?: unknown };
     if (component.type !== "component" || component.component !== CHANNEL_POST_COMPONENT) return [];
-    const data = component.data as Partial<ChannelLine> | undefined;
-    return typeof data?.id === "string" && typeof data.body === "string" ? [data as ChannelLine] : [];
+    const data = component.data as Partial<ChannelTranscriptLine> | undefined;
+    return typeof data?.id === "string" && typeof data.body === "string" ? [data as ChannelTranscriptLine] : [];
   });
 }
 
@@ -50,23 +50,33 @@ function channelLines(items: Session["items"]): ChannelLine[] {
  *
  * @param session The picked session, as `useSession` returns it.
  * @param kind The picked flow's kind: a channel kind or a seat kind.
- * @param conversation The session's item stream, drawn for a seat.
+ * @param requestStatus Reads a sent request's own status, so a send settles
+ *   on its request and not on whatever the session's stream did.
+ * @param conversation The session's item stream, drawn for a seat. A channel
+ *   draws its transcript instead, so the page need not build one for it.
  */
 export function PickedSessionPanel({
   session,
   kind,
+  requestStatus,
   conversation,
 }: {
   session: Session;
   kind: string;
-  conversation: ReactNode;
+  requestStatus: RequestStatusLookup;
+  conversation?: ReactNode;
 }) {
-  if ((CHANNEL_KINDS as readonly string[]).includes(kind)) {
+  // Each composer is keyed by the session it talks to, so a draft, a pending
+  // send or a failure never carries over to the next pick.
+  const composerKey = session.sessionId ?? "none";
+  if (isChannelKind(kind)) {
     return (
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
         <ChannelTranscript session={session} />
         <Composer
+          key={composerKey}
           session={session}
+          requestStatus={requestStatus}
           label="Post to this channel"
           placeholder="Write a line for this channel…"
           send={(text) => session.sendAction("post", { body: text })}
@@ -85,7 +95,9 @@ export function PickedSessionPanel({
         </p>
       ) : (
         <Composer
+          key={composerKey}
           session={session}
+          requestStatus={requestStatus}
           label="Message this seat"
           placeholder="Write to this seat…"
           send={(text) => session.sendAction(ask.action, { [ask.field]: text })}
@@ -125,11 +137,13 @@ function ChannelTranscript({ session }: { session: Session }) {
  */
 function Composer({
   session,
+  requestStatus,
   label,
   placeholder,
   send,
 }: {
   session: Session;
+  requestStatus: RequestStatusLookup;
   label: string;
   placeholder: string;
   send: (text: string) => Promise<{ request: { id: string } }>;
@@ -138,21 +152,58 @@ function Composer({
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
-  // A sent request is settled by the stream: an error item on it is a
-  // failure, and the stream closing without one is the server keeping it.
-  useEffect(() => {
-    if (pending === null) return;
-    const error = session.items.find((item) => item.type === "error" && item.requestId === pending) as
+  const items = useRef(session.items);
+  items.current = session.items;
+  const errorFor = (requestId: string) =>
+    items.current.find((item) => item.type === "error" && item.requestId === requestId) as
       | { message?: string }
       | undefined;
+
+  // A send is settled by its own request, never by the session at large:
+  // another stream on this session closing says nothing about this one. An
+  // error item on it is a failure. Once the stream has closed, the request's
+  // own record decides: `completed` (or `suspended`, waiting on someone) is
+  // the server keeping it and clears the text; any other end is a failure;
+  // still running means some other stream closed, so ask again shortly. A
+  // send the page loses track of (the stream dropped and the watchdog gave
+  // up) keeps its text and says so, since nothing confirmed it.
+  useEffect(() => {
+    if (pending === null) return;
+    const error = errorFor(pending);
     if (error !== undefined) {
       setFailure(error.message ?? "The request failed.");
       setPending(null);
-    } else if (!session.isStreaming) {
-      setDraft("");
-      setPending(null);
+      return;
     }
-  }, [pending, session.items, session.isStreaming]);
+    if (session.isStuck) {
+      setFailure("The page lost this send before the server confirmed it. Your text is kept.");
+      setPending(null);
+      return;
+    }
+    if (session.isStreaming) return;
+
+    let cancelled = false;
+    void (async () => {
+      while (!cancelled) {
+        const status = await requestStatus(pending).catch(() => "in_progress");
+        if (cancelled) return;
+        if (status === "completed" || status === "suspended") {
+          setDraft("");
+          setPending(null);
+          return;
+        }
+        if (status !== "in_progress") {
+          setFailure(errorFor(pending)?.message ?? `The request ended ${status}.`);
+          setPending(null);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pending, session.items, session.isStreaming, session.isStuck, requestStatus]);
 
   const text = draft.trim();
   const busy = pending !== null;

@@ -16,7 +16,7 @@ import {
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
-import { createResourceClient, createSessionClient } from "@flow-state-dev/client";
+import { createClient, createResourceClient, createSessionClient } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
 
@@ -60,6 +60,7 @@ import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
 import {
   CHANNEL_KINDS,
+  isChannelKind,
   SEAT_HIRES_TAG,
   SEAT_HIRES_TITLE,
   SEAT_KINDS,
@@ -252,6 +253,14 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
     items: true,
     autoResume: true,
   });
+  // A composer settles a send on that request's own status, read from the
+  // picked flow, rather than on the session's stream closing.
+  const pickedAddress = picked?.address;
+  const pickedRequestStatus = useMemo(() => {
+    if (pickedAddress === undefined) return async () => "in_progress";
+    const client = createClient({ flowKind: pickedAddress, userId: KITCHEN_SINK_USER_ID, baseUrl: "" });
+    return async (requestId: string) => (await client.getRequestStatus(requestId)).status;
+  }, [pickedAddress]);
 
   // One resource client for every panel read, held stable: the panels fence
   // their reads on it, so a new object each render would read as a new
@@ -569,7 +578,9 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
       <PickedSessionPanel
         session={pickedSession}
         kind={picked.kind}
+        requestStatus={pickedRequestStatus}
         conversation={
+          isChannelKind(picked.kind) ? null : (
           <Conversation className="min-h-0 flex-1" data-testid="conversation">
             <ConversationBody
               items={pickedSession.items}
@@ -583,6 +594,7 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
             />
             <ConversationScrollButton />
           </Conversation>
+          )
         }
       />
     );
