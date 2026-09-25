@@ -8,7 +8,7 @@ Improvement · `engine` (tests plus two module-level exports) · small · 1 PR �
 
 | Someone who… | Today | After |
 |---|---|---|
-| **builds the user stream, or any new `/users/:userId/...` route** | Nothing tells them the route must also filter by organization, tenant and the anonymous allow-list. A handler that filters by the path's user id alone passes every existing test | CI fails until the route has an entry in the scoping table and passes it: callers from another organization, another tenant, or anonymous callers get none of the rows the table seeds |
+| **builds the user stream, or any new `/users/:userId/...` route** | Nothing tells them the route must also filter by organization, tenant and the anonymous allow-list. A handler that filters by the path's user id alone passes every existing test | Two stages in CI. With no scoping-table entry, the suite fails at once, naming the route. Once they add the entry, it runs callers from another organization, another tenant and anonymous callers against the route, and fails if any of them sees or changes a row the owner's own call can see |
 | **belongs to two organizations** | Safe on the one live route (`check-interrupted`). On the next route, safety depends on whoever writes it | Every user-addressed route is shown not to cross organizations, including the ones not yet built |
 | **runs one host for several tenants** | Same: the live route checks the tenant; the next route might not | Same guarantee, on the tenant axis |
 | **runs a mixed app: one flow authenticates, the rest are open** | An anonymous caller can't touch the authenticated flow's runs through the sweep. The next route has to reproduce that by hand | Proved for every user-addressed route, anonymous caller included |
@@ -19,10 +19,10 @@ has no rows. The risk is the route after this one, whose author has nothing to r
 
 ## What changes
 
-![Two lanes. Today: a new user-addressed route goes from the guard, which checks only the path's user id, through its handler to the rows, with nothing between it and merge. After: the same path, plus a CI fence where three foreign callers and one own caller probe every user-addressed route. A route that leaks, or has no table entry, stops at the fence](figures/what-changes.svg)
+![Two lanes. Today: a new user-addressed route goes from the guard, which checks only the path's user id, through its handler to the rows, with nothing between it and merge. After: the same path, plus a CI fence where three foreign callers and one own caller probe every user-addressed route. A route with no table entry stops at the fence; once its entry exists, so does one that leaks](figures/what-changes.svg)
 
 Same route, twice. The guard and the handler are identical in both lanes. What moves is the
-fence: after this change, no user-addressed route reaches merge without passing it.
+fence: after this change, a user-addressed route reaches merge only with a table entry, and only if that entry's foreign callers see nothing.
 
 **What a route author meets.** Illustrative: the table's shape is the implementer's.
 
@@ -48,7 +48,9 @@ flowchart LR
 ```
 
 The set of routes under test comes from the guard's own classification over the real route table,
-not from a hand list. A new route is covered the moment it is classified.
+not from a hand list. A new route fails the suite the moment it is classified, because it has no
+entry. The entry its author then writes is what lets the harness seed, call and observe it; the
+harness runs the owner's call first, so an entry that seeds or observes nothing fails too.
 
 ## What stays as it is
 
@@ -60,14 +62,14 @@ not from a hand list. A new route is covered the moment it is classified.
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · Enforce the scope with a test over every user-addressed route, not a
-   shared predicate the dispatcher hands to handlers, yet.** If wrong: the guarantee is only as
-   strong as CI and the honesty of each table entry. A handler handed a predicate could still
-   ignore it, so neither option makes forgetting impossible; only the test makes it fail.
-2. **[D2](DECISIONS.md#d2) · The guarantee covers every route addressed by a user id in its path,
-   including routes not built yet. Listings and session routes stay outside it.** If wrong: a
-   user-addressed route classified some other way escapes the table. BR-2 closes that by path
-   shape.
+**Approve the direction.** That is the only ask: the isolation objective is already fixed
+(FIX-1442, FIX-1569), and how it is enforced is an engineering call. Two such calls are recorded
+in [DECISIONS.md → Decided, not asked](DECISIONS.md#decided-not-asked), so you can see them
+without being asked to adjudicate them:
 
-**Open: none.** Nothing here needs your call beyond the direction. Number 1 is the one to weigh.
-The reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+- [E1](DECISIONS.md#e1) · a test over every user-addressed route now; the shared predicate waits
+  for its second consumer.
+- [E2](DECISIONS.md#e2) · the test covers every route addressed by a user id in its path, built or
+  not; listings and session routes keep their own checks.
+
+**Open: none.** The cases the code must satisfy are in [BUSINESS-RULES.md](BUSINESS-RULES.md).

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 330" role="img" aria-label="Two lanes. Today a new user-addressed route passes the guard, which checks only the path's user id, then its handler, then the rows, and reaches merge with nothing in between. After, the same path meets a CI fence where an own caller and three foreign callers probe every user-addressed route; a route that leaks or has no table entry stops there."
+<svg viewBox="0 0 940 330" role="img" aria-label="Two lanes. Today a new user-addressed route passes the guard, which checks only the path's user id, then its handler, then the rows, and reaches merge with nothing in between. After, the same path meets a CI fence where an own caller and three foreign callers probe every user-addressed route; a route with no table entry stops there, and once its entry exists, so does one that leaks."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -73,9 +73,9 @@
     <path class="arrow" d="M770,214 H814"/><path class="head" d="M810,210 L818,214 L810,218 z"/>
     <text class="t-c" x="444" y="266">CI · scoping table</text>
     <text class="t-g" x="444" y="282">other org · other tenant · anonymous</text>
-    <text class="t-c" x="444" y="298">own caller must still see its row</text>
-    <text class="t-s" x="28" y="266">Every route the guard classifies</text>
-    <text class="t-s" x="28" y="282">user-addressed is probed; no entry,</text>
-    <text class="t-s" x="28" y="298">or a leak, and CI fails.</text>
+    <text class="t-c" x="444" y="298">owner's call first: must see its row</text>
+    <text class="t-s" x="28" y="266">1 · a user-addressed route with no</text>
+    <text class="t-s" x="28" y="282">table entry: CI fails at once.</text>
+    <text class="t-s" x="28" y="298">2 · with its entry: a leak fails.</text>
   </g>
 </svg>
