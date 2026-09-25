@@ -257,6 +257,16 @@ Static resources are declared by name at definition time. Resource collections l
 
 See [Resource Collections](./resource-collections.md) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model.
 
+#### Owner-private collections
+
+A collection declaring `ownerPrivate: { param }` owns every key whose first segment beginning `~` sits at that parameter. Core validates the declaration's shape at definition (the parameter occurs exactly once, no `**`, no browser read of state or content). Engine enforces it in one module, with two fences:
+
+- **The key fence, always on.** A key's first segment beginning `~` is its owner. A key with one is served only through an owner-private collection, only when that segment sits at its owner parameter, and only to the user `ownerSegment` encodes there. Later `~` segments are data. Every other collection lists without it, reads it as absent and is refused on write: through the resource handle, the request-start seed cache, projected collections, the browser resource routes, `/state` and the debug endpoints. It reads only the key, so it holds in every process over the store.
+- **The startup fence, armed by a declaration.** Once `FlowRegistry` holds a flow declaring an owner-private collection, it refuses any flow declaring another collection in the same scope whose pattern can reach its keys, checking flows it already holds and every later one. It is never cleared, even across unregister, for the reason the participants map is kept: the rows outlive the registration.
+- **Single resources, in every registry.** `FlowRegistry` refuses a flow declaring a single resource whose storage key (its `ref`, else its accessor) has a segment beginning `~`, armed or not. A single resource's key is the same for every caller, so it is never the owner's own, and the key fence reads only collections.
+
+Workforce's private roster collection is the first consumer. Engine knows it only as an owner-private collection.
+
 ### Block-Level Resource Declarations
 
 Blocks declare resource dependencies via a single `resources` field:

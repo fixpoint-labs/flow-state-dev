@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineResourceCollection, isDefinedResourceCollection } from "../src/types/resource-collection";
+import { defineResourceCollection, isDefinedResourceCollection, ownerSegment } from "../src/types/resource-collection";
 import {
   normalizeResourcePath,
   resolveCollectionKey,
@@ -145,6 +145,30 @@ describe("defineResourceCollection", () => {
         stateSchema: z.object({}),
       })
     ).toThrow("non-empty");
+  });
+
+  it("applies no package's key policy: any valid pattern defines, whatever it names", () => {
+    // Which collections may reach an owner-private collection's rows is
+    // decided when flows register and on every read, not when a collection
+    // is defined. An app that never declares an owner-private collection
+    // defines these like any other pattern.
+    for (const pattern of [
+      "workforce/roster/**",
+      "workforce/**",
+      "**",
+      "workforce/roster/[owner]/notes",
+      "workforce/roster/*/*",
+      "workforce/roster/[owner]/[seat]",
+    ]) {
+      expect(() =>
+        defineResourceCollection({
+          pattern,
+          scope: "org",
+          stateSchema: z.object({}).passthrough(),
+          client: { state: { read: true } },
+        })
+      ).not.toThrow();
+    }
   });
 
   it("throws when ** is not the last segment", () => {
@@ -646,5 +670,60 @@ describe("lifecycle hooks", () => {
     expect(coll.onInstanceCreated).toBeDefined();
     expect(coll.onInstanceUpdated).toBeDefined();
     expect(coll.onInstanceDeleted).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Owner-private collections: the declaration's shape, checked at definition
+// ---------------------------------------------------------------------------
+
+describe("defineResourceCollection · ownerPrivate", () => {
+  const drafts = (overrides: Record<string, unknown> = {}) =>
+    defineResourceCollection({
+      pattern: "drafts/[owner]/[id]",
+      ownerPrivate: { param: "owner" },
+      scope: "org",
+      stateSchema: z.object({}).passthrough(),
+      ...overrides,
+    } as Parameters<typeof defineResourceCollection>[0]);
+
+  it("defines a collection that names its owner parameter once, with no browser read", () => {
+    const collection = drafts();
+    expect(collection.ownerPrivate).toEqual({ param: "owner" });
+    // A spread copy keeps the declaration: it is a field, not a brand.
+    expect({ ...collection }.ownerPrivate).toEqual({ param: "owner" });
+  });
+
+  it("refuses each browser read, since the browser routes would hand rows to every member", () => {
+    const refusal = 'Owner-private collection "drafts/[owner]/[id]" must not enable a browser read.';
+    expect(() => drafts({ client: { state: { read: true } } })).toThrow(refusal);
+    expect(() => drafts({ client: { content: { read: true } } })).toThrow(refusal);
+    expect(() => drafts({ client: { content: { prefetch: true } } })).toThrow(refusal);
+    // A browser write is not a read: the owner may still create through it.
+    expect(() => drafts({ client: { content: { create: true } } })).not.toThrow();
+  });
+
+  it("refuses a parameter the pattern lacks, or declares more than once", () => {
+    expect(() => drafts({ ownerPrivate: { param: "author" } })).toThrow(
+      'Owner-private collection "drafts/[owner]/[id]" must declare parameter "author" exactly once.'
+    );
+    expect(() => drafts({ pattern: "drafts/[owner]/[owner]" })).toThrow(
+      'Owner-private collection "drafts/[owner]/[owner]" must declare parameter "owner" exactly once.'
+    );
+  });
+
+  it('refuses "**", because the owner has to sit at one known segment', () => {
+    expect(() => drafts({ pattern: "drafts/[owner]/**" })).toThrow(
+      'Owner-private collection "drafts/[owner]/**" must not use "**": its owner sits at one segment.'
+    );
+  });
+});
+
+describe("ownerSegment", () => {
+  it("is ~ plus the escaped user id, one segment whatever the id holds", () => {
+    expect(ownerSegment("alice")).toBe("~alice");
+    expect(ownerSegment("bob/x")).toBe("~bob%2Fx");
+    expect(ownerSegment("~eve")).toBe("~%7Eeve");
+    expect(ownerSegment("bob/x")).not.toContain("/");
   });
 });

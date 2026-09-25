@@ -154,6 +154,41 @@ const existing = await notes.get({ topic: "rust" });
 
 The framework resolves `{ topic: "react" }` to the storage key `react/notes`.
 
+## Owner-private collections
+
+Sometimes a row belongs to one person and nobody else in the org should see it, not even through a wider collection that happens to match its key. Declare the collection owner-private and name the parameter that holds the owner:
+
+```ts
+import { defineResourceCollection, ownerSegment } from "@flow-state-dev/core";
+
+const drafts = defineResourceCollection({
+  pattern: "drafts/[owner]/[id]",
+  ownerPrivate: { param: "owner" },
+  scope: "org",
+  stateSchema: draftSchema,
+});
+
+// in a block
+const userId = ctx.session.identity.userId;
+if (!userId) throw new Error("This request has no user.");
+await ctx.resources.drafts.create({ owner: ownerSegment(userId), id: "q3-plan" }, state);
+```
+
+`ownerSegment(userId)` turns a user id into one key segment that starts with `~`. The collection serves a row only to the user its owner segment names. For everyone else the row is not there: lists and counts leave it out, `getOptional` returns nothing, and `get` or any write throws "A row of an owner-private collection is readable only by the user it belongs to."
+
+**No other collection can reach those rows.** A key segment starting with `~` is reserved for owner-private collections in every app. A wider collection such as `[tenant]/**` lists without them, and a write to one through it is refused. That holds in any process over the same store, including a worker that never loaded the owner-private collection.
+
+**Overlaps fail at startup.** Once a flow declaring an owner-private collection is registered, the app refuses to start if any flow declares a collection in the same scope whose pattern could reach its keys, whichever registers first:
+
+```
+Collection pattern "[tenant]/**" can reach the rows of owner-private collection
+"drafts/[owner]/[id]". Only that collection reads or writes them, each for the user it belongs to.
+```
+
+Declaring the same owner-private collection on several flows is fine, and so is a collection in another scope, which can't reach these rows.
+
+**Limits.** The pattern must declare the named parameter exactly once and must not use `**`. An owner-private collection has no browser read: `client.state.read`, `client.content.read` and `client.content.prefetch` are each refused when it is defined, so the browser routes never return its rows. A key's first segment starting with `~` is its owner, so no segment before the owner parameter may start with `~`; segments after it may. Don't use `~` at the start of a key segment anywhere else. A single resource whose `ref`, or accessor name when it has no `ref`, has such a segment is refused when its flow registers, in every app.
+
 ## Eviction
 
 When `maxInstances` is set, the collection enforces a cap on live instances:

@@ -416,7 +416,11 @@ resources: {
 
 The owner comes from the credential, so your resolver has to name the member making the call. The example resolver above answers `workforce-admin` for every token, which would make every seat belong to that one user and nobody else.
 
-The private collection reaches only the calling user's own rows. `create`, `get` and `delete` on a key naming another user throw `A hired-seat row is readable only by the user it belongs to.`, `getOptional` on one returns `undefined`, and `list` leaves such rows out. Firing a user-owned seat reads and deletes through the same collection and key, then releases `seatAddress(orgId, seatId, userId)`. `reloadHiredSeats` needs no change: it reads these rows with the rest, and each seat's `ownerPin` carries the user.
+The private collection reaches only the calling user's own rows. `create`, `get` and `delete` on a key naming another user throw `A row of an owner-private collection is readable only by the user it belongs to.`, `getOptional` on one returns `undefined`, and `list` leaves such rows out. Firing a user-owned seat reads and deletes through the same collection and key, then releases `seatAddress(orgId, seatId, userId)`. `reloadHiredSeats` needs no change: it reads these rows with the rest, and each seat's `ownerPin` carries the user.
+
+The private roster collection is an [owner-private collection](../resources/collections.md#owner-private-collections): each row's owner segment is the member who hired the seat. So a row is served only to that member, in every process over the store, and no other collection in your app can list or write it.
+
+Once a flow declaring the private collection is registered, the app refuses to start if any flow declares an org-scoped collection that could reach a user-owned row: `workforce/roster/**`, `workforce/roster/[owner]/notes`, a copy of `workforce/roster/[owner]/[seat]`, or a wide pattern such as `[tenant]/**`. For the org roster, declare `workforce/roster/*`, which only ever sees org-visible rows.
 
 Once registered, the seat answers its owner only. Any other member gets `404 Unknown flow`. The row has no browser read at all, so a roster panel reading the browser collection does not show it, not even to its owner.
 

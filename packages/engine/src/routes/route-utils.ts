@@ -27,6 +27,7 @@ import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
+import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
@@ -243,6 +244,12 @@ export function createScopeResources(options: {
    * Omitted when the scope has no projected collections.
    */
   projectedContext?: ProjectedResourceContext;
+  /**
+   * The session's user. A collection lists and reads only the keys
+   * {@link ownerKeyAdmits} admits for this user; without one, no row
+   * keyed to an owner.
+   */
+  userId?: string;
 }): Record<string, Record<string, unknown>> {
   const handles: Record<string, Record<string, unknown>> = {};
   const contentMap = options.persistedContent ?? {};
@@ -266,6 +273,7 @@ export function createScopeResources(options: {
         // route and the execution-context handle — a single-level `positions/*`
         // must not resolve `positions/AAPL/history` through `read`.
         if (!matchesPattern(pattern, storageKey)) return undefined;
+        if (!ownerKeyAdmits(extConfig, storageKey, options.userId)) return undefined;
         const state = await readProjectedRecord<JsonObject>(
           extConfig,
           extractBareTopic(pattern, storageKey),
@@ -303,6 +311,9 @@ export function createScopeResources(options: {
           return unsupportedEnumeration("count");
         },
         async get(key: string | Record<string, string>) {
+          if (!ownerKeyAdmits(extConfig, resolveCollectionKey(pattern, key), options.userId)) {
+            throw new Error(OWNER_ROW_REFUSAL);
+          }
           const ref = await readThrough(key);
           if (ref === undefined) {
             throw new Error(
@@ -321,7 +332,10 @@ export function createScopeResources(options: {
       // Build a lightweight read-only collection ref for clientData computation.
       // Instances are stored as path-keyed entries in the persisted resources map.
       const pattern = maybeConfig.pattern;
+      const collection = maybeConfig;
       const persisted = options.persisted ?? {};
+      const visible = (key: string): boolean =>
+        matchesPattern(pattern, key) && ownerKeyAdmits(collection, key, options.userId);
 
       function makeInstanceRef(key: string, value: unknown) {
         return {
@@ -339,14 +353,17 @@ export function createScopeResources(options: {
         config: maybeConfig,
         list() {
           return Object.entries(persisted)
-            .filter(([key]) => matchesPattern(pattern, key))
+            .filter(([key]) => visible(key))
             .map(([key, value]) => makeInstanceRef(key, value));
         },
         count() {
-          return Object.keys(persisted).filter((key) => matchesPattern(pattern, key)).length;
+          return Object.keys(persisted).filter(visible).length;
         },
         get(key: string | Record<string, string>) {
           const storageKey = resolveCollectionKey(pattern, key);
+          if (!ownerKeyAdmits(collection, storageKey, options.userId)) {
+            throw new Error(OWNER_ROW_REFUSAL);
+          }
           const value = persisted[storageKey];
           if (value === undefined) {
             throw new Error(`Resource instance "${storageKey}" not found in collection "${pattern}"`);
@@ -355,6 +372,7 @@ export function createScopeResources(options: {
         },
         getOptional(key: string | Record<string, string>) {
           const storageKey = resolveCollectionKey(pattern, key);
+          if (!ownerKeyAdmits(collection, storageKey, options.userId)) return undefined;
           const value = persisted[storageKey];
           if (value === undefined) return undefined;
           return makeInstanceRef(storageKey, value);
@@ -459,6 +477,12 @@ export async function buildResourceSnapshot(options: {
   configs: Record<string, unknown> | undefined;
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
+  /**
+   * The session's user. A collection's count and prefetch window hold only
+   * the keys {@link ownerKeyAdmits} admits for this user; without one,
+   * no row keyed to an owner.
+   */
+  userId?: string;
 }): Promise<Record<string, unknown> | undefined> {
   const out: Record<string, unknown> = {};
   const contentMap = options.persistedContent ?? {};
@@ -494,6 +518,7 @@ export async function buildResourceSnapshot(options: {
 
       const matchedKeys = Object.keys(persisted)
         .filter((k) => matchesPattern(pattern, k))
+        .filter((k) => ownerKeyAdmits(maybeConfig, k, options.userId))
         .sort();
       const count = matchedKeys.length;
 

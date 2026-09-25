@@ -14,11 +14,7 @@ import {
   dispatcher,
   handler,
 } from "@flow-state-dev/core";
-import {
-  HIRED_ROSTER_PRIVATE_PATTERN,
-  markHiredRosterPrivateCollection,
-  type ResourceCollectionRef,
-} from "@flow-state-dev/core/types";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowRegistry, createFlowState, inMemoryStores, runAction } from "../src";
 import { InstancePinMismatchError } from "../src/context/hire-plane";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -95,14 +91,13 @@ const seatKind = defineFlow({
   authentication: verified,
 });
 
-const privateRoster = markHiredRosterPrivateCollection(
-  defineResourceCollection({
-    pattern: HIRED_ROSTER_PRIVATE_PATTERN,
-    scope: "org",
-    flowIsolation: false,
-    stateSchema: z.object({ instructions: z.string() }),
-  }),
-);
+const privateRoster = defineResourceCollection({
+  pattern: "workforce/roster/[owner]/[seat]",
+  ownerPrivate: { param: "owner" },
+  scope: "org",
+  flowIsolation: false,
+  stateSchema: z.object({ instructions: z.string() }),
+});
 
 const peekBrowser = handler({
   name: "peek-browser",
@@ -365,7 +360,7 @@ describe("FIX-1529 hire plane", () => {
     ]);
   });
 
-  it("B a branded private writer lists only the caller's rows", async () => {
+  it("B the owner-private writer lists only the caller's rows", async () => {
     const stores = inMemoryStores();
     const primary = await stores.resolve(["primary"]);
     await primary.resourceState!.set(
@@ -568,8 +563,26 @@ describe("FIX-1529 hire plane", () => {
     expect(globex.status).toBe(201);
   });
 
-  it("refuses a flow that declares workforce/roster/** even if definition was bypassed", () => {
+  it("a registry holding the private writer refuses a flow that declares workforce/roster/**", () => {
     const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "writer",
+        resources: { privateRoster },
+        actions: {
+          ping: {
+            inputSchema: z.object({}),
+            block: handler({
+              name: "writer-ping",
+              inputSchema: z.object({}),
+              outputSchema: z.object({ ok: z.boolean() }),
+              execute: () => ({ ok: true }),
+            }),
+          },
+        },
+      })()
+    );
+    const reaches = /can reach the rows of owner-private collection "workforce\/roster\/\[owner\]\/\[seat\]"/;
     const leak = defineFlow({
       kind: "leak",
       actions: {
@@ -587,7 +600,7 @@ describe("FIX-1529 hire plane", () => {
     (leak as { resources: unknown }).resources = {
       roster: { pattern: "workforce/roster/**", scope: "org" },
     };
-    expect(() => registry.register(leak)).toThrow(/workforce\/roster\/\*\*|user-owned roster/);
+    expect(() => registry.register(leak)).toThrow(reaches);
 
     const redeclared = defineFlow({
       kind: "redeclared",
@@ -606,7 +619,7 @@ describe("FIX-1529 hire plane", () => {
     (redeclared as { resources: unknown }).resources = {
       roster: { pattern: "workforce/roster/[owner]/[seat]", scope: "org" },
     };
-    expect(() => registry.register(redeclared)).toThrow(/cannot be redeclared/);
+    expect(() => registry.register(redeclared)).toThrow(reaches);
 
     const notes = defineFlow({
       kind: "notes",
@@ -625,7 +638,7 @@ describe("FIX-1529 hire plane", () => {
     (notes as { resources: unknown }).resources = {
       roster: { pattern: "workforce/roster/[owner]/notes", scope: "org" },
     };
-    expect(() => registry.register(notes)).toThrow(/user-owned roster/);
+    expect(() => registry.register(notes)).toThrow(reaches);
 
     for (const [index, pattern] of ["workforce/[r]/[owner]/[seat]", "[a]/[b]/[c]/[d]"].entries()) {
       expect(() =>
@@ -652,7 +665,7 @@ describe("FIX-1529 hire plane", () => {
           },
         },
       })();
-      expect(() => registry.register(wide)).toThrow(/user-owned roster/);
+      expect(() => registry.register(wide)).toThrow(reaches);
     }
   });
 

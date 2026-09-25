@@ -57,7 +57,11 @@ export type {
   ToolCacheEntry,
   ToolCacheStore,
 } from "./blocks/tool-cache";
-export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
+export {
+  defineResourceCollection,
+  isDefinedResourceCollection,
+  ownerSegment,
+} from "./types/resource-collection";
 export {
   defineProjectedResourceCollection,
   isProjectedResourceCollection,

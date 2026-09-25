@@ -162,21 +162,24 @@ export async function handleGetSessionState(
     configs: sessionConfigs,
     persisted: sessionState,
     persistedContent: sessionContent,
-    projectedContext: buildProjectedResourceContextFromSession(session, "session", route.sessionId, request.signal)
+    projectedContext: buildProjectedResourceContextFromSession(session, "session", route.sessionId, request.signal),
+    userId: session.userId,
   });
   const userResources = createScopeResources({
     scope: "user",
     configs: userConfigs,
     persisted: userState,
     persistedContent: userContent,
-    projectedContext: buildProjectedResourceContextFromSession(session, "user", route.sessionId, request.signal)
+    projectedContext: buildProjectedResourceContextFromSession(session, "user", route.sessionId, request.signal),
+    userId: session.userId,
   });
   const orgResources = createScopeResources({
     scope: "org",
     configs: orgConfigs,
     persisted: orgState,
     persistedContent: orgContent,
-    projectedContext: buildProjectedResourceContextFromSession(session, "org", route.sessionId, request.signal)
+    projectedContext: buildProjectedResourceContextFromSession(session, "org", route.sessionId, request.signal),
+    userId: session.userId,
   });
 
   const sessionClientData = await computeClientData({
@@ -209,16 +212,19 @@ export async function handleGetSessionState(
       configs: sessionConfigs,
       persisted: sessionState,
       persistedContent: sessionContent,
+      userId: session.userId,
     }),
     buildResourceSnapshot({
       configs: userConfigs,
       persisted: userState,
       persistedContent: userContent,
+      userId: session.userId,
     }),
     buildResourceSnapshot({
       configs: orgConfigs,
       persisted: orgState,
       persistedContent: orgContent,
+      userId: session.userId,
     }),
   ]);
 

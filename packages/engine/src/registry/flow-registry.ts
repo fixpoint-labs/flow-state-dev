@@ -33,6 +33,14 @@
  * {@link collectScopeDeclaration}): the scope record is a single blob per
  * scope, so its `stateSchema` drops out under the flow-level flag, while each
  * resource carries its own `flowIsolation` override and drops out on that.
+ *
+ * The registry also keeps the owner-private startup fence
+ * (`admitOwnerPrivateCollections` in `resources/owner-private.ts`). It arms
+ * when a flow declaring an owner-private collection is admitted, checks every
+ * held flow against each declaration as it arrives, checks every later flow,
+ * and never disarms. A registry that never holds one refuses nothing on that
+ * account. Every registry, armed or not, refuses a single resource whose
+ * storage key has a segment beginning `~` (`refuseOwnerMarkedSingleResources`).
  */
 import type {
   DeclaredResourceEntry,
@@ -40,10 +48,7 @@ import type {
   FlowInstance,
   InstanceOwnerPin
 } from "@flow-state-dev/core/types";
-import {
-  assertRosterCollectionIsNotDeep,
-  isProjectedResourceCollection
-} from "@flow-state-dev/core/types";
+import { isProjectedResourceCollection } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -54,6 +59,11 @@ import {
   type ConflictScope
 } from "./errors";
 import { compareZodSchemas } from "./schema-compat";
+import {
+  admitOwnerPrivateCollections,
+  refuseOwnerMarkedSingleResources,
+  type OwnerPrivateDeclaration
+} from "../resources/owner-private";
 
 /**
  * Registry contract used by server routing/execution layers.
@@ -62,8 +72,10 @@ export interface FlowRegistry {
   /**
    * Admit one instance. Throws {@link FlowIdentityConflictError} for a
    * duplicate id, a singleton under a custom id, or a mixed-cardinality kind,
-   * and {@link CrossFlowSchemaConflictError} for a schema conflict — in every
-   * case before any registry state is touched.
+   * {@link CrossFlowSchemaConflictError} for a schema conflict, and an `Error`
+   * when the owner-private fence refuses a collection or a single resource
+   * keyed with a segment beginning `~` (see the file header) — in every case
+   * before any registry state is touched.
    *
    * `options.pin` is the owner pin for a hired instance. Omitted, a pin already
    * on the instance is kept; otherwise the instance is shared. A second pin
@@ -144,6 +156,14 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   };
 
   /**
+   * Every owner-private declaration this registry has admitted. Never
+   * cleared, even across unregister, for the reason the participants map
+   * above is kept: the rows outlive the registration, so the constraint has
+   * to as well. Non-empty means the startup fence is armed.
+   */
+  private ownerPrivate: readonly OwnerPrivateDeclaration[] = [];
+
+  /**
    * Registers a single flow instance. Identity is validated first (see the
    * file header), then cross-flow schemas; a failure of either leaves every
    * internal map untouched.
@@ -151,7 +171,12 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   register(input: FlowInstance, options?: { pin?: InstanceOwnerPin }): void {
     const flow = admitIdentity(input, this.flowsById);
     adoptPin(flow, options?.pin);
-    assertFlowRosterPatterns(flow);
+    refuseOwnerMarkedSingleResources(flow);
+    const ownerPrivate = admitOwnerPrivateCollections(
+      flow,
+      this.flowsById.values(),
+      this.ownerPrivate
+    );
 
     // Validate both scopes before mutating any state. If the org-scope
     // check throws after the user-scope check passes, no participant entry
@@ -171,6 +196,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     this.flowsById.set(flow.id, flow);
     this.indexParticipant("user", flow.kind, userDecl);
     this.indexParticipant("org", flow.kind, orgDecl);
+    this.ownerPrivate = ownerPrivate;
   }
 
   /**
@@ -636,20 +662,6 @@ function adoptPin(
 
 function samePin(left: InstanceOwnerPin, right: InstanceOwnerPin): boolean {
   return left.orgId === right.orgId && left.userId === right.userId;
-}
-
-/**
- * No admitted flow may declare a collection that reads user-owned roster rows.
- * The browser pattern and the private writer are the only roster patterns.
- */
-function assertFlowRosterPatterns(flow: FlowInstance): void {
-  const resources = flow.resources;
-  if (resources === undefined) return;
-  for (const entry of Object.values(resources)) {
-    const pattern = (entry as { pattern?: unknown }).pattern;
-    if (typeof pattern !== "string") continue;
-    assertRosterCollectionIsNotDeep(entry as { pattern: string; client?: { state?: { read?: boolean } } }, "register");
-  }
 }
 
 function admitIdentity(

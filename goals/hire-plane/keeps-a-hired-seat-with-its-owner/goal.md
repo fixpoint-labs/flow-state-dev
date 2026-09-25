@@ -1,7 +1,7 @@
 # hire-plane › it keeps a hired seat with its owner
 
 **Issue:** FIX-1529 (leg h: FIX-1542)
-**Outcome:** A seat hired for one person in one organization stays there. A teammate cannot list, open, or run it. Another organization cannot either, including after the process restarts and the row is read back. The org roster's browser collection does not hand back that person's private row, and a flow whose collection pattern could resolve onto those rows is not admitted.
+**Outcome:** A seat hired for one person in one organization stays there. A teammate cannot list, open, or run it. Another organization cannot either, including after the process restarts and the row is read back. The org roster's browser collection does not hand back that person's private row, and in an app that installs the private roster collection, a flow whose collection pattern could resolve onto those rows is not admitted.
 **Input:** `fixtures/input.json` — two orgs, three users, two seat ids, the private marker, and the wide pattern. Held-out: every id and the marker are read from the fixture and graded against HTTP responses and the `seen/*` rows the actions write. Swapping any of them must still pass.
 **Signal:** against `createFlowState`'s HTTP router, in-memory stores, no model.
 (a) The owner opens the seat and the action writes the fixture marker into her organization's `seen` row.
@@ -9,7 +9,7 @@
 (c) `GET /api/flows` for the owner lists the seat. The same call for the other organization, and with no identity, does not. A shared app flow stays listed for the other organization, and that organization can run it.
 (d) After the seat is released and registered again under the other organization's pin, the owner's old session resumes as `404` and the marker is not written again.
 (e) A private roster row holding the marker is invisible to the teammate's read through the browser collection: the action records `undefined`, and the marker is absent.
-(f) Registering a flow that declares the fixture's wide pattern throws, and no `seen` row from that flow contains the marker.
+(f) The app flow declares `defineHiredRosterPrivateCollection()`. Registering a flow that declares the fixture's wide pattern then throws, and no `seen` row from that flow contains the marker.
 (g) A stored row whose `owningOrgId` is the other organization is a reload problem. Opening the address it would have minted is `404`.
 (h) A manager seat calls `createSeatHireCapability`'s `hire` under the owner organization, with the fixture marker as instructions. The row it wrote is copied as-is into both organizations' roster cells. Reloaded in the owner organization it mints; reloaded in the other it is a named problem and mints nothing. The other organization's user opens the address the copy would have minted and gets `404`, so the marker is never read there.
 
@@ -17,8 +17,8 @@
 **Model:** n/a — handlers only. The property is who can open and read the seat, not model output.
 **Run:** `pnpm tsx goals/hire-plane/keeps-a-hired-seat-with-its-owner/run.mts`
 **Controls:** none in the runner. The red state is a source revert, so it fails for the reason a missing fence fails and not because the runner skipped a leg.
-- Drop the collection pattern check in `packages/engine/src/context/resource-registry.ts`. Must FAIL leg (e) only.
-- Make `rosterPatternOverlapsPrivate` return false in `packages/core/src/types/collection-patterns.ts`. Must FAIL leg (f) only.
+- Drop the collection pattern check from `getOptional` in `packages/engine/src/context/resource-registry.ts`, and make `ownerKeyAdmits` and `ownerKeyMaySeed` return `true` in `packages/engine/src/resources/owner-private.ts`. Must FAIL leg (e) only. Dropping the pattern check alone leaves leg (e) green, because the two key fences still hold the row back.
+- Make `patternsReach` return false in `packages/engine/src/resources/owner-private.ts`. Must FAIL leg (f) only.
 - Drop `owningOrgId: orgId` from the `hire` tool's `toHiredSeatRow` call in `packages/workforce/src/seat-hire-capability.ts`, then rebuild workforce. Must FAIL leg (h) only.
 
 ## Verdict log
@@ -29,3 +29,8 @@
 | 2026-09-23 | `ef5228f8b` (fence restored; this goal is the check that ran against it) | n/a | PASS | `pnpm tsx goals/hire-plane/keeps-a-hired-seat-with-its-owner/run.mts` exit 0. Owner wrote `ACME-ONLY-ROADMAP-MARKER` at `acme.~alice.research`; teammate and globex got 404; catalog listed the seat for the owner only; resume after re-pin was 404; browser read was `undefined`; `workforce/[area]/[owner]/[seat]` was refused; a row owned by globex was a reload problem and did not open. Shared app still ran for globex. After the restore, fence 13 and workforce hire-plane 8 were green. |
 | 2026-09-23 | `4f03faef2` with `owningOrgId: orgId` dropped from the `hire` tool's row in `packages/workforce/src/seat-hire-capability.ts`, workforce rebuilt, then restored | n/a | FAIL (expected) | **Leg (h) only:** `reload in globex minted globex.analyst from the copied row`, `reported no problem for the copied row`, `globex opened the copied seat as 201`, and `globex ran the copied seat and read the marker`. Legs (a)–(g) stayed green, and the same row still minted `acme.analyst` in acme. Same revert, outside the goal: the workforce test "stamps the row with the principal's org" failed (`expected null to be 'acme'`); the other 755 stayed green. Restored with `git checkout -- packages/workforce/src/seat-hire-capability.ts`. |
 | 2026-09-23 | `4f03faef2` (stamp restored) | n/a | PASS | Legs (a)–(h) green. The capability's `analyst` row reloaded in acme and was a named reload problem in globex, where `globex.analyst` opened as 404. Workforce 756/756. |
+| 2026-09-24 | `f8c299b8e` + FIX-1549 PR-A, with the app flow's `defineHiredRosterPrivateCollection()` not yet installed | n/a | FAIL (expected) | **Leg (f) only:** `pattern workforce/[area]/[owner]/[seat] was admitted`. Registration's check now runs only in a registry that holds an owner-private collection, and this app did not install one. The runner now installs the private roster on the app flow, the shape a Workforce app hiring user-owned seats has. |
+| 2026-09-24 | `f8c299b8e` + FIX-1549 PR-A, with only the collection pattern check dropped from `getOptional`, then restored | n/a | PASS | The old leg (e) control no longer goes red: the key fence and the seed fence each still keep `~alice/research` from the teammate. The control is now all three together (next row). |
+| 2026-09-24 | `f8c299b8e` + FIX-1549 PR-A, with the pattern check dropped from `getOptional` and `ownerKeyAdmits` and `ownerKeyMaySeed` forced to `true`, then restored | n/a | FAIL (expected) | **Leg (e) only:** `browser read returned` the JSON row whose `instructions` were `ACME-ONLY-ROADMAP-MARKER`, and `browser read contained the marker`. Legs (a)–(d) and (f)–(h) stayed green. |
+| 2026-09-24 | `f8c299b8e` + FIX-1549 PR-A, with `patternsReach` forced to `return false`, then restored | n/a | FAIL (expected) | **Leg (f) only:** `pattern workforce/[area]/[owner]/[seat] was admitted`. |
+| 2026-09-24 | `f8c299b8e` + FIX-1549 PR-A (private roster installed on the app flow) | n/a | PASS | `pnpm tsx goals/hire-plane/keeps-a-hired-seat-with-its-owner/run.mts` exit 0. Every leg green; `workforce/[area]/[owner]/[seat]` was refused. |

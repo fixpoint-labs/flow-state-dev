@@ -388,7 +388,8 @@ export interface FlowState<TSettings extends object = FlowStateSettings> {
    *
    * @throws `FlowIdentityConflictError` or `CrossFlowSchemaConflictError`.
    * Also throws when `options.pin` disagrees with a pin already on the instance,
-   * or when the instance declares a collection that can read user-owned roster rows.
+   * or, once this app holds an owner-private collection, when the instance
+   * declares another collection in its scope that can reach that collection's rows.
    */
   register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
 

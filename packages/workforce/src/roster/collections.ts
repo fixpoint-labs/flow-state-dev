@@ -20,10 +20,7 @@
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
-import {
-  HIRED_ROSTER_PRIVATE_PATTERN,
-  markHiredRosterPrivateCollection,
-} from "@flow-state-dev/core/types";
+import { HIRED_ROSTER_PRIVATE_PATTERN } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /**
@@ -160,19 +157,20 @@ export function defineHiredRosterCollection() {
  * The server-side writer for a user-owned roster row.
  *
  * Same store, nested key `~user/seat`. The browser collection's single
- * segment does not match it, and this collection has no browser read. The
- * returned object is branded. Registration admits this pattern only from
- * that brand. A block that holds the ref still only reaches the session
- * user's own rows. A deep `workforce/roster/**`, or any other two-segment
- * pattern under the roster, is refused.
+ * segment does not match it, and this collection has no browser read. It is
+ * owner-private on `owner`: a row keyed `ownerSegment(userId)` there is
+ * served only to that user, in every process over the store, and no other
+ * collection reads or writes it. A block that holds the ref still only
+ * reaches the session user's own rows. Once a flow declaring it registers,
+ * the app refuses any other org-scoped collection whose pattern can reach
+ * those rows, such as `workforce/roster/**` or a copy of this pattern.
  */
 export function defineHiredRosterPrivateCollection() {
-  return markHiredRosterPrivateCollection(
-    defineResourceCollection({
-      pattern: HIRED_ROSTER_PRIVATE_PATTERN,
-      scope: "org",
-      flowIsolation: SHARED_ACROSS_FLOWS,
-      stateSchema: hiredSeatRowSchema,
-    }),
-  );
+  return defineResourceCollection({
+    pattern: HIRED_ROSTER_PRIVATE_PATTERN,
+    ownerPrivate: { param: "owner" },
+    scope: "org",
+    flowIsolation: SHARED_ACROSS_FLOWS,
+    stateSchema: hiredSeatRowSchema,
+  });
 }
