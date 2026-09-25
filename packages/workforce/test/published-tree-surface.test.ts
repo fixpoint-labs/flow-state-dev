@@ -50,6 +50,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkforceCodeError, discoverWorkforceCode } from "../src/codegen/discover";
 import { readChannelsDirectory } from "../src/loader/read-channels-directory";
+import { readPackagesDirectory } from "../src/loader/read-packages-directory";
 import {
   readReferencesDirectory,
   readResourcesDirectory,
@@ -77,6 +78,10 @@ interface Readout {
   resourceModules: string[];
   /** `<seat>:<name>` for every per-seat block registration the codegen walk found. */
   seatBlocks: string[];
+  /** Addresses of the packages that loaded, at any level. */
+  packages: string[];
+  /** `<package address>:<name>` for every package block the codegen walk found. */
+  packageBlocks: string[];
   /** `<slot>:<name>` for every file in a locked code folder. */
   code: string[];
   /**
@@ -216,6 +221,7 @@ const RESERVED = new Set([
   "channels",
   "flows",
   "blocks",
+  "packages",
 ]);
 
 /**
@@ -233,7 +239,7 @@ const RESERVED = new Set([
  */
 const SLOT_PLACEHOLDER = "<slot>";
 /** Filenames the convention fixes, which stay literal in a shape. */
-const FIXED_LEAVES = new Set(["WORKER.md", "CHANNEL.md", "SKILL.md"]);
+const FIXED_LEAVES = new Set(["WORKER.md", "CHANNEL.md", "SKILL.md", "PACKAGE.md"]);
 
 /**
  * A published path token, reduced to the shape it is an instance of.
@@ -293,6 +299,7 @@ function toShape(token: string): string | undefined {
       if (parent === "workers") return "<worker>";
       if (parent === "skills") return "<skill>";
       if (parent === "channels") return "<channel>";
+      if (parent === "packages") return "<package>";
       return segment;
     })
     .join("/");
@@ -424,6 +431,9 @@ const PROSE_PUBLISHED: ReadonlyArray<{ shape: string; why: string }> = [
 const NOT_AN_EXTENSION: ReadonlyArray<{ token: string; why: string }> = [
   { token: ".tap", why: "the `.tap()` step method, written in backticks beside `.md` and `.ts`" },
 ];
+
+/** The page that publishes the package convention. */
+const PACKAGES_PAGE = "apps/docs/docs/workforce/packages-on-disk.md";
 
 /** Write one instance of every published shape into the fixture tree. */
 async function writeAllPublishedShapes(root: string): Promise<void> {
@@ -739,6 +749,86 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.seatBlocks.includes("alpha.lead:page-oncall") ||
       out.reported.includes("teams/alpha/workers/lead/blocks/page-oncall.ts"),
   },
+  // A package: a `PACKAGE.md` and its `blocks/`, at each of the three levels a
+  // `packages/` folder may sit. The text is the loader's and the blocks are
+  // the codegen walk's, so each level has one row per half.
+  {
+    shape: "org/packages/<package>/PACKAGE.md",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/org/packages/<name>/PACKAGE.md`",
+    },
+    write: (root) => writeFile(root, "org/packages/house/PACKAGE.md", doc("House style.")),
+    accountedFor: (out) =>
+      out.packages.includes("org/packages/house") ||
+      out.reported.includes("org/packages/house") ||
+      out.reported.includes("org/packages/house/PACKAGE.md"),
+  },
+  {
+    shape: "org/packages/<package>/blocks/<name>.ts",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/org/packages/<name>/blocks/<block>.ts`",
+    },
+    write: (root) => writeFile(root, "org/packages/house/blocks/cite.ts", "export default {};\n"),
+    accountedFor: (out) =>
+      out.packageBlocks.includes("org/packages/house:cite") ||
+      out.reported.includes("org/packages/house/blocks/cite.ts"),
+  },
+  {
+    shape: "teams/<team>/packages/<package>/PACKAGE.md",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/teams/<team>/packages/<name>/PACKAGE.md`",
+    },
+    write: (root) =>
+      writeFile(root, "teams/alpha/packages/escalation/PACKAGE.md", doc("Escalation.")),
+    accountedFor: (out) =>
+      out.packages.includes("teams/alpha/packages/escalation") ||
+      out.reported.includes("teams/alpha/packages/escalation") ||
+      out.reported.includes("teams/alpha/packages/escalation/PACKAGE.md"),
+  },
+  {
+    shape: "teams/<team>/packages/<package>/blocks/<name>.ts",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/teams/<team>/packages/<name>/blocks/<block>.ts`",
+    },
+    write: (root) =>
+      writeFile(root, "teams/alpha/packages/escalation/blocks/page-oncall.ts", "export default {};\n"),
+    accountedFor: (out) =>
+      out.packageBlocks.includes("teams/alpha/packages/escalation:page-oncall") ||
+      out.reported.includes("teams/alpha/packages/escalation/blocks/page-oncall.ts"),
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/packages/<package>/PACKAGE.md",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/teams/<team>/workers/<worker>/packages/<name>/PACKAGE.md`",
+    },
+    write: (root) =>
+      writeFile(root, "teams/alpha/workers/lead/packages/refunds/PACKAGE.md", doc("Refunds.")),
+    accountedFor: (out) =>
+      out.packages.includes("teams/alpha/workers/lead/packages/refunds") ||
+      out.reported.includes("teams/alpha/workers/lead/packages/refunds") ||
+      out.reported.includes("teams/alpha/workers/lead/packages/refunds/PACKAGE.md"),
+  },
+  {
+    shape: "teams/<team>/workers/<worker>/packages/<package>/blocks/<name>.ts",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/teams/<team>/workers/<worker>/packages/<name>/blocks/<block>.ts`",
+    },
+    write: (root) =>
+      writeFile(
+        root,
+        "teams/alpha/workers/lead/packages/refunds/blocks/issue-refund.ts",
+        "export default {};\n",
+      ),
+    accountedFor: (out) =>
+      out.packageBlocks.includes("teams/alpha/workers/lead/packages/refunds:issue-refund") ||
+      out.reported.includes("teams/alpha/workers/lead/packages/refunds/blocks/issue-refund.ts"),
+  },
   // `.tsx` is published in a sentence and written in no tree on any page, so
   // nothing above exercises it — a declaration the suite reported full coverage
   // over while never touching it.
@@ -804,15 +894,23 @@ async function readEverything(root: string): Promise<Readout> {
   const seat = await readSeatSkills(root, { team: "alpha", worker: "lead" });
   for (const error of seat.errors) reported.push(error.path);
 
+  // Read directly for the reason the seat's skills are: a package row stays
+  // observable when the worker beside it failed, and the org's and a team's
+  // libraries are packages no worker has to name to be read.
+  const packages = await readPackagesDirectory(root);
+  for (const error of packages.errors) reported.push(error.path);
+
   let codeWalkThrew = false;
   let code: string[] = [];
   let resourceModules: string[] = [];
   let seatBlocks: string[] = [];
+  let packageBlocks: string[] = [];
   try {
     const discovered = await discoverWorkforceCode(root);
     code = discovered.files.map((file) => `${file.slot}:${file.name}`);
     resourceModules = discovered.resourceModules.map((module) => module.ref);
     seatBlocks = discovered.seatBlocks.map((entry) => `${entry.seat}:${entry.name}`);
+    packageBlocks = discovered.packageBlocks.map((entry) => `${entry.package}:${entry.name}`);
   } catch (err) {
     // The codegen walk refuses loudly, by throwing once with every problem
     // named. That is the policy working — but every predicate here asks
@@ -846,6 +944,8 @@ async function readEverything(root: string): Promise<Readout> {
     teams: workforce.teams.map((team) => team.id),
     resourceModules,
     seatBlocks,
+    packages: packages.packages.map((found) => found.path),
+    packageBlocks,
     code,
     teamSeatSkills: seat.skills.map((skill) => skill.name),
     workerAddressedRefs: resources.documents.flatMap((document) => {
