@@ -147,6 +147,57 @@ describe("the file the command writes", () => {
   });
 });
 
+describe("a package block the tree gained", () => {
+  // The same bargain for a package's tools: a block added to a package and
+  // not generated is a tool its holders are quietly short of.
+  it("is caught by --check, named in the result, and green again once the command has run", async () => {
+    const dir = app();
+    await executeGenCommand({ root: "workforce" });
+
+    const pkg = "workforce/teams/support/workers/clerk/packages/refunds";
+    mkdirSync(join(dir, pkg, "blocks"), { recursive: true });
+    writeFileSync(join(dir, pkg, "PACKAGE.md"), "---\ndescription: Refunds\n---\nRefund.\n");
+    writeFileSync(join(dir, pkg, "blocks/issue-refund.ts"), "export default {};");
+
+    const stale = await executeGenCommand({ root: "workforce", check: true });
+    expect(stale.upToDate).toBe(false);
+    expect(stale.packageBlocks.map((entry) => entry.path)).toEqual([
+      "teams/support/workers/clerk/packages/refunds/blocks/issue-refund.ts",
+    ]);
+
+    await executeGenCommand({ root: "workforce" });
+    expect(await executeGenCommand({ root: "workforce", check: true })).toMatchObject({
+      upToDate: true,
+    });
+    expect(readFileSync(join(dir, "workforce/workforce.gen.ts"), "utf-8")).toContain(
+      `"teams/support/workers/clerk/packages/refunds": {`,
+    );
+  });
+
+  it("names the package block in the stale report", async () => {
+    const dir = app();
+    await executeGenCommand({ root: "workforce" });
+    const pkg = "workforce/teams/support/packages/escalation";
+    mkdirSync(join(dir, pkg, "blocks"), { recursive: true });
+    writeFileSync(join(dir, pkg, "PACKAGE.md"), "---\ndescription: Escalation\n---\n");
+    writeFileSync(join(dir, pkg, "blocks/page-oncall.ts"), "export default {};");
+
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (message: string) => errors.push(message);
+    try {
+      const program = new Command();
+      registerGenCommand(program);
+      await program.parseAsync(["node", "fsdev", "gen", "--check"]);
+    } finally {
+      console.error = original;
+    }
+    expect(process.exitCode).toBe(EXIT_EXECUTION_ERROR);
+    expect(errors.join("\n")).toContain("teams/support/packages/escalation/blocks/page-oncall.ts");
+    expect(errors.join("\n")).toContain("1 package block(s)");
+  });
+});
+
 describe("a resource module the tree gained", () => {
   // `--check` is the whole guard on the two-step bargain: a team that writes a
   // file and forgets the command gets a seat that is quietly short, and this is

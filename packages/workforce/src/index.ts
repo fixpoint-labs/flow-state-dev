@@ -103,8 +103,13 @@ export {
 // names is authored by hand in a `WORKER.md` and a second spelling of it is
 // the bug this package refuses rather than resolves.
 export { SEAT_DISCOVER_KEY } from "./seat-discovery";
-export { workerConfigSchema, seatSkillSchema, type WorkerConfig } from "./worker-config";
-export type { WorkerManifest, TeamManifest, ResourceDoc } from "./manifest";
+export {
+  workerConfigSchema,
+  seatSkillSchema,
+  seatPackageSchema,
+  type WorkerConfig
+} from "./worker-config";
+export type { WorkerManifest, TeamManifest, ResourceDoc, PackageManifest } from "./manifest";
 export * from "./channel";
 export * from "./inventory";
 export * from "./roster";

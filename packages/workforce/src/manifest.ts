@@ -67,6 +67,16 @@ export interface WorkerManifest {
    */
   teamInstructions?: string;
   /**
+   * The packages this seat can reach — the org's library, its team's library,
+   * and the ones in its own folder — in that order.
+   *
+   * Filled by the joined loader (`readWorkforce`), and **absent when none are
+   * in reach**, as on a hand-built record. Reach is not holding: the hire
+   * gives the seat every package at the `worker` level and, from the two
+   * libraries, only the ones its file names in `packages:`.
+   */
+  packages?: PackageManifest[];
+  /**
    * Set by a hire row, never by a `WORKER.md`. Absent, the minted instance
    * stays shared — a file-declared seat and a shared app flow. Present, the
    * mint copies it onto the instance, and registration stores it as the pin.
@@ -229,6 +239,48 @@ export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
  * they do without one.
  */
 export const TEAM_MD = "TEAM.md";
+
+/**
+ * The file that makes a folder under `packages/` a package — the one name in
+ * that convention an author types.
+ *
+ * Required, unlike {@link TEAM_MD}: a folder in `packages/` is a package or a
+ * mistake, and a package with no file is refused rather than read as empty.
+ */
+export const PACKAGE_MD = "PACKAGE.md";
+
+/**
+ * One package, as read off disk: a `packages/<name>/` folder's `PACKAGE.md`.
+ *
+ * Carries the package's text and where it sits. Its blocks are not here: code
+ * is found by `fsdev gen` and arrives at the hire on the generated
+ * `packageBlocks` map, keyed by {@link PackageManifest.path}, which is where the
+ * two halves meet.
+ */
+export interface PackageManifest {
+  /** The folder's name — what a worker's `packages:` takes it by. */
+  name: string;
+  /**
+   * The folder's slash-separated path under the workforce root — for example
+   * `teams/support/packages/escalation`. The package's address, and the key its
+   * blocks sit under on `packageBlocks`.
+   */
+  path: string;
+  /** Where the folder sits: the org's library, a team's library, or one worker's own folder. */
+  level: "org" | "team" | "worker";
+  /** The team whose folder holds it. Set at the `team` and `worker` levels. */
+  team?: string;
+  /** The worker id (`<team>.<worker>`) whose folder holds it. Set at the `worker` level only. */
+  worker?: string;
+  /** The file's required `description` — a label for people, never handed to a model. */
+  description: string;
+  /**
+   * The file's body, verbatim. **Absent when it is empty or whitespace**, never
+   * `""`, for the reason a team's instructions are: whitespace is not
+   * instructions.
+   */
+  instructions?: string;
+}
 
 /**
  * The one wording for {@link TEAM_INSTRUCTIONS_KEY}, shared by every door that
@@ -416,6 +468,56 @@ export const REFUSED_SEAT_TOOLS_KEY_MESSAGE =
   `declares \`${SEAT_TOOLS_KEY}:\`, which is not a setting a worker declares. ` +
   `A seat names its tools in \`tools:\`, and resolving each name against the blocks its ` +
   `folders register is the loader's job.`;
+
+/**
+ * `packages` — the `WORKER.md` key a worker takes packages from its team's or
+ * the org's library with, by name: `packages: [escalation]`.
+ *
+ * Read by the hire step and never handed to a kind as a setting, like
+ * `resources:`. A package in the worker's own folder needs no line here.
+ */
+export const PACKAGES_KEY = "packages";
+
+/**
+ * `seatPackages` — imposed by the seat factory, and where the packages a seat
+ * HOLDS arrive in its flow's settings bag: each one's name, address,
+ * instructions and blocks.
+ *
+ * **Imposed only on a seat that holds at least one package**, the way
+ * `teamInstructions` is imposed only on a seat whose team wrote some. A seat
+ * holding none carries no such key, so every kind that hires today keeps
+ * hiring; a hand-rolled kind that has not declared it is refused, by name, the
+ * first time a seat of it holds a package, rather than dropping the package.
+ *
+ * Its own key rather than {@link SEAT_TOOLS_KEY}, whose meaning is what the
+ * seat's `tools:` line named. What a kind does with a held package is the
+ * kind's: the built-in `agent` kind puts the instructions in the prompt after
+ * the team's and the seat's own, and offers the blocks when the seat wrote no
+ * `tools:` line.
+ */
+export const SEAT_PACKAGES_KEY = "seatPackages";
+
+/**
+ * The one wording for {@link SEAT_PACKAGES_KEY}, shared by every door that
+ * refuses an authored one. Names no subject — the caller supplies what it can
+ * name.
+ */
+export const REFUSED_SEAT_PACKAGES_KEY_MESSAGE =
+  `declares \`${SEAT_PACKAGES_KEY}:\`, which is not a setting a worker declares. ` +
+  `A seat holds the packages in its own \`${PACKAGES_KEY}/\` folder and the ones its ` +
+  `\`${PACKAGES_KEY}:\` line names, and reading them is the loader's job.`;
+
+/**
+ * The one wording for a package block that declares its own resources — the
+ * package form of {@link colocatedResourceMessage}, refused for its reason: a
+ * package is held per seat and a store is the kind's.
+ */
+export const packageResourceMessage = (packagePath: string, key: string, accessors: string[]): string =>
+  `holds package "${packagePath}", whose block "${key}" declares ` +
+  `${accessors.map((a) => `"${a}"`).join(", ")}. A package is held by one seat at a time and a ` +
+  `store is the kind's, so there is nowhere to install it that would not also install it for ` +
+  `every other seat of this kind. Declare the store on the kind ` +
+  `(\`defineAgentWorkerFlow({ uses })\`) and let the block use it.`;
 
 /**
  * The one wording for a block registered under a name its own `name` does not

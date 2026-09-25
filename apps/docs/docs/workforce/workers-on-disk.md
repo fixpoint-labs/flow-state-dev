@@ -56,13 +56,15 @@ You are the engineering lead. You do not write code yourself. You break the
 request into tasks, assign them, and report what came back.
 ```
 
-`description` is the only key the file itself requires. It refuses `persona:`, `seatSkills:`, `seatTools:` and `teamInstructions:` outright. A seat's skills and the blocks it can reach come from where its folders sit, and its team's instructions from that team's [`TEAM.md`](#what-a-teammd-says). `flow` names which of your flow kinds this worker runs. Leave it out and the worker is hired into [the built-in worker kind](./built-in-worker.md), which needs no flow of yours.
+`description` is the only key the file itself requires. It refuses `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:` and `teamInstructions:` outright. A seat's skills and the blocks it can reach come from where its folders sit, and its team's instructions from that team's [`TEAM.md`](#what-a-teammd-says). `flow` names which of your flow kinds this worker runs. Leave it out and the worker is hired into [the built-in worker kind](./built-in-worker.md), which needs no flow of yours.
 
 `resources:` is a list of the [documents](./documents-on-disk.md) this worker may touch, chosen from the ones its kind holds. Each entry is a document's [ref](./documents-on-disk.md#a-documents-ref), the name it gets from where its file sits. A ref on its own is read-only. `<ref>: rw` grants writes, and `<ref>: ro` spells the default out. Leave the key out and the worker reaches every document its kind installed, and writes the ones that allow writes; `resources: []` is how you say it gets none.
 
 Only documents are narrowed. The stores and boards its kind declares stay reachable and writable whatever the list says, and so do the resources the kind's own blocks declare. Where the documents come from is [below](#supplying-the-documents-a-seat-may-name).
 
 `references:` is the companion list, over the documents in [`references/` folders](./documents-on-disk.md#who-reaches-what). Each entry is a ref on its own, with no mode, because nothing writes a reference. The list narrows what the worker's place in the tree already gives it — the organization's references, its own team's, and its own folder's — and naming one from outside that refuses the hire. Leave the key out and the worker reaches all of them; `references: []` is how you say it gets none.
+
+`packages:` names the [packages](./packages-on-disk.md) this worker takes from its team's or the org's library, as a list: `packages: [escalation]`. The packages in its own `packages/` folder need no line.
 
 Reading the file checks no other key. Whatever else you write lands on the record spelled exactly as you spelled it. The flow a worker names has the final say: at hiring it [refuses a setting it never declared](#the-flow-decides-what-a-worker-may-declare).
 
@@ -160,6 +162,7 @@ interface WorkerManifest {
   declared: Record<string, unknown>; // the frontmatter, exactly as written
   body: string;                      // the instructions below it, or "" for none
   skills?: InitialSkill[];           // the skills this worker can see
+  packages?: PackageManifest[];      // the packages in its reach
 }
 ```
 
@@ -198,7 +201,7 @@ What lands in `errors`:
 
 - a worker folder with no `WORKER.md`, including one that holds only other files (custom behavior is [a flow kind](#when-a-worker-needs-more-than-settings), not a second file in the folder);
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
-- a `WORKER.md` that declares `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:`, none of which is a setting a worker declares — team instructions go in the team's own [`TEAM.md`](#what-a-teammd-says);
+- a `WORKER.md` that declares `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:` or `teamInstructions:`, none of which is a setting a worker declares — team instructions go in the team's own [`TEAM.md`](#what-a-teammd-says);
 - a team or worker folder name that breaks the naming rules;
 - a symlink where a folder or a worker file belongs, refused rather than read;
 - a directory that exists but cannot be listed, reported under its own path (`teams`, `teams/<team>`, or `teams/<team>/workers`) so the seats beneath it are not lost silently.
@@ -208,35 +211,37 @@ What lands in `errors`:
 #### Treat a non-empty `errors` as fatal
 
 ```ts
-const { workers, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
-if (errors.length || teamErrors.length || skillErrors.length) {
+const { workers, errors, skillErrors, teamErrors, packageErrors } = await readWorkforce("./workforce");
+if (errors.length || teamErrors.length || skillErrors.length || packageErrors.length) {
   const reported = [
     ...errors.map(({ path, error }) => `  ${path}: ${error.message}`),
     ...teamErrors.map(({ path, error }) => `  ${path}: ${error.message}`),
+    ...packageErrors.map(({ path, error }) => `  ${path}: ${error.message}`),
     // One entry per seat, each carrying its own list — so this one is nested.
     ...skillErrors.flatMap(({ worker, errors }) =>
       errors.map(({ path, error }) => `  ${worker} — ${path}: ${error.message}`),
     ),
   ];
   throw new Error(
-    `workforce: ${errors.length} worker(s), ${teamErrors.length} team file(s) and ` +
-      `${skillErrors.length} seat(s)' skills failed to load\n${reported.join("\n")}`,
+    `workforce: ${errors.length} worker(s), ${teamErrors.length} team file(s), ` +
+      `${packageErrors.length} package(s) and ${skillErrors.length} seat(s)' skills ` +
+      `failed to load\n${reported.join("\n")}`,
   );
 }
 ```
 
-`errors` and `teamErrors` are flat lists of `{ path, error, kind }`, where `kind` names which
+`errors`, `teamErrors` and `packageErrors` are flat lists of `{ path, error, kind }`, where `kind` names which
 condition the entry is — match on it rather than on `error.message`. `skillErrors` is not: it is one entry
 per affected seat, `{ worker, errors }`, carrying that seat's own list — so it needs flattening
-before it reads like the other two.
+before it reads like the others.
 
-A reported folder is a worker your app was supposed to have, so logging a warning and carrying on boots the app one worker short and says nothing else about it. A reported team file or skill costs a seat its instructions rather than costing you the seat, which is quieter still. Fail on all three at startup unless you have a specific reason to run a short roster.
+A reported folder is a worker your app was supposed to have, so logging a warning and carrying on boots the app one worker short and says nothing else about it. A reported team file, skill or [package](./packages-on-disk.md) can cost a seat its instructions rather than costing you the seat, which is quieter still. Fail on all four at startup unless you have a specific reason to run a short roster.
 
 ### What is passed over in silence
 
 A team's `channels/`, `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these produces a worker, and none is reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/`, not that the path looks like a worker.
 
-Passed over by the *worker* walk is not the same as unread. A team's `skills/` folder is read by the separate walk described under [Skills](./built-in-worker.md#skills), its `resources/` folder by [Documents on disk](./documents-on-disk.md), and its `TEAM.md` by the team walk described [above](#what-a-teammd-says). A `TEAM.md` anywhere else — at `org/`, or at the root — is read by nothing and reported by nothing. There is no org-wide instruction layer.
+Passed over by the *worker* walk is not the same as unread. A team's `skills/` folder is read by the separate walk described under [Skills](./built-in-worker.md#skills), its `resources/` folder by [Documents on disk](./documents-on-disk.md), its `packages/` folder by [Packages on disk](./packages-on-disk.md), and its `TEAM.md` by the team walk described [above](#what-a-teammd-says). A `TEAM.md` anywhere else — at `org/`, or at the root — is read by nothing and reported by nothing. There is no org-wide instruction layer.
 
 Inside a worker slot the opposite holds. A folder there that produces no worker is always named in `errors`.
 
@@ -291,7 +296,7 @@ export const intakeFlow = defineFlow({
 
 `workerConfigSchema()` is the set of settings every seat's bag may carry, whatever kind it is: the
 worker's own instructions, the skills its folders resolved, the blocks its own folders registered
-and its `tools:` named, and `teamInstructions` — what its team's [`TEAM.md`](#what-a-teammd-says)
+and its `tools:` named, the [packages](./packages-on-disk.md#in-a-kind-of-your-own) it holds, and `teamInstructions` — what its team's [`TEAM.md`](#what-a-teammd-says)
 said, when its team wrote one. Your kind's settings go on top with `.extend()`, at the same level, and the
 schema stays closed around all of them.
 
@@ -306,7 +311,7 @@ composed kind for free, and makes a hand-rolled one refuse at startup until you 
 
 `cardinality: "collection"` is what lets one definition have many copies. A roster is exactly that: one copy per worker, each with its own id and its own settings. [Copies that differ by settings](../fundamentals/flows.md#copies-that-differ-by-settings) covers how a copy is configured, and [how an instance is addressed](../fundamentals/flows.md#how-an-instance-is-addressed) covers the URL each one answers on.
 
-`hireWorkforce` reads three keys of its own: `flow` to pick the kind, `description` as a label for the roster, and [`resources`](#supplying-the-documents-a-seat-may-name) to decide which documents the copy is minted with. Everything else becomes that copy's settings and is parsed against the flow's `configSchema`, which is closed. So the flow's author, not the framework, decides what a worker of that kind may say about itself.
+`hireWorkforce` reads keys of its own: `flow` to pick the kind, `description` as a label for the roster, [`resources`](#supplying-the-documents-a-seat-may-name) and `references` to decide which documents the copy is minted with, and [`packages`](./packages-on-disk.md#giving-one-to-a-worker) to decide which library packages it holds. Everything else becomes that copy's settings and is parsed against the flow's `configSchema`, which is closed. So the flow's author, not the framework, decides what a worker of that kind may say about itself.
 
 ```ts
 const lead = seats.find((seat) => seat.id === "engineering.lead")!;
@@ -341,7 +346,7 @@ Settings are spelled the way the flow declares them.
 
 ### The body arrives as `instructions`
 
-A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes `instructions` when the body is not empty, `seatSkills` and `seatTools` always, and `teamInstructions` when the record carries what its team's [`TEAM.md`](#what-a-teammd-says) said.
+A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes `instructions` when the body is not empty, `seatSkills` and `seatTools` always, `teamInstructions` when the record carries what its team's [`TEAM.md`](#what-a-teammd-says) said, and `seatPackages` when the worker holds a package.
 
 What the refusals cover is what a **file** declares. No frontmatter may set `teamInstructions`, `seatSkills` or `seatTools`: they are refused in a `WORKER.md`, and at hiring for a record you built by hand. A `TEAM.md` refuses `teamInstructions` too. On a record you build yourself, the *fields* of the same name are yours to set, and hiring uses them. `skills` works the same way: whatever a record carries there arrives as the seat's `seatSkills`.
 
@@ -428,7 +433,8 @@ A record is refused when it:
 - declares a setting its flow never declared, or omits one its flow requires;
 - names a flow kind whose schema will not take what hiring imposes, leaving it nowhere to receive a seat's skills and instructions — composing `workerConfigSchema()` is the fix. That one refuses the whole roster, not just this record;
 - declares `instructions:` and carries a body;
-- declares `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:`, none of which is a setting a worker declares;
+- declares `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:` or `teamInstructions:`, none of which is a setting a worker declares;
+- declares a `packages:` line the hire step cannot resolve, or holds a package whose blocks clash with another tool it can call. [Packages on disk](./packages-on-disk.md#when-a-file-is-wrong) lists each case;
 - declares `teamInstructions:` in its frontmatter, wherever that frontmatter came from — a team's instructions come from its [`TEAM.md`](#what-a-teammd-says) body, read by the loader;
 - declares a `references:` list the hire step cannot resolve: a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this worker cannot reach from where its folder sits — which includes every ref when no `references` map was passed. A worker whose id names no place in the tree is refused too, once its kind holds references;
 - reaches a reference it did not name, the same way a document can come back through one of its kind's blocks;
@@ -513,7 +519,7 @@ There is a file convention for the code half too. Put a flow kind in `workforce/
 ## What this does not do
 
 - Reading the **Markdown** does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether anything backs those names is checked at the hire, by the kind the worker runs on. The code walk is what registers the names a worker's list can resolve to. The built-in checks them [against its catalog](./built-in-worker.md#tools). A kind you write decides for itself.
-- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the three skills folders each worker draws from ([Skills](./built-in-worker.md#skills)). A team's `resources/` documents are read by a separate loader at startup, [`readResourcesDirectory`](./documents-on-disk.md). Its `blocks/` folder is not read at startup at all — that folder is scanned when you build, by [`fsdev gen`](./code-on-disk.md). A `tools/` folder is not a slot this convention reads, and `fsdev gen` says so rather than passing it over.
+- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the three skills folders each worker draws from ([Skills](./built-in-worker.md#skills)), and each worker's packages, from its own folder and from the team and org libraries ([Packages on disk](./packages-on-disk.md)). A team's `resources/` documents are read by a separate loader at startup, [`readResourcesDirectory`](./documents-on-disk.md). Its `blocks/` folder is not read at startup at all — that folder is scanned when you build, by [`fsdev gen`](./code-on-disk.md). A `tools/` folder is not a slot this convention reads, and `fsdev gen` says so rather than passing it over.
 - It does not follow symlinks inside the tree. A team, a worker slot, a `WORKER.md`, a skill folder — any of these that is a shortcut to somewhere else is refused rather than read. The root you hand it is refused too, with or without a trailing slash. It does not cover a root named through a `.` segment, or anything above the root, so a path that passes through a shortcut on its way in still reads. If you keep the tree behind a symlink on purpose, hand over the path it points at.
 - It does not watch the tree. Read it once, at startup, and re-run `fsdev gen` when the code folders change.
 - It does not staff a [task board](../orchestration/task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.

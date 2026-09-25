@@ -89,10 +89,11 @@ import {
   pushActiveSkill
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
-import { SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
+import { SEAT_PACKAGES_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
   catalogSeatCapabilities,
   resolveSeatCapabilities,
+  packageToolCollisions,
   pickedToolCollisions,
   seatCapabilityProblems,
   selectedPresetTools,
@@ -153,6 +154,52 @@ interface SeatConfig {
    * any. Absent — never `""` — when the team wrote none or has no file at all.
    */
   teamInstructions?: string;
+  /**
+   * The packages this seat holds, imposed by the hire only when it holds one.
+   * Each package's instructions follow the seat's own in the prompt; its blocks
+   * are offered when the seat wrote no `tools:` line.
+   */
+  seatPackages?: Array<{ name: string; path: string; instructions?: string; tools: GeneratorTool[] }>;
+}
+
+/**
+ * The instructions of every package a seat holds, in the order it holds them,
+ * as one prompt entry — or `undefined` when it holds none with any, so a seat
+ * holding nothing gets the prompt it had before packages existed.
+ */
+function packageInstructionsOf(packages: SeatConfig["seatPackages"]): string | undefined {
+  const texts = (packages ?? []).flatMap((held) =>
+    held.instructions === undefined ? [] : [held.instructions]
+  );
+  return texts.length === 0 ? undefined : texts.join("\n\n");
+}
+
+/**
+ * The names a seat's `tools:` line resolved to a held package's block that the
+ * kind's catalog also carries — one message each, naming the package and the
+ * catalog. Only names the line actually granted count: a package block the
+ * line left out is never offered, so a catalog key of the same name clashes
+ * with nothing.
+ */
+function packageCatalogCollisions(
+  catalog: ToolCatalog,
+  seatTools: ReadonlyArray<{ name?: unknown }> | undefined,
+  packages: ReadonlyArray<{ path: string; tools: ReadonlyArray<{ name?: unknown }> }>
+): string[] {
+  const granted = new Set((seatTools ?? []).map((tool) => tool.name));
+  const problems: string[] = [];
+  for (const held of packages) {
+    for (const tool of held.tools) {
+      const name = tool.name;
+      if (typeof name !== "string" || !granted.has(name) || !Object.hasOwn(catalog, name)) continue;
+      problems.push(
+        `Its \`tools:\` line names "${name}", which is both a block of package "${held.path}" and ` +
+          `a key in the kind's tool catalog. One name is one tool, and neither shadows the other — ` +
+          `rename the block, or drop "${name}" from the catalog.`
+      );
+    }
+  }
+  return problems;
 }
 
 /**
@@ -834,8 +881,8 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       uses: [binding, ...usesEntries],
       // The prompt seam — A MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
-      // Two layers, in this order every time: the seat's TEAM speaks first,
-      // the seat's own file last. The array is the framework's own prompt
+      // Three layers, in this order every time: the seat's TEAM speaks first,
+      // then the seat's own file, then the packages it holds. The array is the framework's own prompt
       // slot, which resolves each entry, drops the absent ones and joins the
       // rest — so the filter and the join stay the framework's single rule
       // instead of a second copy of it living here.
@@ -865,9 +912,14 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       // not grow this into a compose helper, a registry or a type: an org-wide
       // fourth layer is the point at which the seam should be re-decided
       // rather than widened a second time.
+      //
+      // A held package's instructions come third, after the seat's own: the
+      // seat holds the package, so its text reads as part of what this seat is
+      // told. The same caveat holds — order, not precedence.
       prompt: [
         (_input, ctx) => ctx.flow.config.teamInstructions,
-        (_input, ctx) => ctx.flow.config.instructions
+        (_input, ctx) => ctx.flow.config.instructions,
+        (_input, ctx) => packageInstructionsOf(ctx.flow.config[SEAT_PACKAGES_KEY])
       ],
       model: (_input, ctx) => ctx.flow.config.model,
       // The seat's granted tools. With a written `tools:` line, both halves of
@@ -881,11 +933,19 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       // declared list and cannot tell where a tool came from, which is the
       // point: a colocated block or a chosen tool is not an exemption from the
       // fence, it joins the declaration.
+      //
+      // With no line, a held package's blocks are chosen too: holding the
+      // package is the choice. With a line they are not added here — a
+      // package block the line names already resolved onto `seatTools` at the
+      // hire, like a block in the seat's own folder.
       tools: async (_input, ctx): Promise<GeneratorTool[]> => {
         const listed = ctx.flow.config.tools;
         const named =
           listed === undefined
-            ? await selectedPresetTools(seatCapabilityCatalog, ctx.flow.config.capabilities, ctx)
+            ? [
+                ...(await selectedPresetTools(seatCapabilityCatalog, ctx.flow.config.capabilities, ctx)),
+                ...(ctx.flow.config[SEAT_PACKAGES_KEY] ?? []).flatMap((held) => held.tools)
+              ]
             : listed.map((toolName) => catalog[toolName] as GeneratorTool);
         const own = ctx.flow.config[SEAT_TOOLS_KEY] as GeneratorTool[] | undefined;
         // Materialized only when the seat has both, which is the uncommon case.
@@ -1028,7 +1088,8 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   /**
    * The mint, with the one refusal the settings schema cannot carry.
    *
-   * Two picked presets that carry different tools under one name are a
+   * Two picked presets that carry different tools under one name — or a held
+   * package's block and a picked preset's tool sharing one — are a
    * problem only for a worker with NO `tools:` line, which is granted both;
    * a worker that wrote a line is granted exactly that line and hires as it
    * always has. The rule reads two settings, and a flow's `configSchema` must
@@ -1037,16 +1098,36 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
    * is still visible. After the flow's own mint, so the schema's refusals come
    * first; thrown, so the hire collects it under the worker's id.
    *
+   * A worker that DID write a line has one clash of its own: a name on the line
+   * that is both a held package's block and a key in this kind's catalog. The
+   * hire resolved it to the package block because the hire cannot see the
+   * catalog; here both are visible, so it is refused rather than letting the
+   * package silently shadow the catalog's tool.
+   *
    * Every property of the defined flow is carried over unchanged: this is the
    * same flow with one more check at its door, not a different one.
    */
   const mint = (options?: Parameters<typeof flow>[0]) => {
     const seat = flow(options);
     if (!Object.hasOwn(seat.config, "tools")) {
-      const problems = pickedToolCollisions(seatCapabilityCatalog, seat.config.capabilities);
+      const problems = [
+        ...pickedToolCollisions(seatCapabilityCatalog, seat.config.capabilities),
+        ...packageToolCollisions(
+          seatCapabilityCatalog,
+          seat.config.capabilities,
+          seat.config[SEAT_PACKAGES_KEY] ?? []
+        )
+      ];
       if (problems.length > 0) {
         throw new Error(`This worker writes no \`tools:\` line, and it ${problems.join(" It also ")}`);
       }
+    } else {
+      const problems = packageCatalogCollisions(
+        catalog,
+        seat.config[SEAT_TOOLS_KEY] as ReadonlyArray<{ name?: unknown }> | undefined,
+        seat.config[SEAT_PACKAGES_KEY] ?? []
+      );
+      if (problems.length > 0) throw new Error(problems.join(" "));
     }
     return seat;
   };

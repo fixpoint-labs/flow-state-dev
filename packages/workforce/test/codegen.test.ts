@@ -160,9 +160,9 @@ describe("what the walk finds", () => {
 
     // Not an error: an app with no custom code is an ordinary app. And the
     // command can still say where it looked — the three locked folders by
-    // path, and Door B's four `resources/` slots and Door C's two `blocks/`
-    // slots as the patterns they are, because their concrete list is one line
-    // per seat in the tree.
+    // path, and Door B's four `resources/` slots, Door C's two `blocks/` slots
+    // and Door D's three package `blocks/` slots as the patterns they are,
+    // because their concrete list is one line per seat in the tree.
     expect(files).toEqual([]);
     expect(searched).toEqual([
       "flows/workers",
@@ -174,6 +174,9 @@ describe("what the walk finds", () => {
       "teams/*/workers/*/resources",
       "teams/*/blocks",
       "teams/*/workers/*/blocks",
+      "org/packages/*/blocks",
+      "teams/*/packages/*/blocks",
+      "teams/*/workers/*/packages/*/blocks",
     ]);
   });
 

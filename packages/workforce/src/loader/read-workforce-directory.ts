@@ -28,9 +28,11 @@ import {
 import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
+  REFUSED_SEAT_PACKAGES_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
   REFUSED_SEAT_TOOLS_KEY_MESSAGE,
   REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
+  SEAT_PACKAGES_KEY,
   SEAT_SKILLS_KEY,
   SEAT_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY,
@@ -277,8 +279,8 @@ function parseWorkerMd(
  * set — the contract's keys MINUS `instructions`, which a file may legitimately
  * declare, PLUS `persona`, which the contract does not carry at all — and each
  * member answers with its own wording. A shared list would have to unify those
- * wordings to exist, which would cost more than it saves. So a fifth imposed
- * key needs a fifth condition here, deliberately, and the test beside each one
+ * wordings to exist, which would cost more than it saves. So a sixth imposed
+ * key needs a sixth condition here, deliberately, and the test beside each one
  * is what notices when it is missing.
  */
 function refusedDeclaration(
@@ -307,6 +309,12 @@ function refusedDeclaration(
   // depending on which door read it.
   if (Object.hasOwn(declared, SEAT_TOOLS_KEY)) {
     return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_TOOLS_KEY_MESSAGE}`);
+  }
+
+  // The fifth, for the fourth's reason: a seat carrying packages no folder of
+  // its holds.
+  if (Object.hasOwn(declared, SEAT_PACKAGES_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_PACKAGES_KEY_MESSAGE}`);
   }
 
   return undefined;

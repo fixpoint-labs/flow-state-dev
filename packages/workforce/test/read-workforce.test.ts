@@ -11,6 +11,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
+import { handler } from "@flow-state-dev/core";
+import { hireWorkforce } from "../src/hire";
 import { readWorkforce } from "../src/loader/read-workforce";
 
 let root: string;
@@ -141,5 +144,33 @@ describe("readWorkforce", () => {
     await expect(readWorkforce(path.join(root, "nope"))).rejects.toThrow(
       /Failed to read workforce directory/,
     );
+  });
+});
+
+describe("readWorkforce then hireWorkforce: a refused package in a worker's own folder", () => {
+  // The loader drops a package whose PACKAGE.md it refuses from the record, but
+  // `fsdev gen` finds its blocks without opening that file. The worker must not
+  // start without a package its own folder holds.
+  it("stops start, naming the worker and the package's folder", async () => {
+    await writeWorker("support", "clerk");
+    const pkgDir = path.join(root, "teams", "support", "workers", "clerk", "packages", "refunds");
+    await fs.mkdir(path.join(pkgDir, "blocks"), { recursive: true });
+    // No PACKAGE.md: refused by the loader.
+
+    const { workers, packageErrors } = await readWorkforce(root);
+    expect(packageErrors.map((e) => e.path)).toContain("teams/support/workers/clerk/packages/refunds");
+    expect(seat(workers, "support.clerk").packages ?? []).toEqual([]);
+
+    const issueRefund = handler({
+      name: "issue-refund",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    });
+    expect(() =>
+      hireWorkforce(workers, {
+        packageBlocks: { "teams/support/workers/clerk/packages/refunds": { "issue-refund": issueRefund } },
+      }),
+    ).toThrow(/worker "support\.clerk"[\s\S]*teams\/support\/workers\/clerk\/packages\/refunds/);
   });
 });

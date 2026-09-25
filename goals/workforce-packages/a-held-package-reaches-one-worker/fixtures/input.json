@@ -1,0 +1,13 @@
+{
+  "userId": "u_goal",
+  "question": "Please log ticket 58 for me.",
+  "packagePath": "teams/support/workers/iris/packages/ticket-desk",
+  "movedTo": "teams/support/workers/otto/packages/ticket-desk",
+  "instructionToken": "MARIGOLD-4417",
+  "receiptToken": "QUILL-7730",
+  "seats": [
+    { "id": "support.iris", "holds": true, "canCall": true },
+    { "id": "support.otto", "holds": false, "canCall": false },
+    { "id": "support.tess", "holds": true, "canCall": false }
+  ]
+}

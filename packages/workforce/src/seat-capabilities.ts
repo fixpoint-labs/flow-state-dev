@@ -404,6 +404,57 @@ export function pickedToolCollisions(
 }
 
 /**
+ * A held package's block sharing a name with a picked preset's tool, as
+ * messages — the package form of {@link pickedToolCollisions}.
+ *
+ * Only meaningful for a worker that wrote NO `tools:` line, which is granted
+ * both the package's blocks and the picked presets' tools; the caller applies
+ * that condition. Listed preset tools only: a function-valued preset's tools
+ * exist per turn, where the framework's own duplicate-name check refuses the
+ * clash on that turn.
+ *
+ * @param catalog The kind's catalogue.
+ * @param selection What this seat's file named.
+ * @param packages The packages this seat holds, as the hire imposed them.
+ * @returns One message per clash.
+ */
+export function packageToolCollisions(
+  catalog: SeatCapabilityCatalog,
+  selection: SeatCapabilitySelection,
+  packages: ReadonlyArray<{ path: string; tools: ReadonlyArray<{ name?: unknown }> }>
+): string[] {
+  const carried = new Map<string, { tool: unknown; path: string }>();
+  for (const held of packages) {
+    for (const tool of held.tools) {
+      if (typeof tool.name === "string") carried.set(tool.name, { tool, path: held.path });
+    }
+  }
+  if (carried.size === 0) return [];
+
+  const problems: string[] = [];
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) continue;
+    for (const preset of presets) {
+      const declared = capability.presetTools.get(preset);
+      if (!Array.isArray(declared)) continue;
+      for (const tool of declared) {
+        const toolName = (tool as { name?: unknown }).name;
+        if (typeof toolName !== "string") continue;
+        const held = carried.get(toolName);
+        if (held === undefined || held.tool === tool) continue;
+        problems.push(
+          `holds package "${held.path}", whose block "${toolName}" has the same name as a tool of ` +
+            `preset "${preset}" on capability "${name}", which it picks. One name is one tool — ` +
+            `rename the block, or write a \`tools:\` line.`
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+/**
  * The refs a seat's selection adds on top of what its kind already carries.
  *
  * One entry per named capability that has at least one preset the kind does

@@ -82,8 +82,12 @@ as it reads above.
 
 Nothing crosses the fence that the seat did not choose. When a Workforce seat
 wrote no `tools:` line, the built-in `agent` kind adds to its declaration the
-tools of the capability presets the seat's own file picked (FIX-1459); a seat
-that wrote a line gets exactly that line. Presets the kind switches on by
+tools of the capability presets the seat's own file picked and the blocks of
+the packages it holds (FIX-1459); a seat that wrote a line gets exactly that
+line, and `tools: []` gets nothing. A package's blocks are registered for the
+seats that hold it and no others, the way a seat's own `blocks/` folder is, so
+holding a package is the choice and a seat that does not hold one cannot name
+its blocks. Presets the kind switches on by
 default are not a choice and add nothing. Core sees one declared list either
 way and stays exactly as literal as it reads above.
 

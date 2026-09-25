@@ -384,6 +384,23 @@ Body.
       expect(message).toContain("tools:");
     });
 
+    // The fifth, for the fourth's reason.
+    it("refuses a worker file that declares the seat-packages key", async () => {
+      const { workers, errors } = await readWorkforceDirectory(
+        tree({
+          "teams/engineering/workers/intake/WORKER.md":
+            "---\ndescription: The front door.\nseatPackages: []\n---\nBody.\n",
+        }),
+      );
+
+      expect(workers).toEqual([]);
+      expect(errors.map((e) => e.path)).toEqual(["teams/engineering/workers/intake"]);
+      const { message } = errors[0]!.error;
+      expect(message).toContain("intake/");
+      expect(message).toContain("seatPackages");
+      expect(message).toContain("not a setting a worker declares");
+    });
+
     it("reports a worker segment breaking the name rules, with the rule in the message", async () => {
       const { workers, errors } = await readWorkforceDirectory(
         tree({ ...HEALTHY, "teams/engineering/workers/Platform_Eng/WORKER.md": LEAD_MD }),

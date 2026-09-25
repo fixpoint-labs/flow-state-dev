@@ -1,6 +1,7 @@
 /**
  * `fsdev gen` command — write the module that registers an app's custom flow
- * kinds, blocks and resource modules, from the files that already declare them.
+ * kinds, blocks, package blocks and resource modules, from the files that
+ * already declare them.
  *
  * Thin by design: it resolves the workforce root, calls the convention in
  * `@flow-state-dev/workforce/codegen`, writes the file and prints what it
@@ -25,6 +26,7 @@ import {
   discoverWorkforceCode,
   renderWorkforceCode,
   type DiscoveredFile,
+  type DiscoveredPackageBlock,
   type DiscoveredResourceModule,
   type DiscoveredSeatBlock,
 } from "@flow-state-dev/workforce/codegen";
@@ -52,6 +54,8 @@ export interface GenResult {
   resourceModules: DiscoveredResourceModule[];
   /** Every per-seat block registration, ordered by path then seat. */
   seatBlocks: DiscoveredSeatBlock[];
+  /** Every block a package's `blocks/` folder carries, ordered by path. */
+  packageBlocks: DiscoveredPackageBlock[];
   /** The folders looked in. */
   searched: string[];
   /** True when the file on disk already matched — always true for a write that changed nothing. */
@@ -60,7 +64,7 @@ export interface GenResult {
 
 /** Group what was discovered by the map each one lands on, for the summary line. */
 function countBySlot(
-  result: Pick<GenResult, "files" | "resourceModules" | "seatBlocks">,
+  result: Pick<GenResult, "files" | "resourceModules" | "seatBlocks" | "packageBlocks">,
 ): string {
   const counts = { worker: 0, channel: 0, block: 0 };
   for (const file of result.files) counts[file.slot] += 1;
@@ -71,18 +75,19 @@ function countBySlot(
   return (
     `${counts.worker} worker kind(s), ${counts.channel} channel kind(s), ` +
     `${counts.block} block(s), ${result.resourceModules.length} resource module(s), ` +
-    `${seatBlockFiles} seat block(s)`
+    `${seatBlockFiles} seat block(s), ${result.packageBlocks.length} package block(s)`
   );
 }
 
 /** Every discovered path, in one list, for the report that names what disagreed. */
 function discoveredPaths(
-  result: Pick<GenResult, "files" | "resourceModules" | "seatBlocks">,
+  result: Pick<GenResult, "files" | "resourceModules" | "seatBlocks" | "packageBlocks">,
 ): string[] {
   const seatBlockPaths = [...new Set(result.seatBlocks.map((entry) => entry.path))];
   return [
     ...[...result.files, ...result.resourceModules].map((found) => found.path),
     ...seatBlockPaths,
+    ...result.packageBlocks.map((entry) => entry.path),
   ];
 }
 
@@ -101,8 +106,9 @@ export async function executeGenCommand(options: GenCommandOptions): Promise<Gen
   // The root's own refusals — symlinked, missing, unreadable — belong to the
   // walk and are made there, so every caller of it gets them and not just this
   // command.
-  const { files, resourceModules, seatBlocks, searched } = await discoverWorkforceCode(root);
-  const rendered = renderWorkforceCode(files, resourceModules, seatBlocks);
+  const { files, resourceModules, seatBlocks, packageBlocks, searched } =
+    await discoverWorkforceCode(root);
+  const rendered = renderWorkforceCode(files, resourceModules, seatBlocks, packageBlocks);
   const file = join(root, GENERATED_FILE_NAME);
 
   // The no-follow promise covers what we WRITE as well as what we read. Both
@@ -124,7 +130,7 @@ export async function executeGenCommand(options: GenCommandOptions): Promise<Gen
 
   if (options.check !== true && !upToDate) await writeFile(file, rendered, "utf-8");
 
-  return { file, files, resourceModules, seatBlocks, searched, upToDate };
+  return { file, files, resourceModules, seatBlocks, packageBlocks, searched, upToDate };
 }
 
 export function registerGenCommand(program: Command): void {
@@ -182,6 +188,9 @@ export function registerGenCommand(program: Command): void {
       }
       for (const entry of result.seatBlocks) {
         console.log(`  ${entry.path} -> ${entry.seat}.${entry.name}`);
+      }
+      for (const entry of result.packageBlocks) {
+        console.log(`  ${entry.path} -> ${entry.package}: ${entry.name}`);
       }
       console.log(
         result.upToDate
