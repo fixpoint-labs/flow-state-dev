@@ -10,9 +10,9 @@ the format.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the hire step's `tools:` split, and the kind's `tools:` setting | Record whether the worker **wrote a `tools:` line at all** **before** the hire splits `tools:` into own-folder blocks and catalog names (that split can leave an empty catalog list for a worker that listed only its own blocks) and before any schema default fills it. Pass the answer on as an imposed flag; never infer it from the list after the split or after the default | BR-2 BR-3 BR-5 BR-8 |
+| S1 | `workforce` · the hire step's `tools:` split, and the kind's `tools:` setting | Record whether the worker **wrote a `tools:` line at all** **before** the hire splits `tools:` into own-folder blocks and catalog names (that split can leave an empty catalog list for a worker that listed only its own blocks) and before any schema default fills it. Carry the answer on the `tools` setting itself: the hire writes the post-split catalog list back only when the file wrote the key, so an omitted line stays unset, and the kind reads an unset `tools` (`=== undefined`) as no line, at the mint and every turn alike, never the list's length. The setting stays optional with no schema default. *Amended after merge: the plan first said an imposed flag; key presence carries the same answer with no second field to keep in step* | BR-2 BR-3 BR-5 BR-8 |
 | S2 | `workforce` · the agent kind's per-turn tools slot | Add the tools of every preset the worker's file **picked**, read from its raw selection (not only the presets the per-turn resolver still delivers, which skips presets already on for the kind). Function-valued preset tools join per turn. Nothing is added when S1 says the worker wrote a `tools:` line. The kind's mint-time check refuses a picked preset's static tool whose name collides with the worker's other tools | BR-3 BR-4 BR-6 BR-7 BR-21 BR-29 BR-31 BR-33 |
-| S3 | `workforce` · the hired worker's settings contract | One more imposed key, beside the team's instructions, own skills and own tools: the worker's **packages**, each with its text and its blocks. Its own key, not `seatTools`, whose documented meaning is what the worker listed. Refused if a file declares it. Documented for custom kinds: reading it is optional, as for the other imposed keys | BR-15 BR-32 |
+| S3 | `workforce` · the hired worker's settings contract | One more imposed key, beside the team's instructions, own skills and own tools, imposed only on a seat that holds at least one package: the worker's **packages**, each with its text and its blocks. A custom kind that declares its settings contract by hand keeps hiring; it is refused at start, with the key named, only when one of its workers holds a package. Its own key, not `seatTools`, whose documented meaning is what the worker listed. Refused if a file declares it. Documented for custom kinds: reading it is optional, as for the other imposed keys. *Amended after merge: the plan first imposed it on every seat* | BR-15 BR-32 |
 | S4 | `workforce` · the package text reader | A pure reader: `PACKAGE.md` text in, `{ description, body }` out, or a named refusal. Takes a string, never a path | BR-16 BR-17 BR-28 |
 | S5 | `workforce` · the package walker at start | Walks `packages/` at org, team and worker level with the shared structural primitives; calls S4 per file; refuses the shapes in BR-18, BR-20, BR-24, BR-25 | BR-9 BR-10 BR-18 BR-20 BR-24 BR-25 |
 | S6 | `workforce` · codegen, a fourth code door | Finds `packages/<name>/blocks/*.ts` at the three levels without opening modules; renders a `packageBlocks` map keyed by the package's address. Reuses the seat-blocks door's refusals | BR-22 BR-27 |
@@ -63,7 +63,7 @@ S4–S7 do not depend on PR-A and may be built in parallel with it; only S8 need
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S1 | Omitted and `[]` are told apart after the schema, on a file record and on a stored roster row (BR-8) |
-| V2 | S2 | BR-3 (including a worker that lists only its own blocks), BR-4, BR-6, BR-29, BR-31 green; BR-5, BR-7 green with the existing suites **unmodified**. BR-33 green with the existing suites unmodified. Negative control: drop S1's flag and read the post-split list instead, and a worker that lists only its own blocks gains its presets' tools (red) |
+| V2 | S2 | BR-3 (including a worker that lists only its own blocks), BR-4, BR-6, BR-29, BR-31 green; BR-5, BR-7 green with the existing suites **unmodified**. BR-33 green with the existing suites unmodified. Negative control: ignore whether S1's `tools` is set and read the post-split list instead, and a worker that lists only its own blocks gains its presets' tools (red) |
 | V3 | S4 | Each refusal in BR-16/BR-17 red before green; S4 called with a string only (BR-28) |
 | V4 | S5, S6 | BR-18, BR-20, BR-22, BR-24, BR-25, BR-27, each red first. The symlink matrix gains package rows |
 | V5 | S8, S9 | The per-turn clash in the failure taxonomy fails that turn with the duplicate-name error. BR-1, BR-2, BR-9–BR-15, BR-19, BR-21, BR-23, BR-26, BR-30, BR-32. BR-14 asserts the sibling **after** proving the holder really got the package, so it cannot pass vacuously |
@@ -86,7 +86,7 @@ Everything else, including the generated map's export name and S3's key, is your
 
 | Rule | Because |
 |---|---|
-| One place decides the withhold: the hire step, from what the file wrote, before any split. The hire grants what it can see (package blocks); the kind grants what only it can see (its presets' tools); both read the one flag | Two layers reading `tools:` two ways is how a withhold gets lost, which is the first thing the validator found (tenet 5) |
+| One place decides the withhold: the hire step, from what the file wrote, before any split. The hire grants what it can see (package blocks); the kind grants what only it can see (its presets' tools); both read the one signal, whether `tools` is set | Two layers reading `tools:` two ways is how a withhold gets lost, which is the first thing the validator found (tenet 5) |
 | S4 takes text and knows nothing about disk | The owner's authorship constraint: a resource-stored package later is a new caller, not a rewrite |
 | Package blocks never reach the app catalog | D3; a catalog entry is nameable by every worker of the kind |
 | Every refusal is collected and names worker and file | Every other reader in the tree does it; an author fixes all of them in one run |
@@ -114,7 +114,7 @@ at the hire, per worker:
         registry += packageBlocks[address]                       ← collisions refused
         chosenTools += names of those blocks
     chosenTools += static tools of selected presets
-    grant ← (a tools: line was written) ? exactly that line : chosenTools
+    grant ← (a tools: line was written, i.e. `tools` is set) ? exactly that line : chosenTools
 ```
 
 **POC:** none new. The ratify's probes (`origin/spec/FIX-1394-matrix:spec-poc/FIX-1394-probes/`)
