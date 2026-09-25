@@ -19,3 +19,4 @@
 | 2026-09-25 | 0aa7669 | typesafe-ai/jev (Vercel AI Gateway) | PASS | Re-run. 3 remember / 5 skip: skip, remember+observed, skip, skip, remember+observed, skip, skip, remember+observed. No writes on skips. |
 | 2026-09-25 | 0aa7669 | openai.evaluationModel("openai/gpt-5.4-mini") via the gateway's OpenAI-compatible endpoint | PASS | `GOAL_EVALUATION_MODEL=openai`. Same split, observer on exactly the remember turns, no writes on skips. |
 | 2026-09-25 | 0aa7669 | typesafe-ai/jev (Vercel AI Gateway) | FAIL (expected) | `GOAL_CONTROL=ignore-evaluator`: d1 on all five skipped turns, plus d2 on "lol yeah" (1 entry added). |
+| 2026-09-25 | 8dc242e | typesafe-ai/jev (Vercel AI Gateway) | PASS | After review round 1 (window carried through the pipeline, watermark bound to the judged window). 3 remember / 5 skip: skip, remember+observed, skip, skip, remember+observed, skip, skip, remember+observed. No writes on skips. |
