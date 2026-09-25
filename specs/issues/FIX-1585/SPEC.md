@@ -20,6 +20,47 @@ The reference app shows a team you can't talk to. Everything else on the page ac
 the two things Workforce is *about* are the only read-only ones. That is the hole this closes,
 and closing it turned up a second one: a channel's panel has never shown the channel.
 
+## The goal, and how we'll know it's met
+
+**From the kitchen-sink page, a person talks to an agent seat and posts to a channel, and after a
+reload both conversations are still there, showing who said what.**
+
+| Is it the right goal? | |
+|---|---|
+| **The real need** | *"A seat is a direct conversation. I should be able to talk to a seat using the normal agent flow that comes with workforce."* (the owner, 2026-09-25). Epic [FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592)'s first path: talk to a seat, both sides kept ([ER-1](../../epics/FIX-1592/BUSINESS-RULES.md#what-a-person-gets)) |
+| **Smaller, and rejected** | "The page can send." A post lands and a seat runs; the CLI already does both. The page would still show nothing after a reload, and the seat would keep its reply but lose the question |
+| **Bigger, and not this issue's** | A post reaching the channel's agents ([FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590)), an agent answering in the channel ([FIX-1594](https://linear.app/fixpoint-labs/issue/FIX-1594)), the desk clerk answering for real ([FIX-1589](https://linear.app/fixpoint-labs/issue/FIX-1589)) |
+| **Not done if** | The package tests are green and the browser check never ran on a production build · it passes before the reload but not after · the page shows its own optimistic copy, not what the server kept · the seat leg ran on a `desk-clerk` seat, whose echo hides a lost question |
+
+```mermaid
+flowchart LR
+  B["production build · keyless"] --> S["send a unique message to support.otto"]
+  B --> P["post a unique line to support.desk"]
+  S --> R["reload the page"]
+  P --> R
+  R -->|"otto: message and reply both there · desk: line there, labelled devuser"| PASS["PASS · goal met"]
+  C1["control · the agent run keeps no user message"] -.-> S
+  C2["control · a post emits no channel-post item"] -.-> P
+  R -.->|"under either control"| F["must FAIL · names the missing line"]
+```
+
+The check reads the page after a reload, so only what the server kept can pass it. Each dashed
+control removes one kept side, and the check must fail on that side's leg.
+
+| How we verify | |
+|---|---|
+| **Goal check** | `goals/kitchen-sink-talk/keeps-both-sides-across-a-reload/`, driving a real browser against kitchen-sink's production build. Its legs are V6 and V7 in [PLAN.md](PLAN.md). Run by the implementer at completion, locally first; handed to `fsd-qa` over the mailbox only if no browser can run here. Verdict in the implementation PR |
+| **Model** | `n/a`: kitchen-sink's scripted model answers the seat ([epic D3](../../epics/FIX-1592/DECISIONS.md#d3)). The goal is what is kept and who said it, not what the reply says, so a real model adds cost and nothing the check reads |
+| **Signal** | After a reload: the person's message and a reply under it in `support.otto`'s conversation; the posted line in `support.desk`'s transcript, labelled `devuser`; `support.wren` shows no composer and its reason |
+| **Input** | A message and a line carrying a fresh unique token per run. A different seat of the `agent` kind, or a different channel, must pass too |
+| **Anti-game** | Don't assert on the reply's wording, on the optimistic bubble before the reload, or on anything but the run's own token: other tests post to the same channel |
+| **Control that must fail** | `GOAL_CONTROL=drop-user-message` fails the otto leg. `GOAL_CONTROL=no-post-item` fails the desk leg. Today's `main` fails both, because there is no composer. The PR shows each FAIL before the PASS |
+
+![How FIX-1585 is proved: the goal at the top, two browser checks on a production build that are the goal itself (V6 posts to support.desk and survives a reload; V7 talks to support.otto, both sides survive a reload, and finds support.wren read-only), the package and app tests they rest on (V1, V3, V2, V5), every existing check still green (V8), and a note that a CLI or HTTP call alone is not proof](figures/how-we-prove-it.svg)
+
+Only the two blue checks close the goal. Everything under them explains a failure, and none of
+it counts as acceptance on its own.
+
 ## What changes
 
 ![Two versions of the same page. Today: the assistant's panel has the only composer; a picked channel shows an empty stream and a read-only note, and a picked seat shows its stream and the same note. After: the channel panel shows its transcript with a composer that calls the channel's post action; the seat panel shows its conversation with a composer that calls the seat kind's own action; a followup-runner seat stays read-only with a reason](figures/what-changes.svg)
@@ -68,13 +109,6 @@ Both composers call actions that already exist and already answer the CLI. The o
 the post's own item reaching the page, which is how the assistant's conversation reaches it
 too.
 
-## How we prove it
-
-![How FIX-1585 is proved: the goal at the top, two browser checks on a production build that are the goal itself (V6 posts to support.desk and survives a reload; V7 talks to support.otto, both sides survive a reload, and finds support.wren read-only), the package and app tests they rest on (V1, V3, V2, V5), every existing check still green (V8), and a note that a CLI or HTTP call alone is not proof](figures/how-we-prove-it.svg)
-
-Only the two blue checks close the goal: a person at the real page, and the same result after a
-reload. Everything under them explains a failure, and none of it counts as acceptance on its own.
-
 ## What stays as it is
 
 - The assistant, its composer and its sessions. No assistant tool posts to a channel or asks a
@@ -86,6 +120,11 @@ reload. Everything under them explains a failure, and none of it counts as accep
 - Live updates of other people's posts. A line a seat posts shows the next time the panel reads.
 
 ## Sign off
+
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** both sides of a seat
+conversation and every channel post survive a reload on the real page. If wrong: we ship
+composers a person uses once and doesn't trust, or hold this issue open for the channel's agents,
+which are FIX-1590's.
 
 1. **[D1](DECISIONS.md#d1) · The transcript is the posts: each post leaves one item on its own
    request, and nothing is copied into state.** Chosen by you in review. If wrong: `read` returns

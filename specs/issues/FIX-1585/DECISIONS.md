@@ -92,6 +92,8 @@ is `read`'s window.
 - **`digest` does the same as the built-in kind.** Its `post` emits a `channel-post` item and
   its `read` returns the tail from those items. Five lines sit well inside the window. A person
   scrolls the page.
+- **The goal check runs on the scripted model.** It reads what was kept and who said it, never
+  the reply's words, so a real model buys nothing the check can see (epic D3).
 - **The window stays at the default.** Raising it on the channel kind loads more history on
   every post, to serve a model that has not asked for it. `read`'s description says it returns
   the recent lines.
@@ -124,5 +126,8 @@ is `read`'s window.
 - **Round 2** — the owner asked whether the transcript is just the post requests. Traced in
   code, it is. The owner chose to drop the copy: each post leaves its own item, and the
   measured cost is `read`'s window.
+- **Round 3** — the owner re-scoped the epic: a seat is a direct conversation, so an agent seat
+  keeps the person's message (epic ER-1). Main's new spec rules added the goal section and its
+  controls; the proof figure stays as the stack under it.
 
 **Open: none.**

@@ -17,6 +17,7 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 | S6 | kitchen-sink · e2e | A new spec file for the talk scenarios. `workforce-shell.spec.ts` is untouched and its header claim ("nothing here writes to a channel") stays true | BR-1 BR-2 BR-12 BR-13 BR-15 BR-16 BR-20 |
 | S8 | `workforce` · the built-in `agent` kind (`agent-worker-flow.ts`) | A `userMessage` on `run`, so the person's message is kept as their turn (epic ER-1). One line. **Waits for FIX-1459 to land** | BR-12 BR-13 |
 | S9 | kitchen-sink · the test resolver (`test/mock-flowstate.ts`) | Map the agent kind's generators (`agent-answer`, `agent-answer-with-activate-tool`) to the scripted model, and add this issue's scenario to `lib/e2e-mock-script.ts`, keyed on its own marker (epic ER-7, D3) | BR-12 BR-13 |
+| S10 | `goals/kitchen-sink-talk/keeps-both-sides-across-a-reload/` | The goal check: `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met) and `run.mts` driving a real browser against the production build, running V6's and V7's legs. Two controls: `GOAL_CONTROL=drop-user-message` (S8 off) and `GOAL_CONTROL=no-post-item` (S1 posts no item) | BR-1 BR-2 BR-12 BR-13 |
 | S7 | Docs and release note | [DOCS.md](DOCS.md)'s operations; one `minor` changeset for `@flow-state-dev/workforce` (`read` now returns the recent lines, new posts no longer land in `state.transcript`, and an agent seat keeps the person's message). kitchen-sink is private: no changeset | — |
 
 ## Sequence
@@ -30,7 +31,8 @@ flowchart TD
   S8["S8 · agent keeps the message, after FIX-1459"] --> S6
   S9["S9 · scripted model for agent seats"] --> S6
   S5 --> S6["S6 · e2e"]
-  S6 --> S7["S7 · docs and changeset"]
+  S6 --> S10["S10 · the goal check"]
+  S10 --> S7["S7 · docs and changeset"]
 ```
 
 ## Checks
@@ -42,8 +44,8 @@ flowchart TD
 | V3 | S1 S2 | kitchen-sink flow test through the real config: a post with no author lands with principal `devuser` on `support.desk` and not on `support.ada-wren` (BR-3); the app's notify block is called once per `desk` member (BR-6); a `digest` post lands with no `principal`, no notify call, and `read` still returns the tail (BR-7) |
 | V4 | S2 | A `digest` post leaves one `channel-post` item and `read` returns the last five from items (BR-7, BR-10) |
 | V5 | S4 S5 | Component tests on the panel: label order (BR-8); whitespace disables send (BR-4); a refused post shows its reason and keeps the text (BR-5, BR-17); an `agent` seat sends `{ message }` to `run` (BR-12); a `desk-clerk` seat sends `{ note }` to `answer` (BR-14); a transcript re-read after an own post picks up a line written meanwhile (BR-9); a failed "New conversation" shows the error in the seat's row, opens nothing, and leaves the button usable (BR-17) |
-| V6 | S6 | **Goal check, real page, production build:** open `support.desk` from the rail, send a unique line, see it labelled `devuser` in that panel; reload, still there. Asserts on its own unique text, because other tests share the channel |
-| V7 | S6 S8 S9 | **Goal check, keyless:** create (via S5) a `support.otto` conversation, send a unique message, see it as the person's turn and the scripted reply under it; reload, both still there. Open `support.wren`: no composer, the reason shown. Red state: drop S8's `userMessage` and the message is gone after the reply lands |
+| V6 | S6 S10 | **Goal check's desk leg, real page, production build:** open `support.desk` from the rail, send a unique line, see it labelled `devuser` in that panel; reload, still there. Asserts on its own unique text, because other tests share the channel. Must FAIL under `GOAL_CONTROL=no-post-item` |
+| V7 | S6 S8 S9 S10 | **Goal check's otto leg, keyless:** create (via S5) a `support.otto` conversation, send a unique message, see it as the person's turn and the scripted reply under it; reload, both still there. Open `support.wren`: no composer, the reason shown. Must FAIL under `GOAL_CONTROL=drop-user-message`: the message is gone after the reload |
 | V8 | all | The existing workforce-shell VGs and the rest of the kitchen-sink e2e suite, unchanged and green (BR-19, BR-20) |
 
 Second paths (BP-035): the refused post and the failed new conversation (V5), the reload
@@ -70,7 +72,7 @@ Everything else is yours to name, including the shape of S3's entries.
 
 ## Docs
 
-Reconcile and publish [DOCS.md](DOCS.md) after V6 and V7 pass. Its three operations own the
+Reconcile and publish [DOCS.md](DOCS.md) after the goal check passes and both controls fail. Its three operations own the
 prose; this plan only sequences them.
 
 ## Sketch · pseudocode, illustrative, react to the shape
