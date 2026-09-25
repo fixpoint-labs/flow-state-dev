@@ -21,6 +21,10 @@ import {
   type SeatSkillError,
 } from "./read-seat-skills";
 import {
+  readPackagesDirectory,
+  type PackageError,
+} from "./read-packages-directory";
+import {
   readTeamsDirectory,
   type TeamManifestError,
 } from "./read-teams-directory";
@@ -80,6 +84,16 @@ export interface ReadWorkforceResult {
    * `TeamManifestErrorKind`).
    */
   teamErrors: TeamManifestError[];
+  /**
+   * Package failures, exactly as `readPackagesDirectory` reports them — a
+   * `packages/<name>/` folder that is refused, at any level.
+   *
+   * Their own channel for the reason the other two are. A refused package is
+   * left off every record that would have reached it, so a worker whose
+   * `packages:` names it is then refused at the hire as naming a package no
+   * library offers; this is where the reason is.
+   */
+  packageErrors: PackageError[];
 }
 
 /**
@@ -90,7 +104,7 @@ export interface ReadWorkforceResult {
  * an app its other workers or a worker its other skills.
  *
  * @param root The workforce tree — the folder holding `org/` and `teams/`.
- * @returns Records ready for `hireWorkforce`, plus the three collected error
+ * @returns Records ready for `hireWorkforce`, plus the four collected error
  *   channels.
  *
  * @example
@@ -115,6 +129,10 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
     ),
   );
 
+  // Once, for the whole tree, like the team files: a library is one value per
+  // level, and each worker's reach is a filter over the one read.
+  const { packages, errors: packageErrors } = await readPackagesDirectory(root);
+
   const joined: WorkerManifest[] = [];
   const skillErrors: ReadWorkforceResult["skillErrors"] = [];
 
@@ -122,6 +140,15 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
     const { team, name } = splitWorkerId(worker.id);
     const seat = await readSeatSkills(root, { team, worker: name });
     const teamInstructions = instructionsByTeam.get(team);
+    // The org's library, the worker's team's, then its own folder — in walk
+    // order, which is that order. Another team's library and a sibling's own
+    // folder are not in reach, so they never reach this record at all.
+    const reach = packages.filter(
+      (candidate) =>
+        candidate.level === "org" ||
+        (candidate.level === "team" && candidate.team === team) ||
+        (candidate.level === "worker" && candidate.worker === worker.id),
+    );
     joined.push({
       ...worker,
       skills: seat.skills,
@@ -131,13 +158,15 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
       // `hasOwn`, and a key that is there holding `undefined` is a team layer
       // the record claims to have read and does not have.
       ...(teamInstructions === undefined ? {} : { teamInstructions }),
+      // Absent rather than empty, for the reason `teamInstructions` is.
+      ...(reach.length === 0 ? {} : { packages: reach }),
     });
     if (seat.errors.length > 0) {
       skillErrors.push({ worker: worker.id, errors: seat.errors });
     }
   }
 
-  return { workers: joined, errors, skillErrors, teams, teamErrors };
+  return { workers: joined, errors, skillErrors, teams, teamErrors, packageErrors };
 }
 
 /**

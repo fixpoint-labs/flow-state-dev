@@ -67,6 +67,16 @@ export interface WorkerManifest {
    */
   teamInstructions?: string;
   /**
+   * The packages this seat can reach — the org's library, its team's library,
+   * and the ones in its own folder — in that order.
+   *
+   * Filled by the joined loader (`readWorkforce`), and **absent when none are
+   * in reach**, as on a hand-built record. Reach is not holding: the hire
+   * gives the seat every package at the `worker` level and, from the two
+   * libraries, only the ones its file names in `packages:`.
+   */
+  packages?: PackageManifest[];
+  /**
    * Set by a hire row, never by a `WORKER.md`. Absent, the minted instance
    * stays shared — a file-declared seat and a shared app flow. Present, the
    * mint copies it onto the instance, and registration stores it as the pin.
@@ -238,6 +248,39 @@ export const TEAM_MD = "TEAM.md";
  * mistake, and a package with no file is refused rather than read as empty.
  */
 export const PACKAGE_MD = "PACKAGE.md";
+
+/**
+ * One package, as read off disk: a `packages/<name>/` folder's `PACKAGE.md`.
+ *
+ * Carries the package's text and where it sits. Its blocks are not here: code
+ * is found by `fsdev gen` and arrives at the hire on the generated
+ * `packageBlocks` map, keyed by {@link PackageManifest.path}, which is where the
+ * two halves meet.
+ */
+export interface PackageManifest {
+  /** The folder's name — what a worker's `packages:` takes it by. */
+  name: string;
+  /**
+   * The folder's slash-separated path under the workforce root — for example
+   * `teams/support/packages/escalation`. The package's address, and the key its
+   * blocks sit under on `packageBlocks`.
+   */
+  path: string;
+  /** Where the folder sits: the org's library, a team's library, or one worker's own folder. */
+  level: "org" | "team" | "worker";
+  /** The team whose folder holds it. Set at the `team` and `worker` levels. */
+  team?: string;
+  /** The worker id (`<team>.<worker>`) whose folder holds it. Set at the `worker` level only. */
+  worker?: string;
+  /** The file's required `description` — a label for people, never handed to a model. */
+  description: string;
+  /**
+   * The file's body, verbatim. **Absent when it is empty or whitespace**, never
+   * `""`, for the reason a team's instructions are: whitespace is not
+   * instructions.
+   */
+  instructions?: string;
+}
 
 /**
  * The one wording for {@link TEAM_INSTRUCTIONS_KEY}, shared by every door that
