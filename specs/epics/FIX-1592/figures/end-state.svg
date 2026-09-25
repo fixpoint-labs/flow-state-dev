@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 400" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, three ways of talking: talk to an agent seat, and your message and its reply are both kept (FIX-1585); a post to a channel with no seat author runs each member agent seat once (FIX-1590); an agent seat replies into a channel it belongs to, under its own name (FIX-1594). The fence: Workforce changes where a path needs them; no Workforce word in core, engine, client or react; no kitchen-sink-only messaging API; one kind-to-action map; a post a seat wrote wakes no seat. Composed in by the app: the model, scripted in the browser checks; the one kind-to-action map; which members are agent seats. Replaced in one line: the model, and the no-ping-pong rule. Not built: the clerk's model answer (FIX-1589), the boards (FIX-1591), Assistant tools that post or ask, channel admin, verified identity, Layer 1 substrate, live updates of others' posts.">
+<svg viewBox="0 0 940 430" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, three ways of talking: talk to a seat, where an agent seat keeps your message and its reply, and the desk clerk answers with a model or files your note onto a board (FIX-1585, FIX-1589); a post to a channel with no seat author runs each member agent seat once (FIX-1590); an agent seat replies into a channel it belongs to, under its own name (FIX-1594). The fence: Workforce changes where a path needs them; no Workforce word in core, engine, client or react; no kitchen-sink-only messaging API; one kind-to-action map; the clerk files only through the channel's fileTask; a post a seat wrote wakes no seat. Composed in by the app: the model, scripted in the browser checks; the one kind-to-action map; which members are agent seats. Replaced in one line: the model, and the no-ping-pong rule. Not built: the boards' drain and the escalations call (FIX-1591, held), Assistant tools that post or ask, channel admin, verified identity, Layer 1 substrate, live updates of others' posts.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -22,59 +22,62 @@
     .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="400"/>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
 
   <g id="in-the-box">
-    <rect class="box" x="16" y="16" width="580" height="240" rx="6"/>
+    <rect class="box" x="16" y="16" width="580" height="270" rx="6"/>
     <text class="t-lbl" x="32" y="38">IN THE BOX &#183; THREE WAYS OF TALKING</text>
-    <rect class="door" x="32" y="50" width="176" height="84" rx="4"/>
+    <rect class="door" x="32" y="50" width="176" height="100" rx="4"/>
     <text class="t-b" x="44" y="70">talk to a seat</text>
-    <text class="t-s" x="44" y="88">your message and its reply,</text>
-    <text class="t-s" x="44" y="102">both kept across a reload</text>
-    <text class="t-ok" x="44" y="122">FIX-1585</text>
-    <rect class="door" x="218" y="50" width="176" height="84" rx="4"/>
+    <text class="t-s" x="44" y="88">an agent keeps both sides;</text>
+    <text class="t-s" x="44" y="102">the clerk answers with a</text>
+    <text class="t-s" x="44" y="116">model, or files the note</text>
+    <text class="t-ok" x="44" y="138">FIX-1585 &#183; FIX-1589</text>
+    <rect class="door" x="218" y="50" width="176" height="100" rx="4"/>
     <text class="t-b" x="230" y="70">posts reach agents</text>
     <text class="t-s" x="230" y="88">each member agent seat</text>
     <text class="t-s" x="230" y="102">runs once on the post</text>
-    <text class="t-ok" x="230" y="122">FIX-1590</text>
-    <rect class="door" x="404" y="50" width="176" height="84" rx="4"/>
+    <text class="t-ok" x="230" y="138">FIX-1590</text>
+    <rect class="door" x="404" y="50" width="176" height="100" rx="4"/>
     <text class="t-b" x="416" y="70">an agent replies in it</text>
     <text class="t-s" x="416" y="88">a post into its channel,</text>
     <text class="t-s" x="416" y="102">under the seat's own name</text>
-    <text class="t-ok" x="416" y="122">FIX-1594</text>
-    <path class="fence" d="M32 152 L580 152"/>
-    <text class="t-ok" x="32" y="172">THE FENCE</text>
-    <text class="t-s" x="32" y="190">Workforce changes where a path needs them; no Workforce word in core,</text>
-    <text class="t-s" x="32" y="204">engine, client or react</text>
-    <text class="t-s" x="32" y="222">no kitchen-sink-only messaging API &#183; one kind-to-action map</text>
-    <text class="t-s" x="32" y="240">a post a seat wrote wakes no seat, so two agents never loop</text>
+    <text class="t-ok" x="416" y="138">FIX-1594</text>
+    <path class="fence" d="M32 166 L580 166"/>
+    <text class="t-ok" x="32" y="186">THE FENCE</text>
+    <text class="t-s" x="32" y="204">Workforce changes where a path needs them; no Workforce word in core,</text>
+    <text class="t-s" x="32" y="218">engine, client or react</text>
+    <text class="t-s" x="32" y="236">no kitchen-sink-only messaging API &#183; one kind-to-action map</text>
+    <text class="t-s" x="32" y="254">the clerk files only through the channel's own fileTask</text>
+    <text class="t-s" x="32" y="272">a post a seat wrote wakes no seat, so two agents never loop</text>
   </g>
 
   <g id="composed-in">
-    <rect class="app" x="612" y="16" width="312" height="240" rx="6"/>
+    <rect class="app" x="612" y="16" width="312" height="270" rx="6"/>
     <text class="t-lbl" x="628" y="38">COMPOSED IN BY THE APP</text>
     <text class="t-d" x="628" y="66">the model</text>
     <text class="t-s" x="628" y="82">scripted in the browser checks,</text>
-    <text class="t-s" x="628" y="96">one entry for the agent kind</text>
-    <text class="t-d" x="628" y="126">one kind-to-action map</text>
-    <text class="t-s" x="628" y="142">desk-clerk: answer &#183; agent: run</text>
-    <text class="t-s" x="628" y="156">followup-runner: none</text>
-    <text class="t-d" x="628" y="186">which members are agent seats</text>
-    <text class="t-s" x="628" y="202">a WORKER.md with no flow line;</text>
-    <text class="t-s" x="628" y="216">clerks and runners are not run</text>
+    <text class="t-s" x="628" y="96">one entry for the agent kind,</text>
+    <text class="t-s" x="628" y="110">one for the clerk</text>
+    <text class="t-d" x="628" y="140">one kind-to-action map</text>
+    <text class="t-s" x="628" y="156">desk-clerk: answer &#183; agent: run</text>
+    <text class="t-s" x="628" y="170">followup-runner: none</text>
+    <text class="t-d" x="628" y="200">which members are agent seats</text>
+    <text class="t-s" x="628" y="216">a WORKER.md with no flow line;</text>
+    <text class="t-s" x="628" y="230">a post runs no clerk or runner</text>
   </g>
 
   <g id="replaced">
-    <rect class="app" x="16" y="270" width="908" height="50" rx="6"/>
-    <text class="t-lbl" x="32" y="290">REPLACED IN ONE LINE</text>
-    <text class="t-d" x="32" y="310">the model: one string</text>
-    <text class="t-d" x="400" y="310">the no-ping-pong rule, if agents should hear each other</text>
+    <rect class="app" x="16" y="300" width="908" height="50" rx="6"/>
+    <text class="t-lbl" x="32" y="320">REPLACED IN ONE LINE</text>
+    <text class="t-d" x="32" y="340">the model: one string</text>
+    <text class="t-d" x="400" y="340">the no-ping-pong rule, if agents should hear each other</text>
   </g>
 
   <g id="not-built">
-    <rect class="out" x="16" y="334" width="908" height="54" rx="6"/>
-    <text class="t-lbl" x="32" y="354">NOT BUILT</text>
-    <text class="t-go" x="32" y="370">the clerk's model answer (FIX-1589) &#183; the boards (FIX-1591) &#183; Assistant tools that post or ask &#183; channel admin (FIX-1415)</text>
-    <text class="t-go" x="32" y="383">verified identity (FIX-1493) &#183; Layer 1 channel / notify / dispatch &#183; live updates of others' posts</text>
+    <rect class="out" x="16" y="364" width="908" height="54" rx="6"/>
+    <text class="t-lbl" x="32" y="384">NOT BUILT</text>
+    <text class="t-go" x="32" y="400">the boards' drain and the escalations call (FIX-1591, held) &#183; Assistant tools that post or ask &#183; channel admin (FIX-1415)</text>
+    <text class="t-go" x="32" y="413">verified identity (FIX-1493) &#183; Layer 1 channel / notify / dispatch &#183; live updates of others' posts</text>
   </g>
 </svg>
