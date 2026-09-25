@@ -62,7 +62,9 @@ Take the single action the dispatch calls for:
   the epic, Improvement label, blocked by every other child
   ([`orchestration.md`](../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
   Every set has one, and it is a row in the set table, the graph and the path from the first
-  revision. When a later child joins the set, wire it to block the closure issue too.
+  revision. When a later child joins the set, wire it to block the closure issue too. On any
+  later dispatch for an epic that has no closure issue (one that predates the rule), file it
+  and wire every open child to block it.
   Then write the set — `SPEC.md` (the teams table, why now, the goal and how we'll know it's met, *what's in the box* and its figure, the set table with status, the dependency graph,
   what stays, the sign-off), `DECISIONS.md` (the tree, the cross-cutting cards, the ownership
   matrix figure), `BUSINESS-RULES.md`, `PLAN.md`, and `DOCS.md` — the shared reader narrative,

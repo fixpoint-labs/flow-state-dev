@@ -639,7 +639,8 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   of delay. Held means nothing created; name held work at the next wrap.
 - **3 — Resume or create — never the wrong one.**
   - **Resume:** recover the Epic issue, retained set, original review PR, and amendment
-    handles. Create/re-parent nothing. Dispatch `epic-agent` only for meaningful updates.
+    handles. Create/re-parent nothing, except a missing closure issue (below). Dispatch
+    `epic-agent` only for meaningful updates.
   - **Create:** dispatch `epic-agent` to author `specs/epics/<EPIC-ISSUE-ID>/` on
     `epic/<name>`, open its review PR, and link it from Linear. Required documents are
     `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`, plus conditional
@@ -647,7 +648,8 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
     issue**, filed by `epic-agent` and blocked by every other child
     ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
     Refuse the objective gate on a set without one. On resume, an epic that has none gets
-    one filed before its next child merges.
+    one before its next child merges: dispatch `epic-agent` to file it and wire every open
+    child to block it.
 
   Either way the coordinator holds only handles, never the spec text.
 - **Name which project objective this serves.** One line, in the dispatch to `epic-agent`, from
@@ -829,6 +831,10 @@ Then decide whether it joins the epic:
 belongs under the epic: the closure worker files it through `issue-manager` with the epic as
 parent and a blocks relation to the closure issue, and it is admitted like any other row (over
 the cap it queues, it is never left out). Its merge is what lets the next closure run start.
+**Every other admitted child blocks the closure issue too.** On the wake that first sees a new
+child (from intake or discovery), write its blocks relation to the closure issue: one Linear call,
+like a status mirror. When the owner drops a closure finding, remove that relation in the same
+step, because the wake keeps a cancelled prerequisite blocking.
 Canonically: [`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa).
 
 This is how discovered work flows into the loop without a human re-filing it — while

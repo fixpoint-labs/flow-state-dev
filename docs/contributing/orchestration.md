@@ -226,8 +226,13 @@ standard of a release, and the epic cannot wrap while it is open.
 
 - **Filed with the set, never at the end.** `epic-agent` files it when it writes the set, as a
   child of the epic on the ordinary spec route (Improvement), titled `Closure: <the goal in a
-  few words>` so a worker can tell what it is, and wires it **blocked by every other child**. It is a row in `SPEC.md`'s set table from the first revision, marked
-  **closure · required**. An epic spec without one is refused at the objective gate.
+  few words>` so a worker can tell what it is, and wires it **blocked by every other child**.
+  It is a row in `SPEC.md`'s set table from the first revision, marked **closure · required**.
+  An epic spec without one is refused at the objective gate.
+- **Every child blocks it, including ones that join later.** A child admitted mid-epic, through
+  intake or found by the wake's discovery, gets a blocks relation to the closure issue on the
+  wake that first sees it. The coordinator writes that relation itself, the same one-call Linear
+  write it uses for status. Otherwise the closure run could pass before that child lands.
 - **Its spec is the QA plan**, written early: blocked-by gates implementation only, so the plan
   is reviewed while the children build. It carries, in order:
   1. **The epic's goal check** (`SPEC.md` → *how we verify*) as **at least one end-to-end test run
@@ -251,9 +256,14 @@ standard of a release, and the epic cannot wrap while it is open.
 - **Every finding becomes a child of the epic.** Each failure is filed through `issue-manager`
   as a **Bug** (or a Feature, when the fix is missing capability), parented under the epic and
   wired to **block the closure issue**. The epic wake discovers it as a new row and runs it on
-  its route. A finding is never deferred to a later epic. It leaves only by being fixed, or by
-  the owner closing it in Linear with a reason, which the closure report quotes. Something the
-  run notices outside the epic's goal is filed normally, not under the epic.
+  its route. When a finding matches an issue that already exists and is open, the closure worker
+  wires that issue itself: parented under the epic (or `relates-to` if it has another parent) and
+  blocking the closure issue. `issue-manager`'s duplicate path stops before wiring relations, so
+  it cannot be left to do this. A finding is never deferred to a later epic. It leaves only by
+  being fixed, or by the owner closing it in Linear with a reason, which the closure report
+  quotes. **Dropping one also removes its blocks relation**, written by whoever records the drop,
+  because the wake keeps a cancelled prerequisite blocking on purpose. Something the run notices
+  outside the epic's goal is filed normally, not under the epic.
 - **It stays open until its findings are fixed and retested.** A run that files findings opens
   no PR: the worker leaves the row at `NEEDS_IMPLEMENTATION` with the findings in its status
   line, and the new blocked-by relations park it. When the last one merges, the wake dispatches
@@ -272,7 +282,7 @@ goal genuinely has no end-to-end surface (a pure internal refactor) says so in i
 and its closure plan is items 3 and 4 alone. That is a stated exception, never a silent one.
 
 **Epics already running when this rule landed** get a closure issue filed before their next
-child merges. Where the retained spec says otherwise (for example a goal check split across
+child merges: the coordinator dispatches `epic-agent` for it on resume, as a meaningful update. Where the retained spec says otherwise (for example a goal check split across
 children with "no proof issue"), that needs a follow-up amendment PR, like any other change to
 a merged spec.
 
