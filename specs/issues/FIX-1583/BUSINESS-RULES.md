@@ -13,7 +13,7 @@ rules (ER-n, [epic](../../epics/FIX-1553/BUSINESS-RULES.md)) bind here too.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-1 | The `evaluator` option is not an evaluator block | Refused when built, with core's shared evaluator-slot message | VB |
-| BR-2 | The evaluator's questions are computed per call | Refused when built: the facets and the search options need a fixed question set. The message says to pass the questions as an object | VB |
+| BR-2 | The evaluator's questions are computed per call | Refused when built: the facets and the search options need a fixed question set. The message says to build the evaluator with a fixed questions object | VB |
 | BR-3 | The app's config binds `reactTo.contentUpdated` | Refused when built, naming the utility as its owner. `created`, `stateUpdated` and `deleted` bindings pass through unchanged | VB · V10 |
 | BR-4 | The app's config grants `client.content.create` or `client.content.update` | Refused when built: a client body edit runs no reaction, so facets would go stale unseen ([D3](DECISIONS.md#d3)). Client reads and deletes are allowed | VB |
 | BR-5 | The app's `stateSchema` is not an object, or already declares `facets` or `indexedAs` | Refused when built. The message says the utility adds both, so an app moving off the recipe deletes them from its schema | VB |

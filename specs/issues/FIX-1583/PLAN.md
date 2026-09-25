@@ -141,4 +141,5 @@ No counted facts, so no checker applies.
 
 ## Notes from review
 
-None yet.
+- **Reindex concurrency (implementer's discretion).** The recipe's `reindex` runs `.forEach(reaction)` with no concurrency cap. That is fine for the guide, but a large `force` backfill would fire every evaluator call at once. A `maxConcurrency` on reindex only is allowed if it leaves BR-21 and BR-22 unchanged.
+- **Weight versus `cascadingRouter`.** The two are peers in placement only. `facetedCollection` owns a resource, its client grants and its registration, so expect core VB/VT tests plus engine V1 to V12, not a single block's surface.

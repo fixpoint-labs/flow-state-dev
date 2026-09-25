@@ -11,7 +11,7 @@ Feature · `core` (one utility) + the example and docs moved onto it · medium �
 
 | Someone who… | Today | After |
 |---|---|---|
-| **wants facets on their own collection** | Copies about 140 lines of code from the example (answer schema, the reaction, search, reindex) and keeps all three of its rules intact by hand | Makes one call with their collection and their evaluator. The rules live in core and are tested once ([D1](DECISIONS.md#d1)) |
+| **wants facets on their own collection** | Copies the example's mechanism (about 90 lines of reaction, plus its search, reindex and answer-schema code) and keeps all three of its rules intact by hand | Makes one call with their collection and their evaluator. The rules live in core and are tested once ([D1](DECISIONS.md#d1)) |
 | **already copied the recipe** | Owns that code | Swaps their collection for the utility. The stored fields have the same names, so existing facets carry over and nothing reindexes ([D2](DECISIONS.md#d2)) |
 | **offers facet search to an agent** | Writes a search handler and its typed options | Gets one from the utility, its options typed from the questions. It still makes no model call |
 | **edits a document's body from the browser** | The recipe asks you not to; nothing stops you, and facets go stale | Is refused when the collection is defined, with the reason. Stale facets are no longer possible silently ([D3](DECISIONS.md#d3)) |
