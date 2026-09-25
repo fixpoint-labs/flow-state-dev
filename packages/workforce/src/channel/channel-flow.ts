@@ -6,8 +6,10 @@
  * `cardinality: "singleton"`, so the registry admits exactly one instance and
  * its address is the kind (`flow.id === flow.kind`). A hundred channels are a
  * hundred sessions on that one instance; what differs per channel — its
- * members, its charter and its transcript — lives in that session's own state,
- * which is the framework's existing home for durable per-session facts.
+ * members and its charter — lives in that session's own state, which is the
+ * framework's existing home for durable per-session facts. Its transcript is
+ * its posts: each post leaves one `channel-post` item on its own request, and
+ * `read` rebuilds the transcript from those items.
  *
  * A factory rather than a bare flow because a block cannot ride in a
  * zod-parsed config bag, and `options.notify` is a block. `channelFlow` is the
@@ -41,6 +43,12 @@ import {
 
 /** The built-in kind's name, and so the built-in instance's address. */
 export const CHANNEL_KIND = "channel";
+
+/**
+ * The component name every post's line is emitted under. **Pinned**: a client
+ * that shows a channel filters the session's items on it, and the docs name it.
+ */
+export const CHANNEL_POST_COMPONENT = "channel-post";
 
 /** One line of a channel's transcript. Append-only; never rewritten. */
 export const channelTranscriptLineSchema = z.object({
@@ -83,6 +91,11 @@ export const channelSessionStateSchema = z.object({
   members: z.array(z.string()),
   /** The channel's charter — the `CHANNEL.md` body. */
   instructions: z.string(),
+  /**
+   * Lines a channel kept in state before each post became its own
+   * `channel-post` item. Read-only: `read` returns them ahead of the posted
+   * lines, and nothing writes here any more.
+   */
   transcript: z.array(channelTranscriptLineSchema).default([])
 });
 
@@ -219,12 +232,30 @@ const appendPost = handler({
       body: input.body
     };
 
-    // Commutative, so two appends that raced never clobber one another and this
-    // floor needs no compare-and-swap.
-    await ctx.session.pushState("transcript", line);
+    // The line is this request's own item, and that item is the record: a
+    // client reads a channel by filtering its session's items to
+    // `channel-post`, the way it reads any conversation. Nothing is copied into
+    // state — a second record of the post could only disagree with the first.
+    ctx.emit.component(CHANNEL_POST_COMPONENT, line);
     return line;
   }
 });
+
+/**
+ * The posted lines inside this request's history window, oldest first.
+ *
+ * Inside a block every item arrives wrapped, so the component name and its
+ * data sit under `payload`. A malformed `channel-post` item is skipped rather
+ * than failing the read: the transcript is what parses as a line.
+ */
+function postedLines(ctx: BlockContext): ChannelTranscriptLine[] {
+  return ctx.session.items.all({ itemTypes: ["component"] }).flatMap((item) => {
+    const payload = item.payload as { component?: unknown; data?: unknown } | undefined;
+    if (payload?.component !== CHANNEL_POST_COMPONENT) return [];
+    const line = channelTranscriptLineSchema.safeParse(payload.data);
+    return line.success ? [line.data] : [];
+  });
+}
 
 /**
  * The clean projection. Deliberately not `ctx.session.items.client()`.
@@ -232,8 +263,13 @@ const appendPost = handler({
  * A factory because the declared board names come from the roster the KIND was
  * built with, filtered to this session's own id — not from session state. That
  * is what makes an edited `CHANNEL.md` reach a channel that is already open:
- * the list is re-derived from the file on the next bind, and the transcript,
- * which is the only thing a channel cannot re-derive, is never written to.
+ * the list is re-derived from the file on the next bind.
+ *
+ * The transcript is the lines a channel kept in state before posts became
+ * items, then the posted lines, each id once. The posted half comes from the
+ * session's history window (50 requests by default, and a post with a notify
+ * slot uses two), so on a busy channel `read` returns the recent lines. A page
+ * reads every post from the session's items instead.
  */
 const readChannelFor = (boardIds: readonly string[]) =>
   handler({
@@ -259,10 +295,20 @@ const readChannelFor = (boardIds: readonly string[]) =>
         // schema. The rows never come back here either way: reading a board is
         // a board read.
         ...(boards.length === 0 ? {} : { boards }),
-        transcript: channel.transcript
+        transcript: withoutRepeats([...channel.transcript, ...postedLines(ctx)])
       };
     }
   });
+
+/** The lines in order, keeping the first line with each id. */
+function withoutRepeats(lines: ChannelTranscriptLine[]): ChannelTranscriptLine[] {
+  const seen = new Set<string>();
+  return lines.filter((line) => {
+    if (seen.has(line.id)) return false;
+    seen.add(line.id);
+    return true;
+  });
+}
 
 /** The ledger shape the two board actions use: the substrate's ref. */
 type ChannelTaskLedger = Exclude<Awaited<ReturnType<typeof resolveChannelBoard>>, undefined>;
@@ -974,8 +1020,8 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         })
           .step(appendPost)
           // A tap: the post's own output stays the appended line, and the
-          // hand-off's refusal is rescued rather than rolled back. The
-          // transcript is the durable record; delivery is best-effort.
+          // hand-off's refusal is rescued rather than rolled back. The post's
+          // `channel-post` item is the durable record; delivery is best-effort.
           .tap(
             (line: ChannelTranscriptLine): ChannelFanOutInput => ({
               postId: line.id,
@@ -1012,8 +1058,8 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // `boards` key at all.
         description:
           boardIds.length === 0
-            ? "Read this channel's transcript, members and description."
-            : "Read this channel's transcript, members, description and declared board names."
+            ? "Read this channel's recent transcript lines, members and description."
+            : "Read this channel's recent transcript lines, members, description and declared board names."
       },
       ...(fileTask === undefined || readBoard === undefined
         ? {}

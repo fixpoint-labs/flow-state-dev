@@ -16,6 +16,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { channelInstances, type ChannelManifest } from "../src/index";
+import { postedLines } from "./channel-post-lines";
 
 const USER_ID = "u_boards";
 // The org the session route binds a channel to when no resolver is
@@ -397,8 +398,7 @@ describe("a board added to a channel that is already open", () => {
       const early = await before.act("eng.feature", "fileTask", { board: "triage", goal: "early" });
       expect(early.error).toBeDefined();
 
-      const found = await stores.session.get("eng.feature");
-      transcriptBefore = JSON.stringify((found!.state as { transcript: unknown }).transcript);
+      transcriptBefore = JSON.stringify(await postedLines(stores, "eng.feature"));
       expect(JSON.parse(transcriptBefore)).toHaveLength(2);
     } finally {
       await before.dispose();
@@ -432,8 +432,7 @@ describe("a board added to a channel that is already open", () => {
       expect(filed.error).toBeUndefined();
       expect((filed.output as { boardId: string }).boardId).toBe("eng.feature.triage");
 
-      const after = await runtime.stores.session.get("eng.feature");
-      expect(JSON.stringify((after!.state as { transcript: unknown }).transcript)).toBe(
+      expect(JSON.stringify(await postedLines(runtime.stores, "eng.feature"))).toBe(
         transcriptBefore!
       );
     } finally {

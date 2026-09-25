@@ -12,21 +12,9 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import type { FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { channelFlow, CHANNEL_KIND } from "../src/index";
+import { postedLines } from "./channel-post-lines";
 
 const USER_ID = "u_channel";
-
-type ChannelState = {
-  members: string[];
-  instructions: string;
-  transcript: Array<{
-    id: string;
-    at: number;
-    principal: string;
-    author?: string;
-    authorVerified: boolean;
-    body: string;
-  }>;
-};
 
 function host() {
   const instance = channelFlow();
@@ -67,11 +55,6 @@ async function bind(
   );
 }
 
-async function stateOf(stores: StoreRegistry, sessionId: string): Promise<ChannelState | undefined> {
-  const record = await stores.session.get(sessionId);
-  return record?.state as ChannelState | undefined;
-}
-
 describe("the channel kind", () => {
   it("registers as one singleton instance addressed by its kind", () => {
     const instance = channelFlow();
@@ -98,9 +81,9 @@ describe("the channel kind", () => {
       });
 
       expect(result.error).toBeUndefined();
-      const stored = await stateOf(runtime.stores, "engineering.standup");
-      expect(stored?.transcript).toHaveLength(1);
-      expect(stored?.transcript[0]?.body).toBe("shipped the reader");
+      const lines = await postedLines(runtime.stores, "engineering.standup");
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.body).toBe("shipped the reader");
     } finally {
       await state.dispose();
     }
@@ -123,7 +106,7 @@ describe("the channel kind", () => {
         runtimeConfig: { ...runtime.runtimeConfig }
       });
 
-      const line = (await stateOf(runtime.stores, "engineering.standup"))?.transcript[0];
+      const [line] = await postedLines(runtime.stores, "engineering.standup");
       expect(line?.principal).toBe(USER_ID);
       expect(line?.author).toBe("engineering.lead");
       expect(line?.authorVerified).toBe(false);
@@ -150,8 +133,7 @@ describe("the channel kind", () => {
       });
 
       expect(result.error).toBeDefined();
-      const stored = await stateOf(runtime.stores, "engineering.standup");
-      expect(stored?.transcript ?? []).toHaveLength(0);
+      expect(await postedLines(runtime.stores, "engineering.standup")).toEqual([]);
     } finally {
       await state.dispose();
     }
@@ -176,8 +158,7 @@ describe("the channel kind", () => {
 
       expect(result.error).toBeDefined();
       expect(String(result.error)).toContain("marketing.intern");
-      const stored = await stateOf(runtime.stores, "engineering.standup");
-      expect(stored?.transcript ?? []).toHaveLength(0);
+      expect(await postedLines(runtime.stores, "engineering.standup")).toEqual([]);
     } finally {
       await state.dispose();
     }
@@ -213,10 +194,10 @@ describe("the channel kind", () => {
         })
       ]);
 
-      expect((await stateOf(runtime.stores, "engineering.standup"))?.transcript.map((l) => l.body)).toEqual([
+      expect((await postedLines(runtime.stores, "engineering.standup")).map((l) => l.body)).toEqual([
         "standup line"
       ]);
-      expect((await stateOf(runtime.stores, "engineering.triage"))?.transcript.map((l) => l.body)).toEqual([
+      expect((await postedLines(runtime.stores, "engineering.triage")).map((l) => l.body)).toEqual([
         "triage line"
       ]);
     } finally {

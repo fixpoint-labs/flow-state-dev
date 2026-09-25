@@ -25,6 +25,8 @@
  * name when the roster binds.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import { CHANNEL_POST_COMPONENT } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /**
@@ -64,6 +66,10 @@ type DigestLine = z.infer<typeof digestLineSchema>;
  * `members` and `instructions` are required for the reason the built-in kind
  * requires them: a session something else created carries neither, and that
  * absence is what tells an open channel from an empty session.
+ *
+ * `transcript` holds only the notices a channel kept in state before each post
+ * became its own `channel-post` item. Nothing writes it any more; `read`
+ * counts it ahead of the posted notices.
  */
 const digestStateSchema = z.object({
   members: z.array(z.string()),
@@ -88,6 +94,20 @@ const digestReadOutputSchema = z.object({
   /** How many notices the channel holds in total, tail or not. */
   total: z.number(),
 });
+
+/**
+ * The notices this session's posts left, oldest first: its `channel-post`
+ * items inside the history window. Inside a block each item arrives wrapped,
+ * so the component and its data sit under `payload`.
+ */
+function postedNotices(ctx: BlockContext): DigestLine[] {
+  return ctx.session.items.all({ itemTypes: ["component"] }).flatMap((item) => {
+    const payload = item.payload as { component?: unknown; data?: unknown } | undefined;
+    if (payload?.component !== CHANNEL_POST_COMPONENT) return [];
+    const line = digestLineSchema.safeParse(payload.data);
+    return line.success ? [line.data] : [];
+  });
+}
 
 /** Is this session state a `digest` channel somebody opened? */
 function openDigest(
@@ -130,8 +150,9 @@ const post = handler({
       body: input.body,
     };
 
-    // Commutative, so two notices that raced never clobber one another.
-    await ctx.session.pushState("transcript", line);
+    // The notice is this request's own item, the same way the built-in kind
+    // keeps a line, so a page shows this channel exactly as it shows any other.
+    ctx.emit.component(CHANNEL_POST_COMPONENT, line);
     return line;
   },
 });
@@ -147,12 +168,14 @@ const read = handler({
     }
     // The divergence this kind exists for: the tail, newest first, never the
     // whole transcript. `total` is reported so a reader can tell a short
-    // channel from a truncated one.
+    // channel from a truncated one; it counts what this read can see, which
+    // on a long-lived channel is the notices inside the history window.
+    const notices = [...channel.transcript, ...postedNotices(ctx)];
     return {
       id: ctx.session.identity.id,
       members: channel.members,
-      notices: [...channel.transcript].reverse().slice(0, DIGEST_TAIL),
-      total: channel.transcript.length,
+      notices: notices.reverse().slice(0, DIGEST_TAIL),
+      total: notices.length,
     };
   },
 });
