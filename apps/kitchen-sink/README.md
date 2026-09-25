@@ -10,7 +10,7 @@ Kitchen sink is a reference app, not a minimal example. It hosts every subsystem
 - `app/page.tsx` — the shell: one navigator on the left, the stream in the middle, boards and the roster on the right.
 - `flows/` — the flows the app serves, including `chat-agent`, the assistant the stream talks to.
 
-The chat agent either answers in the turn or files the work to a durable board, where a child session picks it up and the result comes back on a later turn. For coordination that happens inside a single request, see the [patterns documentation](../docs/docs/patterns/overview.md); each pattern page carries its own runnable example. The one pattern this app still uses is the response auditor, which annotates an answer after it is produced.
+The chat agent either answers in the turn or files the work to a durable board, where a child session picks it up and the result comes back on a later turn. For coordination that happens inside a single request, see the [patterns documentation](../docs/docs/patterns/overview.md); each pattern page carries its own runnable example. The app uses one pattern, the response auditor, which annotates an answer after it's produced.
 
 ## Flows
 
@@ -50,15 +50,31 @@ Exported as `richTextComponentFlow` (`kind: "rich-text-component"`). Consumed by
 
 ### The support team (`workforce/`)
 
-A hired team, declared in files rather than wired in code. Each seat is a `WORKER.md` under `workforce/teams/support/workers/`, and its frontmatter is the whole of its configuration — which flow kind it runs, and the settings that kind offers. `support.ada` and `support.grace` both run the `desk-clerk` kind and declare different desks; `support.iris` and `support.otto` run the built-in agent kind with different tools, and `support.mara` runs it too, naming `hire` and `fire`: she can add a seat to the team, which the section on hiring below covers.
+A hired team, declared in files rather than wired in code. Each seat is a `WORKER.md` under `workforce/teams/support/workers/`, and its frontmatter is the whole of its configuration: which flow kind it runs, and the settings that kind offers. `support.ada` and `support.grace` both run the `desk-clerk` kind and declare different desks; `support.iris` and `support.otto` run the built-in agent kind with different tools, and `support.mara` runs it too, naming `hire` and `fire`: she can add a seat to the team, which the section on hiring below covers.
 
-Worker kinds, blocks and capabilities are picked up the same way: a file under `workforce/flows/workers/`, `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That generated module is committed, so the *code* an app can run is fixed when you run the command — no code is discovered while the app runs, which is what lets a bundler see it.
+Worker kinds, blocks and capabilities are picked up the same way: a file under `workforce/flows/workers/`, `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That generated module is committed, so the *code* an app can run is fixed when you run the command. No code is discovered while the app runs, which is what lets a bundler see it.
 
-The roster is the other half, and it is read at boot: `hireKitchenSinkWorkforce()` walks `workforce/teams/` and hires a seat per `WORKER.md`. So the kinds are decided at generate time and the seats at startup — which is why adding a kind takes `fsdev gen` and adding a seat takes only a restart.
+The roster is the other half, and it is read at boot: `hireKitchenSinkWorkforce()` walks `workforce/teams/` and hires a seat per `WORKER.md`. So the kinds are decided at generate time and the seats at startup, which is why adding a kind takes `fsdev gen` and adding a seat takes only a restart.
+
+Each seat is addressed by its own id, so a seat answers on the same route as any other flow:
+
+```bash
+# A note to the front desk, from the CLI
+pnpm fsdev run support.ada answer -i '{"note":"is the printer fixed?"}'
+
+# Or over HTTP
+curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
+  -H 'content-type: application/json' \
+  -d '{"input":{"note":"is the printer fixed?"},"userId":"you"}'
+```
+
+Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
+
+#### Channels
 
 The team also has three channels, under `workforce/teams/support/channels/`. Each one is a folder with a `CHANNEL.md` in it, and each is here to show a different thing.
 
-`desk` is the ordinary case: the built-in kind, five members, and two boards declared as plain names — `boards: [followups, escalations]`. The framework mints a ledger per name from where the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that. `ada-wren` is a direct message between two seats, with no `flow:` line, because a direct message is not a kind of its own — it is a channel with a roster of two. `noticeboard` is the case that *is* different: it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only the most recent lines. A kind of your own cannot hold a board, which is why the boards are on `desk` and not here.
+`desk` is the ordinary case: the built-in kind, five members, and two boards declared as plain names: `boards: [followups, escalations]`. The framework mints a ledger per name from where the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that. `ada-wren` is a direct message between two seats, with no `flow:` line, because a direct message is not a kind of its own. It is a channel with a roster of two. `noticeboard` is the case that *is* different: it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only the most recent lines. A kind of your own cannot hold a board, which is why the boards are on `desk` and not here.
 
 The `followups` board has a seat that runs it. `support.wren` is on the `followup-runner` kind, which names the board in code (`channelBoard("support.desk", "followups")`), declares it as a resource, and exposes its drain. A seat sees the boards it names and no others.
 
@@ -75,27 +91,17 @@ The check is on the claimed `author`, which the channel does not verify, so the 
 
 That is the one failure a declared board can produce in silence: rows filed there sit pending with nothing said. The reference ships in the state that shows you the message. Wire a seat to it the way `followup-runner` wires `followups` and the line goes away.
 
-Channels are opened at boot and opening is idempotent, so restarting over an unchanged tree does nothing. But re-opening is not a migration: a channel that is already open keeps the members and the charter it was opened with, and editing those files does not reach it. `boards:` is the exception — the board list is rebuilt from the files on every boot, so a board added to an open channel's file is usable after a restart.
+Channels are opened at boot and opening is idempotent, so restarting over an unchanged tree does nothing. But re-opening is not a migration: a channel that is already open keeps the members and the charter it was opened with, and editing those files does not reach it. `boards:` is the exception: the board list is rebuilt from the files on every boot, so a board added to an open channel's file is usable after a restart.
 
 Which organization the channel sessions land in comes from the caller's verified identity, not from anything a file declares. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a channel runs in](../docs/docs/workforce/channels.md#which-organization-a-channel-runs-in).
 
+#### One organization
+
 This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both are set in `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request. It applies to every flow that doesn't bring its own resolver, which means every page, seat and channel, so nobody calling the app can pick another organization. It is a stand-in for real sign-in, and it means **anyone who can open a deployed copy of this app can hire and fire its seats**. If you deploy it somewhere other people can reach, put sign-in in front of it or remove the hire paths first.
 
-**If you ran this app with a persistent store before it ran as `kitchen-sink`, wipe the store and start fresh.** Earlier data isn't carried over. For the local filesystem profile, delete `.fsdev/data` (or the whole `.fsdev` folder). For Postgres, point `FSD_DB_URL` at an empty database. Until you do, the app refuses to start and names the channels it found under another organization.
+**If the app refuses to start with `[workforce] this store was written before kitchen-sink ran as organization "kitchen-sink"`**, the store holds channel sessions from another organization, and the message names each one with the organization it belongs to. That data can't be carried over, so delete the store and restart. For the local filesystem profile, delete `.fsdev/data` (or the whole `.fsdev` folder). For Postgres, point `FSD_DB_URL` at an empty database.
 
-Each seat is addressed by its own id, so a seat answers on the same route as any other flow:
-
-```bash
-# A note to the front desk, from the CLI
-pnpm fsdev run support.ada answer -i '{"note":"is the printer fixed?"}'
-
-# Or over HTTP
-curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
-  -H 'content-type: application/json' \
-  -d '{"input":{"note":"is the printer fixed?"},"userId":"you"}'
-```
-
-Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
+#### Hiring while the app runs
 
 Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.bo`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
 
@@ -110,15 +116,13 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
   -d '{"userId":"you","input":{"seatId":"support.bo","flow":"desk-clerk","settings":{"desk":"back"},"instructions":"You work the back desk."}}'
 ```
 
-The rail's **Hire another** and mara's `hire` tool don't need a token.
-
-Over HTTP, because the admin flow checks a token and the CLI carries none.
+The admin hire goes over HTTP because the admin flow checks a token and the CLI carries none. The rail's **Hire another** and mara's `hire` tool don't need a token.
 
 The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
 
 The admin flow also has a `fire` action. It removes any seat hired while the app runs: from the web app's rail, by a seat's own `hire` tool (see [A seat that hires](#a-seat-that-hires)), or by the admin action itself. Seats the admin action hires don't show in the rail.
 
-The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. A request with no token gets `401`:
+The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The seat carries the admin flow's resolver, so a request with no token, or a token it doesn't recognize, gets `401` from that resolver before the pin is checked. Call it with any configured token:
 
 ```bash
 curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.bo/actions/answer \
@@ -129,7 +133,7 @@ curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.bo/a
 
 Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
 
-### A seat that hires
+#### A seat that hires
 
 The admin action is how an operator adds a seat. `support.mara` is how a seat does it.
 
@@ -154,7 +158,7 @@ Firing releases the address, and `discover` stops listing the seat. The seat's r
 pnpm fsdev run support.mara run -i '{"message":"Hire support.pat, an agent seat that takes refunds."}'
 ```
 
-The wiring is the part to copy: in an app whose seats run under an organization its callers verified, the same two files hire. The app's tests (`test/manager-seat.test.ts`) show it working under a named organization.
+The wiring is the part to copy: `workforce/hire.ts`, which adds `createSeatHireCapability` to the agent kind, and mara's `workforce/teams/support/workers/mara/WORKER.md`, which names `hire` and `fire`. In an app whose seats run under an organization its callers verified, those same two files hire. The app's tests (`test/manager-seat.test.ts`) show it working under a named organization.
 
 ## Web Application (`app/`)
 
@@ -239,8 +243,9 @@ pnpm --filter @flow-state-dev/kitchen-sink build
 
 ```
 apps/kitchen-sink/
+  fsdev.config.ts            The FlowState: flows, stores, principal resolver (source of truth)
   app/                       Next.js App Router
-    page.tsx                 Landing — mounts chat-agent
+    page.tsx                 The shell: navigator rail, stream, standing panel
     layout.tsx               Root layout with Inter font
     api/flows/               Flow API routes (SSE streaming)
   flows/
@@ -250,13 +255,15 @@ apps/kitchen-sink/
       schemas.ts             Shared Zod schemas
       prompts.ts             Mode prompts
       blocks/                Individual block definitions
+    workforce-admin/         The admin hire and fire actions
+  workforce/                 The support team: teams/, kinds under flows/, workforce.gen.ts
   components/
     flow-state/              Shared item-renderer UI (installed from @flow-state-dev/ui)
     chat-agent/              chat-agent-specific renderers
     ui/                      shadcn/ui primitives
-    ...                      Shared app UI (team panel, mode selector, etc.)
+    ...                      Shared app UI (team panel, seat pane, mode selector, etc.)
   lib/
-    server.ts                Flow registry + API router setup
+    flowstate.ts             Re-exports the FlowState from fsdev.config.ts for routes and the CLI
     mcp.ts                   Optional MCP capability (env-gated)
     utils.ts                 cn() utility
   skills/                    Bundled skill markdown
