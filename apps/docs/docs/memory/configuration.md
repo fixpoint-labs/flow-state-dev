@@ -78,6 +78,75 @@ The result is a `DefinedCapability` with `sessionResources` (always `workingMemo
 | `source` | `(input, ctx) => string` | Custom source function — overrides reading from `ctx.session.items`. |
 | `maxAssistantChars` | `number` | Max chars of the assistant response captured per turn. Default `500`. |
 | `name` / `inputSchema` | — | Optional naming and input schema for the capture pipeline. |
+| `evaluator` | evaluator block | Optional. Asks one question before the observer runs: is anything in the new messages worth remembering? Usually `captureEvaluator("<model>")`. See [Deciding which turns to observe](#deciding-which-turns-to-observe). |
+
+### Deciding which turns to observe
+
+Every turn you capture runs the observer, a model call that reads the new messages and pulls
+out anything worth keeping. In a chatty agent most turns hold nothing ("ok", "thanks", "try
+that again"), and the observer runs anyway.
+
+You can put an evaluator in front of it. An evaluator is a block that asks a model a question
+with known answers and gets a typed answer back ([Blocks](../fundamentals/blocks)). Memory
+ships the question and a helper that builds the block; you choose the model:
+
+```ts
+import { system, captureEvaluator } from "@flow-state-dev/memory";
+
+const mem = system({
+  model: "openai/gpt-5.4-mini",
+  working: true,
+  episodic: true,
+  evaluator: captureEvaluator("typesafe-ai/jev"),
+});
+```
+
+The evaluator needs an evaluation model: a model that picks among fixed answers instead of
+writing text ([Evaluation models](/docs/fundamentals/models#evaluation-models)). `typesafe-ai/jev`
+is Jev, served through Vercel's AI Gateway. An ordinary chat model string like
+`openai/gpt-5.4-mini` is not an evaluation model: through the gateway, the capture fails with an
+error saying it's a language model. For OpenAI, pass `openai.evaluationModel("gpt-5.4-mini")`
+from `@ai-sdk/openai` instead.
+
+On each capture, the evaluator reads the same new messages the observer would and answers
+`remember` or `skip`.
+
+- **`remember`**: the observer runs on those messages, exactly as it does without an evaluator.
+- **`skip`**: the observer doesn't run and nothing is written. The messages count as read, so
+  no later capture looks at them again.
+- **An error** (the evaluation model is down, or refuses the call): the capture fails the way an
+  observer failure does. The messages stay unread, and the next capture that succeeds picks them
+  up. An evaluator error never falls back to running the observer.
+
+A skip is final, so a model that skips too eagerly loses facts. Try it on a sample of your real
+conversations before you turn it on. It pays off when most turns are skips: a turn it marks
+`remember` costs one evaluator call on top of the observer.
+
+Memory ignores any confidence score the model returns.
+
+Leave `evaluator` out and every captured turn runs the observer. You don't need to install an
+evaluation model or provider to use memory.
+
+#### Building the evaluator yourself
+
+`captureEvaluator` is a shortcut for core's `evaluator` block with memory's question,
+`captureQuestions`. Build the block yourself when you want to change its name or other
+settings, then pass it the same way:
+
+```ts
+import { evaluator } from "@flow-state-dev/core";
+import { captureQuestions } from "@flow-state-dev/memory";
+
+const worthRemembering = evaluator({
+  name: "memory-gate",
+  model: "typesafe-ai/jev",
+  questions: captureQuestions,
+});
+```
+
+If you modify `captureQuestions`, keep its key and its `remember`/`skip` options. Otherwise the
+capture fails with an error saying the evaluator did not answer the "capture" question with
+"remember" or "skip", and telling you to build it with `captureQuestions`.
 
 ## Tier configuration
 

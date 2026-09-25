@@ -46,6 +46,7 @@ import {
   query,
 } from './semantic-memory-helpers'
 import { memorySystemCapture, memorySystemConsolidate, memorySystemPrune } from './memory-system-blocks'
+import type { CaptureEvaluatorBlock } from './capture-evaluator'
 import { memorySystemJanitor } from './janitor-blocks'
 import {
   janitorResource,
@@ -385,6 +386,15 @@ export interface MemorySystemConfig {
    * stores grow without bound.
    */
   hygiene?: HygieneConfig | true | false
+  /**
+   * Optional evaluator asked before the observer on each capture: is anything
+   * in the new messages worth remembering? `remember` runs the observer as
+   * usual; `skip` writes nothing and marks the messages read. An evaluator
+   * error fails that capture and leaves the messages unread. Usually
+   * `captureEvaluator(model)`; any evaluator block built with
+   * `captureQuestions` works. Omit it and capture is unchanged.
+   */
+  evaluator?: CaptureEvaluatorBlock
 }
 
 // ---------------------------------------------------------------------------
@@ -787,6 +797,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
     _digestResource: digestResource,
     source: config.source,
     hygiene: hygiene === false ? undefined : hygiene,
+    evaluator: config.evaluator,
   }
 
   // Build the janitor block exposed as `mem.janitor` (manual scheduling /

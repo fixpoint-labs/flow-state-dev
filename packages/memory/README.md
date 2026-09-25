@@ -130,9 +130,30 @@ When relations is enabled, three read paths open up (all no-ops or absent when i
 - **Graph-expanded recall.** A normal `memory/recall` query also surfaces edges connected to entities named in the query, so a relation relevant only because it links to a mentioned person/place is pulled into the candidate set instead of being missed by keyword matching alone.
 - **Typed helpers** on `ctx.cap.memory`: `connections(entity)` (neighbour edges), `relate(from, to)` (shortest-path edges or `null`), and `egoGraph(entity)` (`{ nodes, edges }`). Each returns empty/`null` when relations is disabled.
 
+## The provider contract
+
 The system implements the read-side `MemoryProvider` contract: `recall(ctx, cue?)` for cross-store ranked retrieval, `formatContext(input, ctx)` for the per-turn context block. Future memory implementations plug in behind the same shape.
 
-**Key exports:** `system`, `createMemoryCapability`, `CreateMemoryCapabilityOptions`, `MemoryCapability`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createConnectTool`, `edgeToMemoryItem`, `graphExpandCandidates`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
+**Key exports:** `system`, `captureEvaluator`, `captureQuestions`, `createMemoryCapability`, `CreateMemoryCapabilityOptions`, `MemoryCapability`, `MEMORY_CAPABILITY_PRESETS`, `MemoryProvider`, `MemorySystem`, `MemoryItem`, `RankedMemoryItem`, `workingMemoryCapability`, `episodicMemoryCapability`, `semanticMemoryCapability`, `digestMemoryCapability`, `workingMemoryCapture`, `createEpisodicMemoryResource`, `createSemanticMemoryResource`, `createDigestMemoryResource`, `createRecallTool`, `createConnectTool`, `edgeToMemoryItem`, `graphExpandCandidates`, `createMemoryContextFormatter`, `memorySystemJanitor`, `effectiveConfidence`, `janitorResource`, plus per-tier helpers (`addWorkingMemory`, `addSemanticFact`, `recentEpisodes`, `encodeEpisode`, …).
+
+## Skipping turns with an evaluator
+
+`system()` takes an optional `evaluator` block. Before the observer runs, it answers memory's
+one question: `remember` runs the observer as usual, `skip` writes nothing and marks the
+messages read. `captureEvaluator(model)` builds that block on the model you pick; install the
+provider for whichever model you pick. Without an evaluator, every captured turn runs the observer.
+
+```ts
+import { system, captureEvaluator } from '@flow-state-dev/memory'
+
+const mem = system({
+  model: 'openai/gpt-5.4-mini',
+  working: true,
+  evaluator: captureEvaluator('typesafe-ai/jev'),
+})
+```
+
+To customise the block, build it with core's `evaluator()` and `questions: captureQuestions`.
 
 ## Where it came from
 
