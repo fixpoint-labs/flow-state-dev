@@ -52,14 +52,14 @@ type ResourceConfig = {
 
 ### `flowIsolation`
 
-User- and org-scoped resources default to **shared** storage across every flow that touches the same `userId` / `orgId`, except that a hired seat (an instance registered with an owner pin) keeps its shared user-scoped resources at `(userId:~org:orgId, ref)`, shared only with that person's other seats in the same org (FIX-1538). Set `flowIsolation: true` on a definition that should be flow-private — its data lives at `(scopeId, flowInstanceId, ref)` instead of `(scopeId, ref)`. The coordinate is the resolved **instance** id, not the kind (FIX-1323): two registered copies of one `collection` definition each get their own cell, and a singleton's instance id is its kind, so its existing keys are unchanged.
+User- and org-scoped resources default to **shared** storage across every flow that touches the same `userId` / `orgId`, except that an owner-pinned instance (one registered with an owner pin) keeps its shared user-scoped resources at `(userId:~org:orgId, ref)`, shared only with that person's other instances pinned to the same org (FIX-1538, [the owner-pinned cell](./state-and-scopes.md#the-owner-pinned-cell)). Set `flowIsolation: true` on a definition that should be flow-private — its data lives at `(scopeId, flowInstanceId, ref)` instead of `(scopeId, ref)`. The coordinate is the resolved **instance** id, not the kind (FIX-1323): two registered copies of one `collection` definition each get their own cell, and a singleton's instance id is its kind, so its existing keys are unchanged.
 
 `flowIsolation: true` on a session-scoped resource is a build-time error: sessions are intrinsically flow-bound, so the field has no semantic meaning there. The flow-level `isolateUserState` / `isolateOrgState` flags from FIX-431 remain as defaults for resources at the relevant scope that don't declare `flowIsolation` themselves; resource-level declarations always win.
 
 | `scope` | `flowIsolation` | Storage key |
 | -- | -- | -- |
 | `session` | (n/a) | `(sessionId, ref)` |
-| `user` | `false` (default) | `(userId, ref)`; on a hired seat `(userId:~org:orgId, ref)` |
+| `user` | `false` (default) | `(userId, ref)`; on an owner-pinned instance `(userId:~org:orgId, ref)` |
 | `user` | `true` | `(userId, flowInstanceId, ref)` |
 | `org` | `false` (default) | `(orgId, ref)` |
 | `org` | `true` | `(orgId, flowInstanceId, ref)` |

@@ -119,7 +119,7 @@ one that has no such entry, both reaching the sending block as
 map. The seam's flow lookup is wired from the host's registry
 (`RequestHostConstructionInputs.resolveFlow`); a process without one refuses
 every cross-flow address as `flow-not-found`, which is what it can honestly
-say. A hired instance whose pin (`{ orgId, userId? }`, see `context/hire-plane.ts`)
+say. An owner-pinned instance whose pin (`{ orgId, userId? }`, see `context/instance-pin.ts`)
 the sending request's principal is outside is refused the same way, with the
 same sentence, before a child session is written — the dispatch-side twin of the
 HTTP doors' `404 Unknown flow`. Refusing there rather than at the child's

@@ -51,8 +51,8 @@ Construction is synchronous; stores initialize lazily and memoized on the first 
 `createFlowState({ flows })` takes the flows an app knows about when it starts. To add one later, register it:
 
 ```ts
-flowstate.register(seat);      // one instance at a time
-flowstate.unregister(seat.id); // returns false if nothing was registered under that id
+flowstate.register(flow);      // one instance at a time
+flowstate.unregister(flow.id); // returns false if nothing was registered under that id
 ```
 
 Registration runs the same checks construction does: a duplicate id is refused, and so is a flow whose user- or org-scoped schemas conflict with one already registered. A refused registration changes nothing.
@@ -198,7 +198,7 @@ For voice, pass a `voiceProvider` (TTS + STT in one object); a per-flow `voice.p
 - **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume. Resources declaring `client: { live: true }` emit their projected delta inline on each mutation so clients merge it without a refetch
 - **State persistence** — in-memory, filesystem, SQLite, and Postgres store adapters. Version-checked writes for anything computed from current state; increments, appends and single-key writes are unchecked and apply to whatever the store holds
 - **Flow registry** — Register multiple flows, and several instances of a collection flow, each addressed by its exact id; routes are derived automatically
-- **Instance ownership** — Every session and request records the instance that created it (`flowId`, beside the definition's `flowKind`). Addressing a record through another instance, over HTTP, a transport, a worker or direct `runAction`, is refused with `FlowInstanceBindingMismatchError` before any effect (`409 wrong-instance-session` / `wrong-instance-request` on the action route). Session and request listings take an exact `flowId` filter and project `flowId` on every row; `resolveRecordOwner` / `ownsRecord` are the exported checks. `pinRejectsCaller(pin, { userId, orgId })` (is a caller outside a hired seat's pin) and `isOrgAttributed(record)` / `UnattributedOrgError` (a record stored before organizations were required) are exported too, so an in-process caller such as `fsdev run` refuses before it writes exactly what the transport host refuses. Records with no owner recorded belong to the singleton of their kind; a collection kind with such history is `migration-required` until attributed (see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record))
+- **Instance ownership** — Every session and request records the instance that created it (`flowId`, beside the definition's `flowKind`). Addressing a record through another instance, over HTTP, a transport, a worker or direct `runAction`, is refused with `FlowInstanceBindingMismatchError` before any effect (`409 wrong-instance-session` / `wrong-instance-request` on the action route). Session and request listings take an exact `flowId` filter and project `flowId` on every row; `resolveRecordOwner` / `ownsRecord` are the exported checks. `pinRejectsCaller(pin, { userId, orgId })` (is a caller outside an instance's owner pin) and `isOrgAttributed(record)` / `UnattributedOrgError` (a record stored before organizations were required) are exported too, so an in-process caller such as `fsdev run` refuses before it writes exactly what the transport host refuses. Records with no owner recorded belong to the singleton of their kind; a collection kind with such history is `migration-required` until attributed (see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record))
 - **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context
 - **Structured logging** — Every action execution logs flow/action/block IDs, attempt numbers, timing, and summarized payloads
 ## Inbound transports
@@ -326,8 +326,8 @@ otherwise). Endpoints that span every flow (`GET /sessions`,
 results to the caller. Reached without one, they return rows from flows with no
 resolver of their own to any caller. Either way, a row owned by a flow instance
 with its own resolver is listed only when that resolver identifies the caller
-as the row's owner (and, for an instance registered with an owner `pin` such as
-a hired seat, the pin admits them; see **Hired seats** under
+as the row's owner (and, for an instance registered with an owner `pin`, the
+pin admits them; see **Owner-pinned instances** under
 [Public API](#public-api)). A caller a configured host-level fallback rejects
 gets `401` from both.
 
@@ -587,7 +587,7 @@ resolveUserStorageKey(userId, { id: flow.id, isolateUserState: true });
 
 `resolveOrgStorageKey` changes the same way; its return type is unchanged. A `FlowInstance` satisfies the input as-is. Attributing an existing collection deployment's stored cells to the copy that owns them is one offline procedure — see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record); there is no runtime fallback to the old kind-keyed cell.
 
-**Hired seats.** A flow registered with an owner `pin` (`register(flow, { pin: { orgId, userId? } })`) keeps its shared user data — the user record and every user-scoped resource that is not flow-isolated — per organization and person, at `<userId>:~org:<orgId>`, with the organization taken from the pin. `resolveUserStorageKey(userId, { id, isolateUserState, ownerPin })` returns that key when `ownerPin` is present, and the key it always returned when it is absent. Flow-isolated keys and org keys are the same for a pinned flow as for any other. Data a seat saved before this keying is not read for the seat; [Persistence](https://flow-state.dev/docs/persistence/overview#upgrading-moving-hired-seats-stored-data) has the optional offline copy step.
+**Owner-pinned instances.** A flow registered with an owner `pin` (`register(flow, { pin: { orgId, userId? } })`) keeps its shared user data — the user record and every user-scoped resource that is not flow-isolated — per organization and person, at `<userId>:~org:<orgId>`, with the organization taken from the pin. `resolveUserStorageKey(userId, { id, isolateUserState, ownerPin })` returns that key when `ownerPin` is present, and the key it always returned when it is absent. Flow-isolated keys and org keys are the same for a pinned flow as for any other. Data a pinned instance saved before this keying is not read for it; [Persistence](https://flow-state.dev/docs/persistence/overview#upgrading-moving-hired-seats-stored-data) has the optional offline copy step. Workforce pins each hired seat this way.
 
 See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
 
