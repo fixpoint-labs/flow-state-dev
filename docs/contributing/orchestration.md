@@ -236,7 +236,8 @@ standard of a release, and the epic cannot wrap while it is open.
      control that must fail ([`spec-template.md`](spec-template.md#the-goal-and-how-well-know-its-met)).
   2. **One journey per team** in `SPEC.md`'s teams table whose *after* the goal check does not
      already walk.
-  3. **Every child's own goal check**, re-run.
+  3. **Every child's own goal check**, re-run, skipping any that item 1 already walks. They
+     catch a later merge breaking an earlier child, which item 1 may not reach.
   4. **A gap sweep**: each seam in `PLAN.md`'s coordination seams exercised across both sides,
      the docs the set published followed as written, and every *not done if* state checked
      absent.
@@ -269,6 +270,11 @@ standard of a release, and the epic cannot wrap while it is open.
 It is the most expensive child and the only one that repeats. That cost is the QA. An epic whose
 goal genuinely has no end-to-end surface (a pure internal refactor) says so in its goal section,
 and its closure plan is items 3 and 4 alone. That is a stated exception, never a silent one.
+
+**Epics already running when this rule landed** get a closure issue filed before their next
+child merges. Where the retained spec says otherwise (for example a goal check split across
+children with "no proof issue"), that needs a follow-up amendment PR, like any other change to
+a merged spec.
 
 ## The project-spec (canonical artifact)
 

@@ -271,6 +271,12 @@ the wake they occur. The coordinator derives live status from Linear and impleme
 PRs; retained epic content describes approved intent. Do not edit that content or the
 original merged PR on every phase transition. Meaningful design changes use amendment PRs.
 
+**An epic's closure issue** (title `Closure:`) runs this same lifecycle. Its spec is the epic's QA
+plan, and its implementation is a QA run that may end with no PR and new blocking bugs instead
+([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
+That is its normal outcome, not a failed step: leave it at `NEEDS_IMPLEMENTATION` and In
+Development until a run is clean.
+
 ## Linear status is a mirror you own
 
 Linear's GitHub auto-status is **off** — it mis-fired on spec PRs, treating a spec PR's
