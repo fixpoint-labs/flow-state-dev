@@ -35,7 +35,7 @@ ends the turn:
 |---|---|---|
 | **EPIC_SETUP** | Discover/create the epic issue; `epic-agent` authors the retained set and opens its review PR; `project-agent` creates/refreshes the unchanged standing project spec | Epic review PR ready → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | Human approves the reviewed direction; preserve the two-round budget, then dispatch `epic-agent` **MERGE-ONLY** under the canonical merge contract. If the owner merges the epic PR themselves, that merge is the approval and nothing is dispatched | Confirmed epic spec merge, not approval alone |
-| **RUNNING** | Advance children through `issue-lifecycle`; derive live status from Linear and implementation PRs. Meaningful epic amendments use follow-up PRs from `main` | Every child merged, closed, or dropped |
+| **RUNNING** | Advance children through `issue-lifecycle`; derive live status from Linear and implementation PRs. The **closure issue** runs last: its QA runs file bugs as children that block it, and it closes only on a clean run. Meaningful epic amendments use follow-up PRs from `main` | Every child merged, closed, or dropped, the closure issue included |
 | **EPIC_WRAP** | Record terminal epic status in Linear; retain the already-merged original review PR. Retire the mailbox handle; dispatch lessons and docs-polish, then the project wrap update. Only meaningful spec amendments get a new PR | Lessons draft PR surfaced (rows-only if no proposal); docs-polish surfaced or justified skip; completion and amendment links reported |
 
 ## How it stays safe and cheap
@@ -639,11 +639,17 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   of delay. Held means nothing created; name held work at the next wrap.
 - **3 — Resume or create — never the wrong one.**
   - **Resume:** recover the Epic issue, retained set, original review PR, and amendment
-    handles. Create/re-parent nothing. Dispatch `epic-agent` only for meaningful updates.
+    handles. Create/re-parent nothing, except a missing closure issue (below). Dispatch
+    `epic-agent` only for meaningful updates.
   - **Create:** dispatch `epic-agent` to author `specs/epics/<EPIC-ISSUE-ID>/` on
     `epic/<name>`, open its review PR, and link it from Linear. Required documents are
     `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`, plus conditional
-    `EVOLUTION.md` and owned authored artifacts.
+    `EVOLUTION.md` and owned authored artifacts. The set always includes the **closure
+    issue**, filed by `epic-agent` and blocked by every other child
+    ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
+    Refuse the objective gate on a set without one. On resume, an epic that has none gets
+    one before its next child merges: dispatch `epic-agent` to file it and wire every open
+    child to block it.
 
   Either way the coordinator holds only handles, never the spec text.
 - **Name which project objective this serves.** One line, in the dispatch to `epic-agent`, from
@@ -821,6 +827,16 @@ Then decide whether it joins the epic:
   serialises the epic's spec work behind its first merge.
 - Over the cap → queue it; admit it when a slot frees.
 
+**A closure-run finding is not a choice.** A bug the closure issue's QA run finds always
+belongs under the epic: the closure worker files it through `issue-manager` with the epic as
+parent and a blocks relation to the closure issue, and it is admitted like any other row (over
+the cap it queues, it is never left out). Its merge is what lets the next closure run start.
+**Every other admitted child blocks the closure issue too.** On the wake that first sees a new
+child (from intake or discovery), write its blocks relation to the closure issue: one Linear call,
+like a status mirror. When the owner drops a closure finding, remove that relation in the same
+step, because the wake keeps a cancelled prerequisite blocking.
+Canonically: [`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa).
+
 This is how discovered work flows into the loop without a human re-filing it — while
 the spec-approval gate keeps a human in the loop before anything is built.
 
@@ -950,6 +966,11 @@ step. So:
   applies" — docs, pure refactor, or config with **no observable outcome** (config-backed flow
   wiring *is* observable and must be proven through `fsdev run`) — or a genuine
   inference-credential failure.
+- **The epic's goal is proven by its closure issue, and nothing else.** Every child passing its
+  own goal check is not the epic passing. The closure issue's QA run on one `main` commit is,
+  and it stays open until every bug it found is fixed and retested by a later run
+  ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
+  Never wrap over an open closure issue, and never close it on a run that filed a finding.
 - **Stop before implementation merge**, per issue. Spec merge follows its separate approved-head/checks gate; implementation merges remain human-controlled.
 
 ## Token & depth discipline

@@ -30,7 +30,7 @@ the **position** of an element means. If the thing is a graph, mermaid wins on e
 | Issue | **A decision's picture** — a matrix, a layer boundary, a grid of moments | SVG, one per decision that needs it, usually zero or one | `DECISIONS.md` beside its card | No |
 | Issue | **A rule's picture** — a fence with the paths that cross it | SVG, with a mermaid companion listing the same paths by name | `BUSINESS-RULES.md` | No |
 | Issue | **The build DAG** — surfaces in build order | mermaid `flowchart TD` | `PLAN.md` | No |
-| Epic | **How we'll know it's met** — the proof issue's goal check, one path per leg, with the control that must FAIL | mermaid `flowchart LR`, ≤ 8 nodes | `SPEC.md`, under the goal | **Yes**, as a mermaid fence |
+| Epic | **How we'll know it's met** — the closure issue's goal check, one path per leg, with the control that must FAIL | mermaid `flowchart LR`, ≤ 8 nodes | `SPEC.md`, under the goal | **Yes**, as a mermaid fence |
 | Epic | **What's in the box** — in the box · composed in by the app · replaced in one line · not built | SVG (containment and a fence) | `SPEC.md` | **Yes** |
 | Epic | **How the issues flow into each other** — the dependency graph, with what each hands the next | mermaid `flowchart LR`, amended when scope or dependencies change | `SPEC.md` beside the dated set table | No (linked) |
 | Epic | **Who owns what** — rule × issue, each rule with exactly one owner | SVG (a matrix) | `DECISIONS.md` | **Yes** |

@@ -70,7 +70,7 @@ design nobody signed off. Cross-cutting decisions only.
 | The explainer | Retired. Its panels are the box figure, the set table, the ownership matrix and the path |
 
 **How to read the rest of this file.** Every document is its instruction followed by a worked
-example. The example is one imaginary epic — stream resilience, three sub-issues and a proof —
+example. The example is one imaginary epic — stream resilience, three sub-issues and a closure issue —
 so it reads end to end. Copy the shape, not the content.
 
 ---
@@ -89,7 +89,7 @@ issues, in a retained document set. It is not any one issue's implementation des
 
 - The objective and **the goal** in `SPEC.md` — is this body of work worth doing, and is the
   goal the real need at full size, or a smaller one the set could meet while the need stays
-  unmet? Would the proof's check fail if the goal were not met?
+  unmet? Would the closure issue's check fail if the goal were not met?
 - **Whether the set overbuilds.** Each issue can earn its place while the whole is too much.
   That question can only be asked here.
 - A cross-cutting decision in `DECISIONS.md` — shared surface, naming, sequencing, contracts.
@@ -155,7 +155,7 @@ the links line and the collapsed contract.
 > ```
 >
 > Two legs, because resume alone passes leg a and still leaves the user staring at a dead
-> answer. Proved by the reconnect proof issue's goal check; why this goal and not a smaller one:
+> answer. Proved by the closure issue's goal check; why this goal and not a smaller one:
 > [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met).
 >
 > <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/end-state.svg" width="940" alt="What's in the box: resume and heartbeats; composed in by the app: reconnect policy; not built: offline queueing and a durable history" />
@@ -165,11 +165,11 @@ the links line and the collapsed contract.
 > **Why now.** Mobile is the first thing every app built on FSD ships to, and every one of them
 > is re-implementing the defence.
 >
-> **The set:** three issues and a proof. Resume, heartbeats, a backoff default, and a required
-> goal check that drops a real connection. As of 2026-07-05: 1 done, 2 in flight, 1 not
-> filed; [the spec](SPEC.md#the-set--as-of-2026-07-05) records that snapshot and links to live state.
+> **The set:** three issues and a closure issue. Resume, heartbeats, a backoff default, and the
+> QA run that drops a real connection. As of 2026-07-05: 1 done, 2 in flight, the closure
+> issue's plan in review; [the spec](SPEC.md#the-set--as-of-2026-07-05) records that snapshot and links to live state.
 >
-> <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/path.svg" width="940" alt="The path: one lane per issue against time, resume done, heartbeats and backoff in flight at the now line, the proof lane empty until both land" />
+> <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/path.svg" width="940" alt="The path: one lane per issue against time, resume done, heartbeats and backoff in flight at the now line, the closure lane empty until both land" />
 >
 > As of the review snapshot, heartbeats and backoff are the one parallel window.
 >
@@ -179,8 +179,8 @@ the links line and the collapsed contract.
 >
 > ## Sign off
 >
-> 1. **A dropped connection is worth three issues and a proof, now.** If wrong: a cycle on
->    resilience nobody notices, which the proof exists to make impossible to miss.
+> 1. **A dropped connection is worth three issues and a closure run, now.** If wrong: a cycle on
+>    resilience nobody notices, which the closure run exists to make impossible to miss.
 > 2. **Nothing in this epic adds a public config option.** If wrong: the first app that needs a
 >    knob comments up, and the set stalls on a cross-cutting question.
 >
@@ -227,16 +227,18 @@ Sections, in order:
    ([`spec-template.md`](spec-template.md#the-goal-and-how-well-know-its-met)): the goal in one
    sentence, *is it the right goal?*, the figure, and *how we verify*. At this altitude the
    goal is the epic's outcome, *smaller, and rejected* is usually a subset of the issues
-   passing on their own, and *how we verify* names **which child's goal check** proves the
-   whole (a proof issue, per [`orchestration.md`](orchestration.md)), not a check of its own.
+   passing on their own, and *how we verify* names the **closure issue's** goal check as what
+   proves the whole ([`orchestration.md`](orchestration.md#the-closure-issue-every-epic-ends-in-qa)),
+   not a check of its own.
    Each child spec still states its own goal, and says in *the real need* which part of this
    one it carries.
 5. **What's in the box** — the one figure: in the box · composed in by the app · replaced in
    one line · not built. And its sentence.
 6. **The set · as of `<date>`** — the reviewed snapshot: issue · what it delivers · why the set needs
    it · status with PR links. Then the counts line and the holistic necessity check in a
-   paragraph: whether N is really N−1, and the collapse trigger if one was named. **A bug row
-   carries no spec PR by design** ([`orchestration.md`](orchestration.md) → "Which issues get
+   paragraph: whether N is really N−1, and the collapse trigger if one was named. The closure
+   issue is a row from the first revision, marked **closure · required**; a bug its runs find
+   joins the table as a row that blocks it. **A bug row carries no spec PR by design** ([`orchestration.md`](orchestration.md) → "Which issues get
    a spec"); an empty cell there is correct.
 7. **How the issues flow into each other** — the dependency graph as mermaid, edges labelled
    with what one issue hands the next, inputs from other epics dashed, unfiled issues as
@@ -274,7 +276,7 @@ Sections, in order:
 > | **The real need** | Every team shipping to phones is re-implementing stream hygiene. They need to stop, not to get a better tool for doing it |
 > | **Smaller, and rejected** | "Resume ships." FIX-775 alone meets it, and a connection that dies without closing never triggers a resume, so the user still waits on a dead answer |
 > | **Bigger, and not this epic's** | "The app works offline." Queueing and a durable history make a stream into a store. Its own epic, if ever |
-> | **Not done if** | Every child is Done and the proof's goal check hasn't run · the proof only ever drops the connection cleanly · an app has to add code to pass |
+> | **Not done if** | Every child is Done and the closure issue's goal check hasn't run · the closure run only ever drops the connection cleanly · an app has to add code to pass · a bug the closure run found is open |
 >
 > ```mermaid
 > flowchart LR
@@ -292,7 +294,7 @@ Sections, in order:
 >
 > | How we verify | |
 > |---|---|
-> | **Goal check** | The reconnect proof issue's goal check (FIX-XXX), real model, in an app that sets nothing. Run at the proof's completion; its verdict is the epic's wrap condition ([ER-13](BUSINESS-RULES.md)) |
+> | **Goal check** | The closure issue's goal check (FIX-782), real model, in an app that sets nothing, on one `main` commit after every other child merges. Its clean run is the epic's wrap condition ([ER-13](BUSINESS-RULES.md)) |
 > | **Signal** | Both legs: the assembled transcript equals the uninterrupted run, with no duplicate and no gap. Leg b resumes within one heartbeat interval |
 > | **Input** | A held-out prompt; the drop point and the death point are chosen at random each run |
 > | **Anti-game** | Don't assert on a child's own output, or run in an app with custom reconnect code. Both pass while a plain app still breaks |
@@ -316,11 +318,12 @@ Sections, in order:
 > | FIX-775 | Resume from a sequence cursor | The substance | **Done** · [#830](https://github.com/o/r/pull/830) |
 > | FIX-776 | Heartbeat frames so a dead connection is detectable | Without it a silently dead connection is never reconnected, so resume never fires | Impl in review · spec [#815](https://github.com/o/r/pull/815) · impl [#841](https://github.com/o/r/pull/841) |
 > | FIX-777 | A default reconnect backoff in the client, no options | The weakest of the three: apps can set their own. Kept, scoped down; a knob during implementation is the signal it should have been dropped | Spec in review · [#818](https://github.com/o/r/pull/818) |
-> | FIX-XXX · reconnect proof · **required** | One real client dropped mid-stream on the real path, asserted on the transcript | The only child shaped to move Goal 1 | Not filed · waits on FIX-776 and FIX-777 |
+> | FIX-782 · closure · **required** | The QA run on one `main` commit: a real client dropped mid-stream and asserted on the transcript, each team's journey, every child's goal check | The only child shaped to move Goal 1, and the one that finds what falls between the others | Plan in spec review · blocked by FIX-775, FIX-776, FIX-777 |
 > | FIX-781 | Reconnect drops the last partial frame | A **bug** found by FIX-775's goal check | Fixed · [#833](https://github.com/o/r/pull/833) |
 >
-> 2 done · 2 in flight · 1 not filed. Three are substance, one is the proof, one was a bug the
-> proof found. Whether three is really two was argued at the gate: FIX-777 stays, scoped to a
+> 2 done · 3 in flight. Three are substance, one is the closure issue, one was a bug FIX-775's
+> goal check found. A bug the closure run finds joins this table the same way, as a child that
+> blocks the closure issue. Whether three is really two was argued at the gate: FIX-777 stays, scoped to a
 > default with no options, and the collapse trigger is a knob.
 >
 > ## How the issues flow into each other
@@ -329,18 +332,17 @@ Sections, in order:
 > flowchart LR
 >   A["FIX-775 · resume"] -->|"the cursor"| B["FIX-776 · heartbeats"]
 >   A -->|"the cursor"| C["FIX-777 · backoff default"]
->   B --> P["FIX-XXX · reconnect proof · required"]
+>   A --> P["FIX-782 · closure · required"]
+>   B --> P
 >   C --> P
 >   A -.->|"found"| X["FIX-781 · partial-frame bug"]
 >   classDef done stroke-width:2px
->   classDef proposed stroke-dasharray:4 3
 >   class A,X done
->   class P proposed
 > ```
 >
 > An edge is what one issue hands the next. A dashed node isn't filed yet and reads `FIX-XXX ·
 > working title` until it is; a heavy border is done. Only heartbeats and backoff ever run in
-> parallel, and the proof waits on both.
+> parallel, and the closure issue waits on all three.
 >
 > ## What stays as it is
 >
@@ -353,10 +355,10 @@ Sections, in order:
 >
 > **[The goal](#the-goal-and-how-well-know-its-met), at that size:** dropped *and* silently
 > dead, in an app that sets nothing. If wrong: we wrap an epic whose users still hit a dead
-> answer, or we carry a proof leg nobody needed.
+> answer, or we carry a closure leg nobody needed.
 >
-> 1. **[D1](DECISIONS.md#d1) · A dropped connection is worth three issues and a proof, now.**
->    If wrong: a cycle on resilience nobody notices, which the proof exists to make impossible
+> 1. **[D1](DECISIONS.md#d1) · A dropped connection is worth three issues and a closure run, now.**
+>    If wrong: a cycle on resilience nobody notices, which the closure run exists to make impossible
 >    to miss.
 > 2. **[D2](DECISIONS.md#d2) · The client is the only reconnect actor; the server holds no
 >    per-client state.** If wrong: the epic's scope changes, not one issue's design — retention
@@ -409,7 +411,7 @@ cross-cutting decision.** Sections, in order:
 >
 > ```mermaid
 > flowchart TD
->   E["FIX-770"] --> D1["D1 · three issues and a proof, now"]
+>   E["FIX-770"] --> D1["D1 · three issues and a closure run, now"]
 >   D1 -.->|"rejected"| X1["two · drop the backoff default"]
 >   E --> D2["D2 · the client is the only reconnect actor"]
 >   D2 -.->|"rejected"| X2["server-side session replay buffer"]
@@ -418,7 +420,7 @@ cross-cutting decision.** Sections, in order:
 > ```
 >
 > <a name="d1"></a>
-> ## D1 · A dropped connection is worth three issues and a proof, delivered now
+> ## D1 · A dropped connection is worth three issues and a closure run, delivered now
 >
 > | | |
 > |---|---|
@@ -497,7 +499,7 @@ cross-cutting decision.** Sections, in order:
 At epic altitude the rules aren't behaviours of one feature; they're the constraints every child
 spec and implementation must satisfy, and the place a cross-spec review checks. Each says **who
 owns it** and **where it's checked**. Four groups, in order: what a team gets and doesn't · what
-no child may do · how the set is run · the proof (what done means).
+no child may do · how the set is run · the closure (what done means).
 
 > # FIX-770 · Rules every issue in the set obeys
 >
@@ -511,8 +513,8 @@ no child may do · how the set is run · the proof (what done means).
 >
 > | # | Rule | Owner | Checked at |
 > |---|---|---|---|
-> | ER-1 | A client that drops mid-stream and reconnects assembles the uninterrupted transcript, item for item | FIX-775 | The proof's goal check |
-> | ER-2 | A silently dead connection is detected within one heartbeat interval | FIX-776 | FIX-776's tests · the proof |
+> | ER-1 | A client that drops mid-stream and reconnects assembles the uninterrupted transcript, item for item | FIX-775 | The closure issue's goal check |
+> | ER-2 | A silently dead connection is detected within one heartbeat interval | FIX-776 | FIX-776's tests · the closure run |
 > | ER-3 | An app that sets nothing gets a reconnect backoff; an app that sets its own overrides it in one line | FIX-777 | FIX-777's tests |
 > | ER-4 | The server holds no per-client state and never initiates a reconnect | FIX-775 (D2) | Every child's spec review |
 > | ER-5 | One cursor format, `{requestId}:{sequence}`, across the set | FIX-775 defines · FIX-776, FIX-777 consume | FIX-776's and FIX-777's spec review |
@@ -533,13 +535,13 @@ no child may do · how the set is run · the proof (what done means).
 > | ER-10 | A child's Linear state is mirrored the moment it changes | The epic wake derives blocked-by from Linear; a stale child blocks its dependants whatever its PRs say |
 > | ER-11 | A cross-cutting question is raised to the epic coordinator, not decided locally; after merge, any resulting amendment gets a follow-up PR | The retained decisions are canonical; the original PR remains history |
 > | ER-12 | Every child's route reads *spec* by default; only a `Bug` label re-routes it | Fail-closed routing |
-> | ER-13 | The epic finishes only when the proof's goal check passes | D1. Surface without proof doesn't move the lead measure |
+> | ER-13 | The epic finishes only when the closure issue closes: a clean run on one `main` commit, with every bug an earlier run found fixed as a child of this epic and retested | D1. Surface without proof doesn't move the lead measure |
 >
-> ## The proof
+> ## The closure
 >
 > | # | The epic is done when | Proved by |
 > |---|---|---|
-> | ER-14 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: both legs pass, and leg b fails under its control | The proof issue's goal check, real model |
+> | ER-14 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: both legs pass, and leg b fails under its control | The closure issue's goal check, real model |
 > | ER-15 | The docs teach reconnect as something an app gets, not something it builds | FIX-776's docs PR: the streaming overview leads with it |
 
 ---
@@ -561,7 +563,7 @@ any piece; that's each issue's own plan. Sections, in order:
 5. **Coordination seams to watch** — a table: seam · between · rule. The places two children
    edit the same surface.
 6. **Not children, deliberately** — the linked issues that are consumed, not owned.
-7. **Wrap** — what happens when the proof holds.
+7. **Wrap** — what happens when the closure issue closes.
 
 > # FIX-770 · Plan
 >
@@ -573,11 +575,12 @@ any piece; that's each issue's own plan. Sections, in order:
 >
 > ## The path
 >
-> ![Swimlanes against time: one input lane from the store epic, four issue lanes in chain order, a done bar for resume, in-flight bars for heartbeats and backoff at the now line, an empty proof lane after them, and the critical path drawn through resume, heartbeats and the proof](figures/path.svg)
+> ![Swimlanes against time: one input lane from the store epic, four issue lanes in chain order, a done bar for resume, in-flight bars for heartbeats and backoff at the now line, an empty closure lane after them, and the critical path drawn through resume, heartbeats and the closure run](figures/path.svg)
 >
 > A chain with one fork. Only resume could start at the gate. The one parallel window is
 > heartbeats beside backoff once the cursor exists, and that's where the set is now. Required
-> does not move the proof earlier: it waits on both. The dependency graph itself is in
+> does not move the closure run earlier: it waits on every other child, and only its QA plan is
+> written early. The dependency graph itself is in
 > [the spec](SPEC.md#how-the-issues-flow-into-each-other); this document adds time to it.
 >
 > ## What each issue entails
@@ -585,9 +588,9 @@ any piece; that's each issue's own plan. Sections, in order:
 > | Issue | Route | Consumes | Delivers | Releases | Size |
 > |---|---|---|---|---|---|
 > | **FIX-775** resume | spec → impl PR | The existing sequence numbers · D2 | The cursor, the seam filter, the completed-request boundary, the one allocator | FIX-776 · FIX-777 | Medium |
-> | **FIX-776** heartbeats | spec → impl PR | The cursor · the allocator (ER-5) | Heartbeat frames that don't consume sequence numbers; the docs lead | The proof (with 777) | Small |
-> | **FIX-777** backoff default | spec → impl PR | The cursor · D3 | One default, no options, one-line override | The proof (with 776) | Small |
-> | **FIX-XXX** reconnect proof · required | spec → goal check | Resume · heartbeats · the default | One real drop on the real path, asserted on the transcript | The epic's wrap | Small |
+> | **FIX-776** heartbeats | spec → impl PR | The cursor · the allocator (ER-5) | Heartbeat frames that don't consume sequence numbers; the docs lead | The closure run (with 777) | Small |
+> | **FIX-777** backoff default | spec → impl PR | The cursor · D3 | One default, no options, one-line override | The closure run (with 776) | Small |
+> | **FIX-782** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit | The committed end-to-end checks, a QA report, and a bug child for every failure | The epic's wrap | Medium, and repeats per retest |
 >
 > ## Where it is
 >
@@ -598,10 +601,13 @@ any piece; that's each issue's own plan. Sections, in order:
 >
 > ## What unblocks what, from here
 >
-> 1. **FIX-776 and FIX-777 merge** → the proof is filed and can start. Nothing else waits on them.
-> 2. **The proof's goal check passes** → wrap: lessons pass, docs polish and a completion
->    report in Linear. The original merged spec PR remains the historical review.
-> 3. **If FIX-790's read gains a `from` option during any of this** → FIX-775's seam is
+> 1. **FIX-776 and FIX-777 merge** → the closure issue's first QA run starts, on a plan approved
+>    while they were building. Nothing else waits on them.
+> 2. **A closure run finds bugs** → each is filed as a child of this epic that blocks FIX-782.
+>    When the last one merges, the whole plan runs again on a fresh `main` commit.
+> 3. **A closure run finds nothing** → the closure PR opens with the checks and the QA report.
+>    Its merge → wrap: lessons pass, docs polish and a completion report in Linear. The original merged spec PR remains the historical review.
+> 4. **If FIX-790's read gains a `from` option during any of this** → FIX-775's seam is
 >    unchanged (decided, not asked). No child re-sequences.
 >
 > ## Coordination seams to watch
@@ -677,7 +683,7 @@ code spans, not claims that those files exist.
 > | Prior intent and precise source | Treatment | Reason / evidence | Replacement | Compatibility |
 > |---|---|---|---|---|
 > | FIX-680 D3 made each app own all reconnect machinery; source `../FIX-680/DECISIONS.md#d3` | **Amended** for the default, retained for overrides | The end-state POC demonstrates one shared resume path instead of three app-owned implementations | This epic D3; FIX-777 owns the default, FIX-775 owns resume | Existing app policy remains an override, not a second reconnect actor |
-> | FIX-681 ER-2 forbids durable per-client state; source `../FIX-681/BUSINESS-RULES.md#er-2` | **Retained** | Current architecture keeps persistence request-scoped; the proof must exercise reconnection without a client-state store | This epic ER-4 and ER-8, owned by FIX-775 | No new durable state or offline queue; no stored-data migration |
+> | FIX-681 ER-2 forbids durable per-client state; source `../FIX-681/BUSINESS-RULES.md#er-2` | **Retained** | Current architecture keeps persistence request-scoped; the closure run must exercise reconnection without a client-state store | This epic ER-4 and ER-8, owned by FIX-775 | No new durable state or offline queue; no stored-data migration |
 >
 > Neither predecessor is wholly superseded. FIX-790's store-history API is consumed,
 > not superseded. Child-specific cursor changes belong in FIX-775's evolution record.
