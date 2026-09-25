@@ -1,0 +1,12 @@
+{
+  "classifyTicket": "Hi, I was charged twice for my annual plan this morning and the second charge is still pending on my card. Can someone reverse it before it posts?",
+  "urgentBillingTicket": "I was charged twice for March and the second charge will overdraw my account tonight. I need this reversed today.",
+  "offTopicTicket": "Can you tell me about your company holiday schedule?",
+  "noConfidenceTickets": [
+    { "id": "t-billing", "message": "I was charged twice for March and I need this fixed today" },
+    { "id": "t-technical", "message": "The dashboard shows a blank page and a 500 error for everyone on my team" }
+  ],
+  "skillByDescription": { "message": "Nothing will load for anyone on our team since this morning, is something broken on your side?", "expect": "outage-status" },
+  "skillBySlash": { "message": "/plan-change move us to yearly billing", "expect": "plan-change" },
+  "smallTalk": "Thanks so much, that is everything for today."
+}

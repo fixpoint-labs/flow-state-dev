@@ -76,6 +76,8 @@ export interface RunFsdevOptions {
   capture?: string;
   /** `--quiet`. */
   quiet?: boolean;
+  /** `--config`: load this fsdev config instead of the one in `app`. */
+  config?: string;
   /** Extra env for the child, merged over the parent's. */
   env?: Record<string, string>;
   /** Suppress child stdio (default false — goals show the run). */
@@ -114,6 +116,7 @@ export function runFsdev(options: RunFsdevOptions): number {
   if (options.session !== undefined) args.push("--session", options.session);
   if (options.capture !== undefined) args.push("--capture", options.capture);
   if (options.quiet === true) args.push("--quiet");
+  if (options.config !== undefined) args.push("--config", options.config);
 
   try {
     const base =

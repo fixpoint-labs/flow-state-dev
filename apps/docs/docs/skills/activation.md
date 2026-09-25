@@ -63,6 +63,8 @@ It reads `input.message`, decides what (if any) skills apply, and writes the mat
 
 A turn that hits tier 1 or 2 pays no LLM cost for the classification. A turn that falls through pays one fast-model call.
 
+Tier 3 can run on an evaluator instead. [Routing with evaluators](/guides/routing-with-evaluators) walks through it.
+
 ### Tier 3 with an evaluator
 
 An [evaluator](/docs/fundamentals/blocks#evaluator--the-questions-you-already-know) is a block that asks an evaluation model a question with known answers. Give the activator one, and tier 3 asks it: which of these skills fits the message, or none?

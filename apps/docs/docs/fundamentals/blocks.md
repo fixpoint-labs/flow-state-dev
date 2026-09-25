@@ -340,6 +340,8 @@ The model has to be one that supports evaluation. A model that can only generate
 
 An evaluator answers and stops. It doesn't retry, doesn't fall back to another model, and doesn't decide anything with the answer. Branching belongs to your code: a `router` that reads `answers.team.choice`, or a sequencer step that checks `answers.urgent.probability`. Evaluators are silent like handlers. What they asked and what came back shows up in the DevTool trace.
 
+To see evaluators route real tickets end to end, follow [Routing with evaluators](/guides/routing-with-evaluators).
+
 ### Sequencer — the composition engine
 
 Sequencers compose blocks into pipelines using a fluent DSL with 15 chainable methods. Each step's output feeds into the next step's input, with full type inference through the chain.

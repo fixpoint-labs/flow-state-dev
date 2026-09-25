@@ -41,6 +41,8 @@ export function repoPath(...segments: string[]): string {
 export const KITCHEN_SINK: string = repoPath("apps", "kitchen-sink");
 /** `examples/hello-chat` — the chat harness example. */
 export const HELLO_CHAT: string = repoPath("examples", "hello-chat");
+/** `examples/guides/routing-with-evaluators` — the Routing with evaluators guide's companion example. */
+export const ROUTING_WITH_EVALUATORS: string = repoPath("examples", "guides", "routing-with-evaluators");
 
 /** Monotonic-enough run stamp, unique per process. Used to name sessions and scratch dirs. */
 export const RUN_STAMP = `${Date.now()}_${process.pid}`;
