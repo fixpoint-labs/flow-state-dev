@@ -350,60 +350,43 @@ describe("omitted and empty stay apart after the schema", () => {
 });
 
 describe("chosen tools that cannot all be granted are refused at the hire", () => {
-  it("refuses two picked presets whose tools share a name, naming the tool (S2)", () => {
-    const other = defineCapability({
-      name: "archive",
-      presets: { shelf: { tools: [tool("lookup")] }, default: [] }
-    });
+  // Omitted and `tools: undefined` are the same "no line": a hand-built key can
+  // be present with no value, and the tools slot grants picked presets either way.
+  it.each([
+    ["an omitted line", "eng.clash", {}],
+    ["tools: undefined", "eng.unset", { tools: undefined }]
+  ] as const)(
+    "refuses two picked presets whose tools share a name for %s, naming the tool (S2)",
+    (_line, id, tools) => {
+      const other = defineCapability({
+        name: "archive",
+        presets: { shelf: { tools: [tool("lookup")] }, default: [] }
+      });
 
-    let message = "";
-    try {
-      hireWorkforce(
-        [
-          record({
-            id: "eng.clash",
-            declared: { capabilities: { fieldwork: ["survey"], archive: ["shelf"] } }
-          })
-        ],
-        { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, other] }) } }
-      );
-    } catch (error) {
-      message = error instanceof Error ? error.message : String(error);
+      let message = "";
+      try {
+        hireWorkforce(
+          [
+            record({
+              id,
+              declared: {
+                capabilities: { fieldwork: ["survey"], archive: ["shelf"] },
+                ...tools
+              }
+            })
+          ],
+          { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, other] }) } }
+        );
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+
+      expect(message).toContain(`worker "${id}"`);
+      expect(message).toContain('"lookup"');
+      expect(message).toContain('"fieldwork"');
+      expect(message).toContain('"archive"');
     }
-
-    expect(message).toContain('worker "eng.clash"');
-    expect(message).toContain('"lookup"');
-    expect(message).toContain('"fieldwork"');
-    expect(message).toContain('"archive"');
-  });
-
-  // A hand-built manifest can carry the key with no value. Every turn reads
-  // that as "wrote no line" and grants the picked presets, so the check at the
-  // door must read it the same way, or the clash surfaces mid-turn instead.
-  it("refuses the same clash for a hand-built `tools: undefined` as for an omitted line", () => {
-    const other = defineCapability({
-      name: "archive",
-      presets: { shelf: { tools: [tool("lookup")] }, default: [] }
-    });
-
-    let message = "";
-    try {
-      hireWorkforce(
-        [
-          record({
-            id: "eng.unset",
-            declared: { capabilities: { fieldwork: ["survey"], archive: ["shelf"] }, tools: undefined }
-          })
-        ],
-        { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, other] }) } }
-      );
-    } catch (error) {
-      message = error instanceof Error ? error.message : String(error);
-    }
-
-    expect(message).toContain('worker "eng.unset"');
-    expect(message).toContain('"lookup"');
-  });
+  );
 
   // The refusal is about what a worker with no line would be GRANTED. A worker
   // that writes a line is granted exactly that line, so two picked presets
