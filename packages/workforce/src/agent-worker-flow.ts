@@ -853,8 +853,8 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       uses: [binding, ...usesEntries],
       // The prompt seam — A MARKED INSERTION POINT, NOT AN ABSTRACTION.
       //
-      // Two layers, in this order every time: the seat's TEAM speaks first,
-      // the seat's own file last. The array is the framework's own prompt
+      // Three layers, in this order every time: the seat's TEAM speaks first,
+      // then the seat's own file, then the packages it holds. The array is the framework's own prompt
       // slot, which resolves each entry, drops the absent ones and joins the
       // rest — so the filter and the join stay the framework's single rule
       // instead of a second copy of it living here.
