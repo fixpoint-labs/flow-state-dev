@@ -372,7 +372,8 @@ The epic-specific delta:
    budget allowed, because folding is how the objective becomes approvable; blocking it would
    deadlock the gate it's waiting on. An issue in **`blocked`** has an open blocked-by relation:
    its **implementation** waits until its blocker merges rather than being built concurrently with
-   its prerequisite, but its spec authoring and review still run — `blocked` is not "idle"
+   its prerequisite, but all its spec-phase work still runs (authoring, review, verdict folds,
+   answered decisions, the approval gate) — `blocked` is not "idle"
    ([Intake](#intake--filing--queueing-discovered-issues)).
    And a row whose worker **died** looks untouched by design: the script treats a null agent
    result as *nothing happened*, so the cursor doesn't advance, no verdict is consumed, and no
@@ -813,7 +814,7 @@ Then decide whether it joins the epic:
 - **Doesn't belong under this epic** → it isn't an addition to this run. File it and leave it
   for its own lifecycle; don't stretch the epic's objective to cover it.
 - **Blocked** → track it (a row in the epic record, marked blocked-by). **Blocked-by gates
-  implementation only:** its spec is authored and reviewed now, like any other row; only the
+  implementation only:** all its spec-phase work runs now, like any other row; only the
   build waits for its blocker to merge (a merge event re-enters the loop). Never park a
   dependent's spec on the relation — that serialises the epic's spec work behind its first merge.
 - Over the cap → queue it; admit it when a slot frees.

@@ -189,20 +189,28 @@ const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
 let crossSpecHold = false
 
 /**
- * The only actions an open blocked-by relation lets through: writing and revising the SPEC.
+ * Does this dispatch BUILD code? The one question an open blocked-by relation asks.
  *
  * A prerequisite is a landing-order constraint on CODE — a dependent must not be built concurrently with
- * the thing it builds on. It says nothing about when the dependent's spec may be written or reviewed, and
- * parking those too serialised a whole epic's spec work behind its first implementation merge: the owner
- * had to override the wake by hand (FIX-1553) to get the dependents' specs authored. Spec work on a
- * blocked row also lands its spec in the cross-spec set, which is where a conflict with its prerequisite's
- * spec is caught — before either is built. → epic-lifecycle § Intake.
+ * the thing it builds on. It says nothing about the dependent's SPEC, and parking spec work too serialised
+ * a whole epic's specs behind its first implementation merge: the owner had to override the wake by hand
+ * (FIX-1553). So the rule is derived from the phase, not from a list of action names: everything a row
+ * does while its spec is not yet signed off (`PRE_APPROVAL_PHASES` — authoring, review, folding a POC
+ * verdict, applying an answered decision) is spec work and runs; `implement` (the step out of the spec)
+ * and anything a row does once past it is implementation and waits. Listing the free actions by hand
+ * missed two of them (verdicts, decisions), and the missed decision deadlocked the cross-spec hold.
+ * → epic-lifecycle § Intake.
+ *
+ * @param row     the row the action is for
+ * @param action  the action `pendingAction` would dispatch
  */
-const PREREQUISITE_FREE_ACTIONS = new Set(['spec', 'spec-review'])
+function buildsCode(row, action) {
+  return action === 'implement' || !PRE_APPROVAL_PHASES.has(row.phase)
+}
 
 function pendingAction(row) {
   // An issue with an open blocked-by relation is tracked until its blocker merges, and gates only
-  // IMPLEMENTATION on it: spec authoring and review still dispatch (`PREREQUISITE_FREE_ACTIONS`).
+  // IMPLEMENTATION on it: all spec-phase work still dispatches (`buildsCode`).
   // → epic-lifecycle § Intake, and § Boundaries (sequence, don't BUILD a dependent concurrently
   // with its prerequisite).
   // Linear is authoritative on whether this issue still exists as work. A carried row whose
@@ -233,6 +241,7 @@ function pendingAction(row) {
   }
 
   const prerequisiteOpen = !!(row.blockedBy && row.blockedBy.length)
+  const unlessBuilding = (next) => (prerequisiteOpen && buildsCode(row, next.action) ? null : next)
 
   // A worker that escalated a decision it could not make is WAITING ON A HUMAN. Re-dispatching
   // it on the next unrelated PR event or heartbeat would either retry the same dead end or push
@@ -243,7 +252,7 @@ function pendingAction(row) {
   // Verdicts are a LIST: two distinct claims on one issue can settle in the same wake, and a
   // single-slot field would drop one while consuming both settlement requests.
   if (row.verdicts && row.verdicts.length) {
-    return prerequisiteOpen ? null : { action: 'apply-verdict', why: `${row.verdicts.length} POC verdict(s) to fold` }
+    return unlessBuilding({ action: 'apply-verdict', why: `${row.verdicts.length} POC verdict(s) to fold` })
   }
 
   const phaseAction = (() => {
@@ -341,8 +350,7 @@ function pendingAction(row) {
       return null
     }
   })()
-  if (phaseAction) return prerequisiteOpen && !PREREQUISITE_FREE_ACTIONS.has(phaseAction.action) ? null : phaseAction
-  if (prerequisiteOpen) return null
+  if (phaseAction) return unlessBuilding(phaseAction)
 
   // FALLBACK, reached only when the phase itself has nothing to do. An answered decision is work for a
   // SINGLE-PR row too: this check lived only inside `multiPrHasWork`, so a single-PR row — an
@@ -355,7 +363,7 @@ function pendingAction(row) {
   // Scoped to rows with no sub-PRs: a multi-PR row's answer travels through `issue-multi-pr`, which the
   // `implement` path above already reaches.
   if (!(row.subPrs || []).length && (row.blockerResolutions || []).length) {
-    return { action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) to apply` }
+    return unlessBuilding({ action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) to apply` })
   }
   return null
 }
@@ -394,7 +402,7 @@ function specReviewParkKind(row) {
   if (row.linearTerminal) return 'linear-terminal'
   if (row.blocker) return 'blocker'
   // An open prerequisite parks only the approved row, whose next action is `implement`; an unapproved
-  // row's spec review runs regardless (`PREREQUISITE_FREE_ACTIONS`).
+  // row's spec review runs regardless (`buildsCode`).
   if (row.specApproved) {
     if (row.blockedBy && row.blockedBy.length) return 'blocked-by'
     return crossSpecHold ? 'cross-spec-hold' : cursorUsable(row) ? null : 'cursor'
@@ -2996,10 +3004,14 @@ const crossSpecEligible = (r) => r.specApproved || POST_SPEC_PHASES.has(r.phase)
 // separately disagreed about what the set was — and each disagreement was either a released gate or a
 // deadlock. One exclusion here:
 //  - CANCELLED work: its spec is dead. Reviewing it manufactures conflicts with work nobody is doing.
-// BLOCKED work is NOT excluded. An open `blockedBy` gates implementation only, so a blocked row's spec is
-// authored and reviewed like any other (`PREREQUISITE_FREE_ACTIONS`) and genuinely is still coming — and
-// its spec is exactly the one most likely to conflict with its prerequisite's, so the pass must wait for it.
-// (It used to be excluded, when spec authoring also parked on the relation and waiting for it deadlocked.)
+// BLOCKED work is NOT excluded, and that is safe only because of one invariant: a row counted here is
+// pre-approval (not eligible ⇒ not approved, not post-spec, not terminal), and `buildsCode` never lets the
+// relation park a pre-approval action — authoring, review, verdict folds and answered decisions all run,
+// and the spec-approval gate does not read `blockedBy`. So a blocked row's spec can always still progress
+// and is genuinely coming; the relation cannot stall it, which is what would turn waiting into a deadlock
+// (the prerequisite held for the pass, the pass waiting on a spec that waits on the prerequisite). Its
+// spec is also the one most likely to conflict with its prerequisite's, so the pass must wait for it.
+// verify.mjs pins the invariant over the whole pre-approval space.
 const crossSpecCancelled = (r) => CANCELLED_LINEAR.test((r.linearState || '').trim())
 // A SECOND exclusion, and it has to apply to both halves: a row with NO SPEC DOCUMENT cannot be
 // cross-reviewed. Left in `crossSpecSet` it hands the reviewer a row with nothing to read and
