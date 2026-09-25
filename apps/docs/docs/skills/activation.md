@@ -16,7 +16,7 @@ The [built-in worker kind](../workforce/built-in-worker.md#using-them) takes a s
 
 ## Why activate up front
 
-The up-front path avoids three costs of tool-call activation:
+The up-front path avoids these costs of tool-call activation:
 
 1. **Catalog cost on every turn.** The skill catalog listing has to live in the system prompt for the model to know what's available, even when no skill applies. Prompt caching mitigates this; the up-front path eliminates it.
 2. **Two provider hits per skill-active turn.** The first call decides on a skill and emits the tool call; the second runs with the skill in context.

@@ -71,9 +71,9 @@ Resources that don't match at all are dropped. Scope with `prefix` and cap with 
 
 ## Limits of the text tools
 
-All three tools see only resources marked `llmReadable` — the same gate as [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns). A resource the LLM can't read won't appear in any of their results. Grep and search match the *rendered* content — the same text `readResourceContentTool` returns — so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
+All three tools see only resources marked `llmReadable`, the same gate as [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns). A resource the LLM can't read won't appear in any of their results. Grep and search match the *rendered* content, the same text `readResourceContentTool` returns, so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
 
-Search and grep are lexical. They're a good fit for curated, bounded content where answers live in the words on the page. They are not a substitute for semantic retrieval over a large, uncurated corpus — that's what [memory](/docs/memory/overview) and a retrieval layer are for.
+Search and grep are lexical. They're a good fit for curated, bounded content where answers live in the words on the page. They are not a substitute for semantic retrieval over a large, uncurated corpus. Use [memory](/docs/memory/overview) or a retrieval layer for that.
 
 `grepResourceContent` treats its pattern as a regular expression, falling back to a literal match when the pattern isn't valid regex. It runs line by line over trusted resource content and does not sandbox the pattern, so a pathological regex can be slow. Isolate the call before pointing it at attacker-controlled patterns.
 

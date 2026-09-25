@@ -205,7 +205,6 @@ Every ticket goes to review. The trace shows why: the model chose `billing`, and
 the first level is `ambiguous` with the reason `no-confidence`. If you're on one of those models
 and want to branch on the bare answer, run an evaluator and follow it with a plain
 [`router`](/docs/fundamentals/blocks#router--runtime-dispatch) that reads `answers.team.choice`.
-[`cascadingRouter`](/docs/patterns/utility-blocks/core#cascadingrouter) shows that shape.
 
 ## Step 3: let the skill activator use an evaluator
 
@@ -257,7 +256,7 @@ pick's confidence to a threshold, so the same code works on a model that reports
 evaluator error fails the activator, the same way a failed default classifier does, and it
 doesn't fall back to that classifier. If you'd rather the turn go on without a skill, wrap the
 activator in [`.rescue`](/docs/sequencers/composing-blocks#rescue--catch-errors-route-to-recovery).
-Leave `evaluator` out and the third step uses the default classifier. The example's `skillActivator()`
+Leave `evaluator` out and the activator's third tier uses the default classifier. The example's `skillActivator()`
 with no model does that. See
 [Activation paths](/docs/skills/activation#tier-3-with-an-evaluator).
 
