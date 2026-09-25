@@ -4,8 +4,12 @@
 
 The epic drafted the guide's core ([epic DOCS](../../epics/FIX-1553/DOCS.md#create--appsdocsguidesrouting-with-evaluatorsmd--the-teaching-page-path-proposed-fix-1556-confirms)).
 This is the full page that grows from it, plus the example's README and three one-line
-cross-links. Builder and option names follow the epic and the lab; where FIX-1554, FIX-1558 or
-FIX-1559 shipped a different name, the implementer reconciles the code and keeps the prose.
+cross-links. The cascade follows FIX-1558's shape and pinned names
+([D1](../FIX-1558/DECISIONS.md#d1), [pinned names](../FIX-1558/PLAN.md#pinned-names)): levels are
+evaluator blocks the author builds, the cascade takes no model, `ambiguous` is required, and it is
+exported as `utility.cascadingRouter`. Other builder and option names follow the epic; where
+FIX-1554, FIX-1558 or FIX-1559 shipped a different name, the implementer reconciles the code and
+keeps the prose.
 Voice rules most at risk here: em-dashes between clauses, sentences opening on "This", and a
 triumphant closer after each section.
 
@@ -53,15 +57,17 @@ triumphant closer after each section.
 > ```ts title="src/classify.ts"
 > import { evaluator, choice, score, boolean } from "@flow-state-dev/core";
 >
+> export const team = choice("Which team should handle this?", {
+>   billing: "Payments, charges and refunds",
+>   technical: "Bugs, errors and outages",
+> });
+>
 > export const classifyTicket = evaluator({
 >   name: "classify-ticket",
 >   model: "typesafe-ai/jev",
 >   state: (input) => input.message,
 >   questions: {
->     team: choice("Which team should handle this?", {
->       billing: "Payments, charges and refunds",
->       technical: "Bugs, errors and outages",
->     }),
+>     team,
 >     frustration: score("How frustrated is the customer?", ["Calm", "Annoyed", "Angry"]),
 >     urgent: boolean("Does this need someone now?"),
 >   },
@@ -92,39 +98,64 @@ triumphant closer after each section.
 > ## Step 2: route on the answers
 >
 > When one answer decides which question to ask next, write the tree with `cascadingRouter`.
-> Each edge names the answer that opens it and, optionally, the minimum confidence it needs.
-> Anything that doesn't clear an edge goes to your `ambiguous` branch instead of a guess.
+> Each level asks one evaluator a choice question, and each branch names the option that opens it
+> and, optionally, the minimum confidence it needs. Anything that doesn't clear an edge goes to
+> your `ambiguous` branch instead of a guess.
 >
 > ```ts title="src/route.ts"
-> import { cascadingRouter } from "@flow-state-dev/core";
+> import { evaluator, choice, utility } from "@flow-state-dev/core";
+> import { team } from "./classify";
+>
+> const urgency = choice("How urgent is this billing issue?", {
+>   urgent: "Needs someone now",
+>   routine: "Can wait in the queue",
+> });
 >
 > export function triage(model) {
->   return cascadingRouter({
->     name: "triage",
+>   const department = evaluator({
+>     name: "department",
 >     model,
+>     state: (input) => input.message,
+>     questions: { team },
+>   });
+>   const billingUrgency = evaluator({
+>     name: "billing-urgency",
+>     model,
+>     state: (input) => input.message,
+>     questions: { urgency },
+>   });
+>
+>   return utility.cascadingRouter({
+>     name: "triage",
+>     ambiguous: review,
 >     root: {
->       id: "team",
->       instructions: "Which team should handle this ticket?",
+>       ask: department,
+>       on: "team",
 >       branches: {
 >         billing: {
->           description: "Payments, charges and refunds",
 >           minConfidence: 0.6,
 >           next: {
->             id: "urgency",
->             instructions: "How urgent is this billing issue?",
+>             ask: billingUrgency,
+>             on: "urgency",
 >             branches: {
->               urgent: { description: "Needs someone now", minConfidence: 0.6, block: urgentBilling },
->               routine: { description: "Can wait in the queue", minConfidence: 0.5, block: billingQueue },
+>               urgent: { minConfidence: 0.6, block: urgentBilling },
+>               routine: { minConfidence: 0.5, block: billingQueue },
 >             },
 >           },
 >         },
->         technical: { description: "Bugs, errors and outages", minConfidence: 0.6, block: techQueue },
+>         technical: { minConfidence: 0.6, block: techQueue },
 >       },
 >     },
->     ambiguous: review,
 >   });
 > }
 > ```
+>
+> Each level is `{ ask, on, branches }`: the evaluator to ask, the id of the choice question to
+> route on, and one branch per option. A branch is `{ block }` or `{ next }`, plus an optional
+> `minConfidence`. Branch keys are checked against the question's options, so a typo is a compile
+> error. The router itself never takes a model. The evaluators carry it, which is why `triage`
+> takes the model and builds them, reusing Step 1's `team` question for the first level.
+> `ambiguous` is required.
 >
 > The leaves (`urgentBilling`, `review` and the rest) are ordinary blocks. In the example they're
 > handlers that name the queue; in your app they could be anything.
@@ -176,7 +207,7 @@ triumphant closer after each section.
 >
 > - [Blocks: Evaluator](/docs/fundamentals/blocks#evaluator) for every option and the full
 >   answer shape.
-> - [`cascadingRouter`](/docs/…) for gate options and how an `ambiguous` result shows up in the
+> - [`cascadingRouter`](/docs/patterns/utility-blocks/core#cascadingrouter) for gate options and how an `ambiguous` result shows up in the
 >   trace.
 > - [Adding skills to your app](./adding-skills-to-your-app) to build the catalog the activator
 >   picks from.
@@ -184,7 +215,8 @@ triumphant closer after each section.
 The two "Where to go next" bullets for index-time facets and for memory are added only if those
 pages exist on `main` at publication (BR-7). The memory bullet, when added, names memory's helpers
 as FIX-1555 ships them, `captureEvaluator(model)` and `captureQuestions`, for example:
-"[Memory](/docs/…) to let capture decide what to remember with `captureEvaluator(model)`." The `cascadingRouter` link target is FIX-1558's page.
+"[Memory](/docs/…) to let capture decide what to remember with `captureEvaluator(model)`." The `cascadingRouter` link target is FIX-1558's
+`#cascadingrouter` section on `apps/docs/docs/patterns/utility-blocks/core.md`.
 
 ## UPDATE · `apps/docs/sidebarsGuides.ts` · top-level items
 
@@ -196,7 +228,8 @@ Insert `"routing-with-evaluators"` immediately before `"adding-skills-to-your-ap
   > To see evaluators route real tickets end to end, follow [Routing with evaluators](/guides/routing-with-evaluators).
 - `apps/docs/docs/skills/activation.md`, under "Three tiers", after the classifier tier:
   > Tier 3 can run on an evaluator instead. [Routing with evaluators](/guides/routing-with-evaluators) walks through it.
-- The `cascadingRouter` reference page (FIX-1558's), in its introduction:
+- `apps/docs/docs/patterns/utility-blocks/core.md`, in the introduction of FIX-1558's
+  `### cascadingRouter` section (`#cascadingrouter`):
   > For a worked tree, including what happens on a model with no confidence, see [Routing with evaluators](/guides/routing-with-evaluators).
 
 ## CREATE · `examples/guides/routing-with-evaluators/README.md`

@@ -16,7 +16,7 @@ flowchart TD
   D1 -.->|"rejected"| X1["FIX-1560 as a separate spec gate"]
   E --> D2["D2 · the block answers, consumers gate"]
   D2 -.->|"rejected"| X2["a confidence floor inside the block"]
-  E --> D3["D3 · consumers take an evaluator block, never a model or a package"]
+  E --> D3["D3 · consumers take an evaluator block, never resolve a model or import a package"]
   D3 -.->|"rejected"| X3["each consumer resolves its own model"]
   E --> D4["D4 · the generator classifier stays the default when nothing is passed"]
   D4 -.->|"rejected"| X4["delete it, so tier 3 needs an evaluator"]
@@ -36,22 +36,22 @@ adapters answer choice questions no better than a generator with a schema. Then 
 is a rename, and Jev is the only reason for it.
 
 <a name="d2"></a>
-## D2 · The block answers; consumers gate. Confidence the model did not give is absent, and absent fails closed
+## D2 · The block answers; consumers gate. Confidence the model did not give is absent, and absent fails closed at a gate
 
 | | |
 |---|---|
 | **Instead of** | A `minConfidence` option on the block · or a default confidence for models that report none |
 | **Because** | The lock makes the block a thin wrap and puts trees in code. A floor inside the block would be a gate in two places. A default number is the "synthetic confidence" the owner invent-killed |
-| **Locks in** | FIX-1554 defines one answer shape: each answer, plus confidence and per-option probabilities **only when the model returned them**, absent otherwise. FIX-1558, FIX-1559, FIX-1557 and FIX-1555 read that shape as is; none computes its own confidence. In `cascadingRouter` absent confidence fails every edge, whether or not it sets a floor; a floor adds the "too low" check (ER-4). Per the POC on #1903, the popular providers' adapters return neither, so a cascade on them always lands on `ambiguous`; an author who wants to branch on their bare answer uses a plain `router`. FIX-1558's spec re-checks that against the shipped adapters, and the docs say it plainly ([DOCS.md](DOCS.md)) |
+| **Locks in** | FIX-1554 defines one answer shape: each answer, plus confidence and per-option probabilities **only when the model returned them**, absent otherwise. FIX-1558, FIX-1559, FIX-1557 and FIX-1555 read that shape as is; none computes its own confidence. **Fail closed binds gates:** `cascadingRouter`, and opt-in floors such as FIX-1557's search minimum. In `cascadingRouter` absent confidence fails every edge, whether or not it sets a floor; a floor adds the "too low" check (ER-4). An opt-in floor elsewhere fails an answer with no confidence the same way. **A consumer that branches on a bare answer never consults confidence**: the skill activator reads its pick (the model's "no skill" is the closed direction) and memory reads remember or skip, on any model, with no threshold of their own. An app that wants a floor there puts its own gate in front ([FIX-1559 D2](../../issues/FIX-1559/DECISIONS.md#d2), [FIX-1555 D3](../../issues/FIX-1555/DECISIONS.md#d3)). Per the POC on #1903, the popular providers' adapters return neither, so a cascade on them always lands on `ambiguous`; an author who wants to branch on their bare answer uses a plain `router`. FIX-1558's spec re-checks that against the shipped adapters, and the docs say it plainly ([DOCS.md](DOCS.md)) |
 
 <a name="d3"></a>
-## D3 · A consumer takes an evaluator block, optional, typed on core. It never builds one, names a model, or imports a lab
+## D3 · A consumer takes an evaluator block, optional, typed on core. It never builds one unasked, names or resolves a model, or imports a lab
 
 | | |
 |---|---|
 | **Instead of** | A `model` option on each consumer that builds the evaluator itself · or a shared "System One" provider |
 | **Because** | The block is where the model is chosen and checked. A model option per consumer is three resolvers and three refusal messages. #1903's seams already take a block: `classifier` on `createSkillActivator` and on memory's `system()` |
-| **Locks in** | FIX-1559 builds the first seam and the others copy its shape. `@flow-state-dev/orchestration` and `@flow-state-dev/memory` depend on core's block types only. With nothing passed, today's path runs unchanged. With an evaluator passed, its answer is final: `ambiguous` or an error does not fall through to another classifier |
+| **Locks in** | FIX-1559 builds the first seam and the others copy its shape. `@flow-state-dev/orchestration` and `@flow-state-dev/memory` depend only on core: its block types, and its `evaluator()` factory for a helper. Never a provider package, and never model resolution. With nothing passed, today's path runs unchanged. With an evaluator passed, its answer is final: `ambiguous` or an error does not fall through to another classifier. **The helper rule:** a consumer ships a `<x>Evaluator(model)` helper only when it owns the question: memory's `captureEvaluator` ([FIX-1555 D4](../../issues/FIX-1555/DECISIONS.md#d4)) and the activator's `skillEvaluator` ([FIX-1559 D3](../../issues/FIX-1559/DECISIONS.md#d3)). The helper passes the app's model to core's `evaluator()` untouched and resolves nothing; the app calls it, so it is not a consumer building one unasked. Where the questions are the app's, there is no helper: FIX-1557 declines one ([its D1](../../issues/FIX-1557/DECISIONS.md#d1)) |
 
 <a name="d4"></a>
 ## D4 · The skill activator keeps its generator classifier as the default; a passed evaluator replaces it
@@ -79,6 +79,7 @@ Owner locks on FIX-1553 and its children (Architect chat, Jake, 2026-09-20 to 24
   for a new primitive is applied, not waived: see [Decided in review](#decided-in-review).
 - **`cascadingRouter` is a utility, not a kind.** The name is locked. Trees stay in code.
 - **Fail closed** when confidence or probabilities are missing or low. No soft fail into a wrong branch.
+  This binds gates; a consumer branching on a bare answer consults no confidence ([D2](#d2)).
 - **Prefer Jev via Gateway; accept any evaluation-capable model.** Strings and instances both go
   through evaluate. Generate-only models are refused. No generator plus Zod fallback, no
   OpenRouter Decisions client, no auto-retry.
@@ -146,5 +147,6 @@ Round 2 on #2166 (owner lock relayed by the FSD Architect).
 - **Drafted (Sep 24)** — FIX-1560 folded; four cards.
 - **Review round 1 (Sep 24)** — every cascade edge fails closed; leg (f) scoped; the kind's case recorded.
 - **Review round 2 (Sep 24)** — owner adds direct Jev as an optional peer beside Gateway.
+- **Aligned after merge (Sep 24)** — fail closed scoped to gates, ER-11 narrowed, the helper rule — a follow-up PR from `main`; lineage in [EVOLUTION.md](EVOLUTION.md).
 
 **Open: none.**

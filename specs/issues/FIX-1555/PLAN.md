@@ -18,6 +18,7 @@ merges (the evaluator block, its answer types and the testing package's mock eva
 | S5 | `memory` tests | V1 to V8 below | all |
 | S6 | `goals/memory-evaluator-seam/` | VG1, the epic's leg (f), and VG2, the seam on a real evaluation model | ER-7 ER-15 (f) |
 | S7 | Docs, README, changeset | Publish [DOCS.md](DOCS.md). A `patch` changeset for `@flow-state-dev/memory` (additive, pre-1.0) naming the option, `captureEvaluator` and `captureQuestions` | — |
+| S8 | `goals/evaluator/holds-as-an-assembled-set/run.mts` (FIX-1556's) | Replace the `fail('f', …)` placeholder line with a call into VG1's check. Nothing else in that goal changes | ER-15 (f) |
 
 **Removed:** nothing. The lab's `classifier` field on #1903 never shipped and is not lifted
 ([EVOLUTION.md](EVOLUTION.md)).
@@ -32,9 +33,12 @@ flowchart TD
   S4 --> S5["S5 · tests"]
   S5 --> S6["S6 · goals"]
   S5 --> S7["S7 · docs and changeset"]
+  S6 --> S8["S8 · leg f in the assembled goal"]
 ```
 
-S1 is a pure refactor: the existing suite passes before S2 starts.
+S1 is a pure refactor: the existing suite passes before S2 starts. S8 only if
+`goals/evaluator/holds-as-an-assembled-set/run.mts` exists (FIX-1556 has merged); otherwise note
+VG1's path on FIX-1556.
 
 ## Checks
 
@@ -114,6 +118,8 @@ derivation, so no checker applies.
 - Re-read the capture pipeline in `packages/memory/src/memory-system-blocks.ts`: which step
   advances the watermark, and whether FIX-1396 has changed the resource factories.
 - Compare [EVOLUTION.md](EVOLUTION.md)'s lab claims against #1903 at `b33a072`.
+- `goals/evaluator/holds-as-an-assembled-set/run.mts` exists: do S8. Not yet: comment on
+  FIX-1556 with VG1's path.
 
 ## Follow-ups
 
