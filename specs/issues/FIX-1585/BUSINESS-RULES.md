@@ -24,8 +24,10 @@ into work.
 |---|---|---|---|
 | BR-8 | Any channel panel is open | It shows the transcript, oldest first. Each line names its `author` if it has one, else its `principal`, else reads as unattributed | V5 |
 | BR-9 | A seat posts while the panel is open | The line shows the next time the panel reads the channel: on reopen, or after the person's own post. It is never lost, only late | V5 |
-| BR-10 | A client reads a channel's client data | It gets `transcript` and nothing else. Members and the charter stay server-side | V1 · V4 |
-| BR-11 | A channel kind written by hand declares no `expose` | Its panel shows an empty transcript and still accepts posts. Nothing breaks | V1 |
+| BR-10 | A client reads a channel's session | Each post is one `channel-post` item carrying its line, in post order. Members and the charter stay server-side; nothing about the channel is added to client data | V1 · V4 |
+| BR-11 | A channel kind written by hand emits no `channel-post` item | Its panel shows an empty transcript and still accepts posts. Nothing breaks | V1 |
+| BR-22 | A model or flow calls `read` on a busy channel | It gets the lines inside the session's history window, oldest first. With notify on, each post uses two of the 50 requests. Older lines stay on the page | V1 |
+| BR-23 | A channel opened before this change is read | Its old `state.transcript` lines come first, then the lines from items, each once. New posts add nothing to state | V1 |
 
 ## Asking a seat
 
@@ -52,7 +54,7 @@ into work.
 Nothing here is fatal to the page. A refused or timed-out post, a failed seat action and a
 model outage all surface as an error in the panel that sent them, with the composer usable
 again. A failed "New conversation" surfaces in the seat's row, with the button usable again.
-A failed notification never un-writes a post: the transcript is the record, and waking
+A failed notification never un-writes a post: the post's item is the record, and waking
 members is best-effort. Nothing retries on its own.
 
 ## Acceptance criteria this issue owns

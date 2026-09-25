@@ -22,3 +22,21 @@ exit=0
 FAIL P7 — clientData.session.transcript carries the post: false
 FAIL P8 — clientData.session keys: [] (members and instructions stay private)
 exit=1
+
+# items-probe.mts — FIX-1585 settle-claim (2026-09-25): does the transcript hold up
+# rebuilt from the posts' own durable items instead of a pushState copy? "C" patch
+# applied to appendPost (emit.component instead of pushState) and readChannelFor
+# (dual-read: legacy state.transcript first, then component items, deduped by id).
+# Patch reverted after (git checkout -- packages/workforce/src/channel/channel-flow.ts).
+PASS P9 — component items matching marker: 1; first: {"id":"item_component_2_d9f3e2b17a5b","type":"component","status":"completed","requestId":"req_1790369992858_ed32488eb71b4","itemIndex":2,"component":"channel-post","data":{"id":"...","at":...,"principal":"devuser","authorVerified":false,"body":"fix-1585-items-..."}}
+PASS P10 — no channel-post item for refused body; request failed; author-not-a-member
+PASS P11 — legacy line at index 0, posted line at index 1, transcript length 2
+P12 — posted 30, read back 22/30 via items.all(); all 30 present: false; total requests now on session: 65
+exit=0
+
+# items-probe.mts on unmodified main (control: P9 and P11 must be red)
+FAIL P9 — component items matching marker: 0; first: undefined (no "channel-post" component item exists — appendPost still writes only to state.transcript)
+PASS P10 — no channel-post item for refused body; request failed; author-not-a-member (unaffected by the patch either way)
+FAIL P11 — legacy line at index 1, posted line at index 0, transcript length 2 (read is unpatched: both lines come from state.transcript in insertion order, so the posted line — appended by pushState during the probe's own `post` call — lands BEFORE the legacy line seeded afterward by a direct store write; "legacy first" does not hold without the read-side dual-read change)
+P12 — posted 30, read back 30/30 via items.all(); all 30 present: true; total requests now on session: 65 (transcript is a plain state array here, so it is NOT windowed by historyWindow at all — a real behavior difference the "C" proposal introduces)
+exit=1

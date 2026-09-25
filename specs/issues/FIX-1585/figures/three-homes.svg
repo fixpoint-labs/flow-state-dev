@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 440" role="img" aria-label="Three places a channel&#x27;s transcript could live, compared row by row. A, the spec&#x27;s current choice, copies each post into a session state array and exposes it to the page. B reads the request log directly. C has each post emit one durable item into its own request, the way the assistant&#x27;s messages already work, and the page reads it as session history. C is recommended."
+<svg viewBox="0 0 940 440" role="img" aria-label="Three places a channel&#x27;s transcript could live, compared row by row. A, the spec&#x27;s current choice, copies each post into a session state array and exposes it to the page. B reads the request log directly. C has each post emit one durable item into its own request, the way the assistant&#x27;s messages already work, and the page reads it as session history. C was chosen."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -33,13 +33,13 @@
   <g id="heads">
     <rect class="n-box" x="206" y="14" width="240" height="44" rx="5"/>
     <text class="t-h" x="216" y="34">A · state transcript</text>
-    <text class="t-s" x="216" y="50">the spec's D1 today</text>
+    <text class="t-s" x="216" y="50">round 1's D1</text>
     <rect class="n-box" x="456" y="14" width="230" height="44" rx="5"/>
     <text class="t-h" x="466" y="34">B · read the requests</text>
     <text class="t-s" x="466" y="50">no new record</text>
     <rect class="st" x="696" y="14" width="228" height="44" rx="5"/>
     <text class="t-h" x="706" y="34">C · post emits an item</text>
-    <text class="t-code" x="706" y="50">recommended</text>
+    <text class="t-code" x="706" y="50">chosen · D1</text>
   </g>
   <g id="rows">
     <line class="map" x1="16" y1="70" x2="924" y2="70" style="stroke:var(--rule)"/>
@@ -59,10 +59,10 @@
     <line class="map" x1="16" y1="166" x2="924" y2="166" style="stroke:var(--rule)"/>
     <text class="t-b" x="26" y="186">Retention</text>
     <text class="t-s" x="216" y="186">none: never trimmed</text>
-    <text class="t-s" x="466" y="186">session retention trims</text>
-    <text class="t-s" x="466" y="200">old requests</text>
-    <text class="t-s" x="706" y="186">session retention trims,</text>
-    <text class="t-s" x="706" y="200">same as the assistant</text>
+    <text class="t-s" x="466" y="186">trimmed only if the kind</text>
+    <text class="t-s" x="466" y="200">sets session retention</text>
+    <text class="t-s" x="706" y="186">trimmed only if the kind</text>
+    <text class="t-s" x="706" y="200">sets session retention</text>
     <line class="map" x1="16" y1="214" x2="924" y2="214" style="stroke:var(--rule)"/>
     <text class="t-b" x="26" y="234">How the page reads it</text>
     <text class="t-s" x="216" y="234">clientData.session</text>
@@ -94,6 +94,6 @@
     <text class="t-s" x="706" y="392">read reads, old state dual-read</text>
   </g>
   <g id="foot">
-    <text class="t-b" x="26" y="428">C makes the transcript what it already is: the completed posts, read from where each post ran.</text>
+    <text class="t-b" x="26" y="428">C makes the transcript what it already is: the completed posts. Its price is read's window (POC P12: 22 of 30 lines).</text>
   </g>
 </svg>

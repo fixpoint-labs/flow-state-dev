@@ -3,8 +3,9 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
 Three destinations. The framework change (D1) is one reader-facing fact, so it gets one short
-section in the channels page and one paragraph in the package README. The rest is the
-reference app's own README. No new page, no sidebar change, no blog.
+section in the channels page, two sentences where the page explains the transcript, and one
+paragraph in the package README. The rest is the reference app's own README. No new page, no
+sidebar change, no blog.
 
 Voice rules most at risk here: no em-dash chains, no sentence opening with "This", and say
 plainly that the page posts as one shared user.
@@ -13,18 +14,18 @@ plainly that the page posts as one shared user.
 
 ### Showing a channel on screen
 
-A browser never receives an action's return value, so `read` is no help to a page. A page reads
-the transcript as client data instead. The built-in kind puts it there, and nothing else of the
-channel's state: its members and charter stay on the server.
+A browser never receives an action's return value, so `read` is no help to a page. Each post
+leaves one `channel-post` item on the channel's session, carrying the line, and a page reads
+those the way it reads any conversation:
 
 ```tsx
-const channel = useSession("engineering.standup", { flowKind: "channel", items: true });
-const data = useClientData(channel, { session: ["transcript"] });
-const lines = (data.session?.transcript ?? []) as ChannelTranscriptLine[];
+const channel = useSession("engineering.standup", { flowKind: "channel", items: { itemTypes: ["component"] } });
+const lines = channel.items
+  .filter((item) => item.type === "component" && item.component === "channel-post")
+  .map((item) => item.data as ChannelTranscriptLine);
 ```
 
-Read the transcript rather than `channel.items`. A post adds a line to the transcript and
-nothing a page would render to the item stream.
+The channel's members and charter never reach the page.
 
 To post from the page, call the channel's own action on the same session:
 
@@ -38,20 +39,29 @@ who posted: `principal` is the identity your server resolved for the request. A 
 `author` notifies every member, which is right here, because the person who wrote it is not
 among them.
 
-The transcript is re-read when the page's own post finishes. A line another member posts in
-the meantime appears on that read, or when the page opens the channel again.
+A line another member posts appears when the page reads the channel again: after its own post,
+or when it opens the channel.
+
+## UPDATE · `apps/docs/docs/workforce/channels.md` · "Posting and reading", the paragraph starting "The transcript is not the session's item history"
+
+Replace it with:
+
+The transcript is the channel's `channel-post` items and nothing else from its history, which
+also carries fan-out requests, dispatch handles and refusals. `read` returns the recent lines:
+the ones inside the session's history window, which is 50 requests by default. On a channel
+with a notify block, each post uses two of them.
 
 ## UPDATE · `apps/docs/docs/workforce/channels.md` · "Registering a kind of your own", after the paragraph ending "its own state, its own post, its own read."
 
-A kind of your own is private to the server until it says otherwise. To show its transcript on
-a page, declare it on the session: `session: { stateSchema, client: { expose: ["transcript"] } }`.
+A kind of your own shows on a page the same way when its `post` emits the line as a
+`channel-post` component item: `ctx.emit.component("channel-post", line)`.
 
 ## UPDATE · `packages/workforce/README.md` · "Channels → Posting and reading", after the `channel-not-bound` paragraph
 
-The built-in kind exposes `transcript` as session client data, and only that, so a page can
-render the channel with `useClientData(session, { session: ["transcript"] })`. `read` is for
-models and other flows: its return value never reaches a browser. A person posting from a page
-sends no `author`, since they are not a member. The line's `principal` names them.
+Each post leaves one `channel-post` item on the channel's session, and that item is the line.
+A page renders the channel from those items; `read` is for models and other flows, returns the
+lines inside the session's history window, and never reaches a browser. A person posting from
+a page sends no `author`, since they are not a member. The line's `principal` names them.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · "Web Application (`app/`)"
 
