@@ -681,10 +681,11 @@ export function hireWorkforce(
     const { catalogNames, seatTools } = resolveDeclaredTools(settings["tools"], withPackages);
     // Only a record that WROTE a `tools:` line carries the key onward, and it
     // keeps carrying it after the split even when every name moved onto
-    // `seatTools` and the list emptied. Whether the key is present is what the
-    // built-in kind reads to tell "wrote no line" (grant what the file picked)
-    // from "wrote a line" (grant exactly that line), so an omitted `tools:`
-    // must never be filled in here or anywhere after.
+    // `seatTools` and the list emptied. The built-in kind reads an unset
+    // `tools` (omitted, or a hand-built key with no value) as "wrote no line"
+    // (grant what the file picked) and a set one as "wrote a line" (grant
+    // exactly that line), so an omitted `tools:` must never be filled in here
+    // or anywhere after.
     if (Object.hasOwn(settings, "tools")) settings["tools"] = catalogNames;
     settings[SEAT_TOOLS_KEY] = seatTools;
 

@@ -1094,8 +1094,8 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
    * a worker that wrote a line is granted exactly that line and hires as it
    * always has. The rule reads two settings, and a flow's `configSchema` must
    * be a plain closed object that cannot refine across keys — so it runs here,
-   * on the bag as handed over, where the absent `tools` key the hire preserves
-   * is still visible. After the flow's own mint, so the schema's refusals come
+   * on the bag as handed over, where the unset `tools` the hire preserves is
+   * still visible. After the flow's own mint, so the schema's refusals come
    * first; thrown, so the hire collects it under the worker's id.
    *
    * A worker that DID write a line has one clash of its own: a name on the line
@@ -1109,7 +1109,8 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
    */
   const mint = (options?: Parameters<typeof flow>[0]) => {
     const seat = flow(options);
-    if (!Object.hasOwn(seat.config, "tools")) {
+    // Unset is no line even when the key is present, as the per-turn tools slot reads it.
+    if (seat.config.tools === undefined) {
       const problems = [
         ...pickedToolCollisions(seatCapabilityCatalog, seat.config.capabilities),
         ...packageToolCollisions(

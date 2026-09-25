@@ -350,7 +350,12 @@ describe("omitted and empty stay apart after the schema", () => {
 });
 
 describe("chosen tools that cannot all be granted are refused at the hire", () => {
-  it("refuses two picked presets whose tools share a name, naming the tool (S2)", () => {
+  // A hand-built manifest can carry the key with no value; every turn reads
+  // that as no line, so the check at the door must too.
+  it.each([
+    ["an omitted line", "eng.clash", {}],
+    ["a hand-built `tools: undefined`", "eng.unset", { tools: undefined }]
+  ])("refuses two picked presets whose tools share a name, naming the tool, for %s (S2)", (_case, id, extra) => {
     const other = defineCapability({
       name: "archive",
       presets: { shelf: { tools: [tool("lookup")] }, default: [] }
@@ -361,8 +366,8 @@ describe("chosen tools that cannot all be granted are refused at the hire", () =
       hireWorkforce(
         [
           record({
-            id: "eng.clash",
-            declared: { capabilities: { fieldwork: ["survey"], archive: ["shelf"] } }
+            id,
+            declared: { capabilities: { fieldwork: ["survey"], archive: ["shelf"] }, ...extra }
           })
         ],
         { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, other] }) } }
@@ -371,7 +376,7 @@ describe("chosen tools that cannot all be granted are refused at the hire", () =
       message = error instanceof Error ? error.message : String(error);
     }
 
-    expect(message).toContain('worker "eng.clash"');
+    expect(message).toContain(`worker "${id}"`);
     expect(message).toContain('"lookup"');
     expect(message).toContain('"fieldwork"');
     expect(message).toContain('"archive"');
