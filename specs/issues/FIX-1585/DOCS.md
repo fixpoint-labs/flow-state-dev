@@ -63,6 +63,11 @@ A page renders the channel from those items; `read` is for models and other flow
 lines inside the session's history window, and never reaches a browser. A person posting from
 a page sends no `author`, since they are not a member. The line's `principal` names them.
 
+## UPDATE · `packages/workforce/README.md` · the agent kind's `run`, where its input is described
+
+The message a seat is sent is kept as the caller's turn in that seat's conversation, so a
+conversation reads as both sides.
+
 ## UPDATE · `apps/kitchen-sink/README.md` · "Web Application (`app/`)"
 
 Replace the **Session management** bullet with:
@@ -75,9 +80,9 @@ Replace the **Session management** bullet with:
   exception: its `digest` kind keeps no poster and notifies no one. Lines a seat posts show up the next
   time the channel is read
 - **Seats**: Open a seat's conversation to talk to it. The composer calls the action the seat's
-  kind answers with: `answer` for `desk-clerk` seats, `run` for `agent` seats. `support.wren`
-  runs board rows and has nothing to answer with, so its conversation stays read-only and says
-  so. An `agent` seat keeps its replies but not your questions
+  kind answers with: `run` for `agent` seats such as `support.otto`, `answer` for `desk-clerk`
+  seats. Your message and the reply both stay in the conversation. `support.wren` runs board
+  rows and has nothing to answer with, so its conversation stays read-only and says so
 
 And under "The support team", after the `curl` block:
 

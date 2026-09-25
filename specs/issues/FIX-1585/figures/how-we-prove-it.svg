@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 600" role="img" aria-label="How FIX-1585 is proved. At the top is the goal: a person in a browser posts to a channel and asks a seat, and both survive a reload. Two browser checks on a production build are the goal itself: V6 posts a unique line to support.desk, sees it labelled devuser, reloads and sees it again; V7 asks support.ada a unique note, sees the reply, reloads and sees it again, then opens support.wren and finds no composer and a reason. Under them sit the tests the goal rests on: V1 for the channel kind&#x27;s items, V3 for the real app wiring, V2 for each seat kind&#x27;s answering action, and V5 for the panel&#x27;s error cases. At the bottom, V8 keeps every existing check green. A command-line or HTTP call alone does not count as proof."
+<svg viewBox="0 0 940 600" role="img" aria-label="How FIX-1585 is proved. At the top is the goal: a person in a browser posts to a channel and talks to an agent seat, and both survive a reload. Two browser checks on a production build are the goal itself: V6 posts a unique line to support.desk, sees it labelled devuser, reloads and sees it again; V7 sends support.otto a unique message, sees it and the reply, reloads and sees both again, then opens support.wren and finds no composer and a reason. Under them sit the tests the goal rests on: V1 for the channel kind&#x27;s items, V3 for the real app wiring, V2 for each seat kind&#x27;s answering action, and V5 for the panel&#x27;s error cases. At the bottom, V8 keeps every existing check green. A command-line or HTTP call alone does not count as proof."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -33,10 +33,10 @@
   <g id="goal">
     <rect class="st" x="16" y="14" width="908" height="54" rx="5"/>
     <text class="t-lbl" x="30" y="34">THE GOAL</text>
-    <text class="t-h" x="30" y="56">In a browser, a person posts to a channel and asks a seat, and both are still there after a reload.</text>
+    <text class="t-h" x="30" y="56">In a browser, a person posts to a channel and talks to an agent seat, and both are still there after a reload.</text>
   </g>
   <g id="accept">
-    <text class="t-lbl" x="16" y="96">PROVES THE GOAL · real page, production build, unique text per run</text>
+    <text class="t-lbl" x="16" y="96">PROVES THE GOAL · real page, production build, unique text per run, keyless on the scripted model</text>
     <rect class="req" x="16" y="106" width="446" height="152" rx="5"/>
     <text class="t-h" x="28" y="126">V6 · post to a channel</text>
     <text class="t-s" x="28" y="146">1  open support.desk from the rail</text>
@@ -46,13 +46,13 @@
     <text class="t-s" x="28" y="210">5  see the same line again</text>
     <text class="t-gone" x="28" y="246">red if: missing, mislabelled, or gone after reload</text>
     <rect class="req" x="478" y="106" width="446" height="152" rx="5"/>
-    <text class="t-h" x="490" y="126">V7 · ask a seat</text>
-    <text class="t-s" x="490" y="146">1  open or create a support.ada conversation</text>
-    <text class="t-s" x="490" y="162">2  ask a unique note</text>
-    <text class="t-s" x="490" y="178">3  see "[front desk] &lt;note&gt;"; reload; see it again</text>
-    <text class="t-s" x="490" y="194">4  open support.wren</text>
-    <text class="t-s" x="490" y="210">5  no composer, and the reason is on the page</text>
-    <text class="t-gone" x="490" y="246">red if: no reply, gone after reload, or wren takes input</text>
+    <text class="t-h" x="490" y="126">V7 · talk to an agent seat</text>
+    <text class="t-s" x="490" y="146">1  open a new support.otto conversation</text>
+    <text class="t-s" x="490" y="162">2  send a unique message</text>
+    <text class="t-s" x="490" y="178">3  see your message, and the reply under it</text>
+    <text class="t-s" x="490" y="194">4  reload: both still there</text>
+    <text class="t-s" x="490" y="210">5  open support.wren: no composer, reason shown</text>
+    <text class="t-gone" x="490" y="246">red if: either side missing, gone after reload, or wren takes input</text>
     <path class="arr" d="M239,282 L239,262"/>
     <path class="hd" d="M239.0,262.0 L235.5,269.0 L242.5,269.0 z"/>
     <path class="arr" d="M701,282 L701,262"/>

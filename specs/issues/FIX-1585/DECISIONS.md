@@ -85,9 +85,10 @@ is `read`'s window.
 - **A seat row gets "New conversation"**, like the assistant's row. A declared seat has no
   conversation at boot, so without it most seats could not be talked to at all. Channels get
   no such button: they are opened by the app's boot, and creating one is FIX-1415.
-- **No optimistic question on a seat.** No seat kind echoes its input into the stream, so an
-  optimistic bubble would vanish when the reply lands. `desk-clerk`'s reply quotes the note. An
-  `agent` seat keeps only its replies. That is a gap in the package's agent kind, flagged below.
+- **An agent seat keeps the person's message.** A seat is a direct conversation, so both sides
+  stay. One `userMessage` on the agent kind's `run` (epic ER-1), after FIX-1459 lands.
+  `desk-clerk` echoes nothing, so its composer shows no optimistic bubble; its reply quotes the
+  note until FIX-1589 replaces it.
 - **`digest` does the same as the built-in kind.** Its `post` emits a `channel-post` item and
   its `read` returns the tail from those items. Five lines sit well inside the window. A person
   scrolls the page.

@@ -33,9 +33,9 @@ into work.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-12 | A person opens a `support.ada` conversation and sends a note | The `desk-clerk` kind's `answer` runs with `{ note }` on that seat's session. The reply appears in that stream | E2E · V7 |
-| BR-13 | The page is reloaded after BR-12 | The reply is still there | E2E · V7 |
-| BR-14 | A person sends to an `agent` seat (`support.otto`) | The kind's `run` runs with `{ message }`. The reply streams in. The question itself is not kept after the reply lands, because the kind does not echo it | V5 |
+| BR-12 | A person opens a `support.otto` conversation and sends a message | The `agent` kind's `run` runs with `{ message }` on that seat's session. The message shows as the person's turn and the reply streams in under it | E2E · V7 |
+| BR-13 | The page is reloaded after BR-12 | The message and the reply are both still there | E2E · V7 |
+| BR-14 | A person sends a note to a `desk-clerk` seat (`support.ada`) | The kind's `answer` runs with `{ note }`. The reply appears in that stream. What the reply says is FIX-1589's, a follow-on | V5 |
 | BR-15 | A person opens a `followup-runner` seat (`support.wren`) | No composer. A line says this seat runs board rows and takes no messages | E2E · V7 |
 | BR-16 | A seat has no conversation yet | Its row offers "New conversation". It creates a session on that seat and opens it with the composer | E2E · V7 |
 | BR-17 | A seat's action fails, its model is unavailable, or creating a new conversation fails | The panel shows the error and the composer is usable again. When creation fails there is no conversation to show it in, so the seat's row shows the error, nothing opens, and "New conversation" stays usable | V5 |
@@ -61,7 +61,7 @@ members is best-effort. Nothing retries on its own.
 
 - In a browser, a person posts to `support.desk` and sees the post in that channel's panel,
   and still sees it after a reload.
-- In a browser, a person asks `support.ada` a question and sees its reply in that seat's
-  conversation, and still sees it after a reload.
+- In a browser, a person talks to `support.otto` and sees their message and its reply in that
+  seat's conversation, and still sees both after a reload. Keyless, on the scripted model.
 - The existing workforce-shell scenarios stay green.
 - CLI or HTTP smoke alone is not acceptance.

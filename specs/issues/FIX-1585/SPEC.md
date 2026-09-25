@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Feature · kitchen-sink + the channel kind's `post` and `read` in `workforce` · medium · 1 PR · no epic (follow-on to
+Feature · kitchen-sink + the channel kind's `post` and `read` in `workforce` · medium · 1 PR · epic [FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592) (follow-on to
 [FIX-1500](https://linear.app/fixpoint-labs/issue/FIX-1500))
 
 ## Six people, before and after
@@ -11,7 +11,7 @@ Feature · kitchen-sink + the channel kind's `post` and `read` in `workforce` ·
 |---|---|---|
 | **opens `support.desk` in the rail** | Reads "This channel session has no turns yet", even after seats have posted there. The transcript is nowhere on the page, and a note says messages go to the assistant | Reads the channel's transcript, each line labelled with who wrote it, and a composer under it |
 | **posts to a channel from the page** | Can't. Drops to `fsdev run` or a raw `POST …/channel/actions/post` | Types and sends. The line appears in that channel's transcript as `devuser`, is still there after a reload, and every member is notified. None of them is the poster. On `support.noticeboard` (the app's own `digest` kind) the line reads as unattributed and wakes no one, because that kind stores no principal and has no notify step |
-| **asks a seat, say `support.ada`** | Can't. Drops to `fsdev run support.ada answer` | Types a note. The seat's reply appears in that seat's own conversation and survives a reload. A seat with no conversation yet gets one from its row |
+| **talks to an agent seat, say `support.otto`** | Can't. Drops to `fsdev run support.otto run` | Types a message. The message and the seat's reply both stay in that seat's own conversation and survive a reload. A seat with no conversation yet gets one from its row |
 | **opens a seat whose kind takes no messages** (`support.wren`, which runs board rows) | The same read-only note as every other seat | Still read-only, and the note says why: this seat runs rows from a board and has nothing to answer with |
 | **builds a channel UI on the framework** | Channel state is private, and the one action that returns the transcript hands its result to nobody a browser can reach | Reads the channel's `channel-post` items from its session, the way it reads any conversation. Members and the charter stay private |
 | **runs the workforce-shell checks** | Green | Green, unchanged. The new scenarios live in a file of their own, because they write to a shared channel |
@@ -70,7 +70,7 @@ too.
 
 ## How we prove it
 
-![How FIX-1585 is proved: the goal at the top, two browser checks on a production build that are the goal itself (V6 posts to support.desk and survives a reload; V7 asks support.ada, survives a reload, and finds support.wren read-only), the package and app tests they rest on (V1, V3, V2, V5), every existing check still green (V8), and a note that a CLI or HTTP call alone is not proof](figures/how-we-prove-it.svg)
+![How FIX-1585 is proved: the goal at the top, two browser checks on a production build that are the goal itself (V6 posts to support.desk and survives a reload; V7 talks to support.otto, both sides survive a reload, and finds support.wren read-only), the package and app tests they rest on (V1, V3, V2, V5), every existing check still green (V8), and a note that a CLI or HTTP call alone is not proof](figures/how-we-prove-it.svg)
 
 Only the two blue checks close the goal: a person at the real page, and the same result after a
 reload. Everything under them explains a failure, and none of it counts as acceptance on its own.
