@@ -131,6 +131,8 @@ Because a content reaction often writes state back (the summary above), note the
 
 `contentUpdated` fires for server-side content writes — a tool that calls `writeContent`, the generic content tool, a file flush. Content edits driven straight from a client (`client.content.update`) run outside any flow turn and do not fire a reaction yet.
 
+Classifying a document's body into stored answers you can filter on is one content reaction. See [Find by facets](/docs/resources/searching#find-by-facets).
+
 ## Timing
 
 A reactive block runs blocking, by default, as part of the turn that triggered it. The mutation, the reaction, and any items the reaction emits all belong to one turn, in order. There is no `mode` field to change this.
