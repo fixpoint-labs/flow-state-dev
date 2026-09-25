@@ -17,7 +17,7 @@ const scratchpad = defineResource({
 });
 
 describe("resources declared on a tool-only block", () => {
-  it("are on ctx.resources inside the tool's execute", async () => {
+  async function runWithTool(options: { flowTools?: boolean; uses?: boolean }) {
     const seen: string[][] = [];
 
     const note = handler({
@@ -37,11 +37,13 @@ describe("resources declared on a tool-only block", () => {
       inputSchema: z.object({ text: z.string() }),
       model: "mock-model",
       prompt: "take a note",
-      tools: [note]
+      tools: [note],
+      ...(options.uses ? { uses: [() => []] } : {})
     });
 
     const flow = defineFlow({
       kind: "tool-only-resources",
+      ...(options.flowTools ? { tools: { onToolStarted: () => {} } } : {}),
       actions: { run: { inputSchema: z.object({ text: z.string() }), block: chat } }
     })();
 
@@ -65,7 +67,20 @@ describe("resources declared on a tool-only block", () => {
       }
     });
 
-    expect(result.error).toBeUndefined();
+    return { error: result.error, seen };
+  }
+
+  it("are on ctx.resources inside the tool's execute", async () => {
+    const { error, seen } = await runWithTool({});
+    expect(error).toBeUndefined();
+    expect(seen).toEqual([["remember this"]]);
+  });
+
+  // Flow-level `tools` rebuilds the generator after `uses` has rewritten its
+  // `tools` slot; the tool must keep its resources through that rebuild.
+  it("stay on ctx.resources when the generator has uses and the flow declares tools", async () => {
+    const { error, seen } = await runWithTool({ flowTools: true, uses: true });
+    expect(error).toBeUndefined();
     expect(seen).toEqual([["remember this"]]);
   });
 });

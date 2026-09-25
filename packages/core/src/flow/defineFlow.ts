@@ -509,8 +509,12 @@ function withFlowTools(
 
   const generatorConfig = block.config as unknown as GeneratorConfig;
   const mergedTools = mergeToolsConfig(flowTools, generatorConfig.flowTools);
+  // Hand back the authored static array, not the built `tools`: when `uses` is
+  // present the built slot is already a resolver, and a rebuild from it would
+  // lose `staticTools` — the edge resource collection and dispatch walk read.
   const rebuilt = generator({
     ...generatorConfig,
+    tools: block.staticTools !== undefined ? [...block.staticTools] : generatorConfig.tools,
     flowTools: mergedTools
   });
 

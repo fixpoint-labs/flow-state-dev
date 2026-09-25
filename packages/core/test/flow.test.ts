@@ -788,6 +788,37 @@ describe("defineFlow", () => {
       });
     });
 
+    // Flow-level `tools` rebuilds every generator from its built config, where
+    // `uses` has already turned `tools` into a resolver. The authored array has
+    // to survive that rebuild, for action and task entries alike.
+    it("collects resources from a static tool alongside uses when the flow declares tools", () => {
+      const tool = handler({
+        name: "tool-with-res",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const chat = generator({
+        name: "chat",
+        model: "mock-model",
+        prompt: "p",
+        tools: [tool],
+        uses: [() => []]
+      });
+
+      const flow = defineFlow({
+        kind: "tool-res-with-flow-tools",
+        tools: { onToolStarted: () => {} },
+        actions: {
+          run: { inputSchema: z.any(), block: chat }
+        }
+      });
+
+      expect(flow.resources).toEqual({
+        observations: observationsResource
+      });
+      expect(flow.actions.run.block.staticTools).toEqual([tool]);
+    });
+
     it("registers a block reachable both as a tool and as a sequencer step once", () => {
       const shared = handler({
         name: "shared",
