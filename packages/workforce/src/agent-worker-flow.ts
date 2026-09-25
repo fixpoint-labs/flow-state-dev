@@ -616,13 +616,31 @@ function assertOneNamePerCatalogEntry(catalog: ToolCatalog): void {
  * its stores belong to every seat of it — including seats whose `tools:` never
  * name the tool. That is the same bill `uses` already presents, and it is why
  * this is safe where collecting a SEAT's declarations would not be.
+ *
+ * The tools of every preset a seat may pick count too, on or off for the kind:
+ * a seat with no `tools:` line reaches them through the same per-turn resolver.
+ * Only presets that list their tools as an array can be read here; a preset
+ * whose tools are a function is known only per turn.
  */
-function catalogDeclaredResources(catalog: ToolCatalog): DeclaredResources | undefined {
+function catalogDeclaredResources(
+  catalog: ToolCatalog,
+  seatCapabilities: SeatCapabilityCatalog
+): DeclaredResources | undefined {
   const merged: DeclaredResources = {};
   /** Accessor key → the catalog key that claimed it, so a clash can name both. */
   const claimedBy: Record<string, string> = {};
 
-  for (const [key, tool] of Object.entries(catalog)) {
+  const entries: Array<[string, unknown]> = Object.entries(catalog);
+  for (const capability of seatCapabilities.values()) {
+    for (const tools of capability.presetTools.values()) {
+      if (!Array.isArray(tools)) continue;
+      for (const tool of tools) {
+        entries.push([String((tool as { name?: unknown }).name), tool]);
+      }
+    }
+  }
+
+  for (const [key, tool] of entries) {
     const declared = (tool as { declaredResources?: DeclaredResources }).declaredResources;
     if (declared === undefined) continue;
     for (const [accessor, resource] of Object.entries(declared)) {
@@ -668,14 +686,14 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // block's own name would hand the model a tool no seat's `tools:` can
   // authorize, and the kind is the door that holds the map.
   assertOneNamePerCatalogEntry(catalog);
-  // What the catalog's own blocks need, so the flow installs it. See the
-  // function's note: without this a catalog tool that declares a store is
-  // advertised with nothing behind it.
-  const catalogResources = catalogDeclaredResources(catalog);
   // Read once, here: it is what a seat's `capabilities:` is validated against
   // at the mint AND what the per-seat entry below resolves through, and two
   // readings of one `uses` array is how the two halves drift apart.
   const seatCapabilityCatalog = catalogSeatCapabilities(options.uses);
+  // What the catalog's own blocks and pickable presets' tools need, so the
+  // flow installs it. See the function's note: without this a tool that
+  // declares a store is advertised with nothing behind it.
+  const catalogResources = catalogDeclaredResources(catalog, seatCapabilityCatalog);
   const settings = settingsSchema({ ...options, catalog }, seatCapabilityCatalog);
   const inputSchema = z.object({ message: z.string() });
 
@@ -1024,8 +1042,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
    */
   const mint = (options?: Parameters<typeof flow>[0]) => {
     const seat = flow(options);
-    const config = options?.config as Partial<SeatConfig> | undefined;
-    if (config?.tools === undefined) {
+    if (!Object.hasOwn(seat.config, "tools")) {
       const problems = pickedToolCollisions(seatCapabilityCatalog, seat.config.capabilities);
       if (problems.length > 0) {
         throw new Error(`This worker writes no \`tools:\` line, and it ${problems.join(" It also ")}`);
