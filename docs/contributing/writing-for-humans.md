@@ -80,13 +80,13 @@ under.
 |---|---|
 | PR body, small change | ~50 — usually the whole visible body; often no *detail* worth collapsing, but the reviewer contract is still there (see below) |
 | PR body, implementation | ~150 |
-| PR body, spec PR | ~400 for the people table, the figure's sentence, the sign-off and the look-here list — the spec set holds the full case, the body holds enough to judge whether to open it. The figure itself costs nothing; a second one has to earn it |
-| PR body, epic PR | ~450 — the same, with the path and the ownership matrix and their sentences |
+| PR body, spec PR | ~475 for the goal and its check line, the people table, the figures' sentences, the sign-off and the look-here list — the spec set holds the full case, the body holds enough to judge whether to open it. The two figures (*how we'll know*, *what changes*) cost nothing; a third one has to earn it |
+| PR body, epic PR | ~525 — the same, with the path and the ownership matrix and their sentences |
 | PR or review comment | ~100 |
 | A single review finding | ~40 — the trace and the evidence collapse |
 | Linear issue | ~100 — problem, who feels it, outcome |
-| Issue spec, per document | `SPEC.md` ~700 · `DECISIONS.md` ~900 · `BUSINESS-RULES.md` ~900 · `PLAN.md` ~1,000, prose words with fences excluded ([`spec-template.md`](spec-template.md)). The set is longer than one document; no one reader reads all of it |
-| Epic spec, per document | `SPEC.md` ~900 · `DECISIONS.md` ~1,300 · `BUSINESS-RULES.md` ~800 · `PLAN.md` ~900 ([`epic-spec-template.md`](epic-spec-template.md)) |
+| Issue spec, per document | `SPEC.md` ~850 · `DECISIONS.md` ~900 · `BUSINESS-RULES.md` ~900 · `PLAN.md` ~1,000, prose words with fences excluded ([`spec-template.md`](spec-template.md)). The set is longer than one document; no one reader reads all of it |
+| Epic spec, per document | `SPEC.md` ~1,050 · `DECISIONS.md` ~1,300 · `BUSINESS-RULES.md` ~800 · `PLAN.md` ~900 ([`epic-spec-template.md`](epic-spec-template.md)) |
 | A live decision ask, per fork | ~200 — the six parts, one to three sentences each ([`asking-for-decisions.md`](asking-for-decisions.md)). Decisions the reader is only ratifying get a heading and a line |
 
 Over budget is a signal to **cut**, not to collapse more. A 900-word collapsible is still

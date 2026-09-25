@@ -1,0 +1,99 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="Three places a channel&#x27;s transcript could live, compared row by row. A, the spec&#x27;s current choice, copies each post into a session state array and exposes it to the page. B reads the request log directly. C has each post emit one durable item into its own request, the way the assistant&#x27;s messages already work, and the page reads it as session history. C was chosen."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); stroke:none; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .req   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .st    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .out   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .dash  { stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-code{ fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-style:italic; }
+    .t-mute{ fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-style:italic; }
+    .arr   { stroke:var(--ink-2); stroke-width:1.3; fill:none; }
+    .arr-g { stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:4 3; }
+    .map   { stroke:var(--code); stroke-width:1.3; fill:none; }
+    .hd    { fill:var(--ink-2); }
+    .hdg   { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+  <g id="heads">
+    <rect class="n-box" x="206" y="14" width="240" height="44" rx="5"/>
+    <text class="t-h" x="216" y="34">A · state transcript</text>
+    <text class="t-s" x="216" y="50">round 1's D1</text>
+    <rect class="n-box" x="456" y="14" width="230" height="44" rx="5"/>
+    <text class="t-h" x="466" y="34">B · read the requests</text>
+    <text class="t-s" x="466" y="50">no new record</text>
+    <rect class="st" x="696" y="14" width="228" height="44" rx="5"/>
+    <text class="t-h" x="706" y="34">C · post emits an item</text>
+    <text class="t-code" x="706" y="50">chosen · D1</text>
+  </g>
+  <g id="rows">
+    <line class="map" x1="16" y1="70" x2="924" y2="70" style="stroke:var(--rule)"/>
+    <text class="t-b" x="26" y="90">Where the line lives</text>
+    <text class="t-s" x="216" y="90">session state, copied</text>
+    <text class="t-s" x="216" y="104">from the request</text>
+    <text class="t-s" x="466" y="90">the post request itself</text>
+    <text class="t-s" x="706" y="90">an item in the post's</text>
+    <text class="t-s" x="706" y="104">own request</text>
+    <line class="map" x1="16" y1="118" x2="924" y2="118" style="stroke:var(--rule)"/>
+    <text class="t-b" x="26" y="138">Growth</text>
+    <text class="t-s" x="216" y="138">state loaded on every</text>
+    <text class="t-s" x="216" y="152">request to the channel</text>
+    <text class="t-s" x="466" y="138">request store</text>
+    <text class="t-s" x="706" y="138">request items, read</text>
+    <text class="t-s" x="706" y="152">when history is read</text>
+    <line class="map" x1="16" y1="166" x2="924" y2="166" style="stroke:var(--rule)"/>
+    <text class="t-b" x="26" y="186">Retention</text>
+    <text class="t-s" x="216" y="186">none: never trimmed</text>
+    <text class="t-s" x="466" y="186">trimmed only if the kind</text>
+    <text class="t-s" x="466" y="200">sets session retention</text>
+    <text class="t-s" x="706" y="186">trimmed only if the kind</text>
+    <text class="t-s" x="706" y="200">sets session retention</text>
+    <line class="map" x1="16" y1="214" x2="924" y2="214" style="stroke:var(--rule)"/>
+    <text class="t-b" x="26" y="234">How the page reads it</text>
+    <text class="t-s" x="216" y="234">clientData.session</text>
+    <text class="t-s" x="216" y="248">(the one expose line)</text>
+    <text class="t-s" x="466" y="234">list requests, filter,</text>
+    <text class="t-s" x="466" y="248">parse raw untyped input</text>
+    <text class="t-s" x="706" y="234">session history, like</text>
+    <text class="t-s" x="706" y="248">the assistant's chat</text>
+    <line class="map" x1="16" y1="262" x2="924" y2="262" style="stroke:var(--rule)"/>
+    <text class="t-b" x="26" y="282">How a seat reads it</text>
+    <text class="t-s" x="216" y="282">read action, as today</text>
+    <text class="t-s" x="466" y="282">read would query</text>
+    <text class="t-s" x="466" y="296">the request log</text>
+    <text class="t-s" x="706" y="282">from session items: last</text>
+    <text class="t-s" x="706" y="296">50 requests by default</text>
+    <line class="map" x1="16" y1="310" x2="924" y2="310" style="stroke:var(--rule)"/>
+    <text class="t-b" x="26" y="330">Author label</text>
+    <text class="t-s" x="216" y="330">on the line</text>
+    <text class="t-s" x="466" y="330">in raw input</text>
+    <text class="t-s" x="706" y="330">on the item (a component:</text>
+    <text class="t-s" x="706" y="344">a message has no author)</text>
+    <line class="map" x1="16" y1="358" x2="924" y2="358" style="stroke:var(--rule)"/>
+    <text class="t-b" x="26" y="378">Size of change</text>
+    <text class="t-s" x="216" y="378">1 line in workforce,</text>
+    <text class="t-s" x="216" y="392">1 in digest</text>
+    <text class="t-s" x="466" y="378">kitchen-sink only, on</text>
+    <text class="t-s" x="466" y="392">a shape it can't rely on</text>
+    <text class="t-s" x="706" y="378">channel flow: post emits,</text>
+    <text class="t-s" x="706" y="392">read reads, old state dual-read</text>
+  </g>
+  <g id="foot">
+    <text class="t-b" x="26" y="428">C makes the transcript what it already is: the completed posts. Its price is read's window (POC P12: 22 of 30 lines).</text>
+  </g>
+</svg>

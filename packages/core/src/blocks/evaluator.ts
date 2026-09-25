@@ -273,6 +273,18 @@ export function assertEvaluatorBlock(block: unknown, names: EvaluatorSlotNames):
   );
 }
 
+/**
+ * An evaluator block's fixed question set, or `undefined` when its questions
+ * are computed per call. Core-internal: consumers that type or check
+ * something against an evaluator's questions (the faceted collection) read
+ * them here rather than off the block's config shape.
+ */
+export function staticEvaluatorQuestions(block: BlockDefinition<any, any>): EvaluatorQuestions | undefined {
+  const questions = (block.config as { questions?: unknown }).questions;
+  if (typeof questions !== "object" || questions === null) return undefined;
+  return questions as EvaluatorQuestions;
+}
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------

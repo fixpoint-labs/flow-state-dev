@@ -62,6 +62,18 @@ export {
   isDefinedResourceCollection,
   ownerSegment,
 } from "./types/resource-collection";
+export { defineFacetedCollection } from "./types/faceted-collection";
+export type {
+  FacetedClientConfig,
+  FacetedCollection,
+  FacetedCollectionConfig,
+  FacetedState,
+  FacetReindexInput,
+  FacetReindexOutput,
+  FacetSearchInput,
+  FacetSearchOutput,
+  FacetsOf,
+} from "./types/faceted-collection";
 export {
   defineProjectedResourceCollection,
   isProjectedResourceCollection,

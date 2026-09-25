@@ -1,0 +1,62 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Two panels, same session, same follow-up. Left, today: the evaluator is handed only the message 'yes, go ahead' and answers no skill. Right, with recentMessages 3: it is handed the earlier ask and the assistant's offer to build an itinerary, then the message, and answers trip-planner. A band underneath says omitting the option, or passing 0, is today byte for byte."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .panel { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-box { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .turn  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .msg   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .hit   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .miss  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .band  { fill:var(--surface-2); stroke:none; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t     { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="440" height="244" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · skillEvaluator(model)</text>
+    <text class="t-s" x="32" y="62">what the evaluator is handed</text>
+    <rect class="msg" x="32" y="168" width="220" height="30" rx="4"/>
+    <text class="t" x="44" y="188">message: "yes, go ahead"</text>
+    <text class="t-s" x="32" y="120">(earlier turns: not sent)</text>
+    <path class="arrow" d="M258,183 L314,183"/>
+    <path class="head" d="M312,178 L322,183 L312,188 z"/>
+    <rect class="miss" x="324" y="163" width="116" height="40" rx="4"/>
+    <text class="t-b" x="340" y="188">no skill</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="484" y="16" width="440" height="244" rx="6"/>
+    <text class="t-lbl" x="500" y="38">AFTER · skillEvaluator(model, { recentMessages: 3 })</text>
+    <text class="t-s" x="500" y="62">what the evaluator is handed, oldest first</text>
+    <rect class="turn" x="500" y="76" width="220" height="30" rx="4"/>
+    <text class="t" x="512" y="96">user: 4 days in Lisbon in May?</text>
+    <rect class="turn" x="500" y="114" width="220" height="44" rx="4"/>
+    <text class="t" x="512" y="132">assistant: I can build you a</text>
+    <text class="t" x="512" y="148">day-by-day itinerary. Want one?</text>
+    <rect class="msg" x="500" y="168" width="220" height="30" rx="4"/>
+    <text class="t" x="512" y="188">message: "yes, go ahead"</text>
+    <path class="arrow" d="M726,183 L782,183"/>
+    <path class="head" d="M780,178 L790,183 L780,188 z"/>
+    <rect class="hit" x="792" y="163" width="116" height="40" rx="4"/>
+    <text class="t-b" x="806" y="188">trip-planner</text>
+    <text class="t-s" x="500" y="224">text only · no tool calls, results or reasoning</text>
+    <text class="t-s" x="500" y="240">same catalog · one pick or none · final</text>
+  </g>
+
+  <g id="unchanged">
+    <rect class="band" x="16" y="276" width="908" height="38" rx="5"/>
+    <text class="t-lbl" x="32" y="299">OMIT IT, OR PASS 0</text>
+    <text class="t" x="180" y="299">the left panel, byte for byte: no history read, the message alone</text>
+  </g>
+</svg>

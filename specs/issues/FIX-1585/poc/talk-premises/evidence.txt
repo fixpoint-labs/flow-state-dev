@@ -1,0 +1,42 @@
+# probe.mts run against spec/FIX-1585 b184eb5 (main 689c72e plus spec files only), dev (in-memory) profile, 2026-09-25. P6 now asserts each kind's one-string action
+PASS P1 — post accepted: {"status":"in_progress","request":{"id":"req_1790358291647_cf82d4a2f6149","flowKind":"channel","flowId":"channel","actionName":"post","status":"in_progress"},"s
+PASS P2 — transcript line: {"id":"c06bc8b8-f900-4116-bea3-10263e52ca87","at":1790358291666,"principal":"devuser","authorVerified":false,"body":"fix-1585-probe-1790358291646"}
+PASS P3 — items carrying the body (excluding trace/state_change): 0; item types: state_change
+PASS P4 — author "devuser" not appended; request failed; {"id":"req_1790358291964_5b18d5b322ce","flowKind":"channel","flowId":"channel","actionName":"post","userId":"devuser","sessionId":"support.desk","orgId":"kitchen-sink","source":"http","status":"failed
+PASS P5 — seat reply item: {"id":"item_message_2_d87c9b55e91f5","type":"message","status":"completed","requestId":"req_1790358292173_3409011f612da","itemIndex":2,"provenance":{"blockName":"desk-clerk-answer","blockInstanceId":"; item types: message
+PASS P6:agent — one-string actions=[run{message}] expected=[run{message}]; actions=run schemas={"run":{"type":"object","fields":{"message":{"type":"string","required":true}}}}
+PASS P6:desk-clerk — one-string actions=[answer{note}] expected=[answer{note}]; actions=answer schemas={"answer":{"type":"object","fields":{"note":{"type":"string","required":true}}}}
+PASS P6:followup-runner — one-string actions=[] expected=[]; actions=drain schemas={"drain":{"type":"unsupported"}}
+exit=0
+
+# negative control: NEGATIVE=1 (P2 expects principal 'someone-else')
+FAIL P2 — transcript line: {"id":"006101d3-6628-497a-9f56-bbad9a3a6fb8","at":1790357360466,"principal":"devuser","authorVerified":false,"body":"fix-1585-probe-1790357360444"}
+exit=1
+
+# expose-probe.mts WITH session.client.expose ["transcript"] applied to channel-flow.ts (reverted after)
+PASS P7 — clientData.session.transcript carries the post: true
+PASS P8 — clientData.session keys: [transcript] (members and instructions stay private)
+exit=0
+
+# expose-probe.mts on unmodified main (control: must be red)
+FAIL P7 — clientData.session.transcript carries the post: false
+FAIL P8 — clientData.session keys: [] (members and instructions stay private)
+exit=1
+
+# items-probe.mts — FIX-1585 settle-claim (2026-09-25): does the transcript hold up
+# rebuilt from the posts' own durable items instead of a pushState copy? "C" patch
+# applied to appendPost (emit.component instead of pushState) and readChannelFor
+# (dual-read: legacy state.transcript first, then component items, deduped by id).
+# Patch reverted after (git checkout -- packages/workforce/src/channel/channel-flow.ts).
+PASS P9 — component items matching marker: 1; first: {"id":"item_component_2_d9f3e2b17a5b","type":"component","status":"completed","requestId":"req_1790369992858_ed32488eb71b4","itemIndex":2,"component":"channel-post","data":{"id":"...","at":...,"principal":"devuser","authorVerified":false,"body":"fix-1585-items-..."}}
+PASS P10 — no channel-post item for refused body; request failed; author-not-a-member
+PASS P11 — legacy line at index 0, posted line at index 1, transcript length 2
+P12 — posted 30, read back 22/30 via items.all(); all 30 present: false; total requests now on session: 65
+exit=0
+
+# items-probe.mts on unmodified main (control: P9 and P11 must be red)
+FAIL P9 — component items matching marker: 0; first: undefined (no "channel-post" component item exists — appendPost still writes only to state.transcript)
+PASS P10 — no channel-post item for refused body; request failed; author-not-a-member (unaffected by the patch either way)
+FAIL P11 — legacy line at index 1, posted line at index 0, transcript length 2 (read is unpatched: both lines come from state.transcript in insertion order, so the posted line — appended by pushState during the probe's own `post` call — lands BEFORE the legacy line seeded afterward by a direct store write; "legacy first" does not hold without the read-side dual-read change)
+P12 — posted 30, read back 30/30 via items.all(); all 30 present: true; total requests now on session: 65 (transcript is a plain state array here, so it is NOT windowed by historyWindow at all — a real behavior difference the "C" proposal introduces)
+exit=1

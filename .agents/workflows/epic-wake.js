@@ -188,10 +188,31 @@ const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
  */
 let crossSpecHold = false
 
+/**
+ * Does this dispatch BUILD code? The one question an open blocked-by relation asks.
+ *
+ * A prerequisite is a landing-order constraint on CODE — a dependent must not be built concurrently with
+ * the thing it builds on. It says nothing about the dependent's SPEC, and parking spec work too serialised
+ * a whole epic's specs behind its first implementation merge: the owner had to override the wake by hand
+ * (FIX-1553). So the rule is derived from the phase, not from a list of action names: everything a row
+ * does while its spec is not yet signed off (`PRE_APPROVAL_PHASES` — authoring, review, folding a POC
+ * verdict, applying an answered decision) is spec work and runs; `implement` (the step out of the spec)
+ * and anything a row does once past it is implementation and waits. Listing the free actions by hand
+ * missed two of them (verdicts, decisions), and the missed decision deadlocked the cross-spec hold.
+ * → epic-lifecycle § Intake.
+ *
+ * @param row     the row the action is for
+ * @param action  the action `pendingAction` would dispatch
+ */
+function buildsCode(row, action) {
+  return action === 'implement' || !PRE_APPROVAL_PHASES.has(row.phase)
+}
+
 function pendingAction(row) {
-  // An issue with an open blocked-by relation is not admitted to the active set; it's tracked
-  // until its blocker merges. → epic-lifecycle § Intake, and § Boundaries (sequence, don't
-  // run a dependent concurrently with its prerequisite).
+  // An issue with an open blocked-by relation is tracked until its blocker merges, and gates only
+  // IMPLEMENTATION on it: all spec-phase work still dispatches (`buildsCode`).
+  // → epic-lifecycle § Intake, and § Boundaries (sequence, don't BUILD a dependent concurrently
+  // with its prerequisite).
   // Linear is authoritative on whether this issue still exists as work. A carried row whose
   // issue the human closed, canceled or dropped must stop dispatching — the terminal filter on
   // newly discovered children doesn't help a row that was already in the table.
@@ -219,7 +240,8 @@ function pendingAction(row) {
     return null
   }
 
-  if (row.blockedBy && row.blockedBy.length) return null
+  const prerequisiteOpen = !!(row.blockedBy && row.blockedBy.length)
+  const unlessBuilding = (next) => (prerequisiteOpen && buildsCode(row, next.action) ? null : next)
 
   // A worker that escalated a decision it could not make is WAITING ON A HUMAN. Re-dispatching
   // it on the next unrelated PR event or heartbeat would either retry the same dead end or push
@@ -230,7 +252,7 @@ function pendingAction(row) {
   // Verdicts are a LIST: two distinct claims on one issue can settle in the same wake, and a
   // single-slot field would drop one while consuming both settlement requests.
   if (row.verdicts && row.verdicts.length) {
-    return { action: 'apply-verdict', why: `${row.verdicts.length} POC verdict(s) to fold` }
+    return unlessBuilding({ action: 'apply-verdict', why: `${row.verdicts.length} POC verdict(s) to fold` })
   }
 
   const phaseAction = (() => {
@@ -328,7 +350,7 @@ function pendingAction(row) {
       return null
     }
   })()
-  if (phaseAction) return phaseAction
+  if (phaseAction) return unlessBuilding(phaseAction)
 
   // FALLBACK, reached only when the phase itself has nothing to do. An answered decision is work for a
   // SINGLE-PR row too: this check lived only inside `multiPrHasWork`, so a single-PR row — an
@@ -341,7 +363,7 @@ function pendingAction(row) {
   // Scoped to rows with no sub-PRs: a multi-PR row's answer travels through `issue-multi-pr`, which the
   // `implement` path above already reaches.
   if (!(row.subPrs || []).length && (row.blockerResolutions || []).length) {
-    return { action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) to apply` }
+    return unlessBuilding({ action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) to apply` })
   }
   return null
 }
@@ -358,9 +380,9 @@ function pendingAction(row) {
  * in both cases and points the human at the wrong lever. Each round added the missing conjunct; each
  * next round found another. So the order lives here, once, and the reporting branch reads it.
  *
- * The order is `pendingAction`'s own, top to bottom: the pre-phase refusals first (terminal, an open
- * `blockedBy`, an unresolved `blocker`), then the AWAITING_SPEC_APPROVAL branch — the hold, the
- * cursor, the budget. Order is the whole content of this function: every one of these can be true at
+ * The order is `pendingAction`'s own, top to bottom: the pre-phase refusals first (terminal, an
+ * unresolved `blocker`), then the AWAITING_SPEC_APPROVAL branch — an open `blockedBy` (approved rows
+ * only: it gates implementation, not review), the hold, the cursor, the budget. Order is the whole content of this function: every one of these can be true at
  * once, and only the FIRST is why the row is parked.
  *
  * `pendingAction` deliberately does NOT call this (BP-035: it is a well-covered switch, and it is the
@@ -378,9 +400,13 @@ function pendingAction(row) {
  */
 function specReviewParkKind(row) {
   if (row.linearTerminal) return 'linear-terminal'
-  if (row.blockedBy && row.blockedBy.length) return 'blocked-by'
   if (row.blocker) return 'blocker'
-  if (row.specApproved) return crossSpecHold ? 'cross-spec-hold' : cursorUsable(row) ? null : 'cursor'
+  // An open prerequisite parks only the approved row, whose next action is `implement`; an unapproved
+  // row's spec review runs regardless (`buildsCode`).
+  if (row.specApproved) {
+    if (row.blockedBy && row.blockedBy.length) return 'blocked-by'
+    return crossSpecHold ? 'cross-spec-hold' : cursorUsable(row) ? null : 'cursor'
+  }
   if (!cursorUsable(row)) return 'cursor'
   if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) return 'budget'
   return null
@@ -420,7 +446,7 @@ function specReviewParkKind(row) {
  *    own, that block would be permanent. One extra scan per prerequisite, and only while something is
  *    actually waiting on it.
  *
- * An open `blockedBy` is deliberately NOT a skip, even though `pendingAction` parks on it too: that
+ * An open `blockedBy` is deliberately NOT a skip, even though `pendingAction` parks implementation on it: that
  * relation can go away in this very wake's children query, and the row becomes dispatchable
  * immediately — with no fresh read of its PR to dispatch from.
  *
@@ -696,6 +722,23 @@ function cursorUsable(row) {
   const goal = row.assembledGoal || {}
   if (goal.fixPr && !goal.fixMerged && !row.repairScanned) return false
   return true
+}
+
+/**
+ * Merge readiness, with the clause the reporter cannot be trusted to fold in itself: an automated
+ * review has returned on the PR's CURRENT head (orchestration.md → Gates, "A merge-ready head has
+ * been reviewed"). Approved + green + mergeable is the reporter's judgment; this compares two shas.
+ * A missing sha on either side is "not reviewed", never the reverse (BP-030), so an old-shape report
+ * withholds the gate instead of offering a head no reviewer saw. Logged, so a withheld gate says why.
+ */
+function reviewedAtHead(ready, headSha, reviewedHeadSha, what) {
+  if (!ready) return false
+  if (headSha && reviewedHeadSha === headSha) return true
+  log(
+    `${what}: reported ready to merge, but no automated review has returned on its current head ` +
+      `(head ${headSha || 'unknown'}, reviewed ${reviewedHeadSha || 'none'}) — no merge gate until one does.`,
+  )
+  return false
 }
 
 /**
@@ -1178,7 +1221,7 @@ function nextRow(row, { worker, action, landed, folded }) {
         : worker.specLevelFound === undefined
           ? !!row.specLevelFound
           : !!worker.specLevelFound,
-    readyToMerge: !!worker.readyToMerge,
+    readyToMerge: reviewedAtHead(worker.readyToMerge, worker.implHeadSha, worker.implReviewedHeadSha, `${row.id} #${worker.implPr || row.implPr}`),
     // A direct-route worker refusing to build (no reproduction, or not really a bug) promotes its
     // row back to the spec route. STICKY, and that is the whole reason it is a persisted field
     // rather than an immediate phase change: the Linear label still says Bug, so the next refresh
@@ -1325,11 +1368,13 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const heldForFold = []
 
   for (const row of rows) {
+    const next = pendingAction(row)
+    // Every row with an open prerequisite is reported in `blocked` — its implementation waits for the
+    // blocker to land. It still takes a slot for spec work, which `pendingAction` lets through.
     if (row.blockedBy && row.blockedBy.length) {
       blocked.push(row)
-      continue
+      if (!next) continue
     }
-    const next = pendingAction(row)
     if (next && foldEpicWanted && AUTHORS_AGAINST_OBJECTIVE.has(next.action)) {
       heldForFold.push({ row, ...next })
       continue
@@ -1957,7 +2002,10 @@ const PR_STATE_SCHEMA = {
   // schema while omitting it, and `cursorUsable` correctly refused the batch — but the planner had no
   // way to tell that refusal apart from a genuinely converged review, so it logged "converged" for a
   // fold that was actually withheld. `['string','null']` still lets a scout say "no activity to date".
-  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'approvedHeadSha', 'specMerged', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt', 'approvalArtifacts'],
+  // `implHeadSha` / `implReviewedHeadSha` are required because `readyToMerge` counts only when they
+  // match (→ `reviewedAtHead`). Optional, a scout that never looked for the automated review would
+  // withhold every merge gate with nothing to say why; required, it has to answer, `null` included.
+  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'approvedHeadSha', 'specMerged', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt', 'approvalArtifacts', 'implHeadSha', 'implReviewedHeadSha'],
   properties: {
     issueId: { type: 'string' },
     observed: {
@@ -2004,7 +2052,13 @@ const PR_STATE_SCHEMA = {
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
     ciFailed: { type: 'boolean', description: 'Observed this scan — never inherited, so a recovered PR stops being re-dispatched' },
     merged: { type: 'boolean' },
-    readyToMerge: { type: 'boolean' },
+    readyToMerge: { type: 'boolean', description: 'The implementation PR is approved, green and mergeable now. Counts only when implHeadSha is non-null and implReviewedHeadSha equals it, so null/null never passes.' },
+    implHeadSha: { type: ['string', 'null'], description: 'Current head of the row-level implementation PR — not headSha, which is the spec head whenever a spec exists. null when there is no implementation PR; a null head never passes the merge gate.' },
+    implReviewedHeadSha: {
+      type: ['string', 'null'],
+      description:
+        "implHeadSha itself if ANY completed automated review of the implementation PR ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. Report what you saw; the wake compares it with implHeadSha.",
+    },
     // Per-handle state for a multi-PR row. One aggregate boolean is not actionable: a merge gate
     // needs the PR NUMBER of the slice that is green, and these rows have no single `implPr`.
     subPrStates: {
@@ -2014,11 +2068,17 @@ const PR_STATE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'merged', 'readyToMerge'],
+        required: ['id', 'merged', 'readyToMerge', 'headSha', 'reviewedHeadSha'],
         properties: {
           id: { type: 'string' },
           merged: { type: 'boolean' },
           readyToMerge: { type: 'boolean' },
+          headSha: { type: ['string', 'null'], description: "This sub-PR's current head; a null head never passes the merge gate" },
+          reviewedHeadSha: {
+            type: ['string', 'null'],
+            description:
+              "headSha itself if ANY completed automated review of THIS sub-PR ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. readyToMerge counts only when this equals a non-null headSha.",
+          },
           ciFailed: { type: 'boolean' },
           /** This slice's PR was closed WITHOUT merging — durably `open` otherwise, which nothing advances. */
           closedUnmerged: { type: 'boolean' },
@@ -2029,6 +2089,13 @@ const PR_STATE_SCHEMA = {
     // that re-arms the end-to-end goal.
     repairMerged: { type: 'boolean' },
     repairReadyToMerge: { type: 'boolean' },
+    // Optional like the other repair fields; an omission reads as "not reviewed" (→ `reviewedAtHead`).
+    repairHeadSha: { type: ['string', 'null'], description: 'Current head of the repair PR; a null head never passes the merge gate' },
+    repairReviewedHeadSha: {
+      type: ['string', 'null'],
+      description:
+        "repairHeadSha itself if ANY completed automated review of the repair PR ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. repairReadyToMerge counts only when this equals a non-null repairHeadSha.",
+    },
     /** The repair PR was closed WITHOUT merging — otherwise `AWAITING_FIX` idles with nothing to dispatch. */
     repairClosedUnmerged: { type: 'boolean' },
     // The advanced cursor, so the next wake can tell "already handled" from "new".
@@ -2180,6 +2247,14 @@ const WORKER_SCHEMA = {
         'Needs a human decision — the coordinator surfaces it. Carry the ASK, not a topic: all six parts, per docs/contributing/asking-for-decisions.md (the fork, plain terms, the trade-off, your recommendation, what would change your mind, and what being wrong costs). The coordinator holds only status lines and cannot reconstruct any of that.',
     },
     readyToMerge: { type: 'boolean' },
+    // Optional: a worker that just pushed has usually not been reviewed yet, and an omission reads as
+    // "not reviewed" (→ `reviewedAtHead`), so the next wake's scan re-establishes readiness.
+    implHeadSha: { type: ['string', 'null'], description: 'Current head of the implementation PR, when you report readyToMerge; a null head never passes the merge gate' },
+    implReviewedHeadSha: {
+      type: ['string', 'null'],
+      description:
+        "implHeadSha itself if ANY completed automated review ran against that sha (a Codex review's commit_id or a Cursor check run's head_sha); otherwise the most recent reviewed sha, or null. readyToMerge counts only when this equals a non-null implHeadSha; a head you just pushed has not been reviewed. Omitting the pair holds the gate back until the next refresh scan.",
+    },
     status: { type: 'string', description: 'One compact status line' },
   },
 }
@@ -2404,13 +2479,13 @@ const [gate, linear, prScan] = await parallel([
                         // `implPr` is unset for these rows. Per-handle readiness is what lets the coordinator
                         // surface "merge sub-PR a (#41)" — without it the gate carries `pr: null` and the DAG
                         // stops at its first merge-ready slice.
-                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed }. readyToMerge means THAT PR is approved, green and mergeable now.\n`
+                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed, headSha, reviewedHeadSha }. readyToMerge means THAT PR is approved, green and mergeable now; headSha and reviewedHeadSha are filled per MERGE READINESS below.\n`
                       : '') +
                     // The repair PR is the other handle these rows wait on, and it is invisible in `subPrs`.
                     // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
                     // forever because nothing else can ever set `fixMerged`.
                     (row.assembledGoal && row.assembledGoal.fixPr
-                      ? `    This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
+                      ? `    This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged, repairReadyToMerge, repairHeadSha and repairReviewedHeadSha for it, and repairClosedUnmerged if it was closed without merging.\n`
                       : '') +
                     // PER ISSUE, and it has to stay that way. The cursor is how this issue tells new
                     // feedback from feedback a worker already handled; one cursor shared across the batch
@@ -2425,7 +2500,10 @@ const [gate, linear, prScan] = await parallel([
                 ? `SEPARATELY report specApprovedByLabel:true only for a \`spec approved\` label that \`${approvalOwner}\` applied to the reviewed source head. Read the most recent labeling event and require that exact owner's login, not merely any human. Establish approvedHeadSha from the event and PR timeline; a label left on a later push is stale. Unreadable provenance or an unknown reviewed revision means FALSE, not inherited approval.\n`
                 : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
               `ALSO report humanChangesRequested:true when any human's latest review requests changes on the open spec. It outranks every approval channel, including an owner label. Bots never count.\n` +
-              `Also report whether CI is failing.`,
+              `Also report whether CI is failing.\n` +
+              // orchestration.md → Gates, "A merge-ready head has been reviewed". Two shas rather than a
+              // boolean, so the wake does the comparison (→ `reviewedAtHead`).
+              `MERGE READINESS: fill implHeadSha / implReviewedHeadSha (and each sub-PR's and the repair PR's pair) per their schema descriptions. A reviewed sha is the current head if ANY completed automated review (Codex review commit_id or Cursor check-run head_sha) ran against it; otherwise the most recent reviewed sha, or null. Do not fold the comparison into readyToMerge: the wake runs it (reviewedAtHead).`,
             { label: 'refresh:issues', phase: 'Refresh', schema: PR_SCAN_SCHEMA, agentType: 'scout' },
           ),
       ]
@@ -2630,8 +2708,8 @@ if (discovered.length) {
  * Drop blocked-by relations whose prerequisite has already finished.
  *
  * The scout schema calls this field "Open blocked-by relations", but nothing enforces it, and a
- * scout that reports a merged prerequisite blocks the row PERMANENTLY: `pendingAction` refuses a
- * row with any `blockedBy`, and the refresh overwrites the carried value, so the coordinator
+ * scout that reports a merged prerequisite blocks the row PERMANENTLY: `pendingAction` withholds
+ * implementation from a row with any `blockedBy`, and the refresh overwrites the carried value, so the coordinator
  * cannot correct it from `args` either. One over-reported id is enough to strand an issue for the
  * rest of the epic.
  *
@@ -2826,15 +2904,26 @@ const refreshed = [...rows, ...discovered].map((row) => {
     phase: scoutPhaseFor({ ...row, specMerged }, fresh.phase, scanApproved, route),
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
-    readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
+    // And only for a head the automated review has returned on (→ `reviewedAtHead`), here and on the
+    // two per-handle readiness fields below.
+    readyToMerge: refreshedLive
+      ? reviewedAtHead(fresh.readyToMerge, fresh.implHeadSha, fresh.implReviewedHeadSha, `${row.id} #${fresh.implPr || row.implPr}`)
+      : false,
     // Same rule: CI that recovered must stop looking like a failure, or pr-feedback re-dispatches forever.
     ciFailed: refreshedLive ? !!fresh.ciFailed : false,
     // Same rule again for the per-handle readiness a multi-PR row's merge gates are built from.
     // These are observations, never durable state: a carried `readyToMerge` would keep surfacing a
     // merge gate for a sub-PR the human already merged, or for one a later push made unmergeable.
     // (The merged flags are folded into the durable `subPrs` / `assembledGoal` by foldMultiPrScan.)
-    subPrStates: refreshedLive ? fresh.subPrStates || [] : [],
-    repairReadyToMerge: refreshedLive ? !!fresh.repairReadyToMerge : false,
+    subPrStates: refreshedLive
+      ? (fresh.subPrStates || []).map((s) => ({
+          ...s,
+          readyToMerge: reviewedAtHead(s.readyToMerge, s.headSha, s.reviewedHeadSha, `${row.id} sub-PR ${s.id}`),
+        }))
+      : [],
+    repairReadyToMerge: refreshedLive
+      ? reviewedAtHead(fresh.repairReadyToMerge, fresh.repairHeadSha, fresh.repairReviewedHeadSha, `${row.id} repair PR`)
+      : false,
     // Whether the scan ANSWERED about the repair PR, as distinct from what it answered. `false` and
     // "didn't look" have opposite meanings here (see cursorUsable), and one boolean can't carry both.
     repairScanned: refreshedLive && fresh.repairMerged !== undefined,
@@ -2974,15 +3063,18 @@ if (routeConvergedEpicFeedback) {
 const crossSpecEligible = (r) => r.specApproved || POST_SPEC_PHASES.has(r.phase) || r.linearTerminal
 // Both conditions are derived from ONE definition of the set, because every version that defined them
 // separately disagreed about what the set was — and each disagreement was either a released gate or a
-// deadlock. Two exclusions, for two different reasons:
+// deadlock. One exclusion here:
 //  - CANCELLED work: its spec is dead. Reviewing it manufactures conflicts with work nobody is doing.
-//  - BLOCKED work with no spec yet: `allocate` refuses to author it while a `blockedBy` is open, so it
-//    can never become eligible on its own. Waiting for it is not a wait — B blocked by A, A held for the
-//    pass, the pass waiting on B's spec is a closed loop that no event breaks. A blocked row that ALREADY
-//    has a spec is in the set as normal; the exclusion is about what can still arrive, not about who is
-//    admitted to work.
+// BLOCKED work is NOT excluded, and that is safe only because of one invariant: a row counted here is
+// pre-approval (not eligible ⇒ not approved, not post-spec, not terminal), and `buildsCode` never lets the
+// relation park a pre-approval action — authoring, review, verdict folds and answered decisions all run,
+// and the spec-approval gate does not read `blockedBy`. So a blocked row's spec can always still progress
+// and is genuinely coming; the relation cannot stall it, which is what would turn waiting into a deadlock
+// (the prerequisite held for the pass, the pass waiting on a spec that waits on the prerequisite). Its
+// spec is also the one most likely to conflict with its prerequisite's, so the pass must wait for it.
+// verify.mjs pins the invariant over the whole pre-approval space.
 const crossSpecCancelled = (r) => CANCELLED_LINEAR.test((r.linearState || '').trim())
-// A THIRD exclusion, and it has to apply to both halves: a row with NO SPEC DOCUMENT cannot be
+// A SECOND exclusion, and it has to apply to both halves: a row with NO SPEC DOCUMENT cannot be
 // cross-reviewed. Left in `crossSpecSet` it hands the reviewer a row with nothing to read and
 // invites a conflict report about a document that does not exist; left in `crossSpecComing` it is
 // a spec that will never arrive, so the pass is never askable and every feature in the epic is
@@ -3006,7 +3098,7 @@ const crossSpecCancelled = (r) => CANCELLED_LINEAR.test((r.linearState || '').tr
 const crossSpecRows = refreshed.filter((r) => !isDirectRoute(r))
 const crossSpecSet = crossSpecRows.filter((r) => crossSpecEligible(r) && !crossSpecCancelled(r))
 const crossSpecComing = crossSpecRows.filter(
-  (r) => !crossSpecEligible(r) && !crossSpecCancelled(r) && !(r.blockedBy && r.blockedBy.length),
+  (r) => !crossSpecEligible(r) && !crossSpecCancelled(r),
 )
 // The HOLD is the whole rule: `epic-lifecycle` runs one coherence pass "before any of them is built", so a
 // multi-issue epic parks EVERY approved row from the first approval until the pass clears. Keying the hold
@@ -3039,7 +3131,7 @@ if (!epicReady) {
   )
 }
 for (const row of plan.blocked) {
-  log(`${row.id}: blocked by ${row.blockedBy.join(', ')} — tracked, not admitted to the active set.`)
+  log(`${row.id}: blocked by ${row.blockedBy.join(', ')} — tracked; implementation waits for it, spec work does not.`)
 }
 if (cancelledBlockers.size) {
   // A cancelled prerequisite can never merge, so the rows behind it are blocked until a human
