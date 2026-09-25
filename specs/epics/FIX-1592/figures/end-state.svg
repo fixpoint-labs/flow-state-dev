@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 390" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, shipped in kitchen-sink: talk from the page, a channel composer and transcript and a seat composer (FIX-1585); a desk clerk that answers from a model or files the note to a board (FIX-1589); a board panel where a person picks up an escalations row and runs the followups drain (FIX-1591). A fence says every browser verb is an action a flow already declares, and the only package change is FIX-1585's transcript expose line. Composed in by the app: the model, keyless in the browser checks and real in one goal; the one kind-to-action map. Replaced in one line: the model, and a kind's answering action in the map. Not built: Assistant tools that post or ask, channel admin, verified identity, a post that wakes member seats (FIX-1590, a follow-on), Layer 1 Channel, Notify or Dispatcher substrate, a kitchen-sink-only messaging API, live updates of other people's posts.">
+<svg viewBox="0 0 940 400" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, three ways of talking: talk to an agent seat, and your message and its reply are both kept (FIX-1585); a post to a channel with no seat author runs each member agent seat once (FIX-1590); an agent seat replies into a channel it belongs to, under its own name (FIX-1594). The fence: Workforce changes where a path needs them; no Workforce word in core, engine, client or react; no kitchen-sink-only messaging API; one kind-to-action map; a post a seat wrote wakes no seat. Composed in by the app: the model, scripted in the browser checks; the one kind-to-action map; which members are agent seats. Replaced in one line: the model, and the no-ping-pong rule. Not built: the clerk's model answer (FIX-1589), the boards (FIX-1591), Assistant tools that post or ask, channel admin, verified identity, Layer 1 substrate, live updates of others' posts.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -22,52 +22,59 @@
     .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="390"/>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
 
   <g id="in-the-box">
-    <rect class="box" x="16" y="16" width="580" height="230" rx="6"/>
-    <text class="t-lbl" x="32" y="38">IN THE BOX &#183; SHIPPED IN KITCHEN-SINK</text>
-    <rect class="door" x="32" y="50" width="270" height="62" rx="4"/>
-    <text class="t-b" x="44" y="70">talk from the page</text>
-    <text class="t-s" x="44" y="88">channel composer + transcript, seat composer</text>
-    <text class="t-ok" x="44" y="103">FIX-1585</text>
-    <rect class="door" x="310" y="50" width="270" height="62" rx="4"/>
-    <text class="t-b" x="322" y="70">the clerk answers, or files</text>
-    <text class="t-s" x="322" y="88">a model reply, or a row on a desk board</text>
-    <text class="t-ok" x="322" y="103">FIX-1589</text>
-    <rect class="door" x="32" y="120" width="548" height="62" rx="4"/>
-    <text class="t-b" x="44" y="140">the boards work</text>
-    <text class="t-s" x="44" y="158">a person picks up escalations; run followups from the board panel</text>
-    <text class="t-ok" x="44" y="173">FIX-1591</text>
-    <path class="fence" d="M32 200 L580 200"/>
-    <text class="t-ok" x="32" y="218">THE FENCE &#183; every browser verb is an action a flow already declares</text>
-    <text class="t-s" x="32" y="234">one package line in the whole set: the channel transcript's expose (FIX-1585 D1)</text>
+    <rect class="box" x="16" y="16" width="580" height="240" rx="6"/>
+    <text class="t-lbl" x="32" y="38">IN THE BOX &#183; THREE WAYS OF TALKING</text>
+    <rect class="door" x="32" y="50" width="176" height="84" rx="4"/>
+    <text class="t-b" x="44" y="70">talk to a seat</text>
+    <text class="t-s" x="44" y="88">your message and its reply,</text>
+    <text class="t-s" x="44" y="102">both kept across a reload</text>
+    <text class="t-ok" x="44" y="122">FIX-1585</text>
+    <rect class="door" x="218" y="50" width="176" height="84" rx="4"/>
+    <text class="t-b" x="230" y="70">posts reach agents</text>
+    <text class="t-s" x="230" y="88">each member agent seat</text>
+    <text class="t-s" x="230" y="102">runs once on the post</text>
+    <text class="t-ok" x="230" y="122">FIX-1590</text>
+    <rect class="door" x="404" y="50" width="176" height="84" rx="4"/>
+    <text class="t-b" x="416" y="70">an agent replies in it</text>
+    <text class="t-s" x="416" y="88">a post into its channel,</text>
+    <text class="t-s" x="416" y="102">under the seat's own name</text>
+    <text class="t-ok" x="416" y="122">FIX-1594</text>
+    <path class="fence" d="M32 152 L580 152"/>
+    <text class="t-ok" x="32" y="172">THE FENCE</text>
+    <text class="t-s" x="32" y="190">Workforce changes where a path needs them; no Workforce word in core,</text>
+    <text class="t-s" x="32" y="204">engine, client or react</text>
+    <text class="t-s" x="32" y="222">no kitchen-sink-only messaging API &#183; one kind-to-action map</text>
+    <text class="t-s" x="32" y="240">a post a seat wrote wakes no seat, so two agents never loop</text>
   </g>
 
   <g id="composed-in">
-    <rect class="app" x="612" y="16" width="312" height="230" rx="6"/>
+    <rect class="app" x="612" y="16" width="312" height="240" rx="6"/>
     <text class="t-lbl" x="628" y="38">COMPOSED IN BY THE APP</text>
     <text class="t-d" x="628" y="66">the model</text>
-    <text class="t-s" x="628" y="82">deterministic in the browser checks,</text>
-    <text class="t-s" x="628" y="96">real in the clerk's one goal</text>
+    <text class="t-s" x="628" y="82">scripted in the browser checks,</text>
+    <text class="t-s" x="628" y="96">one entry for the agent kind</text>
     <text class="t-d" x="628" y="126">one kind-to-action map</text>
     <text class="t-s" x="628" y="142">desk-clerk: answer &#183; agent: run</text>
     <text class="t-s" x="628" y="156">followup-runner: none</text>
-    <text class="t-d" x="628" y="186">the notify stub, unchanged</text>
-    <text class="t-s" x="628" y="202">names each member, wakes none</text>
+    <text class="t-d" x="628" y="186">which members are agent seats</text>
+    <text class="t-s" x="628" y="202">a WORKER.md with no flow line;</text>
+    <text class="t-s" x="628" y="216">clerks and runners are not run</text>
   </g>
 
   <g id="replaced">
-    <rect class="app" x="16" y="260" width="908" height="50" rx="6"/>
-    <text class="t-lbl" x="32" y="280">REPLACED IN ONE LINE</text>
-    <text class="t-d" x="32" y="300">the model: one string</text>
-    <text class="t-d" x="400" y="300">a kind's answering action: one line in the map</text>
+    <rect class="app" x="16" y="270" width="908" height="50" rx="6"/>
+    <text class="t-lbl" x="32" y="290">REPLACED IN ONE LINE</text>
+    <text class="t-d" x="32" y="310">the model: one string</text>
+    <text class="t-d" x="400" y="310">the no-ping-pong rule, if agents should hear each other</text>
   </g>
 
   <g id="not-built">
-    <rect class="out" x="16" y="324" width="908" height="54" rx="6"/>
-    <text class="t-lbl" x="32" y="344">NOT BUILT</text>
-    <text class="t-go" x="32" y="360">Assistant tools that post or ask &#183; channel admin (FIX-1415) &#183; verified identity (FIX-1493) &#183; a post that wakes seats (FIX-1590)</text>
-    <text class="t-go" x="32" y="373">Layer 1 Channel / Notify / Dispatcher &#183; a kitchen-sink-only messaging API &#183; live updates of others' posts</text>
+    <rect class="out" x="16" y="334" width="908" height="54" rx="6"/>
+    <text class="t-lbl" x="32" y="354">NOT BUILT</text>
+    <text class="t-go" x="32" y="370">the clerk's model answer (FIX-1589) &#183; the boards (FIX-1591) &#183; Assistant tools that post or ask &#183; channel admin (FIX-1415)</text>
+    <text class="t-go" x="32" y="383">verified identity (FIX-1493) &#183; Layer 1 channel / notify / dispatch &#183; live updates of others' posts</text>
   </g>
 </svg>

@@ -2,43 +2,38 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-One story changes: kitchen-sink's README describes a desk you read about into one you use. The
-published site is untouched; [channels.md](../../../apps/docs/docs/workforce/channels.md)
-already teaches a notify slot that wakes real recipients. The draft below is the shared text.
-Each child's `DOCS.md` carries its own specifics.
+One story changes: kitchen-sink's README describes a team you read about into one you talk to,
+directly or through a channel. The published channels guide is each child's own `DOCS.md` to
+decide; this draft is the shared kitchen-sink text.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · the support team's channels, new opening paragraph
 
-> You can use the desk from the page. Open `support.desk` in the rail and post; the line lands
-> in the channel's transcript. Open
-> `support.ada` and send a note: the front desk answers it from a model, or files it on one of
-> the desk's two boards and says so. Rows on `followups` are run by `support.wren`. Rows on
-> `escalations` wait for a person, and you pick them up from the board's panel.
+> You can talk to the team from the page, two ways.
+>
+> Open `support.otto` in the rail and send it a message. A seat is one agent with its own memory,
+> so this is a conversation: your message and its reply stay there when you come back.
+>
+> Open `support.desk` and post. Every agent seat on the channel gets the post and runs once on
+> it, and an agent can answer in the channel itself, under its own name. A post an agent writes
+> wakes nobody, so two agents in a channel don't answer each other forever.
 >
 > Every one of those buttons calls an action the flow already declares, the same one `fsdev run`
 > calls. The page has no API of its own.
 
-## REPLACE · `apps/kitchen-sink/README.md` · "Nothing is wired to `escalations`"
+## UPDATE · `apps/kitchen-sink/README.md` · "Posting to a channel notifies its members…"
 
-> **`escalations` is for a person.** The clerk files what it shouldn't answer there, and the
-> board's panel lets you pick a row up and settle it. `support.wren`'s drain never sees those
-> rows: a seat reaches only the boards its kind names.
->
-> A board no flow declares is reported at boot, because rows filed there would sit pending with
-> nothing said. Every board in this app is declared, so this app prints no such line. The
-> channels guide's *Holding a board* section describes that warning.
-
-FIX-1591 links that section by its published anchor when it lands.
+> Posting to a channel reaches its members, and never the member who wrote the post. An agent
+> seat runs on a post a person writes; a post a seat writes runs nobody. The `desk-clerk` and
+> `followup-runner` seats get a line naming them and nothing more.
 
 ## Ownership
 
 | Material | Publisher | Specific draft |
 |---|---|---|
-| The new opening above | FIX-1591, last to land, once every sentence in it is true | This document |
-| The `escalations` replacement | FIX-1591 | This document · its `DOCS.md` |
-| The clerk's answer-or-file behaviour, the `desk-clerk` header comment | FIX-1589 | Its `DOCS.md` |
+| The opening's first two paragraphs | FIX-1585 publishes the seat half; FIX-1594 adds the channel half, once every sentence is true | This document |
+| The fan-out paragraph, and `channel-notify.ts`'s header | FIX-1590 | This document · its `DOCS.md` |
+| The agent kind's receiver and posting, in the channels guide | FIX-1590, FIX-1594 | Their `DOCS.md` |
 | The composers | FIX-1585 | [Its `DOCS.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-1585/specs/issues/FIX-1585/DOCS.md) |
 
-The fan-out paragraph ("Posting to a channel notifies its members…") and `channel-notify.ts`'s
-placeholder header stay as they are: the notify stub is unchanged (ER-12). Do not publish the
-opening because this spec merged.
+The "Nothing is wired to `escalations`" section stays as it is (FIX-1591 is a follow-on). Do not
+publish the opening because this spec merged.
