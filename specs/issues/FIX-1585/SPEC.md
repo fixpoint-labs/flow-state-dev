@@ -68,6 +68,13 @@ Both composers call actions that already exist and already answer the CLI. The o
 the post's own item reaching the page, which is how the assistant's conversation reaches it
 too.
 
+## How we prove it
+
+![How FIX-1585 is proved: the goal at the top, two browser checks on a production build that are the goal itself (V6 posts to support.desk and survives a reload; V7 asks support.ada, survives a reload, and finds support.wren read-only), the package and app tests they rest on (V1, V3, V2, V5), every existing check still green (V8), and a note that a CLI or HTTP call alone is not proof](figures/how-we-prove-it.svg)
+
+Only the two blue checks close the goal: a person at the real page, and the same result after a
+reload. Everything under them explains a failure, and none of it counts as acceptance on its own.
+
 ## What stays as it is
 
 - The assistant, its composer and its sessions. No assistant tool posts to a channel or asks a
