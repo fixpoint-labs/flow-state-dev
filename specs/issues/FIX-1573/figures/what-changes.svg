@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Two lanes. Today a new user-addressed route passes the guard, which checks only the path's user id, then its handler, then the rows, and reaches merge with nothing in between. After, the same path meets a CI fence where an own caller and three foreign callers probe every user-addressed route; a route that leaks or has no table entry stops there."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .fence { stroke:var(--code); stroke-width:2.5; stroke-dasharray:6 4; fill:none; }
+    .f-box { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="today">
+    <rect class="lane" x="12" y="12" width="916" height="120" rx="6"/>
+    <text class="t-lbl" x="28" y="32">TODAY</text>
+    <rect class="n-new" x="28" y="48" width="172" height="56" rx="5"/>
+    <text class="t-b" x="40" y="70">new /users/:userId</text>
+    <text class="t-s" x="40" y="88">route</text>
+    <rect class="n-box" x="232" y="48" width="168" height="56" rx="5"/>
+    <text class="t-b" x="244" y="70">guard</text>
+    <text class="t-s" x="244" y="88">path user id = caller</text>
+    <rect class="n-box" x="432" y="48" width="214" height="56" rx="5"/>
+    <text class="t-b" x="444" y="70">handler</text>
+    <text class="t-g" x="444" y="88">org · tenant · anon? up to it</text>
+    <rect class="n-box" x="678" y="48" width="92" height="56" rx="5"/>
+    <text class="t-b" x="690" y="70">rows</text>
+    <rect class="n-box" x="818" y="48" width="104" height="56" rx="5"/>
+    <text class="t-b" x="830" y="70">merge</text>
+    <text class="t-s" x="830" y="88">nothing checks</text>
+    <path class="arrow" d="M200,76 H228"/><path class="head" d="M224,72 L232,76 L224,80 z"/>
+    <path class="arrow" d="M400,76 H428"/><path class="head" d="M424,72 L432,76 L424,80 z"/>
+    <path class="arrow" d="M646,76 H674"/><path class="head" d="M670,72 L678,76 L670,80 z"/>
+    <path class="arrow" d="M770,76 H814"/><path class="head" d="M810,72 L818,76 L810,80 z"/>
+    <text class="t-s" x="28" y="122">A handler that filters by the path's user id alone ships.</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="12" y="150" width="916" height="168" rx="6"/>
+    <text class="t-lbl" x="28" y="170">AFTER</text>
+    <rect class="n-new" x="28" y="186" width="172" height="56" rx="5"/>
+    <text class="t-b" x="40" y="208">new /users/:userId</text>
+    <text class="t-s" x="40" y="226">route</text>
+    <rect class="n-box" x="232" y="186" width="168" height="56" rx="5"/>
+    <text class="t-b" x="244" y="208">guard</text>
+    <text class="t-s" x="244" y="226">unchanged</text>
+    <rect class="n-box" x="432" y="186" width="214" height="56" rx="5"/>
+    <text class="t-b" x="444" y="208">handler</text>
+    <text class="t-s" x="444" y="226">unchanged</text>
+    <rect class="n-box" x="678" y="186" width="92" height="56" rx="5"/>
+    <text class="t-b" x="690" y="208">rows</text>
+    <path class="fence" d="M794,164 V306"/>
+    <rect class="f-box" x="818" y="186" width="104" height="56" rx="5"/>
+    <text class="t-b" x="830" y="208">merge</text>
+    <text class="t-c" x="830" y="226">only past fence</text>
+    <path class="arrow" d="M200,214 H228"/><path class="head" d="M224,210 L232,214 L224,218 z"/>
+    <path class="arrow" d="M400,214 H428"/><path class="head" d="M424,210 L432,214 L424,218 z"/>
+    <path class="arrow" d="M646,214 H674"/><path class="head" d="M670,210 L678,214 L670,218 z"/>
+    <path class="arrow" d="M770,214 H814"/><path class="head" d="M810,210 L818,214 L810,218 z"/>
+    <text class="t-c" x="444" y="266">CI · scoping table</text>
+    <text class="t-g" x="444" y="282">other org · other tenant · anonymous</text>
+    <text class="t-c" x="444" y="298">own caller must still see its row</text>
+    <text class="t-s" x="28" y="266">Every route the guard classifies</text>
+    <text class="t-s" x="28" y="282">user-addressed is probed; no entry,</text>
+    <text class="t-s" x="28" y="298">or a leak, and CI fails.</text>
+  </g>
+</svg>
