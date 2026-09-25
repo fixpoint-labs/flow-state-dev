@@ -1,0 +1,51 @@
+{
+  "skills": [
+    {
+      "name": "trip-planner",
+      "description": "Plans travel: day-by-day itineraries, what to see, and how to get around a destination.",
+      "whenToUse": "The user is going somewhere and wants help deciding what to do or see there.",
+      "keywords": [
+        "itinerary"
+      ]
+    },
+    {
+      "name": "recipe-helper",
+      "description": "Suggests dishes and walks through cooking them from the ingredients the user has.",
+      "whenToUse": "The user wants to know what to cook or how to cook something.",
+      "keywords": [
+        "recipe"
+      ]
+    },
+    {
+      "name": "tax-questions",
+      "description": "Answers personal income tax questions: filing, deductions, and deadlines.",
+      "whenToUse": "The user asks about paying or filing their taxes.",
+      "keywords": [
+        "deduction"
+      ]
+    }
+  ],
+  "opener": {
+    "ask": "Hi there.",
+    "reply": "Hi! What can I help you with today?"
+  },
+  "targeted": [
+    {
+      "ask": "I'm off to Lisbon for four days in May.",
+      "offer": "Lovely time of year for it. I can put together a day-by-day plan for Lisbon: what to see each day and how to get between the sights. Want me to?",
+      "followUp": "Yes please, go ahead.",
+      "expect": "trip-planner"
+    },
+    {
+      "ask": "All I've got in the cupboard is chickpeas, spinach and a tin of tomatoes.",
+      "offer": "That's a good start. I can suggest a dinner you could make from exactly those and walk you through cooking it. Shall I?",
+      "followUp": "Sure, do that.",
+      "expect": "recipe-helper"
+    }
+  ],
+  "smallTalk": {
+    "ask": "I'm off to Lisbon for four days in May.",
+    "offer": "Lovely time of year for it. I can put together a day-by-day plan for Lisbon: what to see each day and how to get between the sights. Want me to?",
+    "followUp": "Thanks, but that's everything for now. Have a good evening!"
+  }
+}

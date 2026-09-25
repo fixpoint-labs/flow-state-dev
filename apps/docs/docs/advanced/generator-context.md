@@ -288,7 +288,15 @@ The window and the per-call limit compose: the window is the ceiling, the per-ca
 
 ### Numeric limit
 
-`{ limit: 8 }` keeps the last 8 turns. Tool calls inside those turns ride along full-fidelity, so the model sees what tools ran and with what arguments. Items from the in-flight request — anything produced this turn so far — are always included, regardless of the limit. That guarantee is what makes "try again" after a mid-turn failure work: the retried turn can still see the user's last message and any partially completed tool state.
+`{ limit: 8 }` keeps the last 8 turns. Tool calls inside those turns ride along full-fidelity, so the model sees what tools ran and with what arguments. Items from the in-flight request — anything produced this turn so far — are included by default, regardless of the limit. That default is what makes "try again" after a mid-turn failure work: the retried turn can still see the user's last message and any partially completed tool state.
+
+When you read history yourself and want the earlier turns only, pass `includeInFlight: false`:
+
+```ts
+const earlier = await ctx.session.items.history({ includeInFlight: false, limit: { turns: 3 } });
+```
+
+Only `items.history()` reads this option. The other item views ignore it.
 
 The bare `number` form has different meanings across views: in `items.history()` it counts turns, in `items.all()` and `items.client()` it counts items. Use the explicit `{ turns: N }` form when you want to be unambiguous in new code:
 

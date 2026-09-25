@@ -6,8 +6,8 @@
  * inert (same convention as `tasks/collection/tests/task-caps.type-test.ts`).
  *
  * What they pin down: both documented ways to fill the slot compile (the
- * helper, and a block hand-built from `skillQuestions`), and a block of
- * another kind does not.
+ * helper, with or without `recentMessages`, and a block hand-built from
+ * `skillQuestions`), and a block of another kind does not.
  */
 import { evaluator, handler } from "@flow-state-dev/core";
 import { createSkillActivator } from "../skill-activator";
@@ -15,6 +15,12 @@ import { skillEvaluator, skillQuestions } from "../skill-evaluator";
 
 // The helper, with a model string.
 createSkillActivator({ evaluator: skillEvaluator("provider/model") });
+
+// The helper, with the earlier turns a follow-up needs.
+createSkillActivator({ evaluator: skillEvaluator("provider/model", { recentMessages: 3 }) });
+
+// @ts-expect-error — the count is a number.
+skillEvaluator("provider/model", { recentMessages: "3" });
 
 // A block hand-built from the question function, as the docs show it.
 const pickSkill = evaluator({

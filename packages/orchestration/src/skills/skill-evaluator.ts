@@ -21,21 +21,46 @@ import type {
 import type { EvaluatorDefinition } from "@flow-state-dev/core";
 import { NO_SKILL } from "./skill-activation-types";
 import type { OfferedSkill } from "./skill-catalog";
+import {
+  recentMessageSchema,
+  rememberRecentTurns,
+  type RecentMessage,
+} from "./skill-evaluator-turns";
+
+export type { RecentMessage } from "./skill-evaluator-turns";
 
 /**
  * What the activator hands its evaluator: the user's message and the skills
  * this binding may activate (allowed, model-invocable, capped).
+ *
+ * `recentMessages` is filled only for a block built by
+ * `skillEvaluator(model, { recentMessages })` with a count above 0: the
+ * messages of the earlier turns it asked for, oldest first, read from the
+ * session. Any other block is handed `{ message, skills }`.
  */
 export interface SkillEvaluatorInput {
   message: string;
   skills: OfferedSkill[];
+  recentMessages?: RecentMessage[];
 }
 
 /** Runtime schema for {@link SkillEvaluatorInput}. */
 export const skillEvaluatorInputSchema = z.object({
   message: z.string(),
   skills: z.array(z.object({ name: z.string(), description: z.string() })),
+  recentMessages: z.array(recentMessageSchema).optional(),
 });
+
+/** Options for {@link skillEvaluator}. */
+export interface SkillEvaluatorOptions {
+  /**
+   * How many earlier turns the model sees before the message. A turn is one
+   * earlier request: what the user said and every message the assistant said
+   * back. Only user and assistant text is read. Omit it or pass `0` to
+   * evaluate the message alone.
+   */
+  recentMessages?: number;
+}
 
 /** The question set the activator reads: one `skill` choice. */
 export type SkillQuestions = { skill: ChoiceQuestion<string> };
@@ -79,15 +104,37 @@ export type SkillEvaluatorBlock = EvaluatorDefinition<
  *   `openai.evaluationModel("gpt-5.4-mini")`, used as given. A model that
  *   can only generate is refused here, by core.
  *
+ * @param options - `recentMessages`: how many earlier turns the model sees
+ *   before the message, so a follow-up like "yes, do that" can match the
+ *   skill an earlier offer was about. With it above 0 the evaluated state is
+ *   `{ recentMessages, message }`; omitted or `0`, it is the message alone.
+ *   A negative, fractional or non-numeric value throws here.
+ *
  * @example
  * createSkillActivator({ initialSkills, evaluator: skillEvaluator("typesafe-ai/jev") });
+ * createSkillActivator({
+ *   initialSkills,
+ *   evaluator: skillEvaluator("typesafe-ai/jev", { recentMessages: 3 }),
+ * });
  */
-export function skillEvaluator(model: string | EvaluationModel): SkillEvaluatorBlock {
-  return evaluator({
+export function skillEvaluator(
+  model: string | EvaluationModel,
+  options: SkillEvaluatorOptions = {},
+): SkillEvaluatorBlock {
+  const turns = options.recentMessages ?? 0;
+  if (typeof turns !== "number" || !Number.isInteger(turns) || turns < 0) {
+    throw new Error(
+      `skillEvaluator: "recentMessages" must be a non-negative integer (got ${typeof turns === "string" ? JSON.stringify(turns) : String(turns)}).`,
+    );
+  }
+  const block = evaluator({
     name: "skill-evaluator",
     model,
     inputSchema: skillEvaluatorInputSchema,
-    state: (input) => input.message,
+    state: (input) =>
+      turns > 0 ? { recentMessages: input.recentMessages ?? [], message: input.message } : input.message,
     questions: skillQuestions,
   });
+  if (turns > 0) rememberRecentTurns(block, turns);
+  return block;
 }

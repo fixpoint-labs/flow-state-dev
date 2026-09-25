@@ -70,6 +70,15 @@ export type ItemQuery = {
   itemVisibility?: ItemVisibility;
   /** Filter by producing agent name. Scalar or array form. */
   agentName?: string | string[];
+  /**
+   * Whether `items.history()` appends the in-flight request's items after the
+   * completed prior turns. Defaults to `true`, so a retry after a mid-turn
+   * failure sees its own tool state. Pass `false` for prior turns only, for
+   * example to hand a model the earlier conversation without the request
+   * that is running now. Only `history()` reads it; `all()`, `client()` and
+   * `selectForContext()` ignore it.
+   */
+  includeInFlight?: boolean;
 };
 
 export type SessionItemViews = {

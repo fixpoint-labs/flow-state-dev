@@ -521,6 +521,8 @@ generator({
 The up-front activator, `createSkillActivator`, picks skills before the generator runs: slash,
 then keywords, then a classifier. Pass `evaluator: skillEvaluator(model)` to run that last tier
 on an evaluation model. It picks one skill or none, and its answer is final.
+Pass `skillEvaluator(model, { recentMessages: 3 })` to let it read the last three turns
+too, so follow-ups like "yes, do that" can match.
 `skillQuestions` builds the same question for an evaluator you construct yourself. See
 [Tier 3 with an evaluator](https://flow-state.dev/docs/skills/activation#tier-3-with-an-evaluator).
 

@@ -297,9 +297,10 @@ export async function selectRequestsByLimit(
  * end and never split. The most recent prior turn is always included
  * (even if alone over budget). See `selectRequestsByLimit`.
  *
- * Live items from the current (in-flight) request are always appended
- * regardless of limit — this preserves the retry-after-mid-turn-failure
- * scenario where the user's "try again" must see the in-flight tool state.
+ * Live items from the current (in-flight) request are appended regardless
+ * of limit — this preserves the retry-after-mid-turn-failure scenario where
+ * the user's "try again" must see the in-flight tool state. A query with
+ * `includeInFlight: false` leaves them out and returns prior turns only.
  *
  * Empty-of-LLM-content turns (turns whose items are all sub-agent or
  * non-LLM types) still count against `{ turns: N }` but contribute zero
@@ -336,9 +337,9 @@ export async function loadLLMHistory(
     messages.push(...turn.messages);
   }
 
-  // Live items from the in-flight request are always included regardless
-  // of limit. This is the retry/resume guarantee.
-  if (readLiveItems !== undefined) {
+  // Live items from the in-flight request are included regardless of limit
+  // unless the caller opts out. This is the retry/resume guarantee.
+  if (readLiveItems !== undefined && query?.includeInFlight !== false) {
     messages.push(
       ...expandRequestToMessages(readLiveItems(), allowedTypes, allowedRoles)
     );
