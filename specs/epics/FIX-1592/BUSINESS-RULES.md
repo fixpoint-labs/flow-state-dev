@@ -12,21 +12,21 @@ owns it and where it's checked. FIX-1585's own BR-n stay in its spec; this set c
 |---|---|---|---|
 | ER-1 | A note to a `desk-clerk` seat gets an answer written by a model, never the note echoed back | FIX-1589 | FIX-1589's browser check · its real-model goal |
 | ER-2 | The clerk either answers or files. A filed note becomes one row on `followups` or `escalations` through the channel's own `fileTask`, and the person's conversation says it was filed and where | FIX-1589 | FIX-1589's browser check |
-| ER-3 | A post to a channel wakes each member seat whose kind has an answering action, by calling that action. A kind mapped to none is not woken, and nobody is woken by their own post | FIX-1590 | FIX-1590's tests · goal leg V14 unchanged |
-| ER-4 | A woken seat's reply lands in that seat's own conversation. No action run by the fan-out posts back into the channel that woke it | FIX-1590 | FIX-1590's tests: one post, one round of wakes, no second |
 | ER-5 | A person can pick up an `escalations` row from the board panel and settle it. The `followups` drain can be run from the board panel. `support.wren` still has no composer (FIX-1585 BR-15) | FIX-1591 | FIX-1591's browser check |
-| ER-6 | One kind→action map, FIX-1585 D3's, for the seat composer and the fan-out alike | FIX-1585 decides · FIX-1589, FIX-1590 consume | FIX-1590's spec review · FIX-1585's drift test |
+| ER-6 | One kind→action map, FIX-1585 D3's, for the seat composer and any later consumer | FIX-1585 decides · FIX-1589 consumes | FIX-1589's spec review · FIX-1585's drift test |
 | ER-7 | The only package change in the set is FIX-1585 D1's `expose: ["transcript"]` line on the channel kind | FIX-1585 | Every child's spec review · the Kill line |
 | ER-8 | The rows on both boards come from one producer: the clerk's filing | FIX-1589 decides · FIX-1591 consumes | FIX-1591's spec review |
+
+ER-3 and ER-4 left the set with FIX-1590 ([D1](DECISIONS.md#d1)); the numbers are not reused.
 
 ## What no child may do
 
 | # | Rule | Because |
 |---|---|---|
 | ER-9 | No kitchen-sink-only route or messaging API. Every browser verb calls an action a flow already declares | Architect fence. A reference app with a private API teaches the private API |
-| ER-10 | No Workforce Layer 2 concept in core or engine, and no new Layer 1 Channel, Notify or Dispatcher piece. Waking seats uses core's dispatcher as the channel docs teach | Architect fence; D1's collapse trigger on FIX-1590 |
+| ER-10 | No Workforce Layer 2 concept in core or engine, and no new Layer 1 Channel, Notify or Dispatcher piece | Architect fence |
 | ER-11 | No edit to `packages/workforce/src/agent-worker-flow.ts` until FIX-1459 lands | Another thread is implementing FIX-1459 in that file |
-| ER-12 | No Assistant tool that posts or asks; no channel create, delete or invite (FIX-1415); no verified per-participant identity (FIX-1493) | Not doing. Each is its own decision |
+| ER-12 | No change to the notify stub: a post still wakes no seat (FIX-1590, a follow-on); no Assistant tool that posts or asks; no channel create, delete or invite (FIX-1415); no verified per-participant identity (FIX-1493) | Not doing. Each is its own decision |
 | ER-13 | No child widens FIX-1585's spec or PR #2258 | Cycle PM fence. Follow-ons land in their own issues |
 | ER-14 | No child re-creates an unattended board in kitchen-sink to keep the retired demo | D3. The framework's own test carries the warning |
 
@@ -34,8 +34,8 @@ owns it and where it's checked. FIX-1585's own BR-n stay in its spec; this set c
 
 | # | Rule | Because |
 |---|---|---|
-| ER-15 | FIX-1589 starts when FIX-1585's implementation merges; FIX-1590 and FIX-1591 start when FIX-1589's does. Wired in Linear as blocked-by | D1. A spec merge is not a start signal |
-| ER-16 | A child that finds it needs a package change beyond ER-7, or a live key to prove its branch, stops and comments up on this epic | The Kill line. Deciding it locally hides the one fact that ends the epic |
+| ER-15 | FIX-1589 starts when FIX-1585's implementation merges; FIX-1591 starts when FIX-1589's does. Wired in Linear as blocked-by | D1. A spec merge is not a start signal |
+| ER-16 | A child that finds it needs a package change beyond ER-7, or a live key to pass one of its keyless browser checks, stops and comments up on this epic. The real-model goal (ER-18) needs a key by design and does not trip this | The Kill line. Deciding it locally hides the one fact that ends the epic |
 
 ## The proof
 

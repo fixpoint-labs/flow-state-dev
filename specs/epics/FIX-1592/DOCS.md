@@ -10,7 +10,7 @@ Each child's `DOCS.md` carries its own specifics.
 ## UPDATE · `apps/kitchen-sink/README.md` · the support team's channels, new opening paragraph
 
 > You can use the desk from the page. Open `support.desk` in the rail and post; the line lands
-> in the channel's transcript and each member seat that answers notes is woken. Open
+> in the channel's transcript. Open
 > `support.ada` and send a note: the front desk answers it from a model, or files it on one of
 > the desk's two boards and says so. Rows on `followups` are run by `support.wren`. Rows on
 > `escalations` wait for a person, and you pick them up from the board's panel.
@@ -37,8 +37,8 @@ FIX-1591 links that section by its published anchor when it lands.
 | The new opening above | FIX-1591, last to land, once every sentence in it is true | This document |
 | The `escalations` replacement | FIX-1591 | This document · its `DOCS.md` |
 | The clerk's answer-or-file behaviour, the `desk-clerk` header comment | FIX-1589 | Its `DOCS.md` |
-| The fan-out paragraph ("Posting to a channel notifies its members…") and `channel-notify.ts`'s header, which today calls itself a placeholder | FIX-1590 | Its `DOCS.md` |
 | The composers | FIX-1585 | [Its `DOCS.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-1585/specs/issues/FIX-1585/DOCS.md) |
 
-If FIX-1590 is cut, the opening drops "and each member seat that answers notes is woken" before
-it is published. Do not publish the opening because this spec merged.
+The fan-out paragraph ("Posting to a channel notifies its members…") and `channel-notify.ts`'s
+placeholder header stay as they are: the notify stub is unchanged (ER-12). Do not publish the
+opening because this spec merged.

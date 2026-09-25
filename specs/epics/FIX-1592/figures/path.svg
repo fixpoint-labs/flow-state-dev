@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 25 September 2026, drawn in steps rather than dates because the epic is unscheduled. Input lane: FIX-1459, PACKAGE.md, in development on another thread; it fences agent-worker-flow.ts and blocks no child. Step 1: FIX-1585, its spec in review and then its implementation; the now line sits inside its spec bar. Step 2: FIX-1589, the clerk. Step 3, side by side: FIX-1590, posts wake seats, and FIX-1591, the boards work. Then wrap. The critical path runs through FIX-1585, FIX-1589 and FIX-1591 to wrap.">
+<svg viewBox="0 0 940 260" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 25 September 2026, drawn in steps rather than dates because the epic is unscheduled. Input lane: FIX-1459, PACKAGE.md, in development on another thread; it fences agent-worker-flow.ts and blocks no child. Step 1: FIX-1585, its spec in review and then its implementation; the now line sits inside its spec bar. Step 2: FIX-1589, the clerk. Step 3: FIX-1591, the boards work. Then wrap. The critical path runs through FIX-1585, FIX-1589 and FIX-1591 to wrap.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -23,20 +23,20 @@
     .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-g    { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="300"/>
+  <rect class="bg" x="0" y="0" width="940" height="260"/>
   <text class="t-lbl" x="16" y="18">THE PATH &#183; AS OF 25 SEP 2026 &#183; UNSCHEDULED, SO THE AXIS IS ORDER, NOT DATES</text>
 
   <g id="axis">
     <path class="axis" d="M220 44 L924 44"/>
     <text class="t-s" x="232" y="36">step 1</text>
-    <path class="tick" d="M444 44 L444 250"/>
+    <path class="tick" d="M444 44 L444 210"/>
     <text class="t-s" x="452" y="36">step 2</text>
-    <path class="tick" d="M624 44 L624 250"/>
+    <path class="tick" d="M624 44 L624 210"/>
     <text class="t-s" x="632" y="36">step 3</text>
-    <path class="tick" d="M824 44 L824 250"/>
+    <path class="tick" d="M824 44 L824 210"/>
     <text class="t-s" x="832" y="36">wrap</text>
-    <path class="now" d="M300 88 L300 250"/>
-    <text class="t-now" x="296" y="260" text-anchor="end">now</text>
+    <path class="now" d="M300 88 L300 210"/>
+    <text class="t-now" x="296" y="220" text-anchor="end">now</text>
   </g>
 
   <g id="in-1459">
@@ -57,23 +57,17 @@
     <rect class="todo" x="452" y="140" width="164" height="18" rx="3"/>
     <text class="t-s" x="460" y="153">spec &#8594; build &#183; goal</text>
   </g>
-  <g id="l-1590">
-    <text class="t-ln" x="16" y="192">FIX-1590 &#183; posts wake seats</text>
-    <rect class="todo" x="632" y="180" width="130" height="18" rx="3"/>
-    <text class="t-s" x="640" y="193">spec &#8594; build</text>
-    <text class="t-s" x="772" y="193">cuttable</text>
-  </g>
   <g id="l-1591">
-    <text class="t-ln" x="16" y="232">FIX-1591 &#183; the boards work</text>
-    <rect class="todo" x="632" y="220" width="184" height="18" rx="3"/>
-    <text class="t-s" x="640" y="233">spec &#8594; build &#183; README</text>
-    <text class="t-g" x="832" y="233">proof holds</text>
+    <text class="t-ln" x="16" y="192">FIX-1591 &#183; the boards work</text>
+    <rect class="todo" x="632" y="180" width="184" height="18" rx="3"/>
+    <text class="t-s" x="640" y="193">spec &#8594; build &#183; README</text>
+    <text class="t-g" x="832" y="193">proof holds</text>
   </g>
 
   <g id="critical">
     <path class="crit" d="M436 109 L444 109 L444 149 L452 149"/>
-    <path class="crit" d="M616 149 L624 149 L624 229 L632 229"/>
-    <path class="crit" d="M816 229 L832 229"/>
-    <text class="t-g" x="16" y="286">Critical path: FIX-1585 impl &#8594; FIX-1589 &#8594; FIX-1591 &#8594; wrap. FIX-1590 runs beside FIX-1591 and does not move the wrap.</text>
+    <path class="crit" d="M616 149 L624 149 L624 189 L632 189"/>
+    <path class="crit" d="M816 189 L832 189"/>
+    <text class="t-g" x="16" y="246">Critical path: the whole chain, FIX-1585 impl &#8594; FIX-1589 &#8594; FIX-1591 &#8594; wrap. FIX-1590 was cut in review; it is a follow-on.</text>
   </g>
 </svg>
