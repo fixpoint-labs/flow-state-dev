@@ -1,0 +1,29 @@
+# with wake.patch
+PASS W1 support.iris — conversations=1 userTurnsWithToken=1 scriptedReplies=1 parent=support.desk
+PASS W1 support.otto — conversations=1 userTurnsWithToken=1 scriptedReplies=1 parent=support.desk
+PASS W2 no other seat — support.ada=0 support.grace=0 support.wren=0
+PASS W3 listed as a dispatch run of the channel — parent=support.desk
+PASS W6 hidden without include=dispatch-runs — plainListing=0 containsRun=false
+PASS W4 same conversation — first=dsx_8c488497171e026db12b3e74d893c87b second=dsx_8c488497171e026db12b3e74d893c87b
+PASS W5 seat-authored post wakes nobody — support.ada=0 support.grace=0 support.iris=0 support.otto=0 support.wren=0
+RESULT: PASS
+
+# control POC_STUB=1 (today's name-only stub)
+FAIL W1 support.iris — conversations=0 userTurnsWithToken=0 scriptedReplies=0 parent=undefined
+FAIL W1 support.otto — conversations=0 userTurnsWithToken=0 scriptedReplies=0 parent=undefined
+PASS W2 no other seat — support.ada=0 support.grace=0 support.wren=0
+FAIL W3 listed as a dispatch run of the channel — parent=undefined
+FAIL W6 hidden without include=dispatch-runs — plainListing=0 containsRun=false
+FAIL W4 same conversation — first=undefined second=undefined
+PASS W5 seat-authored post wakes nobody — support.ada=0 support.grace=0 support.iris=0 support.otto=0 support.wren=0
+RESULT: FAIL
+
+# control POC_NO_FILTER=1 (D2's author filter dropped)
+PASS W1 support.iris — conversations=1 userTurnsWithToken=1 scriptedReplies=1 parent=support.desk
+PASS W1 support.otto — conversations=1 userTurnsWithToken=1 scriptedReplies=1 parent=support.desk
+PASS W2 no other seat — support.ada=0 support.grace=0 support.wren=0
+PASS W3 listed as a dispatch run of the channel — parent=support.desk
+PASS W6 hidden without include=dispatch-runs — plainListing=0 containsRun=false
+PASS W4 same conversation — first=dsx_23aba306730ac0c82225e335ed63bde7 second=dsx_23aba306730ac0c82225e335ed63bde7
+FAIL W5 seat-authored post wakes nobody — support.ada=0 support.grace=0 support.iris=1 support.otto=1 support.wren=0
+RESULT: FAIL
