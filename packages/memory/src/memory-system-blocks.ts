@@ -1,4 +1,4 @@
-import { generator, handler, sequencer } from '@flow-state-dev/core'
+import { assertEvaluatorBlock, generator, handler, sequencer } from '@flow-state-dev/core'
 import { z } from 'zod'
 import { workingMemoryResource } from './working-memory'
 import type { WorkingMemoryHelperConfig } from './working-memory-helpers'
@@ -557,7 +557,7 @@ export function readObserveWindow(
  */
 export function memorySystemObserve(
   config: MemorySystemBlocksConfig,
-  readWindow?: (input: unknown) => string | undefined,
+  readWindow?: (input: unknown, ctx: { parent?: { input?: unknown } }) => string | undefined,
 ) {
   const episodicResource = config._episodicResource ?? (config.episodic
     ? createEpisodicMemoryResource(config.episodic.scope)
@@ -632,7 +632,7 @@ export function memorySystemObserve(
   // of instructions. Dedup is handled structurally in the reflect handler via
   // findBestOverlap. The observer's job is pure extraction from new conversation items.
   function buildContext(input: unknown, ctx: { session?: any; resources: any }): string | undefined {
-    return readWindow ? readWindow(input) : readObserveWindow(config.source, input, ctx)
+    return readWindow ? readWindow(input, ctx as { parent?: { input?: unknown } }) : readObserveWindow(config.source, input, ctx)
   }
 
   // FIX-435: flat resources map; intrinsic scope on each resource routes
@@ -661,7 +661,10 @@ export function memorySystemObserve(
  * - Persistent/permanent items above significance threshold go to episodic memory
  * - Permanent facts go directly to semantic memory (direct extraction)
  */
-export function memorySystemReflect(config: MemorySystemBlocksConfig) {
+export function memorySystemReflect(
+  config: MemorySystemBlocksConfig,
+  readBoundary?: (ctx: { parent?: { input?: unknown } }) => number,
+) {
   const episodicResource = config._episodicResource ?? (config.episodic
     ? createEpisodicMemoryResource(config.episodic.scope)
     : undefined)
@@ -808,11 +811,15 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
         }
       }
 
-      // Update tracking counters
+      // Update tracking counters. With a judged window, the watermark moves
+      // to the boundary read with that window, never past it.
       const allItems = ctx.session?.items?.all?.() ?? []
+      const boundary = readBoundary?.(ctx)
       await sysRef.updateState((s: any) => ({
         ...s,
-        lastProcessedIndex: watermarkPast(allItems, s.lastProcessedIndex),
+        lastProcessedIndex: boundary === undefined
+          ? watermarkPast(allItems, s.lastProcessedIndex)
+          : Math.max(s.lastProcessedIndex, boundary),
         episodicWritesSinceLastConsolidation: s.episodicWritesSinceLastConsolidation + episodicWrites,
         evictedPersistentSinceLastConsolidation: s.evictedPersistentSinceLastConsolidation + evictedPersistent,
       }))
@@ -1630,46 +1637,62 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
     .stepIf((result) => result.triggered, generateAndPersist)
 }
 
-/** Capture's per-run state when an evaluator is set: the window it read. */
-const captureWindowStateSchema = z.object({
-  window: z.string().nullable().default(null),
+/** What the capture window step hands on: the window, and where it ended. */
+const judgedWindowSchema = z.object({
+  window: z.string().nullable(),
+  boundary: z.number(),
 })
+type JudgedWindow = z.infer<typeof judgedWindowSchema>
+
+/** The judged window, read from the enclosing judge sequencer's input. */
+function judged(ctx: { parent?: { input?: unknown } }): JudgedWindow {
+  return ctx.parent?.input as JudgedWindow
+}
+
+/**
+ * Refuse, when capture is built, an `evaluator` slot holding a block of
+ * another kind.
+ */
+function checkCaptureEvaluator(gate: CaptureEvaluatorBlock): void {
+  assertEvaluatorBlock(gate, {
+    slot: 'memory system: "evaluator"',
+    helper: 'captureEvaluator(model)',
+    questions: 'captureQuestions',
+  })
+}
 
 /**
  * The capture head when an evaluator is set:
  *
- *   window → (none: stop) → evaluator → remember: observe → reflect
- *                                     → skip: mark the window read
+ *   window → (none: stop) → judge: evaluator → remember: observe → reflect
+ *                                            → skip: mark the window read
  *
- * The window is computed once ({@link readObserveWindow}) and both the
- * evaluator and the observer read that same text. Memory reads the answer's
- * choice only, never its confidence. An evaluator error fails the capture
- * and leaves the window unread; nothing runs the observer in its place.
+ * The window is read once ({@link readObserveWindow}), together with the
+ * watermark boundary it ends at, and both travel as the judge sequencer's
+ * input: the evaluator and the observer read that same text, and reflect or
+ * the skip path advance the watermark to that boundary and no further. Nothing
+ * about the window is written to scope or sequencer state, so it is never
+ * emitted as a state change or kept in a checkpoint.
+ *
+ * Memory reads the answer's choice only, never its confidence. An evaluator
+ * error fails the capture and leaves the window unread; nothing runs the
+ * observer in its place.
  */
-function evaluatedCapture(
-  config: MemorySystemBlocksConfig,
-  gate: CaptureEvaluatorBlock,
-  reflectBlock: ReturnType<typeof memorySystemReflect>,
-) {
-  const kind = (gate as { kind?: unknown } | null)?.kind
-  if (kind !== 'evaluator') {
-    throw new Error(
-      `memory system: "evaluator" must be an evaluator block (got ${String(kind)} "${String((gate as { name?: unknown } | null)?.name)}"). ` +
-        "Build one with captureEvaluator(model), or core's evaluator() with captureQuestions.",
-    )
-  }
+function evaluatedCapture(config: MemorySystemBlocksConfig, gate: CaptureEvaluatorBlock) {
+  checkCaptureEvaluator(gate)
   const prefix = config.name ?? 'memory'
 
   const windowBlock = handler({
     name: `${prefix}/window`,
     inputSchema: z.any(),
-    outputSchema: z.object({ window: z.string().nullable() }),
-    sequencerStateSchema: captureWindowStateSchema,
+    outputSchema: judgedWindowSchema,
     resources: { memorySystem: memorySystemResource },
     execute: async (input, ctx) => {
-      const window = readObserveWindow(config.source, input, ctx) ?? null
-      await ctx.sequencer!.patchState({ window })
-      return { window }
+      const allItems = ctx.session?.items?.all?.() ?? []
+      return {
+        window: readObserveWindow(config.source, input, ctx) ?? null,
+        boundary: watermarkPast(allItems, ctx.resources.memorySystem.state.lastProcessedIndex),
+      }
     },
   })
 
@@ -1678,36 +1701,35 @@ function evaluatedCapture(
     inputSchema: z.any(),
     resources: { memorySystem: memorySystemResource },
     execute: async (_input, ctx) => {
-      const allItems = ctx.session?.items?.all?.() ?? []
+      const { boundary } = judged(ctx)
       await ctx.resources.memorySystem.updateState((s: any) => ({
         ...s,
-        lastProcessedIndex: watermarkPast(allItems, s.lastProcessedIndex),
+        lastProcessedIndex: Math.max(s.lastProcessedIndex, boundary),
       }))
     },
   })
 
-  // The observer reads the window the gate judged, not a fresh read.
-  const rememberBlock = sequencer({
-    name: `${prefix}/remember`,
-    inputSchema: z.object({ window: z.string() }),
-  })
-    .step(memorySystemObserve(config, (input) => (input as { window: string }).window))
-    .step(reflectBlock)
+  // The observer and reflect read the judged window from the judge's input,
+  // not from a fresh read of the session.
+  const observeBlock = memorySystemObserve(config, (_input, ctx) => judged(ctx).window ?? undefined)
+  const reflectBlock = memorySystemReflect(config, (ctx) => judged(ctx).boundary)
 
-  const judgedWindow = (_: unknown, ctx: any): { window: string } => ({ window: ctx.sequencer.state.window })
+  const judge = (sequencer({
+    name: `${prefix}/judge`,
+    inputSchema: judgedWindowSchema,
+  }) as any)
+    .step((v: JudgedWindow) => v.window, gate)
+    .map((v: unknown) => ({ decision: readCaptureChoice(v) }))
+    .stepIf((v: { decision: string }) => v.decision === 'remember', observeBlock)
+    .stepIf((v: { items?: unknown }) => Array.isArray(v?.items), reflectBlock)
+    .tapIf((v: { decision?: string }) => v.decision === 'skip', markReadBlock)
 
   return (sequencer({
     name: config.name ?? 'memory/capture',
     inputSchema: z.any(),
-    stateSchema: captureWindowStateSchema,
   }) as any)
     .step(windowBlock)
-    .stepIf((v: { window: string | null }) => v.window !== null, (v: { window: string }) => v.window, gate)
-    .map((v: unknown) => ({
-      decision: v !== null && typeof v === 'object' && 'answers' in v ? readCaptureChoice(v) : 'none',
-    }))
-    .stepIf((v: { decision: string }) => v.decision === 'remember', judgedWindow, rememberBlock)
-    .tapIf((v: { decision?: string }) => v.decision === 'skip', markReadBlock)
+    .stepIf((v: JudgedWindow) => v.window !== null, judge)
 }
 
 /**
@@ -1721,19 +1743,18 @@ function evaluatedCapture(
  * failure surface of a background-only chain into the user-visible turn.
  */
 export function memorySystemCapture(config: MemorySystemBlocksConfig) {
-  const reflectBlock = memorySystemReflect(config)
   const tickBlock = memorySystemTick(config)
 
   // With no evaluator, the pipeline is built exactly as it always was: no
   // pass-through gate, no extra step in the trace.
   let pipeline: any = config.evaluator
-    ? evaluatedCapture(config, config.evaluator, reflectBlock).tap(tickBlock)
+    ? evaluatedCapture(config, config.evaluator).tap(tickBlock)
     : sequencer({
         name: config.name ?? 'memory/capture',
         inputSchema: z.any(),
       })
         .step(memorySystemObserve(config))
-        .step(reflectBlock)
+        .step(memorySystemReflect(config))
         .tap(tickBlock)
 
   if (config.semantic) {

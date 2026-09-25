@@ -532,6 +532,24 @@ describe("configuration", () => {
     }
   });
 
+  it("words the refusal exactly, naming the block's kind and the two ways to build one", () => {
+    expect(() =>
+      createSkillActivator({
+        evaluator: handler({ name: "a-handler", execute: () => ({}) }) as unknown as SkillActivatorOptions["evaluator"],
+      }),
+    ).toThrow(
+      'createSkillActivator: "evaluator" must be an evaluator block (got handler "a-handler"). ' +
+        "Build one with skillEvaluator(model), or core's evaluator() with skillQuestions.",
+    );
+    // Something with no kind at all is refused without a "(got …)" clause.
+    expect(() =>
+      createSkillActivator({ evaluator: {} as unknown as SkillActivatorOptions["evaluator"] }),
+    ).toThrow(
+      'createSkillActivator: "evaluator" must be an evaluator block. ' +
+        "Build one with skillEvaluator(model), or core's evaluator() with skillQuestions.",
+    );
+  });
+
   it("refuses an evaluator beside the generator classifier's options (BR-16)", () => {
     const clashes: Array<Partial<SkillActivatorOptions>> = [
       { classifierModel: "intent/utility" },

@@ -92,11 +92,24 @@ async function harness(overrides: Overrides = {}) {
     ...overrides,
   })
   const turn = sequencer({ name: 'turn', inputSchema: z.string() }).sideChain(mem.capture)
+  // A turn whose only new message is one the client never sees.
+  const hiddenTurn = sequencer({ name: 'hidden-turn', inputSchema: z.string() })
+    .tap(
+      handler({
+        name: 'whisper',
+        inputSchema: z.string(),
+        execute: (text, ctx) => {
+          ctx.emit.message(text, { itemVisibility: { client: false } })
+        },
+      }),
+    )
+    .sideChain(mem.capture)
   const flow = defineFlow({
     kind: 'capture-evaluator-test',
     actions: {
       say: { block: turn, inputSchema: z.string(), userMessage: (text: string) => text },
       poll: { block: turn, inputSchema: z.string() },
+      whisper: { block: hiddenTurn, inputSchema: z.string() },
     },
     resources: { ...mem.sessionResources, ...mem.userResources },
   } as any)()
@@ -106,7 +119,7 @@ async function harness(overrides: Overrides = {}) {
     script: [{ when: () => true, then: { structuredOutput: OBSERVED } }],
   })
 
-  async function run(action: 'say' | 'poll', input: string) {
+  async function run(action: 'say' | 'poll' | 'whisper', input: string) {
     return testFlow({
       flow,
       action,
@@ -126,6 +139,7 @@ async function harness(overrides: Overrides = {}) {
     observer,
     say: (text: string) => run('say', text),
     poll: () => run('poll', ''),
+    whisper: (text: string) => run('whisper', text),
     async stores() {
       const working = await read('session', SESSION, 'workingMemory')
       const system = await read('session', SESSION, 'memorySystem')
@@ -343,6 +357,76 @@ describe('capture with an evaluator', () => {
     expect((await h.stores()).watermark).toBe(-1)
   })
 
+  it('never writes the judged window to state: no state_change carries it, even a client-hidden message or source text', async () => {
+    const hidden = 'client-hidden detail 7f3a'
+    for (const choice of ['remember', 'skip'] as const) {
+      const model = scriptedModel([{ choice }])
+      const h = await harness({ evaluator: captureEvaluator(model) })
+      const result = await h.whisper(hidden)
+      expect(captureError(result.items)).toBeUndefined()
+      // The evaluator did judge the hidden message: it is in the window.
+      expect(String(model.calls[0]!.state)).toContain(hidden)
+      const leaked = result.items.filter(
+        (item: any) => item.type === 'state_change' && JSON.stringify(item).includes(hidden),
+      )
+      expect(leaked).toEqual([])
+    }
+
+    const secret = 'server-only source text 91bc'
+    const model = scriptedModel([{ choice: 'remember' }])
+    const h = await harness({ evaluator: captureEvaluator(model), source: () => `[user] ${secret}` })
+    const result = await h.say('hello')
+    expect(model.calls[0]!.state).toBe(`[user] ${secret}`)
+    expect(
+      result.items.filter((item: any) => item.type === 'state_change' && JSON.stringify(item).includes(secret)),
+    ).toEqual([])
+  })
+
+  it('a delayed skip racing an evaluator failure never marks the failed turn read', async () => {
+    // Two captures of one session overlap. The first is judged "skip" but its
+    // answer arrives late; meanwhile the second fails at the evaluator. The
+    // skip may mark read only what it judged, so the failed turn stays unread
+    // and the next capture's evaluator sees it again.
+    let started!: () => void
+    const firstStarted = new Promise<void>((resolve) => { started = resolve })
+    let release!: () => void
+    const released = new Promise<void>((resolve) => { release = resolve })
+    const calls: string[] = []
+    const model = {
+      specificationVersion: 'v4',
+      provider: 'mock.evaluation',
+      modelId: 'racing',
+      supportedQuestionTypes: ['choice', 'score', 'boolean'],
+      async doEvaluate(call: { state: unknown }) {
+        const state = String(call.state)
+        calls.push(state)
+        if (state.includes('turn B')) {
+          started()
+          await released
+          return mockEvaluationModel({ answers: { capture: { type: 'choice', choice: 'skip' } } }).doEvaluate(call as never)
+        }
+        if (state.includes('turn C') && calls.filter((c) => c.includes('turn C')).length === 1) {
+          throw new Error('evaluation model unavailable')
+        }
+        return mockEvaluationModel({ answers: { capture: { type: 'choice', choice: 'remember' } } }).doEvaluate(call as never)
+      },
+    } as unknown as EvaluationModel
+    const h = await harness({ evaluator: captureEvaluator(model) })
+
+    const first = h.say('small talk, turn B')
+    await firstStarted
+    const second = await h.say('My name is Joe, turn C')
+    expect(captureError(second.items)?.message).toContain('evaluation model unavailable')
+    release()
+    expect(captureError((await first).items)).toBeUndefined()
+
+    const third = await h.say('I work at Acme, turn D')
+    expect(captureError(third.items)).toBeUndefined()
+    const lastJudged = calls[calls.length - 1]!
+    expect(lastJudged).toContain('turn D')
+    expect(lastJudged).toContain('turn C')
+  })
+
   it('refuses, when built, a block of another kind in the evaluator slot', () => {
     const impostor = handler({
       name: 'always-remember',
@@ -350,7 +434,8 @@ describe('capture with an evaluator', () => {
       execute: () => ({ answers: { capture: { type: 'choice' as const, choice: 'remember' as const } } }),
     })
     expect(() => system({ model: 'openai/gpt-5.4-mini', working: true, evaluator: impostor as any })).toThrow(
-      /must be an evaluator block.*captureEvaluator/,
+      'memory system: "evaluator" must be an evaluator block (got handler "always-remember"). ' +
+        "Build one with captureEvaluator(model), or core's evaluator() with captureQuestions.",
     )
   })
 

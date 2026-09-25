@@ -101,8 +101,12 @@ const mem = system({
 });
 ```
 
-The model string resolves the same way your generators' model strings do. You can also pass a
-model instance, such as `openai.evaluationModel("gpt-5.4-mini")`.
+The evaluator needs an evaluation model: a model that picks among fixed answers instead of
+writing text ([Evaluation models](/docs/fundamentals/models#evaluation-models)). `typesafe-ai/jev`
+is Jev, served through Vercel's AI Gateway. An ordinary chat model string like
+`openai/gpt-5.4-mini` is not an evaluation model: through the gateway, the capture fails with an
+error saying it's a language model. For OpenAI, pass `openai.evaluationModel("gpt-5.4-mini")`
+from `@ai-sdk/openai` instead.
 
 On each capture, the evaluator reads the same new messages the observer would and answers
 `remember` or `skip`.
@@ -112,17 +116,16 @@ On each capture, the evaluator reads the same new messages the observer would an
   no later capture looks at them again.
 - **An error** (the evaluation model is down, or refuses the call): the capture fails the way an
   observer failure does. The messages stay unread, and the next capture that succeeds picks them
-  up. Memory never runs the observer in the evaluator's place.
+  up. An evaluator error never falls back to running the observer.
 
 A skip is final, so a model that skips too eagerly loses facts. Try it on a sample of your real
-conversations before you turn it on. It pays off when most turns are skips: a turn the evaluator
-passes costs one evaluate call on top of the observer.
+conversations before you turn it on. It pays off when most turns are skips: a turn it marks
+`remember` costs one evaluator call on top of the observer.
 
-Any evaluation-capable model works. Memory reads the answer only. It doesn't need the model to
-report how confident it is, and it doesn't use that confidence when the model does report it.
+Memory ignores any confidence score the model returns.
 
-Leave `evaluator` out and capture works as it always has. Memory doesn't depend on any
-evaluation model or provider package.
+Leave `evaluator` out and every captured turn runs the observer. You don't need to install an
+evaluation model or provider to use memory.
 
 #### Building the evaluator yourself
 
@@ -141,8 +144,9 @@ const worthRemembering = evaluator({
 });
 ```
 
-Keep the question's key and its two options, `remember` and `skip`. Memory reads those, and
-fails the capture with an error naming `captureQuestions` if they're missing.
+If you modify `captureQuestions`, keep its key and its `remember`/`skip` options. Otherwise the
+capture fails with an error saying the evaluator did not answer the "capture" question with
+"remember" or "skip", and telling you to build it with `captureQuestions`.
 
 ## Tier configuration
 
