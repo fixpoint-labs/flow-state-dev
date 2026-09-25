@@ -200,7 +200,10 @@ describe("a seat's own blocks are registered, not granted", () => {
     const [seat] = hireWorkforce([record({ id: "support.plain", body: "Plain." })], {
       kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
     });
-    expect(seat!.config).toMatchObject({ tools: [], seatTools: [] });
+    expect(seat!.config).toMatchObject({ seatTools: [] });
+    // No `tools:` line stays no line: an omitted list is never rewritten to `[]`,
+    // because the two grant different things.
+    expect(seat!.config).not.toHaveProperty("tools");
   });
 
   it("still refuses a `tools:` name that resolves nowhere, naming both doors", () => {

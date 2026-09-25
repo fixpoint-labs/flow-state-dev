@@ -163,6 +163,28 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
     expect(seen.outcome).toBe("handle worked");
   });
 
+  // A worker with no `tools:` line can call the tools of a preset it picked,
+  // including one the kind leaves off. That tool reaches the generator through
+  // the per-turn resolver too, so its store has to be declared by the kind for
+  // the same reason a catalog tool's is.
+  it("installs the store of a tool a worker reaches by picking an off-by-default preset", async () => {
+    const seen = { outcome: "never ran" };
+    const ledgerWork = defineCapability({
+      name: "ledger-work",
+      presets: { audit: { tools: [writeAudit(seen)] }, default: [] }
+    });
+    const kind = defineAgentWorkerFlow({ uses: [ledgerWork] });
+    const [seat] = hire(
+      [record({ id: "support.picker", declared: { capabilities: { "ledger-work": ["audit"] } } })],
+      { [AGENT_KIND]: kind }
+    );
+
+    expect(seat!.actions.run!.block.declaredResources?.auditLog).toBe(auditLog);
+    const result = await runSeat(seat!, "write-audit");
+    expect(result.error).toBeUndefined();
+    expect(seen.outcome).toBe("handle worked");
+  });
+
   // Kind-wide, not per seat: the catalog belongs to the kind, so its stores
   // belong to every seat of it — the same bill `uses` already presents.
   it("installs the store for a seat whose `tools:` never names the block", () => {

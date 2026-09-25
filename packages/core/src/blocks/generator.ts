@@ -116,12 +116,24 @@ interface DynamicCapSurface {
 }
 
 /**
+ * Which tool buckets a caller will use. A preset's `tools` or `controlTools`
+ * may be a function, so a bucket the caller would discard is not resolved at
+ * all: a resolver can be costly or have effects.
+ */
+interface DynamicCapCollect {
+  tools: boolean;
+  controlTools: boolean;
+}
+
+/**
  * Extract context and tool entries from a capability's active presets in a
  * single traversal. Walks nested static uses recursively via flattenCapabilities.
+ * Only the tool buckets named in `collect` are resolved; the others come back empty.
  */
 async function resolveDynamicCapSurface(
   cap: CapabilityRef,
   ctx: BlockContext,
+  collect: DynamicCapCollect,
 ): Promise<DynamicCapSurface> {
   // Open config is a build-time transform resolved by mergeCapabilities. A
   // config-declaring capability reaching the dynamic `uses` path — returned
@@ -149,7 +161,7 @@ async function resolveDynamicCapSurface(
       cap.uses.filter((e): e is CapabilityRef => typeof e !== "function")
     );
     for (const nested of flattened) {
-      const nestedSurface = await resolveDynamicCapSurface(nested, ctx);
+      const nestedSurface = await resolveDynamicCapSurface(nested, ctx, collect);
       contextEntries.push(...nestedSurface.contextEntries);
       tools.push(...nestedSurface.tools);
       controlTools.push(...nestedSurface.controlTools);
@@ -161,7 +173,7 @@ async function resolveDynamicCapSurface(
       const entries = Array.isArray(preset.context) ? preset.context : [preset.context];
       contextEntries.push(...entries);
     }
-    if (preset.tools) {
+    if (collect.tools && preset.tools) {
       if (Array.isArray(preset.tools)) {
         tools.push(...preset.tools);
       } else {
@@ -170,7 +182,7 @@ async function resolveDynamicCapSurface(
     }
     // Fence-exempt controls travel the same path but stay in their own bucket
     // so the generator's fence can tell them apart (FIX-1393).
-    if (preset.controlTools) {
+    if (collect.controlTools && preset.controlTools) {
       if (Array.isArray(preset.controlTools)) {
         controlTools.push(...preset.controlTools);
       } else {
@@ -2738,7 +2750,10 @@ export function generator<
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
             if (!capabilityMatchesAgent(cap, blockItemVisibility)) continue;
-            const surface = await resolveDynamicCapSurface(cap, ctx);
+            const surface = await resolveDynamicCapSurface(cap, ctx, {
+              tools: false,
+              controlTools: false,
+            });
             for (const entry of surface.contextEntries) {
               const v = typeof entry === "function"
                 ? await (entry as (i: unknown, c: BlockContext) => unknown)(input, ctx)
@@ -2810,9 +2825,14 @@ export function generator<
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
             if (!capabilityMatchesAgent(cap, blockItemVisibility)) continue;
-            const surface = await resolveDynamicCapSurface(cap, ctx);
+            // Behind a raised fence the catalog tools would be dropped, so
+            // they are not resolved at all.
+            const surface = await resolveDynamicCapSurface(cap, ctx, {
+              tools: !declaresTools,
+              controlTools: true,
+            });
             dynControlTools.push(...surface.controlTools);
-            if (!declaresTools) dynTools.push(...surface.tools);
+            dynTools.push(...surface.tools);
           }
         }
       }

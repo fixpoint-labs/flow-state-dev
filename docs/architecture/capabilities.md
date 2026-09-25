@@ -80,6 +80,13 @@ its `tools:`, and what reaches the generator is one declared list. Core is
 untouched by per-instance registration, and the fence stays exactly as literal
 as it reads above.
 
+Nothing crosses the fence that the seat did not choose. When a Workforce seat
+wrote no `tools:` line, the built-in `agent` kind adds to its declaration the
+tools of the capability presets the seat's own file picked (FIX-1459); a seat
+that wrote a line gets exactly that line. Presets the kind switches on by
+default are not a choice and add nothing. Core sees one declared list either
+way and stays exactly as literal as it reads above.
+
 ## Generator singletons (model, providerOptions, caching)
 
 Three generator-only singleton slots can be contributed by capability presets:
