@@ -70,8 +70,8 @@ const personas = definePersona({
 
 Describe each worker in a folder instead of in code. `readWorkforceDirectory` walks
 `<root>/teams/<teamId>/workers/<workerName>/`, reads each worker's `WORKER.md`, and returns
-one record per worker. `readWorkforce` wraps it, joining each seat's resolved skills and its
-team's instructions onto the records it hands back.
+one record per worker. `readWorkforce` wraps it, joining each seat's resolved skills, its
+team's instructions and the [packages](#packages-from-files) in its reach onto the records it hands back.
 
 ```ts
 import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
@@ -85,7 +85,7 @@ Each record is plain data:
 | Field | Description |
 |-------|-------------|
 | `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
-| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and four refused ones: `persona:`, `seatSkills:`, `seatTools:` and `teamInstructions:`. |
+| `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and five refused ones: `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:` and `teamInstructions:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
@@ -296,9 +296,9 @@ roster.problems;
 //    error: Error('CHANNEL.md in "standup/" must declare a non-empty `description`') }]
 ```
 
-`layer` is one of `worker`, `skill`, `team`, `document`, `reference` or `channel`, and the entries
-arrive in that order: worker slots, then each seat's skills, then team files, then documents, then
-references, then channels, and last a `reference` entry per basename claimed in both slots. `path`
+`layer` is one of `worker`, `skill`, `team`, `package`, `document`, `reference` or `channel`, and
+the entries arrive in that order: worker slots, then each seat's skills, then team files, then
+packages, then documents, then references, then channels, and last a `reference` entry per basename claimed in both slots. `path`
 is the path that failed, relative to the root. `error` is the original `Error`, `cause` chain
 intact.
 
@@ -437,22 +437,24 @@ entries take no mode — see [What a seat reaches](#what-a-seat-reaches).
 ### What a hireable kind must admit
 
 A worker kind is an ordinary flow. What makes it *hireable* is that its `configSchema` composes
-`workerConfigSchema()`, which declares the four settings a seat's bag may carry:
+`workerConfigSchema()`, which declares the settings a seat's bag may carry:
 
 | Setting | What it holds |
 | --- | --- |
 | `instructions?` | The worker's own instructions — its file body, or the frontmatter key. Imposed when the body is not empty, absent when it has none. |
 | `teamInstructions?` | The instructions its team wrote — read from that team's [`TEAM.md`](#the-optional-team-file). Imposed when its team wrote any, absent when the team wrote none or has no file. Never merged with `instructions`. |
 | `seatSkills` | The skills its folders resolved for it, in level order. Imposed on every seat, present and empty when there are none. |
-| `seatTools` | The blocks this seat's `tools:` resolved to from its own folders, already resolved. Imposed on every seat, present and empty when there are none. Live blocks, not names — names that resolved to the kind's catalog stay on the kind's own `tools` setting. |
+| `seatTools` | The blocks this seat's `tools:` resolved to from its own folders and the packages it holds, already resolved. Imposed on every seat, present and empty when there are none. Live blocks, not names — names that resolved to the kind's catalog stay on the kind's own `tools` setting. |
+| `seatPackages?` | The [packages](#packages-from-files) this seat holds, in the order it holds them: `{ name, path, instructions?, tools }[]`, where `tools` is the package's blocks. Imposed when the seat holds at least one, absent otherwise. |
 
-So hiring imposes all four: `instructions` when the body is not empty, `seatSkills` and `seatTools`
-always, and `teamInstructions` when the seat's team wrote a `TEAM.md`. A kind that reads
+So hiring imposes `instructions` when the body is not empty, `seatSkills` and `seatTools`
+always, `teamInstructions` when the seat's team wrote a `TEAM.md`, and `seatPackages` when the seat
+holds a package. A kind that reads
 `teamInstructions` for a seat whose team wrote none gets `undefined` — absent, never an empty
 string, which is what keeps "this team said nothing" and "this team said nothing *yet*" from being
 the same value in the bag.
 
-**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. (On the built-in `agent` kind, a seat with no `tools:` line can also call the tools of the capability presets it selected under `capabilities:`; a written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then your kind's catalog), and the ones that resolved to the seat's own folders arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
+**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. (On the built-in `agent` kind, a seat with no `tools:` line can also call what its own file chose: the tools of the capability presets it selected under `capabilities:`, and the blocks of the packages it holds. A written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, along with the blocks of the packages it holds, then your kind's catalog), and the ones that resolved to the seat's own folders or packages arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
 
 Add your kind's own settings on top, at the same level:
 
@@ -467,7 +469,7 @@ const triage = defineFlow({
 });
 ```
 
-`desk` sits at the top level beside the four, where the schema closes it: a worker file that writes
+`desk` sits at the top level beside the contract's keys, where the schema closes it: a worker file that writes
 a key your kind never declared is still refused by name. If your kind genuinely holds open-ended
 data, give it one declared key whose own schema is a record, rather than a nested bag of keys you
 did name.
@@ -482,9 +484,10 @@ these keys by hand hires just the same. Composing is what keeps it current: when
 the contract, a composed kind picks it up, and a hand-rolled one refuses at boot naming the new key
 until you add it.
 
-Three of the four are never authored. A worker file that writes `seatSkills:`, `seatTools:` or
-`teamInstructions:` is refused by name, at the loader and at the hire: a seat's skills and its own
-blocks are the folders it can see, and a team's instructions come from its team's `TEAM.md` body.
+Only `instructions` is ever authored. A worker file that writes `seatSkills:`, `seatTools:`,
+`seatPackages:` or `teamInstructions:` is refused by name, at the loader and at the hire: a seat's
+skills, its own blocks and its packages are the folders it can see, and a team's instructions come
+from its team's `TEAM.md` body.
 That last key is refused in a `TEAM.md` too — the file an author would most reasonably try it in —
 so all three doors refuse it, from one exported constant rather than a literal spelled into each.
 
@@ -537,15 +540,16 @@ worker.
 whatever it selected under `capabilities:`. The kind maps those names against the catalog and hands
 the model that list and nothing else; `tools: []` means no tool. A worker with no `tools:` line can
 call the tools of every capability preset its own file selects under `capabilities:`, including a
-preset whose tools are a function built per turn. A preset the kind switches on by default gives
-its tools only to the workers that select it. A worker with no `tools:` line whose selected presets list
+preset whose tools are a function built per turn, and every block of every package it holds. A
+preset the kind switches on by default gives its tools only to the workers that select it. A worker with no `tools:` line whose selected presets list
 different tools under one name is refused at the hire; the refusal names the worker, the tool, and
 both presets, and suggests selecting one of them or writing a `tools:` line. A worker that writes a
 line is hired whatever its presets' tools are named, and gets exactly its list.
 
 A skill does not widen the grant: a skill's `allowed-tools` are validated against the catalog but
 never registered, and a skill's delegated workers are seated from the names the holding worker
-listed, so tools a worker got by selecting a preset do not travel to its delegates. Everything else
+listed, so tools a worker got by selecting a preset, and the blocks of its packages, do not travel
+to its delegates. Everything else
 a capability brings — context, storage, helpers — arrives whatever `tools:` says.
 
 What does reach a worker without appearing in `tools:` is a **control**, which is framework
@@ -633,19 +637,21 @@ workforce/
   blocks/triage.ts                                   ← a block any worker may name
   teams/engineering/blocks/build-status.ts           ← a block this team's workers may name
   teams/engineering/workers/triage/blocks/page.ts    ← a block this one worker may name
+  teams/engineering/workers/triage/packages/runbook/PACKAGE.md          ← a package this worker holds
+  teams/engineering/workers/triage/packages/runbook/blocks/restart.ts   ← one of its tools
 ```
 
 `fsdev gen` walks those folders and writes `workforce/workforce.gen.ts` beside them, exporting
-`kinds`, `channelKinds`, `blocks` and `seatBlocks` — parameters `hireWorkforce`,
+`kinds`, `channelKinds`, `blocks`, `seatBlocks` and `packageBlocks` — parameters `hireWorkforce`,
 `channelInstances`, a task board and a worker kind's tool catalog already take. The same file
 carries `resourceModules`, covered in [Resource modules from files](#resource-modules-from-files).
 
 ```ts
 import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
-import { blocks, kinds, seatBlocks } from "./workforce/workforce.gen";
+import { blocks, kinds, packageBlocks, seatBlocks } from "./workforce/workforce.gen";
 
 const agent = defineAgentWorkerFlow({ catalog: blocks });
-const seats = hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks });
+const seats = hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks, packageBlocks });
 ```
 
 A `blocks/` folder **registers** a name: `workforce/blocks/` for every worker, a team's for that
@@ -751,6 +757,64 @@ The last three are the app's to set where it installs the capability.
 
 Only the built-in `agent` kind reads this key. A kind of your own reads whatever its own settings
 schema declares.
+
+### Packages from files
+
+A **package** is a folder a worker holds: a `PACKAGE.md` whose body is instructions, and a `blocks/`
+folder of tools. The frontmatter takes `description`, a label for people, and no other key.
+
+```
+workforce/
+  org/packages/house-style/PACKAGE.md                               ← the org's library
+  teams/support/packages/escalation/PACKAGE.md                      ← the team's library
+  teams/support/packages/escalation/blocks/page-oncall.ts
+  teams/support/workers/billing/packages/refunds/PACKAGE.md         ← this worker's own
+  teams/support/workers/billing/packages/refunds/blocks/issue-refund.ts
+```
+
+A worker holds every package in its own `packages/` folder. A library package reaches a worker only
+when its `WORKER.md` names it, `packages: [escalation]`, looked up in the team's library first,
+then the org's. A library package no worker names reaches nobody.
+
+On the built-in `agent` kind, a held package's body is in the prompt on every turn, after the team's
+instructions and the worker's own. A worker with no `tools:` line can call every block of every
+package it holds. A written `tools:` line is the whole list, and a package block can be named on
+it; `tools: []` gets the text and no tools.
+
+`readWorkforce` puts the packages in each worker's reach on its record as `packages`
+(`PackageManifest[]`: the org's library, its team's, and its own folder) and reports refused package
+folders on `packageErrors`. `readDeclaredRoster` reports the same entries on its `package` layer.
+The blocks come from `fsdev gen`'s `packageBlocks` export, keyed by package path and then block
+name; pass it to `hireWorkforce`, which decides from each worker's folder and `packages:` line which
+packages it holds. Leave `packageBlocks` out and a held package brings its instructions and no tools.
+
+```ts
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
+import { kinds, packageBlocks, seatBlocks } from "./workforce/workforce.gen";
+
+const { workers, errors, packageErrors } = await readWorkforce("./workforce");
+if (errors.length || packageErrors.length) throw new Error("workforce: failed to load");
+
+const seats = hireWorkforce(workers, { kinds, seatBlocks, packageBlocks });
+```
+
+A kind of your own receives what a seat holds on `seatPackages`, and only when it holds at least one;
+composing `workerConfigSchema()` is what lets its schema accept the key.
+
+Reported by the loader, on `packageErrors`: a `PACKAGE.md` that is missing, has no frontmatter or
+no `description`, or declares another key; a `resources/`, `references/`, `skills/` or `packages/`
+folder inside a package; any symlink; a file directly inside `packages/`. Refused by the hire, one
+message naming every bad worker: a `packages:` name no library in reach offers (the message names
+both folders it looked in); a name the worker's own folder and a library both offer; a package
+block whose name clashes with the worker's own or team blocks, another held package, a catalog tool
+the worker's `tools:` line names, or a picked preset's tool; a package block whose registered name
+differs from its own `name`; a package block that declares a store; a package with blocks in the
+worker's own folder that failed to load. A failed package with no blocks shows up only on
+`packageErrors`, so treat that list as fatal at boot. A clash with a preset tool
+built per turn fails that turn instead, with a "two tools named" error.
+
+Packages are read at startup and found by `fsdev gen`. Nothing loads one partway through a
+conversation, a package carries no documents, and a block added or removed needs `fsdev gen` again.
 
 ## Reading documents from files
 
@@ -1719,19 +1783,21 @@ membershipPrefix("");
 | `HIRED_ROSTER_RESOURCE` | Registry key the seat-hire capability installs the hired roster under, `"hiredRoster"`. Pass it as `hiredRoster` on `createWorkforceCapability` so `discover` reads the same collection. |
 | `SEAT_INVENTORY_RESOURCE` | Registry key the seat-hire capability installs the seat inventory under, `"seatInventory"`. Pass it as `inventory.seats` on `createWorkforceCapability`. |
 | `SEAT_DISCOVER_KEY` | The pinned worker-file key, `"discover"` — the domains one seat sees, out of what its scope carries. Narrows only: a seat can never reach a domain the app did not install. |
-| `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills, teams, documents and channels — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
-| `readWorkforce(root)` | Read the tree into worker records that already carry their own skills — `readWorkforceDirectory` joined with `readSeatSkills` per seat. Reach for it when seats are all you need. Ships from the `./loader` subpath (Node only). |
+| `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills and packages in reach, teams, documents and channels — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
+| `readWorkforce(root)` | Read the tree into worker records that already carry their own skills and the packages in their reach — `readWorkforceDirectory` joined with `readSeatSkills` per seat and `readPackagesDirectory`. Returns `{ workers, errors, skillErrors, teams, teamErrors, packageErrors }`. Reach for it when seats are all you need. Ships from the `./loader` subpath (Node only). |
 | `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker, without their skills. Ships from the `./loader` subpath (Node only). |
+| `readPackagesDirectory(root)` | Read every `packages/<name>/PACKAGE.md` at the org, team and worker levels into one `PackageManifest` each, returning `{ packages, errors }`. Ships from the `./loader` subpath (Node only). |
 | `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
 | `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, with or without a trailing separator, and on one spelled with a `..` that steps back through an earlier segment — pass the path it resolves to; a `.` segment and anything above the root are not checked), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
-| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, every `resources/` folder the convention reads, and every `blocks/` folder inside the team tree, returning what they hold on `files`, `resourceModules` and `seatBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
-| `renderWorkforceCode(files, modules, seatBlocks?)` | Render a discovery's `files`, `resourceModules` and `seatBlocks` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `seatBlocks` and `resourceModules`. Pass all three: the third parameter defaults to `[]`, so omitting it renders an empty `seatBlocks` map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(manifests, { kinds, seatBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` export as `seatBlocks`, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, which references each seat reaches is worked out against it, and a kind holding references it was not given refuses the whole roster. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
+| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `seatBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
+| `renderWorkforceCode(files, modules, seatBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `seatBlocks` and `packageBlocks` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `resourceModules`, `seatBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
+| `hireWorkforce(manifests, { kinds, seatBlocks, packageBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` and `packageBlocks` exports under the same names, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, which references each seat reaches is worked out against it, and a kind holding references it was not given refuses the whole roster. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
 | `unattendedBoardWarnings(boardIds, seats)` | The unattended-board warning strings `hireWorkforce` prints. The `hire` tool puts the same sentences on `warning` when a named board has no seat that declares it. |
-| `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills` and `seatTools`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
+| `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools` and `seatPackages?`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
+| `seatPackageSchema` | One held package as it rides into the bag — `{ name, path, instructions?, tools }`, closed. The shape `seatPackages` is an array of. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |
 | `WorkerConfig` | The parsed shape of `workerConfigSchema()` — what every hireable kind receives, whatever else it extends on. |
 | `readResourcesDirectory(root)` | Read every `resources/` folder in the tree — org, team, and each worker's own — into one `ResourceDoc` per document. Ships from the `./loader` subpath (Node only). |
@@ -1740,8 +1806,9 @@ membershipPrefix("");
 | `referencesFromDocs(references)` | Turn reference records into the flow resource map, keyed by ref. Each entry is served from its file and is read-only. Throws naming the ref for a record with no `filePath`. |
 | `clearShadowedReferences(input)` / `describeShadowedReferences(result)` | Clear the stored rows left behind when a document moves from `resources/` to `references/`, for one org, and render the result as one log line. Takes `{ references, orgId, content, installedOn, dryRun? }`; returns `{ cleared, checked, dryRun, scopeId }`. |
 | `splitResourceModules(resourceModules)` | Split the generated map into `{ capabilities, resources }` — the capabilities a worker kind installs through `uses`, and the resources that merge into the one resource map. Installs nothing: you pass both on, at your own call site. Throws naming the ref when an entry can be neither. |
-| `DeclaredRoster` / `DeclaredProblem` | What `readDeclaredRoster` returns: `{ workers, teams, documents, references, channels, problems }`, and one problem: `{ layer, path, error, worker? }`, where `layer` is `worker`, `skill`, `team`, `document`, `reference` or `channel`. |
-| `WorkerManifest` | One worker record: `{ id, declared, body, skills? }`. |
+| `DeclaredRoster` / `DeclaredProblem` | What `readDeclaredRoster` returns: `{ workers, teams, documents, references, channels, problems }`, and one problem: `{ layer, path, error, worker? }`, where `layer` is `worker`, `skill`, `team`, `package`, `document`, `reference` or `channel`. |
+| `WorkerManifest` | One worker record: `{ id, declared, body, skills?, teamInstructions?, packages? }`. |
+| `PackageManifest` | One package record: `{ name, path, level, team?, worker?, description, instructions? }`, where `level` is `org`, `team` or `worker` and `path` is the key its blocks sit under on `packageBlocks`. |
 | `ResourceDoc` | One document record: `{ ref, declared, body, filePath? }`. |
 | `mintResourceRef(teamId, workerName, name)` | The one rule that names a resource, whichever door read it — the ref a document or a module called `name` in that folder gets. Throws naming the segment that breaks the rules. Ships from the `./loader` subpath (Node only). |
 | `ResourceModules` | The generated `resourceModules` map: one entry per discovered module, keyed by its ref. |
@@ -1810,7 +1877,9 @@ membershipPrefix("");
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this seat's kind, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a seat did not name that its minted flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this seat cannot reach from its place in the tree — including every ref when no `references` map was passed), a seat id that names no place in the tree while its kind holds references, a reference the seat did not name that its minted flow reaches anyway, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), or a `persona:`, `seatSkills:`, `seatTools:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a flow passed under a key that is not its own kind, a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this seat's kind, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a seat did not name that its minted flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this seat cannot reach from its place in the tree — including every ref when no `references` map was passed), a seat id that names no place in the tree while its kind holds references, a reference the seat did not name that its minted flow reaches anyway, `instructions` given both in the frontmatter and as a body, a flow kind whose schema will not take what hiring imposes (composing `workerConfigSchema()` is the fix), a `packages:` list the hire step cannot resolve (not a list of names, a name no library in reach offers, or a name both its own folder and a library offer), a held package's block that clashes with another tool the seat can call, registers under a name other than its own, or declares a store, a package with blocks in its own folder that failed to load, or a `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Package folder fails to load | Collected in `readPackagesDirectory`'s and `readWorkforce`'s `packageErrors` as `kind: "package-load-failed"` (a symlinked or badly named folder, or a missing, unreadable or malformed `PACKAGE.md`), `"refused-entry"` (a file in `packages/`, or a documents, skills or packages folder or a symlink inside a package), or `"unreadable-slot"`, keyed by the path. The package is left out whole |
+| Package block clashes with a preset tool built per turn | That turn fails with a "two tools named" error |
 | A `resources/` slot, `org/`, `teams/`, a team folder, a `workers/` level or a worker folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | A directory where a document file belongs | Collected in `readResourcesDirectory`'s `errors` as `kind: "folder-where-file-belongs"`, keyed by the directory's path |
 | Document file fails to load | Collected in `readResourcesDirectory`'s `errors` as `kind: "document-load-failed"`, keyed by the file's path — an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description` |
