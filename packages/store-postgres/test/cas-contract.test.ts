@@ -7,7 +7,8 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { freshPglite } from "./shared-pglite";
 import type { SessionRecord } from "@flow-state-dev/engine";
 import { createPostgresStores, type PostgresStoreRegistry } from "../src";
 import type { QueryExecutor } from "../src";
@@ -44,11 +45,10 @@ describe("Postgres adapter — Store CAS contract", () => {
 
   afterEach(async () => {
     await stores?.close();
-    await pglite?.close();
   });
 
   async function freshStores(): Promise<PostgresStoreRegistry> {
-    pglite = new PGlite();
+    pglite = await freshPglite();
     const executor = pgliteExecutor(pglite);
     stores = await createPostgresStores({ executor });
     return stores;
@@ -113,7 +113,7 @@ describe("Postgres adapter — Store CAS contract", () => {
 
   it("cross-registry conflict: two registries sharing the DB detect the race", async () => {
     // Single PGlite backing both registries — simulates two nodes.
-    pglite = new PGlite();
+    pglite = await freshPglite();
     const executor = pgliteExecutor(pglite);
     const registryA = await createPostgresStores({ executor });
     const registryB = await createPostgresStores({ executor });

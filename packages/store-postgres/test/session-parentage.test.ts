@@ -9,7 +9,8 @@
  * failure this coverage exists to catch.
  */
 import { describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { freshPglite } from "./shared-pglite";
 import type { SessionRecord } from "@flow-state-dev/engine";
 import { createPostgresStores, initializeSchema, type PostgresStoreRegistry } from "../src";
 import type { QueryExecutor } from "../src";
@@ -42,7 +43,7 @@ function makeSessionRecord(id: string, overrides?: Partial<SessionRecord>): Sess
 }
 
 async function freshStores(): Promise<PostgresStoreRegistry> {
-  const pglite = new PGlite();
+  const pglite = await freshPglite();
   const executor = pgliteExecutor(pglite);
   await initializeSchema(executor);
   return createPostgresStores({ executor });
@@ -176,7 +177,7 @@ describe("Postgres session parentage filtering", () => {
 describe("FIX-1009 parent_session_id migration (postgres)", () => {
   /** A `sessions` table exactly as it existed before this change. */
   async function legacyDatabase(): Promise<PGlite> {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await pglite.exec(`
       CREATE TABLE sessions (
         id          TEXT PRIMARY KEY,
@@ -249,7 +250,7 @@ describe("FIX-1009 parent_session_id migration (postgres)", () => {
   });
 
   it("is idempotent across repeated initialization", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     const executor = pgliteExecutor(pglite);
     await initializeSchema(executor);
     await initializeSchema(executor);

@@ -5,7 +5,8 @@
  * PGlite harness.
  */
 import { describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { freshPglite } from "./shared-pglite";
 import type { RequestRecord, SessionRecord } from "@flow-state-dev/engine";
 import {
   createPostgresSessionStore,
@@ -62,7 +63,7 @@ function request(id: string, sessionId: string, tenantId?: string): RequestRecor
 
 describe("Postgres adapter — tenant isolation (FIX-682)", () => {
   it("filters request.list by tenant with present-vs-absent semantics", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await initializeSchema(pgliteExecutor(pglite));
     const store = createPostgresRequestStore(pgliteExecutor(pglite), {
       liveTailPool: null
@@ -80,11 +81,10 @@ describe("Postgres adapter — tenant isolation (FIX-682)", () => {
     // Explicit-undefined matches only the no-tenant record (NULL-safe).
     expect(none.map((r) => r.id)).toEqual(["r_n"]);
     expect(all.map((r) => r.id).sort()).toEqual(["r_a", "r_b", "r_n"]);
-    await pglite.close();
   });
 
   it("keeps two tenants' session records distinct and filters session.list", async () => {
-    const pglite = new PGlite();
+    const pglite = await freshPglite();
     await initializeSchema(pgliteExecutor(pglite));
     const store = createPostgresSessionStore(pgliteExecutor(pglite));
 
@@ -96,6 +96,5 @@ describe("Postgres adapter — tenant isolation (FIX-682)", () => {
 
     const acme = await store.list({ userId: "u", tenantId: "acme" });
     expect(acme.map((s) => s.id)).toEqual(["acme:s"]);
-    await pglite.close();
   });
 }, { timeout: 30000 });

@@ -9,7 +9,8 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { freshPglite } from "./shared-pglite";
 import type { SessionRecord } from "@flow-state-dev/engine";
 import { createPostgresStores, type PostgresStoreRegistry } from "../src";
 import type { QueryExecutor } from "../src";
@@ -50,11 +51,10 @@ describe("Postgres adapter — delta verb contract (FIX-405)", () => {
 
   afterEach(async () => {
     await stores?.close();
-    await pglite?.close();
   });
 
   async function freshStores(): Promise<PostgresStoreRegistry> {
-    pglite = new PGlite();
+    pglite = await freshPglite();
     const executor = pgliteExecutor(pglite);
     stores = await createPostgresStores({ executor });
     return stores;

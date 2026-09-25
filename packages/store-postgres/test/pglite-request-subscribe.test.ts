@@ -9,7 +9,8 @@
  * liveness-timeout path against the same store implementation that ships
  * to production.
  */
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { freshPglite } from "./shared-pglite";
 import {
   createPostgresRequestStore,
   initializeSchema,
@@ -18,7 +19,6 @@ import {
 import { createRequestStoreConformanceTests } from "@flow-state-dev/engine/testing";
 
 const POLL_INTERVAL_MS = 25;
-const pglites: PGlite[] = [];
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
   return {
@@ -36,19 +36,12 @@ createRequestStoreConformanceTests({
   name: "PostgresRequestStore (liveTailPool: null, polling)",
   pollIntervalMs: POLL_INTERVAL_MS,
   createStore: async () => {
-    const pglite = new PGlite();
-    pglites.push(pglite);
+    const pglite = await freshPglite();
     const executor = pgliteExecutor(pglite);
     await initializeSchema(executor);
     return createPostgresRequestStore(executor, {
       liveTailPool: null,
       subscribePollIntervalMs: POLL_INTERVAL_MS
     });
-  },
-  cleanup: async () => {
-    while (pglites.length > 0) {
-      const pglite = pglites.pop();
-      await pglite?.close();
-    }
   }
 });
