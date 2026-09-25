@@ -452,7 +452,7 @@ always, and `teamInstructions` when the seat's team wrote a `TEAM.md`. A kind th
 string, which is what keeps "this team said nothing" and "this team said nothing *yet*" from being
 the same value in the bag.
 
-**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then your kind's catalog), and the ones that resolved to the seat's own folders arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
+**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. (On the built-in `agent` kind, a seat with no `tools:` line can also call the tools of the capability presets it selected under `capabilities:`; a written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then your kind's catalog), and the ones that resolved to the seat's own folders arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
 
 Add your kind's own settings on top, at the same level:
 
@@ -533,12 +533,18 @@ worker.
 | `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string, it cannot change the answer, and a failure in it does not fail the turn. Absent, nothing runs after the answer. |
 | `isolateUserState` | Forwarded to `defineFlow`. Gives each worker its own user-scoped storage, keyed on the worker's id, instead of one cell shared across the roster. Default `false`. |
 
-**The tools fence.** A worker's `tools:` is the complete set of tools it can call. The kind maps
-those names against the catalog and hands the model that list and nothing else. A skill does not
-widen it: a skill's `allowed-tools` are validated against the catalog but never registered, and a
-skill's delegated workers are seated from the holding worker's own list. Nor does a capability
-passed through `uses`: whatever tools it carries, the worker's own `tools:` is what the model gets.
-Everything else the capability brings — context, storage, helpers — arrives as usual.
+**The tools fence.** A worker that writes a `tools:` line can call exactly the tools it lists,
+whatever it selected under `capabilities:`. The kind maps those names against the catalog and hands
+the model that list and nothing else; `tools: []` means no tool. A worker with no `tools:` line can
+call the tools of every capability preset its own file selects under `capabilities:`, including a
+preset whose tools are a function built per turn. A preset the kind switches on by default gives
+its tools to no worker that didn't select it. Two selected presets that list different tools under
+one name are refused at the hire, naming the worker.
+
+A skill does not widen the grant: a skill's `allowed-tools` are validated against the catalog but
+never registered, and a skill's delegated workers are seated from the names the holding worker
+listed, so tools a worker got by selecting a preset do not travel to its delegates. Everything else
+a capability brings — context, storage, helpers — arrives whatever `tools:` says.
 
 What does reach a worker without appearing in `tools:` is a **control**, which is framework
 machinery rather than a tool from the app's catalog, switched on by the worker's own settings:
@@ -548,7 +554,7 @@ machinery rather than a tool from the app's catalog, switched on by the worker's
 - the **delegation surface**, when a skill the worker holds declares `agents:`, which puts the task
   board's eight tools plus `runBoard` on the worker;
 - the **controls a capability preset declares**, when the worker selects that preset in its
-  `capabilities:` key — a preset's `controlTools` reach the worker, its `tools` do not.
+  `capabilities:` key — a preset's `controlTools` reach the worker even with `tools: []`.
 
 #### The memory recipe
 
@@ -570,7 +576,7 @@ const remembers = defineAgentWorkerFlow({
   catalog: appTools,
   uses: [
     mem.capability.presets({
-      recall: false,    // a tool — reaches a worker through the catalog, not here
+      recall: false,    // a tool; off here, so no worker can select it
       connect: false,   // same
       semantic: true,   // context injection; OFF by default
       episodic: true,   // context injection; OFF by default
@@ -591,10 +597,12 @@ Each of these fails quietly if you skip it:
 - **`semantic` and `episodic` on.** They are off by default, and without them the durable stores
   would be written and never read back.
 
-`recall` and `connect` are memory's two tools, and the recipe leaves them off: a worker here reads
-what it remembers as injected context, and a capability's tools do not reach a worker in any case.
-A worker that wants on-demand search gets the tool through the catalog
-(`catalog: { recall: mem.tool.recall() }`) and names it in its own `tools:`.
+`recall` and `connect` are memory's two tools, and the recipe turns them off: a worker here reads
+what it remembers as injected context. Both are on by default, and a preset on by default gives its
+tools only to a worker that selects it. For on-demand search, leave `recall` on and have the worker
+select it (`capabilities: { memory: [recall] }`) with no `tools:` line. A worker that writes a
+`tools:` line gets it through the catalog under the tool's own name
+(`catalog: { "memory/recall": mem.tool.recall() }`) and lists `memory/recall` in its `tools:`.
 
 Isolation is a decision for the whole kind: a roster is all-isolated or all-shared.
 
@@ -1333,8 +1341,9 @@ the inventory row remains and `discover` withholds the seat.
 ### Hire and fire as catalog tools
 
 `createSeatHireCapability` puts `hire` and `fire` on a worker kind's catalog. Install it with
-`defineAgentWorkerFlow({ uses: [seatHire] })`. A seat has to name those tools in `tools:`.
-An empty `tools:` list means the seat cannot call them.
+`defineAgentWorkerFlow({ uses: [seatHire] })`. A seat with no `tools:` line calls them by
+selecting the preset (`capabilities: { seat-hire: [tools] }`); a seat that writes a `tools:` line
+names them there. An empty `tools:` list means the seat cannot call them.
 
 The seat is hired in the caller's organization. A body `orgId` is ignored.
 Hire will not register a seat without an owner pin `{ orgId, userId? }` taken
@@ -1699,7 +1708,7 @@ membershipPrefix("");
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
 | `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and channel sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
-| `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat names those tools in `tools:` or cannot call them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
+| `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat calls them by selecting `seat-hire: [tools]` with no `tools:` line, or by naming them in `tools:`; `tools: []` withholds them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
 | `createSeatHireBlocks({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Returns `{ hire, fire }`, the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and a session whose principal names no organization cannot hire. |
 | `registerHiredSeat(register, seat, pin)` | The hire writer's register path. Refuses when `pin` has no `orgId`. The pin is the hire row's roster owner, not the address. |
 | `HiredSeatOwnerPin` | Another name for core's `InstanceOwnerPin`: `{ orgId, userId? }`, with `userId` present only for a user-owned hire row. Either name works wherever the other is expected. |

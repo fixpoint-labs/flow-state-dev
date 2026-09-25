@@ -122,9 +122,9 @@ Only the built-in [`agent` kind](./built-in-worker.md) reads this key. A kind yo
 
 ### Tools and controls in a preset {#a-preset-carrying-a-tool}
 
-Presets carry tools as well as context. A worker that selects one gets the preset's context, and does not get its tools. A worker's [`tools:` list is the whole of what it can call](./built-in-worker.md#tools), and a capability's tools are not on it — a worker with `tools: []` calls nothing, whatever it selected. So selecting a tool-bearing preset is a way to give one worker that preset's context, not a way around its tool list. To let a worker call a tool, put the tool in the kind's catalog and name it in `tools:`.
+Presets carry tools as well as context. A worker with no `tools:` line that selects a preset gets both: the preset's context, and its tools to call. A worker that writes a `tools:` line can call [exactly the tools it lists](./built-in-worker.md#tools), whatever it selected, and `tools: []` gives it the context and no tool. That is how you give a worker a preset's guidance without its tools.
 
-A preset can declare a **control** as well: framework machinery the capability builds itself, which a `tools:` list has no way to name. Controls go in the preset's [`controlTools`](/docs/advanced/capabilities-authoring#tools-and-controltools), and a worker that selects the preset gets them whatever its `tools:` says. One preset can hold both slots:
+A preset can declare a **control** as well: framework machinery the capability builds itself, which a `tools:` list has no way to name. Controls go in the preset's [`controlTools`](/docs/advanced/capabilities-authoring#tools-and-controltools), and a worker that selects the preset gets them whatever its `tools:` says, `tools: []` included. One preset can hold both slots:
 
 ```ts
 const dispatch = defineCapability({
@@ -133,14 +133,16 @@ const dispatch = defineCapability({
     radio: {
       context: [radioGuidance],
       controlTools: [ping],  // reaches a worker that selects `radio`
-      tools: [lookup],       // held back, whatever that worker's `tools:` says
+      tools: [lookup],       // reaches a worker that selects `radio` and has no `tools:` line
     },
     default: [],
   },
 });
 ```
 
-A worker whose file selects `radio` gets the `radio` context and can call `ping`. With `tools: []` it can call nothing else.
+A worker whose file selects `radio` gets the `radio` context and can call `ping` and `lookup`. With `tools: []` it gets the context and can call `ping` only.
+
+A preset can also build its tools per turn, as a function instead of a list. A worker with no `tools:` line gets those as well.
 
 ### When a file is wrong
 
@@ -153,6 +155,7 @@ The whole selection is checked when the roster is hired, so a mistake is a refus
 | a preset the app turned off where it installed the capability | A worker adds to what its kind carries and never widens past it. |
 | a preset on a capability that takes config | A capability declared with a `config` block is resolved once, where you install it, so its presets are yours to set. |
 | a preset that declares `resources`, a state schema, `model`, `providerOptions` or `caching` | Those have to exist before a request runs, so the preset is yours to turn on for the whole kind. |
+| two presets that list different tools under the same name | One name is one tool. The refusal names the tool and both presets; pick one of them. |
 
 Every bad selection on a worker is reported, not just the first.
 
@@ -161,4 +164,10 @@ Every bad selection on a worker is reported, not just the first.
 - It does not find anything at run time. `fsdev gen` reads the tree; the framework never opens a file your app wrote.
 - It does not let a worker install a capability. A worker file picks among what the kind carries.
 - It does not let a worker take something away. Selecting only adds.
+- It does not pass on tools a worker didn't pick. A capability your app installs on the kind can switch presets on by default, the way memory switches on `recall`. Those presets' tools reach no worker unless its own file picks them.
+- It does not pass picked tools down to a delegate. When a worker hands work to another agent through a skill, that agent can call only tools the worker named in `tools:`.
 - It does not affect `.md` files. A `.md` file in a `resources/` folder is still read as a document.
+
+## Coming from an earlier version
+
+A worker that selected a tool-bearing preset and had no `tools:` line used to get the preset's context only. It now gets the tools too. To keep the old reach, add `tools: []` to its file. A worker that already had a `tools:` line is unchanged.
