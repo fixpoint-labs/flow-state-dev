@@ -14,9 +14,9 @@ Most apps want the up-front path as the default and `runSkill` as an escape hatc
 
 The [built-in worker kind](../workforce/built-in-worker.md#using-them) takes a subset, and describes it in the up-front path's own [matching tiers](#three-tiers) rather than in these three paths — so its page counts a tier where this one counts a path. A worker gets slash matching plus whatever it lists as always-on; the classifier tier is opt-in per worker, and so is the mid-turn tool.
 
-## Why two paths
+## Why activate up front
 
-The up-front path addresses three downsides of tool-call activation:
+The up-front path avoids three costs of tool-call activation:
 
 1. **Catalog cost on every turn.** The skill catalog listing has to live in the system prompt for the model to know what's available, even when no skill applies. Prompt caching mitigates this; the up-front path eliminates it.
 2. **Two provider hits per skill-active turn.** The first call decides on a skill and emits the tool call; the second runs with the skill in context.
@@ -65,9 +65,7 @@ A turn that hits tier 1 or 2 pays no LLM cost for the classification. A turn tha
 
 ### Tier 3 with an evaluator
 
-An [evaluator](/docs/fundamentals/blocks#evaluator--the-questions-you-already-know) is a block that asks an evaluation model a question with known answers. Give the activator one, and tier 3 asks it: which of these skills fits the message, or none?
-
-[Routing with evaluators](/guides/routing-with-evaluators) walks through it end to end.
+An [evaluator](/docs/fundamentals/blocks#evaluator) is a block that asks an evaluation model a question with known answers. Give the activator one, and tier 3 asks it: which of these skills fits the message, or none? [Routing with evaluators](/guides/routing-with-evaluators) walks through it end to end.
 
 ```ts
 import { createSkillActivator, skillEvaluator } from "@flow-state-dev/orchestration";
@@ -190,7 +188,7 @@ The kitchen-sink renders one badge per active skill in its top bar with the skil
 
 ## Mid-flow: `runSkill`
 
-The original tool-call path. The capability's `runSkill` preset is on by default, so the only thing you need to do to use it is attach the capability.
+The tool-call path. The capability's `runSkill` preset is on by default, so the only thing you need to do to use it is attach the capability.
 
 The skills capability registers two pieces:
 

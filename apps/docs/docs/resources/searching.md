@@ -69,11 +69,19 @@ When you have keywords rather than an exact string, `searchResources` scores eac
 
 Resources that don't match at all are dropped. Scope with `prefix` and cap with `limit` (default 10).
 
+## Limits of the text tools
+
+All three tools see only resources marked `llmReadable` — the same gate as [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns). A resource the LLM can't read won't appear in any of their results. Grep and search match the *rendered* content — the same text `readResourceContentTool` returns — so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
+
+Search and grep are lexical. They're a good fit for curated, bounded content where answers live in the words on the page. They are not a substitute for semantic retrieval over a large, uncurated corpus — that's what [memory](/docs/memory/overview) and a retrieval layer are for.
+
+`grepResourceContent` treats its pattern as a regular expression, falling back to a literal match when the pattern isn't valid regex. It runs line by line over trusted resource content and does not sandbox the pattern, so a pathological regex can be slow. Isolate the call before pointing it at attacker-controlled patterns.
+
 ## Find by facets
 
 Some searches aren't about words. "Open billing tickets" should find the ticket that says "my card was billed again for a plan I already paid for", which never says "open" and never says "billing". A model can answer that, but asking it on every search is slow and costs a call per lookup.
 
-Facets move the question to write time. When a document's body is written, an [evaluator](/docs/fundamentals/blocks#evaluator--the-questions-you-already-know) answers a few fixed questions about it (which topic, what status) and the answers are stored on the document. Searching is then a filter over stored answers. No model runs.
+Facets move the question to write time. When a document's body is written, an [evaluator](/docs/fundamentals/blocks#evaluator) answers a few fixed questions about it (which topic, what status) and the answers are stored on the document. Searching is then a filter over stored answers. No model runs.
 
 `defineFacetedCollection` defines a collection that does this for you. You bring the fields you'd store anyway and an evaluator that asks your questions. You get back the collection, a search block and a reindex block.
 
@@ -187,19 +195,9 @@ If you already store facets with your own `contentUpdated` reaction, in fields n
 
 You can run the same evaluator on a search string to turn "anything about refunds that's still open?" into facet values. That's a model call on every search, so keep it for the case where the caller can't pick values from a list. The companion example doesn't include it.
 
-## Choosing a tool
+## Choosing an approach
 
 - **Glob** when you can describe the path: `concepts/**`, `decisions/2026-*`. Deterministic, no content read.
 - **Grep** when you need an exact string or pattern inside the content, and you want the matching lines.
 - **Search** when you have keywords and want the most relevant resources ranked, not every literal hit.
 - **Facets** when the question is about meaning (topic, status, kind) and you can decide the questions ahead of time. The model runs once per write, not per search.
-
-## Limits and readability
-
-All three tools see only resources marked `llmReadable` — the same gate as [`readResourceContentTool`](/docs/resources/overview#llm-access-patterns). The gate covers collection instances too: a collection's instances are searchable once the collection sets `llmReadable`. A resource the LLM can't read won't appear in any of their results. Grep and search match the *rendered* content — the same text `readResourceContentTool` returns — so a resource whose body is a state-driven template is found by the words it renders to, not by its template source.
-
-All three identify each match by its scope-qualified uri (for example `session/concepts/react`) — the same handle `readResourceContentTool` accepts, so a uri from a search result feeds straight into a read or write with no translation.
-
-Search and grep are lexical. They're a good fit for curated, bounded content where answers live in the words on the page. They are not a substitute for semantic retrieval over a large, uncurated corpus — that's what [memory](/docs/memory/overview) and a retrieval layer are for.
-
-`grepResourceContent` treats its pattern as a regular expression, falling back to a literal match when the pattern isn't valid regex. It runs line by line over trusted resource content and does not sandbox the pattern, so a pathological regex can be slow. Isolate the call before pointing it at attacker-controlled patterns.
