@@ -26,9 +26,12 @@
  *      caller neither sees nor changes a row.
  *
  * An entry cannot pass by doing nothing: the owner's own call runs first and
- * must see the owner's row, and the foreign rows are seeded through the same
- * seed call as the owner's, differing only on the axis under test, so they sit
- * where the owner's call just showed the route reads.
+ * must see the owner's row, and on each axis the same caller must reach a row
+ * it owns. The foreign row is seeded through the same seed call, differing only
+ * on the axis under test, so it sits where the caller's own call just showed
+ * the route reads — and it is probed ALONE, in a store holding nothing else,
+ * so a route that pages or limits its results can't return an own row in its
+ * place and pass.
  *
  * A route that is not built yet is pinned: its owner's call must answer 501 and
  * name no row. Building it breaks the pin, and the pin must then be replaced by
@@ -385,16 +388,28 @@ describe("user-route scoping · stage 2: no caller reaches a row outside their s
       });
 
       for (const axis of AXES) {
-        it(`serves nothing to ${axis.name}`, async () => {
+        // The same caller, in the same app, reaches a row it owns: the seed
+        // lands where this route reads for this caller, so the probe below
+        // is meaningful. A separate call, so the own row is never in the
+        // store when the foreign row is probed.
+        it(`reaches the caller's own row (positive control for: ${axis.name})`, async () => {
           const app = axis.app();
-          // Same seed for both rows: they differ only on this axis.
           await entry.seed(app.stores, "own-row", axis.own);
-          await entry.seed(app.stores, "foreign-row", axis.foreign);
           const observed = await callRoute(app, route, entry, axis.own.userId, axis.headers);
           expect(
             await entry.saw(observed, "own-row"),
-            "the caller's own row was not reached, so this probe proves nothing"
+            "the caller's own row was not reached, so the probe beside this proves nothing"
           ).toBe(true);
+        });
+
+        // The foreign row ALONE, differing from the own row above only on
+        // this axis, through the same seed. With nothing else in the store,
+        // a route that filters by the path's userId and pages or limits its
+        // results has only this row to return: an own row can't mask it.
+        it(`serves nothing to ${axis.name}`, async () => {
+          const app = axis.app();
+          await entry.seed(app.stores, "foreign-row", axis.foreign);
+          const observed = await callRoute(app, route, entry, axis.own.userId, axis.headers);
           expect(await entry.saw(observed, "foreign-row"), "a row outside the caller's scope was reached").toBe(
             false
           );
