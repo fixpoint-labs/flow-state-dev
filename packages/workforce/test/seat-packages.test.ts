@@ -22,6 +22,7 @@ import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext } from "@flow-state-dev/testing";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { hireWorkforce, type HireOptions } from "../src/hire";
+import { resolveHeldPackages } from "../src/seat-packages";
 import { SEAT_PACKAGES_KEY, type PackageManifest, type WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 
@@ -378,6 +379,48 @@ describe("a package in a team's or the org's library", () => {
   it("refuses a `packages:` that is not a list of names", () => {
     const message = refusal([record({ id: "support.taker", declared: { packages: "escalation" } })]);
     expect(message).toContain("`packages:`");
+  });
+});
+
+describe("a record whose reach holds a package that is not this worker's to reach", () => {
+  // `WorkerManifest` is public, so a hand-built or widened record can carry
+  // another worker's own package or another team's library. Level alone does
+  // not say whose it is; the owner on the record does, and a wrong one is
+  // refused at the hire rather than dropped, so the wrong record is named.
+  const pricing = pkg("pricing", "team", "PRICING-7730: quote list price.", { team: "sales" });
+
+  it("refuses a record that carries another worker's own package, naming it", () => {
+    const message = refusal([record({ id: "support.greeter", packages: [...siblingReach, refunds] })]);
+    expect(message).toContain('worker "support.greeter"');
+    expect(message).toContain(refunds.path);
+  });
+
+  it("refuses a record that carries another team's library package, naming it", () => {
+    const message = refusal([
+      record({ id: "support.taker", declared: { packages: ["pricing"] }, packages: [...siblingReach, pricing] })
+    ]);
+    expect(message).toContain('worker "support.taker"');
+    expect(message).toContain(pricing.path);
+  });
+
+  it("still hires a record whose reach is its own, in the same roster", () => {
+    // Control: the refusals above are about whose package it is, not about
+    // holding a worker-level or team-level package at all.
+    const seat = hire([
+      record({ id: "support.clerk", declared: { packages: ["escalation"] }, packages: clerkReach })
+    ]);
+    const held = (seat("support.clerk").config as Record<string, Array<{ path: string }>>)[SEAT_PACKAGES_KEY]!;
+    expect(held.map((entry) => entry.path)).toEqual([refunds.path, escalation.path]);
+  });
+
+  it("reads the owner off a hired seat id with the org in front", () => {
+    const own = resolveHeldPackages("acme.support.clerk", ["escalation"], clerkReach, packageBlocks);
+    expect(own.problems).toEqual([]);
+    expect(own.held.map(({ manifest }) => manifest.path)).toEqual([refunds.path, escalation.path]);
+
+    const other = resolveHeldPackages("acme.support.greeter", undefined, [...siblingReach, refunds], {});
+    expect(other.held.map(({ manifest }) => manifest.path)).toEqual([]);
+    expect(other.problems.join("\n")).toContain(refunds.path);
   });
 });
 

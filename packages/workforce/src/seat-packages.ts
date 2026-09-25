@@ -42,7 +42,9 @@ export interface HeldPackages {
  *   `<org>.<team>.<worker>` for a hired seat).
  * @param declared The seat's `packages:` value as written, or `undefined` when
  *   the file wrote no such line.
- * @param reach The packages in the seat's reach, as the loader joined them.
+ * @param reach The packages in the seat's reach, as the loader joined them. A
+ *   worker-level entry must name this seat's worker and a team-level one its
+ *   team; any other is refused, and nothing is held.
  * @param packageBlocks The generated map, keyed by package address.
  */
 export function resolveHeldPackages(
@@ -51,12 +53,36 @@ export function resolveHeldPackages(
   reach: readonly PackageManifest[] | undefined,
   packageBlocks: Record<string, Record<string, BlockDefinition<any, any>>>
 ): HeldPackages {
-  const available = reach ?? [];
-  const own = available.filter((candidate) => candidate.level === "worker");
-  const chosen: PackageManifest[] = [...own];
   const problems: string[] = [];
   const segments = seatId.split(".");
   const team = segments[segments.length - 2] ?? "";
+  const worker = segments.slice(-2).join(".");
+
+  // The level says what kind of package it is, not whose: the owner on the
+  // record does. `WorkerManifest` is public, so a hand-built or widened record
+  // can carry another worker's own package or another team's library, and
+  // holding it would grant what no folder gave this seat. Refused rather than
+  // dropped, so the wrong record is named instead of quietly corrected.
+  const available = reach ?? [];
+  for (const candidate of available) {
+    const owner =
+      candidate.level === "worker" && candidate.worker !== worker
+        ? ["worker", candidate.worker]
+        : candidate.level === "team" && candidate.team !== team
+          ? ["team", candidate.team]
+          : undefined;
+    if (owner === undefined) continue;
+    const whose = owner[1] === undefined ? `no ${owner[0]} at all` : `${owner[0]} "${owner[1]}"`;
+    problems.push(
+      `has package "${candidate.path}" in its reach, whose record names ${whose}. A worker reaches ` +
+        `its own folder's packages, its team's library and the org's — the record was built ` +
+        `or widened by hand; build it with \`readWorkforce\`, or drop that entry.`
+    );
+  }
+  if (problems.length > 0) return { held: [], problems };
+
+  const own = available.filter((candidate) => candidate.level === "worker");
+  const chosen: PackageManifest[] = [...own];
 
   if (declared !== undefined) {
     if (!Array.isArray(declared) || declared.some((name) => typeof name !== "string")) {
