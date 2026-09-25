@@ -52,7 +52,7 @@ package chooses, and this issue shrinks to the seat half.
 | | |
 |---|---|
 | **Instead of** | Building a form from whatever the flow list serves, or picking "the action with one string field" at run time |
-| **Because** | The shell already writes its kinds down, because a browser cannot read `workforce/`, and a test holds the list to the tree. One more column there is the smallest honest mapping. The served schemas would work today ([poc P6](poc/talk-premises/README.md)), but a rule inferred from shape picks silently when a kind grows a second one-string action. A mapping written down fails a test instead |
+| **Because** | The shell already writes its kinds down, because a browser cannot read `workforce/`, and a test holds the list to the tree. One more column there is the smallest honest mapping. The served schemas carry today's input fields ([poc P6](poc/talk-premises/README.md) logs them; it asserts only that each kind is listed), but a rule inferred from shape picks silently when a kind grows a second one-string action. A mapping written down fails a test instead |
 | **Locks in** | `desk-clerk` → `answer { note }`, `agent` → `run { message }`, `followup-runner` → none. A new kind needs one line before its seats take messages, and the drift test fails until it has one or says "none". A seat on a kind with none (`support.wren`) stays read-only, with the reason on the page |
 
 ## Decided, not asked

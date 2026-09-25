@@ -19,7 +19,7 @@ pnpm exec tsx ../../specs/issues/FIX-1585/poc/talk-premises/expose-probe.mts   #
 | P3 | The post leaves **no** client-visible, history-kept item in the channel's stream | Held. This is why "see it in the stream" needs [D1](../../DECISIONS.md#d1) |
 | P4 | `author: "devuser"` is refused (`author-not-a-member`) and nothing is appended | Held. This is why [D2](../../DECISIONS.md#d2) sends no author |
 | P5 | `support.ada`'s `answer` leaves a durable assistant message in the seat's session | Held |
-| P6 | The flow list serves each seat kind's actions and input fields | Held: `agent` → `run {message}`, `desk-clerk` → `answer {note}`, `followup-runner` → `drain` (no form) |
+| P6 | The flow list serves each seat kind's actions and input fields | Held. The check asserts only that each kind is listed; the fields were read from its logged schemas: `agent` → `run {message}`, `desk-clerk` → `answer {note}`, `followup-runner` → `drain` (no form). It does not test inference or a kind with two one-string actions |
 | P7–P8 | One `session.client.expose: ["transcript"]` on the channel kind puts the transcript, and only it, in `clientData.session` | Red on main, green with the line, reverted after |
 
 Raw output: [`evidence.txt`](evidence.txt).

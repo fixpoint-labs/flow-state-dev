@@ -36,7 +36,7 @@ into work.
 | BR-14 | A person sends to an `agent` seat (`support.otto`) | The kind's `run` runs with `{ message }`. The reply streams in. The question itself is not kept after the reply lands, because the kind does not echo it | V5 |
 | BR-15 | A person opens a `followup-runner` seat (`support.wren`) | No composer. A line says this seat runs board rows and takes no messages | E2E · V7 |
 | BR-16 | A seat has no conversation yet | Its row offers "New conversation". It creates a session on that seat and opens it with the composer | E2E · V7 |
-| BR-17 | A seat's action fails, or its model is unavailable | The panel shows the error and the composer is usable again | V5 |
+| BR-17 | A seat's action fails, its model is unavailable, or creating a new conversation fails | The panel shows the error and the composer is usable again. When creation fails there is no conversation to show it in, so the seat's row shows the error, nothing opens, and "New conversation" stays usable | V5 |
 | BR-18 | A person talks to `support.mara`, who can hire and fire | Same exposure the owner accepted for the rail's hire in FIX-1500 D6. No new permission | — (recorded) |
 
 ## What does not change
@@ -51,7 +51,8 @@ into work.
 
 Nothing here is fatal to the page. A refused or timed-out post, a failed seat action and a
 model outage all surface as an error in the panel that sent them, with the composer usable
-again. A failed notification never un-writes a post: the transcript is the record, and waking
+again. A failed "New conversation" surfaces in the seat's row, with the button usable again.
+A failed notification never un-writes a post: the transcript is the record, and waking
 members is best-effort. Nothing retries on its own.
 
 ## Acceptance criteria this issue owns
