@@ -32,6 +32,7 @@ import {
   SEAT_ASKS,
   SEAT_KINDS,
   SHELL_BOARDS,
+  seatAskFor,
 } from "../lib/workforce-shell";
 
 describe("the shell's names match the workforce tree", () => {
@@ -81,10 +82,10 @@ describe("each seat kind's composer sends to an action the kind declares", () =>
   });
 
   it.each([...SEAT_KINDS])("%s: the named action takes exactly the named one string field, or it has none", (kind) => {
-    const ask = (SEAT_ASKS as Record<string, (typeof SEAT_ASKS)[keyof typeof SEAT_ASKS] | undefined>)[kind];
-    expect(ask, `SEAT_ASKS has no entry for "${kind}"`).toBeDefined();
+    const ask = seatAskFor(kind);
+    if (ask === undefined) throw new Error(`SEAT_ASKS has no entry for "${kind}"`);
     const actions = oneStringActions(kind);
-    if ("none" in ask!) {
+    if ("none" in ask) {
       // "None" is only honest where there is truly nothing to answer through.
       expect(actions, `"${kind}" is written down as taking no messages`).toEqual({});
       expect(ask.none.length).toBeGreaterThan(0);

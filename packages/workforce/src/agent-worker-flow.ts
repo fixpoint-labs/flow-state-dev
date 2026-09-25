@@ -1082,7 +1082,9 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     // shared across the roster otherwise, which is the framework's default.
     isolateUserState: options.isolateUserState ?? false,
     configSchema: settings,
-    actions: { run: { inputSchema, block: run } }
+    // `userMessage` keeps the caller's message as their turn, so a seat's
+    // conversation holds both sides and survives a reload.
+    actions: { run: { inputSchema, block: run, userMessage: (input) => input.message } }
   });
 
   /**

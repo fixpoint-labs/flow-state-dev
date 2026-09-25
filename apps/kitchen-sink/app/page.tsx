@@ -48,6 +48,7 @@ import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { TeamPanel } from "@/components/team-panel";
 import { SeatPane } from "@/components/seat-pane";
+import { PickedSessionPanel } from "@/components/picked-session-panel";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
@@ -240,12 +241,12 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
     autoPlayTTS: ttsEnabled,
   });
 
-  // A channel's or a seat's session, when one is picked in the rail. Read
-  // only: the composer below talks to the assistant's flow and no other.
+  // A channel's or a seat's session, when one is picked in the rail. Its panel
+  // has a composer of its own, which calls the picked flow's own action on
+  // this session; the assistant's composer stays wired to the assistant.
   // This session and the assistant's (`session`, above) are both live
   // subscriptions while a rail session is open — deliberate, not an oversight:
-  // the rail panel needs its own stream to update live, and the composer
-  // stays wired to the assistant's session regardless of what is picked.
+  // the rail panel needs its own stream to update live.
   const pickedSession = useSession(picked?.sessionId, {
     flowKind: picked?.address,
     items: true,
@@ -387,6 +388,29 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
     [flow]
   );
 
+  // "New conversation" on a seat's row: a session on that seat's own address,
+  // opened in the panel. A failed create has no conversation to show its
+  // error in, so the seat's row shows it and nothing opens.
+  const [seatCreateError, setSeatCreateError] = useState<{ address: string; message: string } | null>(null);
+  const handleNewSeatConversation = useCallback(
+    async (leaf: FlowNavigatorLeafState) => {
+      setSeatCreateError(null);
+      try {
+        const created = await sessionClient.createSession({ flowKind: leaf.address, userId: KITCHEN_SINK_USER_ID });
+        setPicked({ sessionId: created.id, kind: leaf.kind, address: leaf.address });
+        leaf.refresh();
+        setIsRailDrawerOpen(false);
+        setMobilePanel("chat");
+      } catch (cause) {
+        setSeatCreateError({
+          address: leaf.address,
+          message: cause instanceof Error ? cause.message : String(cause),
+        });
+      }
+    },
+    [sessionClient]
+  );
+
   const handleSelectSession = useCallback(
     (id: string, leaf: FlowNavigatorLeaf) => {
       if (leaf.kind === SHELL_FLOW_KIND) {
@@ -411,8 +435,9 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
 
   const railSlots = useMemo(
     () => ({
-      // "New session" sits on the assistant's own row, the one place a new
-      // conversation can be started from this page.
+      // "New session" sits on the assistant's own row, and "New
+      // conversation" on each seat's: the places a conversation can be
+      // started from this page. Channels get none; the boot opens them.
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW_KIND ? (
           <AssistantLeafToolbar
@@ -421,27 +446,54 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
             disabled={flow.isLoading}
             onNewSession={handleNewSession}
           />
+        ) : isSeatKind(leaf.kind) ? (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="New conversation"
+            title="New conversation"
+            onClick={() => void handleNewSeatConversation(leaf)}
+          >
+            <Plus className="size-3.5" />
+          </Button>
         ) : null,
       // An open seat shows its kind, its instructions and "Hire another"
-      // under its row.
+      // under its row, and why its last "New conversation" failed, if it did.
       leafDetail: (leaf: FlowNavigatorLeafState) =>
         isSeatKind(leaf.kind) ? (
-          panelSessionId === undefined || panelOrgId === undefined ? (
-            <p className="text-xs text-muted-foreground">Loading…</p>
-          ) : (
-            <SeatPane
-              sessionId={panelSessionId}
-              orgId={panelOrgId}
-              kind={leaf.kind}
-              address={leaf.address}
-              resourceClient={resourceClient}
-              hireSessionId={hireSessionId}
-              onHired={handleHired}
-            />
-          )
+          <>
+            {seatCreateError?.address === leaf.address && (
+              <p role="alert" className="text-xs text-destructive" data-testid="seat-create-error">
+                Could not start a conversation: {seatCreateError.message}
+              </p>
+            )}
+            {panelSessionId === undefined || panelOrgId === undefined ? (
+              <p className="text-xs text-muted-foreground">Loading…</p>
+            ) : (
+              <SeatPane
+                sessionId={panelSessionId}
+                orgId={panelOrgId}
+                kind={leaf.kind}
+                address={leaf.address}
+                resourceClient={resourceClient}
+                hireSessionId={hireSessionId}
+                onHired={handleHired}
+              />
+            )}
+          </>
         ) : null,
     }),
-    [handleNewSession, flow.isLoading, panelSessionId, panelOrgId, resourceClient, hireSessionId, handleHired]
+    [
+      handleNewSession,
+      handleNewSeatConversation,
+      seatCreateError,
+      flow.isLoading,
+      panelSessionId,
+      panelOrgId,
+      resourceClient,
+      hireSessionId,
+      handleHired,
+    ]
   );
 
   const handleSelectedModelChange = useCallback(
@@ -511,7 +563,29 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
     />
   );
   const stream =
-    picked === null ? chatPanel : <PickedSessionPanel session={pickedSession} kind={picked.kind} />;
+    picked === null ? (
+      chatPanel
+    ) : (
+      <PickedSessionPanel
+        session={pickedSession}
+        kind={picked.kind}
+        conversation={
+          <Conversation className="min-h-0 flex-1" data-testid="conversation">
+            <ConversationBody
+              items={pickedSession.items}
+              isStreaming={pickedSession.isStreaming}
+              isFinishing={pickedSession.isFinishing}
+              statusMessage={pickedSession.statusMessage}
+              isLoading={pickedSession.isLoading}
+              error={pickedSession.error}
+              emptyTitle="Nothing here yet"
+              emptyDescription={`This ${picked.kind} session has no turns yet.`}
+            />
+            <ConversationScrollButton />
+          </Conversation>
+        }
+      />
+    );
 
   const teamPanel = (
     <TeamPanel
@@ -744,33 +818,6 @@ function Rail({
         </Button>
       </div>
     </>
-  );
-}
-
-/**
- * A session from another flow, opened from the rail: its transcript, and no
- * composer, because this page sends turns to the assistant only.
- */
-function PickedSessionPanel({ session, kind }: { session: ReturnType<typeof useSession>; kind: string }) {
-  return (
-    <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
-      <Conversation className="min-h-0 flex-1" data-testid="conversation">
-        <ConversationBody
-          items={session.items}
-          isStreaming={session.isStreaming}
-          isFinishing={session.isFinishing}
-          statusMessage={session.statusMessage}
-          isLoading={session.isLoading}
-          error={session.error}
-          emptyTitle="Nothing here yet"
-          emptyDescription={`This ${kind} session has no turns yet.`}
-        />
-        <ConversationScrollButton />
-      </Conversation>
-      <p className="border-t px-4 py-3 text-xs text-muted-foreground">
-        Read only. Messages from this page go to the assistant, so pick one of its conversations to reply.
-      </p>
-    </section>
   );
 }
 
