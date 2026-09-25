@@ -211,6 +211,32 @@ Then handle what remains per
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The agent mailbox", which
 owns what a coordinator may answer with its own hands and what it must dispatch.
 
+## Hand a browser check to `fsd-qa`
+
+Some verification needs a real browser: a goal check that reads the rendered UI, a
+kitchen-sink scenario, the DevTool. **Try it yourself first.** Launch Chromium on the real
+path (`goals/lib/playwright.mts` → `launchChromium`; Claude Cloud ships one under
+`/opt/pw-browsers`) and run the check. You can't do it yourself only when that attempt
+failed, or when the check needs something your environment can't have: a signed-in account,
+a real device, the user's local setup. Record the command and the error. "Probably can't"
+is not a reason.
+
+Then hand it to **`fsd-qa`**, which pulls the branch and runs the check on a local machine:
+
+1. **Find or open the address.** Reuse the handle for this issue or epic; if none exists,
+   open `fsd/issue/<ISSUE-ID>` per [Open a handle](#open-a-handle), and subscribe before you
+   post.
+2. **Post one `kind: ask`, `to: fsd-qa`**, answerable without our repo open: the repository
+   and branch, **the commit SHA to test**, the setup and run commands, what PASS looks like
+   (the goal's Signal), the control that must FAIL and how to switch it on, and what to send
+   back: PASS or FAIL per leg, the control's FAIL, the SHA it tested, and a screenshot or log
+   excerpt as evidence.
+3. **The reply is the verdict.** Quote it in the implementation PR's goal verdict with a link
+   to the comment. It counts only for the SHA it names; after a new push, ask again.
+4. **Silence is not a result.** Mailbox delivery is best-effort, so on each wake read the
+   handle's comments by API before concluding nothing came back. Until a verdict arrives the
+   goal check is **blocked on `fsd-qa`**, and the PR says so. It is not passed.
+
 ## Open a handle
 
 **An epic opens one for itself at setup.** That is the normal case: publishing an address up

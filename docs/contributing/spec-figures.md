@@ -23,12 +23,14 @@ the **position** of an element means. If the thing is a graph, mermaid wins on e
 
 | Altitude | Figure | Shape | Lives in | In the PR body? |
 |---|---|---|---|---|
+| Issue | **How we'll know it's met** — the goal check: what runs, on what input, what counts as PASS, and the control that must FAIL as a dashed path | mermaid `flowchart LR`, ≤ 8 nodes | `SPEC.md`, under the goal | **Yes**, as a mermaid fence |
 | Issue | **What changes** — the thing before and after, side by side, same vocabulary | SVG when position carries it (a drawer, a fence, a stack); mermaid pair otherwise | `SPEC.md` | **Yes**, this one always |
 | Issue | **How it reaches the seat** — the mechanism as a path through layers | mermaid `flowchart LR`, ≤ 10 nodes | `SPEC.md` | No |
 | Issue | **The decision tree** — the issue, its decisions, what each rejected | mermaid `flowchart TD` | `DECISIONS.md` | No |
 | Issue | **A decision's picture** — a matrix, a layer boundary, a grid of moments | SVG, one per decision that needs it, usually zero or one | `DECISIONS.md` beside its card | No |
 | Issue | **A rule's picture** — a fence with the paths that cross it | SVG, with a mermaid companion listing the same paths by name | `BUSINESS-RULES.md` | No |
 | Issue | **The build DAG** — surfaces in build order | mermaid `flowchart TD` | `PLAN.md` | No |
+| Epic | **How we'll know it's met** — the proof issue's goal check, one path per leg, with the control that must FAIL | mermaid `flowchart LR`, ≤ 8 nodes | `SPEC.md`, under the goal | **Yes**, as a mermaid fence |
 | Epic | **What's in the box** — in the box · composed in by the app · replaced in one line · not built | SVG (containment and a fence) | `SPEC.md` | **Yes** |
 | Epic | **How the issues flow into each other** — the dependency graph, with what each hands the next | mermaid `flowchart LR`, amended when scope or dependencies change | `SPEC.md` beside the dated set table | No (linked) |
 | Epic | **Who owns what** — rule × issue, each rule with exactly one owner | SVG (a matrix) | `DECISIONS.md` | **Yes** |
@@ -206,10 +208,14 @@ SVG, at `--force-device-scale-factor=2`, and keep the SVG as the file that gets 
 
 ## In the PR body
 
-A spec or epic PR body carries the figures the table above marks — one at issue altitude, three at
-epic altitude — as raw-content images pinned to a commit. The implementation PR for a spec-backed
+A spec or epic PR body carries the figures the table above marks. *How we'll know it's met* is
+mermaid, so it is pasted into the body as a fence and needs no pin. The SVGs (*what changes* at
+issue altitude; the box, the ownership matrix and the path at epic altitude) go as raw-content
+images pinned to a commit. The implementation PR for a spec-backed
 issue carries the same issue-altitude figures again, pinned to the `main` commit that last touched
-each one, so the reviewer of the code sees the intent it answers to (`issue-implement` Step 9):
+each one, so the reviewer of the code sees the intent it answers to (`issue-implement` Step 9).
+The *how we'll know* fence goes beside the goal verdict, so the PASS and the control's FAIL are
+read against the picture that promised them:
 
 ```html
 <img src="https://raw.githubusercontent.com/<owner>/<repo>/<commit-sha>/specs/issues/<ISSUE-ID>/figures/<name>.svg"

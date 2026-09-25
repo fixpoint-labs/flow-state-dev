@@ -4,11 +4,9 @@ sidebar_position: 2
 
 # Blocks
 
-Everything in flow-state.dev is a block. Every LLM call, every data transform, every branching decision, every multi-step pipeline is composed from five block kinds.
+Everything in flow-state.dev is a block. Every LLM call, every data transform, every branching decision, every multi-step pipeline is composed from five block kinds. A handful of primitives that compose freely means you can build any AI workflow without inventing new abstractions.
 
-Two of them talk to a model. A **generator** asks it to write: text, tool calls, a structured object. An **evaluator** asks it questions you already know, and gets typed answers back: which of these options, how severe on this scale, yes or no. Reach for an evaluator when your code is going to branch on the answer.
-
-This constraint is the point. A handful of primitives that compose freely means you can build any AI workflow without inventing new abstractions.
+Two of the five talk to a model. A **generator** asks it to write: text, tool calls, a structured object. An **evaluator** asks it questions whose answers you already know, and gets typed answers back: which of these options, how severe on this scale, yes or no. Reach for an evaluator when your code is going to branch on the answer.
 
 Field-by-field options for each kind live in [Block options](/docs/configuration/blocks).
 
@@ -302,7 +300,7 @@ generator({
 
 The coercion model defaults to `intent/utility` so repair routes through a cheap, reliable tier independent of the primary model. Set `repair: { coerce: false }` to turn coercion off, or `repair: { mode: "fail" }` to skip all repair and throw on the first mismatch. If both passes fail, the block throws `OutputValidationError` as before.
 
-### Evaluator — the questions you already know
+### Evaluator — the questions you already know {#evaluator}
 
 A generator asks a model to write. An evaluator asks it questions whose possible answers you already know, and hands back typed answers your code can branch on: which of these options, where on this scale, yes or no.
 
@@ -332,15 +330,15 @@ The output is `{ answers }`, keyed by the question ids you chose. Each answer is
 | `score` | `score`: a position between the first level (0) and the last. `probabilities` by level index when given |
 | `boolean` | `probability`: the model's estimate that the answer is yes |
 
-Any answer can also carry `confidence`, but only when the model reported one. Jev reports it for choice and score questions. The popular providers' evaluation models don't report it at all. When it's missing, the key is absent: the evaluator never fills it in. A boolean's `probability` is the model's estimate that the answer is yes. It isn't the model's confidence in that estimate, so don't gate on it as if it were.
+Any answer can also carry `confidence`, but only when the model reported one. Jev reports it for choice and score questions. The popular providers' evaluation models don't report it at all. When it's missing, the key is absent: the evaluator never fills it in. A boolean's `probability` isn't the model's confidence in its estimate, so don't gate on it as if it were.
 
-`state` is what the model looks at. Leave it out and the block's input is used as is. It can be a string, an array or a plain object. `questions` can also be a function of the input and the block context, for when the options come from data: a catalog, a list of teams.
+`state` is what the model looks at. Leave it out and the block's input is used as is. It can be a string, an array or a plain object. `questions` can also be a function of the input and the block context, for when the options come from data: a catalog, a list of teams. Every field is listed under [Block options](/docs/configuration/blocks#evaluator).
 
 The model has to be one that supports evaluation. A model that can only generate text is refused before the block makes any call, and the error says what to pass instead. See [Evaluation models](/docs/fundamentals/models#evaluation-models).
 
-An evaluator answers and stops. It doesn't retry, doesn't fall back to another model, and doesn't decide anything with the answer. Branching belongs to your code: a `router` that reads `answers.team.choice`, or a sequencer step that checks `answers.urgent.probability`. Evaluators are silent like handlers. What they asked and what came back shows up in the DevTool trace.
+An evaluator answers and stops. It doesn't retry, doesn't fall back to another model, and doesn't decide anything with the answer. Branching belongs to your code: a `router` that reads `answers.team.choice`, or a sequencer step that checks `answers.urgent.probability`. For a tree of questions that sends doubtful answers to review, use [`utility.cascadingRouter`](/docs/patterns/utility-blocks/core#cascadingrouter). Evaluators are silent like handlers. What they asked and what came back shows up in the DevTool trace.
 
-To see evaluators route real tickets end to end, follow [Routing with evaluators](/guides/routing-with-evaluators).
+Evaluators turn up in other parts of the framework too. They can [classify documents when they're written](/docs/resources/searching#find-by-facets), [decide which turns memory captures](/docs/memory/configuration#deciding-which-turns-to-observe), and [pick a skill for a turn](/docs/skills/activation#tier-3-with-an-evaluator). To see them route real tickets end to end, follow [Routing with evaluators](/guides/routing-with-evaluators).
 
 ### Sequencer — the composition engine
 
@@ -538,6 +536,8 @@ const dispatch = utility.keyedRouter({
 If `select` returns a key that isn't in `blocks`, the router throws with the list of registered keys. Pass `fallback` to route unknown keys to a default block instead.
 
 Input adaptation does not belong here — if the selected block expects a different shape than the router's input, pre-connect each block with `block.connectInput(...)` before handing the record to `keyedRouter`. That keeps the primitive tight and keeps the adapter close to the block it adapts.
+
+When the choice comes from an [evaluator](#evaluator)'s answer, a plain router can branch on it directly. If you also need a confidence floor, or a tree of several questions, use [`utility.cascadingRouter`](/docs/patterns/utility-blocks/core#cascadingrouter). It sends anything the model isn't confident about to one `ambiguous` block, so it only fits models that report confidence.
 
 ## The block context
 

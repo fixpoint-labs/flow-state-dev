@@ -522,7 +522,7 @@ The up-front activator, `createSkillActivator`, picks skills before the generato
 then keywords, then a classifier. Pass `evaluator: skillEvaluator(model)` to run that last tier
 on an evaluation model. It picks one skill or none, and its answer is final.
 `skillQuestions` builds the same question for an evaluator you construct yourself. See
-[Activation paths](https://flow-state.dev/docs/skills/activation).
+[Tier 3 with an evaluator](https://flow-state.dev/docs/skills/activation#tier-3-with-an-evaluator).
 
 `initialSkills` also takes a **function of the execution**, for a catalog that
 belongs to the flow copy rather than to the definition — two registered copies

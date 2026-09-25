@@ -130,14 +130,14 @@ Copies that differ by more than their name declare `configSchema` on the definit
 
 **Block builders:**
 - `handler(config)` — Synchronous/async logic block
-- `evaluator(config)` — a block that asks an evaluation model typed questions (`choice`,
-  `score`, `boolean`) about one state and returns `{ answers }`. Confidence appears on an answer
-  only when the model reported it. See [Blocks](https://flow-state.dev/docs/fundamentals/blocks).
-- `choice(instructions, options)` / `score(instructions, levels)` / `boolean(instructions, criteria?)`
-  — question builders for `evaluator`.
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair (deterministic `jsonrepair` then LLM coercion that reshapes off-schema output to the schema; on by default, configured via `repair.coerce` / `repair.coerce.model`, defaulting to `intent/utility`)
   - Provider-native web search: set `search: true` (or a `GeneratorSearchConfig`). This is the model provider's built-in search, distinct from the `@flow-state-dev/tools` `tools.search` tool — the tools `tier` knob does not apply, and the generator's `searchDepth` (`"low" | "medium" | "high"`, OpenAI `searchContextSize`) is a different field from the tools `searchDepth` (`"basic" | "advanced"`). See [Web search](https://flow-state.dev/docs/fundamentals/blocks#web-search).
   - Human-in-the-loop inside the tool loop: a generator tool can call `ctx.suspend()` to gate its own call. The request suspends like any sequencer gate, and on a durable resume the tool re-enters past the approval — prior turns and completed sibling tools replay from the item log, so the model is not re-called for them. Constraints: gate before side effects (the tool re-enters from the top on resume, so guard pre-gate work with `runOnce`), one approval gate per model turn (first-suspension-wins), and a gated tool can't be `cacheable` (the cache short-circuits before the tool body). See [Generator and router suspend/resume](https://flow-state.dev/docs/advanced/generator-and-router-suspend-resume).
+- `evaluator(config)` — a block that asks an evaluation model typed questions (`choice`,
+  `score`, `boolean`) about one state and returns `{ answers }`. Confidence appears on an answer
+  only when the model reported it. See [Evaluator](https://flow-state.dev/docs/fundamentals/blocks#evaluator).
+- `choice(instructions, options)` / `score(instructions, levels)` / `boolean(instructions, criteria?)`
+  — question builders for `evaluator`.
 - `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `sideChain`, `sideChainIf`, `waitForSideChain`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
   - `.forEach()` / `.forEachSideChain()` take a per-item factory `(item, index, ctx) => block` in place of a block. A block built that way does not exist when `defineFlow` walks the graph, so declare what the factory can produce with `blocks: [...]` in the trailing options (`IterationOptions` / `SideChainIterationOptions`); declared blocks count as the step's children for the dispatcher address check and resource merging. Redundant on a call that passes a block directly.
 - `router(config)` — Runtime block selection from declared routes. Route names must be unique per router (validated at build). The selected branch dispatches through the same replay seam as sequencer children, so on a durable resume the branch decision stays stable — the framework validates the re-run selection against the recorded decision and throws `RouteUnavailableError` on a mismatch — and completed work inside the branch replays instead of re-executing. A router whose branch can suspend needs a pure `execute` selector (no side effects, no ambient state reads); see [Control-flow determinism](https://flow-state.dev/docs/advanced/block-memoization-and-replay#control-flow-determinism)
@@ -187,7 +187,7 @@ Exported types: `ConcurrencyConfig`, `ConcurrencyKey`, `ConcurrencyKeyContext`, 
 - `utility.intentClassifier(config)` — Generator factory for bounded intent classification with required category descriptions and default `{ category, confidence, reasoning? }` output contract
 - `utility.intentRouter(config)` — Sequencer factory that composes `intentClassifier` + `router` into classification-driven branching with category descriptions, handlers, optional `confidenceThreshold`, and optional fallback routing
 - `utility.keyedRouter(config)` — Router factory for the "pick a block from a `Record<string, Block>` by string key" case. Throws with the registered keys (or routes to `fallback`) when the selected key is unregistered. Input adaptation belongs on the routed blocks via `.connectInput` (BP-013)
-- `utility.cascadingRouter(config)` — Sequencer factory that walks a tree of evaluator choice questions. An edge opens only when the model chose it and reported confidence at or above the edge's optional `minConfidence`; every other outcome runs the required `ambiguous` block. On evaluation models that report no confidence, every edge goes to `ambiguous`.
+- `utility.cascadingRouter(config)` — Sequencer factory that walks a tree of evaluator choice questions. An edge opens only when the model chose it and reported confidence at or above the edge's optional `minConfidence`; every other outcome runs the required `ambiguous` block. On evaluation models that report no confidence, every edge goes to `ambiguous`. See [cascadingRouter](https://flow-state.dev/docs/patterns/utility-blocks/core#cascadingrouter).
 - `utility.memoryExtractor(config)` — Generator factory for stateless durable-memory extraction with a default `{ memories: Array<{ type, content, confidence?, source? }> }` output contract (`type` ∈ `fact | preference | constraint | decision`)
 
 Every generator-based utility above accepts an optional `itemVisibility` (`{ client: boolean; history: boolean }`) to control whether output is surfaced to the client/history. All default to unset (silent — output flows only via graph edges). Set explicitly to opt in when the utility should be user-facing.
@@ -308,8 +308,9 @@ Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normaliz
 - `BlockDefinition` — The fully-typed return interface of `handler()`, `generator()`, `evaluator()`, `sequencer()`, and `router()`. Generics default to `ZodTypeAny`, so unparameterized `BlockDefinition` is the unconstrained "any block" form — useful when an app-level factory needs to accept or return a block without restating the framework's generics.
 - `BlockKind` — `"handler" | "generator" | "evaluator" | "sequencer" | "router"` union — useful when writing dispatchers that switch on `block.kind`.
 - `EvaluatorAnswer`, `EvaluatorAnswers<Q>` — the answer types, for code that consumes an evaluator's output. `EvaluationModel` is the evaluation model an evaluator accepts.
-- `ModelResolver` gains an optional `resolveEvaluationModel(modelId, blockName?)`. A custom
-  resolver needs it only to resolve evaluator model strings.
+- `ModelResolver.resolveEvaluationModel(modelId, blockName?)` — optional. A custom resolver
+  needs it only to resolve evaluator model strings. See
+  [With a custom model resolver](https://flow-state.dev/docs/fundamentals/models#with-a-custom-model-resolver).
 - `BlockContext` — The full block-context interface (the type of `ctx` in `execute`). Generic over the four scope-state types, declared resources, sequencer state, and parent input.
 - `BlockResult<TOutput>` — The handler `execute` return-value union.
 - `SessionScopeHandle<TState>` / `UserScopeHandle<TState>` / `OrgScopeHandle<TState>` / `RequestScopeHandle<TState>` — The scope handles `ctx.session` / `ctx.user` / etc. resolve to. Use to type a ctx slice (e.g. `(input, ctx: { session: SessionScopeHandle<MySessionState> }) => …`) instead of hand-rolling a `{ session: { patchState: ... } }` shape.

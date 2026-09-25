@@ -58,8 +58,7 @@ Take the single action the dispatch calls for:
   Linear allows one parent.** Before setting the epic as an issue's parent, check for an
   existing parent: if the issue already has a functional parent, do **not** silently detach
   it — link with `relates-to` instead and flag it for the coordinator to surface. Only re-parent
-  issues that have no conflicting parent. Then write the set — `SPEC.md` (the teams table, why
-  now, *what's in the box* and its figure, the set table with status, the dependency graph,
+  issues that have no conflicting parent. Then write the set — `SPEC.md` (the teams table, why now, the goal and how we'll know it's met, *what's in the box* and its figure, the set table with status, the dependency graph,
   what stays, the sign-off), `DECISIONS.md` (the tree, the cross-cutting cards, the ownership
   matrix figure), `BUSINESS-RULES.md`, `PLAN.md`, and `DOCS.md` — the shared reader narrative,
   concrete proposed prose/examples, target create/update/remove operations, and issue ownership.
@@ -81,11 +80,11 @@ Take the single action the dispatch calls for:
   **Write the epic PR description to the template** —
   [`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) → "The PR body" is
   the instance and [`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md)
-  the rules. The teams table; the box figure, pinned to the commit that holds it; why now; the
+  the rules. The teams table; the goal, its *how we'll know* fence and its check line; the box figure, pinned to the commit that holds it; why now; the
   set in one line with the as-of counts and a link to the live table; the path and the ownership
   matrix, pinned, each with its sentence; the sign-off in compact form (three is the ceiling,
   live forks included); *Reviewers · look here* at epic altitude; the links line; the contract
-  collapsed and pasted **verbatim**. **Budget ~450 words.** Pin every image to the commit SHA
+  collapsed and pasted **verbatim**. **Budget ~525 words.** Pin every image to the commit SHA
   and use the raw-content URL — a branch URL is cached stale by GitHub's image proxy and a blob
   URL doesn't render. Read the stored body back ([`spec-figures.md`](../../docs/contributing/spec-figures.md) →
   "In the PR body"). A `src` with no backtick renders, and a later edit keeps it — do not drop
