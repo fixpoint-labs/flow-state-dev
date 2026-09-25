@@ -10,6 +10,10 @@ model, no key) and calls the same HTTP routes the page calls, in-process.
 clerk in the test resolver. It is evidence for the direction, not the implementation: it skips
 the followups assignee and the file headers.
 
+It reads the author as `String((ctx.flow as { id?: string }).id ?? "")`. That cast is
+superseded by [D3](../../DECISIONS.md#d3): the implementation reads `ctx.flow.config.seatId`.
+The patch still proves the dispatch, the row and the roster check.
+
 ```bash
 cd apps/kitchen-sink
 git apply ../../specs/issues/FIX-1589/poc/clerk-premises/clerk.patch

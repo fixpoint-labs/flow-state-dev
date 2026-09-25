@@ -24,11 +24,20 @@ into work.
 | BR-7 | The model decides the note needs a person | One `fileTask` on `support.desk` with `board: escalations`, the model's goal text, and `author` the seat's id. The reply says it was filed there | Goal check · V3 |
 | BR-8 | The model decides the note is work a seat can run later | One `fileTask` with `board: followups`, filed for the `followup-runner` worker, so `support.wren`'s drain can run it when called | V3 |
 | BR-9 | The model names any other board, or none | The tool refuses it before dispatch; nothing is filed. The board list is the tool's input schema | V3 |
-| BR-10 | The model tries to set the author, the assignee or the channel | It can't: the tool's input is the board and the goal. The kind sets the rest | V3 |
+| BR-10 | The model tries to set the author, the assignee or the channel | It can't: the tool's input is the board and the goal. The author is the seat's `seatId`; the kind sets the rest | V1 · V3 |
 | BR-11 | A row is filed | It shows in that board's column in the team panel on the next read, and survives a reload | Goal check |
 | BR-12 | A clerk seat that is not a member of `support.desk` files (one hired later) | The channel refuses it by name (`author-not-a-member`) and nothing is written. The reply may already say "filed" (D1) | V3 |
 | BR-13 | `fileTask` is refused for any other reason (no organization, board not declared) | A failed request on `support.desk`, no row. The clerk's own run is not rolled back | V3 |
 | BR-14 | Filing and answering happen in one turn | One reply, after the tool call. Each tool call files one row; nothing dedupes a model that calls it twice | V3 |
+| BR-20 | The app runs with an external dispatcher (BullMQ, `FSD_BULLMQ_DISPATCH=1`) | The dispatch is refused (`external-dispatcher`). The tool returns "filing is unavailable here" instead of failing the turn, the reply says it could not file, and no row is written | V3 |
+
+## Which seat is filing
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-21 | Any seat is hired: from files, by the runtime `hire` tool, or by the boot reload | Its settings carry `seatId`, the record's id (the name `members:` lists). All three paths go through the one hire step | V0 |
+| BR-22 | A worker file, or a hand-built record's settings, writes `seatId:` | Refused by name, like the other imposed keys | V0 |
+| BR-23 | A worker kind's settings schema is hand-written and does not declare `seatId` | The seat refuses at boot, naming the key, until the kind declares it | V0 |
 
 ## What does not change
 
@@ -38,7 +47,7 @@ into work.
 | BR-16 | A person posts to `support.desk` | The clerk gets the notify stub's name-only line and does not run | Existing tests |
 | BR-17 | `support.otto` calls its `desk-note` tool | Same as today | Existing tests |
 | BR-18 | FIX-1585's shell names the clerk's answering action | Still `answer { note }`; the drift test passes unchanged | FIX-1585's V2 |
-| BR-19 | The files-alone and durable-hire goals run | Green, on the scripted model, graded on the same desk values | V5 |
+| BR-19 | The files-alone and durable-hire goals run | Green, on the scripted model, graded on the same desk values. The files-alone scan counts registration routes only (EVOLUTION) | V5 |
 
 ## Failure taxonomy
 

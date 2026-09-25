@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Feature · kitchen-sink only, no package change · small · 1 PR · epic [FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592), after [FIX-1585](https://linear.app/fixpoint-labs/issue/FIX-1585)
+Feature · kitchen-sink, plus one worker-contract key in `workforce` · small–medium · 1 PR · epic [FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592), after [FIX-1585](https://linear.app/fixpoint-labs/issue/FIX-1585)
 
 ## Four people, before and after
 
@@ -12,6 +12,7 @@ Feature · kitchen-sink only, no package change · small · 1 PR · epic [FIX-15
 | **asks for something the desk can't close** | Gets the note back. Nothing is filed | Gets a reply saying where it went, and a row on `escalations` or `followups` in the team panel |
 | **opens the team panel after the clerk files** | An empty `escalations`, and the boot warning | The row, waiting. The warning stays: filing is not draining |
 | **runs the two goals that prove a seat's settings come from its file** | Pass on the echo, no model | Pass on the scripted model, graded on the same desk tag |
+| **writes a block that runs inside a hired seat** | Can't tell which seat it runs in, short of a cast core forbids | Reads `seatId` from the seat's settings, on every hired seat |
 
 The day FIX-1585 ships, `support.ada` is the first seat a person reaches, and it parrots them.
 
@@ -57,7 +58,7 @@ control the reply is the note and no row appears.
 The only new path out of the seat is one dispatch into an action the channel already declares.
 The desk tag stays the seat's; the words after it become the model's.
 
-**The kind's file, all of it that changes:**
+**The kind's file, and the one contract key it reads:**
 
 ```diff
   // apps/kitchen-sink/workforce/flows/workers/desk-clerk.ts
@@ -69,6 +70,8 @@ The desk tag stays the seat's; the words after it become the model's.
 -   answer: { inputSchema: deskNoteInput, block: answer },
 +   answer: { inputSchema: deskNoteInput, block: answer, userMessage: (i) => i.note },
   }
++ // the filing tool signs as the seat, from the settings the hire wrote:
++ payload: (input, ctx) => ({ ...input, author: ctx.flow.config.seatId })
 ```
 
 The action's name and input stay, so FIX-1585's map and the CLI call hold.
@@ -92,7 +95,9 @@ The dashed edge is the model's choice. After it, the channel's own action, autho
 - **Nobody drains `escalations`**; the boot warning stays.
 - **A post to `support.desk` doesn't run the clerk** (FIX-1590).
 - **`desk-note` stays** as `support.otto`'s tool.
-- **Core, engine and the `workforce` package.**
+- **Core and engine.** In `workforce`, only the contract gains `seatId` ([D3](DECISIONS.md#d3)).
+- **Filing needs in-process dispatch.** Under BullMQ dispatch (`FSD_BULLMQ_DISPATCH=1`) the clerk
+  still answers, and says it cannot file.
 
 ## Sign off
 
@@ -105,8 +110,8 @@ tell from a canned one, or this held open for FIX-1591's drain.
    later that isn't on the channel is refused with nothing on the board.
 2. **[D2](DECISIONS.md#d2) · Answer by default; file only what the desk can't close, and always
    reply.** If wrong: rows pile up on a board nobody drains, or the desk never escalates.
-3. **[D3](DECISIONS.md#d3) · The desk tag stays the kind's, so two existing goals move to the
-   scripted model.** If wrong: those two goals lose their no-test-seam property, or grade a
-   model's wording.
+3. **[D3](DECISIONS.md#d3) · Every hired seat carries its own id as `seatId`, imposed by the
+   hire.** If wrong: a published contract key every hand-written worker kind must add before it
+   boots, or, without it, seat posts in FIX-1594 go unattributed and wake everyone.
 
-**Open: none.** Number 1 is the one to weigh. Reasoning: [DECISIONS.md](DECISIONS.md).
+**Open: none.** Number 3 is the one to weigh: it changes a published package's contract. Reasoning: [DECISIONS.md](DECISIONS.md).
