@@ -92,6 +92,14 @@ export async function discoverPackageBlocks(root: string): Promise<PackageBlockD
       if (IGNORED_ENTRIES.has(workerName)) continue;
       const workerDir = path.join(team.dir, WORKERS_LEVEL, workerName);
       if ((await classify(workerDir)).kind !== "directory") continue;
+      // A badly named worker folder is the worker reader's to report, and the
+      // loader skips its packages; so does this walk, or it would generate
+      // blocks for a package no seat can hold.
+      try {
+        validateSegment(workerName, "Worker");
+      } catch {
+        continue;
+      }
       await readPackagesSlot(workerDir, `${workersPath}/${workerName}`, packageBlocks, problems);
     }
   }

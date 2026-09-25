@@ -14,6 +14,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkforceCodeError, discoverWorkforceCode } from "../src/codegen/discover";
 import { renderWorkforceCode } from "../src/codegen/render";
+import { discoverPackageBlocks } from "../src/codegen/discover-package-blocks";
 
 let root: string;
 
@@ -116,6 +117,15 @@ describe("what a package's blocks folder registers", () => {
   it("refuses a directory where a package block belongs", async () => {
     await write("teams/support/packages/escalation/blocks/nested/page.ts");
     expect(await problemsOf()).toEqual([expect.stringContaining("is a directory")]);
+  });
+
+  it("does not descend into a worker folder whose name breaks the segment rules, as the loader does not", async () => {
+    // The worker reader reports the bad folder; this walk must not register
+    // blocks for a package no seat could ever hold.
+    await write("teams/support/workers/Clerk/packages/refunds/blocks/issue-refund.ts");
+    const found = await discoverPackageBlocks(root);
+    expect(found.packageBlocks).toEqual([]);
+    expect(found.problems).toEqual([]);
   });
 
   it("does not look in a package under an org-level worker, which is no seat", async () => {
