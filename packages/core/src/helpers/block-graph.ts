@@ -3,9 +3,9 @@
  *
  * Its own module because its callers have nothing else in common: `defineFlow`
  * resolves dispatch targets from this walk (and collects flow-config
- * requirements off the same pass), `generator` walks what a function-valued
- * `tools` slot returned, and `defineFlow` imports `generator`, so neither can
- * host it. Written once rather than per caller because a check that traverses
+ * requirements and block-declared resources off it), `generator` walks what a
+ * function-valued `tools` slot returned, and `defineFlow` imports `generator`,
+ * so neither can host it. Written once rather than per caller because a check that traverses
  * one level shallower than the walk it mirrors is invisible: it type-checks, it
  * runs, and it silently passes the case it was written to catch (FIX-1336).
  */
@@ -19,10 +19,13 @@ import type { BlockDefinition } from "../types/block";
  * the function form is genuinely unknowable rather than merely inconvenient:
  * what it returns depends on runtime values that do not exist yet. That is why
  * `generator` re-walks what the function returned, once it has.
+ *
+ * Read off `staticTools`, never `config.tools`: `generator()` rewrites
+ * `config.tools` into one resolver whenever a `uses` capability contributes
+ * tools, so the authored array is only reliably there (FIX-1578).
  */
 function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
-  const tools = (block.config as { tools?: unknown }).tools;
-  return Array.isArray(tools) ? (tools as BlockDefinition[]) : [];
+  return block.staticTools ?? [];
 }
 
 /**
@@ -36,10 +39,10 @@ function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
  * a configuration the author had every reason to think was supported
  * (FIX-1074).
  *
- * Only the dispatch walk needs the tool edge. Resources are
- * collected off the action roots, and a handed-off board's ledger reaches the
- * flow through the task entry its dispatcher addresses — an action root of its own —
- * so a board reached only as a tool still lands its declarations.
+ * Resource collection takes the same walk: composition bubbles a child's
+ * declarations into its parent, but a tool does not, so a block reached only
+ * as a generator's tool would otherwise never register what it declares
+ * (FIX-1578).
  *
  * A block is visited once: blocks are shared freely (one handler across several
  * actions) and a router route may point back up the tree, so revisits and cycles

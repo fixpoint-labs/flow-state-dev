@@ -51,10 +51,9 @@ export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions 
     // to prevent recurring. The block sits in the capability's `tools` preset,
     // and three things line up against a tool's resources reaching the flow:
     // `mergeSurfaceInto` merges a capability surface's `resources` and never
-    // reads `surface.tools` for them; `collectBlockResources` gathers
-    // `declaredResources` from ACTION blocks, and a tool block is not one; and
-    // `defineFlow`'s own comment settles it — "a generator is a leaf that
-    // bubbles none of its tools' rails by design."
+    // reads `surface.tools` for them; `defineFlow` collects a generator's
+    // STATIC `tools` array but not the tools a capability preset resolves at
+    // run time; and a generator is a leaf that bubbles none of its tools' rails.
     //
     // So a capability whose only contribution is a resource-declaring block in
     // `tools` contributes NO resource declarations. The flow never registers the

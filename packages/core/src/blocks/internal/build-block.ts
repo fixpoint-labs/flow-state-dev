@@ -121,6 +121,11 @@ export type BuildBlockOptions<
    */
   childBlocks?: readonly BlockDefinition<any, any>[];
   /**
+   * A generator's authored static `tools` array. See
+   * `BlockDefinition.staticTools`.
+   */
+  staticTools?: readonly BlockDefinition<any, any>[];
+  /**
    * The address this block dispatches to, when it is a dispatcher. Stamped on
    * the built definition by `markDispatcher`; every rebuild path forwards
    * `definition.dispatch` so a `connectInput` or `.rescue()` on a dispatcher
@@ -232,6 +237,7 @@ export function buildBlock<
     declaredResources: options.declaredResources,
     ownDeclaredResources: options.ownDeclaredResources,
     childBlocks,
+    ...(options.staticTools !== undefined ? { staticTools: options.staticTools } : {}),
     ...(options.dispatch !== undefined ? { dispatch: options.dispatch } : {}),
     _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
@@ -386,6 +392,7 @@ export function buildBlock<
         // the stamp and rebuilding from it would hand back a block that has
         // silently stopped being a dispatcher.
         childBlocks: options.childBlocks,
+        staticTools: options.staticTools,
         dispatch: definition.dispatch,
         // `connectInput` preserves `TOutputSchema`, so any installed
         // `mapModelOutput` mapper is still valid against the rebuilt block's
@@ -404,6 +411,7 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         childBlocks: options.childBlocks,
+        staticTools: options.staticTools,
         dispatch: definition.dispatch,
         modelOutputMapper: mapper,
       });
@@ -427,6 +435,7 @@ export function buildBlock<
         ownDeclaredResources: options.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         childBlocks: options.childBlocks,
+        staticTools: options.staticTools,
         dispatch: definition.dispatch,
         modelOutputMapper: options.modelOutputMapper,
       });
@@ -529,6 +538,7 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         childBlocks: options.childBlocks,
+        staticTools: options.staticTools,
         dispatch: definition.dispatch,
       });
     }

@@ -145,7 +145,7 @@ const planManager = handler({
 // planManager.declaredResources === { plan: planResource }
 ```
 
-Resource declarations are supported on all block kinds: handler, generator, and router. Sequencers automatically collect declared resources from all child blocks in the DSL chain. `defineFlow` merges block-declared resources into the flow's `resources` map — see [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
+Resource declarations are supported on all block kinds: handler, generator, and router. Sequencers automatically collect declared resources from all child blocks in the DSL chain. `defineFlow` merges block-declared resources into the flow's `resources` map from every block reachable from its actions, including blocks reached only through a generator's static `tools` array (a function-valued `tools` slot resolves per call, so its tools' declarations are not collected) — see [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
 ## Handler
 

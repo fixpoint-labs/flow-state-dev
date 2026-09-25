@@ -1079,6 +1079,17 @@ export interface BlockDefinition<
    */
   childBlocks?: readonly BlockDefinition<any, any>[];
   /**
+   * A generator's authored static `tools` array, kept for the definition-time
+   * walk. `generator()` rewrites `config.tools` into one async resolver when a
+   * capability contributes tools, which hides the authored array from a walk
+   * that reads `config.tools`; this field keeps the tool edge walkable either
+   * way. Absent when `tools` was omitted or authored as a function.
+   *
+   * Retained for structure only — the model is offered what `config.tools`
+   * resolves to.
+   */
+  staticTools?: readonly BlockDefinition<any, any>[];
+  /**
    * The address this block dispatches to, when it is a dispatcher.
    *
    * Stamped by `dispatcher()` (and by the task board on its hand-off block)

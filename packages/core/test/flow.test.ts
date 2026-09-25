@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineFlow, generator, handler, sequencer } from "../src";
+import { defineCapability, defineFlow, generator, handler, sequencer } from "../src";
 import { defineResource } from "../src/types/resource";
 import { defineResourceCollection } from "../src/types/resource-collection";
 import { createMockContext, runForTest } from "./helpers";
@@ -680,6 +680,194 @@ describe("defineFlow", () => {
       expect(flow.resources).toEqual({
         observations: observationsResource
       });
+    });
+
+    // A tool block is a block like any other: the resources it declares must
+    // reach the flow's map, or `ctx.resources.<key>` is undefined inside the
+    // tool's `execute` with no error at build or run time.
+    it("collects resources from a block reachable only as a generator's static tool", () => {
+      const tool = handler({
+        name: "tool-with-res",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const chat = generator({ name: "chat", model: "mock-model", prompt: "p", tools: [tool] });
+
+      const flow = defineFlow({
+        kind: "tool-res",
+        actions: {
+          run: { inputSchema: z.any(), block: chat }
+        }
+      });
+
+      expect(flow.resources).toEqual({
+        observations: observationsResource
+      });
+    });
+
+    it("collects resources from a tool of a generator nested in a sequencer", () => {
+      const tool = handler({
+        name: "tool-with-res",
+        resources: { artifacts: artifactsResource },
+        execute: (v) => v
+      });
+      const chat = generator({ name: "chat", model: "mock-model", prompt: "p", tools: [tool] });
+      const seq = sequencer({ name: "pipeline" }).step(chat);
+
+      const flow = defineFlow({
+        kind: "nested-tool-res",
+        actions: {
+          run: { inputSchema: z.any(), block: seq }
+        }
+      });
+
+      expect(flow.resources).toEqual({
+        artifacts: artifactsResource
+      });
+    });
+
+    // A capability that contributes a control tool turns the generator's
+    // `tools` into one async resolver. The authored array is still static,
+    // so its tools' resources must still be collected.
+    it("collects resources from a static tool when a capability also contributes tools", () => {
+      const tool = handler({
+        name: "tool-with-res",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const control = handler({ name: "control", execute: (v) => v });
+      const cap = defineCapability({
+        name: "control-bearing",
+        presets: { withControls: { controlTools: [control] }, default: ["withControls"] }
+      });
+      const chat = generator({
+        name: "chat",
+        model: "mock-model",
+        prompt: "p",
+        tools: [tool],
+        uses: [cap]
+      });
+
+      const flow = defineFlow({
+        kind: "tool-res-with-cap",
+        actions: {
+          run: { inputSchema: z.any(), block: chat }
+        }
+      });
+
+      expect(flow.resources).toEqual({
+        observations: observationsResource
+      });
+    });
+
+    // A dynamic `uses` entry rewrites `tools` the same way even when it
+    // resolves to nothing at run time.
+    it("collects resources from a static tool alongside a dynamic uses entry", () => {
+      const tool = handler({
+        name: "tool-with-res",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const chat = generator({
+        name: "chat",
+        model: "mock-model",
+        prompt: "p",
+        tools: [tool],
+        uses: [() => []]
+      });
+
+      const flow = defineFlow({
+        kind: "tool-res-with-dynamic-uses",
+        actions: {
+          run: { inputSchema: z.any(), block: chat }
+        }
+      });
+
+      expect(flow.resources).toEqual({
+        observations: observationsResource
+      });
+    });
+
+    // Flow-level `tools` rebuilds every generator from its built config, where
+    // `uses` has already turned `tools` into a resolver. The authored array has
+    // to survive that rebuild, for action and task entries alike.
+    it("collects resources from a static tool alongside uses when the flow declares tools", () => {
+      const tool = handler({
+        name: "tool-with-res",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const chat = generator({
+        name: "chat",
+        model: "mock-model",
+        prompt: "p",
+        tools: [tool],
+        uses: [() => []]
+      });
+
+      const flow = defineFlow({
+        kind: "tool-res-with-flow-tools",
+        tools: { onToolStarted: () => {} },
+        actions: {
+          run: { inputSchema: z.any(), block: chat }
+        }
+      });
+
+      expect(flow.resources).toEqual({
+        observations: observationsResource
+      });
+      expect(flow.actions.run.block.staticTools).toEqual([tool]);
+    });
+
+    it("registers a block reachable both as a tool and as a sequencer step once", () => {
+      const shared = handler({
+        name: "shared",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const chat = generator({ name: "chat", model: "mock-model", prompt: "p", tools: [shared] });
+      const seq = sequencer({ name: "pipeline" }).step(shared).step(chat);
+
+      const flow = defineFlow({
+        kind: "tool-and-step-res",
+        actions: {
+          run: { inputSchema: z.any(), block: seq }
+        }
+      });
+
+      expect(flow.resources).toEqual({
+        observations: observationsResource
+      });
+    });
+
+    // The tool edge joins the same merge as composition, so it inherits the
+    // same conflict rule rather than a silent last-write-wins.
+    it("refuses a tool resource that conflicts with a step's at the same accessor", () => {
+      const other = defineResource({
+        scope: "session",
+        stateSchema: z.object({ entries: z.array(z.string()) })
+      });
+      const step = handler({
+        name: "step",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const tool = handler({
+        name: "tool",
+        resources: { observations: other },
+        execute: (v) => v
+      });
+      const chat = generator({ name: "chat", model: "mock-model", prompt: "p", tools: [tool] });
+      const seq = sequencer({ name: "pipeline" }).step(step).step(chat);
+
+      expect(() =>
+        defineFlow({
+          kind: "tool-conflict-res",
+          actions: {
+            run: { inputSchema: z.any(), block: seq }
+          }
+        })
+      ).toThrow(/Resource conflict: "observations"/);
     });
 
     it("preserves existing flow scope config when bubbling block resources", () => {
