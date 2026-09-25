@@ -1,0 +1,67 @@
+# FIX-1585 · Business rules
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
+
+The cases, written as rules. Each says what a person or the system does and what happens. The
+*proved by* column is the check the plan runs. A human reviews this page; the plan turns it
+into work.
+
+## Posting to a channel
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-1 | A person opens `support.desk` and sends a line | The channel's own `post` action runs on that channel's session with `{ body }` and no `author`. The line appears in that panel labelled `devuser` | E2E · V6 |
+| BR-2 | The page is reloaded after BR-1 | The line is still there, read back from the channel, not from the page's memory | E2E · V6 |
+| BR-3 | The same text is sent to two different channels | Each lands only in its own transcript | V3 |
+| BR-4 | The composer holds nothing but whitespace | Send is disabled. Nothing is posted | V5 |
+| BR-5 | A post is refused (the session is not an open channel, or the post waited past the queue budget) | The panel shows the reason, the text stays in the composer, and nothing is appended | V5 |
+| BR-6 | A browser post lands in a channel with a notify block | Every declared member is notified once. No one is skipped, because the poster is not a member (FIX-1476 BR-16a). No second fan-out exists | V3 |
+| BR-7 | A post is sent to the `digest` channel (`support.noticeboard`) | It lands through that kind's own `post` and shows in its panel as unattributed, because that kind stores no principal. No one is notified: the kind has no notify step. Its `read` still returns only the tail | V3 · V4 |
+
+## Reading a channel
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-8 | Any channel panel is open | It shows the transcript, oldest first. Each line names its `author` if it has one, else its `principal`, else reads as unattributed | V5 |
+| BR-9 | A seat posts while the panel is open | The line shows the next time the panel reads the channel: on reopen, or after the person's own post. It is never lost, only late | V5 |
+| BR-10 | A client reads a channel's session | Each post is one `channel-post` item carrying its line, in post order. Members and the charter stay server-side; nothing about the channel is added to client data | V1 · V4 |
+| BR-11 | A channel kind written by hand emits no `channel-post` item | Its panel shows an empty transcript and still accepts posts. Nothing breaks | V1 |
+| BR-22 | A model or flow calls `read` on a busy channel | It gets the lines inside the session's history window, oldest first. With notify on, each post uses two of the 50 requests. Older lines stay on the page | V1 |
+| BR-23 | A channel opened before this change is read | Its old `state.transcript` lines come first, then the lines from items, each once. New posts add nothing to state | V1 |
+
+## Asking a seat
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-12 | A person opens a `support.otto` conversation and sends a message | The `agent` kind's `run` runs with `{ message }` on that seat's session. The message shows as the person's turn and the reply streams in under it | E2E · V7 |
+| BR-13 | The page is reloaded after BR-12 | The message and the reply are both still there | E2E · V7 |
+| BR-14 | A person sends a note to a `desk-clerk` seat (`support.ada`) | The kind's `answer` runs with `{ note }`. The reply appears in that stream. What the reply says is FIX-1589's, a follow-on | V5 |
+| BR-15 | A person opens a `followup-runner` seat (`support.wren`) | No composer. A line says this seat runs board rows and takes no messages | E2E · V7 |
+| BR-16 | A seat has no conversation yet | Its row offers "New conversation". It creates a session on that seat and opens it with the composer | E2E · V7 |
+| BR-17 | A seat's action fails, its model is unavailable, or creating a new conversation fails | The panel shows the error and the composer is usable again. When creation fails there is no conversation to show it in, so the seat's row shows the error, nothing opens, and "New conversation" stays usable | V5 |
+| BR-18 | A person talks to `support.mara`, who can hire and fire | Same exposure the owner accepted for the rail's hire in FIX-1500 D6. No new permission | — (recorded) |
+
+## What does not change
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-19 | A person uses the assistant | Its composer, sessions and controls behave as today | Existing E2E |
+| BR-20 | The existing workforce-shell scenarios run | Green, and that file still writes to no channel | Existing VGs |
+| BR-21 | A new seat kind is added to the tree | The drift test fails until the shell names its answering action or says it has none | V2 |
+
+## Failure taxonomy
+
+Nothing here is fatal to the page. A refused or timed-out post, a failed seat action and a
+model outage all surface as an error in the panel that sent them, with the composer usable
+again. A failed "New conversation" surfaces in the seat's row, with the button usable again.
+A failed notification never un-writes a post: the post's item is the record, and waking
+members is best-effort. Nothing retries on its own.
+
+## Acceptance criteria this issue owns
+
+- In a browser, a person posts to `support.desk` and sees the post in that channel's panel,
+  and still sees it after a reload.
+- In a browser, a person talks to `support.otto` and sees their message and its reply in that
+  seat's conversation, and still sees both after a reload. Keyless, on the scripted model.
+- The existing workforce-shell scenarios stay green.
+- CLI or HTTP smoke alone is not acceptance.

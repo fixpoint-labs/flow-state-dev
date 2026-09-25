@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 600" role="img" aria-label="How FIX-1585 is proved. At the top is the goal: a person in a browser posts to a channel and talks to an agent seat, and both survive a reload. Two browser checks on a production build are the goal itself: V6 posts a unique line to support.desk, sees it labelled devuser, reloads and sees it again; V7 sends support.otto a unique message, sees it and the reply, reloads and sees both again, then opens support.wren and finds no composer and a reason. Under them sit the tests the goal rests on: V1 for the channel kind&#x27;s items, V3 for the real app wiring, V2 for each seat kind&#x27;s answering action, and V5 for the panel&#x27;s error cases. At the bottom, V8 keeps every existing check green. A command-line or HTTP call alone does not count as proof."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); stroke:none; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .req   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .st    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .out   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .dash  { stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-code{ fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-style:italic; }
+    .t-mute{ fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-style:italic; }
+    .arr   { stroke:var(--ink-2); stroke-width:1.3; fill:none; }
+    .arr-g { stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:4 3; }
+    .map   { stroke:var(--code); stroke-width:1.3; fill:none; }
+    .hd    { fill:var(--ink-2); }
+    .hdg   { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="600"/>
+  <g id="goal">
+    <rect class="st" x="16" y="14" width="908" height="54" rx="5"/>
+    <text class="t-lbl" x="30" y="34">THE GOAL</text>
+    <text class="t-h" x="30" y="56">In a browser, a person posts to a channel and talks to an agent seat, and both are still there after a reload.</text>
+  </g>
+  <g id="accept">
+    <text class="t-lbl" x="16" y="96">PROVES THE GOAL · real page, production build, unique text per run, keyless on the scripted model</text>
+    <rect class="req" x="16" y="106" width="446" height="152" rx="5"/>
+    <text class="t-h" x="28" y="126">V6 · post to a channel</text>
+    <text class="t-s" x="28" y="146">1  open support.desk from the rail</text>
+    <text class="t-s" x="28" y="162">2  send a unique line</text>
+    <text class="t-s" x="28" y="178">3  see it in the panel, labelled devuser</text>
+    <text class="t-s" x="28" y="194">4  reload the page</text>
+    <text class="t-s" x="28" y="210">5  see the same line again</text>
+    <text class="t-gone" x="28" y="246">red if: missing, mislabelled, or gone after reload</text>
+    <rect class="req" x="478" y="106" width="446" height="152" rx="5"/>
+    <text class="t-h" x="490" y="126">V7 · talk to an agent seat</text>
+    <text class="t-s" x="490" y="146">1  open a new support.otto conversation</text>
+    <text class="t-s" x="490" y="162">2  send a unique message</text>
+    <text class="t-s" x="490" y="178">3  see your message, and the reply under it</text>
+    <text class="t-s" x="490" y="194">4  reload: both still there</text>
+    <text class="t-s" x="490" y="210">5  open support.wren: no composer, reason shown</text>
+    <text class="t-gone" x="490" y="246">red if: either side missing, gone after reload, or wren takes input</text>
+    <path class="arr" d="M239,282 L239,262"/>
+    <path class="hd" d="M239.0,262.0 L235.5,269.0 L242.5,269.0 z"/>
+    <path class="arr" d="M701,282 L701,262"/>
+    <path class="hd" d="M701.0,262.0 L697.5,269.0 L704.5,269.0 z"/>
+    <text class="t-mute" x="470" y="276">rests on</text>
+  </g>
+  <g id="rests">
+    <text class="t-lbl" x="16" y="300">WHAT THE GOAL RESTS ON · package and app tests</text>
+    <rect class="n-box" x="16" y="310" width="212" height="112" rx="5"/>
+    <text class="t-h" x="28" y="330">V1 · channel kind</text>
+    <text class="t-s" x="28" y="350">a post leaves one channel-post item</text>
+    <text class="t-s" x="28" y="366">a refused post leaves none</text>
+    <text class="t-s" x="28" y="382">old state lines, then items</text>
+    <text class="t-s" x="28" y="398">read returns the recent lines</text>
+    <rect class="n-box" x="248" y="310" width="212" height="112" rx="5"/>
+    <text class="t-h" x="260" y="330">V3 · real app wiring</text>
+    <text class="t-s" x="260" y="350">principal is devuser</text>
+    <text class="t-s" x="260" y="366">lands on its own channel only</text>
+    <text class="t-s" x="260" y="382">each member notified once</text>
+    <text class="t-s" x="260" y="398">digest: no principal, tail only</text>
+    <rect class="n-box" x="480" y="310" width="212" height="112" rx="5"/>
+    <text class="t-h" x="492" y="330">V2 · seat kinds</text>
+    <text class="t-s" x="492" y="350">each kind names its answering</text>
+    <text class="t-s" x="492" y="366">action, or says none</text>
+    <text class="t-s" x="492" y="382">drift test fails on a new kind</text>
+    <text class="t-s" x="492" y="398">until it does</text>
+    <rect class="n-box" x="712" y="310" width="212" height="112" rx="5"/>
+    <text class="t-h" x="724" y="330">V5 · the panel</text>
+    <text class="t-s" x="724" y="350">blank text cannot send</text>
+    <text class="t-s" x="724" y="366">a refused post keeps its text</text>
+    <text class="t-s" x="724" y="382">a failed new conversation</text>
+    <text class="t-s" x="724" y="398">shows its error and stays usable</text>
+  </g>
+  <g id="nothing">
+    <text class="t-lbl" x="16" y="452">NOTHING ELSE BROKE</text>
+    <rect class="n-box" x="16" y="462" width="908" height="46" rx="5"/>
+    <text class="t-h" x="30" y="482">V8 · existing workforce-shell checks and the rest of the kitchen-sink e2e suite, unchanged and green</text>
+    <text class="t-s" x="30" y="499">the assistant's composer and sessions behave as today; the workforce-shell file still writes to no channel</text>
+  </g>
+  <g id="notproof">
+    <rect class="out dash" x="16" y="528" width="908" height="56" rx="5"/>
+    <text class="t-lbl" x="30" y="548">NOT PROOF</text>
+    <text class="t-b" x="30" y="570">fsdev run, curl or an HTTP smoke test alone. The goal is a person at the page, so only V6 and V7 can close it.</text>
+  </g>
+</svg>
