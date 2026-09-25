@@ -111,11 +111,13 @@ export interface ReadWorkforceResult {
  *   channels.
  *
  * @example
- * const { workers, errors, skillErrors, teamErrors } = await readWorkforce("./workforce");
+ * import { packageBlocks, seatBlocks } from "./workforce/workforce.gen";
+ * const { workers, errors, skillErrors, teamErrors, packageErrors } = await readWorkforce("./workforce");
+ * if (packageErrors.length > 0) throw new Error("a package was refused"); // always fatal
  * if (errors.length > 0 || skillErrors.length > 0 || teamErrors.length > 0) {
  *   throw new Error("short roster");
  * }
- * const seats = hireWorkforce(workers);
+ * const seats = hireWorkforce(workers, { seatBlocks, packageBlocks });
  */
 export async function readWorkforce(root: string): Promise<ReadWorkforceResult> {
   const { workers, errors } = await readWorkforceDirectory(root);
