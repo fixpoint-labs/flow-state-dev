@@ -30,8 +30,8 @@ export type ManifestRegistry = {
   domains(): ManifestDomain[];
   /**
    * This scope's source for `domain`, or `undefined` when it carries none.
-   * An absent source is an ordinary state, not an error: a workforce with no
-   * channels registered yet simply has nothing to say about channels.
+   * An absent source is an ordinary state, not an error: a scope with no
+   * channels source registered yet simply has nothing to say about channels.
    */
   source(domain: ManifestDomain): BlockManifestSource | undefined;
 };

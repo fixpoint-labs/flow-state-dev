@@ -51,13 +51,17 @@ function tally(ledger) {
 
 function selfTest(root) {
   const hits = scan(root);
-  const base = check(hits, LEDGER);
+  // Baseline mode follows the tree: before-mode while the F lines are present,
+  // after-mode once the implementation has removed them.
+  const mode = { after: check(hits, LEDGER).length > 0 };
+  const base = check(hits, LEDGER, mode);
+  const lingering = { file: "packages/engine/src/execution/runAction.ts", line: 999, text: " * so a seat another board holds would claim a row" };
   const results = [
-    ["clean tree passes", base.length === 0],
-    ["planted unclassified hit fails", check([...hits, { file: "packages/core/src/x.ts", line: 1, text: "// the roster of hired seats" }], LEDGER).some((p) => p.startsWith("unclassified"))],
-    ["planted hit inside a kept file fails", check([...hits, { file: "packages/engine/src/stores/filesystem/trace-store.ts", line: 999, text: "// a hired seat" }], LEDGER).length > 0],
-    ["a dropped hit fails its entry's count", check(hits.slice(1), LEDGER).length > 0],
-    ["--after fails while an F line remains", check(hits, LEDGER, { after: true }).some((p) => p.startsWith("F "))],
+    [`clean tree passes (${mode.after ? "--after" : "before"})`, base.length === 0],
+    ["planted unclassified hit fails", check([...hits, { file: "packages/core/src/x.ts", line: 1, text: "// the roster of hired seats" }], LEDGER, mode).some((p) => p.startsWith("unclassified"))],
+    ["planted hit inside a kept file fails", check([...hits, { file: "packages/engine/src/stores/filesystem/trace-store.ts", line: 999, text: "// a hired seat" }], LEDGER, mode).length > 0],
+    ["a dropped hit fails its entry's count", check(hits.slice(1), LEDGER, mode).length > 0],
+    ["--after fails while an F line remains", check([...hits, lingering], LEDGER, { after: true }).some((p) => p.startsWith("F "))],
     ["--after fails if a kept public name is renamed", check(hits.filter((h) => !h.text.includes("seat: z.string()")), LEDGER, { after: true }).some((p) => p.startsWith("R1"))],
     ["--after accepts a reworded line whose only hit is a retained name in a code span", check([{ file: "packages/core/src/types/dispatch.ts", line: 1, text: "* `seat` names the assignee" }], [], { after: true }).length === 0],
     ["--after fails an unwanted word hidden in a code span", check([{ file: "packages/core/src/types/dispatch.ts", line: 1, text: "* the board's `hired seat` or `roster` sends" }], [], { after: true }).some((p) => p.startsWith("unclassified"))],

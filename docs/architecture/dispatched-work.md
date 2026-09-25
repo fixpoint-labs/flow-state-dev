@@ -5,8 +5,8 @@ implementation that takes an hour, a research pass, a draft nobody is waiting
 on. The framework runs that work in a **child session** of the session that
 started it, on a request of its own, and calls it *dispatched*. A flow hands it
 off in one of two ways: a `dispatcher()` block in a running request, or a task
-board whose seat holds a `dispatcher({ action, session })`, which hands each row
-it claims to a worker declared under `flow.task.actions`.
+board with a `dispatcher({ action, session })` in its `workers`, which hands each
+row it claims for that assignee to an entry declared under `flow.task.actions`.
 
 This document owns one question the other docs each answer a slice of: **what
 happens to dispatched work over its lifetime**, per deployment topology. What
@@ -44,7 +44,7 @@ address.
 
 What crosses, exactly:
 
-- **The payload.** A `dispatcher()` sends its `payload`; a task seat sends the
+- **The payload.** A `dispatcher()` sends its `payload`; a board's dispatcher sends the
   `TaskDispatchInput` envelope — `{ boardId, seat, taskId, attempt, createdAt,
   incarnationId?, payload }`, where `payload` is the worker input the drain
   packed at claim time. The hand-off round-trips it through JSON before
@@ -72,14 +72,14 @@ request of its own; the policy decides what keys its session:
 | `session` | Keyed on | Use it when |
 |---|---|---|
 | `"per-task"` | the task id | rows are independent |
-| `"per-worker"` | the seat, one child per claiming session | the worker should remember what it already did |
+| `"per-worker"` | the assignee, one child per claiming session | the worker should remember what it already did |
 | `{ key: fn }` | what the function returns from the worker input | one issue across spec, implement and review |
 
 The presets frame the board id into the key (`taskSessionKeyFor`,
 `core/types/dispatch.ts`), so two boards' children stay apart even when their
-task ids coincide; a custom key is used as returned, so two seats that return
+task ids coincide; a custom key is used as returned, so two dispatchers that return
 the same string share one child. A shared child serialises its rows:
-`defineFlow` defaults the entry a `per-worker` or `key` seat hands off to
+`defineFlow` defaults the entry a `per-worker` or `key` dispatcher hands off to
 `queue` concurrency, and an explicit policy on the entry wins. Only the
 in-process dispatcher enforces it: with an external dispatcher the host skips
 arbitration (`createInboundTransportHost.ts`), so rows sharing a child can
@@ -185,7 +185,7 @@ would leave the child proceeding from a stale snapshot. Two things close it.
 
 **The child cannot reach the bare worker.** The flow declares a task entry as
 a plain block, `task: { actions: { implement: { block } } }`, and the board
-binds its claim gate onto the hand-off it installs at each dispatcher seat
+binds its claim gate onto the hand-off it installs at each dispatcher
 (`bindTaskDispatcher`). `defineFlow` rebuilds every entry a reachable hand-off
 addresses as `gate(entry)` (`createTaskGate`, `task-board/task-entry.ts`), so a
 `task` dispatch resolves the gate around the block and never the block. The
@@ -199,7 +199,7 @@ state belongs on the task, not on a session that may run many of them.
 current** — the row exists, `attempts` matches, `createdAt` and
 `incarnationId` match (so a row deleted and recreated under the same id is
 caught), the status is still `in_progress`, and the row still routes to this
-seat. Any miss throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and
+assignee. Any miss throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and
 writes nothing, so the row is left exactly as the gate found it. What that
 leaves behind depends on which arm refused: a superseded attempt or a row
 routed elsewhere is still a live `in_progress` claim, and stays one until its
@@ -492,12 +492,12 @@ questions:
 | | routing exclusion (`runsElsewhere`) | park exclusion (`onReview: "exit"`) |
 |---|---|---|
 | Asks | where does this row's work belong? | is this row waiting on a *human*? |
-| Derived from | the board's dispatcher seats, plus the row's `assignee` | the row's status |
+| Derived from | the assignees the board's dispatchers serve, plus the row's `assignee` | the row's status |
 | Applies to | `in_progress` rows only | `parked` rows only |
-| Applies on | boards with a dispatcher seat | any board, however it dispatches |
+| Applies on | boards with a dispatcher | any board, however it dispatches |
 | Liveness conjunct | **yes** — the lease | **no** |
 
-`runsElsewhere` reads the row's `assignee` against the seats that hand off,
+`runsElsewhere` reads the row's `assignee` against the assignees that hand off,
 and that is sound only because a hand-off board freezes the assignee at
 admission (`setAssignee` declines `immutable-assignee`): the value cannot move
 under the predicate, and it survives a restart with no run state to rebuild.
@@ -523,7 +523,7 @@ holds the drain open. What hands an excused row back into a drain is
 `board.unparkAndDrain` (FIX-1244): the fenced `unpark` write, then the board's
 own drain in the answering request, so the row is claimed there rather than by
 whatever happens to drain next. Note that this is not the same as saying a board with a
-dispatcher seat needs park-exit for its launching request to end: the hand-off
+dispatcher needs park-exit for its launching request to end: the hand-off
 already released that request before the park, and the parent's collection
 mirror cannot observe a write the child made in a separate concurrent request.
 
@@ -617,9 +617,9 @@ and the row stays as it is.
 | The dispatch seam: entry, session, envelope, start | `engine/src/context/create-request-host.ts`, `engine/src/context/dispatch-operation.ts` |
 | Child session derivation and adoption | `engine/src/context/dispatch-run.ts` |
 | Session policy and the child key | `core/src/types/dispatch.ts` → `taskSessionKeyFor` |
-| The hand-off at a dispatcher seat | `orchestration/src/task-board/blocks/hand-off.ts` |
+| The hand-off at a board's dispatcher | `orchestration/src/task-board/blocks/hand-off.ts` |
 | The claim gate | `orchestration/src/task-board/task-entry.ts` → `createTaskGate` |
-| Reading a board's seats; construction-time refusals | `orchestration/src/task-board/hand-off.ts` |
+| Reading which assignees hand off; construction-time refusals | `orchestration/src/task-board/hand-off.ts` |
 | Per-dispatch runtime config and the override warning | `engine/src/transports/host/createInboundTransportHost.ts` |
 | Interrupted-request detection | `engine/src/execution/request-recovery.ts`, `engine/src/execution/stale-request-sweeper.ts` |
 | Lease and abandonment | `packages/orchestration` → task substrate |

@@ -1084,7 +1084,7 @@ export interface BlockDefinition<
    * Stamped by `dispatcher()` (and by the task board on its hand-off block)
    * and carried across every rebuild path, so `defineFlow` can walk the graph
    * and refuse an address that resolves no entry, and a board can read which
-   * of its seats hand off without running anything. `undefined` on every block
+   * of its assignees hand off without running anything. `undefined` on every block
    * that dispatches nothing, which is every block that computes.
    */
   dispatch?: DispatchAddress;

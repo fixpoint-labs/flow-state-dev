@@ -99,10 +99,10 @@ The default URL convention is `<userId>/<collectionKey>`. Override with
 `parseId` for richer compositions. A row whose `kind` isn't in the `blocks`
 map resolves to `null` (404).
 
-On a hired seat (an instance registered with an owner `pin`: the organization,
-and user if any, the seat is registered to), the dispatch route passes that pin
-to the resolver as `ctx.ownerPin`. The helper then reads the row from the
-seat's storage for that organization and person, derived with the engine's
+On an owner-pinned instance (one registered with an owner `pin`: the
+organization, and user if any, it is registered to), the dispatch route passes
+that pin to the resolver as `ctx.ownerPin`. The helper then reads the row from
+that instance's storage for that organization and person, derived with the engine's
 `resolveUserStorageKey`, and a row naming another organization than the pin's
 resolves to `null`. A hand-written resolver that reads user-scoped storage
 derives its key the same way:

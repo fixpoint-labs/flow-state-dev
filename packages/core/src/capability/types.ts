@@ -110,8 +110,8 @@ export type PresetDef<TSessionState = any> = {
    * capability and never exported for a `tools:` list to name.
    *
    * Use it only for tools whose presence is already implied by the block's own
-   * configuration — the skills loader a seat switched on, the delegation board
-   * a skill it holds asked for. A capability that grants access to something
+   * configuration — the skills loader its config switched on, the delegation
+   * board a skill it holds asked for. A capability that grants access to something
    * the block did not ask for (memory `recall`, MCP, resource tools) belongs in
    * `tools`, where the fence can see it.
    *

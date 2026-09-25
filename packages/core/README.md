@@ -554,7 +554,7 @@ Every arrival at a flow is a **dispatch** of one **type**, delivered to one **en
 |---|---|---|
 | `public` | `actions` | A caller over HTTP, MCP, voice, or a custom transport |
 | `internal` | `internal.actions` | A `dispatcher()` block in one of the flow's own running requests |
-| `task` | `task.actions` | A task board handing a claimed row to a child session, from a `dispatcher({ action, session })` seat (stamped `type: "task"`) |
+| `task` | `task.actions` | A task board handing a claimed row to a child session, from a `dispatcher({ action, session })` in the board's `workers` (stamped `type: "task"`) |
 | `webhook` | `webhooks.<provider>.on` | The webhook adapter |
 | `schedule` | `schedules.static` | The host scheduler |
 
@@ -566,7 +566,7 @@ A `task` entry is declared as a plain block, but a `task` dispatch does not run 
 
 ### `dispatcher(config)`
 
-A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) is a seat on a task board that hands the board's rows to `flow.task.actions[action]`. Omit `type` in both cases — ordinary dispatchers default to `internal`, and a task-board seat is a dispatcher whose `session` is `"per-task"`, `"per-worker"`, or `{ key }`. The stamped address on a seat is still `type: "task"`.
+A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) sits in a task board's `workers` under an assignee and hands the rows claimed for that assignee to `flow.task.actions[action]`. Omit `type` in both cases — ordinary dispatchers default to `internal`, and a board's dispatcher is one whose `session` is `"per-task"`, `"per-worker"`, or `{ key }`. Its stamped address is still `type: "task"`.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -623,15 +623,15 @@ export default defineFlow({
 
 | Field | What it does |
 |---|---|
-| `type` | Omit it. Ordinary dispatchers send `internal`. A task-board seat stamps `type: "task"` from its session policy. An explicit `"task"` is still accepted. |
+| `type` | Omit it. Ordinary dispatchers send `internal`. A board's dispatcher stamps `type: "task"` from its session policy. An explicit `"task"` is still accepted. |
 | `action` | The entry name, resolved as `flow.internal.actions[action]` or `flow.task.actions[action]`. Checked when the flow is defined, unless `flowKind` names another flow. |
 | `flowKind` | The **other flow** the entry lives on, on an `internal` or `task` dispatcher. Omit to address this flow's own entry. Checked at run time, not when the flow is defined — see [Dispatching to another flow](#dispatching-to-another-flow). |
 | `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
-| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per seat), or `{ key: (task, ctx) => string }` read from the row's worker input. |
+| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per assignee, shared by every row routed to it), or `{ key: (task, ctx) => string }` read from the row's worker input. |
 | `payload` | `internal` only. `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
 | `transient` | Hide the block's trace from clients. Default `false`. |
 
-A `task` dispatcher's input is the claim envelope, `taskDispatchInputSchema` / `TaskDispatchInput`: `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }`. Only a task board mints one, from the row it claimed. Put the block under a board's `workers` where an inline worker would go:
+A `task` dispatcher's input is the claim envelope, `taskDispatchInputSchema` / `TaskDispatchInput`: `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }`; `seat` is the assignee the board routed the row to. Only a task board mints one, from the row it claimed. Put the block under a board's `workers` where an inline worker would go:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -702,7 +702,7 @@ At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-r
 | `refused` | Meaning |
 |---|---|
 | `no-entry` | The addressed flow declares no entry at `(type, action)`. |
-| `flow-not-found` | A `flowKind` names a flow instance this process has not registered, or a [seat hired at runtime](https://flow-state.dev/docs/workforce/durable-hire) that the sending session may not open (one pinned to another organization, or a user-owned seat that belongs to another user). The refusal is the same in both cases, so `flow-not-found` doesn't tell you which one you hit. |
+| `flow-not-found` | A `flowKind` names a flow instance this process has not registered, or an [owner-pinned instance](https://flow-state.dev/docs/workforce/durable-hire) the sending session may not open (one pinned to another organization, or to another user). The refusal is the same in both cases, so `flow-not-found` doesn't tell you which one you hit. |
 | `session-not-found` | An `id` names a session that does not exist, or that belongs to another principal or another tenant. |
 | `session-not-addressable` | An `id` (or `{ from: true }`) names a session on a flow other than the one addressed, or one bound to a different org. |
 | `key-occupied` | A `key` derived a child id already held by a record that is not this request's child. |
