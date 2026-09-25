@@ -58,7 +58,12 @@ Take the single action the dispatch calls for:
   Linear allows one parent.** Before setting the epic as an issue's parent, check for an
   existing parent: if the issue already has a functional parent, do **not** silently detach
   it — link with `relates-to` instead and flag it for the coordinator to surface. Only re-parent
-  issues that have no conflicting parent. Then write the set — `SPEC.md` (the teams table, why now, the goal and how we'll know it's met, *what's in the box* and its figure, the set table with status, the dependency graph,
+  issues that have no conflicting parent. **File the closure issue** with the set: a child of
+  the epic, Improvement label, blocked by every other child
+  ([`orchestration.md`](../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
+  Every set has one, and it is a row in the set table, the graph and the path from the first
+  revision. When a later child joins the set, wire it to block the closure issue too.
+  Then write the set — `SPEC.md` (the teams table, why now, the goal and how we'll know it's met, *what's in the box* and its figure, the set table with status, the dependency graph,
   what stays, the sign-off), `DECISIONS.md` (the tree, the cross-cutting cards, the ownership
   matrix figure), `BUSINESS-RULES.md`, `PLAN.md`, and `DOCS.md` — the shared reader narrative,
   concrete proposed prose/examples, target create/update/remove operations, and issue ownership.

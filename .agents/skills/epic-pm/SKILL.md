@@ -34,8 +34,9 @@ guess at for the rest of the run:
 1. **Outcome** — what someone can do after this that they cannot now. One sentence, no framework
    vocabulary.
 2. **Proof** — the observable check that says it worked, named now rather than after. It must be
-   something the work already produces — say **which issue's goal check** carries it
-   (`epic-lifecycle` → "Goal verification is part of done") — not a measurement apparatus we
+   something the work already produces — the **closure issue's goal check** carries it
+   ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa))
+   — not a measurement apparatus we
    would have to build to see whether we succeeded.
 3. **Lead measure** — what you watch *while the epic runs* that predicts the Proof. Same
    constraint as line 2: readable off work the epic already produces, never an instrument we'd

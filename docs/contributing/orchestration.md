@@ -39,7 +39,8 @@ the project-spec, deliberately has no lifecycle of its own (see below).
   Owned by the epic lifecycle, authored by the `epic-agent`. **Running several issues in
   parallel always happens under an epic** — that's what makes them a set rather than a
   batch, and it's what gives their shared decisions somewhere to live. A single issue on
-  its own needs no epic (`issue-lifecycle` runs standalone). See "The epic-spec" below.
+  its own needs no epic (`issue-lifecycle` runs standalone). Every epic ends in a **closure
+  issue** that QA-tests the assembled set. See "The epic-spec" and "The closure issue" below.
 - **Project** — the altitude above the epic: a **Linear project**, holding several epics. Its
   artifact is the **project-spec**, authored by the `project-agent` on a never-merged
   `project/<slug>` PR. It has **no lifecycle and no gate** — it is maintained by whichever epic
@@ -213,6 +214,61 @@ defines storage and authority; the template defines what each reader is owed.
   artifact, so "Spec review: the bar and the convergence rule" below governs its PR too.
   Feedback that doesn't change the epic's objective or a cross-cutting decision belongs to
   the issues under it, not to the epic-spec.
+
+## The closure issue (every epic ends in QA)
+
+Every epic has exactly one **closure issue**: the last child, whose job is to prove that the
+assembled set does what the epic set out to do. Each child's goal check proves its own piece.
+Nothing else uses the finished whole the way a user would, so the gaps *between* children (a
+hand-off nobody owns, a page that contradicts its neighbour, two pieces that each pass alone and
+break together) reach the wrap unnoticed. The closure issue is the epic's QA pass, held to the
+standard of a release, and the epic cannot wrap while it is open.
+
+- **Filed with the set, never at the end.** `epic-agent` files it when it writes the set, as a
+  child of the epic on the ordinary spec route (Improvement), titled `Closure: <the goal in a
+  few words>` so a worker can tell what it is, and wires it **blocked by every other child**. It is a row in `SPEC.md`'s set table from the first revision, marked
+  **closure · required**. An epic spec without one is refused at the objective gate.
+- **Its spec is the QA plan**, written early: blocked-by gates implementation only, so the plan
+  is reviewed while the children build. It carries, in order:
+  1. **The epic's goal check** (`SPEC.md` → *how we verify*) as **at least one end-to-end test run
+     the way a user would**: a real app, the real path, the surface a user touches (browser,
+     CLI, HTTP), asserted on what the user sees, never on a child's own output. Each test has a
+     control that must fail ([`spec-template.md`](spec-template.md#the-goal-and-how-well-know-its-met)).
+  2. **One journey per team** in `SPEC.md`'s teams table whose *after* the goal check does not
+     already walk.
+  3. **Every child's own goal check**, re-run.
+  4. **A gap sweep**: each seam in `PLAN.md`'s coordination seams exercised across both sides,
+     the docs the set published followed as written, and every *not done if* state checked
+     absent.
+
+  A browser check is run here first, and handed to `fsd-qa` over the mailbox only when that
+  attempt fails ([`agent-mailbox`](../../.agents/skills/agent-mailbox/SKILL.md) → "Hand a
+  browser check to `fsd-qa`").
+- **A run is one commit of `main`**, after every other child has merged. Every check in the plan
+  runs against that same commit, and the report names it. Checks that passed on different
+  commits prove nothing about the assembled set.
+- **Every finding becomes a child of the epic.** Each failure is filed through `issue-manager`
+  as a **Bug** (or a Feature, when the fix is missing capability), parented under the epic and
+  wired to **block the closure issue**. The epic wake discovers it as a new row and runs it on
+  its route. A finding is never deferred to a later epic. It leaves only by being fixed, or by
+  the owner closing it in Linear with a reason, which the closure report quotes. Something the
+  run notices outside the epic's goal is filed normally, not under the epic.
+- **It stays open until its findings are fixed and retested.** A run that files findings opens
+  no PR: the worker leaves the row at `NEEDS_IMPLEMENTATION` with the findings in its status
+  line, and the new blocked-by relations park it. When the last one merges, the wake dispatches
+  implementation again and the **whole plan runs again** on a fresh `main` commit, not only the
+  fixed bugs' repros, because a fix can break a neighbour. This repeats until a run files
+  nothing. `epic-wake` needs nothing special for this: blocked-by, child discovery and
+  `mayWrap`'s every-row-terminal rule already carry it.
+- **A clean run opens the closure PR.** It commits the end-to-end checks where they can live in
+  the repo, so they keep running after the wrap, and its body is the QA report: the `main`
+  commit, each check with its PASS and its control's FAIL, and each finding with its bug and
+  the run that retested it. That PR's merge is the closure issue's Done and the epic's wrap
+  condition.
+
+It is the most expensive child and the only one that repeats. That cost is the QA. An epic whose
+goal genuinely has no end-to-end surface (a pure internal refactor) says so in its goal section,
+and its closure plan is items 3 and 4 alone. That is a stated exception, never a silent one.
 
 ## The project-spec (canonical artifact)
 
