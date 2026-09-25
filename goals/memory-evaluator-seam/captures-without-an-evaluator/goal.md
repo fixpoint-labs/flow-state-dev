@@ -16,3 +16,5 @@ The check is `checkCapturesWithoutAnEvaluator({ turn, model, control? })` in `ch
 |------|--------|-------|---------|-------|
 | 2026-09-25 | e621f2a (+ FIX-1555 working tree) | openai/gpt-5.4-mini (Vercel AI Gateway) | PASS | Capture traced `memory/capture, memory/observe, memory/reflect, memory/tick, memory/janitor`; no evaluator row; 3 working-memory entries and 3 episodes added. |
 | 2026-09-25 | e621f2a (+ FIX-1555 working tree) | openai/gpt-5.4-mini (Vercel AI Gateway) | FAIL (expected) | `GOAL_CONTROL=throwing-evaluator`: `f1: the capture failed: GOAL_CONTROL=throwing-evaluator: the evaluation model failed`, `f2: no working-memory entry was added`, and f3 (observer did not run; an evaluator row traced). |
+| 2026-09-25 | 0aa7669 | openai/gpt-5.4-mini (Vercel AI Gateway) | PASS | After rebasing on main. Capture traced `memory/capture, memory/observe, memory/reflect, memory/tick, memory/janitor`; no evaluator row; 2 working-memory entries and 2 episodes added. |
+| 2026-09-25 | 0aa7669 | openai/gpt-5.4-mini (Vercel AI Gateway) | FAIL (expected) | `GOAL_CONTROL=throwing-evaluator`: f1 (capture failed with the control's error), f2 (nothing added), f3. |
