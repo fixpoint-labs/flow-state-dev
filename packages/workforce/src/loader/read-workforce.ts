@@ -91,7 +91,10 @@ export interface ReadWorkforceResult {
    * Their own channel for the reason the other two are. A refused package is
    * left off every record that would have reached it, so a worker whose
    * `packages:` names it is then refused at the hire as naming a package no
-   * library offers; this is where the reason is.
+   * library offers, and a worker whose OWN folder held it is refused at the
+   * hire when `fsdev gen` generated blocks for it; this is where the reason is.
+   * A refused package that carries no blocks leaves the hire nothing to see, so
+   * a caller that loads from disk treats a non-empty list here as fatal.
    */
   packageErrors: PackageError[];
 }

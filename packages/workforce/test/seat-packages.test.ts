@@ -283,9 +283,32 @@ describe("a package in a worker's own folder", () => {
     expect(own.map((block) => block.name)).toEqual(["issue-refund"]);
   });
 
+  it("refuses a worker whose own folder has package blocks but whose record does not hold that package", () => {
+    // The loader leaves a package whose PACKAGE.md it refused off the record;
+    // the generated map still carries its blocks. Hiring on without it would
+    // start a worker short a package its folder holds.
+    const reachWithoutOwn = clerkReach.filter((candidate) => candidate !== refunds);
+    const message = refusal([record({ id: "support.clerk", packages: reachWithoutOwn })]);
+    expect(message).toContain('worker "support.clerk"');
+    expect(message).toContain(refunds.path);
+    expect(message).toContain("packageErrors");
+  });
+
+  it("does not hold a sibling's own-folder package blocks against a worker", () => {
+    // Control for the refusal above: the address belongs to the clerk, so the
+    // greeter, which never had it in reach, hires.
+    const seat = hire([
+      record({ id: "support.clerk", packages: clerkReach }),
+      record({ id: "support.greeter", packages: siblingReach })
+    ]);
+    expect(seat("support.greeter").id).toBe("support.greeter");
+  });
+
   it("hires an instructions-only package: the text arrives, no tool is added (BR-19)", async () => {
     const notes = pkg("notes", "worker", "NOTES-5512: keep notes short.", { team: "support", worker: "support.clerk" });
-    const seat = hire([record({ id: "support.clerk", packages: [notes] })]);
+    // No generated blocks: this clerk's folder holds only `notes`, so the
+    // shared map's `refunds` address would be a package it does not hold.
+    const seat = hire([record({ id: "support.clerk", packages: [notes] })], { packageBlocks: {} });
     const got = await turn(seat("support.clerk"));
     expect(got.system).toContain("NOTES-5512");
     expect(got.tools).toEqual([]);

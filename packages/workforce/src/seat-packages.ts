@@ -55,6 +55,8 @@ export function resolveHeldPackages(
   const own = available.filter((candidate) => candidate.level === "worker");
   const chosen: PackageManifest[] = [...own];
   const problems: string[] = [];
+  const segments = seatId.split(".");
+  const team = segments[segments.length - 2] ?? "";
 
   if (declared !== undefined) {
     if (!Array.isArray(declared) || declared.some((name) => typeof name !== "string")) {
@@ -65,8 +67,6 @@ export function resolveHeldPackages(
       return { held: [], problems };
     }
 
-    const segments = seatId.split(".");
-    const team = segments[segments.length - 2] ?? "";
     for (const name of new Set(declared as string[])) {
       const library =
         available.find((candidate) => candidate.level === "team" && candidate.name === name) ??
@@ -100,6 +100,24 @@ export function resolveHeldPackages(
     for (const key of Object.keys(onMap).sort()) blocks[key] = onMap[key]!;
     return { manifest, blocks };
   });
+
+  // A package in the seat's own folder is always held, so blocks generated at
+  // an address under that folder that no held package accounts for mean the
+  // loader refused that package's PACKAGE.md (or a hand-built record left it
+  // off). Hiring on would start this seat short a package its folder holds —
+  // refused, as a bad block in its own `blocks/` folder is.
+  const ownFolder = `teams/${team}/workers/${segments[segments.length - 1] ?? ""}/${PACKAGES_KEY}/`;
+  const heldPaths = new Set(chosen.map((manifest) => manifest.path));
+  for (const address of Object.keys(packageBlocks).sort()) {
+    if (!address.startsWith(ownFolder) || address.slice(ownFolder.length).includes("/")) continue;
+    if (heldPaths.has(address)) continue;
+    problems.push(
+      `has package blocks generated at "${address}", its own folder, but does not hold that ` +
+        `package — its \`PACKAGE.md\` was refused (see \`readWorkforce\`'s \`packageErrors\`) or ` +
+        `the record was built without it. A package in a worker's own folder is always held: fix ` +
+        `the package, or remove the folder and re-run \`fsdev gen\`.`
+    );
+  }
   return { held, problems };
 }
 
