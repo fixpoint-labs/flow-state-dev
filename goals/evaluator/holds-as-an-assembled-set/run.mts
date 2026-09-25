@@ -7,10 +7,10 @@
  * Legs (a), (c) and (d) drive the Routing with evaluators example through
  * `fsdev run`, on Jev through Vercel's AI Gateway and on OpenAI's evaluation
  * model. Leg (b) builds the example's classifier on a real text model and
- * expects the refusal. Legs (e) and (f) belong to sibling issues: (f) calls
- * memory's own check (`checkCapturesWithoutAnEvaluator`) on its own held-out
- * fixture; (e) is one placeholder line until index-time facets lands, and its
- * owner replaces that line the same way.
+ * expects the refusal. Legs (e) and (f) belong to sibling issues and run
+ * their owners' checks as they are: (e) index-time facets'
+ * `checkFoundWithoutAModelCall`, (f) memory's `checkCapturesWithoutAnEvaluator`,
+ * each on its own held-out fixture.
  *
  * Every failure line starts with its leg letter. The run is FAIL until every
  * leg is wired and green; this issue's bar is no `[a]` to `[d]` line.
@@ -29,6 +29,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { classifyTicket } from "../../../examples/guides/routing-with-evaluators/src/classify.ts";
+import { checkFoundWithoutAModelCall } from "../../index-time-facets/found-without-a-model-call/run.mts";
 import { checkCapturesWithoutAnEvaluator } from "../../memory-evaluator-seam/captures-without-an-evaluator/check.mts";
 import {
   DEFAULT_MODEL,
@@ -150,6 +151,9 @@ await runGoal(async () => {
   const failures: string[] = [];
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
+  /** Name why a line failed: a refused credential, an unavailable provider, or `otherwise`. */
+  const cause = (text: string, otherwise: string) =>
+    CREDENTIAL_REJECTED.test(text) ? "blocked: credential rejected" : PROVIDER_UNAVAILABLE.test(text) ? "provider unavailable" : otherwise;
   /**
    * Report a run that errored, naming the cause: a refused credential is
    * blocked, a provider that couldn't serve the call is unavailable, anything
@@ -310,8 +314,17 @@ await runGoal(async () => {
     fail("d", `the activator without an evaluator built or resolved one: ${out.split("\n").filter((l) => /×|Error/.test(l)).join(" | ")}`);
   }
 
-  // ---- (e) index-time facets ----
-  fail("e", "not yet wired — owned by FIX-1557");
+  // ---- (e) a facet stored at index time is found with no model call (FIX-1557's check, its fixture) ----
+  // It strips ambient intent pins itself; every fsdev run above has finished.
+  // Its control is its own: this goal's GOAL_CONTROL is never passed to it.
+  try {
+    const leg = await checkFoundWithoutAModelCall(undefined);
+    for (const line of leg.failures) fail("e", `${cause(line, "failed")} — ${line}`);
+    if (leg.failures.length === 0) evidence.push(`(e) ${leg.evidence}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    fail("e", `${cause(message, "failed")} — facets check threw: ${message}`);
+  }
 
   // ---- (f) memory captures with no evaluator installed (FIX-1555's check, its fixture) ----
   if (!HAS_NO_CONFIDENCE_MODEL) {
@@ -323,8 +336,6 @@ await runGoal(async () => {
     const memory = loadFixture<{ turn: string }>(
       new URL("../../memory-evaluator-seam/captures-without-an-evaluator/run.mts", import.meta.url).href,
     );
-    const cause = (text: string, otherwise: string) =>
-      CREDENTIAL_REJECTED.test(text) ? "blocked: credential rejected" : PROVIDER_UNAVAILABLE.test(text) ? "provider unavailable" : otherwise;
     try {
       const leg = await checkCapturesWithoutAnEvaluator({ turn: memory.turn, model: DEFAULT_MODEL });
       for (const line of leg.failures) fail("f", `${cause(line, "failed")} — ${line}`);
