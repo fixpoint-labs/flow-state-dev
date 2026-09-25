@@ -1,0 +1,19 @@
+# FIX-1589 clerk-premises — raw verdict lines, 2026-09-25, base b3e41f8bd
+
+## With clerk.patch applied (KITCHEN_SINK_TEST_MODE=1, keyless)
+PASS Q1 — assistant said: [front desk] [clerk:answered] The front desk has your note.; carries the note's token: false
+PASS Q7 — desk tag then the model's words: true
+PASS Q6 — user turns: [scenario:clerk-answer] clerk-token-x3yk0k46 where is my refund?
+PASS Q2 — row: {"topic":"task_muhizyl0_1_113d57","storageKey":"support.desk.escalations/task_muhizyl0_1_113d57","clientData":{"id":"task_muhizyl0_1_113d57","goal":"Escalated: clerk-token-ebbz0w7c","status":"pending","attempts":0,"createdAt":1790374916051,"updatedAt":1790374916051}}; reply filed=true; rows on board=1
+PASS Q3 — fileTask request for the token names author support.ada: true (1 request(s))
+PASS Q4 — boot warnings mentioning escalations: true
+PASS Q5 — fileTask requests on support.desk: completed
+
+## Control: today's main, no patch (the echo). Must FAIL Q1, Q2, Q3, Q5, Q6, Q7; Q4 holds on both
+FAIL Q1 — assistant said: [front desk] [scenario:clerk-answer] clerk-token-eynb2th2 where is my refund?; carries the note's token: true
+FAIL Q7 — desk tag then the model's words: false
+FAIL Q6 — user turns: (none)
+FAIL Q2 — row: undefined; reply filed=false; rows on board=0
+FAIL Q3 — fileTask request for the token names author support.ada: false (0 request(s))
+PASS Q4 — boot warnings mentioning escalations: true
+FAIL Q5 — fileTask requests on support.desk: 

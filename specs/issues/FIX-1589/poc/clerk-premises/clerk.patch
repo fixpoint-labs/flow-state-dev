@@ -1,0 +1,165 @@
+diff --git a/apps/kitchen-sink/lib/e2e-mock-script.ts b/apps/kitchen-sink/lib/e2e-mock-script.ts
+index ffd87c6af..c6b460db9 100644
+--- a/apps/kitchen-sink/lib/e2e-mock-script.ts
++++ b/apps/kitchen-sink/lib/e2e-mock-script.ts
+@@ -134,3 +134,34 @@ export const sideChainBriefMock = mockGenerator({
+   name: "background-brief",
+   script: sideChainBriefScript,
+ });
++
++/**
++ * POC (FIX-1589): the clerk's generator. `[scenario:clerk-answer]` answers in
++ * words the note does not contain; `[scenario:clerk-file]` files the note onto
++ * escalations through the real tool, then says so.
++ */
++function buildDeskClerkMock(): MockGeneratorInstance {
++  const cursors = new Map<string, number>();
++  return {
++    name: "desk-clerk-answer",
++    calls: [],
++    next: (input?: unknown) => {
++      const json = JSON.stringify(input ?? "");
++      if (json.includes("[scenario:clerk-file]")) {
++        const token = /clerk-token-[a-z0-9]+/.exec(json)?.[0] ?? "no-token";
++        const i = cursors.get(token) ?? 0;
++        cursors.set(token, i + 1);
++        return i === 0
++          ? { toolCalls: [{ toolCallId: `tc_${token}`, toolName: "desk-clerk-file", args: { board: "escalations", goal: `Escalated: ${token}` } }] }
++          : { text: "[clerk:filed] Filed onto escalations." };
++      }
++      if (json.includes("[scenario:clerk-answer]")) {
++        return { text: "[clerk:answered] The front desk has your note." };
++      }
++      return { text: "Test mode (no clerk scenario matched)." };
++    },
++    reset: () => cursors.clear(),
++  };
++}
++
++export const deskClerkMock = buildDeskClerkMock();
+diff --git a/apps/kitchen-sink/test/mock-flowstate.ts b/apps/kitchen-sink/test/mock-flowstate.ts
+index e8c755bab..14ae4a68b 100644
+--- a/apps/kitchen-sink/test/mock-flowstate.ts
++++ b/apps/kitchen-sink/test/mock-flowstate.ts
+@@ -17,6 +17,7 @@ import {
+   skillClassifierMock,
+   autoTitleMock,
+   sideChainBriefMock,
++  deskClerkMock,
+ } from "@/lib/e2e-mock-script";
+ 
+ /** Build the mocked model resolver used in `KITCHEN_SINK_TEST_MODE`. */
+@@ -27,6 +28,7 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
+       "skill-classifier": skillClassifierMock,
+       "auto-title": autoTitleMock,
+       "background-brief": sideChainBriefMock,
++      "desk-clerk-answer": deskClerkMock,
+     },
+     policy: "allow",
+   });
+diff --git a/apps/kitchen-sink/workforce/flows/workers/desk-clerk.ts b/apps/kitchen-sink/workforce/flows/workers/desk-clerk.ts
+index a414d919a..f74863ca0 100644
+--- a/apps/kitchen-sink/workforce/flows/workers/desk-clerk.ts
++++ b/apps/kitchen-sink/workforce/flows/workers/desk-clerk.ts
+@@ -1,58 +1,62 @@
+ /**
+- * A custom worker kind, declared by living in `workforce/flows/workers/`.
+- *
+- * Nothing registers it. `fsdev gen` walks this folder and puts it on the
+- * `kinds` map under its basename, `desk-clerk`, which is the name a
+- * `WORKER.md` names in its `flow:` line. The flow's own `kind` has to agree
+- * with that basename — `hireWorkforce` refuses the seat by name when it does
+- * not.
+- *
+- * `cardinality: "collection"` is what a worker kind needs: a seat mints its own
+- * copy under its own id, and a singleton's id has to equal its kind, so a
+- * worker kind left at the default would be refused at admission.
+- *
+- * The settings schema composes the seat contract and then adds this kind's own
+- * key. Composing it is what admits the seat's skills and its instructions; a
+- * kind that declared only its own keys would be handed a bag it has not
+- * declared and refused at the mint.
++ * POC shape for FIX-1589 (spec evidence only): the clerk's `answer` is a
++ * generator, and filing is one tool that dispatches into support.desk's own
++ * `fileTask`.
+  */
+-import { defineFlow, sequencer } from "@flow-state-dev/core";
+-import { workerConfigSchema } from "@flow-state-dev/workforce";
++import { defineFlow, dispatcher, generator, sequencer } from "@flow-state-dev/core";
++import { CHANNEL_KIND, workerConfigSchema } from "@flow-state-dev/workforce";
+ import { z } from "zod";
+ 
+-import deskNote, { deskNoteInput, deskNoteOutput } from "../../blocks/desk-note";
++import { deskNoteInput } from "../../blocks/desk-note";
+ 
+-/**
+- * The `answer` action: run the desk block, then say what it answered.
+- *
+- * The emission is here rather than inside `desk-note` because only this path
+- * wants it. A handler's return value rides its own `block_trace` row, and trace
+- * items are `{ client: false, history: false }` by type — so without this the
+- * demonstration is invisible to anyone holding the HTTP route, which is the
+- * only place a reader meets it. The same block is also a tool a seat can name
+- * in its `WORKER.md`, and on that path the seat gives its own answer; emitting
+- * from the block would add a second, client- and history-visible turn there.
+- */
+-const answer = sequencer({
++const deskOf = (ctx: { flow: { config: unknown } }) => (ctx.flow.config as { desk?: string }).desk ?? "front";
++
++const fileNote = dispatcher({
++  name: "desk-clerk-file",
++  description:
++    "File the note onto one of support.desk's boards: followups for work a seat runs, escalations for work a person picks up.",
++  flowKind: CHANNEL_KIND,
++  action: "fileTask",
++  inputSchema: z.object({ board: z.enum(["followups", "escalations"]), goal: z.string().min(1) }),
++  session: { id: () => "support.desk" },
++  payload: (input, ctx) => ({
++    board: input.board,
++    goal: input.goal,
++    author: String((ctx.flow as { id?: string }).id ?? ""),
++  }),
++});
++
++const think = generator({
+   name: "desk-clerk-answer",
+   inputSchema: deskNoteInput,
+-  outputSchema: deskNoteOutput,
+-})
+-  .step(deskNote)
++  model: "intent/chat",
++  prompt: [
++    (_input, ctx) => (ctx.flow.config as { teamInstructions?: string }).teamInstructions,
++    (_input, ctx) => (ctx.flow.config as { instructions?: string }).instructions,
++    (_input, ctx) =>
++      `You are the ${(ctx.flow.config as { desk?: string }).desk ?? "front"} desk. Answer the note. ` +
++      `If it needs work you cannot do here, file it instead and say where.`,
++  ],
++  user: (input) => input.note,
++  tools: [fileNote],
++});
++
++// The reply is the model's words under the seat's desk tag. The tag is the
++// kind's (the seat's own config), never the model's, so two seats on one kind
++// stay visibly different without grading what a model wrote.
++const answer = sequencer({ name: "desk-clerk-reply", inputSchema: deskNoteInput })
++  .step(think)
+   .tap((said, ctx) => {
+-    ctx.emit.message(`[${said.desk} desk] ${said.answered}`);
++    ctx.emit.message(`[${deskOf(ctx)} desk] ${String(said)}`);
+   });
+ 
+ export default defineFlow({
+   kind: "desk-clerk",
+   cardinality: "collection",
+-  // `desk` is this kind's own setting and sits at the top level of a worker
+-  // file, where the framework closes it: a seat declaring a key this schema
+-  // does not know is refused by name.
+   configSchema: workerConfigSchema().extend({
+     desk: z.string().default("front"),
+   }),
+   actions: {
+-    answer: { inputSchema: deskNoteInput, block: answer },
++    answer: { inputSchema: deskNoteInput, block: answer, userMessage: (input) => input.note },
+   },
+ });
