@@ -316,9 +316,13 @@ await runGoal(async () => {
 
   // ---- (e) a facet stored at index time is found with no model call (FIX-1557's check, its fixture) ----
   // It strips ambient intent pins itself; every fsdev run above has finished.
-  // Its control is its own: this goal's GOAL_CONTROL is never passed to it.
+  // Its control is its own: this goal's GOAL_CONTROL must never reach it. An
+  // explicit `undefined` argument would still take its `process.env` default,
+  // so the variable is cleared here (CONTROL was read at startup, and every
+  // step that used it has run).
+  delete process.env.GOAL_CONTROL;
   try {
-    const leg = await checkFoundWithoutAModelCall(undefined);
+    const leg = await checkFoundWithoutAModelCall();
     for (const line of leg.failures) fail("e", `${cause(line, "failed")} — ${line}`);
     if (leg.failures.length === 0) evidence.push(`(e) ${leg.evidence}`);
   } catch (err) {
