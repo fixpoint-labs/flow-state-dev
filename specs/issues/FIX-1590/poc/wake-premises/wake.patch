@@ -1,0 +1,149 @@
+diff --git a/apps/kitchen-sink/test/mock-flowstate.ts b/apps/kitchen-sink/test/mock-flowstate.ts
+index e8c755bab..5974c6fc3 100644
+--- a/apps/kitchen-sink/test/mock-flowstate.ts
++++ b/apps/kitchen-sink/test/mock-flowstate.ts
+@@ -27,6 +27,8 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
+       "skill-classifier": skillClassifierMock,
+       "auto-title": autoTitleMock,
+       "background-brief": sideChainBriefMock,
++      // POC FIX-1590: agent seats answer on the scripted model.
++      "agent-answer": { name: "agent-answer", reset: () => {}, next: (input: unknown) => ({ text: JSON.stringify(input ?? "").includes("[scenario:wake]") ? "[scenario:wake] heard it." : "Test mode (agent)." }), calls: [] } as never,
+     },
+     policy: "allow",
+   });
+diff --git a/apps/kitchen-sink/workforce/channel-notify.ts b/apps/kitchen-sink/workforce/channel-notify.ts
+index c98986e2c..22cb84259 100644
+--- a/apps/kitchen-sink/workforce/channel-notify.ts
++++ b/apps/kitchen-sink/workforce/channel-notify.ts
+@@ -26,7 +26,7 @@
+  * The sequencer is still dispatched once per post and still walks the roster.
+  * Suppressing the dispatch itself is not something an app can do from here.
+  */
+-import { handler } from "@flow-state-dev/core";
++import { dispatcher, handler, router } from "@flow-state-dev/core";
+ import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
+ import { z } from "zod";
+ 
+@@ -86,4 +86,42 @@ export const notifyMember = handler({
+   },
+ });
+ 
++// ---------------------------------------------------------------------------
++// POC FIX-1590: the wake. One declared dispatcher per agent member, chosen by
++// a router; everything else falls to the name-only line above.
++// ---------------------------------------------------------------------------
++/** The kind column the wake reads (POC stand-in for FIX-1585 D3's map). */
++const WAKE_ACTION: Record<string, string | undefined> = {
++  agent: "onChannelPost",
++  "desk-clerk": undefined,
++  "followup-runner": undefined,
++};
++
++export function notifyFor(seats: readonly { id: string; kind: string }[]) {
++  const wakes = new Map(
++    seats.flatMap((seat) => {
++      const action = WAKE_ACTION[seat.kind];
++      if (action === undefined) return [];
++      return [[seat.id, dispatcher({
++        name: `wake-${seat.id}`,
++        flowKind: seat.id,
++        action,
++        inputSchema: channelNotifyInputSchema,
++        // One conversation per seat per channel, adopted on every post.
++        session: { key: (input: ChannelNotifyInput) => `channel:${input.channelId}` },
++      })] as const];
++    }),
++  );
++  return router({
++    name: "kitchen-sink-notify",
++    inputSchema: channelNotifyInputSchema,
++    routes: [notifyMember, ...wakes.values()] as never,
++    execute: (input: ChannelNotifyInput) => {
++      // A post a seat wrote wakes no seat (epic D2).
++      if (input.author !== undefined && process.env.POC_NO_FILTER !== "1") return notifyMember as never;
++      return (wakes.get(input.member) ?? notifyMember) as never;
++    },
++  });
++}
++
+ export default notifyMember;
+diff --git a/apps/kitchen-sink/workforce/hire.ts b/apps/kitchen-sink/workforce/hire.ts
+index 1f0b7a28a..d7eabb8af 100644
+--- a/apps/kitchen-sink/workforce/hire.ts
++++ b/apps/kitchen-sink/workforce/hire.ts
+@@ -44,7 +44,7 @@ import { fileURLToPath } from "node:url";
+ import { dirname } from "node:path";
+ 
+ import { workforceRegistrar } from "../lib/workforce-registrar";
+-import notify from "./channel-notify";
++import { notifyFor } from "./channel-notify";
+ import { blocks, channelKinds, kinds, resourceModules, seatBlocks } from "./workforce.gen";
+ 
+ /**
+@@ -210,23 +210,17 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
+   // kind of this app's own is named here: `channelKinds` carries whatever
+   // files live under `flows/channels/`, and `channel` is the framework's own
+   // seed, rebuilt only to give it this app's fan-out block.
++  const seats = hireWorkforce(workers, {
++    kinds: kitchenSinkKinds,
++    seatBlocks,
++    channelBoards: channelBoardIds(channels),
++  });
+   const channelFlows = channelInstances(channels, {
+-    kinds: { ...channelKinds, channel: defineChannelFlow({ notify }) },
++    kinds: { ...channelKinds, channel: defineChannelFlow({ notify: process.env.POC_STUB === "1" ? (await import("./channel-notify")).default : notifyFor(seats.map((s) => ({ id: s.id, kind: s.kind }))) }) },
+   });
+ 
+   return {
+-    // `seatBlocks` registers what each worker's own folder holds, for that
+-    // worker alone. It grants nothing: a seat still names the block in its
+-    // `tools:` before the model can call it.
+-    //
+-    // `channelBoards` is what lets the hire say which declared board no seat
+-    // drains. Without it the check has no roster to read and says nothing —
+-    // which is the silence this app ships to make visible.
+-    seats: hireWorkforce(workers, {
+-      kinds: kitchenSinkKinds,
+-      seatBlocks,
+-      channelBoards: channelBoardIds(channels),
+-    }),
++    seats,
+     channelFlows,
+     channels,
+     errors: [
+diff --git a/packages/workforce/src/agent-worker-flow.ts b/packages/workforce/src/agent-worker-flow.ts
+index 55d95e4d1..967bc24e5 100644
+--- a/packages/workforce/src/agent-worker-flow.ts
++++ b/packages/workforce/src/agent-worker-flow.ts
+@@ -90,6 +90,7 @@ import {
+ } from "./seat-capabilities";
+ import { SEAT_DISCOVER_KEY } from "./seat-discovery";
+ import { seatSkillSchema, workerConfigSchema } from "./worker-config";
++import { channelNotifyInputSchema, type ChannelNotifyInput } from "./channel/channel-flow"; // POC FIX-1590
+ 
+ /**
+  * The kind name the hire step resolves a record to when it names none, and the
+@@ -972,6 +973,22 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
+     // shared across the roster otherwise, which is the framework's default.
+     isolateUserState: options.isolateUserState ?? false,
+     configSchema: settings,
+-    actions: { run: { inputSchema, block: run } }
++    actions: { run: { inputSchema, block: run } },
++    // POC FIX-1590: the internal receiver a channel's fan-out dispatches to.
++    internal: {
++      actions: {
++        onChannelPost: {
++          inputSchema: channelNotifyInputSchema,
++          block: run.connectInput((post: ChannelNotifyInput) => ({ message: heardAs(post) })),
++          userMessage: (post: ChannelNotifyInput) => heardAs(post),
++          concurrency: "queue"
++        }
++      }
++    }
+   });
+ }
++
++/** POC FIX-1590: the post, as the seat hears it. */
++function heardAs(post: ChannelNotifyInput): string {
++  return `${post.author ?? post.principal} in ${post.channelId}: ${post.body}`;
++}

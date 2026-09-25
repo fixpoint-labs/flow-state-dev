@@ -1,0 +1,126 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="One post to support.desk, before and after. Today all five members, two clerks, two agent seats and a runner, get a line naming them and none runs. After, the two agent seats, support.iris and support.otto, each run once in their own support.desk conversation and answer there, while the clerks and the runner keep the name-only line. A post a seat wrote, shown last, runs no seat: the other members get the name-only line and the writer gets nothing." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-run { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-off { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-k   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-run { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-gone{ fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY</text>
+    <rect class="n-box" x="16" y="34" width="176" height="84" rx="5"/>
+    <text class="t-b" x="30" y="60">a person posts</text>
+    <text class="t-s" x="30" y="78">to support.desk</text>
+    <text class="t-s" x="30" y="96">no author</text>
+    <path class="arrow" d="M192 76 H224"/>
+    <rect class="n-box" x="232" y="34" width="128" height="84" rx="5"/>
+    <text class="t-b" x="242" y="56">support.ada</text>
+    <text class="t-k" x="242" y="72">desk-clerk</text>
+    <text class="t-s" x="242" y="92">name-only line</text>
+    <text class="t-s" x="242" y="106">nothing runs</text>
+    <rect class="n-box" x="370" y="34" width="128" height="84" rx="5"/>
+    <text class="t-b" x="380" y="56">support.grace</text>
+    <text class="t-k" x="380" y="72">desk-clerk</text>
+    <text class="t-s" x="380" y="92">name-only line</text>
+    <text class="t-s" x="380" y="106">nothing runs</text>
+    <rect class="n-box" x="508" y="34" width="128" height="84" rx="5"/>
+    <text class="t-b" x="518" y="56">support.iris</text>
+    <text class="t-k" x="518" y="72">agent</text>
+    <text class="t-s" x="518" y="92">name-only line</text>
+    <text class="t-s" x="518" y="106">nothing runs</text>
+    <rect class="n-box" x="646" y="34" width="128" height="84" rx="5"/>
+    <text class="t-b" x="656" y="56">support.otto</text>
+    <text class="t-k" x="656" y="72">agent</text>
+    <text class="t-s" x="656" y="92">name-only line</text>
+    <text class="t-s" x="656" y="106">nothing runs</text>
+    <rect class="n-box" x="784" y="34" width="128" height="84" rx="5"/>
+    <text class="t-b" x="794" y="56">support.wren</text>
+    <text class="t-k" x="794" y="72">followup-runner</text>
+    <text class="t-s" x="794" y="92">name-only line</text>
+    <text class="t-s" x="794" y="106">nothing runs</text>
+  </g>
+  <path class="rule" d="M16 140 H924"/>
+  <g id="after">
+    <text class="t-lbl" x="16" y="160">AFTER</text>
+    <rect class="n-box" x="16" y="170" width="176" height="84" rx="5"/>
+    <text class="t-b" x="30" y="196">a person posts</text>
+    <text class="t-s" x="30" y="214">to support.desk</text>
+    <text class="t-s" x="30" y="232">no author</text>
+    <path class="arrow" d="M192 212 H224"/>
+    <rect class="n-box" x="232" y="170" width="128" height="84" rx="5"/>
+    <text class="t-b" x="242" y="192">support.ada</text>
+    <text class="t-k" x="242" y="208">desk-clerk</text>
+    <text class="t-s" x="242" y="228">name-only line</text>
+    <text class="t-s" x="242" y="242">nothing runs</text>
+    <rect class="n-box" x="370" y="170" width="128" height="84" rx="5"/>
+    <text class="t-b" x="380" y="192">support.grace</text>
+    <text class="t-k" x="380" y="208">desk-clerk</text>
+    <text class="t-s" x="380" y="228">name-only line</text>
+    <text class="t-s" x="380" y="242">nothing runs</text>
+    <rect class="n-run" x="508" y="170" width="128" height="84" rx="5"/>
+    <text class="t-b" x="518" y="192">support.iris</text>
+    <text class="t-k" x="518" y="208">agent</text>
+    <text class="t-run" x="518" y="228">runs once, in its</text>
+    <text class="t-run" x="518" y="242">desk conversation</text>
+    <rect class="n-run" x="646" y="170" width="128" height="84" rx="5"/>
+    <text class="t-b" x="656" y="192">support.otto</text>
+    <text class="t-k" x="656" y="208">agent</text>
+    <text class="t-run" x="656" y="228">runs once, in its</text>
+    <text class="t-run" x="656" y="242">desk conversation</text>
+    <rect class="n-box" x="784" y="170" width="128" height="84" rx="5"/>
+    <text class="t-b" x="794" y="192">support.wren</text>
+    <text class="t-k" x="794" y="208">followup-runner</text>
+    <text class="t-s" x="794" y="228">name-only line</text>
+    <text class="t-s" x="794" y="242">nothing runs</text>
+  </g>
+  <path class="rule" d="M16 276 H924"/>
+  <g id="after-·-a-seat-wrote-it">
+    <text class="t-lbl" x="16" y="296">AFTER · A SEAT WROTE IT</text>
+    <rect class="n-box" x="16" y="306" width="176" height="84" rx="5"/>
+    <text class="t-b" x="30" y="332">support.otto posts</text>
+    <text class="t-s" x="30" y="350">to support.desk</text>
+    <text class="t-s" x="30" y="368">author: support.otto</text>
+    <path class="arrow" d="M192 348 H224"/>
+    <rect class="n-box" x="232" y="306" width="128" height="84" rx="5"/>
+    <text class="t-b" x="242" y="328">support.ada</text>
+    <text class="t-k" x="242" y="344">desk-clerk</text>
+    <text class="t-s" x="242" y="364">name-only line</text>
+    <text class="t-s" x="242" y="378">nothing runs</text>
+    <rect class="n-box" x="370" y="306" width="128" height="84" rx="5"/>
+    <text class="t-b" x="380" y="328">support.grace</text>
+    <text class="t-k" x="380" y="344">desk-clerk</text>
+    <text class="t-s" x="380" y="364">name-only line</text>
+    <text class="t-s" x="380" y="378">nothing runs</text>
+    <rect class="n-box" x="508" y="306" width="128" height="84" rx="5"/>
+    <text class="t-b" x="518" y="328">support.iris</text>
+    <text class="t-k" x="518" y="344">agent</text>
+    <text class="t-s" x="518" y="364">name-only line</text>
+    <text class="t-s" x="518" y="378">nothing runs</text>
+    <rect class="n-off" x="646" y="306" width="128" height="84" rx="5"/>
+    <text class="t-b" x="656" y="328">support.otto</text>
+    <text class="t-k" x="656" y="344">agent</text>
+    <text class="t-gone" x="656" y="364">the writer</text>
+    <text class="t-gone" x="656" y="378">told nothing</text>
+    <rect class="n-box" x="784" y="306" width="128" height="84" rx="5"/>
+    <text class="t-b" x="794" y="328">support.wren</text>
+    <text class="t-k" x="794" y="344">followup-runner</text>
+    <text class="t-s" x="794" y="364">name-only line</text>
+    <text class="t-s" x="794" y="378">nothing runs</text>
+  </g>
+  <text class="t-gone" x="232" y="424">no seat runs on a post a seat wrote, so two agents never answer each other</text>
+</svg>
