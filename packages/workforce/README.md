@@ -497,6 +497,10 @@ through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is tol
 turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only
 refuses, because it names no kind — only an absent key means the built-in.
 
+A seat on the `agent` kind is talked to through its `run` action, which takes `{ message }`. The
+message a seat is sent is kept as the caller's turn in that seat's conversation, so a conversation
+reads as both sides.
+
 Configure that kind by replacing it. Build the flow with `defineAgentWorkerFlow` and pass it under
 `agent` (`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`). It takes over for every
 seat that runs on the `agent` kind — the records that leave `flow:` out, and any that name `agent`
@@ -1195,6 +1199,11 @@ action route still works; the dispatch door does not.
 A post into a session nobody opened refuses `channel-not-bound` and writes nothing. The shared
 instance answers for every session id and the action path creates what it does not find, so
 boundness, not existence, is what makes a session a channel.
+
+Each post leaves one `channel-post` item on the channel's session, and that item is the line.
+A page renders the channel from those items; `read` is for models and other flows, returns the
+lines inside the session's history window, and never reaches a browser. A person posting from
+a page sends no `author`, since they are not a member. The line's `principal` names them.
 
 ### Holding a board
 

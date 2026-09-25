@@ -1,0 +1,6 @@
+{
+  "port": 3037,
+  "channel": { "kind": "channel", "id": "support.desk", "label": "devuser" },
+  "seat": { "kind": "agent", "id": "support.otto", "marker": "[scenario:talk-to-seat]", "replyMarker": "[reply:talk-to-seat]" },
+  "readOnlySeat": { "kind": "followup-runner", "id": "support.wren" }
+}

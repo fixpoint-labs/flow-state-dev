@@ -68,6 +68,8 @@ curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
   -d '{"input":{"note":"is the printer fixed?"},"userId":"you"}'
 ```
 
+Or open the seat in the app's rail and type the note there. The page calls the same action.
+
 Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
 
 #### Channels
@@ -168,7 +170,9 @@ The wiring is the part to copy: `workforce/hire.ts`, which adds `createSeatHireC
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
 - **Client data bar**: Live display of mode status, request count, user preferences
 - **Mode selector**: Chat / Plan / Review tabs that feed into `sendAction`
-- **Session management**: Create and switch between the assistant's sessions from its row in the rail; a channel's or a seat's session opens read-only
+- **Session management**: Create and switch between the assistant's sessions from its row in the rail. A seat's row has **New conversation** too
+- **Channels**: Open one in the rail to read its transcript and post to it. Your post calls the channel's own `post` action, the same one `fsdev run` calls, and it appears as `devuser`, the one user this app runs as. Every member is notified. `support.noticeboard` is the exception: its `digest` kind keeps no poster and notifies no one. Lines a seat posts show up the next time the channel is read
+- **Seats**: Open a seat's conversation to talk to it. The composer calls the action the seat's kind answers with: `run` for `agent` seats such as `support.otto`, `answer` for `desk-clerk` seats. Your message and the reply both stay in the conversation. `support.wren` runs board rows and has nothing to answer with, so its conversation stays read-only and says so
 - **Tool call visualization**: Inline display of tool invocations with args + output via AI Elements Tool component
 - **Streaming indicators**: PromptInputSubmit status, Shimmer for status items, skeleton cards for in-progress blocks
 
