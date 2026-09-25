@@ -538,8 +538,10 @@ whatever it selected under `capabilities:`. The kind maps those names against th
 the model that list and nothing else; `tools: []` means no tool. A worker with no `tools:` line can
 call the tools of every capability preset its own file selects under `capabilities:`, including a
 preset whose tools are a function built per turn. A preset the kind switches on by default gives
-its tools only to the workers that select it. Two selected presets that list different tools under
-one name are refused at the hire; the refusal names the worker, the tool, and both presets.
+its tools only to the workers that select it. A worker with no `tools:` line whose selected presets list
+different tools under one name is refused at the hire; the refusal names the worker, the tool, and
+both presets, and suggests selecting one of them or writing a `tools:` line. A worker that writes a
+line is hired whatever its presets' tools are named, and gets exactly its list.
 
 A skill does not widen the grant: a skill's `allowed-tools` are validated against the catalog but
 never registered, and a skill's delegated workers are seated from the names the holding worker

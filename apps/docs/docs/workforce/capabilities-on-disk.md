@@ -155,7 +155,7 @@ The whole selection is checked when the roster is hired, so a mistake is a refus
 | a preset the app turned off where it installed the capability | A worker adds to what its kind carries and never widens past it. |
 | a preset on a capability that takes config | A capability declared with a `config` block is resolved once, where you install it, so its presets are yours to set. |
 | a preset that declares `resources`, a state schema, `model`, `providerOptions` or `caching` | Those have to exist before a request runs, so the preset is yours to turn on for the whole kind. |
-| two presets that list different tools under the same name | One name is one tool. The refusal names the worker, the tool, and both presets; select one of them. |
+| two presets that list different tools under the same name, when the worker has no `tools:` line | One name is one tool. The refusal names the worker, the tool, and both presets. Select one of them, or write a `tools:` line: a worker with a line is hired whatever its presets' tools are named, and gets exactly its list. |
 
 Every bad selection on a worker is reported, not just the first.
 
