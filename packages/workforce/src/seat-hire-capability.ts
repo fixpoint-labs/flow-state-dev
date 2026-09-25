@@ -21,10 +21,9 @@ import { defineCapability } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
 import { defineHiredRosterCollection } from "./roster/collections";
 import { defineSeatInventoryCollection } from "./inventory/collections";
+import { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
 import {
   createSeatHireBlocks,
-  HIRED_ROSTER_RESOURCE,
-  SEAT_INVENTORY_RESOURCE,
   hiredSeatOwnerPinFromRosterOwner,
   registerHiredSeat,
   type HiredSeatOwnerPin,

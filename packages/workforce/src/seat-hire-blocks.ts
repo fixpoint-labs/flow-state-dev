@@ -20,16 +20,14 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
 import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
 import type { HiredSeatRow } from "./roster/collections";
 import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
 import { hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
 
-/** Registry key the capability installs the durable roster under. */
-export const HIRED_ROSTER_RESOURCE = "hiredRoster";
-
-/** Registry key the capability installs the seat inventory under. */
-export const SEAT_INVENTORY_RESOURCE = "seatInventory";
+/** The registry keys live in a leaf module; re-exported here by name. */
+export { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE };
 
 /**
  * The owner pin a hired-seat register must carry: another name for core's

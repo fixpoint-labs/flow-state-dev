@@ -52,14 +52,13 @@
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
+export { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
 export {
   createSeatHireCapability,
   createSeatHireBlocks,
   hiredSeatOwnerPinFromRosterOwner,
   registerHiredSeat,
-  HIRED_ROSTER_RESOURCE,
   SEAT_HIRE_CAPABILITY,
-  SEAT_INVENTORY_RESOURCE,
   type HiredSeatOwnerPin,
   type SeatHireBlocks,
   type SeatHireCapabilityOptions,
