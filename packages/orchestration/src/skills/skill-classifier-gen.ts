@@ -13,7 +13,6 @@
 
 import { z } from "zod";
 import { generator, handler, sequencer } from "@flow-state-dev/core";
-import type { SkillState } from "@flow-state-dev/core";
 import { resolveResourceCollection } from "../tasks";
 import { listOfferedSkills } from "./skill-catalog";
 import {
@@ -101,19 +100,11 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     sequencerStateSchema: skillActivatorStateSchema,
     execute: async (input, ctx) => {
       const collection = resolveResourceCollection(ctx, opts.collectionKey);
-      const validNames = new Set<string>();
-      if (collection) {
-        for (const ref of await collection.list()) {
-          if (!ref.path.endsWith("/SKILL.md")) continue;
-          const segments = ref.path.split("/");
-          if (segments.length < 2) continue;
-          const skillName = segments[segments.length - 2]!;
-          if (allowedSet && !allowedSet.has(skillName)) continue;
-          const state = ref.state as unknown as SkillState;
-          if (state.disableModelInvocation) continue;
-          validNames.add(skillName);
-        }
-      }
+      const validNames = new Set(
+        (await listOfferedSkills(collection, Number.POSITIVE_INFINITY, allowedSet)).map(
+          (s) => s.name,
+        ),
+      );
 
       const filteredSkills = input.activeSkills
         .filter((s) => validNames.has(s.name) && s.confidence >= threshold)

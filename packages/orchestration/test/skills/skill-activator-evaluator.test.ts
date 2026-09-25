@@ -190,6 +190,28 @@ describe("no evaluator passed: today's generator classifier, unchanged (BR-1)", 
     expect(traces.some((t) => t.blockKind === "evaluator")).toBe(false);
   });
 
+  it("still drops classifier matches outside the binding or marked disableModelInvocation, however confident", async () => {
+    const classifier = classifierMock([
+      { name: "research", confidence: 0.9 },
+      { name: "outside", confidence: 0.95 },
+      { name: "hidden", confidence: 0.95 },
+      { name: "invented", confidence: 0.95 },
+    ]);
+    const { result, activeSkills } = await runTurn({
+      activator: createSkillActivator({
+        initialSkills: [
+          research,
+          skill("outside", "Not in this binding"),
+          skill("hidden", "Never offered", ["disable-model-invocation: true"]),
+        ],
+        allowed: ["research", "hidden"],
+      }),
+      classifier,
+    });
+    expect(result.error).toBeUndefined();
+    expect(activeSkills?.map((s) => s.name)).toEqual(["research"]);
+  });
+
   it("no module but the helper imports core's evaluator values, so an activator built without one never builds one", () => {
     const dir = join(__dirname, "../../src/skills");
     const valueImport =
@@ -335,6 +357,43 @@ describe("with an evaluator: the pick is final", () => {
     expect("confidence" in match).toBe(false);
     expect(activatorState.classifierConfidence).toBeNull();
   });
+
+  // The pick is checked against the catalog as it stands when the answer
+  // arrives, not the snapshot the options were built from: a skill taken away
+  // while the call was in flight must not activate (fails closed).
+  for (const [label, change] of [
+    ["removed", (c: { delete: (k: string) => Promise<void> }) => c.delete("research/SKILL.md")],
+    [
+      "disabled",
+      (c: { upsert: (k: string, u: Record<string, unknown>) => Promise<unknown> }) =>
+        c.upsert("research/SKILL.md", { disableModelInvocation: true }),
+    ],
+  ] as const) {
+    it(`a picked skill ${label} while the call is in flight does not activate`, async () => {
+      const model = mockEvaluationModel({ answers: pick("research", 0.9) });
+      const midCall = evaluator({
+        name: "pick-skill",
+        model,
+        // Runs after the catalog was listed and before the model is called.
+        state: async (input: { message: string }, ctx) => {
+          await (change as (c: unknown) => Promise<unknown>)(
+            (ctx.resources as unknown as Record<string, unknown>).skills,
+          );
+          return input.message;
+        },
+        questions: skillQuestions,
+      });
+      const { result, activeSkills } = await runTurn({
+        activator: createSkillActivator({ initialSkills: catalog, evaluator: midCall }),
+      });
+      expect(result.error).toBeUndefined();
+      // The option was offered, and the model picked it...
+      const criteria = (model.calls[0]!.questions.skill as { criteria: Record<string, unknown> }).criteria;
+      expect(Object.keys(criteria)).toContain("research");
+      // ...but it is gone now, so nothing activates.
+      expect(activeSkills).toEqual([]);
+    });
+  }
 
   it("'no skill' activates nothing; a skill actually named 'none' is offered and activates when picked (BR-6, BR-9)", async () => {
     const withNone = [...catalog, skill("none", "A skill that happens to be called none")];

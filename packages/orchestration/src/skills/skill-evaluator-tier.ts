@@ -87,6 +87,10 @@ export function createSkillEvaluatorTier(opts: SkillEvaluatorTierOptions) {
       }
 
       const pick = answer.choice;
+      // Re-read the catalog rather than trusting the pre-call snapshot: a
+      // skill removed, disabled or taken out of the binding while the call
+      // was in flight must not activate. Fails closed, as the classifier's
+      // own apply step does.
       const names = new Set((await offered(ctx)).map((s) => s.name));
       const reported = typeof answer.confidence === "number" ? answer.confidence : undefined;
       const matches =
