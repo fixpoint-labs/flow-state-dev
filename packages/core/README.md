@@ -566,7 +566,7 @@ A `task` entry is declared as a plain block, but a `task` dispatch does not run 
 
 ### `dispatcher(config)`
 
-A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) sits in a task board's `workers` under an assignee and hands the rows claimed for that assignee to `flow.task.actions[action]`. Omit `type` in both cases — ordinary dispatchers default to `internal`, and a board's dispatcher is one whose `session` is `"per-task"`, `"per-worker"`, or `{ key }`. Its stamped address is still `type: "task"`.
+A dispatcher is a handler that sends one dispatch to one declared entry instead of doing the work itself. Its address (`type` and `action`) is fixed on the block; the session and the payload are computed per call from the block's input. It comes in two shapes: an `internal` dispatcher (`InternalDispatcherConfig`) sends this request's own authority to `flow.internal.actions[action]`, and a `task` dispatcher (`TaskDispatcherConfig`) sits in a task board's `workers` under an assignee and hands the rows claimed for that assignee to `flow.task.actions[action]`. Omit `type` in both cases: ordinary dispatchers default to `internal`, and a board's dispatcher is one whose `session` is `"per-task"`, `"per-worker"`, or `{ key }`. Its stamped address is still `type: "task"`.
 
 ```ts
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -627,11 +627,11 @@ export default defineFlow({
 | `action` | The entry name, resolved as `flow.internal.actions[action]` or `flow.task.actions[action]`. Checked when the flow is defined, unless `flowKind` names another flow. |
 | `flowKind` | The **other flow** the entry lives on, on an `internal` or `task` dispatcher. Omit to address this flow's own entry. Checked at run time, not when the flow is defined — see [Dispatching to another flow](#dispatching-to-another-flow). |
 | `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
-| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per assignee, shared by every row routed to it), or `{ key: (task, ctx) => string }` read from the row's worker input. |
+| `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per assignee, shared by every row routed to it), or `{ key: (task, ctx) => string }`, `task` being the claim envelope's `payload` field (the row's packed input). |
 | `payload` | `internal` only. `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
 | `transient` | Hide the block's trace from clients. Default `false`. |
 
-A `task` dispatcher's input is the claim envelope, `taskDispatchInputSchema` / `TaskDispatchInput`: `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }`; `seat` is the assignee the board routed the row to. Only a task board mints one, from the row it claimed. Put the block under a board's `workers` where an inline worker would go:
+A `task` dispatcher's input is the claim envelope, `taskDispatchInputSchema` / `TaskDispatchInput`: `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }`; `seat` is the assignee the board routed the row to. Only a task board mints one, from the row it claimed. Put the block under a board's `workers` wherever an ordinary block would go:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";

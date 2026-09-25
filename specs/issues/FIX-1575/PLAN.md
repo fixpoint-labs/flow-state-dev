@@ -51,7 +51,7 @@ S1 first because its wording is the vocabulary everything else echoes.
 | V2 | S1–S9 | `check.mjs --after` passes: every F line gone, every R and K line intact (BR-1…BR-6, D1, D2). A rewritten line that still names Workforce as a consumer (the drafts in DOCS.md do, twice) gets a `KC` ledger entry in the same PR; nothing else is added to the ledger |
 | V3 | S1–S9 | `git diff main -- packages/*/src` shows only comment lines and error-string lines (BR-9). Read it, don't infer it |
 | V4 | S9 | `grep -n worker` over the diff: no *worker* introduced for a seat or assignee (BR-8) |
-| V5 | S1–S9 | `check.mjs --self-test` still passes, so V2's green is not a broken checker |
+| V5 | S1–S9 | `check.mjs --self-test --after` still passes, so V2's green is not a broken checker |
 
 No goal check applies: nothing runs differently. The second path (BP-035) is the refusal
 sentences, which V1 exercises through the existing suites.
@@ -89,7 +89,7 @@ No changeset: no published API or behaviour changes (BP-022).
 [`poc/vocabulary-inventory/`](poc/vocabulary-inventory/check.mjs) is the audit itself as a
 check. `scan.mjs` fixes the scope and the vocabulary; `ledger.mjs` classifies every hit line;
 `check.mjs` asserts totality (every hit claimed exactly once, every entry claims exactly its
-count) and, with `--after`, the end state. `--self-test` runs eight controls: six planted defects (an unclassified hit, a hit inside
+count) and, with `--after`, the end state. `--self-test` runs eight controls, checking the clean tree in the mode `--after` selects: six planted defects (an unclassified hit, a hit inside
 the kept trace store, a dropped hit, a lingering F line, a renamed public field, a Workforce
 word hidden in a code span) each fail it, and the code-span allowance for a retained public
 name and the clean tree pass. Run on `main` + `a64132b`: 146

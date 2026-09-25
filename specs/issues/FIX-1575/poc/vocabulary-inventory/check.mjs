@@ -11,7 +11,8 @@
 //                                    word is not exempt. Residual: a bare `seat` span is the
 //                                    kept field spelled exactly; whether the prose around it
 //                                    uses it as the field or as a concept is review's call.
-//   node check.mjs [root] --self-test  negative controls: planted defects must fail.
+//   node check.mjs [root] --self-test [--after]  negative controls: planted defects must
+//                                    fail; the clean tree is checked in the mode --after picks.
 //
 // Retained spec evidence, not production code; nothing imports it and no CI job runs it.
 import path from "node:path";
@@ -49,11 +50,9 @@ function tally(ledger) {
   return t;
 }
 
-function selfTest(root) {
+function selfTest(root, after) {
   const hits = scan(root);
-  // Baseline mode follows the tree: before-mode while the F lines are present,
-  // after-mode once the implementation has removed them.
-  const mode = { after: check(hits, LEDGER).length > 0 };
+  const mode = { after };
   const base = check(hits, LEDGER, mode);
   const lingering = { file: "packages/engine/src/execution/runAction.ts", line: 999, text: " * so a seat another board holds would claim a row" };
   const results = [
@@ -73,7 +72,7 @@ function selfTest(root) {
 
 const args = process.argv.slice(2);
 const root = path.resolve(args.find((a) => !a.startsWith("--")) ?? ".");
-if (args.includes("--self-test")) selfTest(root);
+if (args.includes("--self-test")) selfTest(root, args.includes("--after"));
 else {
   const after = args.includes("--after");
   const hits = scan(root);
