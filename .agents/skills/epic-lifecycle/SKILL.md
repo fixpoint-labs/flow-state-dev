@@ -370,9 +370,10 @@ The epic-specific delta:
    Three things it does that are easy to misread as bugs. **`epicApproved: false` does not mean
    it did nothing** — it held every sub-issue (`held`) but still folded epic-PR review if the
    budget allowed, because folding is how the objective becomes approvable; blocking it would
-   deadlock the gate it's waiting on. An issue in **`blocked`** was skipped on purpose: it has an
-   open blocked-by relation, so it's tracked until its blocker merges rather than run
-   concurrently with its prerequisite ([Intake](#intake--filing--queueing-discovered-issues)).
+   deadlock the gate it's waiting on. An issue in **`blocked`** has an open blocked-by relation:
+   its **implementation** waits until its blocker merges rather than being built concurrently with
+   its prerequisite, but its spec authoring and review still run — `blocked` is not "idle"
+   ([Intake](#intake--filing--queueing-discovered-issues)).
    And a row whose worker **died** looks untouched by design: the script treats a null agent
    result as *nothing happened*, so the cursor doesn't advance, no verdict is consumed, and no
    claim is marked settled — the next wake retries instead of inventing an outcome.
@@ -811,8 +812,10 @@ Then decide whether it joins the epic:
   `issue-spec` won't discover the epic via `issue.parent`.
 - **Doesn't belong under this epic** → it isn't an addition to this run. File it and leave it
   for its own lifecycle; don't stretch the epic's objective to cover it.
-- **Blocked** → track it (a row in the epic record, marked blocked-by); pull it into
-  the active set when its blocker merges (a merge event re-enters the loop).
+- **Blocked** → track it (a row in the epic record, marked blocked-by). **Blocked-by gates
+  implementation only:** its spec is authored and reviewed now, like any other row; only the
+  build waits for its blocker to merge (a merge event re-enters the loop). Never park a
+  dependent's spec on the relation — that serialises the epic's spec work behind its first merge.
 - Over the cap → queue it; admit it when a slot frees.
 
 This is how discovered work flows into the loop without a human re-filing it — while

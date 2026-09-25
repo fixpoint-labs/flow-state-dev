@@ -188,10 +188,23 @@ const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
  */
 let crossSpecHold = false
 
+/**
+ * The only actions an open blocked-by relation lets through: writing and revising the SPEC.
+ *
+ * A prerequisite is a landing-order constraint on CODE — a dependent must not be built concurrently with
+ * the thing it builds on. It says nothing about when the dependent's spec may be written or reviewed, and
+ * parking those too serialised a whole epic's spec work behind its first implementation merge: the owner
+ * had to override the wake by hand (FIX-1553) to get the dependents' specs authored. Spec work on a
+ * blocked row also lands its spec in the cross-spec set, which is where a conflict with its prerequisite's
+ * spec is caught — before either is built. → epic-lifecycle § Intake.
+ */
+const PREREQUISITE_FREE_ACTIONS = new Set(['spec', 'spec-review'])
+
 function pendingAction(row) {
-  // An issue with an open blocked-by relation is not admitted to the active set; it's tracked
-  // until its blocker merges. → epic-lifecycle § Intake, and § Boundaries (sequence, don't
-  // run a dependent concurrently with its prerequisite).
+  // An issue with an open blocked-by relation is tracked until its blocker merges, and gates only
+  // IMPLEMENTATION on it: spec authoring and review still dispatch (`PREREQUISITE_FREE_ACTIONS`).
+  // → epic-lifecycle § Intake, and § Boundaries (sequence, don't BUILD a dependent concurrently
+  // with its prerequisite).
   // Linear is authoritative on whether this issue still exists as work. A carried row whose
   // issue the human closed, canceled or dropped must stop dispatching — the terminal filter on
   // newly discovered children doesn't help a row that was already in the table.
@@ -219,7 +232,7 @@ function pendingAction(row) {
     return null
   }
 
-  if (row.blockedBy && row.blockedBy.length) return null
+  const prerequisiteOpen = !!(row.blockedBy && row.blockedBy.length)
 
   // A worker that escalated a decision it could not make is WAITING ON A HUMAN. Re-dispatching
   // it on the next unrelated PR event or heartbeat would either retry the same dead end or push
@@ -230,7 +243,7 @@ function pendingAction(row) {
   // Verdicts are a LIST: two distinct claims on one issue can settle in the same wake, and a
   // single-slot field would drop one while consuming both settlement requests.
   if (row.verdicts && row.verdicts.length) {
-    return { action: 'apply-verdict', why: `${row.verdicts.length} POC verdict(s) to fold` }
+    return prerequisiteOpen ? null : { action: 'apply-verdict', why: `${row.verdicts.length} POC verdict(s) to fold` }
   }
 
   const phaseAction = (() => {
@@ -328,7 +341,8 @@ function pendingAction(row) {
       return null
     }
   })()
-  if (phaseAction) return phaseAction
+  if (phaseAction) return prerequisiteOpen && !PREREQUISITE_FREE_ACTIONS.has(phaseAction.action) ? null : phaseAction
+  if (prerequisiteOpen) return null
 
   // FALLBACK, reached only when the phase itself has nothing to do. An answered decision is work for a
   // SINGLE-PR row too: this check lived only inside `multiPrHasWork`, so a single-PR row — an
@@ -358,9 +372,9 @@ function pendingAction(row) {
  * in both cases and points the human at the wrong lever. Each round added the missing conjunct; each
  * next round found another. So the order lives here, once, and the reporting branch reads it.
  *
- * The order is `pendingAction`'s own, top to bottom: the pre-phase refusals first (terminal, an open
- * `blockedBy`, an unresolved `blocker`), then the AWAITING_SPEC_APPROVAL branch — the hold, the
- * cursor, the budget. Order is the whole content of this function: every one of these can be true at
+ * The order is `pendingAction`'s own, top to bottom: the pre-phase refusals first (terminal, an
+ * unresolved `blocker`), then the AWAITING_SPEC_APPROVAL branch — an open `blockedBy` (approved rows
+ * only: it gates implementation, not review), the hold, the cursor, the budget. Order is the whole content of this function: every one of these can be true at
  * once, and only the FIRST is why the row is parked.
  *
  * `pendingAction` deliberately does NOT call this (BP-035: it is a well-covered switch, and it is the
@@ -378,9 +392,13 @@ function pendingAction(row) {
  */
 function specReviewParkKind(row) {
   if (row.linearTerminal) return 'linear-terminal'
-  if (row.blockedBy && row.blockedBy.length) return 'blocked-by'
   if (row.blocker) return 'blocker'
-  if (row.specApproved) return crossSpecHold ? 'cross-spec-hold' : cursorUsable(row) ? null : 'cursor'
+  // An open prerequisite parks only the approved row, whose next action is `implement`; an unapproved
+  // row's spec review runs regardless (`PREREQUISITE_FREE_ACTIONS`).
+  if (row.specApproved) {
+    if (row.blockedBy && row.blockedBy.length) return 'blocked-by'
+    return crossSpecHold ? 'cross-spec-hold' : cursorUsable(row) ? null : 'cursor'
+  }
   if (!cursorUsable(row)) return 'cursor'
   if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) return 'budget'
   return null
@@ -420,7 +438,7 @@ function specReviewParkKind(row) {
  *    own, that block would be permanent. One extra scan per prerequisite, and only while something is
  *    actually waiting on it.
  *
- * An open `blockedBy` is deliberately NOT a skip, even though `pendingAction` parks on it too: that
+ * An open `blockedBy` is deliberately NOT a skip, even though `pendingAction` parks implementation on it: that
  * relation can go away in this very wake's children query, and the row becomes dispatchable
  * immediately — with no fresh read of its PR to dispatch from.
  *
@@ -1325,11 +1343,13 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const heldForFold = []
 
   for (const row of rows) {
+    const next = pendingAction(row)
+    // Every row with an open prerequisite is reported in `blocked` — its implementation waits for the
+    // blocker to land. It still takes a slot for spec work, which `pendingAction` lets through.
     if (row.blockedBy && row.blockedBy.length) {
       blocked.push(row)
-      continue
+      if (!next) continue
     }
-    const next = pendingAction(row)
     if (next && foldEpicWanted && AUTHORS_AGAINST_OBJECTIVE.has(next.action)) {
       heldForFold.push({ row, ...next })
       continue
@@ -2974,15 +2994,14 @@ if (routeConvergedEpicFeedback) {
 const crossSpecEligible = (r) => r.specApproved || POST_SPEC_PHASES.has(r.phase) || r.linearTerminal
 // Both conditions are derived from ONE definition of the set, because every version that defined them
 // separately disagreed about what the set was — and each disagreement was either a released gate or a
-// deadlock. Two exclusions, for two different reasons:
+// deadlock. One exclusion here:
 //  - CANCELLED work: its spec is dead. Reviewing it manufactures conflicts with work nobody is doing.
-//  - BLOCKED work with no spec yet: `allocate` refuses to author it while a `blockedBy` is open, so it
-//    can never become eligible on its own. Waiting for it is not a wait — B blocked by A, A held for the
-//    pass, the pass waiting on B's spec is a closed loop that no event breaks. A blocked row that ALREADY
-//    has a spec is in the set as normal; the exclusion is about what can still arrive, not about who is
-//    admitted to work.
+// BLOCKED work is NOT excluded. An open `blockedBy` gates implementation only, so a blocked row's spec is
+// authored and reviewed like any other (`PREREQUISITE_FREE_ACTIONS`) and genuinely is still coming — and
+// its spec is exactly the one most likely to conflict with its prerequisite's, so the pass must wait for it.
+// (It used to be excluded, when spec authoring also parked on the relation and waiting for it deadlocked.)
 const crossSpecCancelled = (r) => CANCELLED_LINEAR.test((r.linearState || '').trim())
-// A THIRD exclusion, and it has to apply to both halves: a row with NO SPEC DOCUMENT cannot be
+// A SECOND exclusion, and it has to apply to both halves: a row with NO SPEC DOCUMENT cannot be
 // cross-reviewed. Left in `crossSpecSet` it hands the reviewer a row with nothing to read and
 // invites a conflict report about a document that does not exist; left in `crossSpecComing` it is
 // a spec that will never arrive, so the pass is never askable and every feature in the epic is
@@ -3006,7 +3025,7 @@ const crossSpecCancelled = (r) => CANCELLED_LINEAR.test((r.linearState || '').tr
 const crossSpecRows = refreshed.filter((r) => !isDirectRoute(r))
 const crossSpecSet = crossSpecRows.filter((r) => crossSpecEligible(r) && !crossSpecCancelled(r))
 const crossSpecComing = crossSpecRows.filter(
-  (r) => !crossSpecEligible(r) && !crossSpecCancelled(r) && !(r.blockedBy && r.blockedBy.length),
+  (r) => !crossSpecEligible(r) && !crossSpecCancelled(r),
 )
 // The HOLD is the whole rule: `epic-lifecycle` runs one coherence pass "before any of them is built", so a
 // multi-issue epic parks EVERY approved row from the first approval until the pass clears. Keying the hold
@@ -3039,7 +3058,7 @@ if (!epicReady) {
   )
 }
 for (const row of plan.blocked) {
-  log(`${row.id}: blocked by ${row.blockedBy.join(', ')} — tracked, not admitted to the active set.`)
+  log(`${row.id}: blocked by ${row.blockedBy.join(', ')} — tracked; implementation waits for it, spec work does not.`)
 }
 if (cancelledBlockers.size) {
   // A cancelled prerequisite can never merge, so the rows behind it are blocked until a human

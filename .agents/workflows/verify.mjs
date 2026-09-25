@@ -1253,7 +1253,10 @@ check('a dead pre-merge status refresh leaves the head observation unchanged', a
   assert.equal(result.epic.headUnconfirmed, false, 'a refresh that did not return cannot claim to have moved the head')
 })
 
-check('an issue with an open blocked-by relation is tracked, not dispatched', async () => {
+check('an open blocked-by relation gates implementation, not spec authoring', async () => {
+  // The relation is a landing-order constraint on code. Parking the dependent's SPEC on it too serialised
+  // an epic's spec work behind its first implementation merge (FIX-1553: the owner overrode the wake by
+  // hand). The dependent is still reported in `blocked`, because its implementation does wait.
   const { result, calls, logs } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
     respond: (prompt, opts) => {
@@ -1272,9 +1275,24 @@ check('an issue with an open blocked-by relation is tracked, not dispatched', as
       return { issueId: label.split(':')[1], ...workerRes() }
     },
   })
-  assert.deepEqual(workerLabels(calls), ['spec:FIX-3'], 'the blocked issue must not run concurrently with its blocker')
+  assert.deepEqual(workerLabels(calls), ['spec:FIX-2', 'spec:FIX-3'], 'a blocked issue still gets its spec written')
   assert.deepEqual(result.blocked, [{ issueId: 'FIX-2', blockedBy: ['FIX-9'] }])
-  assert.match(logs.join('\n'), /FIX-2: blocked by FIX-9 — tracked, not admitted to the active set/)
+  assert.match(logs.join('\n'), /FIX-2: blocked by FIX-9 — tracked; implementation waits for it, spec work does not/)
+
+  // ...and an APPROVED spec behind an open prerequisite is not built. The control run without the relation
+  // implements it, so the empty dispatch below is the relation's doing.
+  const approvedRun = (blockedBy) =>
+    run('epic-wake.js', {
+      args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+      respond: epicResponder({
+        fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'abc' } },
+        linear: { 'FIX-2': { state: 'Todo', blockedBy } },
+      }),
+    })
+  assert.deepEqual(workerLabels((await approvedRun([])).calls), ['implement:FIX-2'], 'control: unblocked, the approved spec is built')
+  const parked = await approvedRun(['FIX-9'])
+  assert.deepEqual(workerLabels(parked.calls), [], 'the dependent is never built concurrently with its prerequisite')
+  assert.deepEqual(parked.result.blocked, [{ issueId: 'FIX-2', blockedBy: ['FIX-9'] }])
 })
 
 check('per-issue activity cursors are passed to the scout and advanced', async () => {
@@ -1345,8 +1363,12 @@ check('a row whose worker died keeps its cursor for retry', async () => {
 
 check('a carried blockedBy survives a failed Linear refresh', async () => {
   const { result, calls } = await run('epic-wake.js', {
-    args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-9'] })] }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } }, nulls: ['linear:epic-children'] }),
+    // An approved spec, so the observable is IMPLEMENTATION — the one thing an open relation withholds.
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, blockedBy: ['FIX-9'] })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'abc' } },
+      nulls: ['linear:epic-children'],
+    }),
   })
   assert.deepEqual(workerLabels(calls), [], 'a dead Linear scout must not un-block an issue')
   assert.deepEqual(result.blocked, [{ issueId: 'FIX-2', blockedBy: ['FIX-9'] }])
@@ -1554,7 +1576,8 @@ check('a Linear scout that answers with UUIDs is discarded per entry, not believ
   const fix2 = result.issues.find((r) => r.id === 'FIX-2')
   assert.deepEqual(fix2.blockedBy, ['FIX-9'], 'a relation UUID in blockedBy voids the entry, so the carried blocker stands rather than clearing to []')
   assert.equal(fix2.linearState, 'Todo', 'the voided entry refreshes nothing else on the row either')
-  assert.deepEqual(workerLabels(calls), ['spec:FIX-3'], 'the well-formed sibling still runs')
+  // FIX-2's spec runs too: its carried relation gates only implementation.
+  assert.deepEqual(workerLabels(calls), ['spec:FIX-2', 'spec:FIX-3'], 'the well-formed sibling still runs')
   assert.match(logs.join('\n'), /UUID where an issue identifier/)
 })
 
@@ -1857,10 +1880,11 @@ check('GATE: implementation waits for the cross-spec coherence pass', async () =
   assert.deepEqual(withCancelled.result.crossSpecGate.issueIds, ['FIX-2', 'FIX-3'])
 })
 
-check('a blocked sibling does not deadlock the cross-spec hold', async () => {
-  // B blocked by A is admitted to nothing — `allocate` refuses to author its spec while the relation is
-  // open — so a hold that waits for B's spec to be approved waits on an event that cannot happen, while A,
-  // the thing that would unblock B, is the row being held. A closed loop, and every wake re-derived it.
+check('a blocked sibling\'s spec is written and joins the cross-spec set', async () => {
+  // B blocked by A still gets its spec authored — the relation gates implementation only — so B's spec is
+  // genuinely coming and the hold waits for it. That is not a deadlock (B's spec work dispatches), and it is
+  // the spec most likely to conflict with A's, so building A before the pass has seen B would be the order
+  // the gate exists to prevent.
   const approved = { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'abc' }
   const pair = await run('epic-wake.js', {
     args: epicArgs({
@@ -1872,10 +1896,10 @@ check('a blocked sibling does not deadlock the cross-spec hold', async () => {
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11 } },
     }),
   })
-  assert.deepEqual(workerLabels(pair.calls), ['implement:FIX-2'], 'the only spec that exists is not a set, so nothing is held for a pass')
-  assert.equal(pair.result.crossSpecGate, undefined, 'and no pass is asked for over one spec')
+  assert.deepEqual(workerLabels(pair.calls), ['spec:FIX-3'], 'the blocked sibling is written; its prerequisite is held for the pass')
+  assert.equal(pair.result.crossSpecGate, undefined, 'and no pass is asked for while a spec is still coming')
 
-  // Three rows: the blocked one is ignored by the hold, the unwritten one is not.
+  // Three rows: an unwritten sibling engages the hold too, blocked or not.
   const withComing = await run('epic-wake.js', {
     args: epicArgs({
       issues: [
@@ -1893,7 +1917,7 @@ check('a blocked sibling does not deadlock the cross-spec hold', async () => {
   assert.ok(!workerLabels(withComing.calls).includes('implement:FIX-2'), 'a spec still being written is a set, so the hold engages')
   assert.equal(withComing.result.crossSpecGate, undefined, 'not askable while it is unwritten')
 
-  // ...and once it is approved, the pass covers the two specs that exist — not the blocked row, which has none.
+  // ...and with the other two approved, the pass is still not askable: the blocked row's spec is coming.
   const ready = await run('epic-wake.js', {
     args: epicArgs({
       issues: [
@@ -1907,7 +1931,8 @@ check('a blocked sibling does not deadlock the cross-spec hold', async () => {
       linear: { 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
     }),
   })
-  assert.deepEqual(ready.result.crossSpecGate.issueIds, ['FIX-2', 'FIX-4'])
+  assert.equal(ready.result.crossSpecGate, undefined, 'the blocked row is part of the set it has not joined yet')
+  assert.deepEqual(workerLabels(ready.calls), ['spec:FIX-3'], 'and its spec is what the wake works on')
 
   // OVER-CORRECTION: blocked is not invisible. A row blocked at IMPLEMENTATION already has an approved
   // spec, and that spec is part of the set — dropping every blocked row would review the set without it and
@@ -3017,7 +3042,7 @@ check('an approved row parked by an open BLOCKED-BY is not reported as cross-spe
     'the hold is not why it is parked — the prerequisite is',
   )
   assert.ok(!result.converged.includes('FIX-2'), 'and it is not a convergence either')
-  assert.match(logs.join('\n'), /FIX-2: blocked by FIX-9 — tracked, not admitted to the active set\./)
+  assert.match(logs.join('\n'), /FIX-2: blocked by FIX-9 — tracked; implementation waits for it, spec work does not\./)
 })
 
 check('the conditional third round IS dispatched, and says so', async () => {
@@ -6228,7 +6253,11 @@ check('the wake computes blockedBy from the raw inverseRelations edges, so the p
     'FIX-1558': ['FIX-1554'],
     'FIX-1559': ['FIX-1554'],
   })
-  assert.deepEqual(workerLabels(calls), ['spec:FIX-1554'], 'only the prerequisite is dispatched; every dependent waits on it')
+  assert.deepEqual(
+    result.blocked.map((b) => b.issueId),
+    ['FIX-1555', 'FIX-1556', 'FIX-1557', 'FIX-1558', 'FIX-1559'],
+    'only the prerequisite is free to be built; every dependent waits on it',
+  )
 })
 
 check('contradictory Linear relations void the whole observation and the carried blockedBy stands', async () => {
@@ -6253,7 +6282,7 @@ check('contradictory Linear relations void the whole observation and the carried
   })
   assert.deepEqual(Object.fromEntries(result.issues.map((r) => [r.id, r.blockedBy])), carried, 'every row keeps its carried blockedBy — no edge from the contradicted read is used')
   assert.ok(result.issues.every((r) => r.linearState === 'Backlog'), 'nothing else from the voided read is applied either')
-  assert.deepEqual(workerLabels(calls), ['spec:FIX-1554'])
+  assert.deepEqual(result.blocked.map((b) => b.issueId), ['FIX-1555', 'FIX-1556', 'FIX-1557', 'FIX-1558', 'FIX-1559'])
   assert.match(logs.join('\n'), /FIX-1555 blocks FIX-1554.*FIX-1555's relations do not name FIX-1554/)
   assert.match(logs.join('\n'), /carried blockedBy stands/)
 })
@@ -6268,18 +6297,18 @@ const externalBlockerRun = (stateType) =>
   })
 
 check('an external blocker that Linear reports completed releases its dependent', async () => {
-  const { result, calls } = await externalBlockerRun('completed')
+  const { result } = await externalBlockerRun('completed')
   assert.deepEqual(result.issues.find((r) => r.id === 'FIX-2').blockedBy, [], 'the completed external prerequisite no longer blocks')
-  assert.deepEqual(workerLabels(calls), ['spec:FIX-2'], 'and the dependent is dispatched')
+  assert.deepEqual(result.blocked, [], 'and the dependent is free to be built')
 })
 
 check('an external blocker that is still open, or was cancelled, keeps its dependent parked', async () => {
   // The control for the check above: only `completed` clears. A cancelled prerequisite never landed —
   // the same rule `openBlockers` applies to blockers inside the epic — so it keeps blocking and is logged.
   for (const stateType of ['started', 'unstarted', 'canceled']) {
-    const { result, calls, logs } = await externalBlockerRun(stateType)
+    const { result, logs } = await externalBlockerRun(stateType)
     assert.deepEqual(result.issues.find((r) => r.id === 'FIX-2').blockedBy, ['OPS-9'], `a ${stateType} external blocker still blocks`)
-    assert.deepEqual(workerLabels(calls), [], `nothing is dispatched behind a ${stateType} blocker`)
+    assert.deepEqual(result.blocked, [{ issueId: 'FIX-2', blockedBy: ['OPS-9'] }], `the dependent stays parked behind a ${stateType} blocker`)
     if (stateType === 'canceled') assert.match(logs.join('\n'), /Blocker\(s\) cancelled, not completed: OPS-9/)
   }
 })
@@ -6288,12 +6317,12 @@ check('an edge state never clears a CARRIED blocker whose own Linear entry is mi
   // A blocker the epic carries as a row clears only through its live merge. When its own entry is
   // missing from the read (dropped, or the scout skipped it), the edge's `completed` must not stand in
   // for that check — Linear state is a mirror a human can move while the PR is still open.
-  const { result, calls } = await run('epic-wake.js', {
+  const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-3'] }), row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 12 })] }),
     respond: fix1554Responder([{ id: 'FIX-2', state: 'Todo', relations: [], inverseRelations: [blockedByNode('FIX-3', 'completed')] }]),
   })
   assert.deepEqual(result.issues.find((r) => r.id === 'FIX-2').blockedBy, ['FIX-3'])
-  assert.ok(!workerLabels(calls).includes('spec:FIX-2'), 'the dependent is not dispatched on the edge state alone')
+  assert.deepEqual(result.blocked.map((b) => b.issueId), ['FIX-2'], 'the dependent is not released on the edge state alone')
 })
 
 check('the Linear scout schema asks for raw relation edges, not a derived blockedBy', async () => {
@@ -9154,10 +9183,14 @@ check('INVARIANT: a parked row is never dispatched, whatever else is true', asyn
   })
 
   for (const base of space) {
-    // Parked by an open blocked-by relation, or by an escalated decision. Neither may dispatch,
-    // no matter what phase or event the row also carries.
-    assert.equal(pendingAction({ ...base, blockedBy: ['FIX-9'] }), null, `blockedBy dispatched: ${JSON.stringify(base)}`)
+    // Parked by an escalated decision: nothing may dispatch, whatever phase or event the row carries.
     assert.equal(pendingAction({ ...base, blocker: 'needs a call' }), null, `blocker dispatched: ${JSON.stringify(base)}`)
+    // An open blocked-by relation parks IMPLEMENTATION only. A blocked row dispatches spec work or nothing,
+    // and exactly the spec work it would dispatch unblocked — the relation must never park a spec or its review.
+    const unblocked = pendingAction(base)
+    const whenBlocked = pendingAction({ ...base, blockedBy: ['FIX-9'] })
+    const specWork = unblocked && ['spec', 'spec-review'].includes(unblocked.action)
+    assert.deepEqual(whenBlocked, specWork ? unblocked : null, `blockedBy mis-gated ${JSON.stringify(unblocked)}: ${JSON.stringify(base)}`)
 
     // And an unparked row never invents an action outside the known set.
     const next = pendingAction(base)
