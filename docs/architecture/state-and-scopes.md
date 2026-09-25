@@ -507,7 +507,7 @@ Stream attach (`GET .../requests/:id/stream`) and suspension resume are authoriz
 
 ## Cross-Flow State: Shared vs Isolated
 
-User- and org-scope records are not session-like — by default they are shared across every flow registered on a server, keyed by bare `userId` / `orgId`. A user has one `UserRecord`; every flow operating for that user reads and writes the same record. That is desirable when two flows genuinely share an identity concept (preferences, profile, quotas). It is a data-loss bug when two flows declare incompatible schemas over the same key. The exception to sharing is a **hired seat** (an instance registered with an owner pin, see [Authentication](./authentication.md)): its shared user data lives in one cell per (org, person), described under [The hired-seat cell](#the-hired-seat-cell).
+User- and org-scope records are not session-like — by default they are shared across every flow registered on a server, keyed by bare `userId` / `orgId`. A user has one `UserRecord`; every flow operating for that user reads and writes the same record. That is desirable when two flows genuinely share an identity concept (preferences, profile, quotas). It is a data-loss bug when two flows declare incompatible schemas over the same key. The exception to sharing is an **owner-pinned instance** (an instance registered with an owner pin, see [Authentication](./authentication.md)): its shared user data lives in one cell per (org, person), described under [The owner-pinned cell](#the-owner-pinned-cell).
 
 Wave 1 (FIX-431) introduces two coexisting mechanisms.
 
@@ -542,19 +542,19 @@ Isolation promotes a user/org-scope storage cell to an **instance**-namespaced k
 - **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Two roles: (1) it keys the **scope record** — the scope's single `state` blob (`ctx.user.state` / `ctx.org.state`) — and (2) it is the default `flowIsolation` for resources at that scope that don't declare their own. A flow that isolates a scope contributes no `stateSchema` to the registry schema merge for it, but still participates for any resource that opts back out.
 - **Resource-level** (FIX-435): `defineResource({ scope: "user", flowIsolation: true })`. Decides **that resource's** storage key, and always wins over the flow default — in both directions. A library can ship a flow-private user-scoped resource without consumers flipping the flow flag, and a resource declared `flowIsolation: false` stays shared even when a sibling on the same flow is isolated.
 
-Resources key **per resource**, not per flow. A flow may hold both shared and isolated user-scoped resources at once: each `flowIsolation: false` resource lives at the bare `{id}` (at user scope on a hired seat, the `{userId}:~org:{orgId}` cell instead), each `flowIsolation: true` resource at `{id}:{flow.id}`. The scope record's own `state` keys independently, on the flow-level flag alone.
+Resources key **per resource**, not per flow. A flow may hold both shared and isolated user-scoped resources at once: each `flowIsolation: false` resource lives at the bare `{id}` (at user scope on an owner-pinned instance, the `{userId}:~org:{orgId}` cell instead), each `flowIsolation: true` resource at `{id}:{flow.id}`. The scope record's own `state` keys independently, on the flow-level flag alone.
 
 **The isolation coordinate is the instance, not the kind** (FIX-1323). A singleton's `id` is its `kind`, so its keys are byte-identical to what it wrote before and there is nothing to migrate. Two registered copies of a `collection` definition occupy two buckets, which is the point: they are two flows for every purpose except their shared schema, and a kind coordinate made what each called private a cell they both wrote. There is no kind fallback on read — a runtime cannot discover which copy owned a legacy key from the key alone. A collection deployment with pre-instance history is attributed by the one offline cutover in `apps/docs/docs/persistence/overview.md`, whose stop condition is the same named `migration-required` outcome the runtime raises on a record with no owner.
 
 Use isolation for internal-only flows, background jobs, library-private state, or domain-specific data that should not leak into shared surfaces.
 
-### The hired-seat cell
+### The owner-pinned cell
 
-A flow instance registered with an owner pin (`register(flow, { pin })`, copied from its hire row) keys its **shared** user data — the scope record and every user-scoped resource that is not flow-isolated — at `<person>:~org:<org>` instead of the bare person (FIX-1538). The org comes from the pin, never from the session, a header or the body (BP-031); the person is the admitted caller, whom admission has already checked against the pin. So a person's seats in one org share with each other, their seats in another org start empty, another person's seat of the same kind reads their own cell, and the app's unpinned flows keep the person's cross-org cell, which no seat reads or writes. An org-visible seat (pin with no `userId`) keys per caller: Bob using Acme's `eng.lead` stores in (acme, bob).
+A flow instance registered with an owner pin (`register(flow, { pin })`) keys its **shared** user data — the scope record and every user-scoped resource that is not flow-isolated — at `<person>:~org:<org>` instead of the bare person (FIX-1538). The org comes from the pin, never from the session, a header or the body (BP-031); the person is the admitted caller, whom admission has already checked against the pin. So a person's owner-pinned instances in one org share with each other, their instances pinned to another org start empty, another person's instance of the same kind reads their own cell, and the app's unpinned flows keep the person's cross-org cell, which no owner-pinned instance reads or writes. An instance pinned to an org alone (a pin with no `userId`) keys per caller: Bob using Acme's `eng.lead` stores in (acme, bob). Workforce's hired seat is the instance that uses it: each seat is registered with a pin taken from its hire row.
 
-What does not move: unpinned flows (including seats declared in a `WORKER.md` file), every flow-isolated key (a seat's address already carries org and person), and every org-scoped key. The three-part key is escaped per component like the others, so it cannot equal a one-part cross-org key or a two-part isolated key.
+What does not move: unpinned flows, every flow-isolated key (already keyed by person and instance), and every org-scoped key. The three-part key is escaped per component like the others, so it cannot equal a one-part cross-org key or a two-part isolated key.
 
-There is no fallback read of the person's cross-org cell for a seat: that fallback is the cross-org read the cell exists to close. Data a seat wrote before the cell existed moves only by the operator step in `apps/docs/docs/persistence/overview.md` → "Upgrading: moving hired seats' stored data", which copies keys only a seat kind declares, for people whose seats ran in one org, and stops on a destination a seat already wrote to.
+There is no fallback read of the person's cross-org cell for an owner-pinned instance: that fallback is the cross-org read the cell exists to close. Data an owner-pinned instance wrote before the cell existed moves only by the operator step in `apps/docs/docs/persistence/overview.md` → "Upgrading: moving hired seats' stored data", which copies keys only a pinned kind declares, for people whose pinned instances ran in one org, and stops on a destination a pinned instance already wrote to.
 
 A run refused at the pin writes no user record: `createExecutionContext` creates the record only after every binding check and the pin refusal.
 
@@ -567,7 +567,7 @@ Key resolution is centralized in `packages/engine/src/stores/scope-keys.ts`. The
 ```ts
 export function resolveUserStorageKey(userId, flow): string {
   if (flow.isolateUserState) return `${userId}:${flow.id}`;
-  return flow.ownerPin ? `${userId}:~org:${flow.ownerPin.orgId}` : userId; // hired seat: FIX-1538
+  return flow.ownerPin ? `${userId}:~org:${flow.ownerPin.orgId}` : userId; // owner-pinned: FIX-1538
 }
 ```
 
@@ -575,13 +575,13 @@ The sketch omits escaping: every real component goes through `encodeScopeKeyComp
 
 The exported helpers take an instance-bearing shape: a caller holding only `{ kind, isolateUserState }` passes `{ id: flow.id, isolateUserState }` instead. Each component is escaped before the two are joined, so the `(identity, instance)` pair is recoverable from the key — instance ids are arbitrary caller-supplied strings, and concatenating them raw let two different pairs name one cell. A component carrying neither `:` nor `\` encodes to itself, so every ordinary id keys byte-identically to what it already wrote.
 
-Every read-side projection goes through one persisted-read function, `getPersistedData` — the `/state` route, the resource routes, the debug snapshot and sibling transports alike — so no two of them can derive different keys for one request. `toIsolationFlow` in `scope-keys.ts` is the single coercion that function applies, and it forwards the owning instance's `ownerPin` so a seat's view resolves the cell its runs wrote. The one reader outside the engine, the scheduled transport's dynamic-schedule resolver, derives its key through `resolveUserStorageKey` with the pin its dispatch route passes as `ScheduleResolutionContext.ownerPin`.
+Every read-side projection goes through one persisted-read function, `getPersistedData` — the `/state` route, the resource routes, the debug snapshot and sibling transports alike — so no two of them can derive different keys for one request. `toIsolationFlow` in `scope-keys.ts` is the single coercion that function applies, and it forwards the owning instance's `ownerPin` so an owner-pinned instance's view resolves the cell its runs wrote. The one reader outside the engine, the scheduled transport's dynamic-schedule resolver, derives its key through `resolveUserStorageKey` with the pin its dispatch route passes as `ScheduleResolutionContext.ownerPin`.
 
 **Resources** resolve a `scopeId` per resource from their effective isolation (the resource's `flowIsolation` if set, else the flow default):
 
 ```ts
 const isolated = resolveResourceIsolation(resource.flowIsolation, flow, "user");
-const scopeId = resolveResourceScopeId(userId, flow, "user", isolated); // bare id, the seat cell, or `${id}:${flowId}`
+const scopeId = resolveResourceScopeId(userId, flow, "user", isolated); // bare id, the owner-pinned cell, or `${id}:${flowId}`
 ```
 
 `createExecutionContext` routes every per-resource `resourceState` / `content` read and write through the per-resource resolution; read-side projections (`/state`, the resource routes, sibling MCP adapters) resolve the record's owning instance first, then enumerate the buckets that flow declares via `resourceScopeIds` and merge — one owner resolution per request, reused for the scope records and both resource stores. Session and request scopes are unaffected — sessions and requests carry their owning instance (`flowId`, beside the definition's `flowKind`), and every route, transport and direct `runAction` admits the owner before any effect, so a session is reachable only through the instance that created it. Note that `flowKind` alone does not isolate sessions: two instances of one collection share a kind and are still two owners.
@@ -609,7 +609,7 @@ A same-instance child inherits `flowId` and `flowKind`, `userId`, `tenantId`, `o
 |---|---|
 | `request` | Fresh — the child's own dispatch |
 | `session` | **A separate cell.** Own state blob, own items and history, own journal, own metadata, own session-scoped resources — except a resource declared `sharedToLineage` (below) |
-| `user` | `userId` is inherited, so a **shared** cell (the bare `userId` — the default) is always the record the parent reads, unless the child runs on a hired seat, whose shared cell is `${userId}:~org:${pin.orgId}` from that seat's own pin (FIX-1538); a seat's child on an unpinned flow keys by the bare `userId` again. An **isolated** cell keys on `${userId}:${flow.id}`, and `flow.id` is the *running* instance: a same-instance child inherits it and so reads the parent's cell, but a **cross-instance** child carries the target instance's id and reads that instance's cell, not its parent's |
+| `user` | `userId` is inherited, so a **shared** cell (the bare `userId` — the default) is always the record the parent reads, unless the child runs on an owner-pinned instance, whose shared cell is `${userId}:~org:${pin.orgId}` from that instance's own pin (FIX-1538); a pinned instance's child on an unpinned flow keys by the bare `userId` again. An **isolated** cell keys on `${userId}:${flow.id}`, and `flow.id` is the *running* instance: a same-instance child inherits it and so reads the parent's cell, but a **cross-instance** child carries the target instance's id and reads that instance's cell, not its parent's |
 | `org` | The same, on the bound `orgId` and `isolateOrgState` |
 
 Tenant follows identity: the child's session storage key is `${tenantId}:dsx_...` under `resolveSessionStorageKey`, exactly as for any other session.

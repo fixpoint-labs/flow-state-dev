@@ -16,7 +16,7 @@ import {
 } from "../transports/errors";
 import { generateId } from "../utils/generate-id";
 import { FlowInstanceBindingMismatchError } from "../context/binding-errors";
-import { UnknownFlowError } from "../context/hire-plane";
+import { UnknownFlowError } from "../context/instance-pin";
 import {
   asObject,
   extractTenantId,
