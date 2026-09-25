@@ -180,7 +180,7 @@ the links line and the collapsed contract.
 > ## Sign off
 >
 > 1. **A dropped connection is worth three issues and a closure run, now.** If wrong: a cycle on
->    resilience nobody notices, which the proof exists to make impossible to miss.
+>    resilience nobody notices, which the closure run exists to make impossible to miss.
 > 2. **Nothing in this epic adds a public config option.** If wrong: the first app that needs a
 >    knob comments up, and the set stalls on a cross-cutting question.
 >
@@ -355,10 +355,10 @@ Sections, in order:
 >
 > **[The goal](#the-goal-and-how-well-know-its-met), at that size:** dropped *and* silently
 > dead, in an app that sets nothing. If wrong: we wrap an epic whose users still hit a dead
-> answer, or we carry a proof leg nobody needed.
+> answer, or we carry a closure leg nobody needed.
 >
 > 1. **[D1](DECISIONS.md#d1) · A dropped connection is worth three issues and a closure run, now.**
->    If wrong: a cycle on resilience nobody notices, which the proof exists to make impossible
+>    If wrong: a cycle on resilience nobody notices, which the closure run exists to make impossible
 >    to miss.
 > 2. **[D2](DECISIONS.md#d2) · The client is the only reconnect actor; the server holds no
 >    per-client state.** If wrong: the epic's scope changes, not one issue's design — retention
@@ -499,7 +499,7 @@ cross-cutting decision.** Sections, in order:
 At epic altitude the rules aren't behaviours of one feature; they're the constraints every child
 spec and implementation must satisfy, and the place a cross-spec review checks. Each says **who
 owns it** and **where it's checked**. Four groups, in order: what a team gets and doesn't · what
-no child may do · how the set is run · the proof (what done means).
+no child may do · how the set is run · the closure (what done means).
 
 > # FIX-770 · Rules every issue in the set obeys
 >
@@ -537,7 +537,7 @@ no child may do · how the set is run · the proof (what done means).
 > | ER-12 | Every child's route reads *spec* by default; only a `Bug` label re-routes it | Fail-closed routing |
 > | ER-13 | The epic finishes only when the closure issue closes: a clean run on one `main` commit, with every bug an earlier run found fixed as a child of this epic and retested | D1. Surface without proof doesn't move the lead measure |
 >
-> ## The proof
+> ## The closure
 >
 > | # | The epic is done when | Proved by |
 > |---|---|---|
@@ -683,7 +683,7 @@ code spans, not claims that those files exist.
 > | Prior intent and precise source | Treatment | Reason / evidence | Replacement | Compatibility |
 > |---|---|---|---|---|
 > | FIX-680 D3 made each app own all reconnect machinery; source `../FIX-680/DECISIONS.md#d3` | **Amended** for the default, retained for overrides | The end-state POC demonstrates one shared resume path instead of three app-owned implementations | This epic D3; FIX-777 owns the default, FIX-775 owns resume | Existing app policy remains an override, not a second reconnect actor |
-> | FIX-681 ER-2 forbids durable per-client state; source `../FIX-681/BUSINESS-RULES.md#er-2` | **Retained** | Current architecture keeps persistence request-scoped; the proof must exercise reconnection without a client-state store | This epic ER-4 and ER-8, owned by FIX-775 | No new durable state or offline queue; no stored-data migration |
+> | FIX-681 ER-2 forbids durable per-client state; source `../FIX-681/BUSINESS-RULES.md#er-2` | **Retained** | Current architecture keeps persistence request-scoped; the closure run must exercise reconnection without a client-state store | This epic ER-4 and ER-8, owned by FIX-775 | No new durable state or offline queue; no stored-data migration |
 >
 > Neither predecessor is wholly superseded. FIX-790's store-history API is consumed,
 > not superseded. Child-specific cursor changes belong in FIX-775's evolution record.
