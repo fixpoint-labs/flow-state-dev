@@ -322,7 +322,7 @@ describe("omitted and empty stay apart after the schema", () => {
 });
 
 describe("chosen tools that cannot all be granted are refused at the hire", () => {
-  it("refuses two picked presets whose tools share a name, naming the tool (BR-21)", () => {
+  it("refuses two picked presets whose tools share a name, naming the tool (S2)", () => {
     const other = defineCapability({
       name: "archive",
       presets: { shelf: { tools: [tool("lookup")] }, default: [] }
@@ -347,6 +347,30 @@ describe("chosen tools that cannot all be granted are refused at the hire", () =
     expect(message).toContain('"lookup"');
     expect(message).toContain('"fieldwork"');
     expect(message).toContain('"archive"');
+  });
+
+  // The refusal is about what a worker with no line would be GRANTED. A worker
+  // that writes a line is granted exactly that line, so two picked presets
+  // sharing a tool name cost it nothing and it hires as it always has (BR-33).
+  it("hires a worker that wrote a `tools:` line, whatever its picked presets' tools are named (BR-33)", async () => {
+    const other = defineCapability({
+      name: "archive",
+      presets: { shelf: { tools: [tool("lookup")] }, default: [] }
+    });
+
+    const seat = hire(
+      [
+        record({
+          id: "eng.clerk",
+          declared: { tools: ["ledger"], capabilities: { fieldwork: ["survey"], archive: ["shelf"] } }
+        })
+      ],
+      {
+        [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, other], catalog: { ledger } })
+      }
+    );
+
+    expect(await offered(seat("eng.clerk"))).toEqual(["ledger"]);
   });
 });
 
@@ -404,6 +428,43 @@ describe("chosen tools do not travel to a delegate", () => {
     });
   }
 
+  /**
+   * The host hands the analyst a task and drains the board; the analyst's own
+   * generator then reaches for `scan`. Returned with the analyst's mock, so a
+   * caller can prove the delegate actually ran.
+   */
+  function delegation() {
+    const analyst = mockGenerator({
+      name: "skillWorker_delegate_analyst",
+      script: [
+        { toolCalls: [{ toolCallId: "call-3", toolName: "scan", args: {} }] },
+        { text: "analysed" }
+      ] as never
+    });
+    return {
+      analyst,
+      generators: {
+        "agent-answer": mockGenerator({
+          name: "agent-answer",
+          script: [
+            {
+              toolCalls: [
+                {
+                  toolCallId: "call-1",
+                  toolName: "addTask",
+                  args: { goal: "scan it", assignee: "analyst" }
+                }
+              ]
+            },
+            { toolCalls: [{ toolCallId: "call-2", toolName: "runBoard", args: {} }] },
+            { text: "done" }
+          ] as never
+        }),
+        skillWorker_delegate_analyst: analyst
+      }
+    };
+  }
+
   // The delegate is fenced to the names the worker LISTED, and a worker with
   // no line listed none. The first half proves the worker itself was granted
   // the tool, so the zero below is the fence and not a tool that never arrived.
@@ -415,7 +476,9 @@ describe("chosen tools do not travel to a delegate", () => {
           id: "eng.lead",
           declared: { capabilities: { radar: ["sweep"] } },
           skills: [delegating]
-        })
+        }),
+        // The positive control: the same skill on a seat that LISTS `scan`.
+        record({ id: "eng.lister", declared: { tools: ["scan"] }, skills: [delegating] })
       ],
       { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [capability] }) }
     );
@@ -432,32 +495,19 @@ describe("chosen tools do not travel to a delegate", () => {
     expect(direct.error).toBeUndefined();
     expect(calls()).toBe(1);
 
-    const delegated = await turnWith(seat("eng.lead"), {
-      "agent-answer": mockGenerator({
-        name: "agent-answer",
-        script: [
-          {
-            toolCalls: [
-              {
-                toolCallId: "call-1",
-                toolName: "addTask",
-                args: { goal: "scan it", assignee: "analyst" }
-              }
-            ]
-          },
-          { toolCalls: [{ toolCallId: "call-2", toolName: "runBoard", args: {} }] },
-          { text: "done" }
-        ] as never
-      }),
-      skillWorker_delegate_analyst: mockGenerator({
-        name: "skillWorker_delegate_analyst",
-        script: [
-          { toolCalls: [{ toolCallId: "call-3", toolName: "scan", args: {} }] },
-          { text: "analysed" }
-        ] as never
-      })
-    });
+    // The control first: through a seat that listed `scan`, this exact
+    // delegation reaches the tool. Without it the zero below could mean the
+    // analyst never ran rather than that the fence held.
+    const listed = delegation();
+    const controlRun = await turnWith(seat("eng.lister"), listed.generators);
+    expect(controlRun.error).toBeUndefined();
+    expect(listed.analyst.calls.length).toBeGreaterThan(0);
+    expect(calls()).toBe(2);
+
+    const chosen = delegation();
+    const delegated = await turnWith(seat("eng.lead"), chosen.generators);
     expect(delegated.error).toBeUndefined();
-    expect(calls()).toBe(1);
+    expect(chosen.analyst.calls.length).toBeGreaterThan(0);
+    expect(calls()).toBe(2);
   });
 });

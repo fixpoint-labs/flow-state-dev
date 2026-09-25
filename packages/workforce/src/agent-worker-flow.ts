@@ -93,6 +93,7 @@ import { SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
   catalogSeatCapabilities,
   resolveSeatCapabilities,
+  pickedToolCollisions,
   seatCapabilityProblems,
   selectedPresetTools,
   type SeatCapabilityCatalog,
@@ -993,7 +994,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // call that times out, say — is not a conversation failure.
   const run = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
 
-  return defineFlow({
+  const flow = defineFlow({
     kind: AGENT_KIND,
     // Required by contract C2. A plain singleton's seats mint and are then
     // refused at REGISTRATION, one by one — which is why the goal check for
@@ -1005,4 +1006,32 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     configSchema: settings,
     actions: { run: { inputSchema, block: run } }
   });
+
+  /**
+   * The mint, with the one refusal the settings schema cannot carry.
+   *
+   * Two picked presets that carry different tools under one name are a
+   * problem only for a worker with NO `tools:` line, which is granted both;
+   * a worker that wrote a line is granted exactly that line and hires as it
+   * always has. The rule reads two settings, and a flow's `configSchema` must
+   * be a plain closed object that cannot refine across keys — so it runs here,
+   * on the bag as handed over, where the absent `tools` key the hire preserves
+   * is still visible. After the flow's own mint, so the schema's refusals come
+   * first; thrown, so the hire collects it under the worker's id.
+   *
+   * Every property of the defined flow is carried over unchanged: this is the
+   * same flow with one more check at its door, not a different one.
+   */
+  const mint = (options?: Parameters<typeof flow>[0]) => {
+    const seat = flow(options);
+    const config = options?.config as Partial<SeatConfig> | undefined;
+    if (config?.tools === undefined) {
+      const problems = pickedToolCollisions(seatCapabilityCatalog, seat.config.capabilities);
+      if (problems.length > 0) {
+        throw new Error(`This worker writes no \`tools:\` line, and it ${problems.join(" It also ")}`);
+      }
+    }
+    return seat;
+  };
+  return Object.assign(mint, flow) as typeof flow;
 }

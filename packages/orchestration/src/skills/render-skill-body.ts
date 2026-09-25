@@ -29,8 +29,10 @@
  * one this function is in a position to write. It is handed a collection, a
  * name, a mount path and an argument string — it cannot see the consuming
  * generator's tool list, and for a workforce seat that list is assembled per
- * turn from `ctx.flow.config.tools` plus the seat's own colocated blocks,
- * which are not catalog keys at all. An intersection rendered here would be a
+ * turn: from `ctx.flow.config.tools` plus the seat's own colocated blocks,
+ * which are not catalog keys at all, when the seat wrote a `tools:` line; and
+ * from the tools of the capability presets it picked when it wrote none. An
+ * intersection rendered here would be a
  * guess wearing the same grant-shaped sentence. So: describe the skill, say
  * nothing about the consuming generator's access, and say which of the two it
  * is out loud.

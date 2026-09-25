@@ -350,7 +350,6 @@ export function seatCapabilityProblems(
     }
   }
 
-  problems.push(...pickedToolCollisions(catalog, selection));
   return problems;
 }
 
@@ -359,15 +358,21 @@ export function seatCapabilityProblems(
  *
  * A worker with no `tools:` line is granted every picked preset's tools (see
  * {@link selectedPresetTools}), and one name is one tool, so such a pair is a
- * turn that would fail on the framework's duplicate-name check. Refused here,
- * at the mint, for the listed tools it can see; a function-valued preset's
- * tools exist only per turn and are left to that check.
+ * turn that would fail on the framework's duplicate-name check. The caller
+ * refuses it at the mint, for the listed tools it can see; a function-valued
+ * preset's tools exist only per turn and are left to that check.
  *
- * Checked whether or not the worker wrote a `tools:` line: a kind's settings
- * are one closed object, so a rule here cannot read a sibling setting. The
- * same tool instance picked through two presets is one tool and passes.
+ * Only meaningful for a worker that wrote NO `tools:` line — one that wrote a
+ * line is granted exactly that line, so nothing picked is added and nothing
+ * collides. That is the caller's condition to apply: this reads the selection
+ * alone. The same tool instance picked through two presets is one tool and
+ * passes.
+ *
+ * @param catalog The kind's catalogue.
+ * @param selection What this seat's file named.
+ * @returns One message per colliding pair, in selection order.
  */
-function pickedToolCollisions(
+export function pickedToolCollisions(
   catalog: SeatCapabilityCatalog,
   selection: SeatCapabilitySelection
 ): string[] {
@@ -389,7 +394,7 @@ function pickedToolCollisions(
         } else if (first.tool !== tool) {
           problems.push(
             `picks ${first.where} and ${where}, which carry different tools named ` +
-              `"${toolName}". One name is one tool — pick one of the two presets.`
+              `"${toolName}". One name is one tool — pick one of the two presets, or write a \`tools:\` line.`
           );
         }
       }
