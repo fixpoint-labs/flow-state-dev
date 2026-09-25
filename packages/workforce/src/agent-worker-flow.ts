@@ -1109,9 +1109,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
    */
   const mint = (options?: Parameters<typeof flow>[0]) => {
     const seat = flow(options);
-    // `=== undefined`, not key presence: a hand-built manifest can carry the
-    // key with no value, and the per-turn tools slot reads that as no line.
-    // The door and every turn must agree on which worker wrote one.
+    // Unset is no line even when the key is present, as the per-turn tools slot reads it.
     if (seat.config.tools === undefined) {
       const problems = [
         ...pickedToolCollisions(seatCapabilityCatalog, seat.config.capabilities),
