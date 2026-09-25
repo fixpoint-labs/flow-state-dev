@@ -11,7 +11,7 @@ is about a line of prose or a name; no runtime behaviour changes.
 |---|---|---|---|
 | BR-1 | A line describes a Layer 1 mechanism in Workforce words (seat, hire, roster, "a workforce") | Reworded in Layer 1 terms: *assignee*, *owner-pinned instance*, *the board*, *the dispatcher* | Inventory `--after`: every F line gone |
 | BR-2 | A line is a public name, literal, schema field or model-facing string | Left byte for byte; recorded against its follow-up (D2) | Inventory `--after`: every R line still present |
-| BR-3 | Reworded prose has to mention a kept public name (`seat`, `MANIFEST_DOMAINS`) | The name appears in a code span; the prose around it uses the Layer 1 word | Inventory `--after` ignores hits inside code spans only |
+| BR-3 | Reworded prose has to mention a kept public name (`seat`, `MANIFEST_DOMAINS`) | The name appears in a code span; the prose around it uses the Layer 1 word | Inventory `--after` exempts a code span only when its Workforce word is a retained public name |
 | BR-4 | A line names Workforce or Orchestration as a consumer ("Workforce pins each hired seat this way") | Kept | Inventory: every KC line still present |
 | BR-5 | A line uses the word in its ordinary sense (the trace store's request roster, "an operator's seat", "keeps its seat") | Kept | Inventory: every KE line still present |
 | BR-6 | A line cites a published page's title or anchor ("Upgrading: moving hired seats' stored data") | Kept; the page is not this issue's | Inventory: KP line present |

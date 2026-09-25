@@ -4,7 +4,7 @@
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 (BR-n) and [DECISIONS.md](DECISIONS.md) (Dn). `tdd`, in its plain form for a wording change:
-the red state is the inventory's `--after` mode, which fails today on 81 lines; green is when
+the red state is the inventory's `--after` mode, which fails today on 82 lines; green is when
 it passes. One PR. **Do not start until [#2236](https://github.com/fixpoint-labs/flow-state-dev/pull/2236) has merged.**
 
 The line-by-line list is [`poc/vocabulary-inventory/ledger.mjs`](poc/vocabulary-inventory/ledger.mjs):
@@ -22,7 +22,7 @@ every `F` entry is a line to reword. The table below groups them; the ledger is 
 | S6 | `docs/architecture/` · `dispatched-work.md`, `action-forms.md`, `overview.md`, `inbound-transports.md`, `state-and-scopes.md` (one line) | Task seat / dispatcher seat → the board's dispatcher, or the assignee it serves. The code-path table rows at the end of `dispatched-work.md` too; not the cited Orchestration README heading (KP) | 18 | BR-1 BR-3 |
 | S7 | `docs/architecture/authentication.md` | The pinned-instance paragraph: hired instance / hire row / pinned seat / seat instance → owner-pinned instance. One sentence keeps Workforce as the consumer, including `registerHiredSeat`'s refusal of a pinless hire | 1 (one long line) | BR-1 BR-4 |
 | S8 | `docs/architecture/capabilities.md` | Line 54, and the "worker-colocated tool" paragraph (75–81): cut to one consumer sentence. A higher layer that registers blocks per instance (Workforce's colocated `blocks/` folder) still has the instance name each block in `tools:`; registration grants nothing | 8 | BR-1 BR-4 |
-| S9 | READMEs · `packages/core/README.md`, `packages/scheduled/README.md`; `docs/contributing/best-practices/resources.md` | Core: dispatch tables and the `flow-not-found` row ("a seat hired at runtime" → an owner-pinned instance the sender may not open; the link to Workforce's durable-hire page stays). Scheduled and BP-027's FIX-1538 exception: "hired seat" → owner-pinned instance | 9 | BR-1 BR-4 |
+| S9 | READMEs · `packages/core/README.md`, `packages/scheduled/README.md`; `docs/contributing/best-practices/resources.md`, `docs/contributing/architecture-reference.md` | The architecture quick reference's action-forms bullet: "a seat on a task board" / "task seat" → a dispatcher in a board's `workers` under an assignee; its Workforce bullets stay (KC). Core: dispatch tables and the `flow-not-found` row ("a seat hired at runtime" → an owner-pinned instance the sender may not open; the link to Workforce's durable-hire page stays). Scheduled and BP-027's FIX-1538 exception: "hired seat" → owner-pinned instance | 10 | BR-1 BR-4 |
 
 Nothing is removed. No exported name, type, literal or key changes (BR-9).
 
@@ -89,9 +89,10 @@ No changeset: no published API or behaviour changes (BP-022).
 [`poc/vocabulary-inventory/`](poc/vocabulary-inventory/check.mjs) is the audit itself as a
 check. `scan.mjs` fixes the scope and the vocabulary; `ledger.mjs` classifies every hit line;
 `check.mjs` asserts totality (every hit claimed exactly once, every entry claims exactly its
-count) and, with `--after`, the end state. `--self-test` runs seven controls: five planted defects (an unclassified hit, a hit inside
-the kept trace store, a dropped hit, a lingering F line, a renamed public field) each fail it,
-and the code-span allowance and the clean tree pass. Run on `main` + `a64132b`: 142
+count) and, with `--after`, the end state. `--self-test` runs eight controls: six planted defects (an unclassified hit, a hit inside
+the kept trace store, a dropped hit, a lingering F line, a renamed public field, a Workforce
+word hidden in a code span) each fail it, and the code-span allowance for a retained public
+name and the clean tree pass. Run on `main` + `a64132b`: 146
 hit lines, all classified. Run on plain `main`: 64 lines it cannot classify, every one in a file #2236
 rewords, which is why implementation waits for it. Throwaway once V2 passes; nothing imports it.
 

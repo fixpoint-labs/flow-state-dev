@@ -45,6 +45,10 @@ export const LEDGER = [
   { file: A + "state-and-scopes.md", has: "Upgrading: moving hired seats' stored data", c: "KP" },
   { file: A + "state-and-scopes.md", has: "the key a task seat's `session` policy composed", c: "F" },
   // contributing, READMEs
+  { file: "docs/contributing/architecture-reference.md", has: "A `task` dispatcher is a seat on a task board", c: "F" },
+  { file: "docs/contributing/architecture-reference.md", has: "Default workforce agent kind:", c: "KC" },
+  { file: "docs/contributing/architecture-reference.md", has: "Workforce admission rule — one gate", c: "KC" },
+  { file: "docs/contributing/architecture-reference.md", has: "[Default Workforce Worker Kind]", c: "KP" },
   { file: "docs/contributing/best-practices/resources.md", has: "on a hired seat (an instance registered", c: "F" },
   { file: "packages/contracts/README.md", has: "`orchestration` and `workforce` each project", c: "KC" },
   { file: "packages/core/README.md", has: "from a `dispatcher({ action, session })` seat", c: "F" },

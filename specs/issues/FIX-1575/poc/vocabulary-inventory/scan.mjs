@@ -17,6 +17,7 @@ const FILES = [
   "packages/contracts/README.md",
   "packages/scheduled/README.md",
   "docs/contributing/best-practices/resources.md",
+  "docs/contributing/architecture-reference.md",
 ];
 const ARCH_DIR = "docs/architecture";
 

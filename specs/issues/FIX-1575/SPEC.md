@@ -15,9 +15,9 @@ Improvement · `core` + `engine` + `contracts` (comments and in-repo docs only) 
 | **builds on Workforce** | Unchanged | Unchanged. No name, type, key or behaviour moves ([D2](DECISIONS.md#d2)) |
 
 The audit is counted, not argued: [`poc/vocabulary-inventory`](poc/vocabulary-inventory/check.mjs)
-classifies every one of the 142 lines in scope that carries a Workforce word. **81 are
-wording-only and get fixed here** (21 files). **12 belong to two public names**, which become
-follow-up issues. **49 stay**: they name Workforce as a consumer, or use the word in its
+classifies every one of the 146 lines in scope that carries a Workforce word. **82 are
+wording-only and get fixed here** (22 files). **12 belong to two public names**, which become
+follow-up issues. **52 stay**: they name Workforce as a consumer, or use the word in its
 ordinary sense (the trace store's request roster, "an operator's seat").
 
 ## What changes
@@ -43,9 +43,9 @@ The two dashed boxes are the only Workforce words left in Layer 1, and each has 
 ```mermaid
 flowchart LR
   H["a line with seat · hire · roster · workforce"] --> Q{"what is it?"}
-  Q -->|"prose describing an L1 mechanism in L2 words"| F["fix here · 81"]
+  Q -->|"prose describing an L1 mechanism in L2 words"| F["fix here · 82"]
   Q -->|"a public name, literal, or field"| R["follow-up issue · 12"]
-  Q -->|"names Workforce as a consumer, or ordinary English"| K["keep · 49"]
+  Q -->|"names Workforce as a consumer, or ordinary English"| K["keep · 52"]
 ```
 
 The middle edge is the scope fence the issue set: a public rename is its own spec.

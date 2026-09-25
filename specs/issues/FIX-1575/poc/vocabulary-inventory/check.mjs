@@ -6,7 +6,11 @@
 //   node check.mjs [root] --after    after implementation: every F entry claims nothing,
 //                                    every R/K entry still claims its count (no public
 //                                    rename slipped in), and any other hit carries the
-//                                    vocabulary only inside a `code span` (a kept name).
+//                                    vocabulary only as a retained public name inside a
+//                                    `code span` (BR-3). A span holding any other Workforce
+//                                    word is not exempt. Residual: a bare `seat` span is the
+//                                    kept field spelled exactly; whether the prose around it
+//                                    uses it as the field or as a concept is review's call.
 //   node check.mjs [root] --self-test  negative controls: planted defects must fail.
 //
 // Retained spec evidence, not production code; nothing imports it and no CI job runs it.
@@ -15,7 +19,10 @@ import { scan } from "./scan.mjs";
 import { LEDGER } from "./ledger.mjs";
 import { VOCAB } from "./scan.mjs";
 
-const stripCode = (text) => text.replace(/`[^`]*`/g, "");
+/** The public names Layer 1 keeps (D2, KC), the only vocabulary a code span may carry. */
+const RETAINED = /"seats"|\b(?:seat|listSeats|resolveToolSeats|toolSeatFence)\b/g;
+const isRetainedSpan = (span) => !VOCAB.some((re) => re.test(span.replace(RETAINED, "")));
+const stripCode = (text) => text.replace(/`[^`]*`/g, (span) => (isRetainedSpan(span) ? "" : span));
 
 export function check(hits, ledger, { after = false } = {}) {
   const problems = [];
@@ -52,7 +59,8 @@ function selfTest(root) {
     ["a dropped hit fails its entry's count", check(hits.slice(1), LEDGER).length > 0],
     ["--after fails while an F line remains", check(hits, LEDGER, { after: true }).some((p) => p.startsWith("F "))],
     ["--after fails if a kept public name is renamed", check(hits.filter((h) => !h.text.includes("seat: z.string()")), LEDGER, { after: true }).some((p) => p.startsWith("R1"))],
-    ["--after accepts a reworded line whose only hit is a code span", check([{ file: "packages/core/src/types/dispatch.ts", line: 1, text: "* `seat` names the assignee" }], [], { after: true }).length === 0],
+    ["--after accepts a reworded line whose only hit is a retained name in a code span", check([{ file: "packages/core/src/types/dispatch.ts", line: 1, text: "* `seat` names the assignee" }], [], { after: true }).length === 0],
+    ["--after fails an unwanted word hidden in a code span", check([{ file: "packages/core/src/types/dispatch.ts", line: 1, text: "* the board's `hired seat` or `roster` sends" }], [], { after: true }).some((p) => p.startsWith("unclassified"))],
   ];
   for (const [name, ok] of results) console.log(`${ok ? "ok  " : "FAIL"} ${name}`);
   if (base.length) console.log(base.join("\n"));

@@ -59,7 +59,8 @@ The two follow-ups, with working titles (filed by the implementation PR, [PLAN â
   `scope-keys.ts`, the owner-pinned cell and Engine's README; the inventory fails on plain
   `main` for exactly those lines. Implementation waits for #2236 to merge.
 - **Scope is `packages/{core,engine,contracts}/src`, their READMEs, `docs/architecture/*`
-  (except Workforce's own `workforce-*.md`), and the two docs the issue named.** `contracts` is
+  (except Workforce's own `workforce-*.md`), the two docs the issue named, and
+  `docs/contributing/architecture-reference.md`, the architecture docs' quick reference.** `contracts` is
   in because Core re-exports all of it.
 - **Tests are out.** They exercise the mechanism, many on purpose through Workforce (the #2236
   guard among them), and no app reads them.
@@ -86,14 +87,14 @@ The two follow-ups, with working titles (filed by the implementation PR, [PLAN â
 ## Settled
 
 - **The inventory is total over its scope** â€” every hit line on `main` + #2236 is classified
-  exactly once; the five planted defects each fail it, and the code-span allowance and the
-  clean tree pass.
+  exactly once; the six planted defects each fail it, and the code-span allowance (retained
+  public names only, BR-3) and the clean tree pass.
   ([`check.mjs --self-test`](poc/vocabulary-inventory/check.mjs); see [PLAN â†’ POC](PLAN.md#poc))
 
 ## How it got here
 
 - **Draft** â€” framed as a counted audit against `main` + #2236; board words kept per the lock,
-  81 wording-only lines fixed in one PR, two public names routed to follow-ups, published site
+  82 wording-only lines fixed in one PR, two public names routed to follow-ups, published site
   left to FIX-1373.
 
 **Open: none.**
