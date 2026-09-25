@@ -48,7 +48,7 @@ flowchart TD
   K["kinds map<br/>built-in merged underneath"] --> H
   H -->|absent flow:| A[built-in worker kind]
   H -->|unregistered name| X[refuse, by name]
-  A --> P["prompt: [default, teamInstructions, instructions]"]
+  A --> P["prompt: [default, teamInstructions, instructions, package instructions]"]
   A --> S["skills: org ∪ team ∪ seat<br/>stored per seat"]
   A --> M["memory: existing scopes<br/>composed in by the app"]
   A --> T[model + tools from configSchema]
@@ -65,7 +65,7 @@ at boot:
 
 | | Keys | Whose |
 |---|---|---|
-| **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
+| **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools`, `seatPackages?` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
 | **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. `tools` is the one of the three that is **reserved** — see below. |
 | **The hire step's** | `flow`, `description`, `resources` | Never a kind's. Read and removed before admission, so no `configSchema` sees them — see `resources` below. |
 
@@ -77,7 +77,7 @@ would simply stop receiving an authored value. The narrowed map it produces repl
 flow-level resource map for that seat; `packages/workforce/src/seat-resources.ts` is canonical for
 the grant shapes and the refusals.
 
-**`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then the kind's catalog), and the ones that resolved to the seat's own folders are moved onto `seatTools` as live blocks. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
+**`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then the blocks of the packages it holds; a name none of those register goes on to the kind's catalog). A package's block never shadows a catalog tool: a name that is both a held package's block and a key in the built-in `agent` kind's catalog is refused at the mint, naming the package and the catalog. The names that resolved to the seat's own folders or its packages are moved onto `seatTools` as live blocks. The hire step also keeps whether the file wrote a `tools:` line at all, decided before that split: the key reaches the kind only when a line was written, and stays present even when every name was the seat's own and the list emptied. An omitted line is never filled in as `[]`, so a kind can tell a written list from an omitted one; the built-in `agent` kind grants an omitted line the tools of the capability presets the seat picked and the blocks of the packages it holds, and a written one exactly its names. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
 
 The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` kind re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each kind to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed kind-probing after a probe produced a false accusation (`admissionHint`, `packages/workforce/src/hire.ts`).
 
@@ -104,12 +104,13 @@ is not worth the second authority it would create. That replaces a branch whose 
 whose folders declared skills used to mint, run, and hold none, with nothing said anywhere.
 
 **Imposed and never-authored are two different properties, and the contract's keys do not line up
-on them.** All four are what hire puts in the bag — `instructions` when the body is non-empty,
-`teamInstructions` when the seat's team wrote a `TEAM.md`, and `seatSkills` and `seatTools` on
-every record. `seatSkills`, `seatTools` and `teamInstructions` are the ones no file may author,
-refused by name at the worker loader and at the hire, from the shared constants in `manifest.ts`
-that every door references rather than re-spelling. Those three are both; `instructions` is the
-one key that is imposed and authored all the same — as the file's body.
+on them.** All five are what hire puts in the bag — `instructions` when the body is non-empty,
+`teamInstructions` when the seat's team wrote a `TEAM.md`, `seatPackages` when the seat holds at
+least one package, and `seatSkills` and `seatTools` on every record. `seatSkills`, `seatTools`,
+`seatPackages` and `teamInstructions` are the ones no file may author, refused by name at the worker
+loader and at the hire, from the shared constants in `manifest.ts` that every door references rather
+than re-spelling. Those four are both; `instructions` is the one key that is imposed and authored all
+the same — as the file's body.
 
 `teamInstructions` is imposed the same way and refused at **three** doors rather than two — a
 `TEAM.md`, a `WORKER.md`, and the hire — all reading one exported constant
@@ -123,14 +124,29 @@ one**. A team that wrote none, and a team with no file at all, both leave the ke
 than empty: an empty layer would be a value every kind's schema could see, and a different bag
 for every team in every tree that has no file.
 
+`seatPackages` carries the packages a seat holds (FIX-1459): each one's `name`, `path`,
+`instructions` (the `PACKAGE.md` body, absent when empty) and `tools` (its blocks, live). A seat
+holds every package in its own `packages/` folder and the ones its `packages:` line names from its
+team's library or, failing that, the org's (`packages/workforce/src/seat-packages.ts`). The text
+arrives on the worker record from the loader (`packages/workforce/src/loader/read-packages-directory.ts`),
+the blocks on the generated `packageBlocks` map that `fsdev gen` writes, and the hire step is the
+one place they meet. Like `teamInstructions`, the key is imposed **only when a seat holds one**, so a
+kind that hand-declared the older contract still hires every seat that holds nothing, and is refused
+at boot, naming the key, only when one of its seats does. Every problem a package can cause (a name
+no library offers, a block name another tool already uses, a block that declares a store) is a
+start-time refusal naming the seat and the package, except a clash with a tool a preset builds per
+turn, which cannot be known at start and fails that turn with the framework's duplicate-name error.
+
 Generator slots stay `prompt` / `context` / `history` / `user`. Instructions compose as
-`prompt: [default, teamInstructions, instructions]` — the framework's default first, then the
-seat's team, then the seat's own, with absent layers dropped rather than joined as blanks. (The
-default is still unshipped; the slot is two entries today and gains the third at the front when
+`prompt: [default, teamInstructions, instructions, package instructions]` — the framework's default
+first, then the seat's team, then the seat's own, then the instructions of the packages it holds
+(joined by a blank line, its own packages first), with absent layers dropped rather than joined as
+blanks. (The
+default is still unshipped; the slot is three entries today and gains the fourth at the front when
 it lands.)
 
 **What that order buys, and what it does not.** The position is fixed and checkable: a seat's own
-text is always last. That is the whole promise. It is **not** a precedence rule. Assembly on this
+text always follows its team's, and the packages it holds follow both. That is the whole promise. It is **not** a precedence rule. Assembly on this
 path is plain concatenation, with no override, precedence or conflict-resolution mechanism
 anywhere in it — so if a team says *never touch production* and a seat says *restart the
 production queue*, what happens is whatever the **model** does with two contradictory sentences.
@@ -139,12 +155,16 @@ check there proves order, which is a neighbour of precedence rather than precede
 a seat's line genuinely win would mean resolving contradictions before the prompt is sent, which
 is a different and much larger feature.
 
-`tools` is a hard runtime fence over the app's catalog, not a hint: a seat may call exactly the
-catalog keys it names, and an empty list means no catalog tools, regardless of what the app's
+A written `tools:` line is a hard runtime fence over the app's catalog, not a hint: a seat may call
+exactly the catalog keys it names, and an empty list means no catalog tools, regardless of what the app's
 catalog carries, what a bound skill's `allowed-tools` declares (see C5), or what a capability
-attached through `uses` would otherwise contribute. The delegation surface
-is fenced to the same list (FIX-1362's `toolSeatFence`), so a seat with `tools: []` reaches no
-catalog tool through a skill's `agents:` either.
+attached through `uses` would otherwise contribute. A seat that writes **no** `tools:` line may
+call the tools of the capability presets its own file picked under `capabilities:` and the blocks
+of the packages it holds (FIX-1459);
+presets this kind switches on by default grant nothing the seat did not pick. The delegation surface
+is fenced to the names the seat listed (FIX-1362's `toolSeatFence`), so a seat with `tools: []`
+reaches no catalog tool through a skill's `agents:` either, and a seat with no line takes none of the
+tools it chose with it.
 
 **Capability tools are fenced by mechanism (FIX-1393).** The core resolver drops a capability's
 catalog-granted tools when the consuming block declares `tools:`, so an app's `uses` can no longer

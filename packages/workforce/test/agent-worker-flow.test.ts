@@ -83,9 +83,11 @@ describe("the built-in agent kind", () => {
       // An intent, not a vendor id: a hard-coded provider would fail at run
       // time for any app whose resolver does not carry it.
       model: "intent/chat",
-      tools: [],
       skills: { enableLlmClassifier: false }
     });
+    // No `tools:` line is not `tools: []`: the key stays absent, so the kind can
+    // tell a worker that wrote nothing from one that wrote an empty list.
+    expect(seat!.config).not.toHaveProperty("tools");
   });
 
   // Without the pinned binding a seat would hold skills it could never pull,

@@ -48,7 +48,7 @@
  * delta.
  */
 
-import type { CapabilityRef, PresetDef, UsesSlot } from "@flow-state-dev/core";
+import type { CapabilityRef, GeneratorTool, PresetDef, UsesSlot } from "@flow-state-dev/core";
 import {
   flattenCapabilities,
   getBaseCapability,
@@ -111,7 +111,9 @@ const BUILD_TIME_ONLY_KEYS = [
  * preset, which inverts what a control is for.
  *
  * Being dynamic is not being unfenced: a selected preset's catalog `tools`
- * still stop at the seat's own `tools:`. See `PresetDef.controlTools` for the
+ * still stop at a `tools:` line the seat wrote. A seat that wrote none is
+ * granted them by the kind's tools slot instead — see
+ * {@link selectedPresetTools}. See `PresetDef.controlTools` for the
  * distinction, and the paired tests in `test/seat-capabilities.test.ts` for
  * the behaviour — *"carries a selected preset's context but not its tool past
  * the seat's fence"* and *"lets a selected preset's CONTROL tool through the
@@ -180,6 +182,13 @@ interface SelectableCapability {
   hasOpenConfig: boolean;
   /** Preset name to the build-time-only keys it declares; only non-empty entries are held. */
   buildTimeOnly: Map<string, string[]>;
+  /**
+   * Preset name to the catalog `tools` it declares, as declared: an array, or
+   * a function resolved per turn. Only presets that declare tools are held.
+   * Read by {@link selectedPresetTools}; controls are not here, because a
+   * control reaches the seat through the capability whatever its `tools:` says.
+   */
+  presetTools: Map<string, NonNullable<PresetDef["tools"]>>;
 }
 
 /** What a kind's `uses` offers a seat to pick from. */
@@ -231,9 +240,12 @@ export function catalogSeatCapabilities(uses: UsesSlot | undefined): SeatCapabil
       : {}) as Record<string, unknown>;
 
     const buildTimeOnly = new Map<string, string[]>();
+    const presetTools = new Map<string, NonNullable<PresetDef["tools"]>>();
     for (const name of declared) {
       const keys = buildTimeOnlySurface(presetDefs[name]!);
       if (keys.length > 0) buildTimeOnly.set(name, keys);
+      const tools = presetDefs[name]!.tools;
+      if (tools !== undefined) presetTools.set(name, tools);
     }
 
     catalog.set(base.name, {
@@ -249,7 +261,8 @@ export function catalogSeatCapabilities(uses: UsesSlot | undefined): SeatCapabil
           .map(([name]) => name)
       ),
       hasOpenConfig: base.__configDef !== undefined,
-      buildTimeOnly
+      buildTimeOnly,
+      presetTools
     });
   }
 
@@ -341,6 +354,107 @@ export function seatCapabilityProblems(
 }
 
 /**
+ * Two picked presets carrying DIFFERENT tools under one name, as messages.
+ *
+ * A worker with no `tools:` line is granted every picked preset's tools (see
+ * {@link selectedPresetTools}), and one name is one tool, so such a pair is a
+ * turn that would fail on the framework's duplicate-name check. The caller
+ * refuses it at the mint, for the listed tools it can see; a function-valued
+ * preset's tools exist only per turn and are left to that check.
+ *
+ * Only meaningful for a worker that wrote NO `tools:` line — one that wrote a
+ * line is granted exactly that line, so nothing picked is added and nothing
+ * collides. That is the caller's condition to apply: this reads the selection
+ * alone. The same tool instance picked through two presets is one tool and
+ * passes.
+ *
+ * @param catalog The kind's catalogue.
+ * @param selection What this seat's file named.
+ * @returns One message per colliding pair, in selection order.
+ */
+export function pickedToolCollisions(
+  catalog: SeatCapabilityCatalog,
+  selection: SeatCapabilitySelection
+): string[] {
+  const problems: string[] = [];
+  const seen = new Map<string, { tool: unknown; where: string }>();
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) continue;
+    for (const preset of presets) {
+      const declared = capability.presetTools.get(preset);
+      if (!Array.isArray(declared)) continue;
+      const where = `preset "${preset}" on capability "${name}"`;
+      for (const tool of declared) {
+        const toolName = (tool as { name?: unknown }).name;
+        if (typeof toolName !== "string") continue;
+        const first = seen.get(toolName);
+        if (first === undefined) {
+          seen.set(toolName, { tool, where });
+        } else if (first.tool !== tool) {
+          problems.push(
+            `picks ${first.where} and ${where}, which carry different tools named ` +
+              `"${toolName}". One name is one tool — pick one of the two presets, or write a \`tools:\` line.`
+          );
+        }
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * A held package's block sharing a name with a picked preset's tool, as
+ * messages — the package form of {@link pickedToolCollisions}.
+ *
+ * Only meaningful for a worker that wrote NO `tools:` line, which is granted
+ * both the package's blocks and the picked presets' tools; the caller applies
+ * that condition. Listed preset tools only: a function-valued preset's tools
+ * exist per turn, where the framework's own duplicate-name check refuses the
+ * clash on that turn.
+ *
+ * @param catalog The kind's catalogue.
+ * @param selection What this seat's file named.
+ * @param packages The packages this seat holds, as the hire imposed them.
+ * @returns One message per clash.
+ */
+export function packageToolCollisions(
+  catalog: SeatCapabilityCatalog,
+  selection: SeatCapabilitySelection,
+  packages: ReadonlyArray<{ path: string; tools: ReadonlyArray<{ name?: unknown }> }>
+): string[] {
+  const carried = new Map<string, { tool: unknown; path: string }>();
+  for (const held of packages) {
+    for (const tool of held.tools) {
+      if (typeof tool.name === "string") carried.set(tool.name, { tool, path: held.path });
+    }
+  }
+  if (carried.size === 0) return [];
+
+  const problems: string[] = [];
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) continue;
+    for (const preset of presets) {
+      const declared = capability.presetTools.get(preset);
+      if (!Array.isArray(declared)) continue;
+      for (const tool of declared) {
+        const toolName = (tool as { name?: unknown }).name;
+        if (typeof toolName !== "string") continue;
+        const held = carried.get(toolName);
+        if (held === undefined || held.tool === tool) continue;
+        problems.push(
+          `holds package "${held.path}", whose block "${toolName}" has the same name as a tool of ` +
+            `preset "${preset}" on capability "${name}", which it picks. One name is one tool — ` +
+            `rename the block, or write a \`tools:\` line.`
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+/**
  * The refs a seat's selection adds on top of what its kind already carries.
  *
  * One entry per named capability that has at least one preset the kind does
@@ -404,4 +518,52 @@ export function resolveSeatCapabilities(
   }
 
   return refs;
+}
+
+/**
+ * The catalog tools of every preset a seat's own file picked — what a worker
+ * with no `tools:` line can call (FIX-1459 D1).
+ *
+ * **Read from the selection as written**, not from what
+ * {@link resolveSeatCapabilities} delivers. That function skips a preset the
+ * kind already has on, which is right for context (carried once, by the static
+ * entry) and wrong here: picking a preset the kind switches on by default is
+ * still the seat's choice, and the choice is what grants. A preset the kind
+ * switches on that the seat did NOT pick grants nothing.
+ *
+ * Only the preset's own `tools`. Its controls reach the seat through the
+ * capability as they always have, and what the capability composes is the
+ * static entry's business, exactly as on the per-seat path.
+ *
+ * Runs per turn from the kind's tools slot, so it stays one map lookup per
+ * picked preset, plus the preset's own function when its tools are one. The
+ * same tool instance picked through two presets is offered once.
+ *
+ * @param catalog The kind's catalogue.
+ * @param selection What this seat's file named.
+ * @param ctx The running block's context, handed to a function-valued preset.
+ * @returns The tools, in selection order.
+ */
+export async function selectedPresetTools(
+  catalog: SeatCapabilityCatalog,
+  selection: SeatCapabilitySelection | undefined,
+  ctx: unknown
+): Promise<GeneratorTool[]> {
+  if (!selection) return [];
+  const tools: GeneratorTool[] = [];
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) continue;
+    for (const preset of presets) {
+      const declared = capability.presetTools.get(preset);
+      if (declared === undefined) continue;
+      // A function-valued preset is resolved here, per turn, with the same
+      // context the framework hands it on the capability path.
+      const resolved = Array.isArray(declared)
+        ? declared
+        : await declared(ctx as Parameters<typeof declared>[0]);
+      for (const tool of resolved) if (!tools.includes(tool)) tools.push(tool);
+    }
+  }
+  return tools;
 }

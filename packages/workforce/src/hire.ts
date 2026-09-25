@@ -35,11 +35,14 @@ import type { DeclaredResources } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
 import {
   INSTRUCTIONS_KEY,
+  PACKAGES_KEY,
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
+  REFUSED_SEAT_PACKAGES_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
   REFUSED_SEAT_TOOLS_KEY_MESSAGE,
   REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
+  SEAT_PACKAGES_KEY,
   SEAT_SKILLS_KEY,
   SEAT_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY,
@@ -61,13 +64,14 @@ import {
   verifySeatReferenceWall
 } from "./seat-references";
 import { workerConfigSchema } from "./worker-config";
+import { heldPackageProblems, resolveHeldPackages } from "./seat-packages";
 
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
  *
- * `resources` and `references` join them rather than travelling to the kind as
- * settings: each is an instruction to THIS step about what to mint the seat
- * with, not a value any kind declares. A kind that happened to declare a
+ * `resources`, `references` and `packages` join them rather than travelling to
+ * the kind as settings: each is an instruction to THIS step about what to mint
+ * the seat with, not a value any kind declares. A kind that happened to declare a
  * setting of either name no longer receives an authored one — both keys are
  * public and pinned here, and a seat file cannot mean two things at once.
  */
@@ -75,7 +79,8 @@ const RESERVED_KEYS = [
   "flow",
   "description",
   SEAT_RESOURCES_KEY,
-  SEAT_REFERENCES_KEY
+  SEAT_REFERENCES_KEY,
+  PACKAGES_KEY
 ] as const;
 
 /**
@@ -119,6 +124,22 @@ export interface HireOptions {
    * Optional. Omitted, every seat hires exactly as it did before this existed.
    */
   seatBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
+
+  /**
+   * The blocks each package carries, keyed by the package's address and then
+   * by block name — `fsdev gen`'s `packageBlocks` export, passed straight
+   * through.
+   *
+   * A package's blocks reach only the seats that HOLD the package: the ones
+   * with it in their own `packages/` folder, and the ones whose `packages:`
+   * line takes it from their team's or the org's library. They are never put
+   * in a kind's catalog, so no other seat can name them. A seat holding a
+   * package with no `tools:` line can call every block in it; a seat that
+   * writes a `tools:` line can call the ones it lists.
+   *
+   * Optional. Omitted, a held package brings its instructions and no tools.
+   */
+  packageBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
 
   /**
    * The ledger ids this app's channels declared — `channelBoardIds(channels)`.
@@ -445,6 +466,7 @@ export function hireWorkforce(
   const refusedWorkers = new Set<string>();
   const seen = new Set<string>();
   const seatBlocks = options.seatBlocks ?? {};
+  const packageBlocks = options.packageBlocks ?? {};
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -504,6 +526,13 @@ export function hireWorkforce(
     // backs — silently, and only for that seat.
     if (Object.hasOwn(settings, SEAT_TOOLS_KEY)) {
       refuse(REFUSED_SEAT_TOOLS_KEY_MESSAGE);
+      continue;
+    }
+
+    // The fifth, for the same reason: a seat carrying packages no folder of
+    // its holds.
+    if (Object.hasOwn(settings, SEAT_PACKAGES_KEY)) {
+      refuse(REFUSED_SEAT_PACKAGES_KEY_MESSAGE);
       continue;
     }
 
@@ -628,9 +657,49 @@ export function hireWorkforce(
       for (const problem of registryProblems) refuse(problem);
       continue;
     }
-    const { catalogNames, seatTools } = resolveDeclaredTools(settings["tools"], registry);
+    // The packages this seat holds: its own folder's, then the ones its
+    // `packages:` line takes from its team's or the org's library. Their
+    // blocks join the seat's registry for resolving a written `tools:` line —
+    // a package's blocks are the seat's own for that purpose — after every
+    // name among them has been shown to be one tool. This step cannot see a
+    // kind's catalog, so a named package block that is also a catalog key is
+    // refused by the kind at its mint (the built-in one does), not here.
+    const { held, problems: heldProblems } = resolveHeldPackages(
+      manifest.id,
+      manifest.declared[PACKAGES_KEY],
+      manifest.packages,
+      packageBlocks
+    );
+    const packageProblems = [...heldProblems, ...heldPackageProblems(held, registry)];
+    if (packageProblems.length > 0) {
+      for (const problem of packageProblems) refuse(problem);
+      continue;
+    }
+    const withPackages = { ...registry };
+    for (const { blocks } of held) Object.assign(withPackages, blocks);
+
+    const { catalogNames, seatTools } = resolveDeclaredTools(settings["tools"], withPackages);
+    // Only a record that WROTE a `tools:` line carries the key onward, and it
+    // keeps carrying it after the split even when every name moved onto
+    // `seatTools` and the list emptied. Whether the key is present is what the
+    // built-in kind reads to tell "wrote no line" (grant what the file picked)
+    // from "wrote a line" (grant exactly that line), so an omitted `tools:`
+    // must never be filled in here or anywhere after.
     if (Object.hasOwn(settings, "tools")) settings["tools"] = catalogNames;
     settings[SEAT_TOOLS_KEY] = seatTools;
+
+    // Only for a seat that holds one, like the team's instructions: a seat
+    // holding nothing hands its kind exactly the bag it did before packages
+    // existed. The kind decides what a held package does; this step decides
+    // only which ones are held.
+    if (held.length > 0) {
+      settings[SEAT_PACKAGES_KEY] = held.map(({ manifest: pkg, blocks }) => ({
+        name: pkg.name,
+        path: pkg.path,
+        ...(pkg.instructions === undefined ? {} : { instructions: pkg.instructions }),
+        tools: Object.values(blocks)
+      }));
+    }
 
     // The seat's document allowlist, resolved against what the app declared.
     //

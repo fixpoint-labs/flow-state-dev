@@ -5,9 +5,10 @@
  * describes a team, this reads the **tree** under `workforce/flows/workers/`,
  * `workforce/flows/channels/` and `workforce/blocks/` — and the TypeScript in
  * every `resources/` folder beside the documents, and every `blocks/` folder
- * inside the team tree — and renders one module of static imports: `kinds`,
- * `channelKinds`, `blocks`, `seatBlocks` and `resourceModules`, each feeding a
- * parameter the framework already takes. `fsdev gen` is a thin
+ * inside the team tree, and every package's `blocks/` — and renders one module
+ * of static imports: `kinds`, `channelKinds`, `blocks`, `seatBlocks`,
+ * `packageBlocks` and `resourceModules`, each feeding a parameter the framework
+ * already takes. `fsdev gen` is a thin
  * command over these two calls — it resolves the root, writes the file, and
  * prints what it found.
  *
@@ -41,5 +42,12 @@ export {
   type DiscoveredSeatBlock,
   type SeatBlockDiscovery,
 } from "./discover-seat-blocks";
+
+export {
+  PACKAGE_BLOCK_SLOT_PATTERNS,
+  discoverPackageBlocks,
+  type DiscoveredPackageBlock,
+  type PackageBlockDiscovery,
+} from "./discover-package-blocks";
 
 export { GENERATED_FILE_NAME, renderWorkforceCode } from "./render";

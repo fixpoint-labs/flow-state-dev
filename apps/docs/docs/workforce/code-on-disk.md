@@ -87,9 +87,11 @@ export const seatBlocks = {
     "page-oncall": seatblock_engineering__triage__page_oncall,
   },
 } satisfies Record<string, Record<string, BlockDefinition>>;
+
+export const packageBlocks = {};
 ```
 
-A binding is where the file was found plus its name, with hyphens as underscores: `worker_`, `channel_` and `block_` for the three top-level folders, `resource_` and the document ref for a module in a `resources/` folder, and `teamblock_` or `seatblock_` with the team or the seat for a block folder inside the team tree. The imports arrive in one group per walk — the three top-level folders first, then the resource modules, then the blocks in the team tree — each group ordered by path, under the type imports the maps need. Both keep the committed file's diff stable: a name you can predict, and an order a directory listing cannot move.
+A binding is where the file was found plus its name, with hyphens as underscores: `worker_`, `channel_` and `block_` for the three top-level folders, `resource_` and the document ref for a module in a `resources/` folder, `teamblock_` or `seatblock_` with the team or the seat for a block folder inside the team tree, and `packageblock_` with the package's folder for a block inside a [package](./packages-on-disk.md). The imports arrive in one group per walk — the three top-level folders first, then the resource modules, then the blocks in the team tree, then the package blocks — each group ordered by path, under the type imports the maps need. Both keep the committed file's diff stable: a name you can predict, and an order a directory listing cannot move.
 
 Each export feeds a parameter that already exists:
 
@@ -99,6 +101,7 @@ Each export feeds a parameter that already exists:
 | `channelKinds` | `channelInstances` |
 | `blocks` | a task board's `workers`, or a worker kind's [tool catalog](./built-in-worker.md#tools) |
 | `seatBlocks` | `hireWorkforce` again |
+| `packageBlocks` | `hireWorkforce`, for the [packages](./packages-on-disk.md) a worker holds |
 | `resourceModules` | `splitResourceModules`, whose halves go to the kind's `uses` and the flow's resource map |
 
 ```ts
@@ -153,8 +156,9 @@ Where the folder sits decides **who can resolve the name**:
 | `workforce/blocks/` | every worker, once the app hands the map over as a tool catalog |
 | `workforce/teams/<team>/blocks/` | every worker on that team |
 | `workforce/teams/<team>/workers/<worker>/blocks/` | that one worker |
+| a package's `blocks/` | the workers that hold that [package](./packages-on-disk.md) |
 
-A name is resolved nearest first: the worker's own folder, then its team's, then the catalog. The first match wins, so a worker can keep a private `summarize` without renaming the team's.
+A name is resolved nearest first: the worker's own folder, then its team's, then the catalog. The first match wins, so a worker can keep a private `summarize` without renaming the team's. A package's block is never hidden that way: one that shares a name with a block in the worker's own or team folder, or with a catalog tool the worker lists, is refused at the hire.
 
 The org-level half is one line in your app, on the option the built-in kind already takes:
 

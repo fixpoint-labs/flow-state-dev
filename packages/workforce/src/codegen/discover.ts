@@ -42,6 +42,11 @@ import {
   discoverSeatBlocks,
   type DiscoveredSeatBlock,
 } from "./discover-seat-blocks";
+import {
+  PACKAGE_BLOCK_SLOT_PATTERNS,
+  discoverPackageBlocks,
+  type DiscoveredPackageBlock,
+} from "./discover-package-blocks";
 
 /** Which locked folder a discovered file came from. */
 export type CodeSlotId = "worker" | "channel" | "block";
@@ -111,6 +116,14 @@ export interface DiscoveryResult {
    * of these it may call.
    */
   seatBlocks: DiscoveredSeatBlock[];
+  /**
+   * Every block a package's `blocks/` folder carries, keyed by the package's
+   * address, ordered by path. Door D's half.
+   *
+   * Registration against a PACKAGE, not a seat: which seats may call one is
+   * decided at the hire, from which seats hold the package.
+   */
+  packageBlocks: DiscoveredPackageBlock[];
   /** Where it looked — the locked folders, then the `resources/` and `blocks/` slot patterns, so the command can say. */
   searched: string[];
 }
@@ -302,6 +315,12 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
   problems.push(...doorC.problems);
   searched.push(...SEAT_BLOCK_SLOT_PATTERNS);
 
+  // Door D, the packages' `blocks/` folders, before anything is thrown for the
+  // same reason: one run names every problem in the tree.
+  const doorD = await discoverPackageBlocks(root);
+  problems.push(...doorD.problems);
+  searched.push(...PACKAGE_BLOCK_SLOT_PATTERNS);
+
   // Two doors descend into the same worker folders, so a STRUCTURAL refusal —
   // a symlinked or unreadable seat — is met twice and worded identically by
   // both. One refusal, reported once: an author fixing a tree counts the list,
@@ -318,6 +337,7 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
     files,
     resourceModules: doorB.modules,
     seatBlocks: doorC.seatBlocks,
+    packageBlocks: doorD.packageBlocks,
     searched,
   };
 }

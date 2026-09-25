@@ -80,6 +80,10 @@ const DOS_DEVICE_SEGMENTS: ReadonlySet<string> = new Set([
  * other segment for the same reason the rest do — a kind name is half of a
  * minted flow instance id, and both are a path on disk at the same time.
  *
+ * `Package` is a folder under a `packages/` slot. Its name is what a worker's
+ * `packages:` line takes it by and half of the address its blocks are
+ * registered under, so it obeys the rule every other name does.
+ *
  * `Org` is the one label that names **nothing on disk**. It is the leading
  * segment of a runtime-hired seat's address (`<org>.<seatId>`), and it is
  * here rather than in a rule of its own because the `.` exclusion below is
@@ -91,7 +95,15 @@ const DOS_DEVICE_SEGMENTS: ReadonlySet<string> = new Set([
  * the Windows device names — which costs a handful of unusable org ids and
  * buys one rule instead of two that can drift.
  */
-export type SegmentLabel = "Team" | "Worker" | "Channel" | "Document" | "Kind" | "Block" | "Org";
+export type SegmentLabel =
+  | "Team"
+  | "Worker"
+  | "Channel"
+  | "Document"
+  | "Kind"
+  | "Block"
+  | "Org"
+  | "Package";
 
 /**
  * Labels whose segment is a *file* rather than a folder. Held as a set rather
@@ -131,7 +143,9 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
             ? `it becomes the kind's name, which a worker file's \`flow:\` names and a minted flow instance id is built from`
             : label === "Block"
               ? `it becomes the name the block registers under, which a task board assigns by`
-              : `it becomes part of the worker's identity, which is joined with a "."`;
+              : label === "Package"
+                ? `it becomes the name a worker's \`packages:\` takes the package by`
+                : `it becomes part of the worker's identity, which is joined with a "."`;
     throw new Error(
       `${what} "${segment}" must be lowercase letters, digits, and single ` +
         `hyphens (not at the start or end) — ${identity}`,

@@ -33,6 +33,8 @@ Both extend what a generator can do. They solve different problems.
 
 Reach for a capability when the behavior is structural and always present (a memory store, an artifact system). Reach for a skill when the behavior is sometimes-on guidance that benefits from being editable without a deploy. The two compose — the Skills package itself is shipped as a capability.
 
+A workforce has a third option, the **package**: Markdown instructions plus the blocks they need, handed to a worker as a folder. It is in the worker's prompt on every turn. If the guidance needs a tool the worker can't already call, write a package; otherwise write a skill. See [Packages on disk](../workforce/packages-on-disk.md).
+
 ## Two ways a skill activates
 
 Skills are not always-on. Something has to decide a skill applies before its body lands in the system prompt.

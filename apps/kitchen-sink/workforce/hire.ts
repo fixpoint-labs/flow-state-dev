@@ -45,7 +45,7 @@ import { dirname } from "node:path";
 
 import { workforceRegistrar } from "../lib/workforce-registrar";
 import notify from "./channel-notify";
-import { blocks, channelKinds, kinds, resourceModules, seatBlocks } from "./workforce.gen";
+import { blocks, channelKinds, kinds, packageBlocks, resourceModules, seatBlocks } from "./workforce.gen";
 
 /**
  * What a `.ts` file in a `resources/` folder turned into.
@@ -176,6 +176,11 @@ export interface HiredWorkforce {
    * seats that did load go on posting into the channels that did open as though
    * nothing were missing. Degrading is the right answer for a seat and the
    * wrong one for a channel.
+   *
+   * **A package that failed to load is NOT here either.** It throws above, for
+   * the rule packages ship with: every package problem is a start-time
+   * refusal. A worker short a package is a worker without the instructions and
+   * tools its author gave it, running as though it had them.
    */
   errors: string[];
 }
@@ -190,7 +195,7 @@ export interface HiredWorkforce {
  * @throws If any record cannot be hired; the message names every bad worker.
  */
 export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
-  const { workers, errors, skillErrors, teamErrors } = await readWorkforce(workforceRoot);
+  const { workers, errors, skillErrors, teamErrors, packageErrors } = await readWorkforce(workforceRoot);
   const { channels, errors: channelErrors } = await readChannelsDirectory(workforceRoot);
 
   // FATAL, unlike the worker-side errors below, and the published guide is why:
@@ -203,6 +208,16 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
     throw new Error(
       `channels: ${channelErrors.length} channel(s) failed to load\n` +
         channelErrors.map(({ path, error }) => `  ${path}: ${error.message}`).join("\n"),
+    );
+  }
+
+  // FATAL too. A refused package is left off every record that would have held
+  // it, and one with no blocks leaves the hire nothing to notice — so the only
+  // place its failure shows is here, and it has to stop start.
+  if (packageErrors.length > 0) {
+    throw new Error(
+      `packages: ${packageErrors.length} package problem(s)\n` +
+        packageErrors.map(({ path, error }) => `  ${path}: ${error.message}`).join("\n"),
     );
   }
 
@@ -219,12 +234,16 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
     // worker alone. It grants nothing: a seat still names the block in its
     // `tools:` before the model can call it.
     //
+    // `packageBlocks` carries every package's blocks by folder; the hire gives
+    // each worker the ones of the packages it holds, and nothing else.
+    //
     // `channelBoards` is what lets the hire say which declared board no seat
     // drains. Without it the check has no roster to read and says nothing —
     // which is the silence this app ships to make visible.
     seats: hireWorkforce(workers, {
       kinds: kitchenSinkKinds,
       seatBlocks,
+      packageBlocks,
       channelBoards: channelBoardIds(channels),
     }),
     channelFlows,

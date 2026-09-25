@@ -36,6 +36,7 @@ import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   readChannelsDirectory,
+  readPackagesDirectory,
   readResourcesDirectory,
   readSeatSkills,
   readWorkforceDirectory,
@@ -109,6 +110,16 @@ function buildTree(dir: string, tag: string): void {
   mkdirSync(join(dir, "org/skills/org-skill"), { recursive: true });
   writeFileSync(join(dir, "org/skills/org-skill/SKILL.md"), skill("org-skill"));
 
+  // A package at the team level and one in the worker's own folder, each with
+  // a block. The `tag`-named package is what lets the codegen door, which
+  // returns addresses and never opens a file, tell the two trees apart.
+  mkdirSync(join(dir, `teams/${TEAM}/packages/escalation/blocks`), { recursive: true });
+  writeFileSync(join(dir, `teams/${TEAM}/packages/escalation/PACKAGE.md`), doc("package"));
+  writeFileSync(join(dir, `teams/${TEAM}/packages/escalation/blocks/page.ts`), module_);
+  mkdirSync(join(dir, worker, `packages/${tag}-kit/blocks`), { recursive: true });
+  writeFileSync(join(dir, worker, `packages/${tag}-kit/PACKAGE.md`), doc("package"));
+  writeFileSync(join(dir, worker, `packages/${tag}-kit/blocks/${tag}-tool.ts`), module_);
+
   mkdirSync(join(dir, "org/resources"), { recursive: true });
   writeFileSync(join(dir, "org/resources/policy.md"), doc("document"));
   writeFileSync(join(dir, `org/resources/${tag}-org-store.ts`), module_);
@@ -150,6 +161,7 @@ const DOORS: ReadonlyArray<{ name: string; open: (root: string) => Promise<unkno
   { name: "readWorkforceDirectory", open: (root) => readWorkforceDirectory(root) },
   { name: "readChannelsDirectory", open: (root) => readChannelsDirectory(root) },
   { name: "readResourcesDirectory", open: (root) => readResourcesDirectory(root) },
+  { name: "readPackagesDirectory", open: (root) => readPackagesDirectory(root) },
   { name: "readSeatSkills", open: (root) => readSeatSkills(root, { team: TEAM, worker: WORKER }) },
   { name: "discoverWorkforceCode", open: (root) => discoverWorkforceCode(root) },
   { name: "discoverResourceModules", open: (root) => discoverResourceModules(root) },
@@ -312,6 +324,9 @@ describe("no door follows a symlink out of the configured root", () => {
     ["resources/ slot", `teams/${TEAM}/resources`],
     ["channels/ slot", `teams/${TEAM}/channels`],
     ["skills/ level", `teams/${TEAM}/skills`],
+    ["packages/ slot", `teams/${TEAM}/packages`],
+    ["package folder", `teams/${TEAM}/packages/escalation`],
+    ["package's blocks/ folder", `teams/${TEAM}/packages/escalation/blocks`],
     ["org/ level", "org"],
     ["locked code folder", "blocks"],
     ["locked folder's ancestor", "flows"],
@@ -342,6 +357,8 @@ describe("no door follows a symlink out of the configured root", () => {
       `teams/${TEAM}/resources/brief.md`,
       `teams/${TEAM}/resources/store.ts`,
       `teams/${TEAM}/skills/team-skill/SKILL.md`,
+      `teams/${TEAM}/packages/escalation/PACKAGE.md`,
+      `teams/${TEAM}/packages/escalation/blocks/page.ts`,
       "blocks/tally.ts",
       "flows/workers/agent.ts",
     ]) {

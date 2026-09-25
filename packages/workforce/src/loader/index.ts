@@ -17,7 +17,9 @@
  * carries — `readResourcesDirectory` scans `org/resources/` and
  * `teams/<id>/resources/` and returns one `ResourceDoc` per document, and
  * `readChannelsDirectory` scans `teams/<id>/channels/<name>/` and returns one
- * `ChannelManifest` per channel. All six stop there — nothing here builds a
+ * `ChannelManifest` per channel, and `readPackagesDirectory` reads every
+ * `packages/<name>/PACKAGE.md` at the org, team and worker levels into one
+ * `PackageManifest` each. All seven stop there — nothing here builds a
  * flow, an agent, a resource, a channel instance or a registry, and neither
  * does the composer over them.
  *
@@ -83,6 +85,14 @@ export {
 } from "./read-resources-directory";
 
 export {
+  PACKAGES_SLOT,
+  readPackagesDirectory,
+  type PackageError,
+  type PackageErrorKind,
+  type ReadPackagesDirectoryResult,
+} from "./read-packages-directory";
+
+export {
   readChannelsDirectory,
   type ChannelManifestError,
   type ChannelManifestErrorKind,
@@ -117,4 +127,10 @@ export {
   siblingSlotPath,
 } from "./resource-convention";
 
-export type { WorkerManifest, TeamManifest, ResourceDoc, ChannelManifest } from "../manifest";
+export type {
+  WorkerManifest,
+  TeamManifest,
+  ResourceDoc,
+  ChannelManifest,
+  PackageManifest,
+} from "../manifest";

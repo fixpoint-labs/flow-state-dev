@@ -56,7 +56,9 @@ export type DeclaredProblemLayer =
   /** A reference under `org/references/` or a team's or worker's `references/`. */
   | "reference"
   /** A channel folder under `teams/<id>/channels/`. */
-  | "channel";
+  | "channel"
+  /** A package under `org/packages/`, a team's `packages/`, or a worker's own. */
+  | "package";
 
 /** One thing that did not load, as the reader that found it reported it. */
 export interface DeclaredProblem {
@@ -120,7 +122,7 @@ export interface DeclaredRoster {
    */
   channels: ChannelManifest[];
   /**
-   * Everything that did not load, from all five error channels, each entry
+   * Everything that did not load, from every reader's error channel, each entry
    * tagged with the layer it came from.
    *
    * Empty is the clean tree. Non-empty does not mean the records are missing:
@@ -169,6 +171,7 @@ export async function readDeclaredRoster(root: string): Promise<DeclaredRoster> 
       })),
     ),
     ...workforce.teamErrors.map((e) => ({ layer: "team" as const, path: e.path, error: e.error })),
+    ...workforce.packageErrors.map((e) => ({ layer: "package" as const, path: e.path, error: e.error })),
     ...resources.errors.map((e) => ({ layer: "document" as const, path: e.path, error: e.error })),
     ...references.errors.map((e) => ({ layer: "reference" as const, path: e.path, error: e.error })),
     ...channels.errors.map((e) => ({ layer: "channel" as const, path: e.path, error: e.error })),
