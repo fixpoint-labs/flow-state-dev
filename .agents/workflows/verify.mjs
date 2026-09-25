@@ -348,7 +348,13 @@ function epicResponder({ approved = true, approvedByLabel = false, gateChangesRe
     if (label === 'refresh:issues') return prScan(prompt, (id) => fresh[id] || {})
     if (label.startsWith('poc:')) return { claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it', ...poc }
     const id = label.split(':')[1]
-    return { issueId: id, phase: 'AWAITING_SPEC_APPROVAL', readyToMerge: false, multiPrPending: false, ...(worker[id] || {}) }
+    // A worker's readiness defaults to a reviewed head, the same as `freshRow`'s, so a check about some
+    // other merge guard keeps exercising that guard rather than passing on a missing review.
+    return withoutUndefined({
+      issueId: id, phase: 'AWAITING_SPEC_APPROVAL', readyToMerge: false, multiPrPending: false,
+      implHeadSha: 'impl', implReviewedHeadSha: 'impl',
+      ...(worker[id] || {}),
+    })
   }
 }
 
@@ -358,7 +364,7 @@ const row = (id, over = {}) => ({ id, phase: 'NEEDS_SPEC', specReviewRounds: 0, 
  * Schema-complete fixtures. Every REQUIRED field has a default, so an inline responder can never
  * describe a response the real harness would reject — the failure mode Codex found in 11 tests.
  */
-const freshRow = (over = {}) => ({
+const freshRow = (over = {}) => withoutUndefined({
   // The batched scan's per-entry liveness. `true` is the default because it is what a working scan
   // reports for every issue it read; a fixture exercising the half-done batch asks for `false`.
   observed: true,
@@ -384,8 +390,20 @@ const freshRow = (over = {}) => ({
   // Same reasoning for the head: a scan-derived approval is only an approval OF a head, so the default
   // supplies one and a check that wants the pathological case has to ask for `headSha: null`.
   headSha: 'abc',
+  // And for merge readiness: `readyToMerge` counts only once an automated review has returned on the
+  // PR's current head, so the ordinary fixture is a reviewed head and the unreviewed one is asked for
+  // (a mismatch, a null, or — for an optional field — `undefined`, which is stripped as an omission).
+  implHeadSha: 'impl',
+  implReviewedHeadSha: 'impl',
+  repairHeadSha: 'repair',
+  repairReviewedHeadSha: 'repair',
   ...over,
+  ...(over.subPrStates ? { subPrStates: over.subPrStates.map((s) => ({ headSha: 'sub', reviewedHeadSha: 'sub', ...s })) } : {}),
 })
+/** A key an override sets to `undefined` means "the agent omitted it" — drop it, default and all, as JSON would. */
+function withoutUndefined(o) {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
+}
 const workerRes = (over = {}) => ({ phase: 'AWAITING_SPEC_APPROVAL', readyToMerge: false, multiPrPending: false, ...over })
 
 /**
@@ -3259,6 +3277,48 @@ check('a ready-to-merge issue surfaces its implementation merge gate', async () 
     }),
   })
   assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }])
+})
+
+check('INVARIANT: no merge gate for a head the automated review has not returned on', async () => {
+  // orchestration.md → Gates, "A merge-ready head has been reviewed". Approved, green and mergeable is
+  // not enough: automated review runs on open / ready-for-review, so a head pushed after it (or a PR
+  // marked ready in the same breath as its merge) merges code no reviewer saw. Every producer of a
+  // merge gate — the scan, a worker, a sub-PR, the repair PR — is held to it, and a missing sha reads as
+  // "not reviewed", never the reverse.
+  const mergeGates = async (issue, respond) =>
+    (await run('epic-wake.js', { args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', ...issue })] }), respond: epicResponder(respond) }))
+      .result.gates.filter((g) => g.kind === 'merge')
+  const single = { implPr: 9 }
+  const scan = (shas) => ({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, ...shas } } })
+  assert.deepEqual(await mergeGates(single, scan({ implHeadSha: 'new', implReviewedHeadSha: 'old' })), [], 'reviewed an older head')
+  assert.deepEqual(await mergeGates(single, scan({ implHeadSha: 'new', implReviewedHeadSha: null })), [], 'no review has returned')
+  assert.deepEqual(await mergeGates(single, scan({ implHeadSha: null, implReviewedHeadSha: null })), [], 'no head observed')
+  assert.deepEqual(await mergeGates(single, scan({ implHeadSha: 'new', implReviewedHeadSha: 'new' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }])
+
+  // A worker's readiness: it may have just pushed, so an unstated review is an unreviewed head.
+  const worker = (shas) => ({
+    fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 9 } },
+    worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, ...shas } },
+  })
+  assert.deepEqual(await mergeGates(single, worker({ implHeadSha: undefined, implReviewedHeadSha: undefined })), [], 'a worker that names no reviewed head (the old shape)')
+  assert.deepEqual(await mergeGates(single, worker({ implHeadSha: 'pushed', implReviewedHeadSha: 'before' })), [], 'a worker that pushed past the review')
+  assert.deepEqual(await mergeGates(single, worker({ implHeadSha: 'h', implReviewedHeadSha: 'h' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }])
+
+  // A sub-PR slice, per handle.
+  const slice = { subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] }
+  const sub = (shas) => ({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: true, ...shas }] } } })
+  assert.deepEqual(await mergeGates(slice, sub({ headSha: 'new', reviewedHeadSha: 'old' })), [], 'sub-PR reviewed an older head')
+  assert.deepEqual(await mergeGates(slice, sub({ headSha: 'new', reviewedHeadSha: 'new' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }])
+
+  // The assembled-goal repair PR, whose sha fields are optional like the rest of its fields.
+  const repair = {
+    subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+    assembledGoal: { passed: false, failure: 'f', fixIssue: 'FIX-50', fixPr: 77, fixMerged: false },
+  }
+  const fix = (shas) => ({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', repairReadyToMerge: true, ...shas } } })
+  assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: undefined, repairReviewedHeadSha: undefined })), [], 'repair PR with no review evidence')
+  assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: 'r', repairReviewedHeadSha: null })), [], 'repair PR no review has returned on')
+  assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: 'r', repairReviewedHeadSha: 'r' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }])
 })
 
 check('a refresh scan echoing a sibling id is discarded, not bound to the wrong row', async () => {
@@ -8957,7 +9017,10 @@ check('INVARIANT: every gating field is schema-required', async () => {
       // schema while omitting it, `cursorUsable` correctly refused the batch, and the planner — with
       // no way to tell that refusal apart from a genuinely converged review — logged "converged" for a
       // fold that never ran. FIX-1303.
-      PR_STATE_SCHEMA: ['specApproved', 'approvedHeadSha', 'specMerged', 'observed', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha', 'latestActivityAt', 'approvalArtifacts', 'channel', 'login', 'bot', 'prAuthor', 'state', 'onCurrentHead', 'body', 'countsAsApprovalAttempt'],
+      // `implHeadSha` / `implReviewedHeadSha` (and a sub-PR's `headSha` / `reviewedHeadSha`) joined when
+      // merge readiness started requiring an automated review on the current head. An omission already
+      // fails closed, so this pins the other half: a scout that never looked must say so, not stay silent.
+      PR_STATE_SCHEMA: ['specApproved', 'approvedHeadSha', 'specMerged', 'observed', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha', 'latestActivityAt', 'approvalArtifacts', 'channel', 'login', 'bot', 'prAuthor', 'state', 'onCurrentHead', 'body', 'countsAsApprovalAttempt', 'implHeadSha', 'implReviewedHeadSha', 'reviewedHeadSha'],
       // `multiPrPending` earns its place here for a reason the others don't share: it was optional AND
       // had no clearing path, because the prompt asked only for the true case. So an omission had to
       // preserve the carried value (coercing it to false strands cap-deferred slices no event will

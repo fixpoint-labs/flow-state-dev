@@ -82,6 +82,11 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   ahead. Post-merge amendments follow the same canonical contract; material direction
   changes remain blockers until renewed approval and merge are confirmed.
 - impl PR has unhandled review/CI events → run one PR-feedback round, push, stop.
+- **Ready to merge** means approved, green, and an automated review (Codex or Cursor) has
+  returned on the PR's **current head** — [Gates](../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge).
+  A head you just pushed has not been reviewed. Under `epic-wake`, set `implHeadSha` and
+  `implReviewedHeadSha` (the head that review ran against) alongside `readyToMerge`; the
+  wake offers the merge only when they match.
 
 Work on the issue's own branch inside this worktree so your commits never collide
 with sibling workers. Commit and push only as authorized; never merge an implementation PR.

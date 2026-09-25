@@ -699,6 +699,23 @@ function cursorUsable(row) {
 }
 
 /**
+ * Merge readiness, with the clause the reporter cannot be trusted to fold in itself: an automated
+ * review has returned on the PR's CURRENT head (orchestration.md → Gates, "A merge-ready head has
+ * been reviewed"). Approved + green + mergeable is the reporter's judgment; this compares two shas.
+ * A missing sha on either side is "not reviewed", never the reverse (BP-030), so an old-shape report
+ * withholds the gate instead of offering a head no reviewer saw. Logged, so a withheld gate says why.
+ */
+function reviewedAtHead(ready, headSha, reviewedHeadSha, what) {
+  if (!ready) return false
+  if (headSha && reviewedHeadSha === headSha) return true
+  log(
+    `${what}: reported ready to merge, but no automated review has returned on its current head ` +
+      `(head ${headSha || 'unknown'}, last reviewed ${reviewedHeadSha || 'none'}) — no merge gate until one does.`,
+  )
+  return false
+}
+
+/**
  * A multi-PR row's phase is DERIVED, never taken from the scout.
  *
  * Two failures, in opposite directions, come from letting a scout name it. `DONE` is schema-valid,
@@ -1178,7 +1195,7 @@ function nextRow(row, { worker, action, landed, folded }) {
         : worker.specLevelFound === undefined
           ? !!row.specLevelFound
           : !!worker.specLevelFound,
-    readyToMerge: !!worker.readyToMerge,
+    readyToMerge: reviewedAtHead(worker.readyToMerge, worker.implHeadSha, worker.implReviewedHeadSha, `${row.id} #${worker.implPr || row.implPr}`),
     // A direct-route worker refusing to build (no reproduction, or not really a bug) promotes its
     // row back to the spec route. STICKY, and that is the whole reason it is a persisted field
     // rather than an immediate phase change: the Linear label still says Bug, so the next refresh
@@ -1957,7 +1974,10 @@ const PR_STATE_SCHEMA = {
   // schema while omitting it, and `cursorUsable` correctly refused the batch — but the planner had no
   // way to tell that refusal apart from a genuinely converged review, so it logged "converged" for a
   // fold that was actually withheld. `['string','null']` still lets a scout say "no activity to date".
-  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'approvedHeadSha', 'specMerged', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt', 'approvalArtifacts'],
+  // `implHeadSha` / `implReviewedHeadSha` are required because `readyToMerge` counts only when they
+  // match (→ `reviewedAtHead`). Optional, a scout that never looked for the automated review would
+  // withhold every merge gate with nothing to say why; required, it has to answer, `null` included.
+  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'approvedHeadSha', 'specMerged', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha', 'latestActivityAt', 'approvalArtifacts', 'implHeadSha', 'implReviewedHeadSha'],
   properties: {
     issueId: { type: 'string' },
     observed: {
@@ -2004,7 +2024,13 @@ const PR_STATE_SCHEMA = {
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
     ciFailed: { type: 'boolean', description: 'Observed this scan — never inherited, so a recovered PR stops being re-dispatched' },
     merged: { type: 'boolean' },
-    readyToMerge: { type: 'boolean' },
+    readyToMerge: { type: 'boolean', description: 'The implementation PR is approved, green and mergeable now. Counts only when implReviewedHeadSha equals implHeadSha.' },
+    implHeadSha: { type: ['string', 'null'], description: 'Current head of the row-level implementation PR — not headSha, which is the spec head whenever a spec exists. null when there is no implementation PR.' },
+    implReviewedHeadSha: {
+      type: ['string', 'null'],
+      description:
+        "Head sha the latest COMPLETED automated review (Codex or Cursor) of the implementation PR ran against: the review's commit_id, or its check run's head_sha. null when none has returned. Report what you saw; the wake compares it with implHeadSha.",
+    },
     // Per-handle state for a multi-PR row. One aggregate boolean is not actionable: a merge gate
     // needs the PR NUMBER of the slice that is green, and these rows have no single `implPr`.
     subPrStates: {
@@ -2014,11 +2040,13 @@ const PR_STATE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'merged', 'readyToMerge'],
+        required: ['id', 'merged', 'readyToMerge', 'headSha', 'reviewedHeadSha'],
         properties: {
           id: { type: 'string' },
           merged: { type: 'boolean' },
           readyToMerge: { type: 'boolean' },
+          headSha: { type: ['string', 'null'], description: "This sub-PR's current head" },
+          reviewedHeadSha: { type: ['string', 'null'], description: 'Head the latest completed automated review (Codex or Cursor) of THIS sub-PR ran against; null if none has returned' },
           ciFailed: { type: 'boolean' },
           /** This slice's PR was closed WITHOUT merging — durably `open` otherwise, which nothing advances. */
           closedUnmerged: { type: 'boolean' },
@@ -2029,6 +2057,9 @@ const PR_STATE_SCHEMA = {
     // that re-arms the end-to-end goal.
     repairMerged: { type: 'boolean' },
     repairReadyToMerge: { type: 'boolean' },
+    // Optional like the other repair fields; an omission reads as "not reviewed" (→ `reviewedAtHead`).
+    repairHeadSha: { type: ['string', 'null'] },
+    repairReviewedHeadSha: { type: ['string', 'null'], description: 'Head the latest completed automated review of the repair PR ran against; null if none has returned' },
     /** The repair PR was closed WITHOUT merging — otherwise `AWAITING_FIX` idles with nothing to dispatch. */
     repairClosedUnmerged: { type: 'boolean' },
     // The advanced cursor, so the next wake can tell "already handled" from "new".
@@ -2180,6 +2211,13 @@ const WORKER_SCHEMA = {
         'Needs a human decision — the coordinator surfaces it. Carry the ASK, not a topic: all six parts, per docs/contributing/asking-for-decisions.md (the fork, plain terms, the trade-off, your recommendation, what would change your mind, and what being wrong costs). The coordinator holds only status lines and cannot reconstruct any of that.',
     },
     readyToMerge: { type: 'boolean' },
+    // Optional: a worker that just pushed has usually not been reviewed yet, and an omission reads as
+    // "not reviewed" (→ `reviewedAtHead`), so the next wake's scan re-establishes readiness.
+    implHeadSha: { type: ['string', 'null'], description: 'Current head of the implementation PR, when you report readyToMerge' },
+    implReviewedHeadSha: {
+      type: ['string', 'null'],
+      description: 'Head the latest completed automated review (Codex or Cursor) ran against. readyToMerge counts only when this equals implHeadSha; a head you just pushed has not been reviewed.',
+    },
     status: { type: 'string', description: 'One compact status line' },
   },
 }
@@ -2404,13 +2442,13 @@ const [gate, linear, prScan] = await parallel([
                         // `implPr` is unset for these rows. Per-handle readiness is what lets the coordinator
                         // surface "merge sub-PR a (#41)" — without it the gate carries `pr: null` and the DAG
                         // stops at its first merge-ready slice.
-                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed }. readyToMerge means THAT PR is approved, green and mergeable now.\n`
+                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed, headSha, reviewedHeadSha }. readyToMerge means THAT PR is approved, green and mergeable now; headSha is its current head and reviewedHeadSha the head its latest completed automated review ran against (see below).\n`
                       : '') +
                     // The repair PR is the other handle these rows wait on, and it is invisible in `subPrs`.
                     // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
                     // forever because nothing else can ever set `fixMerged`.
                     (row.assembledGoal && row.assembledGoal.fixPr
-                      ? `    This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
+                      ? `    This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged, repairReadyToMerge, repairHeadSha and repairReviewedHeadSha for it, and repairClosedUnmerged if it was closed without merging.\n`
                       : '') +
                     // PER ISSUE, and it has to stay that way. The cursor is how this issue tells new
                     // feedback from feedback a worker already handled; one cursor shared across the batch
@@ -2425,7 +2463,10 @@ const [gate, linear, prScan] = await parallel([
                 ? `SEPARATELY report specApprovedByLabel:true only for a \`spec approved\` label that \`${approvalOwner}\` applied to the reviewed source head. Read the most recent labeling event and require that exact owner's login, not merely any human. Establish approvedHeadSha from the event and PR timeline; a label left on a later push is stale. Unreadable provenance or an unknown reviewed revision means FALSE, not inherited approval.\n`
                 : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
               `ALSO report humanChangesRequested:true when any human's latest review requests changes on the open spec. It outranks every approval channel, including an owner label. Bots never count.\n` +
-              `Also report whether CI is failing.`,
+              `Also report whether CI is failing.\n` +
+              // orchestration.md → Gates, "A merge-ready head has been reviewed". Two shas rather than a
+              // boolean, so the wake does the comparison (→ `reviewedAtHead`).
+              `MERGE READINESS: readyToMerge means the implementation PR is approved, green and mergeable now. Separately report implHeadSha = that PR's current head (NOT headSha, which is the spec head) and implReviewedHeadSha = the head sha the latest COMPLETED automated review (Codex or Cursor) ran against — the review's commit_id, or its check run's head_sha — or null if none has returned. A PR is only offered for merge once the two match, so report what you saw and do not fold the comparison into readyToMerge.`,
             { label: 'refresh:issues', phase: 'Refresh', schema: PR_SCAN_SCHEMA, agentType: 'scout' },
           ),
       ]
@@ -2826,15 +2867,26 @@ const refreshed = [...rows, ...discovered].map((row) => {
     phase: scoutPhaseFor({ ...row, specMerged }, fresh.phase, scanApproved, route),
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
-    readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
+    // And only for a head the automated review has returned on (→ `reviewedAtHead`), here and on the
+    // two per-handle readiness fields below.
+    readyToMerge: refreshedLive
+      ? reviewedAtHead(fresh.readyToMerge, fresh.implHeadSha, fresh.implReviewedHeadSha, `${row.id} #${fresh.implPr || row.implPr}`)
+      : false,
     // Same rule: CI that recovered must stop looking like a failure, or pr-feedback re-dispatches forever.
     ciFailed: refreshedLive ? !!fresh.ciFailed : false,
     // Same rule again for the per-handle readiness a multi-PR row's merge gates are built from.
     // These are observations, never durable state: a carried `readyToMerge` would keep surfacing a
     // merge gate for a sub-PR the human already merged, or for one a later push made unmergeable.
     // (The merged flags are folded into the durable `subPrs` / `assembledGoal` by foldMultiPrScan.)
-    subPrStates: refreshedLive ? fresh.subPrStates || [] : [],
-    repairReadyToMerge: refreshedLive ? !!fresh.repairReadyToMerge : false,
+    subPrStates: refreshedLive
+      ? (fresh.subPrStates || []).map((s) => ({
+          ...s,
+          readyToMerge: reviewedAtHead(s.readyToMerge, s.headSha, s.reviewedHeadSha, `${row.id} sub-PR ${s.id}`),
+        }))
+      : [],
+    repairReadyToMerge: refreshedLive
+      ? reviewedAtHead(fresh.repairReadyToMerge, fresh.repairHeadSha, fresh.repairReviewedHeadSha, `${row.id} repair PR`)
+      : false,
     // Whether the scan ANSWERED about the repair PR, as distinct from what it answered. `false` and
     // "didn't look" have opposite meanings here (see cursorUsable), and one boolean can't carry both.
     repairScanned: refreshedLive && fresh.repairMerged !== undefined,
