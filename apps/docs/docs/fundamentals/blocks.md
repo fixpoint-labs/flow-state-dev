@@ -537,7 +537,7 @@ If `select` returns a key that isn't in `blocks`, the router throws with the lis
 
 Input adaptation does not belong here — if the selected block expects a different shape than the router's input, pre-connect each block with `block.connectInput(...)` before handing the record to `keyedRouter`. That keeps the primitive tight and keeps the adapter close to the block it adapts.
 
-When the choice comes from a model's answer rather than a key you already hold, see [`utility.cascadingRouter`](/docs/patterns/utility-blocks/core#cascadingrouter). It routes on [evaluator](#evaluator) answers and sends anything the model isn't confident about to one `ambiguous` block.
+When the choice comes from an [evaluator](#evaluator)'s answer, a plain router can branch on it directly. If you also need a confidence floor, or a tree of several questions, use [`utility.cascadingRouter`](/docs/patterns/utility-blocks/core#cascadingrouter). It sends anything the model isn't confident about to one `ambiguous` block, so it only fits models that report confidence.
 
 ## The block context
 
