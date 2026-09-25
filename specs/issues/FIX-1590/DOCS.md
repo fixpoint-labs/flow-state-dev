@@ -52,7 +52,7 @@ channelInstances(channels, { kinds: { channel: defineChannelFlow({ notify: wakeA
 ```
 
 Key the session on the channel, as above, and each seat keeps one conversation per channel: the
-second post it hears lands after the first, so it remembers the thread. Key it on `postId`
+second post it hears lands in the same conversation, so it remembers the thread. Two posts that arrive together each run once, in no guaranteed order. Key it on `postId`
 instead and every post starts a fresh conversation. The conversation is a child of the channel's
 session, so an ordinary session listing does not show it; list with dispatch runs included
 (`include: "dispatch-runs"`, or `includeDispatchRuns` on `FlowNavigator`) to find it.
@@ -84,7 +84,7 @@ and `onChannelPost` (internal, for a channel's notify block)."*
 > and nothing more. The rule lives in `workforce/channel-notify.ts`, this app's own fan-out block:
 > the framework addresses every declared member, and the block decides who hears what.
 
-Published with the epic's opening paragraphs, once FIX-1594's half is also true.
+Published in this issue's PR: every sentence is true once the wake ships. Only the epic's opening channel half waits for FIX-1594.
 
 ## UPDATE · `apps/kitchen-sink/workforce/channel-notify.ts` · file header
 

@@ -24,8 +24,8 @@ and ER-7.
 |---|---|---|---|
 | BR-7 | An agent seat is woken | It runs its ordinary answer: its own instructions, tools and skills, exactly as `run` would. The receiver adds only the heard turn | V1 |
 | BR-8 | The seat's conversation is opened in the rail | The post shows as the seat's turn, `<writer> in <channel>: <body>`, with the reply under it. Both survive a reload | Goal check |
-| BR-9 | A second post reaches the same seat in the same channel | It lands in the same conversation, after the first. One conversation per seat per channel ([D2](DECISIONS.md#d2)) | Goal check · V3 |
-| BR-10 | Two posts reach one seat at once | Both run, one after the other, in post order | V3 |
+| BR-9 | A second post reaches the same seat in the same channel | It lands in the same conversation. One conversation per seat per channel ([D2](DECISIONS.md#d2)) | Goal check · V3 |
+| BR-10 | Two posts reach one seat at once | Each runs exactly once, in the same conversation, in no guaranteed order, and the two runs may overlap. Neither is dropped or expires | V3 |
 | BR-11 | The same seat is a member of two channels | Two conversations, one per channel. Neither sees the other's posts | V3 |
 
 ## What stays safe
@@ -34,7 +34,7 @@ and ER-7.
 |---|---|---|---|
 | BR-12 | One agent member's wake is refused or throws | The refusal is recorded in the fan-out's own request; the other members still run; the post stays written | V3 |
 | BR-13 | A caller names `onChannelPost` on the public action route | Refused (`no-entry`). An internal entry is never caller-addressed | V1 |
-| BR-14 | A post is made | It returns before any seat runs. The wake runs in the channel's hand-off request, as today | V3 |
+| BR-14 | A post is made | Posting does not wait for any seat to finish. The wake runs in the channel's hand-off request, as today | V3 |
 | BR-15 | A seat kind is added with no wake entry in the map | The drift test fails until the entry names that kind's receiver or says none | V2 |
 | BR-16 | The map names a receiver the kind does not declare | The drift test fails | V2 |
 

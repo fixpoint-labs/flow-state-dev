@@ -18,7 +18,7 @@ The patch is the design in its roughest form: an internal `onChannelPost` on the
 runs `run`'s own sequence; a notify factory in `channel-notify.ts` that routes each agent member
 to a dispatcher keyed on the channel and everything else to the name-only block; `hire.ts` hiring
 the seats first; and a one-line scripted reply for `agent-answer`. Its local `WAKE_ACTION` table
-stands in for the column FIX-1585's map will carry, and must not ship.
+stands in for the column FIX-1585's map will carry, and must not ship. The patch declares `concurrency: "queue"` on the entry; the design has since moved to the default `allow` ([DECISIONS](../../DECISIONS.md#decided-not-asked)), and no W-row depends on it.
 
 | # | Premise | Result |
 |---|---|---|

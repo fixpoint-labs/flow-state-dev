@@ -29,7 +29,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Dispatching to the public `run` · or an internal entry that takes only `{ message }`, with the app writing the text |
 | **Because** | A dispatch resolves only `flow.internal.actions`, one map with no fallback ([`action-forms.md`](../../../docs/architecture/action-forms.md#dispatched-internal-and-task-entries)), and the kind declares only a public `run`. Reusing `run`'s sequence keeps one answer path, so a seat answers a post exactly as it answers a person. Taking the notify contract (`channelId`, `postId`, `body`, `principal`, `author?`) lets the kind write the heard turn itself and keeps the channel on the run, which FIX-1594 needs to post back |
-| **Locks in** | A published entry on `@flow-state-dev/workforce`'s agent kind (a `minor` changeset). Every app on the agent kind can wake its seats. The kind now reads the channel's delivery shape, so a change to `channelNotifyInputSchema` is a change to the agent kind too |
+| **Locks in** | A published entry on `@flow-state-dev/workforce`'s agent kind (a `patch` changeset: additive, so no consumer's code can trip over it, per AGENTS.md's pre-1.0 rule). Every app on the agent kind can wake its seats. The kind now reads the channel's delivery shape, so a change to `channelNotifyInputSchema` is a change to the agent kind too |
 
 **What would change my mind:** a second, non-channel caller that wants to wake a seat. Then the
 entry should take `{ message }` and each caller writes its own turn.
@@ -59,7 +59,11 @@ entry should take `{ message }` and each caller writes its own turn.
   filter is one comparison at the wake. Other members still get the name-only line.
 - **The heard turn reads `<writer> in <channel>: <body>`**, the writer being `author`, else
   `principal`. It is also the entry's user message, so the page shows it as the seat's turn.
-- **The entry queues** (`concurrency: "queue"`), so two posts arrive in order in one conversation.
+- **The entry keeps the default concurrency, `allow`, not `queue`.** A queued request is refused after
+  the engine's 30-second wait, so a slow answer would drop the next post; `allow` never expires. The
+  fan-out itself runs with `allow`, so post order into a seat was never guaranteed anyway. The rule
+  is each post runs once (BR-10), not that they run in order. Nothing in the goal or FIX-1594 reads
+  the order.
 - **Clerk and runner members keep the name-only line**, byte for byte. FIX-1589's `desk-clerk.ts`
   is not touched here.
 - **The rail lists dispatch runs** (`includeDispatchRuns` on kitchen-sink's navigator), so a
@@ -88,5 +92,8 @@ entry should take `{ message }` and each caller writes its own turn.
 
 - **Draft** — framed as the epic's leg b; an internal entry on the agent kind plus the app's
   wake in the notify slot, keyed one conversation per channel, agent seats only; POC run first.
+- **Review round 1** — the entry keeps `allow` instead of `queue` and BR-10 promises each post
+  once, not in order, because a queued request expires after 30 seconds and the fan-out was
+  never ordered.
 
 **Open: none.**

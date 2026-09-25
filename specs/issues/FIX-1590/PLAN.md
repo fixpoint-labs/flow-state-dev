@@ -10,15 +10,15 @@ when FIX-1589's implementation merges (ER-14); S1 also waits for FIX-1459 (ER-11
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the built-in agent kind (`agent-worker-flow.ts`) | Declare `internal.actions.onChannelPost`: input `channelNotifyInputSchema`; block = the same `agent-run` sequence `run` uses, its input connected to `{ message: heard turn }`; `userMessage` = the heard turn; `concurrency: "queue"` (D1). Builds on FIX-1585's S8 line in the same file | BR-7 BR-8 BR-10 BR-13 |
+| S1 | `workforce` · the built-in agent kind (`agent-worker-flow.ts`) | Declare `internal.actions.onChannelPost`: input `channelNotifyInputSchema`; block = the same `agent-run` sequence `run` uses, its input connected to `{ message: heard turn }`; `userMessage` = the heard turn; default concurrency (`allow`), never `queue` (D1, Decided not asked). Builds on FIX-1585's S8 line in the same file | BR-7 BR-8 BR-10 BR-13 |
 | S2 | kitchen-sink · the shell's names module (`lib/workforce-shell.ts`, FIX-1585's S3 map) | A wake column: `agent` → `onChannelPost`, `desk-clerk` → none, `followup-runner` → none. Keyed on `SEAT_KINDS`, the same strings a `WORKER.md` spells `flow:` and a roster row stores as `hiredSeatRowSchema.flow`. Stays import-free (BP-019) | BR-2 BR-15 BR-16 |
 | S3 | kitchen-sink · `workforce/channel-notify.ts` | Becomes a factory over the hired seats: one `dispatcher` per seat whose kind has a wake entry (`flowKind` = the seat id, `action` = the entry, `session: { key }` on the channel), selected by `input.member`; a post with an `author`, or a member with no dispatcher, falls to today's name-only block, which stays as the fallback. **Remove** the header's "a real app puts a dispatcher here" placeholder claim (D3) | BR-1–BR-6 BR-9 BR-11 BR-12 |
 | S4 | kitchen-sink · `workforce/hire.ts` | Hire the seats before building the channel kinds, and hand S3 each seat's id and kind | BR-1 BR-6 |
 | S5 | kitchen-sink · the rail (`app/page.tsx`) | `includeDispatchRuns` on the `FlowNavigator`, so a seat's channel conversation is listed | BR-8 |
-| S6 | kitchen-sink · the scripted model (`lib/e2e-mock-script.ts`) | A `[scenario:wake]` scenario for the agent kind's generators, which FIX-1585's S9 maps. One reply carrying the marker | BR-1 BR-8 |
+| S6 | kitchen-sink · the scripted model (`lib/e2e-mock-script.ts`) | A `[scenario:wake]` scenario for the agent kind's generators, which FIX-1585's S9 maps. One reply carrying the marker. Reuses the shared dispatcher FIX-1589's S4 fixes (latest-user-turn matching, a per-request cursor); no separate fix here | BR-1 BR-8 |
 | S7 | kitchen-sink · e2e | The wake scenario in FIX-1585's talk spec file, not `workforce-shell.spec.ts`. It is the CI regression on every PR; S8 drives the same scenario as the goal check, adding the control and the verdict, so there is one harness, not two | BR-1 BR-2 BR-8 BR-9 |
-| S8 | `goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met); `run.mts` drives a real browser against the production build. `GOAL_CONTROL=name-only-notify` swaps S3 back to the stub | BR-1 BR-2 BR-8 BR-9 |
-| S9 | Docs and release note | [DOCS.md](DOCS.md)'s operations; one `minor` changeset for `@flow-state-dev/workforce` (the agent kind gains `onChannelPost`). kitchen-sink is private: no changeset | — |
+| S8 | `goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met); `run.mts` drives a real browser against the production build. `GOAL_CONTROL=name-only-notify` swaps S3 back to the stub; `GOAL_CONTROL=no-author-filter` (test mode only) drops S3's author filter, which FIX-1594's check consumes | BR-1 BR-2 BR-8 BR-9 |
+| S9 | Docs and release note | [DOCS.md](DOCS.md)'s operations; one `patch` changeset for `@flow-state-dev/workforce` (the agent kind gains `onChannelPost`; additive, so `patch` under AGENTS.md's pre-1.0 rule). kitchen-sink is private: no changeset | — |
 
 ## Sequence
 
@@ -57,6 +57,8 @@ refused wake and two posts at once (V3); the public call to an internal entry (V
 | Internal entry on the agent kind | `onChannelPost` | Public: an app's dispatcher names it, and the channels guide does |
 | Scenario marker | `[scenario:wake]` | The goal check's signal reads it (epic ER-7) |
 | Goal control | `GOAL_CONTROL=name-only-notify` | The epic names the stub as leg b's control |
+| Goal control | `GOAL_CONTROL=no-author-filter`, test mode only, in S3 | The filter lives in S3's file; FIX-1594's leg c control reads it |
+| Heard turn | `<writer> in <channel>: <body>`: `<writer>` is `author`, else `principal`; `<channel>` is the channel's session id | FIX-1594 reads the channel from it to reply, and the page shows it as the seat's turn |
 
 Everything else is yours to name, including the factory in S3 and the map's column.
 
@@ -75,7 +77,7 @@ Everything else is yours to name, including the factory in S3 and the map's colu
 ## Docs
 
 Reconcile and publish [DOCS.md](DOCS.md) after VG passes and its control fails. The kitchen-sink
-README paragraph waits until FIX-1594's half is true too (the epic's ownership table).
+README fan-out paragraph ships in this PR, since it is true once this ships; only the opening's channel half waits for FIX-1594.
 
 ## Sketch · pseudocode, illustrative, react to the shape
 

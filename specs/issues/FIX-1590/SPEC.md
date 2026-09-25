@@ -89,7 +89,7 @@ flowchart LR
   S -->|"listed as a run of the channel"| V["seat panel in the rail"]
 ```
 
-The post returns before any seat runs. The wake picks who hears it; the seat runs its ordinary
+Posting does not wait for any seat to finish. The wake picks who hears it; the seat runs its ordinary
 answer; the rail lists the run once kitchen-sink turns on dispatch runs.
 
 ## What stays as it is
