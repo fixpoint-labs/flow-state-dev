@@ -1,0 +1,89 @@
+<svg viewBox="0 0 940 330" width="940" height="330" role="img" aria-label="Today: support.ada's answer runs the desk-note block, which hands the note back under the desk tag, and nothing reaches the channel. After: answer runs a model under the seat's instructions; the reply goes out under the desk tag, and the model may call one tool that dispatches into support.desk's own fileTask, which puts a row on escalations or followups. The boot warning that nobody drains escalations stays on." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-new { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-chan { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-warn { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .a { stroke:var(--ink-2); stroke-width:1.2; fill:none; }
+    .a-new { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .a-tool { stroke:var(--accent); stroke-width:1.4; fill:none; stroke-dasharray:5 3; }
+    .div { stroke:var(--rule); stroke-width:1; }
+    .hd { fill:var(--ink-2); }
+    .hd2 { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="today">
+    <text class="t-lbl" x="20" y="28">TODAY</text>
+    <rect class="n-box" x="20" y="44" width="190" height="54" rx="5"/>
+    <text class="t-lbl" x="32" y="62">A PERSON TYPES</text>
+    <text class="t-b" x="32" y="84">"where is my refund?"</text>
+    <path class="a" d="M105,98 L105,128"/>
+    <path class="hd" d="M101.0,121.0 L109.0,121.0 L105.0,128.0 z"/>
+    <rect class="n-gone" x="20" y="130" width="190" height="54" rx="5"/>
+    <text class="t-lbl" x="32" y="148">ANSWER RUNS</text>
+    <text class="t-b" x="32" y="170">desk-note · no model</text>
+    <path class="a" d="M105,184 L105,214"/>
+    <path class="hd" d="M101.0,207.0 L109.0,207.0 L105.0,214.0 z"/>
+    <rect class="n-box" x="20" y="216" width="190" height="54" rx="5"/>
+    <text class="t-lbl" x="32" y="234">THE SEAT SAYS</text>
+    <text class="t-gone" x="32" y="256">[front desk] where is my…</text>
+    <text class="t-s" x="20" y="296">the note, handed back</text>
+    <text class="t-s" x="20" y="310">support.desk: never reached</text>
+  </g>
+
+  <line class="div" x1="236" y1="16" x2="232" y2="314"/>
+
+  <g id="after">
+    <text class="t-lbl" x="256" y="28">AFTER</text>
+    <rect class="n-box" x="256" y="44" width="170" height="54" rx="5"/>
+    <text class="t-lbl" x="268" y="62">A PERSON TYPES</text>
+    <text class="t-b" x="268" y="84">the same note</text>
+    <path class="a" d="M341,98 L341,128"/>
+    <path class="hd" d="M337.0,121.0 L345.0,121.0 L341.0,128.0 z"/>
+    <rect class="n-new" x="256" y="130" width="200" height="54" rx="5"/>
+    <text class="t-lbl" x="268" y="148">ANSWER RUNS A MODEL</text>
+    <text class="t-b" x="268" y="170">seat's own instructions</text>
+    <path class="a-new" d="M341,184 L341,214"/>
+    <path class="hd2" d="M337.0,207.0 L345.0,207.0 L341.0,214.0 z"/>
+    <rect class="n-box" x="256" y="216" width="200" height="54" rx="5"/>
+    <text class="t-lbl" x="268" y="234">THE SEAT SAYS</text>
+    <text class="t-s" x="268" y="256">[front desk] + the model's words</text>
+    <text class="t-s" x="256" y="296">the note stays above it, as their turn</text>
+
+    <path class="a-tool" d="M456,157 L540,157"/>
+    <path class="hd2" d="M533.0,153.0 L533.0,161.0 L540.0,157.0 z"/>
+    <text class="t-s" x="462" y="148">tool: file</text>
+    <rect class="n-new" x="542" y="130" width="150" height="54" rx="5"/>
+    <text class="t-lbl" x="554" y="148">DISPATCH</text>
+    <text class="t-s" x="554" y="170">author = the seat</text>
+    <path class="a-new" d="M692,157 L744,157"/>
+    <path class="hd2" d="M737.0,153.0 L737.0,161.0 L744.0,157.0 z"/>
+    <rect class="n-chan" x="746" y="44" width="176" height="226" rx="5"/>
+    <text class="t-lbl" x="758" y="62">SUPPORT.DESK · CHANNEL</text>
+    <rect class="n-box" x="758" y="130" width="152" height="40" rx="4"/>
+    <text class="t-b" x="770" y="155">fileTask · as today</text>
+    <rect class="n-box" x="758" y="186" width="152" height="30" rx="4"/>
+    <text class="t-s" x="770" y="205">escalations · row</text>
+    <rect class="n-box" x="758" y="226" width="152" height="30" rx="4"/>
+    <text class="t-s" x="770" y="245">followups · row</text>
+    <path class="a" d="M834,170 L834,184"/>
+    <path class="hd" d="M830.0,177.0 L838.0,177.0 L834.0,184.0 z"/>
+    <rect class="n-warn" x="542" y="216" width="190" height="54" rx="5"/>
+    <text class="t-lbl" x="554" y="234">BOOT WARNING · STAYS</text>
+    <text class="t-s" x="554" y="256">nobody drains escalations</text>
+  </g>
+</svg>
