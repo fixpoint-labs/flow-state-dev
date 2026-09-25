@@ -17,7 +17,7 @@ import type { InboundTransportHost, PrincipalResolver } from "../transports/type
 import { PrincipalResolutionError } from "../transports/errors";
 import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
-import { pinRejectsCaller } from "../context/hire-plane";
+import { pinRejectsCaller } from "../context/instance-pin";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 
 /** A caller one instance's resolver accepted. */

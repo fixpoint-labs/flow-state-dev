@@ -7,7 +7,7 @@
  * through the runtime's dispatch seam and returns the handle the seam gives
  * back — and it carries its `(type, action)` on the block definition, so
  * `defineFlow` can check the action resolves and a task board can read which
- * of its seats hand off without running anything.
+ * of its assignees hand off without running anything.
  *
  * **The address is static so it can be verified; the envelope is dynamic so it
  * can be useful.** `type` and `action` never vary — that pair is exactly what
@@ -60,9 +60,10 @@
  * The seam does, against the flows the process registered, and refuses by name:
  * `flow-not-found` or `no-entry`, thrown as `DispatchRefusedError`.
  *
- * A `task` dispatcher is a **seat on a task board**: put it under `workers`
- * where an inline worker would go, and the board hands each row it routes
- * there off to `flow.task.actions[action]` in the child session the policy names.
+ * A `task` dispatcher **sits in a task board's `workers` under an assignee**,
+ * where an inline worker would go, and the board hands each row it routes to
+ * that assignee off to `flow.task.actions[action]` in the child session the
+ * policy names.
  *
  * ```ts
  * const board = taskBoard({
@@ -134,8 +135,8 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
   name: string;
   description?: string;
   /**
-   * Discriminant. Omit it — `internal` is the default. A task-board seat is
-   * a dispatcher whose `session` is a task policy; do not set `type` there.
+   * Discriminant. Omit it — `internal` is the default. A board's dispatcher is
+   * one whose `session` is a task policy; do not set `type` there.
    */
   type?: "internal";
   /**
@@ -178,7 +179,7 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
 }
 
 /**
- * A `task` dispatcher: a board seat that hands its rows off to
+ * A `task` dispatcher: a board's dispatcher that hands its assignee's rows off to
  * `flow.task.actions[action]`. `TPayload` is the worker input a `key` policy reads —
  * a task board's `TaskWorkerInput`.
  */
@@ -187,14 +188,14 @@ export interface TaskDispatcherConfig<TPayload = unknown> {
   description?: string;
   /**
    * Discriminant. Omit it — a `"per-task"` / `"per-worker"` / `{ key }`
-   * session is already a task seat. The board reads `dispatch.type === "task"`
+   * session already makes it a task dispatcher. The board reads `dispatch.type === "task"`
    * off the block; callers do not set this.
    */
   type?: "task";
   /** The entry name — resolves `flow.task.actions[action]`. Verified at `defineFlow` for a same-flow address, at the seam for a cross-flow one. */
   action: string;
   /**
-   * The **other flow** this seat hands off to. Omit for this flow's own
+   * The **other flow** this dispatcher hands off to. Omit for this flow's own
    * task entry. Same skip as an `internal` cross-flow address: `defineFlow`
    * cannot see the other flow's map, so the seam resolves it.
    */
@@ -229,7 +230,7 @@ export function dispatcher(
     throw new Error(
       `[dispatcher] "${name}" dispatches type "${String(type)}", which authored code cannot ` +
         `supply the trust for. A block may dispatch "internal" (its own request's authority) ` +
-        `or "task" (a claim on a durable row, minted by the task board that holds the seat).`
+        `or "task" (a claim on a durable row, minted by the task board that holds the dispatcher).`
     );
   }
 
@@ -331,8 +332,8 @@ function isTaskSessionPolicy(value: unknown): value is TaskSessionPolicy<any> {
 
 /**
  * `type` is optional. A task-board session policy (`"per-task"`,
- * `"per-worker"`, or a bare `{ key }` with no internal fields) is a task
- * seat. Everything else — including `{ key }` plus `inputSchema` / `payload`
+ * `"per-worker"`, or a bare `{ key }` with no internal fields) makes a task
+ * dispatcher. Everything else — including `{ key }` plus `inputSchema` / `payload`
  * — is `internal`.
  */
 function resolveDispatcherType(config: DispatcherConfig): string {

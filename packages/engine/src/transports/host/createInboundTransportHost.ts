@@ -25,7 +25,7 @@ import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { FlowInstanceBindingMismatchError } from "../../context/binding-errors";
-import { pinRejectsCaller, UnknownFlowError } from "../../context/hire-plane";
+import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
   DEFAULT_RUNTIME_LOGGER,

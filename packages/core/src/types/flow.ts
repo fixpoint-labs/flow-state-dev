@@ -525,9 +525,9 @@ export type FlowDefinition<
    * The flow's `task` entries — `task: { actions: { implement: { block } } }`
    * — where a task board hands a claimed row off to run in a session of its
    * own. Declared like actions and reached only by a `task` dispatch from a
-   * `dispatcher({ type: "task", action: "implement" })` seat on a board the
-   * flow reaches. `defineFlow` puts each entry behind that board's claim gate
-   * and refuses an entry no board addresses.
+   * `dispatcher({ type: "task", action: "implement" })` in the `workers` of a
+   * board the flow reaches. `defineFlow` puts each entry behind that board's
+   * claim gate and refuses an entry no board addresses.
    */
   task?: TypedEntries<TaskEntry>;
 

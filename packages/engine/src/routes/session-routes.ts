@@ -9,7 +9,7 @@ import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { purgeStaleResourceState } from "../context/ensure-session-record";
 import { resolveRecordOwner } from "../context/record-owner";
-import { pinRejectsCaller, unknownFlowMessage } from "../context/hire-plane";
+import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
 import {
   asObject,
@@ -296,10 +296,10 @@ export async function handleCreateSession(
     });
   }
 
-  // The hire's pin, before any session is written. `body.userId` is not an
-  // owner: only the resolved principal counts, and a missing one fails a
-  // user-owned hire closed. A mismatch is the same 404 an unknown address
-  // gets, so nothing is written and the address cannot be probed.
+  // The instance's owner pin, before any session is written. `body.userId` is
+  // not an owner: only the resolved principal counts, and a missing one fails
+  // a user-pinned instance closed. A mismatch is the same 404 an unknown
+  // address gets, so nothing is written and the address cannot be probed.
   const pin = flow.ownerPin;
   if (
     pinRejectsCaller(pin, {

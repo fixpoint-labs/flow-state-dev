@@ -10,8 +10,8 @@
  *
  * **The registry is mutable after construction.** `register` admits one
  * instance at any time and `unregister` releases one address; both are reached
- * from a `FlowState` (see `flowstate/types.ts`), which is how an app hires a
- * seat while it is running. Two consequences for anything reading this
+ * from a `FlowState` (see `flowstate/types.ts`), which is how an app adds an
+ * instance while it is running. Two consequences for anything reading this
  * registry: read it per request rather than caching `list()`, and expect a
  * `get` to start or stop answering between two requests. Anything that ran a
  * sweep over `list()` at init — the webhook adapter's provider-coverage check
@@ -77,9 +77,10 @@ export interface FlowRegistry {
    * keyed with a segment beginning `~` (see the file header) — in every case
    * before any registry state is touched.
    *
-   * `options.pin` is the owner pin for a hired instance. Omitted, a pin already
-   * on the instance is kept; otherwise the instance is shared. A second pin
-   * that disagrees with the one on the instance is refused.
+   * `options.pin` pins the instance to an owner, `{ orgId, userId? }`.
+   * Omitted, a pin already on the instance is kept; otherwise the instance is
+   * shared. A second pin that disagrees with the one on the instance is
+   * refused.
    */
   register(flow: FlowInstance, options?: { pin?: InstanceOwnerPin }): void;
   /**

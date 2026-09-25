@@ -13,7 +13,7 @@ import { z } from "zod";
 import { defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
 import type { FlowInstance, InstanceOwnerPin, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "../src";
-import { InstancePinMismatchError } from "../src/context/hire-plane";
+import { InstancePinMismatchError } from "../src/context/instance-pin";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const verified = {
@@ -321,18 +321,18 @@ describe("the fence around the cell", () => {
     h.state.register(seat, { pin: { orgId: "acme", userId: "alice" } });
     const usersBefore = await h.runtime.stores.user.list();
 
-    for (const who of [BOB_ACME, ALICE_GLOBEX]) {
-      await expect(
-        runAction({
-          flow: seat,
-          actionName: "save",
-          input: { tag: "x", marker: "REFUSED-M" },
-          userId: who.user,
-          orgId: who.org,
-          stores: h.runtime.stores,
-          runtimeConfig: { modelResolver: createMockModelResolver({}) },
-        })
-      ).rejects.toBeInstanceOf(InstancePinMismatchError);
+    for (const [who, reason] of [[BOB_ACME, "owning-user"], [ALICE_GLOBEX, "owning-org"]] as const) {
+      const refused = runAction({
+        flow: seat,
+        actionName: "save",
+        input: { tag: "x", marker: "REFUSED-M" },
+        userId: who.user,
+        orgId: who.org,
+        stores: h.runtime.stores,
+        runtimeConfig: { modelResolver: createMockModelResolver({}) },
+      });
+      await expect(refused).rejects.toBeInstanceOf(InstancePinMismatchError);
+      await expect(refused).rejects.toMatchObject({ reason });
     }
 
     expect(await h.runtime.stores.user.list()).toEqual(usersBefore);

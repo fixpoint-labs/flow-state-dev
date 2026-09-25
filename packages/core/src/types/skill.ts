@@ -21,7 +21,7 @@ import type { AgentOverrides } from "./agent";
  * collection — apps register them once and skills reference them by name
  * via `allowed-tools` in frontmatter. Unknown refs are warned and skipped.
  *
- * On a delegating skill the catalog is also the board's **tool seats**
+ * On a delegating skill the catalog also supplies the board's **tool assignees**
  * (FIX-925): every tool the skill allows is assignable to a task by its
  * catalog key, with no per-skill re-declaration. See `SkillState.agents`.
  */
@@ -65,11 +65,11 @@ export interface AgentSpec {
   /** Inline agent: skill-folder-relative path to a persona prompt file. */
   promptRef?: string;
   /**
-   * Optional roster blurb. Authorable on the prompt-file frontmatter and on
-   * a programmatic spec. Not a `SKILL.md` `agents:` field — `parseSkillMd`
-   * refuses it there, and `serializeSkillMd` does not emit it (the file is
-   * the source of truth for `prompt-ref`; an inline `prompt:` uses the first
-   * body line). The coordinator prefers this over the first body line.
+   * Optional one-line summary for the coordinator. Authorable on the
+   * prompt-file frontmatter and on a programmatic spec. Not a `SKILL.md`
+   * `agents:` field — `parseSkillMd` refuses it there, and `serializeSkillMd`
+   * does not emit it (the file is the source of truth for `prompt-ref`; an
+   * inline `prompt:` uses the first body line). The coordinator prefers this over the first body line.
    */
   description?: string;
   /** Registry agent: agent registry key — resolves through the supplied AgentRegistry. */
@@ -101,7 +101,7 @@ export interface AgentSpec {
    * (`prompt`/`promptRef`) agents; setting it on an `agentRef` agent fails loud
    * (that agent owns its own context). Named `contextSupply` (not `contextMode`)
    * to avoid colliding with the skill-level `SkillContextMode` in this file and
-   * the workforce agent-level `contextMode`.
+   * a higher layer's agent-level `contextMode`.
    */
   contextSupply?: "conversation";
 }
@@ -145,12 +145,12 @@ export interface SkillState {
    * at all raises the fence) and otherwise whatever its capabilities
    * contribute.
    *
-   * **Delegation tool seats — does gate.** When the skill declares `agents:`,
-   * `resolveToolSeats` seats exactly the catalog keys listed here; a skill
-   * that declares none seats the whole catalog. So this list restricts which
-   * tools can be a task assignee. It still never widens: seats are drawn from
-   * the catalog the holder already reached, and narrowed again by
-   * `toolSeatFence`.
+   * **Delegation tool assignees — does gate.** When the skill declares `agents:`,
+   * `resolveToolSeats` makes exactly the catalog keys listed here assignable; a
+   * skill that declares none makes the whole catalog assignable. So this list
+   * restricts which tools can be a task assignee. It still never widens:
+   * tool assignees are drawn from the catalog the holder already reached, and
+   * are narrowed again by `toolSeatFence`.
    *
    * Authoring metadata for the first path, a real restriction for the second.
    */
@@ -191,7 +191,7 @@ export interface SkillState {
    * board — there are no per-agent host tools. `prompt`/`promptRef` agents are
    * portable data (inline, code-free); `agentRef` references a registered agent.
    *
-   * These are the board's *agent* seats. Its **tool** seats are not declared
+   * These are the board's *agent* assignees. Its **tool** assignees are not declared
    * here at all (FIX-925): every tool the skill allows — `allowedTools` when it
    * declares one, the whole catalog when it doesn't — is assignable by its
    * catalog key on the same assignee namespace. Declared agent keys win a
