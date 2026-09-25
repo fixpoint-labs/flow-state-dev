@@ -27,8 +27,8 @@ cd examples/guides/routing-with-evaluators
 pnpm fsdev run routing-with-evaluators classify -i '{"message":"I was charged twice for March"}'
 ```
 
-The `classify`, `route` and `activate` actions use Jev through Vercel's AI Gateway, so they need
-`AI_GATEWAY_API_KEY`. `routeWithoutConfidence` uses OpenAI's evaluation model: set
+The `classify`, `route` and `activate` actions use Jev (an evaluation model that reports
+confidence, served by Vercel's AI Gateway), so they need `AI_GATEWAY_API_KEY`. `routeWithoutConfidence` uses OpenAI's evaluation model: set
 `OPENAI_API_KEY`, or it goes through the gateway with the same `AI_GATEWAY_API_KEY`.
 :::
 
@@ -72,13 +72,19 @@ The output is `{ answers }`, keyed by your question ids and typed by them:
 `answers.team.choice` is `"billing" | "technical"`, not `string`.
 
 Any model that supports AI SDK evaluation works here. We use Jev because it reports how
-confident it is, which matters in the next step. Through Vercel's AI Gateway, Jev is the
-evaluation model you can name with a string. For OpenAI's evaluation model, pass the instance,
-`openai.evaluationModel("gpt-5.4-mini")`, with your `OPENAI_API_KEY`. The example's
-`src/models.ts` shows that, plus pointing the same adapter at the gateway's OpenAI-compatible
-endpoint when you only have a gateway key. If you have your own Jev key rather than a gateway,
-install Jev's provider library and pass its evaluation model directly; flow-state.dev doesn't
-install it for you. See [Evaluation models](/docs/fundamentals/models#evaluation-models).
+confident it is, which matters in the next step. How you reach a model depends on the key you
+have:
+
+- **A gateway key** (`AI_GATEWAY_API_KEY`): name Jev with the string `"typesafe-ai/jev"`. The
+  gateway serves Jev as an evaluation model, but not `openai/...` strings.
+- **An OpenAI key** (`OPENAI_API_KEY`): pass the instance,
+  `openai.evaluationModel("gpt-5.4-mini")`. The example's `src/models.ts` also shows the same
+  adapter pointed at the gateway's OpenAI-compatible endpoint, for when you only have a gateway
+  key.
+- **Your own Jev key**: install Jev's provider library and pass its evaluation model directly.
+  flow-state.dev doesn't install it for you.
+
+See [Evaluation models](/docs/fundamentals/models#evaluation-models).
 
 A model that can only generate text is refused before the block makes any call. Pass
 `openai("gpt-5.4-mini")` and building the block throws:
@@ -90,8 +96,8 @@ Pass an evaluation model, e.g. openai.evaluationModel("gpt-5.4-mini"), or a mode
 
 ## Confidence is only there when the model gives it
 
-Jev attaches a `confidence` to its choice and score answers. The popular providers' evaluation
-models don't report one at all. When a model gives none, the key is simply absent. The
+Jev attaches a `confidence` to its choice and score answers. OpenAI's and Anthropic's
+evaluation models don't report one at all. When a model gives none, the key is simply absent. The
 evaluator never fills the gap with a number, and nothing downstream should either.
 
 ## Step 2: route on the answers
@@ -103,7 +109,23 @@ your `ambiguous` branch instead of a guess.
 
 ```ts title="src/route.ts"
 import { evaluator, choice, handler, utility, type EvaluationModel } from "@flow-state-dev/core";
+import { z } from "zod";
 import { team, ticketSchema } from "./classify";
+
+export type Routed = { queue: "billing-urgent" | "billing" | "technical" | "review" };
+
+const queue = (name: string, to: Routed["queue"]) =>
+  handler({
+    name,
+    inputSchema: ticketSchema,
+    outputSchema: z.object({ queue: z.enum(["billing-urgent", "billing", "technical", "review"]) }),
+    execute: (): Routed => ({ queue: to }),
+  });
+
+const urgentBilling = queue("urgent-billing", "billing-urgent");
+const billingQueue = queue("billing-queue", "billing");
+const techQueue = queue("tech-queue", "technical");
+const review = queue("review", "review");
 
 const urgency = choice("How urgent is this billing issue?", {
   urgent: "Needs someone now",
@@ -158,9 +180,9 @@ error. The router itself never takes a model. The evaluators carry it, which is 
 takes the model and builds them, reusing Step 1's `team` question for the first level.
 `ambiguous` is required.
 
-The leaves (`urgentBilling`, `review` and the rest) are ordinary blocks. In the example they're
-handlers that return the queue's name, like `{ queue: "billing-urgent" }`; in your app they
-could be anything.
+The leaves (`urgentBilling`, `review` and the rest) are ordinary blocks. Here they're handlers
+that return the queue's name, like `{ queue: "billing-urgent" }`; in your app they could be
+anything.
 
 Run it on Jev with a clear, urgent billing complaint and it lands on `urgentBilling`:
 
@@ -179,13 +201,10 @@ can watch it:
 pnpm fsdev run routing-with-evaluators routeWithoutConfidence -i '{"message":"I was charged twice for March"}'
 ```
 
-Every ticket goes to review. That is on purpose. A routing tree that can't tell how sure the
-model is should hand the case to a person, not pick a branch that happens to match. The trace
-shows why: the model chose `billing`, and the verdict at the first level is `ambiguous` with the
+Every ticket goes to review. The trace shows why: the model chose `billing`, and the verdict at the first level is `ambiguous` with the
 reason `no-confidence`. If you're on one of those models and want to branch on the bare answer,
 run an evaluator and follow it with a plain
 [`router`](/docs/fundamentals/blocks#router--runtime-dispatch) that reads `answers.team.choice`.
-You're making that call in your own code, where it's visible.
 
 ## Step 3: let the skill activator use an evaluator
 
@@ -205,11 +224,18 @@ keywords: [outage]
 ```
 
 ```ts title="src/activate.ts"
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { EvaluationModel } from "@flow-state-dev/core";
 import {
   createSkillActivator,
   readSkillsDirectory,
   skillEvaluator,
 } from "@flow-state-dev/orchestration";
+
+const skillsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "skills");
+
+const { skills: initialSkills, errors } = await readSkillsDirectory(skillsDir);
 
 export function skillActivator(model?: string | EvaluationModel) {
   if (model === undefined) return createSkillActivator({ initialSkills });
@@ -224,14 +250,14 @@ export function skillActivator(model?: string | EvaluationModel) {
 fits the message, or none? If you'd rather build the evaluator yourself, give it
 `skillQuestions`.
 
-Slash commands and keywords still win when they match. Otherwise the model's pick is final. A
+Slash commands and keywords win when they match. Otherwise the model's pick is final. A
 skill it picks activates, and "no skill" activates nothing. The activator doesn't compare the
 pick's confidence to a threshold, so the same code works on a model that reports none. An
 evaluator error fails the activator, the same way a failed default classifier does, and it
 doesn't fall back to that classifier. If you'd rather the turn go on without a skill, wrap the
 activator in [`.rescue`](/docs/sequencers/composing-blocks#rescue--catch-errors-route-to-recovery).
-Leave the option out and activation works exactly as it does without one: the example's
-`skillActivator()` with no model builds no evaluator at all. See
+Leave `evaluator` out and tier 3 uses the default classifier. The example's `skillActivator()`
+with no model does that. See
 [Activation paths](/docs/skills/activation#tier-3-with-an-evaluator).
 
 ```bash

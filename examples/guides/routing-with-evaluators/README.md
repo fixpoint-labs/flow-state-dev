@@ -29,7 +29,7 @@ config in the current directory only.
 |---|---|---|
 | `classify` | `AI_GATEWAY_API_KEY` | Typed answers, with Jev's confidence on the choice and the score, and none on the boolean |
 | `route` | `AI_GATEWAY_API_KEY` | A clear, urgent billing ticket lands on `billing-urgent`; one Jev isn't sure about lands on `review` |
-| `routeWithoutConfidence` | `OPENAI_API_KEY`, or `AI_GATEWAY_API_KEY` | **Review, every time.** OpenAI's evaluation model reports no confidence, so no edge opens. That is the point of this action |
+| `routeWithoutConfidence` | `OPENAI_API_KEY`, or `AI_GATEWAY_API_KEY` | **Review, every time.** OpenAI's evaluation model reports no confidence, so no edge opens |
 | `activate` | `AI_GATEWAY_API_KEY` | A slash command or keyword wins first; otherwise the skill whose description fits, or none when the model answers "no skill". An evaluator error fails the action |
 
 ```bash

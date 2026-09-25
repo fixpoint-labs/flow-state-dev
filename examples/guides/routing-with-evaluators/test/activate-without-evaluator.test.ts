@@ -25,7 +25,7 @@ const { evaluator } = await import("@flow-state-dev/core");
 const { skillActivator } = await import("../src/activate");
 
 describe("the activator with no evaluator", () => {
-  it("builds no evaluator and resolves no evaluation model, and keywords still activate", async () => {
+  it("builds no evaluator and resolves no evaluation model, and slash commands and keywords still activate", async () => {
     vi.mocked(skillEvaluator).mockClear();
     vi.mocked(evaluator).mockClear();
 
@@ -49,24 +49,33 @@ describe("the activator with no evaluator", () => {
         },
       },
     })();
-    const result = await runAction({
-      orgId: DEFAULT_ORG_ID,
-      flow,
-      actionName: "run",
-      input: { message: "is this an outage? nothing loads" },
-      requestId: "req_no_evaluator",
-      userId: "test-user",
-      sessionId: "session_no_evaluator",
-      stores: createInMemoryStores(),
-      runtimeConfig: { modelResolver: resolver },
-    });
 
-    expect(result.error).toBeUndefined();
-    const writes = (result.items as Array<Record<string, unknown>>).filter(
-      (i) => i.type === "state_change" && i.scope === "session",
-    );
-    const active = writes.flatMap((i) => (i.delta as { activeSkills?: Array<{ name: string }> }).activeSkills ?? []);
-    expect(active.map((s) => s.name)).toEqual(["outage-status"]);
+    const turns = [
+      { message: "is this an outage? nothing loads", expect: { name: "outage-status", source: "keyword" } },
+      { message: "/plan-change move us to yearly billing", expect: { name: "plan-change", source: "slash" } },
+    ];
+    for (const [n, turn] of turns.entries()) {
+      const result = await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow,
+        actionName: "run",
+        input: { message: turn.message },
+        requestId: `req_no_evaluator_${n}`,
+        userId: "test-user",
+        sessionId: `session_no_evaluator_${n}`,
+        stores: createInMemoryStores(),
+        runtimeConfig: { modelResolver: resolver },
+      });
+
+      expect(result.error).toBeUndefined();
+      const writes = (result.items as Array<Record<string, unknown>>).filter(
+        (i) => i.type === "state_change" && i.scope === "session",
+      );
+      const active = writes.flatMap(
+        (i) => (i.delta as { activeSkills?: Array<{ name: string; source?: string }> }).activeSkills ?? [],
+      );
+      expect(active.map((s) => ({ name: s.name, source: s.source }))).toEqual([turn.expect]);
+    }
     expect(resolveEvaluationModel).not.toHaveBeenCalled();
     expect(skillEvaluator).not.toHaveBeenCalled();
     expect(evaluator).not.toHaveBeenCalled();

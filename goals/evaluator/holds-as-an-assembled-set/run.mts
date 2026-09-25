@@ -14,9 +14,10 @@
  * Every failure line starts with its leg letter. The run is FAIL until every
  * leg is wired and green; this issue's bar is no `[a]` to `[d]` line.
  *
- * Retries: only a provider-unavailable error on a model call is retried, up
- * to `goalAttempts()` times, and each retry is printed and counted in the
- * evidence. A wrong answer is never retried.
+ * Nothing retries. A provider-unavailable error fails its leg as
+ * `provider unavailable`, a refused credential as `blocked: credential
+ * rejected`, so neither reads as a wrong answer. Re-running is a manual
+ * call, and every run goes in goal.md's verdict log.
  *
  * Run: pnpm tsx goals/evaluator/holds-as-an-assembled-set/run.mts
  * Control: GOAL_CONTROL=fake-confidence (must FAIL leg c, and only leg c)
@@ -30,7 +31,6 @@ import { classifyTicket } from "../../../examples/guides/routing-with-evaluators
 import {
   ROUTING_WITH_EVALUATORS,
   fail as bail,
-  goalAttempts,
   goalTmpDir,
   loadFixture,
   readCapture,
@@ -58,19 +58,23 @@ if (CONTROL !== undefined && CONTROL !== "fake-confidence") {
 }
 const CONTROL_CONFIG = fileURLToPath(new URL("./control.fsdev.config.ts", import.meta.url));
 const TMP = goalTmpDir("evaluator-assembled");
-const ATTEMPTS = goalAttempts(3);
 const HAS_GATEWAY = Boolean(process.env.AI_GATEWAY_API_KEY);
 const HAS_NO_CONFIDENCE_MODEL = HAS_GATEWAY || Boolean(process.env.OPENAI_API_KEY);
 
-/** An error a provider returns when it can't serve the call right now. Retried. */
+/** An error a provider returns when it can't serve the call right now. Fails the leg, named as such. */
 const PROVIDER_UNAVAILABLE = /temporarily unavailable|service unavailable|\b503\b|overloaded/i;
-/** A credential the provider refused. The leg is blocked, never skipped. */
-const CREDENTIAL_REJECTED = /\b401\b|\b403\b|unauthori[sz]ed|invalid api key|authentication/i;
+/**
+ * A credential the provider refused. The leg is blocked, never skipped. The
+ * capture carries no HTTP status (the engine flattens provider errors to a
+ * message), so a status is used when one is present and the providers'
+ * rejected-key wording otherwise: the gateway's "authentication failed" and
+ * OpenAI's "Incorrect API key provided".
+ */
+const CREDENTIAL_REJECTED = /\b401\b|\b403\b|unauthori[sz]ed|invalid api key|incorrect api key|authentication failed/i;
 
-const retries: string[] = [];
 let seq = 0;
 
-type Run = { output: unknown; items: CapturedItem[]; error?: string };
+type Run = { output: unknown; items: CapturedItem[]; error?: string; status?: number };
 
 function errorText(error: unknown): string {
   if (typeof error === "string") return error;
@@ -78,38 +82,39 @@ function errorText(error: unknown): string {
   return typeof message === "string" ? message : JSON.stringify(error);
 }
 
-/** One `fsdev run` of the example, retried only on a provider-unavailable error. */
-function drive(leg: string, action: string, message: string, config?: string): Run {
-  for (let attempt = 1; ; attempt++) {
-    const capture = join(TMP, `${leg}-${++seq}.json`);
-    const exit = runFsdev({
-      app: ROUTING_WITH_EVALUATORS,
-      flow: "routing-with-evaluators",
-      action,
-      input: { message },
-      capture,
-      quiet: true,
-      silent: true,
-      ...(config === undefined ? {} : { config }),
-    });
-    const run: Run = existsSync(capture)
-      ? (() => {
-          const parsed = readCapture(capture);
-          return {
-            output: parsed.result.output,
-            items: parsed.items,
-            ...(parsed.result.success === false ? { error: errorText(parsed.result.error) } : {}),
-          };
-        })()
-      : { output: undefined, items: [], error: `fsdev exited ${exit} and wrote no capture` };
-    if (run.error !== undefined && PROVIDER_UNAVAILABLE.test(run.error) && attempt < ATTEMPTS) {
-      const line = `${leg} ${action} attempt ${attempt}/${ATTEMPTS}: ${run.error}`;
-      retries.push(line);
-      console.log(`[retry] ${line}`);
-      continue;
-    }
-    return run;
+/** An HTTP status on any error the run recorded (the result's or a trace row's), if one survived. */
+function errorStatus(errors: unknown[]): number | undefined {
+  for (const e of errors) {
+    const r = e as { status?: unknown; statusCode?: unknown } | undefined;
+    const n = typeof r?.statusCode === "number" ? r.statusCode : typeof r?.status === "number" ? r.status : undefined;
+    if (n !== undefined) return n;
   }
+  return undefined;
+}
+
+/** One `fsdev run` of the example. Never retried. */
+function drive(leg: string, action: string, message: string, config?: string): Run {
+  const capture = join(TMP, `${leg}-${++seq}.json`);
+  const exit = runFsdev({
+    app: ROUTING_WITH_EVALUATORS,
+    flow: "routing-with-evaluators",
+    action,
+    input: { message },
+    capture,
+    quiet: true,
+    silent: true,
+    ...(config === undefined ? {} : { config }),
+  });
+  if (!existsSync(capture)) return { output: undefined, items: [], error: `fsdev exited ${exit} and wrote no capture` };
+  const parsed = readCapture(capture);
+  if (parsed.result.success !== false) return { output: parsed.result.output, items: parsed.items };
+  const status = errorStatus([parsed.result.error, ...parsed.items.map((i) => i.error)]);
+  return {
+    output: parsed.result.output,
+    items: parsed.items,
+    error: errorText(parsed.result.error),
+    ...(status === undefined ? {} : { status }),
+  };
 }
 
 /** The block_trace rows of a run, with inline outputs unwrapped. */
@@ -141,10 +146,17 @@ await runGoal(async () => {
   const failures: string[] = [];
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
-  /** Report a run that errored: blocked on a refused credential, failed otherwise. */
+  /**
+   * Report a run that errored, naming the cause: a refused credential is
+   * blocked, a provider that couldn't serve the call is unavailable, anything
+   * else failed. None of them is retried.
+   */
   const errored = (leg: string, what: string, run: Run): boolean => {
     if (run.error === undefined) return false;
-    fail(leg, `${CREDENTIAL_REJECTED.test(run.error) ? "blocked: credential rejected" : "failed"}: ${what}: ${run.error}`);
+    const rejected = run.status === 401 || run.status === 403 || CREDENTIAL_REJECTED.test(run.error);
+    const unavailable = run.status === 503 || PROVIDER_UNAVAILABLE.test(run.error);
+    const cause = rejected ? "blocked: credential rejected" : unavailable ? "provider unavailable" : "failed";
+    fail(leg, `${cause} — ${what}: ${run.error}`);
     return true;
   };
 
@@ -300,8 +312,6 @@ await runGoal(async () => {
   // ---- (f) memory ----
   fail("f", "not yet wired — owned by FIX-1555");
 
-  if (retries.length > 0) evidence.push(`${retries.length} provider-unavailable retr${retries.length === 1 ? "y" : "ies"}: ${retries.join("; ")}`);
-  else evidence.push("no retries");
   if (failures.length > 0) console.log(`Evidence: ${evidence.join("; ")}`);
   return { failures, evidence: evidence.join("; ") };
 });
