@@ -538,8 +538,8 @@ whatever it selected under `capabilities:`. The kind maps those names against th
 the model that list and nothing else; `tools: []` means no tool. A worker with no `tools:` line can
 call the tools of every capability preset its own file selects under `capabilities:`, including a
 preset whose tools are a function built per turn. A preset the kind switches on by default gives
-its tools to no worker that didn't select it. Two selected presets that list different tools under
-one name are refused at the hire, naming the worker.
+its tools only to the workers that select it. Two selected presets that list different tools under
+one name are refused at the hire; the refusal names the worker, the tool, and both presets.
 
 A skill does not widen the grant: a skill's `allowed-tools` are validated against the catalog but
 never registered, and a skill's delegated workers are seated from the names the holding worker
@@ -601,8 +601,9 @@ Each of these fails quietly if you skip it:
 what it remembers as injected context. Both are on by default, and a preset on by default gives its
 tools only to a worker that selects it. For on-demand search, leave `recall` on and have the worker
 select it (`capabilities: { memory: [recall] }`) with no `tools:` line. A worker that writes a
-`tools:` line gets it through the catalog under the tool's own name
-(`catalog: { "memory/recall": mem.tool.recall() }`) and lists `memory/recall` in its `tools:`.
+`tools:` line gets it through the catalog (`catalog: { "memory/recall": mem.tool.recall() }`) and
+lists `memory/recall` in its `tools:`. The key has to match the tool's own name; a catalog key that
+doesn't is refused when the kind is built.
 
 Isolation is a decision for the whole kind: a roster is all-isolated or all-shared.
 

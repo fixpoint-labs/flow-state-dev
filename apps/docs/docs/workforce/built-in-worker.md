@@ -38,7 +38,7 @@ A worker names its tools by key in `tools:`, and each key is resolved against wh
 
 **Registering a name is not granting it.** Dropping a block into a worker's own folder makes the name resolvable for that worker and nothing more; until the file lists it, the model is never handed it. [Blocks a worker can call](./code-on-disk.md#blocks-a-worker-can-call) covers where a folder may sit and the two rules that keep a registered name honest.
 
-A written `tools:` list is the whole of what a worker can call. With no list, a worker can call the tools of the presets it picked in [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool), and nothing else. A capability you attach through [`defineAgentWorkerFlow`'s `uses`](#configuring-the-kind) can carry tools of its own, and a preset the kind switches on gives its tools to no worker that didn't pick it. Memory is the case you meet first. Its `recall` and `connect` presets are on by default, and a worker that picked nothing and named no tools reaches the model with no tools. To give a worker one of them, pick the preset in its `capabilities:`, or put the tool in the catalog and let the worker name it in `tools:`.
+A written `tools:` list is the whole of what a worker can call. With no list, a worker can call the tools of the presets it selected in [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool), and nothing else. A capability you attach through [`defineAgentWorkerFlow`'s `uses`](#configuring-the-kind) can carry tools of its own, and a preset the kind switches on gives its tools only to the workers that select it. Memory is the case you meet first. Its `recall` and `connect` presets are on by default, and a worker that selected nothing and named no tools reaches the model with no tools. To give a worker one of them, select the preset in its `capabilities:`, or put the tool in the catalog and let the worker name it in `tools:`.
 
 Everything else a capability brings is unaffected. Context injection, storage, and helpers arrive whatever `tools:` says, which is what the memory recipe [below](#giving-workers-memory) runs on: the worker reads what it remembers each turn and calls nothing to get it.
 
@@ -48,7 +48,7 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 - **The delegation controls**, when a skill the worker holds declares `agents:`. Activating that skill puts the task board's eight tools and `runBoard` on the worker, so it can create tasks and run them.
 - **The controls a capability preset declares**, when the worker selects that preset in its [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) key. A preset's `controlTools` reach the worker even with `tools: []`.
 
-A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's catalog tools, so a worker with `tools: []` reaches nothing through a delegate, and tools a worker got by picking a preset stay with that worker. It can command the board, but the workers it commands are fenced. A block from a worker's own folder does not travel that way either: a delegated worker is its own seat, with its own folder and its own list.
+A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's catalog tools, so a worker with `tools: []` reaches nothing through a delegate, and tools a worker got by selecting a preset stay with that worker. It can command the board, but the workers it commands are fenced. A block from a worker's own folder does not travel that way either: a delegated worker is its own seat, with its own folder and its own list.
 
 Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so what a `tools:` name is checked against is that kind's business. So is whether it declares `tools` at all.
 
@@ -186,7 +186,7 @@ const remembers = defineAgentWorkerFlow({
   uses: [
     mem.capability.presets({
       // Memory's two tools, off for the whole kind, so no worker can
-      // pick them. Leave them on and a worker picks them in `capabilities:`.
+      // select them. Leave them on and a worker selects them in `capabilities:`.
       recall: false,
       connect: false,
       // What the worker reads back each turn. Both are off by default.
@@ -215,7 +215,7 @@ Tell a worker something in one conversation and it knows it in the next.
 
 **Turn `semantic` and `episodic` on.** They are off by default. Skip them and the durable stores fill up and are never read back, which is the failure that looks fine until someone starts a second conversation.
 
-**`recall` and `connect` reach only the workers that pick them.** They are memory's two tools: [`recall`](../memory/recall-tool.md) searches stored memory on demand, `connect` walks the relations between entities. A worker gets them by picking them, and it can pick them only if the kind leaves them on. To give a worker on-demand search, leave `recall` on (drop `recall: false` from the recipe) and let the worker pick it:
+**`recall` and `connect` reach only the workers that select them.** They are memory's two tools: [`recall`](../memory/recall-tool.md) searches stored memory on demand, `connect` walks the relations between entities. A worker gets them by selecting them, and it can select them only if the kind leaves them on. To give a worker on-demand search, leave `recall` on (drop `recall: false` from the recipe) and let the worker select it:
 
 ```md
 ---
@@ -224,7 +224,7 @@ capabilities:
 ---
 ```
 
-A worker that writes a `tools:` line has to name the tool there instead. For that, put it in the kind's catalog under the tool's own name, `memory/recall`:
+A worker that writes a `tools:` line has to name the tool there instead. For that, put it in the kind's catalog under the key `memory/recall`. The key has to match the tool's own name; a catalog key that doesn't is refused when the kind is built:
 
 ```ts
 const remembers = defineAgentWorkerFlow({

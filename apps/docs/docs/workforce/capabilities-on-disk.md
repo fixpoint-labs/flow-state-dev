@@ -155,7 +155,7 @@ The whole selection is checked when the roster is hired, so a mistake is a refus
 | a preset the app turned off where it installed the capability | A worker adds to what its kind carries and never widens past it. |
 | a preset on a capability that takes config | A capability declared with a `config` block is resolved once, where you install it, so its presets are yours to set. |
 | a preset that declares `resources`, a state schema, `model`, `providerOptions` or `caching` | Those have to exist before a request runs, so the preset is yours to turn on for the whole kind. |
-| two presets that list different tools under the same name | One name is one tool. The refusal names the tool and both presets; pick one of them. |
+| two presets that list different tools under the same name | One name is one tool. The refusal names the worker, the tool, and both presets; select one of them. |
 
 Every bad selection on a worker is reported, not just the first.
 
@@ -164,10 +164,10 @@ Every bad selection on a worker is reported, not just the first.
 - It does not find anything at run time. `fsdev gen` reads the tree; the framework never opens a file your app wrote.
 - It does not let a worker install a capability. A worker file picks among what the kind carries.
 - It does not let a worker take something away. Selecting only adds.
-- It does not pass on tools a worker didn't pick. A capability your app installs on the kind can switch presets on by default, the way memory switches on `recall`. Those presets' tools reach no worker unless its own file picks them.
-- It does not pass picked tools down to a delegate. When a worker hands work to another agent through a skill, that agent can call only tools the worker named in `tools:`.
+- It does not pass on tools a worker didn't select. A capability your app installs on the kind can switch presets on by default, the way memory switches on `recall`. Those presets give their tools only to the workers whose own file selects them.
+- It does not pass selected tools down to a delegate. When a worker hands work to another agent through a skill, that agent can call only tools the worker named in `tools:`.
 - It does not affect `.md` files. A `.md` file in a `resources/` folder is still read as a document.
 
-## Coming from an earlier version
+## Upgrading from @flow-state-dev/workforce 0.3 or earlier
 
 A worker that selected a tool-bearing preset and had no `tools:` line used to get the preset's context only. It now gets the tools too. To keep the old reach, add `tools: []` to its file. A worker that already had a `tools:` line is unchanged.
