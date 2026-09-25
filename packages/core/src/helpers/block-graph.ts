@@ -19,10 +19,13 @@ import type { BlockDefinition } from "../types/block";
  * the function form is genuinely unknowable rather than merely inconvenient:
  * what it returns depends on runtime values that do not exist yet. That is why
  * `generator` re-walks what the function returned, once it has.
+ *
+ * Read off `staticTools`, never `config.tools`: `generator()` rewrites
+ * `config.tools` into one resolver whenever a `uses` capability contributes
+ * tools, so the authored array is only reliably there (FIX-1578).
  */
 function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
-  const tools = (block.config as { tools?: unknown }).tools;
-  return Array.isArray(tools) ? (tools as BlockDefinition[]) : [];
+  return block.staticTools ?? [];
 }
 
 /**

@@ -1315,9 +1315,12 @@ function normalizeFlowConfig(
   const internal = withFlowToolsEntries(declaredInternal, tools);
   const declaredTasks = withFlowToolsEntries(declaredTaskEntries, tools);
 
-  // Enumerated once and shared by every collector below. Three separate
-  // walks was how a lifecycle observer's board could reach `runAction` while
-  // being invisible to the dispatch-target walk.
+  // Enumerated once by `actionBlocks` and walked by one `walkBlockGraph`, so
+  // no collector can see a different edge set (three hand-rolled walks was how
+  // a lifecycle observer's board could reach `runAction` while being invisible
+  // to the dispatch-target walk). The walk runs twice, from two roots: the
+  // entries as authored (dispatch targets, required flow config), then the
+  // entries after the task map is rebuilt behind its claim gates (resources).
   // Merged before collection, not after: `FlowInstanceOptions` can replace a
   // `request` lifecycle observer, and the instance returned below runs the
   // merged one. Collecting from `definition.*` would read the blocks the flow was

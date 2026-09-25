@@ -2754,6 +2754,10 @@ export function generator<
     (normalizedConfig as any).context = [...userArr, ...additions];
   }
 
+  // The authored array, captured before the rewrite below can turn `tools`
+  // into a resolver: the definition-time walk reads it off `staticTools`.
+  const authoredTools = normalizedConfig.tools;
+
   // -- Tools: single async resolver combining user tools + static caps + dynamic caps
   if (hasStaticTools || hasStaticControlTools || hasDynamic) {
     const userTools = normalizedConfig.tools;
@@ -2825,6 +2829,7 @@ export function generator<
     // (own `resources` + capability-injected resources, no descendants).
     ownDeclaredResources: declaredResources,
     resolvedCapabilities,
+    staticTools: Array.isArray(authoredTools) ? authoredTools : undefined,
     execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
       // model is guaranteed non-undefined at this point — the construction-

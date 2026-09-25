@@ -286,8 +286,9 @@ function assertDispatchersRoutable(
     }
 
     for (const child of block.childBlocks ?? []) queue.push(child);
-    const tools = (block.config as { tools?: unknown }).tools;
-    if (Array.isArray(tools)) queue.push(...(tools as BlockDefinition[]));
+    // A generator keeps its authored tools on `staticTools`: a capability that
+    // contributes tools turns `config.tools` into a resolver.
+    for (const tool of block.staticTools ?? []) queue.push(tool);
   }
 }
 

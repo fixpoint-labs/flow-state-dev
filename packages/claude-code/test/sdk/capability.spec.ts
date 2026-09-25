@@ -195,20 +195,21 @@ describe("createClaudeCodeAgentCapability — recordWork", () => {
     ]);
   });
 
-  it("registers NOTHING when the same block only rides in a generator's tools", () => {
+  it("registers NOTHING when the same block only arrives through a tools resolver", () => {
     // The contrast that makes the assertion above able to fail — and the reason
     // the capability declares the collections itself instead of forwarding the
-    // option and trusting the block it wraps. A generator is a leaf that bubbles
-    // none of its tools' rails, so a resource-declaring block sitting in `tools`
-    // contributes no declaration at all: the build succeeds, the run writes, and
-    // the read route answers 404.
+    // option and trusting the block it wraps. `defineFlow` collects resources
+    // from a generator's STATIC `tools` array, but a tool that only exists once
+    // a resolver runs (a function-valued `tools`, or a capability's `tools`
+    // preset) contributes no declaration at all: the build succeeds, the run
+    // writes, and the read route answers 404.
     const gen = generator({
       name: "coder",
       inputSchema: z.string(),
       outputSchema: z.string(),
       model: "demo-model",
       prompt: "do the thing",
-      tools: [claudeCodeAgent({ recordWork: true })],
+      tools: () => [claudeCodeAgent({ recordWork: true })],
     });
     const flow = defineFlow({
       kind: "forwarding-only-flow",
@@ -216,8 +217,8 @@ describe("createClaudeCodeAgentCapability — recordWork", () => {
     })() as unknown as { resources?: Record<string, unknown> };
 
     // The block DID declare them — so the missing piece is provably the
-    // tools-don't-bubble step, not a block that declared nothing. Without this
-    // half the assertion below would pass on a block that never declared.
+    // resolver edge, not a block that declared nothing. Without this half the
+    // assertion below would pass on a block that never declared.
     const declaring = claudeCodeAgent({ recordWork: true });
     expect(Object.keys(declaring.declaredResources ?? {})).toContain("observed-file-ops");
 

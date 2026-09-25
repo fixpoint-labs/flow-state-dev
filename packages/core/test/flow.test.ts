@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineFlow, generator, handler, sequencer } from "../src";
+import { defineCapability, defineFlow, generator, handler, sequencer } from "../src";
 import { defineResource } from "../src/types/resource";
 import { defineResourceCollection } from "../src/types/resource-collection";
 import { createMockContext, runForTest } from "./helpers";
@@ -723,6 +723,68 @@ describe("defineFlow", () => {
 
       expect(flow.resources).toEqual({
         artifacts: artifactsResource
+      });
+    });
+
+    // A capability that contributes a control tool turns the generator's
+    // `tools` into one async resolver. The authored array is still static,
+    // so its tools' resources must still be collected.
+    it("collects resources from a static tool when a capability also contributes tools", () => {
+      const tool = handler({
+        name: "tool-with-res",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const control = handler({ name: "control", execute: (v) => v });
+      const cap = defineCapability({
+        name: "control-bearing",
+        presets: { withControls: { controlTools: [control] }, default: ["withControls"] }
+      });
+      const chat = generator({
+        name: "chat",
+        model: "mock-model",
+        prompt: "p",
+        tools: [tool],
+        uses: [cap]
+      });
+
+      const flow = defineFlow({
+        kind: "tool-res-with-cap",
+        actions: {
+          run: { inputSchema: z.any(), block: chat }
+        }
+      });
+
+      expect(flow.resources).toEqual({
+        observations: observationsResource
+      });
+    });
+
+    // A dynamic `uses` entry rewrites `tools` the same way even when it
+    // resolves to nothing at run time.
+    it("collects resources from a static tool alongside a dynamic uses entry", () => {
+      const tool = handler({
+        name: "tool-with-res",
+        resources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const chat = generator({
+        name: "chat",
+        model: "mock-model",
+        prompt: "p",
+        tools: [tool],
+        uses: [() => []]
+      });
+
+      const flow = defineFlow({
+        kind: "tool-res-with-dynamic-uses",
+        actions: {
+          run: { inputSchema: z.any(), block: chat }
+        }
+      });
+
+      expect(flow.resources).toEqual({
+        observations: observationsResource
       });
     });
 

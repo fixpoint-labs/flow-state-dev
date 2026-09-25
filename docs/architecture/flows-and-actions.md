@@ -214,7 +214,7 @@ defineFlow({
 
 ### Automatic Resource Collection
 
-Blocks declare resource dependencies via `resources` (using `defineResource()` values). When `defineFlow` is called, it collects `declaredResources` from all action blocks and merges them into the flow's `resources` map. Flow-level declarations take priority — blocks bring defaults, and the flow can override them:
+Blocks declare resource dependencies via `resources` (using `defineResource()` values). When `defineFlow` is called, it collects `declaredResources` from every block reachable from its action blocks, including blocks reached only through a generator's static `tools` array, and merges them into the flow's `resources` map. Tools returned by a function-valued `tools` slot are resolved per call and are not collected. Flow-level declarations take priority — blocks bring defaults, and the flow can override them:
 
 ```ts
 // Block declares its resource dependency

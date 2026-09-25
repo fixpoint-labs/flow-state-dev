@@ -290,7 +290,7 @@ Sequencers automatically collect `declaredResources` from all child blocks added
 
 #### Flow-Level Resource Merge
 
-`defineFlow` collects `declaredResources` from every action block and merges them into the flow's flat `resources` map. Flow-level declarations take priority on dedup; the merge errors at build time when two definitions share an accessor key but are different references:
+`defineFlow` collects `declaredResources` from every block reachable from its action blocks — through composition and through a generator's static `tools` array, including when a `uses` capability also contributes tools — and merges them into the flow's flat `resources` map. Tools returned by a function-valued `tools` slot are resolved per call, so their declarations are not collected; declare those resources on the flow. Flow-level declarations take priority on dedup; the merge errors at build time when two definitions share an accessor key but are different references:
 
 ```ts
 const myFlow = defineFlow({
