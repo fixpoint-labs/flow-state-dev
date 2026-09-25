@@ -6,6 +6,8 @@ sidebar_position: 7
 
 Every generator block needs a model. The framework gives you multiple ways to specify one, from a single model string to a named intent that handles fallback across providers automatically.
 
+[Evaluator](/docs/fundamentals/blocks#evaluator) blocks take a model too, but a narrower kind: one model that supports evaluation, named by string or instance. They're covered in [Evaluation models](#evaluation-models).
+
 ## Model Strings
 
 The simplest form. A slash-separated provider and model ID:
@@ -437,7 +439,7 @@ generator({ name: "chat", model: "intent/chat", prompt: "..." });
 
 ## Evaluation models
 
-An evaluator needs a model that supports evaluation, which is a separate capability from generating text. The AI SDK exposes it as `evaluationModel(...)` on providers that have it.
+An [evaluator](/docs/fundamentals/blocks#evaluator) needs a model that supports evaluation, which is a separate capability from generating text. The AI SDK exposes it as `evaluationModel(...)` on providers that have it.
 
 Model strings resolve the way generator strings do. With the provider's package installed and its key set, the string goes to that provider directly. Otherwise it goes through a configured gateway. The difference is the door: the resolver asks for the provider's evaluation model, and if the provider or gateway has none, you get an error before anything is sent. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. With an older version installed, the error says to upgrade it.
 
