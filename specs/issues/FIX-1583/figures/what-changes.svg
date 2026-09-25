@@ -1,0 +1,66 @@
+<svg viewBox="0 0 940 340" role="img" aria-label="Two panels. Today: the app's own code holds all five pieces of index-time facets, copied from the example: the stored fields, the reaction with its three rules, the search and the reindex. After: the app writes its own fields and its evaluator block and makes one call; core's defineFacetedCollection holds the stored fields, the reaction's three rules, the search and the reindex, tested once. The model stays in the app." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-code { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-prose { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-gone { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .arr { stroke:var(--ink-2); stroke-width:1.3; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-c { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="340"/>
+
+  <g id="today">
+    <rect class="panel" x="12" y="12" width="410" height="316" rx="6"/>
+    <text class="t-lbl" x="28" y="36">TODAY · ALL OF IT IN THE APP, COPIED FROM THE EXAMPLE</text>
+    <rect class="n-gone" x="28" y="52" width="378" height="260" rx="5"/>
+    <text class="t-b" x="42" y="74">the app's own files</text>
+    <text class="t-g" x="42" y="92">each copy has to keep all three rules</text>
+    <rect class="n-box" x="42" y="104" width="350" height="30" rx="4"/>
+    <text class="t-s" x="54" y="123">1 · stored fields: facets, indexedAs</text>
+    <rect class="n-box" x="42" y="140" width="350" height="62" rx="4"/>
+    <text class="t-s" x="54" y="159">2 · the reaction on contentUpdated</text>
+    <text class="t-g" x="66" y="175">clear + stamp · classify beside the write</text>
+    <text class="t-g" x="66" y="191">store only if the token is still current</text>
+    <rect class="n-box" x="42" y="208" width="350" height="30" rx="4"/>
+    <text class="t-s" x="54" y="227">3 · the search, with minConfidence</text>
+    <rect class="n-box" x="42" y="244" width="350" height="30" rx="4"/>
+    <text class="t-s" x="54" y="263">4 · the reindex, for legacy rows</text>
+    <text class="t-s" x="42" y="298">5 · the evaluator and its model</text>
+  </g>
+
+  <path class="arr" d="M428,170 L456,170"/>
+  <path class="arr" d="M450,165 L456,170 L450,175"/>
+
+  <g id="after">
+    <rect class="panel" x="462" y="12" width="466" height="316" rx="6"/>
+    <text class="t-lbl" x="478" y="36">AFTER · ONE CALL</text>
+    <rect class="n-prose" x="478" y="52" width="434" height="62" rx="5"/>
+    <text class="t-b" x="492" y="74">the app writes</text>
+    <text class="t-s" x="492" y="92">its own fields · its evaluator block, its model</text>
+    <text class="t-s" x="492" y="106">defineFacetedCollection({ …your collection, evaluator })</text>
+    <path class="arr" d="M695,114 L695,134"/>
+    <path class="arr" d="M690,128 L695,134 L700,128"/>
+    <rect class="n-code" x="478" y="136" width="434" height="176" rx="5"/>
+    <text class="t-b" x="492" y="158">core definer · tested once</text>
+    <text class="t-c" x="492" y="178">collection · your fields + facets, indexedAs</text>
+    <text class="t-c" x="492" y="196">its reaction · the three rules, built in</text>
+    <text class="t-c" x="492" y="214">search · typed options, no model call</text>
+    <text class="t-c" x="492" y="232">reindex · unfaceted rows, or all with force</text>
+    <text class="t-c" x="492" y="250">resources · to register it with the flow</text>
+    <text class="t-s" x="492" y="280">refused when built: client body edits, parameterized</text>
+    <text class="t-s" x="492" y="296">keys, a second body reaction, dynamic questions</text>
+  </g>
+</svg>
