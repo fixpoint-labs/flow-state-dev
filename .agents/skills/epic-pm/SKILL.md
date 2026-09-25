@@ -53,8 +53,10 @@ guess at for the rest of the run:
 measure answers *is it working* at every report. And line 3 is scoreable, so it is gameable —
 score the method, not the number.
 
-They live in **the epic-spec's `SPEC.md`**, between the teams table and *what's in the box*,
-written by `epic-agent`, never by you
+They live in **the epic-spec's `SPEC.md`**, written by `epic-agent`, never by you. **Outcome**
+and **Proof** are the goal sentence and *how we verify* in its *The goal, and how we'll know
+it's met* section, which every epic carries; the other three sit between the teams table and
+*what's in the box*
 ([`epic-spec-template.md`](../../../docs/contributing/epic-spec-template.md) → `SPEC.md`). You keep a
 verbatim copy in `.orchestration/epic.md`: you may not read the epic-spec (token discipline), and
 every call you absorb below is tested against these five lines, every wake. Refresh the copy when
