@@ -235,7 +235,7 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/fire \
 
 It refuses a seat id this organization never hired with `This organization hired no seat "support.ada".` Otherwise it deletes the roster row, then calls your `unregister` on the address, and `released` is what that returned. If `kindAt` reports a different kind at the address than the row names, the row is still deleted but the address stays registered and `released` is `false`. Without `kindAt`, `fire` releases whatever holds the address, the same as the [hand-written fire](#firing-a-seat).
 
-The row is gone straight away and the address stops answering **on the process that handled the request**. Work already running finishes and is saved. Nothing is cancelled and nothing is truncated.
+The row is gone straight away. When `released` is `true`, the address also stops answering **on the process that handled the request**; when it is `false`, whatever holds the address keeps answering. Work already running finishes and is saved. Nothing is cancelled and nothing is truncated.
 
 Firing removes the seat, not its history. Sessions, state and resources it wrote are left alone. If you want those gone, delete them yourself.
 
