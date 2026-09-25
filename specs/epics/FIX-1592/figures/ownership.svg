@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 370" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: seven cross-cutting rules by three issues. FIX-1585 builds the transcript expose line, which FIX-1589 consumes, and decides the kind-to-action map, which FIX-1589 consumes. FIX-1589 builds the model-backed answer, decides the one producer that FIX-1591 consumes, and builds the real-model goal. FIX-1591 builds the board verbs and retires the unattended-board demo. Every rule has exactly one owner.">
+<svg viewBox="0 0 940 410" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: eight cross-cutting rules by four issues. FIX-1585 builds the kept message and decides the kind-to-action map and the scripted model. FIX-1589 builds the clerk's model answer and consumes the map and the scripted model. FIX-1590 consumes both, builds the wake of member agent seats and decides the rule that a post a seat wrote wakes no seat, which FIX-1594 consumes. FIX-1594 consumes the scripted model and builds the seat's post, authored as itself, and its line in the channel. Every rule has exactly one owner.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -21,51 +21,60 @@
     .t-dec { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
     .t-con { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="370"/>
+  <rect class="bg" x="0" y="0" width="940" height="410"/>
   <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#183; ONE OWNER PER RULE</text>
   <g id="columns">
     <text class="t-col" x="400" y="46">FIX-1585</text><text class="t-sub" x="400" y="60">talk from the page</text>
-    <text class="t-col" x="530" y="46">FIX-1589</text><text class="t-sub" x="530" y="60">the clerk</text>
-    <text class="t-col" x="660" y="46">FIX-1591</text><text class="t-sub" x="660" y="60">the boards work</text>
+    <text class="t-col" x="530" y="46">FIX-1589</text><text class="t-sub" x="530" y="60">the clerk answers</text>
+    <text class="t-col" x="660" y="46">FIX-1590</text><text class="t-sub" x="660" y="60">a post reaches agents</text>
+    <text class="t-col" x="790" y="46">FIX-1594</text><text class="t-sub" x="790" y="60">an agent replies</text>
     <path class="grid" d="M16 70 L924 70"/>
   </g>
   <g id="r1">
-    <text class="t-row" x="16" y="94">ER-7 &#183; the one package line: transcript expose</text>
+    <text class="t-row" x="16" y="94">ER-1 &#183; the seat keeps your message</text>
     <rect class="own" x="392" y="78" width="88" height="24" rx="3"/><text class="t-own" x="402" y="94">builds</text>
-    <text class="t-con" x="532" y="94">consumes</text>
     <path class="grid" d="M16 108 L924 108"/>
   </g>
   <g id="r2">
     <text class="t-row" x="16" y="132">ER-6 &#183; one kind-to-action map</text>
     <rect class="dec" x="392" y="116" width="88" height="24" rx="3"/><text class="t-dec" x="402" y="132">decides</text>
     <text class="t-con" x="532" y="132">consumes</text>
+    <text class="t-con" x="662" y="132">consumes</text>
     <path class="grid" d="M16 146 L924 146"/>
   </g>
   <g id="r3">
-    <text class="t-row" x="16" y="170">ER-1, ER-2 &#183; a model answers, or it files</text>
-    <rect class="own" x="522" y="154" width="88" height="24" rx="3"/><text class="t-own" x="532" y="170">builds</text>
+    <text class="t-row" x="16" y="170">ER-7 &#183; one scripted model</text>
+    <rect class="dec" x="392" y="154" width="88" height="24" rx="3"/><text class="t-dec" x="402" y="170">decides</text>
+    <text class="t-con" x="532" y="170">consumes</text>
+    <text class="t-con" x="662" y="170">consumes</text>
+    <text class="t-con" x="792" y="170">consumes</text>
     <path class="grid" d="M16 184 L924 184"/>
   </g>
   <g id="r4">
-    <text class="t-row" x="16" y="208">ER-8 &#183; one producer for both boards</text>
-    <rect class="dec" x="522" y="192" width="88" height="24" rx="3"/><text class="t-dec" x="532" y="208">decides</text>
-    <text class="t-con" x="662" y="208">consumes</text>
+    <text class="t-row" x="16" y="208">ER-20 &#183; the clerk answers with a model</text>
+    <rect class="own" x="522" y="192" width="88" height="24" rx="3"/><text class="t-own" x="532" y="208">builds</text>
     <path class="grid" d="M16 222 L924 222"/>
   </g>
   <g id="r5">
-    <text class="t-row" x="16" y="246">ER-18 &#183; the real-model goal</text>
-    <rect class="own" x="522" y="230" width="88" height="24" rx="3"/><text class="t-own" x="532" y="246">builds</text>
+    <text class="t-row" x="16" y="246">ER-2 &#183; a post runs each member agent once</text>
+    <rect class="own" x="652" y="230" width="88" height="24" rx="3"/><text class="t-own" x="662" y="246">builds</text>
     <path class="grid" d="M16 260 L924 260"/>
   </g>
-  <g id="r7">
-    <text class="t-row" x="16" y="284">ER-5 &#183; pick up escalations, run followups</text>
-    <rect class="own" x="652" y="268" width="88" height="24" rx="3"/><text class="t-own" x="662" y="284">builds</text>
+  <g id="r6">
+    <text class="t-row" x="16" y="284">ER-3 &#183; a seat&#8217;s post wakes no seat (D2)</text>
+    <rect class="dec" x="652" y="268" width="88" height="24" rx="3"/><text class="t-dec" x="662" y="284">decides</text>
+    <text class="t-con" x="792" y="284">consumes</text>
     <path class="grid" d="M16 298 L924 298"/>
   </g>
-  <g id="r8">
-    <text class="t-row" x="16" y="322">ER-14, ER-19, ER-20 &#183; the demo retires (D3)</text>
-    <rect class="own" x="652" y="306" width="88" height="24" rx="3"/><text class="t-own" x="662" y="322">builds</text>
+  <g id="r7">
+    <text class="t-row" x="16" y="322">ER-4 &#183; a seat posts as itself, to its channels</text>
+    <rect class="own" x="782" y="306" width="88" height="24" rx="3"/><text class="t-own" x="792" y="322">builds</text>
     <path class="grid" d="M16 336 L924 336"/>
   </g>
-  <text class="t-sub" x="16" y="358">builds: owns and ships it &#183; decides: owns the call another column builds on &#183; consumes: uses it as is, must not re-decide</text>
+  <g id="r8">
+    <text class="t-row" x="16" y="360">ER-5 &#183; its line shows under its name</text>
+    <rect class="own" x="782" y="344" width="88" height="24" rx="3"/><text class="t-own" x="792" y="360">builds</text>
+    <path class="grid" d="M16 374 L924 374"/>
+  </g>
+  <text class="t-sub" x="16" y="394">builds: owns and ships it &#183; decides: owns the call another column builds on &#183; consumes: uses it as is, must not re-decide</text>
 </svg>

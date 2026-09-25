@@ -1,102 +1,134 @@
-# FIX-1592 · Kitchen-sink: a support desk you can use from the browser
+# FIX-1592 · Kitchen-sink: talk to a seat, a channel, and back
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 3 issues · Workforce: Layer 2 Abstraction · Goal 1, validate through real usage
+Epic · 4 issues · Workforce: Layer 2 Abstraction · Goal 1, validate through real usage
 ([`docs/objectives.md`](../../../docs/objectives.md)) ·
-[FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592)
+[FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592) · re-scoped by the owner on
+2026-09-25; the first version was [#2265](https://github.com/fixpoint-labs/flow-state-dev/pull/2265)
+([EVOLUTION.md](EVOLUTION.md))
 
-## Three people, before and after
+## Four people, before and after
 
 | Someone who… | Today | After this epic |
 |---|---|---|
-| **opens `support.desk` or a seat in kitchen-sink** | Reads a read-only panel. The only way to talk to the team is the CLI or a raw HTTP call | Types into the panel. A channel post lands in the transcript; a note to a seat gets its reply in that conversation |
-| **asks the front desk (`support.ada`) something** | Can't from the page. From the CLI, gets their own words back with a desk name attached | Gets an answer from a model, or sees the note filed as a row on the desk's `followups` or `escalations` board |
-| **looks at the desk's boards** | `followups` is drained by `support.wren`, but nothing files a row. `escalations` is for "work a person picks up", and nobody can | Rows arrive from the clerk. A person picks up an `escalations` row from the board panel, and can run the `followups` drain from there |
-
-## How we'll know
-
-| | |
-|---|---|
-| **Outcome** | Someone opening kitchen-sink can talk to the support desk from the browser and get a real answer, or see their request filed as work a seat picks up |
-| **Proof** | FIX-1589's browser goal check: a note to `support.ada` gets a model-backed answer, or lands on the `followups` board and `support.wren` drains it. FIX-1585's browser checks: a post to `support.desk` is seen in that stream, and a seat asked a question has its reply seen. FIX-1591's browser goal check: a person picks up an `escalations` row from the board panel ([ER-17](BUSINESS-RULES.md#the-proof)) |
-| **Lead measure** | Goal-proven child issues, named off the status table. **None today** |
-| **Not doing** | A post that wakes member seats ([FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590), cut to a follow-on, [D1](DECISIONS.md#d1)): the notify stub still names each member and wakes none · Assistant tools that post or ask · channel admin: create, delete, invite ([FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415)) · verified per-participant identity ([FIX-1493](https://linear.app/fixpoint-labs/issue/FIX-1493)) · any Layer 1 Channel, Notify or Dispatcher substrate |
-| **Kill line** | Model-backed answering needs a Workforce or Layer 1 change beyond [FIX-1585's D1](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-1585/specs/issues/FIX-1585/DECISIONS.md) expose line, or a deterministic browser check can't pass without a live model key. The one real-model goal ([D4](DECISIONS.md#d4)) needs a key by design and does not trip this |
-
-**What it closes of the objective's gap:** a sliver of the number. Goal 1 counts goals passing
-over goals defined; this set adds one real-model goal ([D4](DECISIONS.md#d4)) and amends two
-legs of another ([D3](DECISIONS.md#d3)), one goal of about 35. The number can't see the rest:
-the reference app's first seat that answers from a model, reachable by the person evaluating it.
+| **talks to an agent seat (`support.otto`) from the page** | Can't. From the CLI the seat runs, but nothing keeps what was asked | Types a message. The message and the seat's reply stay in that seat's conversation, across a reload |
+| **asks the desk clerk (`support.ada`) something** | Can't from the page. From the CLI it hands the note back word for word, with the desk's name on it | Gets a model's answer, or sees the note filed onto `followups` or `escalations` |
+| **posts to `support.desk`** | Can't from the page. From the CLI the post lands, and the notify stub names each member and runs none | Posts from the page. Each member agent seat (`support.iris`, `support.otto`) runs once on it |
+| **reads `support.desk` after posting** | Sees only what people posted | Sees a member agent's reply in the channel, under that seat's name, across a reload |
 
 ## Why now
 
-FIX-1585 makes seats reachable from the page. The day it ships, the reference app shows a
-support agent that parrots you ([FIX-1589](https://linear.app/fixpoint-labs/issue/FIX-1589)):
-worse than unreachable, because it looks like it works. The other gap, boards nobody fills,
-shows up the same day for the same reader.
+FIX-1585 makes seats reachable from the page. The day it ships, the clerk parrots the note back,
+an agent seat forgets the question, and a channel post runs nobody. The parrot is the worst of
+the three, so FIX-1589 runs first ([D1](DECISIONS.md#d1)).
+
+## The goal, and how we'll know it's met
+
+**In kitchen-sink, talking to a seat is a conversation with that agent, a post to a channel
+reaches each agent in it, and an agent that heard the post can answer back in that channel.**
+
+| Is it the right goal? | |
+|---|---|
+| **The real need** | Jake, 2026-09-25: *"A seat is a direct conversation. I should be able to talk to a seat using the normal agent flow that comes with workforce. A seat is just a specific agent with its own memory and its own identity. A channel is a way of talking to two or more agents, or one agent under a specific topic, work stream, or whatever. The system needs to show that if you talk to a channel, it sends it to the agents, and if you talk to the agents, then you're just talking to the agent. But the system also needs to show that if you talk to an agent through a channel, that the agent can respond back to that channel."* |
+| **Smaller, and rejected** | "Seats and channels are reachable from the page." FIX-1585 alone meets it while the clerk parrots and a post runs nobody. "A post reaches its agents" without FIX-1594 drops Jake's last sentence |
+| **Bigger, and not this epic's** | "A working support desk": boards drained and `escalations` served (FIX-1591, held), agents talking to each other (D2 reversed) |
+| **Not done if** | Every child is Done but the four checks never ran on one `main` commit · a check passes only with a key, or only from the CLI · the agent's channel reply wakes the other agent · the clerk's reply is a fixed string |
+
+```mermaid
+flowchart LR
+  A["kitchen-sink · production build · scripted model"] --> L1["leg a · talk to otto, then ada"]
+  A --> L2["leg b · post to support.desk"]
+  A --> L3["leg c · otto answers in the channel"]
+  L1 --> R["what the page shows, after a reload"]
+  L2 --> R
+  L3 --> R
+  R -->|"every leg's signal holds"| P["PASS · the epic's goal is met"]
+  C["control · today's main, or a child's named control"] -.-> R
+  R -.->|"under the control"| F["must FAIL · names its leg"]
+```
+
+The checks read the page after a reload, not what a flow returned. Each control must fail its
+own leg.
+
+| How we verify | |
+|---|---|
+| **Goal check** | No proof issue: each leg is its owner's browser goal check, all four run on one `main` commit at wrap ([ER-17](BUSINESS-RULES.md#the-proof)). **Leg a:** FIX-1585 (otto) and FIX-1589 (ada). **Leg b:** FIX-1590. **Leg c:** FIX-1594. Model: the scripted model, keyless ([D3](DECISIONS.md#d3)) |
+| **Signal** | **a:** otto shows the message and the reply after a reload; ada's reply is not the note and carries its scenario marker, so a model call made it. **b:** one post runs iris and otto once each, no other seat. **c:** otto's reply is a line in `support.desk` under its name, survives a reload, runs no seat |
+| **Input** | Text each child picks, with a scenario marker in it; a different text must pass too |
+| **Anti-game** | Don't assert on a reply's wording: the script wrote it. Don't assert on a flow's return value, a package test or a CLI run; none is what a person sees |
+| **Control that must fail** | Today's `main` fails every leg. Each child names a `GOAL_CONTROL`: the old echo fails leg a, the name-only notify stub leg b, dropping D2's author filter leg c |
+
+| | |
+|---|---|
+| **Lead measure** | Browser goal checks passing on `main`, of the four above, named off the status table. **None today** |
+| **Not doing** | The boards' drain and the `escalations` call ([FIX-1591](https://linear.app/fixpoint-labs/issue/FIX-1591), held) · Assistant tools that post or ask · channel admin ([FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415)) · verified identity ([FIX-1493](https://linear.app/fixpoint-labs/issue/FIX-1493)) · any Layer 1 channel, notify or dispatch substrate · live updates of other people's posts |
+| **Kill line** | A path needs a change in core or engine, or one of the four browser checks can't pass without a live model key |
+
+**What it closes of the objective's gap:** none of the number. It is the reference app's first
+browser use of Workforce's three ways of talking.
 
 ## What's in the box
 
-![What's in the box. In the box, shipped in kitchen-sink: talk from the page (FIX-1585), a clerk that answers from a model or files to a board (FIX-1589), and a board panel where a person picks up an escalations row and runs the followups drain (FIX-1591). The fence: every browser verb is an action a flow already declares, and the only package change is FIX-1585's transcript expose line. Composed in by the app: the model, the one kind-to-action map, the notify stub unchanged. Replaced in one line: the model, a kind's answering action. Not built: a post that wakes member seats (FIX-1590, a follow-on), Assistant tools that post or ask, channel admin, verified identity, Layer 1 substrate, a kitchen-sink-only messaging API, live updates of other people's posts.](figures/end-state.svg)
+![What's in the box: talk to a seat (FIX-1585, FIX-1589), a post reaches its agents (FIX-1590), an agent replies in the channel (FIX-1594); fenced so Workforce changes only where a path needs them and a seat's post wakes no seat; not built: the boards' drain, the escalations call, channel admin, verified identity](figures/end-state.svg)
 
-Everything in the box is kitchen-sink. The fence keeps it a reference, not a fork: the page
-calls actions the flows already declare, and the framework gains one line.
+The three paths are Workforce's own. Kitchen-sink is where a person first sees them work.
 
 ## The set · as of 2026-09-25
 
-A dated snapshot. Live state is Linear and the implementation PRs. All three are Features.
+A dated snapshot. Live state is Linear and the implementation PRs. All four are Features.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1585](https://linear.app/fixpoint-labs/issue/FIX-1585) · talk from the page | Channel transcript and composer; seat composer through the kind's one answering action (its D3 map) | Without it nothing below is reachable from a browser | In Spec Review · spec [#2258](https://github.com/fixpoint-labs/flow-state-dev/pull/2258) |
-| [FIX-1589](https://linear.app/fixpoint-labs/issue/FIX-1589) · the clerk answers | `desk-clerk`'s `answer` calls a model and decides: answer, or file the note to `followups` or `escalations` through the channel's `fileTask` | The outcome's "real answer", and the boards' only producer ([D2](DECISIONS.md#d2)) | Backlog · after FIX-1585 |
-| [FIX-1591](https://linear.app/fixpoint-labs/issue/FIX-1591) · the boards work | A person picks up an `escalations` row from the board panel; the `followups` drain runs from the board | The outcome's "filed as work a seat picks up", and the half of the boards a person owns ([D3](DECISIONS.md#d3)) | Backlog · after FIX-1589 |
+| [FIX-1585](https://linear.app/fixpoint-labs/issue/FIX-1585) · talk from the page | Channel and seat composers; the agent seat keeps the person's message | Path one; nothing below is reachable without it | In Spec Review · spec [#2258](https://github.com/fixpoint-labs/flow-state-dev/pull/2258), round 2, must fold [ER-1](BUSINESS-RULES.md#what-a-person-gets) |
+| [FIX-1589](https://linear.app/fixpoint-labs/issue/FIX-1589) · the clerk answers | The clerk's `answer` calls a model, or files the note through the channel's `fileTask` | Path one for the clerk, which otherwise parrots | Backlog · after FIX-1585 |
+| [FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590) · a post reaches its agents | Each member agent seat runs once on a post with no seat author, through an internal receiver on the agent kind | Path two ([D1](DECISIONS.md#d1)) | Backlog · after FIX-1589 |
+| [FIX-1594](https://linear.app/fixpoint-labs/issue/FIX-1594) · an agent replies in the channel | An agent seat posts into a channel it belongs to, authored as itself | Path three | Backlog · after FIX-1590 |
 
-**0 done · 1 in spec review · 2 not started.** Wrap needs evidence from all three.
-[FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590) (posts wake seats) was cut in
-review: no Proof line read it, and its shape can't be built inside the fence. It stays related
-to FIX-1592 as a follow-on ([D1](DECISIONS.md#d1)).
+**0 done · 1 in spec review · 3 not started.** Wrap needs evidence from all four.
 
 ## How the issues flow into each other
 
 ```mermaid
 flowchart LR
-  A["FIX-1585 · talk from the page"] -->|"composers, the D3 map"| B["FIX-1589 · clerk answers or files"]
-  B -->|"rows on both boards"| D["FIX-1591 · the boards work"]
+  I["FIX-1459 · PACKAGE.md, another thread"] -.->|"frees agent-worker-flow.ts"| A
+  I -.->|"frees agent-worker-flow.ts"| B
+  A["FIX-1585 · talk from the page"] -->|"a reachable clerk, the D3 map, the scripted model"| D["FIX-1589 · the clerk answers"]
+  D -->|"an honest clerk first"| B["FIX-1590 · a post reaches its agents"]
+  A -->|"composers, the D3 map"| B
+  B -->|"a woken seat, the wake rule"| C["FIX-1594 · an agent replies in the channel"]
 ```
 
-Each edge is a hard dependency, wired in Linear as blocked-by. The set is one chain.
+Each solid edge is blocked-by on implementation, wired in Linear; specs may start early
+([ER-14](BUSINESS-RULES.md#how-the-set-is-run)). The dashed input gates the two builds that edit
+`agent-worker-flow.ts` ([ER-11](BUSINESS-RULES.md#what-no-child-may-do)). FIX-1591 is held and
+on no chain.
 
 ## What stays as it is
 
-- **The assistant**, its composer and its tools. Nothing here gives it a way to post or ask.
-- **The post contract and the notify rule**: a post naming no author reaches every member, and
-  nobody is told about their own post (FIX-1476 BR-16a, goal leg V14). The notify block stays the
-  stub that names each member and wakes none.
-- **The framework's unattended-board warning.** Its package test stays. Only kitchen-sink stops
-  demonstrating it ([D3](DECISIONS.md#d3)).
-- **Related, not children:** [FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590) (the cut follow-on), [FIX-1459](https://linear.app/fixpoint-labs/issue/FIX-1459),
-  [FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415),
-  [FIX-1493](https://linear.app/fixpoint-labs/issue/FIX-1493),
-  [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) ([PLAN.md](PLAN.md#not-children-deliberately)).
+- **The assistant**, its composer and its tools.
+- **The post contract**: a browser post names no author, and nobody is told about their own
+  post (FIX-1476 BR-16a, goal leg V14).
+- **A post does not run `desk-clerk` or `followup-runner` seats.** They keep the notify stub's
+  name-only line. `support.ada` answers with a model only when asked directly (FIX-1589).
+- **`escalations` stays unattended**, and the boot warning stays visible, as FIX-1476 shipped it.
+  FIX-1589 may file rows onto it; nobody drains them.
+- **Related, not children:** FIX-1591 (held), [FIX-1459](https://linear.app/fixpoint-labs/issue/FIX-1459) (a blocker, not a child),
+  FIX-1415, FIX-1493, [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) ([PLAN.md](PLAN.md#not-children-deliberately)).
 
 ## Sign off
 
-1. **[D1](DECISIONS.md#d1) · A usable desk is worth three issues, run 1585 → 1589 → 1591; a post
-   that wakes seats is cut to a follow-on.** If wrong: a cycle spent on the reference app's desk
-   while another subsystem's goal stays red, or a desk whose channel still wakes nobody. The Kill
-   line is the stop.
-2. **[D2](DECISIONS.md#d2) · One producer and one map: the clerk's filing is the only thing that
-   puts rows on the boards, and every seat action is looked up in FIX-1585's D3 map.** If wrong:
-   two children build two intakes, or two maps that drift the day a kind is added.
-3. **[D4](DECISIONS.md#d4) · The browser checks run keyless on kitchen-sink's deterministic
-   model; one real-model goal for the clerk is how the set counts toward the objective.** If
-   wrong: either CI needs a live key to go green, or the set proves wiring and never an answer.
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** a seat is a conversation,
+a post reaches its agents, an agent answers back in the channel, proved in a browser with no
+key. If wrong: the page still can't show Jake's last sentence, or we carry a leg nobody needed.
 
-Already decided by the owner on 2026-09-25, listed so it is signed with the rest:
-[D3](DECISIONS.md#d3), serving `escalations` retires the reference app's unattended-board demo.
-If wrong: a reader of kitchen-sink no longer sees that warning and learns it from the docs alone.
+1. **[D1](DECISIONS.md#d1) · The three ways of talking, with the clerk made honest first:
+   1585 → 1589 → 1590 → 1594, and Workforce changes where a path needs them.** The owner chose
+   this on 2026-09-25. If wrong: the talk loop waits one issue longer than it had to, while the
+   page shows a clerk that answers.
+2. **[D2](DECISIONS.md#d2) · A post a seat wrote wakes no seat.** Only a post with no seat author
+   wakes members. If wrong: two agents in one channel answer each other and never stop, or, the
+   other way, agents never hear each other. Reversible in one rule.
 
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The rules every child obeys:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). The order: [PLAN.md](PLAN.md).
