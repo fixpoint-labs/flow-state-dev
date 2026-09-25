@@ -20,7 +20,6 @@
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
-import { HIRED_ROSTER_PRIVATE_PATTERN } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /**
@@ -91,6 +90,21 @@ export type HiredSeatRow = z.infer<typeof hiredSeatRowSchema>;
 export const HIRED_ROSTER_PREFIX = "workforce/roster/";
 
 /**
+ * The pattern of the org roster, the collection a browser may read. One
+ * segment, so a nested `workforce/roster/~user/seat` key never matches it.
+ * Pinned; see the file header.
+ */
+export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
+
+/**
+ * The pattern of a user-owned roster row. Two segments, no browser read.
+ * `defineHiredRosterPrivateCollection` declares it owner-private on its
+ * `owner` parameter, which is what keeps each row with the user it belongs to.
+ * Pinned; see the file header.
+ */
+export const HIRED_ROSTER_PRIVATE_PATTERN = "workforce/roster/[owner]/[seat]";
+
+/**
  * `flowIsolation: false`, spelled out rather than left to the flow-level flag,
  * for exactly the reason the inventory spells it out: left undefined, an app
  * that sets `isolateOrgState` for an unrelated reason would give the hiring
@@ -121,7 +135,7 @@ const SHARED_ACROSS_FLOWS = false;
  */
 export function defineHiredRosterCollection() {
   return defineResourceCollection({
-    pattern: `${HIRED_ROSTER_PREFIX}*`,
+    pattern: HIRED_ROSTER_BROWSER_PATTERN,
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
     stateSchema: hiredSeatRowSchema,

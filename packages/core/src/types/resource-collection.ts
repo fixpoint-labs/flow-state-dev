@@ -21,11 +21,6 @@ export {
   validatePattern,
   encodeUserSegment,
   ownerSegment,
-  isHiredRosterPrivateCollection,
-  markHiredRosterPrivateCollection,
-  HIRED_ROSTER_BROWSER_PATTERN,
-  HIRED_ROSTER_PRIVATE_PATTERN,
-  HIRED_ROSTER_PRIVATE_BRAND,
 } from "./collection-patterns";
 
 // ---------------------------------------------------------------------------
@@ -54,8 +49,8 @@ export type CollectionHookContext = {
    * narrower overlapping collection owns the key, it is that collection's cell
    * even if a broader handle did the write. It differs from `scopeId`
    * whenever storage is partitioned below the bare identity — a flow-isolated
-   * collection (`<id>:<flow>`), a hired seat's (org, person) cell
-   * (`<person>:~org:<org>`), or an identity whose id needs escaping. Two
+   * collection (`<id>:<flow>`), an owner-pinned instance's per-(org, user)
+   * cell (`<user>:~org:<org>`), or an identity whose id needs escaping. Two
    * instances with the same key are the same row exactly when they share a
    * cell, so a hook mirroring rows elsewhere (a schedule index) keys on
    * `cell` + key. Opaque: store and compare it, never parse it.

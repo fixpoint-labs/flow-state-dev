@@ -598,19 +598,20 @@ export type FlowDefinition<
 };
 
 /**
- * Security pin for one hired flow instance.
+ * Security pin for one registered flow instance: the organization that owns
+ * it and, optionally, the user.
  *
- * `{ orgId, userId? }`, copied from the hire row at registration. It is not
- * parsed from the address and it is not the roster row itself. Absent means
- * the instance is shared: an app flow, a kind, a file-declared seat.
- * `userId` is present only for a user-owned hire.
+ * `{ orgId, userId? }`, handed to `register(flow, { pin })` by the code that
+ * registers the instance, from a record it trusts. It is never parsed from the
+ * instance's address. A caller outside the pin cannot see or run the instance.
+ * Absent means the instance is shared: an app flow, a kind.
  */
 export interface InstanceOwnerPin {
-  /** The organization the hire row belongs to. */
+  /** The organization that owns the instance. */
   orgId: string;
   /**
-   * The user the hire belongs to. Absent means every member of `orgId` may
-   * see the instance — a legacy row, or an org-visible hire.
+   * The user that owns the instance. Absent means every member of `orgId` may
+   * see it.
    */
   userId?: string;
 }
@@ -651,7 +652,7 @@ export type FlowInstanceOptions<
   isolateUserState?: boolean;
   isolateOrgState?: boolean;
   /**
-   * Owner pin copied from the hire row. Omitted, the instance stays shared.
+   * Owner pin for this instance. Omitted, the instance stays shared.
    * The registry's `register(flow, { pin })` is authoritative; this field is
    * how a reload hands the pin to that call. See {@link InstanceOwnerPin}.
    */
@@ -719,7 +720,7 @@ export type FlowInstance<
    */
   flowLevelResourceKeys: ReadonlySet<string>;
   /**
-   * Owner pin for a hired instance. Absent on shared flows. See {@link InstanceOwnerPin}.
+   * Owner pin for an owner-pinned instance. Absent on shared flows. See {@link InstanceOwnerPin}.
    */
   ownerPin?: InstanceOwnerPin;
 };

@@ -25,7 +25,7 @@
  * value is that every reader agrees on it.
  */
 
-import { encodeUserSegment, type InstanceOwnerPin } from "@flow-state-dev/core/types";
+import { encodeUserSegment, ownerSegment, type InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { validateSegment } from "../loader/segments";
 import type { WorkerManifest } from "../manifest";
 import { hiredSeatRowSchema, type HiredSeatRow } from "./collections";
@@ -149,7 +149,7 @@ export function hiredRosterStorageKey(row: {
   ownerUserId?: string | null;
 }): string {
   if (row.ownerUserId != null && row.ownerUserId.length > 0) {
-    return `~${encodeUserSegment(row.ownerUserId)}/${row.seatId}`;
+    return `${ownerSegment(row.ownerUserId)}/${row.seatId}`;
   }
   return row.seatId;
 }

@@ -21,6 +21,7 @@ import {
   reloadHiredSeats,
   toHiredSeatRow,
 } from "../src/roster";
+import { HIRED_ROSTER_BROWSER_PATTERN, HIRED_ROSTER_PRIVATE_PATTERN } from "../src";
 import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { hireWorkforce } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
@@ -169,6 +170,13 @@ describe("hire row pin", () => {
       );
       expect(armed.get("deep")).toBeUndefined();
     }
+  });
+
+  it("exports the roster patterns from the package root, and declares each collection on its own", () => {
+    // The patterns are Workforce's, not the framework's. Their values are
+    // pinned in the case above.
+    expect(defineHiredRosterCollection().pattern).toBe(HIRED_ROSTER_BROWSER_PATTERN);
+    expect(defineHiredRosterPrivateCollection().pattern).toBe(HIRED_ROSTER_PRIVATE_PATTERN);
   });
 
   it("declares the private writer owner-private, and refuses a hand-built copy of its pattern beside it", () => {
