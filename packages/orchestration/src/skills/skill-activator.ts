@@ -22,6 +22,11 @@
  * kitchen-sink thinking-style auto-router) live in their own pipelines and
  * compose alongside this one if a flow wants both.
  *
+ * Tier 3 can instead run on an app-supplied evaluator block (`evaluator`,
+ * usually `skillEvaluator(model)`): it picks one skill or none from the same
+ * catalog, and its answer is final. With an evaluator passed, the generator
+ * classifier is not built, so nothing can fall back to it.
+ *
  * Tier-3 LLM classification is opt-out via `enableLlmClassifier: false`, and
  * tier-2 keyword matching is opt-out via `enableKeywordMatch: false` — useful
  * in tests and in deployments that only want a subset of the tiers.
@@ -42,6 +47,10 @@ import {
   DEFAULT_CONFIDENCE_THRESHOLD,
   DEFAULT_MAX_SKILLS,
 } from "./skill-classifier-gen";
+import {
+  createSkillEvaluatorTier,
+  type AnyEvaluatorBlock,
+} from "./skill-evaluator-tier";
 import { createSkillKeywordMatch } from "./skill-keyword-match";
 import { createSkillSlashMatch } from "./skill-slash-match";
 import { skillActivatorStateSchema } from "./skill-activation-types";
@@ -100,6 +109,46 @@ export interface SkillActivatorOptions {
    * turn's own context.
    */
   initialSkills?: InitialSkillsSource;
+  /**
+   * Run tier 3 on this evaluator block instead of the generator classifier.
+   * Usually `skillEvaluator(model)`; a hand-built evaluator must ask
+   * `skillQuestions`. The activator hands it `{ message, skills }` (the same
+   * allowed, model-invocable, capped catalog the classifier would describe)
+   * and activates its pick: one skill, or none. The pick is final: no
+   * confidence threshold applies, and an evaluator error fails the activator
+   * rather than falling back to the classifier.
+   *
+   * Refused alongside `classifierModel`, `confidenceThreshold` or
+   * `enableLlmClassifier: false`, which configure the classifier this
+   * replaces.
+   */
+  evaluator?: AnyEvaluatorBlock;
+}
+
+/** Refuse, when the activator is built, an `evaluator` that can't be one or clashes with classifier options. */
+function checkEvaluatorOption(options: SkillActivatorOptions): void {
+  const block = options.evaluator as unknown;
+  if (block === undefined) return;
+  const kind = (block as { kind?: unknown } | null)?.kind;
+  if (kind !== "evaluator") {
+    const name = (block as { name?: unknown } | null)?.name;
+    throw new Error(
+      `createSkillActivator: "evaluator" must be an evaluator block` +
+        (typeof kind === "string" ? ` (got ${kind} "${String(name)}")` : "") +
+        ". Build one with skillEvaluator(model), or core's evaluator() with skillQuestions.",
+    );
+  }
+  const clashing = [
+    options.classifierModel !== undefined ? "classifierModel" : undefined,
+    options.confidenceThreshold !== undefined ? "confidenceThreshold" : undefined,
+    options.enableLlmClassifier === false ? "enableLlmClassifier: false" : undefined,
+  ].filter((o): o is string => o !== undefined);
+  if (clashing.length > 0) {
+    throw new Error(
+      `createSkillActivator: "evaluator" can't be combined with ${clashing.join(", ")}. ` +
+        "Those options configure the generator classifier, which the evaluator replaces.",
+    );
+  }
 }
 
 /**
@@ -111,6 +160,7 @@ export interface SkillActivatorOptions {
 export function createSkillActivator(
   options: SkillActivatorOptions = {},
 ): BlockDefinition<typeof activatorInputSchema, typeof activatorInputSchema> {
+  checkEvaluatorOption(options);
   const collectionKey = options.collectionKey ?? "skills";
   const enableLlm = options.enableLlmClassifier ?? true;
   const enableKeyword = options.enableKeywordMatch ?? true;
@@ -161,7 +211,21 @@ export function createSkillActivator(
     );
   }
 
-  if (enableLlm) {
+  if (options.evaluator !== undefined) {
+    // The generator classifier is not built on this path, so no failure or
+    // branch can reach it.
+    const evaluatorTier = createSkillEvaluatorTier({
+      collectionKey,
+      evaluator: options.evaluator,
+      maxSkillsInClassifier:
+        options.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS,
+      ...(allowed ? { allowed } : {}),
+    });
+    pipeline = pipeline.tapIf(
+      (_input, ctx) => !ctx.sequencer?.state.resolved,
+      evaluatorTier,
+    );
+  } else if (enableLlm) {
     const classifier = createSkillClassifierSequencer({
       collectionKey,
       classifierModel: options.classifierModel,

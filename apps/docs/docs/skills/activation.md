@@ -59,9 +59,52 @@ It reads `input.message`, decides what (if any) skills apply, and writes the mat
 
 1. **Slash match.** If the message starts with `/<skill-name>`, look up the skill in the collection and activate it. Deterministic, no LLM call. The argument tail (`/check-news quantum computing`) becomes `$ARGUMENTS` in the body.
 2. **Keyword scan.** Each skill's `keywords` frontmatter is matched as plain substrings against the lowercased message. Every skill whose keywords match activates with `source: "keyword"`. Local, no LLM call.
-3. **LLM classifier.** An `intent/utility` generator with structured output looks at the skill descriptions and decides whether any apply. Runs only when tiers 1 and 2 didn't resolve. Catalog-validated and confidence-gated (default 0.65).
+3. **Classifier.** Looks at the skill descriptions and decides whether any apply. Runs only when tiers 1 and 2 didn't resolve. By default an `intent/utility` generator with structured output does this; it can match several skills, each kept only above a confidence threshold (default 0.65). Pass an [evaluator](#tier-3-with-an-evaluator) and it picks instead.
 
 A turn that hits tier 1 or 2 pays no LLM cost for the classification. A turn that falls through pays one fast-model call.
+
+### Tier 3 with an evaluator
+
+An [evaluator](/docs/fundamentals/blocks#evaluator--the-questions-you-already-know) is a block that asks an evaluation model a question with known answers. Give the activator one, and tier 3 asks it: which of these skills fits the message, or none?
+
+```ts
+import { createSkillActivator, skillEvaluator } from "@flow-state-dev/orchestration";
+
+export const skillActivator = createSkillActivator({
+  initialSkills,
+  evaluator: skillEvaluator("typesafe-ai/jev"),
+});
+```
+
+`skillEvaluator` takes any model an evaluator accepts: a model string, or an evaluation model such as `openai.evaluationModel("gpt-5.4-mini")`. See [Evaluation models](/docs/fundamentals/models#evaluation-models).
+
+The activator offers the model the same skills the default classifier would see: the ones this binding allows, minus any with `disableModelInvocation`, up to `maxSkillsInClassifier`, each described by its `description` and `whenToUse`. It adds a "no skill" option, so the model never has to force a match. If the catalog is empty, no call is made.
+
+What you get back is one skill or none. The model's pick is final:
+
+- A pick activates that skill with `source: "classifier"`. Its `confidence` is the model's own number when the model reports one (Jev does), and missing when it doesn't (the OpenAI and Anthropic evaluation models don't). The activator doesn't compare it to a threshold, so `confidenceThreshold` is not accepted alongside `evaluator`.
+- "No skill" activates nothing.
+- An error fails the activator, the same way a failed default classifier does. It doesn't fall back to the default classifier. If you'd rather the turn go on without a skill, wrap the activator in [`.rescue`](/docs/sequencers/composing-blocks#rescue--catch-errors-route-to-recovery).
+
+Two things work differently from the default classifier. It activates at most one skill per turn; keyword matches can still activate several. And it can't pull an argument out of the message, so `input` is empty. A slash command is still how a user passes `$ARGUMENTS`.
+
+To name the block yourself, change what it evaluates, or give it `uses`, build it from `skillQuestions`:
+
+```ts
+import { evaluator } from "@flow-state-dev/core";
+import { skillQuestions } from "@flow-state-dev/orchestration";
+
+const pickSkill = evaluator({
+  name: "pick-skill",
+  model: "openai/gpt-5.4-mini",
+  state: (input) => input.message,
+  questions: skillQuestions,
+});
+
+createSkillActivator({ initialSkills, evaluator: pickSkill });
+```
+
+The activator passes the block `{ message, skills }` and reads its `skill` answer. A block that asks a different question fails the activator with an error that says so.
 
 ### Options
 
@@ -81,6 +124,10 @@ createSkillActivator({
   maxSkillsInClassifier: 20,
   // Skip tier 3 entirely (deterministic-only). Default true.
   enableLlmClassifier: true,
+  // Use an evaluator for tier 3 instead of the default classifier. Can't be
+  // combined with classifierModel, confidenceThreshold or enableLlmClassifier: false,
+  // so it's commented out in this list of every option.
+  // evaluator: skillEvaluator("typesafe-ai/jev"),
 });
 ```
 
