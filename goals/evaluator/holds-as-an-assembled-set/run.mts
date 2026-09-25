@@ -7,9 +7,10 @@
  * Legs (a), (c) and (d) drive the Routing with evaluators example through
  * `fsdev run`, on Jev through Vercel's AI Gateway and on OpenAI's evaluation
  * model. Leg (b) builds the example's classifier on a real text model and
- * expects the refusal. Legs (e) and (f) belong to sibling issues: each is one
- * placeholder line below, and its owner replaces that line with the leg's
- * assertions. Nothing else in this file has to change when they do.
+ * expects the refusal. Legs (e) and (f) belong to sibling issues: (f) calls
+ * memory's own check (`checkCapturesWithoutAnEvaluator`) on its own held-out
+ * fixture; (e) is one placeholder line until index-time facets lands, and its
+ * owner replaces that line the same way.
  *
  * Every failure line starts with its leg letter. The run is FAIL until every
  * leg is wired and green; this issue's bar is no `[a]` to `[d]` line.
@@ -28,7 +29,9 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { classifyTicket } from "../../../examples/guides/routing-with-evaluators/src/classify.ts";
+import { checkCapturesWithoutAnEvaluator } from "../../memory-evaluator-seam/captures-without-an-evaluator/check.mts";
 import {
+  DEFAULT_MODEL,
   ROUTING_WITH_EVALUATORS,
   fail as bail,
   goalTmpDir,
@@ -36,6 +39,7 @@ import {
   readCapture,
   runFsdev,
   runGoal,
+  stripIntentOverrides,
   type CapturedItem,
 } from "../../lib/index.mts";
 
@@ -309,8 +313,27 @@ await runGoal(async () => {
   // ---- (e) index-time facets ----
   fail("e", "not yet wired — owned by FIX-1557");
 
-  // ---- (f) memory ----
-  fail("f", "not yet wired — owned by FIX-1555");
+  // ---- (f) memory captures with no evaluator installed (FIX-1555's check, its fixture) ----
+  if (!HAS_NO_CONFIDENCE_MODEL) {
+    fail("f", "blocked: neither AI_GATEWAY_API_KEY nor OPENAI_API_KEY is set, so the observer model can't be reached");
+  } else {
+    // Memory's resolver declares no intents, and ambient intent pins make it
+    // throw. Every fsdev run above has finished, so stripping here changes none of them.
+    stripIntentOverrides();
+    const memory = loadFixture<{ turn: string }>(
+      new URL("../../memory-evaluator-seam/captures-without-an-evaluator/run.mts", import.meta.url).href,
+    );
+    const cause = (text: string, otherwise: string) =>
+      CREDENTIAL_REJECTED.test(text) ? "blocked: credential rejected" : PROVIDER_UNAVAILABLE.test(text) ? "provider unavailable" : otherwise;
+    try {
+      const leg = await checkCapturesWithoutAnEvaluator({ turn: memory.turn, model: DEFAULT_MODEL });
+      for (const line of leg.failures) fail("f", `${cause(line, "failed")} — ${line}`);
+      if (leg.failures.length === 0) evidence.push(`(f) ${leg.evidence}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      fail("f", `${cause(message, "failed")} — memory check threw: ${message}`);
+    }
+  }
 
   if (failures.length > 0) console.log(`Evidence: ${evidence.join("; ")}`);
   return { failures, evidence: evidence.join("; ") };
