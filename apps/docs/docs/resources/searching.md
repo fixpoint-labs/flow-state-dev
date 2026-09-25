@@ -77,7 +77,7 @@ Facets move the question to write time. When a document's body is written, an [e
 
 `defineFacetedCollection` defines a collection that does this for you. You bring the fields you'd store anyway and an evaluator that asks your questions. You get back the collection, a search block and a reindex block.
 
-Start with the questions. Each one is a `choice`, and its option keys are the values a search can ask for:
+Start with the questions. The search filters on choice questions: each `choice`'s option keys are the values a search can ask for.
 
 ```ts
 export const ticketQuestions = {
@@ -98,7 +98,11 @@ export function ticketsFlow(triage: TicketEvaluator) {
     evaluator: triage,
   });
 
-  // … a write action that calls writeContent on a ticket
+  const write = handler({
+    // … input and output schemas
+    resources: { tickets: tickets.collection },
+    // … creates the ticket and calls ref.writeContent(input.body)
+  });
 
   return defineFlow({
     kind: "index-time-facets",
@@ -121,15 +125,21 @@ const triage = evaluator({ name: "ticket-facets", model: "typesafe-ai/jev", ques
 
 `defineFacetedCollection` never picks a model. It reads the questions off the evaluator, so they have to be a fixed object rather than a function. The evaluator gets the document's body as its input.
 
-`name` is the key the collection is registered under, and the key your own blocks use for it: the write action above declares `resources: { tickets: tickets.collection }`. Pass `tickets.resources` to the flow so the collection is registered under that key however you use the search. It also carries any resources your evaluator declares, so they're available when the evaluator runs.
+`name` is the key the collection is registered under, and your own blocks declare it under the same key, as the write action does with `resources: { tickets: tickets.collection }`. Pass `tickets.resources` to `defineFlow` so the collection is registered under `name` however you use the search. It also carries any resources your evaluator declares, so they're available when the evaluator runs. Don't put another entry under `tickets` in the flow's own `resources`: it replaces the collection, and nothing gets indexed.
 
-Some shapes are refused when the collection is defined, each with the reason:
+If nothing is registered under `name`, or a different collection is, the first body write fails with an error that names `resources`. The body is already saved by then; only the turn fails.
+
+`defineFacetedCollection` throws, naming the problem, when given:
 
 - a key pattern with parameters, such as `[topic]/observations`. Use a wildcard pattern like `tickets/*`.
-- an evaluator whose questions are a function.
-- an evaluator that declares `flowConfigSchema`.
-- a `stateSchema` that already has `facets` or `indexedAs`, or a question with the id `minConfidence`.
-- your own `reactTo.contentUpdated`. The collection uses that binding. `created`, `stateUpdated` and `deleted` are yours.
+- `writable: false`.
+- `client.content.create` or `client.content.update`.
+- your own `reactTo.contentUpdated`. `created`, `stateUpdated` and `deleted` are yours.
+- a `stateSchema` that isn't a `z.object()`, or that already has `facets` or `indexedAs`.
+- a question with the id `minConfidence`.
+- a value that isn't an evaluator block, or an evaluator whose questions are a function.
+- an evaluator whose input schema rejects a string. Adapt the body with `connectInput`.
+- an evaluator that declares `flowConfigSchema`, a resource under `name`, or a single resource (not a collection) with `prefetchMode: "lazy"`.
 
 The [companion example](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/index-time-facets) has the whole setup, with tests on the mock evaluation model.
 
@@ -137,13 +147,11 @@ The [companion example](https://github.com/fixpoint-labs/flow-state-dev/tree/mai
 
 Every body write inside a flow turn indexes the same way, whether it comes from an action, a tool, or an agent writing content. The collection keeps two fields beside yours. `facets` holds the answers, keyed by question id, and `indexedAs` records which write they belong to.
 
-- **It clears the old facets first.** The body is already saved when indexing starts. If classifying the new body fails, the document has no facets and matches no facet search. It never matches on answers about text it no longer contains.
-- **It classifies on a [side chain](/docs/sequencers/composing-blocks#sidechain--fire-and-forget-background-tasks)**, background work that runs alongside the turn instead of inside it. A failed or refused model call shows up in the trace and doesn't fail the save. The side chain finishes before the turn ends, so the next turn's search sees the new facets.
-- **It stores only answers about the current body.** If the body is written again while the first classification is still running, the first answers are thrown away. The check and the write commit together on the memory, SQLite and Postgres stores. The filesystem store locks each record within one process only, so two processes writing the same directory can still interleave.
+- **It clears the old facets first.** The body is saved before indexing starts. If classifying the new body fails, the document has no facets, so it matches no facet search.
+- **It classifies on a [side chain](/docs/sequencers/composing-blocks#sidechain--fire-and-forget-background-tasks)**, background work that runs alongside the turn. A failed or refused call shows in the trace and doesn't fail the save; facets are in place when the turn ends.
+- **It stores only answers about the current body.** If the body is written again while the first classification is still running, the first answers are thrown away. On the memory, SQLite and Postgres stores that holds for any number of processes. On the filesystem store it holds within one process.
 
 Nothing retries. A document whose classification failed stays without facets until you reindex it.
-
-Storing facets is a state write, so it doesn't start another classification.
 
 ### Searching facets
 
@@ -165,13 +173,15 @@ On a [projected collection](/docs/resources/projected-collections), where your o
 
 ### Reindexing
 
-Documents get facets when their body is written inside a flow turn. `tickets.reindex` covers the rest: documents that existed before you added facets, documents whose classification failed, and, with `{ "force": true }`, every document after you change the questions. It returns the keys it classified as `{ "reindexed": [...] }`.
+Documents get facets when their body is written inside a flow turn. `tickets.reindex` covers the rest: documents that existed before you added facets, documents whose classification failed, and, with `{ "force": true }`, every document after you change the questions. It returns `{ "reindexed": [...], "failed": [...] }`: the keys it classified, and the keys whose classification failed. Failed documents keep no facets and aren't retried; run reindex again when the model is back.
 
-A faceted collection doesn't let clients create or edit bodies directly. Those edits run outside a flow turn, so nothing would reclassify them. Write bodies through an action instead. Clients can still read and delete.
+Clients can read and delete documents in a faceted collection, but can't create or edit their bodies. Write bodies through a flow action.
 
-If you already store facets with your own `contentUpdated` reaction in the same `facets` and `indexedAs` fields, switching keeps them. Delete both fields from your `stateSchema`, since the collection adds them, and replace the collection definition with `defineFacetedCollection`. Existing documents are found as before, with no reindex.
+If your text lives in state rather than the body, `defineFacetedCollection` doesn't fit. Bind `created` and `stateUpdated` yourself, with a `when` that checks the text fields changed.
 
-If your text lives in state rather than the body, `defineFacetedCollection` doesn't fit. Bind `created` and `stateUpdated` yourself, with a `when` that checks the text fields changed. The [source](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/core/src/types/faceted-collection.ts) shows the three rules above as code.
+### Moving an existing collection over
+
+If you already store facets with your own `contentUpdated` reaction, in fields named `facets` and `indexedAs`, switching keeps them. Delete both fields from your `stateSchema`, since the collection adds them, and replace the collection definition with `defineFacetedCollection`. Existing documents are found as before, with no reindex.
 
 ### Classifying the search instead
 

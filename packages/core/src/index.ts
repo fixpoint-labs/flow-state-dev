@@ -64,6 +64,7 @@ export {
 } from "./types/resource-collection";
 export { defineFacetedCollection } from "./types/faceted-collection";
 export type {
+  FacetedClientConfig,
   FacetedCollection,
   FacetedCollectionConfig,
   FacetedState,

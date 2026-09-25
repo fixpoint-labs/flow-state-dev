@@ -5,9 +5,15 @@
  */
 import type {
   BlockInput,
+  ClientDataOf,
   EvaluationModel,
   EvaluatorAnswers,
 } from "@flow-state-dev/core";
+import type {
+  FacetedState as TypesFacetedState,
+  FacetReindexOutput as TypesFacetReindexOutput,
+  FacetSearchInput as TypesFacetSearchInput,
+} from "@flow-state-dev/core/types";
 import { boolean, choice, defineFacetedCollection, evaluator, score } from "@flow-state-dev/core";
 import { z } from "zod";
 
@@ -61,6 +67,36 @@ void indexedAs;
 // The collection is registered under `name` in the returned resources.
 const registered: typeof tickets.collection = tickets.resources.tickets;
 void registered;
+
+// The collection keeps its client projection, as defineResourceCollection's does.
+const exposed = defineFacetedCollection({
+  name: "notes",
+  pattern: "notes/*",
+  scope: "user",
+  stateSchema: z.object({ title: z.string(), secret: z.string() }),
+  evaluator: evaluator({ name: "t3", model, questions }),
+  client: { expose: ["title"] },
+});
+type ExposedClient = ClientDataOf<typeof exposed.collection>;
+const client: ExposedClient = { title: "t" };
+void client;
+// @ts-expect-error `secret` is not exposed to the client
+const leaked: ExposedClient = { title: "t", secret: "s" };
+void leaked;
+type RegisteredClient = ClientDataOf<typeof exposed.resources.notes>;
+const registeredClient: RegisteredClient = { title: "t" };
+void registeredClient;
+
+// The facet types are on the types subpath too.
+type SubpathState = TypesFacetedState<{ title: string }, EvaluatorAnswers<typeof questions>>;
+const subpath: SubpathState["indexedAs"] = null;
+void subpath;
+type SubpathSearch = TypesFacetSearchInput<EvaluatorAnswers<typeof questions>>;
+const subpathSearch: SubpathSearch = { topic: "outage" };
+void subpathSearch;
+type SubpathReindex = TypesFacetReindexOutput;
+const subpathReindex: SubpathReindex = { reindexed: [], failed: ["k"] };
+void subpathReindex;
 
 // The utility owns contentUpdated: binding it doesn't compile.
 defineFacetedCollection({

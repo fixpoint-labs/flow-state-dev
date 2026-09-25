@@ -44,6 +44,7 @@ import type { JsonObject } from "../schema/common";
 import type { BlockDefinition, BlockOutput, DeclaredResources } from "./block";
 import type { ChoiceAnswer, EvaluatorAnswer, EvaluatorQuestion } from "./evaluation";
 import type { CollectionClientConfig } from "./resource";
+import type { ProjectedClient } from "../helpers/client-projection";
 import {
   defineResourceCollection,
   isDefinedResourceCollection,
@@ -52,6 +53,8 @@ import {
   type ResourceCollectionRef,
 } from "./resource-collection";
 import { getPatternPrefix, isParameterizedPattern } from "./collection-patterns";
+import { getZodObjectShape, isZodObject } from "../helpers/zod-introspect";
+import { mergeDeclaredResources } from "../blocks/internal/build-block";
 import {
   resourceContentChangeSchema,
   type ReactiveBindings,
@@ -89,8 +92,13 @@ export type FacetSearchOutput = { keys: string[] };
 /** What reindex takes: `force` reclassifies every row with a body. */
 export type FacetReindexInput = { force?: boolean };
 
-/** What reindex returns: the keys whose body it classified. */
-export type FacetReindexOutput = { reindexed: string[] };
+/**
+ * What reindex returns: `reindexed` holds the keys whose body it classified,
+ * and `failed` the keys whose classification failed (they keep no facets and
+ * are not retried). A row a newer write rewrote mid-reindex is in neither:
+ * that write indexes it.
+ */
+export type FacetReindexOutput = { reindexed: string[]; failed: string[] };
 
 /**
  * The stored state of a faceted collection instance: the app's own fields,
@@ -107,7 +115,10 @@ export type FacetedCollectionConfig<
   TName extends string = string,
   TStateSchema extends z.AnyZodObject = z.AnyZodObject,
   TEvaluator extends AnyEvaluatorBlock = AnyEvaluatorBlock,
-> = Omit<ResourceCollectionConfig, "stateSchema" | "reactTo" | "client"> & {
+  TClient extends FacetedClientConfig<TStateSchema, TEvaluator> | undefined =
+    | FacetedClientConfig<TStateSchema, TEvaluator>
+    | undefined,
+> = Omit<ResourceCollectionConfig, "stateSchema" | "reactTo" | "client" | "writable"> & {
   /**
    * The accessor the collection is registered under. The returned
    * `resources` registers it under this name; the search, reindex and the
@@ -127,7 +138,12 @@ export type FacetedCollectionConfig<
    * `content.update` are refused, because a client body edit runs no
    * reaction and would leave facets describing text the row no longer has.
    */
-  client?: CollectionClientConfig<AsStateObject<FacetedState<z.infer<TStateSchema>, FacetsOf<TEvaluator>>>>;
+  client?: TClient;
+  /**
+   * Must stay writable: indexing writes `facets` and `indexedAs` on every
+   * body write, so `writable: false` is refused.
+   */
+  writable?: true;
   /** The app's own `created` / `stateUpdated` / `deleted` bindings. `contentUpdated` is the definer's. */
   reactTo?: Omit<
     ReactiveBindings<AsStateObject<FacetedState<z.infer<TStateSchema>, FacetsOf<TEvaluator>>>>,
@@ -135,10 +151,26 @@ export type FacetedCollectionConfig<
   >;
 };
 
+/** The stored state type of a faceted collection built from this schema and evaluator. */
+type StateFor<TStateSchema extends z.AnyZodObject, TEvaluator> = AsStateObject<
+  FacetedState<z.infer<TStateSchema>, FacetsOf<TEvaluator>>
+>;
+
+/** The client visibility config a faceted collection accepts. */
+export type FacetedClientConfig<
+  TStateSchema extends z.AnyZodObject = z.AnyZodObject,
+  TEvaluator extends AnyEvaluatorBlock = AnyEvaluatorBlock,
+> = CollectionClientConfig<StateFor<TStateSchema, TEvaluator>>;
+
 /** What {@link defineFacetedCollection} returns. */
-export type FacetedCollection<TName extends string, TState extends JsonObject, TFacets> = {
-  /** The collection. Declare it on your own blocks under `name`. */
-  collection: DefinedResourceCollection<TState>;
+export type FacetedCollection<
+  TName extends string,
+  TState extends JsonObject,
+  TFacets,
+  TClientData = TState,
+> = {
+  /** The collection. Declare it on your own blocks under `name`. Carries the client projection. */
+  collection: DefinedResourceCollection<TState, TClientData>;
   /** Filters stored facets and returns matching keys. Runs no model. Usable as an agent's tool. */
   search: BlockDefinition<ZodType<FacetSearchInput<TFacets>>, ZodType<FacetSearchOutput>>;
   /** Classifies rows without facets (every row with `force`) through the same path as a write. */
@@ -147,7 +179,7 @@ export type FacetedCollection<TName extends string, TState extends JsonObject, T
    * Pass to `defineFlow({ resources })`: the collection under `name`, plus
    * every resource the evaluator declares.
    */
-  resources: { [K in TName]: DefinedResourceCollection<TState> } & DeclaredResources;
+  resources: { [K in TName]: DefinedResourceCollection<TState, TClientData> } & DeclaredResources;
 };
 
 // ---------------------------------------------------------------------------
@@ -155,6 +187,15 @@ export type FacetedCollection<TName extends string, TState extends JsonObject, T
 // ---------------------------------------------------------------------------
 
 const RESERVED_FIELDS = ["facets", "indexedAs"] as const;
+
+/** A body string, to check the evaluator's input schema accepts what the reaction passes it. */
+const SAMPLE_BODY = "body";
+
+/**
+ * How many rows reindex classifies at once. Internal: a `force` backfill over
+ * a large collection would otherwise fire every evaluator call together.
+ */
+const REINDEX_CONCURRENCY = 8;
 
 function refuse(name: string, message: string): never {
   throw new Error(`defineFacetedCollection "${name}": ${message}`);
@@ -186,7 +227,7 @@ function carriedEvaluatorResources(name: string, evaluator: AnyEvaluatorBlock): 
       );
     }
   }
-  return { ...declared };
+  return declared;
 }
 
 function checkConfig(config: FacetedCollectionConfig): Record<string, EvaluatorQuestion> {
@@ -199,6 +240,18 @@ function checkConfig(config: FacetedCollectionConfig): Record<string, EvaluatorQ
     helper: "evaluator({ name, model, questions })",
     questions: "a fixed questions object",
   });
+  // The reaction hands the evaluator the body string. An evaluator whose
+  // input schema refuses a string would fail on every write's side chain, so
+  // every row would stay unclassified with nothing but trace rows to say why.
+  // A `connectInput` connector runs before validation, so it adapts the body.
+  const adaptsInput = (config.evaluator.config as { connectInput?: unknown }).connectInput !== undefined;
+  if (!adaptsInput && !config.evaluator.inputSchema.safeParse(SAMPLE_BODY).success) {
+    refuse(
+      name,
+      `evaluator "${config.evaluator.name}" can't take the body: its input schema rejects a string. ` +
+        "Give it a string input, or adapt the body with evaluator.connectInput((body: string) => ...)."
+    );
+  }
   const questions = staticEvaluatorQuestions(config.evaluator);
   if (questions === undefined) {
     refuse(
@@ -232,11 +285,19 @@ function checkConfig(config: FacetedCollectionConfig): Record<string, EvaluatorQ
         "so the row would keep facets about text it no longer has. Write bodies through a flow action."
     );
   }
-  if (!(config.stateSchema instanceof z.ZodObject)) {
+  if ((config as { writable?: boolean }).writable === false) {
+    refuse(
+      name,
+      "writable: false is refused. Indexing writes facets and indexedAs on every body write, " +
+        "so a read-only collection could never be indexed."
+    );
+  }
+  const shape = isZodObject(config.stateSchema) ? getZodObjectShape(config.stateSchema) : undefined;
+  if (shape === undefined) {
     refuse(name, "stateSchema must be a z.object(): facets and indexedAs are added to it.");
   }
   for (const field of RESERVED_FIELDS) {
-    if (field in config.stateSchema.shape) {
+    if (field in shape) {
       refuse(
         name,
         `stateSchema already declares "${field}". The faceted collection adds facets and indexedAs itself; ` +
@@ -357,9 +418,15 @@ export function defineFacetedCollection<
   const TName extends string,
   TStateSchema extends z.AnyZodObject,
   TEvaluator extends AnyEvaluatorBlock,
+  const TClient extends FacetedClientConfig<TStateSchema, TEvaluator> | undefined = undefined,
 >(
-  config: FacetedCollectionConfig<TName, TStateSchema, TEvaluator>
-): FacetedCollection<TName, AsStateObject<FacetedState<z.infer<TStateSchema>, FacetsOf<TEvaluator>>>, FacetsOf<TEvaluator>> {
+  config: FacetedCollectionConfig<TName, TStateSchema, TEvaluator, TClient>
+): FacetedCollection<
+  TName,
+  StateFor<TStateSchema, TEvaluator>,
+  FacetsOf<TEvaluator>,
+  ProjectedClient<StateFor<TStateSchema, TEvaluator>, TClient>
+> {
   const questions = checkConfig(config as unknown as FacetedCollectionConfig);
   const carried = carriedEvaluatorResources(config.name, config.evaluator);
   const { name, evaluator, stateSchema: appStateSchema, reactTo, ...rest } = config;
@@ -367,20 +434,29 @@ export function defineFacetedCollection<
   const keyOf = (path: string) => (prefix.length > 0 ? path.slice(prefix.length + 1) : path);
   const ids = choiceIds(questions);
 
+  const unregistered = (detail: string) =>
+    new Error(
+      `defineFacetedCollection "${name}": ${detail} Pass the returned resources to defineFlow({ resources }) ` +
+        `so this collection is registered under "${name}", and don't register anything else under that key.`
+    );
+
   /**
    * The collection, read through the flow's registry. The reaction's blocks
-   * can't declare it: the collection's `reactTo` needs them first. A
-   * collection registered under another accessor is a wiring bug, so it fails
-   * the write loudly instead of skipping indexing.
+   * can't declare it: the collection's `reactTo` needs them first. A wiring
+   * bug fails the write loudly instead of skipping indexing: nothing under
+   * `name`, or a different collection there. A different collection would
+   * either strip `facets` and `indexedAs` on write (so indexing never lands)
+   * or write them onto its own rows.
    */
   const collectionOf = (ctx: { resources: unknown }): ResourceCollectionRef<JsonObject> => {
     const registry = ctx.resources as Record<string, unknown>;
     const ref = registry[name];
     if (typeof ref !== "object" || ref === null || typeof (ref as { get?: unknown }).get !== "function") {
-      throw new Error(
-        `defineFacetedCollection "${name}": no collection is registered under "${name}". ` +
-          `Pass the returned resources to defineFlow({ resources }) so it is registered under "${name}".`
-      );
+      throw unregistered(`no collection is registered under "${name}".`);
+    }
+    // The runtime ref carries the definition it was registered from.
+    if ((ref as { config?: unknown }).config !== collection) {
+      throw unregistered(`a different collection is registered under "${name}".`);
     }
     return ref as ResourceCollectionRef<JsonObject>;
   };
@@ -396,7 +472,11 @@ export function defineFacetedCollection<
     inputSchema: resourceContentChangeSchema(),
     outputSchema: stamped,
     execute: async (change: ResourceContentChange, ctx) => {
-      const ref = await collectionOf(ctx).get(change.key);
+      const ref = await collectionOf(ctx).getOptional(change.key);
+      // The row the change names, in this collection's scope, or nothing is written.
+      if (ref === undefined || ref.path !== change.ref || ref.scope !== collection.scope) {
+        throw unregistered(`the row "${change.ref}" isn't this collection's row under "${name}".`);
+      }
       const token = crypto.randomUUID();
       await ref.patchState({ facets: null, indexedAs: token });
       const body = (await ref.readContent()) ?? "";
@@ -422,14 +502,17 @@ export function defineFacetedCollection<
   });
 
   // Rule 2: classify on a side chain, so a failed model call doesn't fail the
-  // write. The side chain drains before the turn ends.
+  // write. The side chain drains before the turn ends. The store only
+  // mutates state, so it is a tap (BP-012).
   const classify = sequencer({ name: `${name}-classify`, inputSchema: stamped })
     .step((stamp: Stamp) => stamp.body, evaluator)
-    .step(storeIfCurrent);
+    .tap(storeIfCurrent);
+
+  const hasBody = (stamp: Stamp) => stamp.body.trim().length > 0;
 
   const reaction = sequencer({ name: `${name}-index-facets`, inputSchema: resourceContentChangeSchema() })
     .step(clearAndStamp)
-    .sideChainIf((stamp: Stamp) => stamp.body.trim().length > 0, classify);
+    .sideChainIf(hasBody, classify);
 
   const stateSchema = appStateSchema.extend({
     facets: facetsSchema(questions).nullable().default(null),
@@ -447,7 +530,7 @@ export function defineFacetedCollection<
   const search = handler({
     name: `search-${name}`,
     description:
-      `Find ${name} by their stored classifications` +
+      `Find ${name} by their stored answers to choice questions` +
       (ids.length > 0 ? ` (${ids.join(", ")})` : "") +
       ". Filters stored answers; makes no model call.",
     inputSchema: searchInputSchema(name, questions),
@@ -480,17 +563,45 @@ export function defineFacetedCollection<
     },
   });
 
-  // Reindex runs the same reaction a body write does, once per selected row.
+  const outcome = z.object({ key: z.string(), outcome: z.enum(["classified", "failed", "skipped"]) });
+
+  /**
+   * After a row's classification settles: classified when the stored facets
+   * belong to this token, failed when this token's facets never landed, and
+   * skipped for a row with no body or one a newer write rewrote meanwhile.
+   */
+  const settled = handler({
+    name: `${name}-reindex-outcome`,
+    inputSchema: stamped,
+    outputSchema: outcome,
+    execute: async (stamp: Stamp, ctx) => {
+      if (!hasBody(stamp)) return { key: stamp.key, outcome: "skipped" as const };
+      const row = await collectionOf(ctx).getOptional(stamp.key);
+      if (row === undefined || row.state.indexedAs !== stamp.token) return { key: stamp.key, outcome: "skipped" as const };
+      return { key: stamp.key, outcome: row.state.facets != null ? ("classified" as const) : ("failed" as const) };
+    },
+  });
+
+  // One row of a reindex: the same clear, side-chain classify and
+  // store-if-current as a write, then wait for the classification so the
+  // report says what happened. A failure is reported, never retried.
+  const reindexOne = sequencer({ name: `${name}-reindex-row`, inputSchema: resourceContentChangeSchema() })
+    .step(clearAndStamp)
+    .sideChainIf(hasBody, classify)
+    .waitForSideChain()
+    .step(settled);
+
   const reindex = sequencer({ name: `reindex-${name}`, inputSchema: reindexInput })
     .step(selectForReindex)
-    .forEach(reaction)
+    .forEach(reindexOne, { maxConcurrency: REINDEX_CONCURRENCY })
     .step(
       handler({
         name: `${name}-reindex-summary`,
-        inputSchema: z.array(stamped),
-        outputSchema: z.object({ reindexed: z.array(z.string()) }),
-        execute: async (stamps: Stamp[]) => ({
-          reindexed: stamps.filter((s) => s.body.trim().length > 0).map((s) => s.key),
+        inputSchema: z.array(outcome),
+        outputSchema: z.object({ reindexed: z.array(z.string()), failed: z.array(z.string()) }),
+        execute: async (rows: Array<z.infer<typeof outcome>>) => ({
+          reindexed: rows.filter((r) => r.outcome === "classified").map((r) => r.key),
+          failed: rows.filter((r) => r.outcome === "failed").map((r) => r.key),
         }),
       })
     );
@@ -499,10 +610,13 @@ export function defineFacetedCollection<
     collection,
     search,
     reindex,
-    resources: { ...carried, [name]: collection },
+    // BR-27's collision was refused above with its own message; the shared
+    // merge keeps same-reference entries and refuses any other conflict.
+    resources: mergeDeclaredResources(carried, { [name]: collection }),
   } as unknown as FacetedCollection<
     TName,
-    AsStateObject<FacetedState<z.infer<TStateSchema>, FacetsOf<TEvaluator>>>,
-    FacetsOf<TEvaluator>
+    StateFor<TStateSchema, TEvaluator>,
+    FacetsOf<TEvaluator>,
+    ProjectedClient<StateFor<TStateSchema, TEvaluator>, TClient>
   >;
 }

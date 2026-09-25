@@ -123,6 +123,27 @@ describe("VB: refused when built", () => {
     expect(() => build({ evaluator: colliding })).toThrow(/"minConfidence".*collides with the search option/);
   });
 
+  it("a read-only collection (writable: false): indexing writes state on every body write", () => {
+    expect(() => build({ writable: false })).toThrow(/writable: false.*facets and indexedAs/);
+    expect(() => build({ writable: true })).not.toThrow();
+  });
+
+  it("an evaluator whose input schema rejects the body string", () => {
+    const objectInput = evaluator({
+      name: "object-input",
+      model: countingModel(),
+      questions,
+      inputSchema: z.object({ message: z.string() }),
+      state: (input) => input.message,
+    });
+    expect(() => build({ evaluator: objectInput })).toThrow(/evaluator "object-input" can't take the body.*string/);
+    const stringInput = evaluator({ name: "string-input", model: countingModel(), questions, inputSchema: z.string() });
+    expect(() => build({ evaluator: stringInput })).not.toThrow();
+    // A connector that adapts the body string is accepted.
+    const adapted = objectInput.connectInput((body: string) => ({ message: body }));
+    expect(() => build({ evaluator: adapted })).not.toThrow();
+  });
+
   it("BR-26: a parameterized key pattern, naming wildcard patterns", () => {
     expect(() => build({ pattern: "[topic]/observations" })).toThrow(/has parameters.*wildcard pattern/);
   });

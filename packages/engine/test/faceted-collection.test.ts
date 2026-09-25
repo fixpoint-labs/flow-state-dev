@@ -16,6 +16,7 @@
  */
 import {
   boolean,
+  defineCapability,
   choice,
   defineFacetedCollection,
   defineFlow,
@@ -450,7 +451,7 @@ describe("searching stored facets makes no model call", () => {
     expect((await search(flow, stores, { topic: "billing", minConfidence: 0.5 })).keys).toEqual(["legacy-billing"]);
     // Reindex without force leaves them alone: they already have facets.
     const r = await turn(flow, stores, "reindex", {});
-    expect(r.output).toEqual({ reindexed: [] });
+    expect(r.output).toEqual({ reindexed: [], failed: [] });
     expect(model.calls).toHaveLength(0);
   });
 });
@@ -609,6 +610,54 @@ describe("reindex", () => {
     expect([...model.calls].sort()).toEqual([A, A, B].sort());
     expect([...(forced.output as { reindexed: string[] }).reindexed].sort()).toEqual(["legacy", "t1", "t2"]);
   });
+
+  it("V7: a row whose classification fails is reported as failed, not reindexed, and is not retried", async () => {
+    const model = modelFor({ [A]: { answers: BILLING_OPEN }, [B]: { error: new Error("model down") } });
+    const { flow } = ticketsFlow(triageOn(model));
+    const stores = createInMemoryStores();
+    await turn(flow, stores, "write", { key: "t1", body: A });
+    await turn(flow, stores, "write", { key: "t2", body: B }); // fails: no facets
+    await turn(flow, stores, "write", { key: "t3", title: "no body" });
+    model.calls.length = 0;
+
+    const r = await turn(flow, stores, "reindex", {});
+    expect(r.status).toBe("completed");
+    expect(r.output).toEqual({ reindexed: [], failed: ["t2"] });
+    expect(model.calls).toEqual([B]); // once: nothing retries
+    expect((await storedTicket(stores, "t2"))?.facets).toBeNull();
+
+    const forced = await turn(flow, stores, "reindex", { force: true });
+    expect(forced.output).toEqual({ reindexed: ["t1"], failed: ["t2"] });
+  });
+
+  it("reindex runs at most eight classifications at once", async () => {
+    let running = 0;
+    let peak = 0;
+    const bodies = Array.from({ length: 20 }, (_, i) => `ticket body ${i}`);
+    const model = scriptedModel(() => ({ answers: BILLING_OPEN }));
+    const inner = model.doEvaluate.bind(model) as (call: MockEvaluationCall) => Promise<unknown>;
+    (model as unknown as { doEvaluate: (call: MockEvaluationCall) => Promise<unknown> }).doEvaluate = async (call) => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, 5));
+      try {
+        return await inner(call);
+      } finally {
+        running -= 1;
+      }
+    };
+    const { flow } = ticketsFlow(triageOn(model));
+    const stores = createInMemoryStores();
+    for (const [i, body] of bodies.entries()) await turn(flow, stores, "write", { key: `t${i}`, body });
+    peak = 0;
+    model.calls.length = 0;
+
+    const r = await turn(flow, stores, "reindex", { force: true });
+    expect(r.status).toBe("completed");
+    expect(model.calls).toHaveLength(20);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(8);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -645,6 +694,124 @@ describe("wiring", () => {
     const model = modelFor({ [A]: { answers: BILLING_OPEN } });
     const stores = createInMemoryStores();
     const r = await turn(flowRegisteredAs("tickets", triageOn(model)), stores, "write", { key: "t1", body: A });
+    expect(r.status).toBe("completed");
+    expect((await storedTicket(stores, "t1"))?.facets?.topic?.choice).toBe("billing");
+  });
+
+  /**
+   * The utility's collection is registered under another accessor, and a
+   * different collection sits under `tickets`. Writes go through the real
+   * collection, so its reaction fires and reads `ctx.resources.tickets`.
+   */
+  function flowWithForeignUnderName(foreign: DefinedResourceCollection<any>, triage: ReturnType<typeof triageOn>) {
+    const tickets = defineFacetedCollection({
+      name: "tickets",
+      pattern: "tickets/*",
+      scope: "user",
+      stateSchema: z.object({ title: z.string() }),
+      evaluator: triage,
+    });
+    const seed = handler({
+      name: "seed-foreign",
+      inputSchema: z.object({ key: z.string() }),
+      resources: { tickets: foreign },
+      execute: async (input, ctx) => {
+        await (ctx.resources.tickets as ResourceCollectionRef).getOrCreate(input.key, { title: "foreign" });
+        return { key: input.key };
+      },
+    });
+    return defineFlow({
+      kind: "faceted-tickets-foreign",
+      resources: { real: tickets.collection, tickets: foreign },
+      actions: { write: { block: writeBlock(tickets.collection, "real") }, seed: { block: seed } },
+    })();
+  }
+
+  it("V11: a different collection registered under the name fails the write loudly instead of writing facets onto its row", async () => {
+    const foreign = defineResourceCollection({
+      pattern: "docs/*",
+      scope: "user",
+      stateSchema: z.object({ title: z.string() }).passthrough(),
+    });
+    const model = modelFor({ [A]: { answers: BILLING_OPEN } });
+    const stores = createInMemoryStores();
+    const flow = flowWithForeignUnderName(foreign, triageOn(model));
+    await turn(flow, stores, "seed", { key: "t1" });
+
+    const r = await turn(flow, stores, "write", { key: "t1", body: A });
+    expect(r.status).toBe("failed");
+    expect(r.error?.message).toMatch(/"tickets"/);
+    expect(r.error?.message).toMatch(/resources/);
+    expect(model.calls).toHaveLength(0);
+    const foreignRow = (await stores.resourceState.get("user", USER, "docs/t1"))?.state as Record<string, unknown>;
+    expect(foreignRow.facets).toBeUndefined();
+    expect(foreignRow.indexedAs).toBeUndefined();
+  });
+
+  it("V11: the same pattern in another scope under the name fails the write loudly", async () => {
+    const foreign = defineResourceCollection({
+      pattern: "tickets/*",
+      scope: "session",
+      stateSchema: z.object({ title: z.string() }).passthrough(),
+    });
+    const model = modelFor({ [A]: { answers: BILLING_OPEN } });
+    const stores = createInMemoryStores();
+    const flow = flowWithForeignUnderName(foreign, triageOn(model));
+    await turn(flow, stores, "seed", { key: "t1" });
+
+    const r = await turn(flow, stores, "write", { key: "t1", body: A });
+    expect(r.status).toBe("failed");
+    expect(r.error?.message).toMatch(/"tickets"/);
+    expect(r.error?.message).toMatch(/resources/);
+    expect(model.calls).toHaveLength(0);
+  });
+
+  it("V11: another definition of the same rows under the name is refused when the flow is defined", () => {
+    // Same pattern and scope: its schema would strip facets and indexedAs on
+    // write. The flow refuses two definitions of one storage key, so this
+    // never reaches a write.
+    const foreign = defineResourceCollection({
+      pattern: "tickets/*",
+      scope: "user",
+      stateSchema: z.object({ title: z.string() }),
+    });
+    const model = modelFor({ [A]: { answers: BILLING_OPEN } });
+    expect(() => flowWithForeignUnderName(foreign, triageOn(model))).toThrow(/Resource collision/);
+  });
+
+  it("BR-27: a resource the evaluator gets from a static capability is carried too", async () => {
+    const glossary = defineResourceCollection({
+      pattern: "glossary/*",
+      scope: "user",
+      stateSchema: z.object({ term: z.string() }),
+    });
+    const glossaryCap = defineCapability({ name: "glossary", resources: { glossary } });
+    const model = scriptedModel(() => ({ answers: BILLING_OPEN }));
+    const triage = evaluator({
+      name: "ticket-facets",
+      model,
+      questions,
+      uses: [glossaryCap],
+      state: async (body: string, ctx) => {
+        await (ctx.resources as unknown as { glossary: ResourceCollectionRef }).glossary.list();
+        return body;
+      },
+    });
+    const tickets = defineFacetedCollection({
+      name: "tickets",
+      pattern: "tickets/*",
+      scope: "user",
+      stateSchema: z.object({ title: z.string() }),
+      evaluator: triage,
+    });
+    expect(tickets.resources).toEqual({ tickets: tickets.collection, glossary });
+    const flow = defineFlow({
+      kind: "faceted-tickets-cap",
+      resources: tickets.resources,
+      actions: { write: { block: writeBlock(tickets.collection) } },
+    })();
+    const stores = createInMemoryStores();
+    const r = await turn(flow, stores, "write", { key: "t1", body: A });
     expect(r.status).toBe("completed");
     expect((await storedTicket(stores, "t1"))?.facets?.topic?.choice).toBe("billing");
   });

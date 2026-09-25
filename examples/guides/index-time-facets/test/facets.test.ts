@@ -45,7 +45,7 @@ describe("the ticket flow", () => {
 
     down = false;
     const reindex = await turn(flow, stores, "reindex", {});
-    expect(reindex.output).toEqual({ reindexed: ["t1"] });
+    expect(reindex.output).toEqual({ reindexed: ["t1"], failed: [] });
     expect((await turn(flow, stores, "search", { topic: "billing" }, "s-search")).output).toEqual({ keys: ["t1"] });
   });
 });
