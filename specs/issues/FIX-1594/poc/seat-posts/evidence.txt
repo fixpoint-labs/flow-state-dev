@@ -1,0 +1,15 @@
+# probe.mts, main ff75a9c1a (FIX-1459 and FIX-1585's spec merged) + wiring.patch, kitchen-sink dev (in-memory) profile, KITCHEN_SINK_TEST_MODE=1: scripted model, no key. 2026-09-25
+PASS P1 — new support.desk line: {"id":"f6d86a49-03dc-4fc1-bb49-baabd81a351a","at":1790374881885,"principal":"devuser","author":"support.otto","authorVerified":false,"body":"otto answers [poc:reply-line 1790374881877]"}
+PASS P2 — woken line: {"id":"d460e7e7-2a66-49c8-a780-8b17cd94461b","at":1790374882040,"principal":"devuser","author":"support.otto","authorVerified":false,"body":"otto answers [poc:reply-line 1790374882037]"}; otto requests after the post: [{"a":"receive","s":"internal","st":"completed"}]
+PASS P3 — lines written: []; otto's turn: failed
+PASS P4 — ada-wren lines: 0; refused on the channel's own request: true; otto's turn: completed, and the turn saw the refusal: false (dispatch is fire-and-forget)
+PASS P5 — support.desk lines after iris's turn: 0
+exit=0
+
+# negative control: NEGATIVE=1, the tool drops the server-set author. P1, P2, P4 must go red
+FAIL P1 — new support.desk line: {"id":"b0513cb3-9f16-4f0c-9d33-bd77ebcf03ff","at":1790374892475,"principal":"devuser","authorVerified":false,"body":"otto answers [poc:reply-line 1790374892468]"}
+FAIL P2 — woken line: {"id":"4b743170-076b-4029-800c-ae5dfa18f08c","at":1790374892631,"principal":"devuser","authorVerified":false,"body":"otto answers [poc:reply-line 1790374892628]"}; otto requests after the post: [{"a":"receive","s":"internal","st":"completed"},{"a":"receive","s":"internal","st":"completed"}]
+PASS P3 — lines written: []; otto's turn: failed
+FAIL P4 — ada-wren lines: 1; refused on the channel's own request: false; otto's turn: completed, and the turn saw the refusal: false (dispatch is fire-and-forget)
+PASS P5 — support.desk lines after iris's turn: 0
+exit=1
