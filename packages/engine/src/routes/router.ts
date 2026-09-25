@@ -285,6 +285,23 @@ const FLAT_ROUTES: RouteEntry[] = (
 ).flat();
 
 /**
+ * Every entry in the route table as `{ kind, method, pattern }`, in declaration
+ * order. Exists so a test can cover every route of some class without
+ * restating the table (the user-route scoping test derives its route set from
+ * this plus `routeSubject`). Module-level only: not re-exported from
+ * `routes/index.ts`, so not part of the package's public API.
+ */
+export function listFlowRoutes(): ReadonlyArray<{
+  kind: CoveredKind;
+  method: string;
+  pattern: string;
+}> {
+  return (Object.entries(ROUTES_BY_KIND) as [CoveredKind, RouteEntry[]][]).flatMap(
+    ([kind, entries]) => entries.map((route) => ({ kind, method: route.method, pattern: route.pattern }))
+  );
+}
+
+/**
  * Resolves a method+path pair to the canonical `ParsedFlowRoute`. Returns
  * `{ kind: "not_found" }` when no entry matches. Iteration order matches
  * `ROUTES_BY_KIND` declaration order; same-method same-length overlaps are
