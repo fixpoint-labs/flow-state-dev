@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 410" role="img" aria-label="Today, only the assistant's panel has a composer; a picked channel shows an empty stream and a read-only note, and each seat is read-only. After, the channel panel shows its transcript with a composer that calls post, a desk-clerk seat shows its reply with a composer that calls answer, and a followup-runner seat stays read-only with its reason. The assistant is unchanged."
+<svg viewBox="0 0 940 410" role="img" aria-label="Today, only the assistant's panel has a composer; a picked channel shows an empty stream and a read-only note, and each seat is read-only. After, the channel panel shows its transcript with a composer that calls post, an agent seat shows the person's message and its reply with a composer that calls run, and a followup-runner seat stays read-only with its reason. The assistant is unchanged."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
     <text class="t-gone" x="30" y="216">Read only. Messages from this page go to the assistant.</text>
 
     <rect class="n-box" x="16" y="242" width="438" height="72" rx="5"/>
-    <text class="t-lbl" x="30" y="260">SEAT · support.ada · desk-clerk</text>
+    <text class="t-lbl" x="30" y="260">SEAT · support.otto · agent</text>
     <text class="t-s" x="30" y="282">its conversation, if it has one</text>
     <text class="t-gone" x="30" y="302">Read only. Messages from this page go to the assistant.</text>
 
@@ -66,11 +66,11 @@
     <text class="t-acc" x="510" y="212">composer → post { body }   no author</text>
 
     <rect class="n-box" x="484" y="242" width="440" height="72" rx="5"/>
-    <text class="t-lbl" x="498" y="260">SEAT · support.ada · desk-clerk</text>
+    <text class="t-lbl" x="498" y="260">SEAT · support.otto · agent</text>
     <rect class="line" x="498" y="266" width="412" height="16" rx="3"/>
-    <text class="t-b" x="506" y="278">[front desk] is the printer fixed?</text>
+    <text class="t-b" x="506" y="278">devuser: is the printer fixed?   otto: yes, since 9am</text>
     <rect class="comp" x="498" y="286" width="412" height="22" rx="4"/>
-    <text class="t-acc" x="510" y="301">composer → answer { note }</text>
+    <text class="t-acc" x="510" y="301">composer → run { message }   both sides kept</text>
 
     <rect class="n-box" x="484" y="326" width="440" height="72" rx="5"/>
     <text class="t-lbl" x="498" y="344">SEAT · support.wren · followup-runner</text>
