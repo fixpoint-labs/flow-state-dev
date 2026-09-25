@@ -1,0 +1,198 @@
+diff --git a/apps/kitchen-sink/test/mock-flowstate.ts b/apps/kitchen-sink/test/mock-flowstate.ts
+index e8c755bab..955b33ffb 100644
+--- a/apps/kitchen-sink/test/mock-flowstate.ts
++++ b/apps/kitchen-sink/test/mock-flowstate.ts
+@@ -18,6 +18,7 @@ import {
+   autoTitleMock,
+   sideChainBriefMock,
+ } from "@/lib/e2e-mock-script";
++import { pocAgentMock } from "@/test/poc-agent-mock";
+ 
+ /** Build the mocked model resolver used in `KITCHEN_SINK_TEST_MODE`. */
+ export function createKitchenSinkTestModelResolver(): ModelResolver {
+@@ -27,6 +28,7 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
+       "skill-classifier": skillClassifierMock,
+       "auto-title": autoTitleMock,
+       "background-brief": sideChainBriefMock,
++      "agent-answer": pocAgentMock,
+     },
+     policy: "allow",
+   });
+diff --git a/apps/kitchen-sink/test/poc-agent-mock.ts b/apps/kitchen-sink/test/poc-agent-mock.ts
+new file mode 100644
+index 000000000..3793ab34c
+--- /dev/null
++++ b/apps/kitchen-sink/test/poc-agent-mock.ts
+@@ -0,0 +1,27 @@
++/**
++ * POC (FIX-1594) — throwaway scripted model for the agent kind's generator.
++ * A message carrying `[poc:reply <channel>]` gets one tool call to
++ * `post-to-channel` (no text, so the real tool runs), then a text reply.
++ * `[poc:forge]` adds an `author` argument the tool must not accept.
++ */
++import type { MockGeneratorInstance, MockGeneratorScriptStep } from "@flow-state-dev/testing";
++
++const seen = new Map<string, number>();
++const calls: MockGeneratorInstance["calls"] = [];
++
++export const pocAgentMock: MockGeneratorInstance = {
++  name: "agent-answer",
++  calls,
++  reset: () => seen.clear(),
++  next: (input?: unknown): MockGeneratorScriptStep => {
++    const json = JSON.stringify(input ?? "");
++    const match = /\[poc:reply ([a-z0-9.\-]+)\]/.exec(json);
++    if (match === null) return { text: "Agent test mode (no poc marker)." };
++    const n = seen.get(json) ?? 0;
++    seen.set(json, n + 1);
++    if (n > 0) return { text: `Posted to ${match[1]}.` };
++    const args: Record<string, unknown> = { channel: match[1], body: `otto answers [poc:reply-line ${Date.now()}]` };
++    if (json.includes("[poc:forge]")) args.author = "support.iris";
++    return { toolCalls: [{ toolCallId: `tc_${Date.now()}`, toolName: "post-to-channel", args }] };
++  },
++};
+diff --git a/apps/kitchen-sink/workforce/hire.ts b/apps/kitchen-sink/workforce/hire.ts
+index 7f75d0f03..4c8ab8bf7 100644
+--- a/apps/kitchen-sink/workforce/hire.ts
++++ b/apps/kitchen-sink/workforce/hire.ts
+@@ -44,7 +44,7 @@ import { fileURLToPath } from "node:url";
+ import { dirname } from "node:path";
+ 
+ import { workforceRegistrar } from "../lib/workforce-registrar";
+-import notify from "./channel-notify";
++import { pocNotify as notify, postToChannel } from "./poc-seat-posts";
+ import { blocks, channelKinds, kinds, packageBlocks, resourceModules, seatBlocks } from "./workforce.gen";
+ 
+ /**
+@@ -135,7 +135,7 @@ const discover = createWorkforceCapability({
+  */
+ kitchenSinkKinds.agent = defineAgentWorkerFlow({
+   uses: [...capabilities, seatHire, discover],
+-  catalog: blocks,
++  catalog: { ...blocks, "post-to-channel": postToChannel },
+ });
+ 
+ /** This directory — the workforce root, read at run time the way Markdown always is. */
+diff --git a/apps/kitchen-sink/workforce/poc-seat-posts.ts b/apps/kitchen-sink/workforce/poc-seat-posts.ts
+new file mode 100644
+index 000000000..8c3aef34d
+--- /dev/null
++++ b/apps/kitchen-sink/workforce/poc-seat-posts.ts
+@@ -0,0 +1,61 @@
++/**
++ * POC (FIX-1594) — throwaway. The smallest shape of "an agent seat posts to a
++ * channel it belongs to": a tool that takes only `{ channel, body }` from the
++ * model, reads the author from the seat's own settings (imposed by the hire),
++ * and dispatches the channel's own `post` into that channel's session.
++ *
++ * Also a POC stand-in for FIX-1590's wake: a notify slot that, for a post with
++ * no author, dispatches the post into `support.otto`'s receiver.
++ */
++import { dispatcher, sequencer } from "@flow-state-dev/core";
++import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
++import { z } from "zod";
++import notifyMember from "./channel-notify";
++
++const g = globalThis as { __pocOttoSession?: string; __pocDropAuthor?: boolean };
++
++const postIntoChannel = dispatcher({
++  name: "poc-post-into-channel",
++  flowKind: "channel",
++  action: "post",
++  inputSchema: z.object({ channel: z.string(), body: z.string(), author: z.string().optional() }),
++  session: { id: (input) => input.channel },
++  payload: (input) => ({ body: input.body, ...(input.author === undefined ? {} : { author: input.author }) }),
++});
++
++/** The tool. The model supplies the channel and the words; never the author. */
++export const postToChannel = sequencer({
++  name: "post-to-channel",
++  description: "Post a line to a channel you belong to, under your own name.",
++  inputSchema: z.object({ channel: z.string().min(1), body: z.string().min(1) }).strict(),
++}).step(
++  (input: { channel: string; body: string }, ctx) => ({
++    channel: input.channel,
++    body: input.body,
++    // Server-set: the hire wrote it from the record. NEGATIVE control drops it.
++    ...(g.__pocDropAuthor === true
++      ? {}
++      : { author: (ctx.flow.config as { seatId?: string }).seatId }),
++  }),
++  postIntoChannel,
++);
++
++const wakeOtto = dispatcher({
++  name: "poc-wake-otto",
++  flowKind: "support.otto",
++  action: "receive",
++  inputSchema: channelNotifyInputSchema,
++  session: { id: () => g.__pocOttoSession ?? "missing" },
++  payload: (input: ChannelNotifyInput) => ({
++    message: `A post in ${input.channelId}: ${input.body}`,
++  }),
++});
++
++/** The notify slot: the app's stub, plus the POC wake for otto on an author-less post. */
++export const pocNotify = sequencer({ name: "poc-notify", inputSchema: channelNotifyInputSchema })
++  .tap(notifyMember)
++  .tapIf(
++    (input: ChannelNotifyInput) =>
++      input.member === "support.otto" && input.author === undefined && g.__pocOttoSession !== undefined,
++    wakeOtto,
++  );
+diff --git a/apps/kitchen-sink/workforce/teams/support/workers/otto/WORKER.md b/apps/kitchen-sink/workforce/teams/support/workers/otto/WORKER.md
+index 5b6e0de93..da38b84cd 100644
+--- a/apps/kitchen-sink/workforce/teams/support/workers/otto/WORKER.md
++++ b/apps/kitchen-sink/workforce/teams/support/workers/otto/WORKER.md
+@@ -1,6 +1,6 @@
+ ---
+ description: Fields the same questions, carrying only what the kind gives every seat.
+-tools: [desk-note]
++tools: [desk-note, post-to-channel]
+ ---
+ 
+ You answer questions about the support desk. Keep it to a sentence or two, and
+diff --git a/packages/workforce/src/agent-worker-flow.ts b/packages/workforce/src/agent-worker-flow.ts
+index 12f0f044f..8ed510fcc 100644
+--- a/packages/workforce/src/agent-worker-flow.ts
++++ b/packages/workforce/src/agent-worker-flow.ts
+@@ -1082,7 +1082,9 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
+     // shared across the roster otherwise, which is the framework's default.
+     isolateUserState: options.isolateUserState ?? false,
+     configSchema: settings,
+-    actions: { run: { inputSchema, block: run } }
++    actions: { run: { inputSchema, block: run } },
++    // POC (FIX-1594): a stand-in for FIX-1590's receiver, so a post can wake a seat.
++    internal: { actions: { receive: { inputSchema, block: run } } }
+   });
+ 
+   /**
+diff --git a/packages/workforce/src/hire.ts b/packages/workforce/src/hire.ts
+index 4c9d642ec..54a24fc27 100644
+--- a/packages/workforce/src/hire.ts
++++ b/packages/workforce/src/hire.ts
+@@ -624,6 +624,8 @@ export function hireWorkforce(
+     // still distinguishes *never read for* (absent) from *read and empty*, and
+     // that distinction stays on the record, where it belongs.
+     settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];
++    // POC (FIX-1594): the seat's own id, from the record, never from the file's bag.
++    settings["seatId"] = manifest.id;
+ 
+     // The seat's TEAM-level instructions — and **only when the record carries
+     // them**, which is the opposite of the line above and deliberately so.
+diff --git a/packages/workforce/src/worker-config.ts b/packages/workforce/src/worker-config.ts
+index 5441eecc5..3bd45a604 100644
+--- a/packages/workforce/src/worker-config.ts
++++ b/packages/workforce/src/worker-config.ts
+@@ -171,7 +171,10 @@ export function workerConfigSchema() {
+      * composes the contract and never reads it hires and runs; its seats'
+      * packages then simply do nothing.
+      */
+-    [SEAT_PACKAGES_KEY]: z.array(seatPackageSchema).optional()
++    [SEAT_PACKAGES_KEY]: z.array(seatPackageSchema).optional(),
++
++    /** POC (FIX-1594): the seat's own id, imposed by the hire from the record. */
++    seatId: z.string().optional()
+   });
+ }
+ 
