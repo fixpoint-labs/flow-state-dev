@@ -326,7 +326,7 @@ session: {
 
 ### Automatic resource collection
 
-Blocks can declare resource dependencies directly with a flat `resources` map of `defineResource()` values. When `defineFlow` is called, it collects declared resources from all action blocks and merges them into the flow's `resources` map:
+Blocks can declare resource dependencies directly with a flat `resources` map of `defineResource()` values. When `defineFlow` is called, it collects declared resources from all action blocks, including blocks a generator lists in its `tools` array, and merges them into the flow's `resources` map:
 
 ```ts
 const planManager = handler({

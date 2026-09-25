@@ -744,7 +744,7 @@ const planManager = handler({
 
 The framework collects these declarations automatically:
 - **Sequencers** merge declared resources from all child blocks in the chain
-- **`defineFlow`** collects resources from all action blocks and merges them into the flow's `resources` map
+- **`defineFlow`** collects resources from all action blocks, and from blocks handed to a generator in its `tools` array, and merges them into the flow's `resources` map. Tools returned by a `tools` function aren't known until the generator runs, so they aren't collected; declare their resources on the flow.
 - **Flow-level** resource declarations take priority over block-declared ones
 
 This means blocks bring their own resource requirements — you don't have to repeat them in the flow definition. It follows the same philosophy as partial state schemas: blocks are self-documenting about their dependencies.

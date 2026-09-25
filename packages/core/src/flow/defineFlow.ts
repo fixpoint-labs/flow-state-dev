@@ -360,10 +360,9 @@ function normalizeInstanceConfig(
  * What the reachable blocks require of whatever flow installs them.
  *
  * Collected off `walkBlockGraph`'s closure — the same walk the dispatch-address
- * refusal reads, tool edge included — rather than off the action roots that
- * `declaredResources` rides. A plain tool block that reads
- * `ctx.flow.config` has no action root of its own, so collecting off the roots
- * would silently skip it.
+ * refusal and resource collection read, tool edge included — rather than off
+ * the action roots. A plain tool block that reads `ctx.flow.config` has no
+ * action root of its own, so collecting off the roots would silently skip it.
  *
  * Deduped by schema REFERENCE, the way `mergeDeclaredResources` dedupes by
  * `defineResource()` reference: one shared schema across ten blocks is one
@@ -707,8 +706,9 @@ function actionBlocks(
 }
 
 /**
- * Collect declaredResources from every action block in the flow (caller +
- * webhook + static schedule) and merge them together. Returns the union
+ * Collect declaredResources from every block reachable from the flow's action
+ * blocks (caller + webhook + static schedule), composition and a generator's
+ * static `tools` edge alike, and merge them together. Returns the union
  * of all block-declared resources. Same accessor key + same `defineResource()`
  * reference deduplicates; different references at the same accessor key throw
  * at this layer.
@@ -1356,15 +1356,14 @@ function normalizeFlowConfig(
     requestMerged
   );
 
-  // Resources are collected off the action roots alone. A
-  // handed-off board's worker is not a child of any root — the drain routes
-  // the seat to a hand-off block — but the ledger it settles against is
-  // declared by the gate on the task entry the seat addresses, and task
-  // entries are action roots. So a board reached only as a generator's tool
-  // (FIX-1074) still lands its declarations here without the walk taking the
-  // tool edge for them.
-
-  const blockResources = collectBlockResources(declaredBlocks);
+  // Resources are collected off the same walk, taken from `declaredBlocks`
+  // (the rebuilt task map, so a board's claim gate and its ledger count).
+  // Composition already bubbles a child's declarations into its parent; the
+  // walk adds the one edge that does not bubble — a generator's static
+  // `tools` array — so a block reached only as a tool still lands its
+  // resources on `ctx.resources` (FIX-1578). A block reachable both ways is
+  // merged twice under the same `defineResource()` reference, which dedupes.
+  const blockResources = collectBlockResources(walkBlockGraph(declaredBlocks));
   const flowOwnResources = options?.resources ?? definition.resources;
   // Accessor keys declared in the flow's OWN `resources` map, captured before
   // block-tree/capability resources bubble up and merge in (FIX-688). The
