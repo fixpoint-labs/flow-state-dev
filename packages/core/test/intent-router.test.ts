@@ -68,6 +68,28 @@ describe("utility.intentRouter", () => {
     await expect(runForTest(block, { q: "help" }, ctx)).resolves.toEqual({ handled: { q: "help" } });
   });
 
+  it("keeps a category handler's own connectInput, applied to the original input", async () => {
+    // An author who adapts a handler's input before routing to it must keep
+    // that adapter: the router unwraps its envelope first, then the handler's
+    // own connector runs.
+    const billing = handler({
+      name: "billing-handler",
+      execute: (input: { topic: string }) => ({ handled: input })
+    }).connectInput((input: { q: string }) => ({ topic: input.q.toUpperCase() }));
+    const tech = handler({ name: "tech-handler", execute: (input) => ({ tech: input }) });
+
+    const block = utility.intentRouter({
+      name: "adapted-triage",
+      categories: {
+        billing: { description: "Billing issues", handler: billing },
+        technical: { description: "Technical issues", handler: tech }
+      }
+    });
+
+    const ctx = makeContext("billing", 0.9);
+    await expect(runForTest(block, { q: "refund" }, ctx)).resolves.toEqual({ handled: { topic: "REFUND" } });
+  });
+
   it("routes to the exact matched category handler", async () => {
     const billing = handler({
       name: "billing-handler",

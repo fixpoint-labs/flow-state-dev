@@ -31,6 +31,7 @@ import { handler, router, sequencer } from "../blocks";
 import type { BlockDefinition, BlockOutput } from "../types/block";
 import type { ChoiceAnswer, EvaluatorAnswer } from "../types/evaluation";
 import { cascadeGate, type CascadeAmbiguousReason } from "./cascading-router-gate";
+import { routedInputAdapter } from "./routed-input";
 
 export type { CascadeAmbiguousReason } from "./cascading-router-gate";
 
@@ -70,37 +71,87 @@ type OptionsOf<TAsk, TOn> = TOn extends keyof AnswersOf<TAsk>
     : never
   : never;
 
+/** The input type a block accepts. */
+type InputOf<TBlock> = TBlock extends BlockDefinition<any, any, infer I, any> ? I : never;
+
+/** The output type a block produces. */
+type OutputOf<TBlock> = TBlock extends BlockDefinition<any, any, any, infer O> ? O : never;
+
+/**
+ * The router's input: what the root level's evaluator accepts. Every
+ * evaluator, leaf and `ambiguous` in the tree receives this same value.
+ */
+type CascadeInputOf<TRoot> = TRoot extends { ask: infer A } ? InputOf<A> : never;
+
+/** The union of the outputs of every leaf block in a tree. */
+type LeafOutputsOf<L> = L extends { branches: infer B }
+  ? {
+      [K in keyof B]: B[K] extends { next: infer N }
+        ? LeafOutputsOf<N>
+        : B[K] extends { block: infer Blk }
+          ? OutputOf<Blk>
+          : never;
+    }[keyof B]
+  : never;
+
+/** Shown on a block that can't take the router's input. */
+type DoesNotAcceptCascadeInput<TInput> = {
+  "this block does not accept the router's input": TInput;
+};
+
+/** `unknown` (no constraint) when the block accepts `TInput`, else an error marker. */
+type AcceptsInput<TBlock, TInput> = [TInput] extends [InputOf<TBlock>] ? unknown : DoesNotAcceptCascadeInput<TInput>;
+
 /**
  * Type-level checks for one level, intersected with what the author wrote:
- * `on` must name a choice question of `ask`, and every branch key must be one
- * of that question's options. Nested levels are checked the same way.
+ * `ask` must accept the router's input, `on` must name a choice question of
+ * `ask`, every branch key must be one of that question's options, and every
+ * leaf block must accept the router's input. Nested levels are checked the
+ * same way.
  */
-type CheckedLevel<L> = L extends { ask: infer A; on: infer On; branches: infer B }
+type CheckedLevel<L, TInput> = L extends { ask: infer A; on: infer On; branches: infer B }
   ? {
+      ask: AcceptsInput<A, TInput>;
       on: ChoiceIdsOf<A>;
       branches: {
         [K in keyof B]: K extends OptionsOf<A, On>
           ? B[K] extends { next: infer N }
-            ? { next: CheckedLevel<N> }
-            : unknown
+            ? { next: CheckedLevel<N, TInput> }
+            : B[K] extends { block: infer Blk }
+              ? { block: AcceptsInput<Blk, TInput> }
+              : unknown
           : never;
       };
     }
   : never;
 
-/** Config for {@link cascadingRouter}. */
-export interface CascadingRouterConfig<TRoot extends CascadeLevel, TInput = any, TOutput = any> {
+/**
+ * Config for {@link cascadingRouter}. The router's input is what the root
+ * evaluator accepts; every evaluator, leaf and `ambiguous` must accept it.
+ */
+export interface CascadingRouterConfig<TRoot extends CascadeLevel, TAmbiguous extends BlockDefinition<any, any>> {
   /** The router's name. Levels, gates and routes are named under it. */
   name: string;
   /**
    * Where every edge that doesn't open goes, at any level: no confidence
    * reported, confidence below the edge's floor, or an option with no branch.
-   * Receives the router's own input; its output is the router's.
+   * Receives the router's own input; its output is one of the router's.
    */
-  ambiguous: BlockDefinition<any, any, TInput, TOutput>;
+  ambiguous: TAmbiguous & AcceptsInput<TAmbiguous, CascadeInputOf<TRoot>>;
   /** The first level of the tree. */
-  root: TRoot & CheckedLevel<TRoot>;
+  root: TRoot & CheckedLevel<TRoot, CascadeInputOf<TRoot>>;
 }
+
+/**
+ * The block {@link cascadingRouter} returns: it takes the root evaluator's
+ * input and returns whatever the chosen leaf or `ambiguous` returns.
+ */
+export type CascadingRouterBlock<TRoot, TAmbiguous> = BlockDefinition<
+  ZodTypeAny,
+  ZodTypeAny,
+  CascadeInputOf<TRoot>,
+  OutputOf<TAmbiguous> | LeafOutputsOf<TRoot>
+>;
 
 /** What the gate step decided at one level, as it appears in the trace. */
 export type CascadeVerdict =
@@ -193,32 +244,21 @@ function validateLevel(name: string, level: CascadeLevel, path: string, ancestor
  *   },
  * });
  */
-export function cascadingRouter<const TRoot extends CascadeLevel, TInput = any, TOutput = any>(
-  config: CascadingRouterConfig<TRoot, TInput, TOutput>
-): BlockDefinition<ZodTypeAny, ZodTypeAny, TInput, TOutput> {
+export function cascadingRouter<const TRoot extends CascadeLevel, TAmbiguous extends BlockDefinition<any, any>>(
+  config: CascadingRouterConfig<TRoot, TAmbiguous>
+): CascadingRouterBlock<TRoot, TAmbiguous> {
   const { name } = config;
   if (!isBlock(config.ambiguous)) refuse(name, "ambiguous is required: the block every edge that doesn't open runs.");
   validateLevel(name, config.root, "root", new Set());
 
-  // One unwrapping wrapper per distinct block across the whole tree, so a
-  // block under two edges (or also used as `ambiguous`) is one route
-  // definition: `router()` refuses two different definitions sharing a name.
-  const unwrapped = new Map<BlockDefinition, BlockDefinition>();
-  const unwrap = (block: BlockDefinition): BlockDefinition => {
-    let wrapped = unwrapped.get(block);
-    if (wrapped === undefined) {
-      wrapped = block.connectInput((env: CascadeEnvelope) => env.input);
-      unwrapped.set(block, wrapped);
-    }
-    return wrapped;
-  };
-  const ambiguous = unwrap(config.ambiguous);
+  // One unwrapping wrapper per distinct block across the whole tree, composed
+  // with the block's own `connectInput` (see `routed-input.ts`).
+  const unwrap = routedInputAdapter((env: CascadeEnvelope) => env.input);
+  const ambiguous = unwrap(config.ambiguous as BlockDefinition);
 
-  const compiled = new Map<CascadeLevel, BlockDefinition>();
+  // Compiled per placement, not per level object: a level reused under two
+  // branches names each path it was reached by in its verdict and trace.
   const compileLevel = (level: CascadeLevel, path: string, nested: boolean): BlockDefinition => {
-    const existing = compiled.get(level);
-    if (existing !== undefined) return existing;
-
     // Below the root, a level's input is its parent level's envelope.
     const own = (raw: unknown): unknown => (nested ? (raw as CascadeEnvelope).input : raw);
 
@@ -272,12 +312,11 @@ export function cascadingRouter<const TRoot extends CascadeLevel, TInput = any, 
     )
       .step(gate)
       .step(pick) as unknown as BlockDefinition;
-    compiled.set(level, block);
     return block;
   };
 
   return sequencer({ name, inputSchema: z.any() }).step(
     compileLevel(config.root, "root", false)
-  ) as unknown as BlockDefinition<ZodTypeAny, ZodTypeAny, TInput, TOutput>;
+  ) as unknown as CascadingRouterBlock<TRoot, TAmbiguous>;
 }
 

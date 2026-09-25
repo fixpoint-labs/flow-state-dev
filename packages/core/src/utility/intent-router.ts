@@ -3,6 +3,7 @@ import type { GeneratorConfig } from "../blocks";
 import { handler, router, sequencer } from "../blocks";
 import type { BlockDefinition } from "../types/block";
 import { asRuntime } from "../types/block";
+import { routedInputAdapter } from "./routed-input";
 import {
   intentClassifier,
   type IntentClassifierOutput
@@ -55,19 +56,9 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
   });
 
   // One wrapper per distinct handler, reused across categories (and by the
-  // fallback when it aliases a category handler). The envelope-unwrapping
-  // mapper is identical for every route, so sharing the wrapper is
-  // behavior-preserving — and it keeps route names unique per definition,
-  // which `router()` enforces so resumed decisions stay unambiguous.
-  const wrapperByHandler = new Map<BlockDefinition, BlockDefinition>();
-  const wrapHandler = (block: BlockDefinition): BlockDefinition => {
-    let wrapped = wrapperByHandler.get(block);
-    if (wrapped === undefined) {
-      wrapped = block.connectInput((input: IntentRouterEnvelope) => input.originalInput);
-      wrapperByHandler.set(block, wrapped);
-    }
-    return wrapped;
-  };
+  // fallback when it aliases a category handler), composed with the
+  // handler's own `connectInput`. See `routed-input.ts`.
+  const wrapHandler = routedInputAdapter((input: IntentRouterEnvelope) => input.originalInput);
 
   const wrappedCategoryRoutes = new Map<string, BlockDefinition>(
     categoryEntries.map(([category, value]) => [category, wrapHandler(value.handler)])

@@ -220,6 +220,86 @@ describe("cascadingRouter · walking the tree", () => {
     expect(result.error).toBeUndefined();
     expect(seen).toEqual([ticket]);
   });
+
+  it("a leaf or ambiguous with its own connectInput gets the cascade input through that connector", async () => {
+    // An author who adapts a block's input before routing to it must keep that
+    // adapter: the cascade unwraps its envelope first, then the block's own
+    // connector runs. Replacing it would hand the block the raw ticket.
+    const departmentModel = mockEvaluationModel({ answers: { team: { type: "choice", choice: "technical", confidence: 1 } } });
+    const department = evaluator({
+      name: "department",
+      model: departmentModel,
+      questions: { team: choice("Which team?", { billing: "b", technical: "t" }) },
+    });
+    const seen: Record<string, unknown[]> = {};
+    const caseOf = (name: string) =>
+      handler({
+        name,
+        inputSchema: z.object({ caseId: z.string() }),
+        outputSchema: z.any(),
+        execute: (input) => {
+          (seen[name] ??= []).push(input);
+          return { name, caseId: input.caseId };
+        },
+      }).connectInput((t: typeof ticket) => ({ caseId: t.id }));
+    const cascade = utility.cascadingRouter({
+      name: "adapted",
+      ambiguous: caseOf("review"),
+      root: { ask: department, on: "team", branches: { technical: { minConfidence: 0.5, block: caseOf("tech") } } },
+    });
+    const { result } = await runAsAction(cascade, "req_walk_adapted");
+    expect(result.error).toBeUndefined();
+    expect(seen.tech).toEqual([{ caseId: "T-1" }]);
+
+    const low = mockEvaluationModel({ answers: { team: { type: "choice", choice: "technical" } } });
+    const again = utility.cascadingRouter({
+      name: "adapted-ambiguous",
+      ambiguous: caseOf("review"),
+      root: {
+        ask: evaluator({ name: "department", model: low, questions: { team: choice("Which team?", { billing: "b", technical: "t" }) } }),
+        on: "team",
+        branches: { technical: { block: caseOf("tech") } },
+      },
+    });
+    const second = await runAsAction(again, "req_walk_adapted_ambiguous");
+    expect(second.result.error).toBeUndefined();
+    expect(seen.review).toEqual([{ caseId: "T-1" }]);
+  });
+
+  it("a level reused under two branches reports the path it was reached by", async () => {
+    // Verdicts name the level so a reviewer can see where a case went to
+    // review. A level object shared by two branches must name each placement.
+    const departmentModel = mockEvaluationModel({ answers: { team: { type: "choice", choice: "technical", confidence: 1 } } });
+    const urgencyModel = mockEvaluationModel({ answers: { urgency: { type: "choice", choice: "high" } } });
+    const department = evaluator({
+      name: "department",
+      model: departmentModel,
+      questions: { team: choice("Which team?", { billing: "b", technical: "t" }) },
+    });
+    const urgency = evaluator({
+      name: "urgency",
+      model: urgencyModel,
+      questions: { urgency: choice("How urgent?", { high: "h", low: "l" }) },
+    });
+    const done = handler({ name: "done", inputSchema: z.any(), outputSchema: z.any(), execute: () => ({ done: true }) });
+    const review = handler({ name: "review", inputSchema: z.any(), outputSchema: z.any(), execute: () => ({ review: true }) });
+    const shared = { ask: urgency, on: "urgency", branches: { high: { block: done } } } as const;
+    const cascade = utility.cascadingRouter({
+      name: "reused",
+      ambiguous: review,
+      root: { ask: department, on: "team", branches: { billing: { next: shared }, technical: { next: shared } } },
+    });
+    const { result, items } = await runAsAction(cascade, "req_walk_reused");
+    expect(result.error).toBeUndefined();
+    expect(verdicts(items)).toEqual([
+      { level: "root", on: "team", edge: "technical", confidence: 1 },
+      { level: "root/technical", on: "urgency", ambiguous: "no-confidence", choice: "high" },
+    ]);
+    const levelRows = (items as unknown as BlockTraceItem[]).filter(
+      (i) => i.type === "block_trace" && i.blockKind === "sequencer" && i.blockName.startsWith("reused/")
+    );
+    expect(levelRows.map((r) => r.blockName)).toEqual(["reused/root", "reused/root/technical"]);
+  });
 });
 
 describe("cascadingRouter · failures", () => {
