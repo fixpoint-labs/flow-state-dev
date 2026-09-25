@@ -162,8 +162,10 @@ export {
   skillEvaluator,
   skillQuestions,
   skillEvaluatorInputSchema,
+  type RecentMessage,
   type SkillEvaluatorBlock,
   type SkillEvaluatorInput,
+  type SkillEvaluatorOptions,
   type SkillQuestions,
 } from "./skill-evaluator";
 // Public runtime shapes mirroring the SkillActivationSource / MatchedSkill

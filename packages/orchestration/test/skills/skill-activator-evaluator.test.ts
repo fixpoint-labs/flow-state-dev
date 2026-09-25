@@ -128,6 +128,11 @@ async function runTurn(opts: {
         createMockModelResolver({ generators: { "skill-classifier": classifier } }),
     },
   });
+  return { result, ...readTurn(response), classifier, stores, requestId };
+}
+
+/** What a turn left in its response: trace rows, the activator's state, and what it activated. */
+function readTurn(response: ReturnType<typeof createResponseEmitter>) {
   const items = response.getItems() as Array<Record<string, unknown>>;
   const traces = items.filter((i) => i.type === "block_trace") as unknown as BlockTraceItem[];
   const stateChanges = items.filter((i) => i.type === "state_change");
@@ -147,7 +152,7 @@ async function runTurn(opts: {
     ? ((sessionWrite.delta as { activeSkills: Array<{ name: string; source: string; input: string }> })
         .activeSkills)
     : undefined;
-  return { result, traces, activatorState, activeSkills, classifier, stores, requestId };
+  return { traces, activatorState, activeSkills };
 }
 
 // ---------------------------------------------------------------------------
@@ -647,5 +652,463 @@ describe("trace", () => {
       value: { answers: { skill: { type: "choice", choice: "research", confidence: 0.7 } } },
     });
     expect(row.modelUsage?.totalTokens).toBe(11);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recentMessages: the earlier turns a follow-up needs (FIX-1595 BR-1 to BR-16)
+// ---------------------------------------------------------------------------
+
+/**
+ * One session, many turns. `say` runs an earlier turn through the engine: the
+ * user's message, then the assistant's replies. `ask` runs the activator on a
+ * message in the same session. Earlier turns only ever reach the evaluator
+ * through the session, as they would in an app.
+ */
+function sessionHarness(
+  activator: ReturnType<typeof createSkillActivator>,
+  opts: { historyWindow?: { turns: number }; ahead?: ReturnType<typeof handler> } = {},
+) {
+  const stores = createInMemoryStores();
+  const sessionId = `sess_recent_${++requestSeq}`;
+  const chatInput = z.object({
+    message: z.string(),
+    replies: z.array(z.string()),
+    hidden: z.array(z.string()).optional(),
+    transient: z.array(z.string()).optional(),
+  });
+  const reply = handler({
+    name: "reply",
+    inputSchema: chatInput,
+    execute: (input, ctx) => {
+      for (const text of input.replies) ctx.emit.message(text);
+      for (const text of input.hidden ?? []) {
+        ctx.emit.message(text, { itemVisibility: { client: true, history: false } });
+      }
+      for (const text of input.transient ?? []) ctx.emit.message(text, { transient: true });
+      return { ok: true };
+    },
+  });
+  const runInput = z.object({ message: z.string() }).passthrough();
+  let turn = sequencer({ name: "turn", inputSchema: runInput });
+  if (opts.ahead) turn = turn.tap(opts.ahead) as unknown as typeof turn;
+  const flow = defineFlow({
+    kind: `recent-${sessionId}`,
+    ...(opts.historyWindow ? { session: { historyWindow: opts.historyWindow } } : {}),
+    resources: { skills: defineSkillsCollection({ scope: "session" }) },
+    actions: {
+      chat: { inputSchema: chatInput, userMessage: (i) => i.message, block: reply },
+      run: { inputSchema: runInput, userMessage: (i) => i.message, block: turn.step(activator) },
+    },
+  })();
+
+  const exec = async (actionName: "chat" | "run", input: Record<string, unknown>) => {
+    const requestId = `req_${++requestSeq}`;
+    const response = createResponseEmitter({ requestId, now: () => Date.now() });
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName,
+      input,
+      requestId,
+      userId: "user_1",
+      sessionId,
+      stores,
+      responseEmitter: response,
+      runtimeConfig: { modelResolver: createMockModelResolver({ generators: {} }) },
+    });
+    return { result, response, requestId };
+  };
+
+  return {
+    stores,
+    async say(message: string, replies: string[], extra: { hidden?: string[]; transient?: string[] } = {}) {
+      const { result, requestId } = await exec("chat", { message, replies, ...extra });
+      expect(result.error).toBeUndefined();
+      return requestId;
+    },
+    async ask(message: string, input: Record<string, unknown> = {}) {
+      const { result, response } = await exec("run", { message, ...input });
+      return { result, ...readTurn(response) };
+    },
+  };
+}
+
+const OFFER = "I can research the history of superconductors for you. Want me to?";
+const FOLLOW_UP = "yes, go ahead";
+
+describe("recentMessages: the evaluator sees the earlier turns", () => {
+  it("N = 2 over three earlier turns: the last two turns' messages, oldest first, then the message (BR-2)", async () => {
+    const model = mockEvaluationModel({ answers: pick("research") });
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(model, { recentMessages: 2 }) }),
+    );
+    await s.say("hi", ["hello"]);
+    await s.say("what can you do?", ["I can research topics or draft documents."]);
+    await s.say("superconductors are neat", [OFFER]);
+    const { result, activeSkills } = await s.ask(FOLLOW_UP);
+
+    expect(result.error).toBeUndefined();
+    expect(model.calls).toHaveLength(1);
+    expect(model.calls[0]!.state).toEqual({
+      recentMessages: [
+        { role: "user", text: "what can you do?" },
+        { role: "assistant", text: "I can research topics or draft documents." },
+        { role: "user", text: "superconductors are neat" },
+        { role: "assistant", text: OFFER },
+      ],
+      message: FOLLOW_UP,
+    });
+    expect(activeSkills?.map((s) => s.name)).toEqual(["research"]);
+  });
+
+  // Chaining rebuilds the block into a new object, so the count must ride
+  // the block itself, not its identity: a rescued evaluator still sees turns.
+  const chained: Array<[string, (b: ReturnType<typeof skillEvaluator>) => unknown]> = [
+    [".rescue()", (b) => b.rescue([{ block: handler({ name: "skip-skills", execute: () => ({ skipped: true }) }) }])],
+    [".connectInput()", (b) => b.connectInput((input: unknown) => input as never)],
+    [".mapModelOutput()", (b) => b.mapModelOutput(() => "picked")],
+  ];
+  for (const [label, chain] of chained) {
+    it(`the count survives ${label} on the skillEvaluator block itself`, async () => {
+      const model = mockEvaluationModel({ answers: pick("research") });
+      const s = sessionHarness(
+        createSkillActivator({
+          initialSkills: catalog,
+          evaluator: chain(skillEvaluator(model, { recentMessages: 1 })) as never,
+        }),
+      );
+      await s.say("superconductors are neat", [OFFER]);
+      await s.ask(FOLLOW_UP);
+
+      expect(model.calls[0]!.state).toEqual({
+        recentMessages: [
+          { role: "user", text: "superconductors are neat" },
+          { role: "assistant", text: OFFER },
+        ],
+        message: FOLLOW_UP,
+      });
+    });
+  }
+});
+
+/**
+ * A block run ahead of the activator that counts every read of the session's
+ * history view for the rest of the request. The positive case below proves
+ * it sees the tier's read, so a zero from it means no read happened.
+ */
+function historySpy() {
+  const reads: unknown[] = [];
+  const block = handler({
+    name: "count-history-reads",
+    execute: (_input, ctx) => {
+      const items = ctx.session.items as { history: (q?: unknown) => Promise<unknown[]> };
+      const original = items.history.bind(items);
+      items.history = (q?: unknown) => {
+        reads.push(q);
+        return original(q);
+      };
+      return {};
+    },
+  });
+  return { reads, block };
+}
+
+describe("recentMessages: when it reads, and what it keeps", () => {
+  it("omitted or 0: the evaluator gets the bare message and the session is never read (BR-1)", async () => {
+    for (const options of [undefined, { recentMessages: 0 }]) {
+      const model = mockEvaluationModel({ answers: pick("NO_SKILL") });
+      const spy = historySpy();
+      const s = sessionHarness(
+        createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(model, options) }),
+        { ahead: spy.block },
+      );
+      await s.say("superconductors are neat", [OFFER]);
+      const { result } = await s.ask(MISS);
+      expect(result.error).toBeUndefined();
+      expect(model.calls[0]!.state).toBe(MISS);
+      expect(spy.reads).toEqual([]);
+    }
+  });
+
+  it("control: with N > 0 the same spy sees exactly one prior-only read", async () => {
+    const model = mockEvaluationModel({ answers: pick("NO_SKILL") });
+    const spy = historySpy();
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(model, { recentMessages: 3 }) }),
+      { ahead: spy.block },
+    );
+    await s.say("superconductors are neat", [OFFER]);
+    await s.ask(MISS);
+    expect(spy.reads).toEqual([
+      { includeInFlight: false, limit: { turns: 3 }, itemTypes: ["message"], roles: ["user", "assistant"] },
+    ]);
+  });
+
+  it("on a session's first turn, recentMessages is an empty array (BR-4)", async () => {
+    const model = mockEvaluationModel({ answers: pick("NO_SKILL") });
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(model, { recentMessages: 3 }) }),
+    );
+    await s.ask(FOLLOW_UP);
+    expect(model.calls[0]!.state).toEqual({ recentMessages: [], message: FOLLOW_UP });
+  });
+
+  it("keeps only user and assistant text: no tool call, tool result, reasoning, hidden or transient message (BR-5, BR-6)", async () => {
+    const model = mockEvaluationModel({ answers: pick("NO_SKILL") });
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(model, { recentMessages: 2 }) }),
+    );
+    const earlier = await s.say("look this up", ["Here is what I found."], {
+      hidden: ["hidden from history"],
+      transient: ["stream-only note"],
+    });
+    // A tool call and its result, and reasoning, as a generator would have
+    // left them on the earlier request.
+    const record = (await s.stores.request.get(earlier))!;
+    const extra = (type: string, i: number, fields: Record<string, unknown>) => ({
+      id: `extra_${i}`,
+      type,
+      status: "completed",
+      requestId: earlier,
+      itemIndex: 100 + i,
+      ts: Date.now(),
+      provenance: { blockName: "gen", blockInstanceId: "gen", phase: "main" },
+      ...fields,
+    });
+    await s.stores.request.set(
+      earlier,
+      {
+        ...record,
+        items: [
+          ...(record.items ?? []),
+          extra("reasoning", 0, { summary: [{ type: "output_text", text: "thinking about it" }] }),
+          extra("tool_output", 1, {
+            blockName: "search",
+            output: "tool result text",
+            toolCall: { callId: "c1", name: "search", arguments: '{"q":"x"}', generatorBlock: "gen" },
+          }),
+        ],
+      } as never,
+      "any",
+    );
+    // A turn whose reply was tool-only keeps its user message.
+    const toolOnly = await s.say("and the other one?", []);
+    const second = (await s.stores.request.get(toolOnly))!;
+    await s.stores.request.set(
+      toolOnly,
+      {
+        ...second,
+        items: [
+          ...(second.items ?? []),
+          {
+            ...extra("tool_output", 2, {
+              blockName: "search",
+              output: "second result",
+              toolCall: { callId: "c2", name: "search", arguments: "{}", generatorBlock: "gen" },
+            }),
+            requestId: toolOnly,
+          },
+        ],
+      } as never,
+      "any",
+    );
+
+    await s.ask(MISS);
+    expect(model.calls[0]!.state).toEqual({
+      recentMessages: [
+        { role: "user", text: "look this up" },
+        { role: "assistant", text: "Here is what I found." },
+        { role: "user", text: "and the other one?" },
+      ],
+      message: MISS,
+    });
+  });
+
+  it("leaves out a message emitted earlier in this same request; the current message appears once (BR-7)", async () => {
+    const model = mockEvaluationModel({ answers: pick("NO_SKILL") });
+    const ahead = handler({
+      name: "speak-first",
+      execute: (_input, ctx) => {
+        ctx.emit.message("said earlier in this request");
+        return {};
+      },
+    });
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(model, { recentMessages: 3 }) }),
+      { ahead },
+    );
+    await s.say("superconductors are neat", [OFFER]);
+    await s.ask(FOLLOW_UP);
+    expect(model.calls[0]!.state).toEqual({
+      recentMessages: [
+        { role: "user", text: "superconductors are neat" },
+        { role: "assistant", text: OFFER },
+      ],
+      message: FOLLOW_UP,
+    });
+  });
+
+  it("a request that kept two assistant messages gives both, in order, and counts as one turn (BR-2, D1)", async () => {
+    const model = mockEvaluationModel({ answers: pick("NO_SKILL") });
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(model, { recentMessages: 1 }) }),
+    );
+    await s.say("hi", ["hello"]);
+    await s.say("superconductors are neat", ["They are.", OFFER]);
+    await s.ask(FOLLOW_UP);
+    expect(model.calls[0]!.state).toEqual({
+      recentMessages: [
+        { role: "user", text: "superconductors are neat" },
+        { role: "assistant", text: "They are." },
+        { role: "assistant", text: OFFER },
+      ],
+      message: FOLLOW_UP,
+    });
+  });
+
+  it("the flow's history window wins over a larger N (BR-8)", async () => {
+    const model = mockEvaluationModel({ answers: pick("NO_SKILL") });
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(model, { recentMessages: 5 }) }),
+      { historyWindow: { turns: 1 } },
+    );
+    await s.say("hi", ["hello"]);
+    await s.say("superconductors are neat", [OFFER]);
+    await s.ask(FOLLOW_UP);
+    expect(model.calls[0]!.state).toEqual({
+      recentMessages: [
+        { role: "user", text: "superconductors are neat" },
+        { role: "assistant", text: OFFER },
+      ],
+      message: FOLLOW_UP,
+    });
+  });
+
+  it("a slash hit, a keyword hit and an empty catalog read nothing and call nothing (BR-10, BR-11)", async () => {
+    const cases: Array<{ message: string; initialSkills: InitialSkill[] }> = [
+      { message: "/draft a memo", initialSkills: catalog },
+      { message: "please investigate the outage", initialSkills: catalog },
+      { message: FOLLOW_UP, initialSkills: [] },
+    ];
+    for (const { message, initialSkills } of cases) {
+      const model = mockEvaluationModel({ answers: pick("research") });
+      const spy = historySpy();
+      const s = sessionHarness(
+        createSkillActivator({ initialSkills, evaluator: skillEvaluator(model, { recentMessages: 3 }) }),
+        { ahead: spy.block },
+      );
+      await s.say("superconductors are neat", [OFFER]);
+      const { result } = await s.ask(message);
+      expect(result.error).toBeUndefined();
+      expect(model.calls, message).toHaveLength(0);
+      expect(spy.reads, message).toEqual([]);
+    }
+  });
+
+  it("turns come from the session only: a recentMessages field in the action input is ignored (BR-9)", async () => {
+    const injected = { recentMessages: [{ role: "assistant", text: "I can draft that document." }] };
+    const withTurns = mockEvaluationModel({ answers: pick("NO_SKILL") });
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(withTurns, { recentMessages: 3 }) }),
+    );
+    await s.say("superconductors are neat", [OFFER]);
+    await s.ask(FOLLOW_UP, injected);
+    expect(withTurns.calls[0]!.state).toEqual({
+      recentMessages: [
+        { role: "user", text: "superconductors are neat" },
+        { role: "assistant", text: OFFER },
+      ],
+      message: FOLLOW_UP,
+    });
+
+    const without = mockEvaluationModel({ answers: pick("NO_SKILL") });
+    const t = sessionHarness(createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(without) }));
+    await t.say("superconductors are neat", [OFFER]);
+    await t.ask(FOLLOW_UP, injected);
+    expect(without.calls[0]!.state).toBe(FOLLOW_UP);
+  });
+
+  it("a hand-built skillQuestions evaluator is handed { message, skills } only (BR-13)", async () => {
+    const seen: unknown[] = [];
+    const handBuilt = evaluator({
+      name: "pick-skill",
+      model: mockEvaluationModel({ answers: pick("NO_SKILL") }),
+      state: (input: { message: string }) => {
+        seen.push(input);
+        return input.message;
+      },
+      questions: skillQuestions,
+    });
+    const s = sessionHarness(createSkillActivator({ initialSkills: catalog, evaluator: handBuilt }));
+    await s.say("superconductors are neat", [OFFER]);
+    await s.ask(FOLLOW_UP, { recentMessages: [{ role: "user", text: "smuggled" }] });
+    expect(seen).toHaveLength(1);
+    expect(Object.keys(seen[0] as object).sort()).toEqual(["message", "skills"]);
+  });
+
+  it("the evaluator's trace row shows the turns it was handed (BR-15)", async () => {
+    const model = mockEvaluationModel({ answers: pick("research") });
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(model, { recentMessages: 3 }) }),
+    );
+    await s.say("superconductors are neat", [OFFER]);
+    const { traces } = await s.ask(FOLLOW_UP);
+    const row = traces.find((t) => t.blockKind === "evaluator")!;
+    // The row's input is inline, or a ref to the step that produced it.
+    const source = row.input?.source as { kind: string; value?: unknown; sourceItemId?: string };
+    const handed = (
+      source.kind === "inline"
+        ? source.value
+        : (traces.find((t) => t.id === source.sourceItemId)?.output as { value?: unknown } | undefined)?.value
+    ) as { recentMessages?: unknown } | undefined;
+    expect(handed?.recentMessages).toEqual([
+      { role: "user", text: "superconductors are neat" },
+      { role: "assistant", text: OFFER },
+    ]);
+  });
+
+  it("a picked skill removed while the call with turns is in flight does not activate (BR-16)", async () => {
+    const inner = mockEvaluationModel({ answers: pick("research", 0.9) });
+    let skills: { delete: (k: string) => Promise<void> } | undefined;
+    const grab = handler({
+      name: "grab-skills",
+      execute: (_input, ctx) => {
+        skills = (ctx.resources as unknown as Record<string, typeof skills>).skills;
+        return {};
+      },
+    });
+    // Runs after the catalog was listed and the turns read, before answering.
+    const racing = {
+      ...inner,
+      calls: inner.calls,
+      async doEvaluate(call: unknown) {
+        await skills!.delete("research/SKILL.md");
+        return (inner as unknown as { doEvaluate: (c: unknown) => Promise<unknown> }).doEvaluate(call);
+      },
+    } as unknown as typeof inner;
+    const s = sessionHarness(
+      createSkillActivator({ initialSkills: catalog, evaluator: skillEvaluator(racing, { recentMessages: 3 }) }),
+      { ahead: grab },
+    );
+    await s.say("superconductors are neat", [OFFER]);
+    const { result, activeSkills } = await s.ask(FOLLOW_UP);
+    expect(result.error).toBeUndefined();
+    expect((inner.calls[0]!.state as { recentMessages: unknown[] }).recentMessages).toHaveLength(2);
+    expect(Object.keys((inner.calls[0]!.questions.skill as { criteria: object }).criteria)).toContain("research");
+    expect(activeSkills).toEqual([]);
+  });
+});
+
+describe("recentMessages: configuration", () => {
+  it("refuses a negative, fractional, NaN or non-numeric count at the helper call, naming the option (BR-3)", () => {
+    const model = mockEvaluationModel({ answers: pick("NO_SKILL") });
+    for (const bad of [-1, 1.5, Number.NaN, "3"]) {
+      expect(() => skillEvaluator(model, { recentMessages: bad as number }), String(bad)).toThrow(
+        /skillEvaluator: "recentMessages" must be a non-negative integer/,
+      );
+    }
+    expect(() => skillEvaluator(model, { recentMessages: 0 })).not.toThrow();
+    expect(() => skillEvaluator(model, { recentMessages: 3 })).not.toThrow();
   });
 });

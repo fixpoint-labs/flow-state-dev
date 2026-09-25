@@ -297,9 +297,10 @@ export async function selectRequestsByLimit(
  * end and never split. The most recent prior turn is always included
  * (even if alone over budget). See `selectRequestsByLimit`.
  *
- * Live items from the current (in-flight) request are always appended
- * regardless of limit — this preserves the retry-after-mid-turn-failure
- * scenario where the user's "try again" must see the in-flight tool state.
+ * Live items from the current (in-flight) request are appended regardless
+ * of limit — this preserves the retry-after-mid-turn-failure scenario where
+ * the user's "try again" must see the in-flight tool state. A query with
+ * `includeInFlight: false` leaves them out and returns prior turns only.
  *
  * Empty-of-LLM-content turns (turns whose items are all sub-agent or
  * non-LLM types) still count against `{ turns: N }` but contribute zero
@@ -336,9 +337,9 @@ export async function loadLLMHistory(
     messages.push(...turn.messages);
   }
 
-  // Live items from the in-flight request are always included regardless
-  // of limit. This is the retry/resume guarantee.
-  if (readLiveItems !== undefined) {
+  // Live items from the in-flight request are included regardless of limit
+  // unless the caller opts out. This is the retry/resume guarantee.
+  if (readLiveItems !== undefined && query?.includeInFlight !== false) {
     messages.push(
       ...expandRequestToMessages(readLiveItems(), allowedTypes, allowedRoles)
     );
@@ -462,8 +463,9 @@ export function createSessionItemViews(
       : undefined;
 
     // Merge prior request items (loaded eagerly at context creation) with
-    // live items from the current request's response emitter.
-    const liveItems = options.readLiveItems?.() ?? [];
+    // live items from the current request's response emitter, unless the
+    // caller asked for prior items only.
+    const liveItems = query?.includeInFlight === false ? [] : options.readLiveItems?.() ?? [];
     const liveSessionItems = liveItems.map(outputItemToSessionItem);
     const deduplicatedLive = liveSessionItems.filter((i) => !priorIds.has(i.id));
     const allItems = [...priorItems, ...deduplicatedLive];

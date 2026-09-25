@@ -324,6 +324,68 @@ describe("loadLLMHistory", () => {
     expect(messages[0]!.content).toBe("live msg");
   });
 
+  describe("includeInFlight: false (prior turns only)", () => {
+    const liveItem = makeMessage("r_live", "live msg", 300, 0) as unknown as OutputItem;
+    const readLiveItems = () => [liveItem];
+
+    it("leaves the in-flight request's items out, and returns exactly the prior turns", async () => {
+      const withLive = await loadLLMHistory(
+        [req1, req2],
+        mockTokenCounter,
+        resolveModelId,
+        {},
+        readLiveItems
+      );
+      const priorOnly = await loadLLMHistory(
+        [req1, req2],
+        mockTokenCounter,
+        resolveModelId,
+        { includeInFlight: false },
+        readLiveItems
+      );
+
+      // Omitted: today's behaviour, the live item is appended last.
+      expect(withLive.map((m) => m.content)).toEqual(["msg 1", "msg 2", "live msg"]);
+      // Opted out: the same prior turns, nothing from the in-flight request.
+      expect(priorOnly).toEqual(withLive.slice(0, 2));
+    });
+
+    it("applies limit, role and visibility filters exactly as without it", async () => {
+      const hidden = {
+        ...makeMessage("r3", "hidden", 400, 1),
+        itemVisibility: { client: true, history: false },
+      } as unknown as OutputItem;
+      const user = {
+        ...makeMessage("r3", "asked", 400, 0),
+        role: "user",
+      } as unknown as OutputItem;
+      const req3 = makeRequest("r3", [user, hidden, makeMessage("r3", "answered", 400, 2) as unknown as OutputItem], 3000);
+
+      const query = { limit: 2, roles: ["user" as const] };
+      const base = await loadLLMHistory([req1, req2, req3], mockTokenCounter, resolveModelId, query);
+      const priorOnly = await loadLLMHistory(
+        [req1, req2, req3],
+        mockTokenCounter,
+        resolveModelId,
+        { ...query, includeInFlight: false },
+        readLiveItems
+      );
+
+      expect(base.map((m) => m.content)).toEqual(["asked"]);
+      expect(priorOnly).toEqual(base);
+
+      const all = await loadLLMHistory(
+        [req1, req2, req3],
+        mockTokenCounter,
+        resolveModelId,
+        { limit: 1, includeInFlight: false },
+        readLiveItems
+      );
+      // One turn, the hidden message dropped, the live item absent.
+      expect(all.map((m) => m.content)).toEqual(["asked", "answered"]);
+    });
+  });
+
   it("filters by itemTypes via query.itemTypes", async () => {
     const messages = await loadLLMHistory(
       [req1, req2],
@@ -464,6 +526,35 @@ describe("createSessionItemViews", () => {
     const messages = await views7.history();
     expect(messages).toHaveLength(1);
     expect(messages[0]!.content).toBe("history text");
+  });
+
+  it("history({ includeInFlight: false }) leaves live items out; history() still appends them", async () => {
+    const req = makeRequest("req_h", [makeMessage("req_h", "prior text", 100, 0) as unknown as OutputItem], 500);
+    const live = makeMessage("req_now", "live text", 300, 0) as unknown as OutputItem;
+    const views8 = createSessionItemViews([], [req], {
+      tokenCounter: mockTokenCounter,
+      resolveModelId,
+      readLiveItems: () => [live],
+    });
+
+    expect((await views8.history()).map((m) => m.content)).toEqual(["prior text", "live text"]);
+    expect((await views8.history({ includeInFlight: false })).map((m) => m.content)).toEqual([
+      "prior text",
+    ]);
+  });
+
+  it("all(), client() and selectForContext() honor includeInFlight: false too; omitted, they keep live items", () => {
+    const live = makeMessage("req_now", "live text", 300, 0) as unknown as OutputItem;
+    const views9 = createSessionItemViews(priorItems, priorRequests, {
+      tokenCounter: mockTokenCounter,
+      resolveModelId,
+      readLiveItems: () => [live],
+    });
+
+    for (const view of [views9.all, views9.client, views9.selectForContext]) {
+      expect(view().map((i) => i.id)).toEqual(["item_1", "item_2", live.id]);
+      expect(view({ includeInFlight: false }).map((i) => i.id)).toEqual(["item_1", "item_2"]);
+    }
   });
 
   it("selectForContext() returns items unfiltered by visibility", () => {

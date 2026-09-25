@@ -141,7 +141,7 @@ const clientItems = ctx.session.items.client();
 const llmMessages = await ctx.session.items.history({ limit: { tokens: 20_000 } });
 ```
 
-Limits on `items.history()` operate on conversational turns rather than individual protocol messages — see [Conversation history windowing](../advanced/generator-context.md#conversation-history-windowing).
+Limits on `items.history()` operate on conversational turns rather than individual protocol messages — see [Conversation history windowing](../advanced/generator-context.md#conversation-history-windowing). By default it also includes what the current request has produced so far; pass `includeInFlight: false` for earlier turns only.
 
 History is windowed by default. Each request loads only the most recent `session.historyWindow.turns` completed turns (default 50), so per-turn cost does not grow with session length. `items.all()` and `items.client()` reflect that same loaded window, and a per-call `history({ limit })` narrows within it. The complete session log is never loaded into the execution context on the hot path; read it through the `GET /sessions/:id/state` endpoint when you need the full history. See [Flow-level history bounds](../advanced/generator-context.md#flow-level-history-bounds).
 
