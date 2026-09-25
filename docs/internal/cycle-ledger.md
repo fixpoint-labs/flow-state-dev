@@ -63,3 +63,4 @@ earlier cycle files are records and are not rewritten.
 | 15 | remove-superseded-leftovers epic wrap (FIX-1208) (2026-09-22) | [`cycle-15.md`](cycle-ledger/cycle-15.md) |
 | 16 | workforce plane isolation epic wrap (FIX-1528) (2026-09-24) | [`cycle-16.md`](cycle-ledger/cycle-16.md) |
 | 17 | W5 Workforce release QA epic wrap (FIX-1457) (2026-09-24) | [`cycle-17.md`](cycle-ledger/cycle-17.md) |
+| 18 | kitchen-sink rebuild / Workforce reference epic wrap (FIX-1455) (2026-09-24) | [`cycle-18.md`](cycle-ledger/cycle-18.md) |
