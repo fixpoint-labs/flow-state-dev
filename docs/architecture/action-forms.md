@@ -119,7 +119,7 @@ under `actions` so a per-type setting has a home beside them:
 defineFlow({
   actions:  { ask: { block: ask } },                              // caller-addressed
   internal: { actions: { summarize: { block: summarize } } },     // reached by a dispatcher()
-  task:     { actions: { implement: { block: implement } } },     // reached by a task-board seat
+  task:     { actions: { implement: { block: implement } } },     // reached by a task board's dispatcher
 });
 ```
 
@@ -155,8 +155,9 @@ the block context by `createExecutionContext`, never a named member of
 (`type`, `action`) is fixed on the block, so `defineFlow` walks the flow graph
 (`walkBlockGraph`, including a `forEach` factory's declared `blocks`) and
 refuses a dispatcher whose action the flow does not declare. A `task`
-dispatcher is a seat on a task board; the board binds its id and claim gate
-onto it, and `defineFlow` puts the addressed entry behind that gate.
+dispatcher sits in a task board's `workers` under an assignee; the board binds
+its id and claim gate onto it, and `defineFlow` puts the addressed entry behind
+that gate.
 
 **An `internal` address may name another flow** — `flowKind` on the block,
 carrying the target's **instance id** (a singleton's kind, a collection

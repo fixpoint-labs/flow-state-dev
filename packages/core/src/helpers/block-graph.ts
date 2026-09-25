@@ -31,14 +31,14 @@ function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
  *
  * **The tool edge is here because a board can be handed to a model as a tool**
  * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a board
- * reached only that way was invisible to the walk: its dispatcher seats went
+ * reached only that way was invisible to the walk: its dispatchers went
  * unresolved, so the first time the model called the tool the board failed on
  * a configuration the author had every reason to think was supported
  * (FIX-1074).
  *
  * Only the dispatch walk needs the tool edge. Resources are
  * collected off the action roots, and a handed-off board's ledger reaches the
- * flow through the task entry its seat addresses — an action root of its own —
+ * flow through the task entry its dispatcher addresses — an action root of its own —
  * so a board reached only as a tool still lands its declarations.
  *
  * A block is visited once: blocks are shared freely (one handler across several

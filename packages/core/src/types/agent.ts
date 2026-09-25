@@ -8,7 +8,7 @@
  *
  * These are extension points, not a description of shipped code: no package
  * here implements `AgentRegistry` or `MaterializeAgentFn`. An app that staffs
- * a seat with `agent-ref` writes both and passes them to
+ * an assignee with `agent-ref` writes both and passes them to
  * `createSkillsLibrary`, which refuses to bind such a skill when either is
  * missing. Everything below that reads as a promise — a validation, a
  * resolution — is what an implementation owes its callers, not something this

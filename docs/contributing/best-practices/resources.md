@@ -72,7 +72,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Scope: Resources — flow isolation.
 - Rule:
   - Leave `flowIsolation` unset/`false` on user-scoped resources unless there is a deliberate privacy reason. Do NOT reflexively set `flowIsolation: true` as a "safe default" — it blocks legitimate cross-flow reads for no benefit.
-  - `flowIsolation` is honored per resource (FIX-735): a `false` resource keys at bare `{userId}` even when a sibling sets `true`. The flow-level `isolateUserState` / `isolateOrgState` is only the default for resources that don't declare their own, plus the key for the scope's own `state` blob. Exception (FIX-1538): on a hired seat (an instance registered with an owner pin) a `false` resource keys at the (org, person) cell `{userId}:~org:{orgId}`, so it is shared with that person's other seats in the same org and not with unpinned flows.
+  - `flowIsolation` is honored per resource (FIX-735): a `false` resource keys at bare `{userId}` even when a sibling sets `true`. The flow-level `isolateUserState` / `isolateOrgState` is only the default for resources that don't declare their own, plus the key for the scope's own `state` blob. Exception (FIX-1538): on an owner-pinned instance (one registered with an owner pin) a `false` resource keys at the (org, person) cell `{userId}:~org:{orgId}`, so it is shared with that person's other instances pinned to the same org and not with unpinned flows.
   - Practical test: if a second flow must read this resource without a client bridge, it MUST be `flowIsolation: false` (or unset) on both sides.
 - Why: Reflexive isolation breaks legitimate cross-flow reads for no benefit; isolate only when there's a real privacy reason.
 

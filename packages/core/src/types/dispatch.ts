@@ -39,7 +39,7 @@
  * named member, so that the set of blocks that dispatch is the set of blocks
  * carrying a {@link DispatchAddress}. That is what lets `defineFlow` walk the
  * block graph and refuse an address that resolves nothing, and what lets a
- * task board see statically which of its seats hand off. A substrate package
+ * task board see statically which of its assignees hand off. A substrate package
  * that must reach the seam directly (the task board's drain) marks its block
  * with `markDispatcher` so the walk stays complete.
  */
@@ -70,11 +70,11 @@ export type BlockDispatchType = "internal" | "task";
  *
  * - `"per-task"` — one child per row, keyed on the task id. Rows are
  *   independent: a checkout per issue.
- * - `"per-worker"` — one child per seat, shared by every row the seat runs.
+ * - `"per-worker"` — one child per assignee, shared by every row routed to it.
  *   The worker remembers what it already did.
  * - `{ key }` — keyed on what the function returns, read from the worker
  *   input the row was packed into. One issue across several phases, or a key
- *   shared across seats.
+ *   shared across assignees.
  *
  * The presets frame the board id into the key, so two boards' children stay
  * apart even when their task ids coincide; a custom key is used as returned.
@@ -94,9 +94,9 @@ export type TaskSessionPolicy<TPayload = unknown> =
  * static and equally declared — it is simply verified one layer later, by the
  * seam, against the flow the running process registered under that kind.
  *
- * A `task` address also carries the seat's session policy — declared once on
- * the dispatcher and read by the board that holds it, so the roster shows
- * statically which seats hand off and where their rows land.
+ * A `task` address also carries the dispatcher's session policy — declared
+ * once on the dispatcher and read by the board that holds it, so the board can
+ * list statically which of its assignees hand off and where their rows land.
  */
 export type DispatchAddress =
   | {
@@ -136,13 +136,13 @@ export type DispatchAddress =
  * Every field is **server-derived at hand-off** — the board supplies them from
  * the ticket it minted off the row it claimed. `attempt`, `createdAt` and
  * `incarnationId` say *which* claim this dispatch believes it is running;
- * `seat` says which of the board's seats the row was routed to. The entry's
+ * `seat` names the assignee the board routed the row to. The entry's
  * gate decides whether all of that is still true: verified, never trusted.
  */
 export const taskDispatchInputSchema = z.object({
   /** Which board's ledger this dispatch settles against. */
   boardId: z.string().min(1),
-  /** The board seat the row is assigned to — the dispatcher's seat on the roster. */
+  /** The assignee the board routed the row to. */
   seat: z.string().min(1),
   /** The claimed row. */
   taskId: z.string().min(1),
@@ -418,7 +418,7 @@ export type InternalEntry = ActionCore;
  * A `task` entry: the block a board drain hands a claimed row to, in a session
  * of its own. Declared on the flow like any other entry — `task: { actions: {
  * implement: { block } } }` — and reached only through a `task` dispatch from a
- * `dispatcher({ type: "task" })` seat on a board. `defineFlow` wraps the entry
+ * `dispatcher({ type: "task" })` in a board's `workers`. `defineFlow` wraps the entry
  * in that board's claim gate (see {@link TaskBinding}), so the block receives
  * the packed worker input the row was claimed with, never the envelope, and
  * never runs against a row nothing verified.
@@ -435,9 +435,9 @@ export type TaskEntry = ActionCore & {
 };
 
 /**
- * What a task board binds onto the hand-off it installs at a `task` dispatcher
- * seat: which board it is, and the claim gate every entry the seat addresses
- * must run behind.
+ * What a task board binds onto the hand-off it installs at a `task`
+ * dispatcher: which board it is, and the claim gate every entry the dispatcher
+ * addresses must run behind.
  *
  * The gate needs the board's ledger, which lives outside `core`, so the board
  * supplies it and `defineFlow` applies it: for every reachable task dispatcher
@@ -464,7 +464,7 @@ const taskBindings = new WeakMap<object, TaskBinding>();
 /**
  * Bind a board's claim gate to the block that dispatches its tasks. Substrate-
  * facing; called by `taskBoard()` on the hand-off it installs at each
- * `dispatcher({ type: "task" })` seat, after `markDispatcher` has stamped the
+ * `dispatcher({ type: "task" })`, after `markDispatcher` has stamped the
  * address the binding is keyed by.
  *
  * @throws when the block carries no `task` address, or is already bound to a
