@@ -22,5 +22,5 @@ The config uses the in-memory store, which lasts one process, so a `search` run 
 separate `write` run finds nothing. Point the config at a persistent store to try both from the
 command line, or read the tests to see both turns on one store.
 
-The collection has no `client` config on purpose. Content edited straight from a client runs no
+The collection has no `client` config. Content edited straight from a client runs no
 reaction, so it would change a body without reclassifying it.

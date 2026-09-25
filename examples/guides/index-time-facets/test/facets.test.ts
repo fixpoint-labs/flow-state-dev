@@ -273,6 +273,35 @@ describe("stale answers never reach a search", () => {
   });
 });
 
+describe("tickets stored before facets existed", () => {
+  /**
+   * A row persisted before the `facets` field was added has no `facets` key at
+   * all. The schema default fills it only on the next write, so search and
+   * reindex both read the old shape (BP-030).
+   */
+  it("BR-9, BR-14: a legacy row with no facets key never matches a search and is picked up by reindex", async () => {
+    const model = modelFor({ [A]: { answers: BILLING_OPEN } });
+    const flow = ticketsFlow(triageOn(model));
+    const stores = createInMemoryStores();
+    await turn(flow, stores, "write", { key: "legacy", body: A });
+    // Rewrite the stored row in the pre-facets shape: body kept, no facets or indexedAs keys.
+    await stores.resourceState.set("user", "u", "tickets/legacy", { title: "legacy" }, "any");
+    const raw = await stores.resourceState.get("user", "u", "tickets/legacy");
+    expect(raw?.state).toEqual({ title: "legacy" });
+    model.calls.length = 0;
+
+    expect((await search(flow, stores, {})).keys).toEqual([]);
+    expect((await search(flow, stores, { topic: "billing" })).keys).toEqual([]);
+    expect((await search(flow, stores, { topic: "billing", minConfidence: 0.5 })).keys).toEqual([]);
+    expect(model.calls).toHaveLength(0);
+
+    const r = await turn(flow, stores, "reindex", {});
+    expect(r.error).toBeUndefined();
+    expect(model.calls).toEqual([A]);
+    expect((await search(flow, stores, { topic: "billing" })).keys).toEqual(["legacy"]);
+  });
+});
+
 describe("reindex", () => {
   it("V7: classifies only unfaceted tickets; force reclassifies every one", async () => {
     let down = true;

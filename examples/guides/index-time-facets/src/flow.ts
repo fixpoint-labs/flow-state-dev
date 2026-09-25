@@ -86,7 +86,8 @@ export function ticketsFlow(triage: TicketEvaluator) {
     execute: async (input, ctx): Promise<ResourceContentChange[]> => {
       const all = await ctx.resources.tickets.list();
       return all
-        .filter((t) => input.force === true || t.state.facets === null)
+        // `== null` also picks up tickets stored before `facets` existed.
+        .filter((t) => input.force === true || t.state.facets == null)
         .map((t) => ({ key: t.path.slice(PREFIX.length), ref: t.path, kind: "contentUpdated" as const }));
     },
   });

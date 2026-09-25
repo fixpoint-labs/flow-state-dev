@@ -113,29 +113,37 @@ export async function checkFoundWithoutAModelCall(
 
   // Turn 1: write every held-out ticket; each body is classified as it lands.
   // A failed classification leaves the ticket without facets by design; keep
-  // the cause so e1 can name it instead of just "no facets".
+  // the evaluator's error per ticket so the failure names the cause (a
+  // provider outage reads differently from a mechanism bug).
   let writeTokens = 0;
-  const classifyErrors: string[] = [];
+  const classifyErrors = new Map<string, string>();
   for (const [n, t] of fx.tickets.entries()) {
     const { result, traces } = await runTurn(flow, stores, "write", t, `req_write_${n}`);
     if (result.error !== undefined) failures.push(`e0: writing ${t.key} failed: ${result.error.message}`);
     writeTokens += traces.reduce((sum, r) => sum + (r.modelUsage?.totalTokens ?? 0), 0);
     for (const r of traces) {
       if (r.status === "failed" && r.blockKind === "evaluator") {
-        classifyErrors.push(`${t.key}: ${r.error?.message ?? "evaluator failed"}`);
+        classifyErrors.set(t.key, r.error?.message ?? "evaluator failed");
       }
     }
   }
 
+  // Every written ticket must carry stored facets, not only the one searched for.
+  const storedFacets = new Map<string, TicketState["facets"] | undefined>();
+  for (const t of fx.tickets) {
+    const state = (await stores.resourceState.get("user", USER, `tickets/${t.key}`))?.state as TicketState | undefined;
+    storedFacets.set(t.key, state?.facets);
+    if (state?.facets == null) {
+      const error = classifyErrors.get(t.key);
+      const cause = error !== undefined ? `classification failed: ${error}` : "no evaluator error recorded";
+      failures.push(`e0: ${t.key} has no stored facets after its write (${cause})`);
+    }
+  }
+  if (failures.length > 0) return { failures, evidence: "" };
+
   // Take the search value from what was stored, never from an expected label.
   const target = fx.tickets[0]!;
-  const stored = (await stores.resourceState.get("user", USER, `tickets/${target.key}`))?.state as TicketState | undefined;
-  const topic = stored?.facets?.topic.choice;
-  if (topic === undefined) {
-    const cause = classifyErrors.length > 0 ? ` (classification failed: ${classifyErrors.join("; ")})` : "";
-    failures.push(`e1: ${target.key} has no stored facets after its write${cause}: ${JSON.stringify(stored)}`);
-    return { failures, evidence: "" };
-  }
+  const topic = storedFacets.get(target.key)!.topic.choice;
   const query: FacetQuery = { topic };
 
   // Turn 2: the search.

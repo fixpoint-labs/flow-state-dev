@@ -81,9 +81,13 @@ export type FacetQuery = z.infer<typeof facetQuerySchema>;
  * no facets (never classified, failed, or cleared) never matches. A minimum
  * confidence applies to the answers the query names; an answer that carries
  * no confidence fails it.
+ *
+ * `undefined` is a ticket stored before the `facets` field existed: the
+ * schema's default fills it only on the next write, so a read can still see
+ * the old shape. It counts as unindexed, the same as `null`.
  */
-export function matchesFacets(facets: TicketFacets | null, query: FacetQuery): boolean {
-  if (facets === null) return false;
+export function matchesFacets(facets: TicketFacets | null | undefined, query: FacetQuery): boolean {
+  if (facets == null) return false;
   const wanted: Array<[keyof TicketFacets, string | undefined]> = [
     ["topic", query.topic],
     ["status", query.status],
