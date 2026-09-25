@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 410" role="img" aria-label="Today, only the assistant's panel has a composer; a picked channel shows an empty stream and a read-only note, and each seat is read-only. After, the channel panel shows its transcript with a composer that calls post, a desk-clerk seat shows its reply with a composer that calls answer, and a followup-runner seat stays read-only with its reason. The assistant is unchanged."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .line  { fill:var(--code-soft); stroke:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; font-style:italic; }
+    .t-mute{ fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; font-style:italic; }
+    .div   { stroke:var(--rule); stroke-width:1; stroke-dasharray:4 4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="410"/>
+
+  <g id="headers">
+    <text class="t-h" x="16" y="28">Today</text>
+    <text class="t-h" x="484" y="28">After</text>
+    <line class="div" x1="470" y1="12" x2="470" y2="398"/>
+  </g>
+
+  <g id="today">
+    <rect class="n-box" x="16" y="44" width="438" height="62" rx="5"/>
+    <text class="t-lbl" x="30" y="62">ASSISTANT · chat-agent</text>
+    <rect class="comp" x="30" y="72" width="410" height="24" rx="4"/>
+    <text class="t-acc" x="42" y="88">composer → run { message }   the only one on the page</text>
+
+    <rect class="n-box" x="16" y="118" width="438" height="112" rx="5"/>
+    <text class="t-lbl" x="30" y="136">CHANNEL · support.desk</text>
+    <text class="t-mute" x="30" y="166">"This channel session has no turns yet."</text>
+    <text class="t-s" x="30" y="186">seats have posted; the transcript is not on the page</text>
+    <text class="t-gone" x="30" y="216">Read only. Messages from this page go to the assistant.</text>
+
+    <rect class="n-box" x="16" y="242" width="438" height="72" rx="5"/>
+    <text class="t-lbl" x="30" y="260">SEAT · support.ada · desk-clerk</text>
+    <text class="t-s" x="30" y="282">its conversation, if it has one</text>
+    <text class="t-gone" x="30" y="302">Read only. Messages from this page go to the assistant.</text>
+
+    <rect class="n-box" x="16" y="326" width="438" height="72" rx="5"/>
+    <text class="t-lbl" x="30" y="344">SEAT · support.wren · followup-runner</text>
+    <text class="t-gone" x="30" y="370">Read only. Messages from this page go to the assistant.</text>
+  </g>
+
+  <g id="after">
+    <rect class="n-box" x="484" y="44" width="440" height="62" rx="5"/>
+    <text class="t-lbl" x="498" y="62">ASSISTANT · chat-agent</text>
+    <text class="t-mute" x="498" y="88">unchanged</text>
+
+    <rect class="n-box" x="484" y="118" width="440" height="112" rx="5"/>
+    <text class="t-lbl" x="498" y="136">CHANNEL · support.desk · transcript</text>
+    <rect class="line" x="498" y="144" width="412" height="20" rx="3"/>
+    <text class="t-b" x="506" y="158">support.ada · handed the refund to wren</text>
+    <rect class="line" x="498" y="168" width="412" height="20" rx="3"/>
+    <text class="t-b" x="506" y="182">devuser · is the printer fixed?</text>
+    <rect class="comp" x="498" y="196" width="412" height="24" rx="4"/>
+    <text class="t-acc" x="510" y="212">composer → post { body }   no author</text>
+
+    <rect class="n-box" x="484" y="242" width="440" height="72" rx="5"/>
+    <text class="t-lbl" x="498" y="260">SEAT · support.ada · desk-clerk</text>
+    <rect class="line" x="498" y="266" width="412" height="16" rx="3"/>
+    <text class="t-b" x="506" y="278">[front desk] is the printer fixed?</text>
+    <rect class="comp" x="498" y="286" width="412" height="22" rx="4"/>
+    <text class="t-acc" x="510" y="301">composer → answer { note }</text>
+
+    <rect class="n-box" x="484" y="326" width="440" height="72" rx="5"/>
+    <text class="t-lbl" x="498" y="344">SEAT · support.wren · followup-runner</text>
+    <text class="t-mute" x="498" y="370">no composer: this seat runs board rows and takes no messages</text>
+  </g>
+</svg>

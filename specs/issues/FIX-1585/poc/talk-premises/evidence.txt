@@ -1,0 +1,24 @@
+# probe.mts run against origin/main 689c72e, dev (in-memory) profile, 2026-09-25
+PASS P1 — post accepted: {"status":"in_progress","request":{"id":"req_1790357356430_acb0edb8fc082","flowKind":"channel","flowId":"channel","actionName":"post","status":"in_progress"},"s
+PASS P2 — transcript line: {"id":"61f5f04d-c581-46d5-b963-f4fb0799b4f0","at":1790357356449,"principal":"devuser","authorVerified":false,"body":"fix-1585-probe-1790357356429"}
+PASS P3 — items carrying the body (excluding trace/state_change): 0; item types: state_change
+PASS P4 — author "devuser" not appended; request failed; {"id":"req_1790357356747_cb0ca7e65032e","flowKind":"channel","flowId":"channel","actionName":"post","userId":"devuser","sessionId":"support.desk","orgId":"kitchen-sink","source":"http","status":"faile
+PASS P5 — seat reply item: {"id":"item_message_2_e58f52bc0b2e2","type":"message","status":"completed","requestId":"req_1790357356957_95f8133cb457a","itemIndex":2,"provenance":{"blockName":"desk-clerk-answer","blockInstanceId":"; item types: message
+PASS P6:agent — actions=run schemas={"run":{"type":"object","fields":{"message":{"type":"string","required":true}}}}
+PASS P6:desk-clerk — actions=answer schemas={"answer":{"type":"object","fields":{"note":{"type":"string","required":true}}}}
+PASS P6:followup-runner — actions=drain schemas={"drain":{"type":"unsupported"}}
+exit=0
+
+# negative control: NEGATIVE=1 (P2 expects principal 'someone-else')
+FAIL P2 — transcript line: {"id":"006101d3-6628-497a-9f56-bbad9a3a6fb8","at":1790357360466,"principal":"devuser","authorVerified":false,"body":"fix-1585-probe-1790357360444"}
+exit=1
+
+# expose-probe.mts WITH session.client.expose ["transcript"] applied to channel-flow.ts (reverted after)
+PASS P7 — clientData.session.transcript carries the post: true
+PASS P8 — clientData.session keys: [transcript] (members and instructions stay private)
+exit=0
+
+# expose-probe.mts on unmodified main (control: must be red)
+FAIL P7 — clientData.session.transcript carries the post: false
+FAIL P8 — clientData.session keys: [] (members and instructions stay private)
+exit=1
