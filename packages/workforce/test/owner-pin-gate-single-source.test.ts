@@ -14,6 +14,11 @@
  *   2. The gate's refusal sentence appears in exactly one source file, the
  *      roster module that owns the gate. This catches a private copy pasted in
  *      with its message.
+ *
+ * The roster's row-to-pin builder, `hiredSeatOwnerPin(orgId, row)`, gives a
+ * stored row the pin it registers under, so it must refuse exactly where the
+ * gate refuses. It is held to the gate's refusal sentence: with that sentence
+ * in one file, a builder that throws it is a builder that went through the gate.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -24,6 +29,7 @@ import * as capability from "../src/seat-hire-capability";
 import * as blocks from "../src/seat-hire-blocks";
 import * as rosterBarrel from "../src/roster";
 import * as gate from "../src/roster/register-hired-seat";
+import { hiredSeatOwnerPin, toHiredSeatRow } from "../src/roster/rows";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.resolve(here, "..", "src");
@@ -57,5 +63,33 @@ describe("the hired-seat owner-pin gate has one implementation", () => {
       .filter((file) => readFileSync(file, "utf8").includes(REFUSAL))
       .map((file) => path.relative(srcDir, file));
     expect(holders).toEqual([path.join("roster", "register-hired-seat.ts")]);
+  });
+});
+
+describe("the roster's row-to-pin builder goes through the gate", () => {
+  const orgVisible = toHiredSeatRow({ seatId: "eng.lead", flow: "desk-clerk" });
+  const userOwned = toHiredSeatRow({ seatId: "eng.lead", flow: "desk-clerk", ownerUserId: "alice" });
+
+  // An unpinned hired seat would be admitted as shared. The builder is what
+  // hands a stored row its pin, so it must refuse the same empty or missing org
+  // the gate refuses, rather than return `{ orgId: "" }`.
+  it.each([
+    ["an empty org", ""],
+    ["a missing org", undefined as unknown as string],
+    ["a null org", null as unknown as string],
+  ])("refuses %s with the gate's refusal", (_label, orgId) => {
+    expect(() => hiredSeatOwnerPin(orgId, orgVisible)).toThrow(REFUSAL);
+    expect(() => hiredSeatOwnerPin(orgId, userOwned)).toThrow(REFUSAL);
+  });
+
+  // The pins real rows register under do not move: an org-visible row stays
+  // visible to the whole org (no `userId` key at all), a user-owned row stays
+  // that user's.
+  it("gives an org-visible row { orgId } and a user-owned row { orgId, userId }, as before", () => {
+    expect(hiredSeatOwnerPin("acme", orgVisible)).toStrictEqual({ orgId: "acme" });
+    expect(hiredSeatOwnerPin("acme", userOwned)).toStrictEqual({ orgId: "acme", userId: "alice" });
+    expect(hiredSeatOwnerPin("acme", { ...orgVisible, ownerUserId: "" })).toStrictEqual({
+      orgId: "acme",
+    });
   });
 });

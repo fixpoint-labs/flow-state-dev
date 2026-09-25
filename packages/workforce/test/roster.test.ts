@@ -461,6 +461,35 @@ describe("the reload, partitioned by organization", () => {
   });
 });
 
+describe("a row read under an empty organization id", () => {
+  // The owner pin refuses an empty org, and so does the address. On the boot
+  // reload either refusal must stay one row's named skip: a throw that escaped
+  // would take every other organization's seats down with it.
+  it("is reported and skipped, and the other organizations still load", async () => {
+    const good = { seatId: "support.ada", flow: "desk-clerk", settings: {} };
+    const { seats, problems, byOrg } = await reloadHiredSeats({
+      stores: storeHolding({
+        "": {
+          legacy: { seatId: "legacy", flow: "desk-clerk", settings: {} },
+          stamped: { seatId: "stamped", flow: "desk-clerk", settings: {}, owningOrgId: "" },
+        },
+        acme: { "support.ada": good },
+      }),
+      orgIds: ["", "acme"],
+      kinds,
+    });
+
+    expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
+    expect(seats[0]!.ownerPin).toStrictEqual({ orgId: "acme" });
+    expect(byOrg[0]!.seats).toEqual([]);
+    expect(byOrg[0]!.problems).toHaveLength(2);
+    expect(byOrg[0]!.problems[0]).toContain('organization "", row "workforce/roster/legacy"');
+    expect(byOrg[0]!.problems[1]).toContain('organization "", row "workforce/roster/stamped"');
+    expect(byOrg[1]!.problems).toEqual([]);
+    expect(problems).toEqual(byOrg[0]!.problems);
+  });
+});
+
 describe("V6 · a store that never answers fails the boot inside its bound", () => {
   it("rejects, returns no partial result, and does so well within the test's own budget", async () => {
     vi.useFakeTimers();
