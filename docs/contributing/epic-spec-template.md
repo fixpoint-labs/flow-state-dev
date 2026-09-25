@@ -62,7 +62,7 @@ design nobody signed off. Cross-cutting decisions only.
 
 | Was | Now |
 |---|---|
-| §1 Purpose & objective, the holistic necessity check | `SPEC.md` — the teams table, *what's in the box*, the set with *why the set needs it*, the sign-off |
+| §1 Purpose & objective, the holistic necessity check | `SPEC.md` — the goal and how we'll know it's met, the teams table, *what's in the box*, the set with *why the set needs it*, the sign-off |
 | §2 Themes | `DECISIONS.md` — the cross-cutting calls as cards, and *decided in review* |
 | §3 Shape of the whole (the POC) | `DECISIONS.md` — *what the end-state POC showed*, four lines |
 | §4 Running index | `SPEC.md` — the reviewed set with links to live Linear status and implementation PRs |
@@ -87,9 +87,9 @@ issues, in a retained document set. It is not any one issue's implementation des
 
 **In scope to challenge:**
 
-- The objective — is this body of work worth doing, and is the outcome the right one?
-- **The goal** in `SPEC.md` — is it the real need at full size, or a smaller goal the set
-  could meet while the need stays unmet? Would the proof's check fail if the goal were not met?
+- The objective and **the goal** in `SPEC.md` — is this body of work worth doing, and is the
+  goal the real need at full size, or a smaller one the set could meet while the need stays
+  unmet? Would the proof's check fail if the goal were not met?
 - **Whether the set overbuilds.** Each issue can earn its place while the whole is too much.
   That question can only be asked here.
 - A cross-cutting decision in `DECISIONS.md` — shared surface, naming, sequencing, contracts.
@@ -539,7 +539,7 @@ no child may do · how the set is run · the proof (what done means).
 >
 > | # | The epic is done when | Proved by |
 > |---|---|---|
-> | ER-14 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): in an app that sets nothing, a connection that drops and one that dies silently both end in a transcript with no gap and no duplicate, and leg b fails with heartbeats off | The proof issue's goal check, real model |
+> | ER-14 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: both legs pass, and leg b fails under its control | The proof issue's goal check, real model |
 > | ER-15 | The docs teach reconnect as something an app gets, not something it builds | FIX-776's docs PR: the streaming overview leads with it |
 
 ---

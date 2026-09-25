@@ -105,9 +105,9 @@ answering one question: **is this the right approach?**
 
 **In scope to challenge:**
 
-- **The goal** in `SPEC.md` — is it the real need at full size, or a smaller goal that would
-  let us call this done early? Would the named check fail if the goal were not met?
-- The problem framing in `SPEC.md` — are we solving the right thing, for the people named?
+- **The goal and the problem framing** in `SPEC.md` — is the goal the real need at full size,
+  for the people named, or a smaller goal that would let us call this done early? Would the
+  named check fail if the goal were not met?
 - The approach — will it work, does it fit the architecture and `docs/philosophy.md`?
 - Any numbered **decision** in `DECISIONS.md` — that's the sign-off surface.
 - A case `BUSINESS-RULES.md` misses, or a rule that would **invalidate** the design.
@@ -295,7 +295,10 @@ section is what stops that. It has four parts, in order, and none is optional.
    what input, what outcome counts as PASS, and the control that must FAIL, as a dashed path.
    One sentence under it saying what the check reads. This figure goes in the PR body
    ([`spec-figures.md`](spec-figures.md)).
-4. **How we verify** — a table with these rows, each specific enough to run:
+4. **How we verify** — a table with these rows, each specific enough to run. The rows are the
+   goal check's `goal.md` fields, copied there when it is written; what each field owes is
+   canonical in [`goals/README.md`](../../goals/README.md), and this list only says what the
+   spec must pin before the check exists:
    - **Goal check** — the `goals/<describe>/<it>/` path, model or `n/a`, who runs it and when
      (the implementing agent, at completion), and where the verdict lands (the implementation
      PR's goal verdict).

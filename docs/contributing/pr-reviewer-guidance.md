@@ -134,10 +134,10 @@ Rules, all cheap to check:
   diagram is genuinely clearer. Never keep both out of politeness.
 - **Two is the ceiling**, and the second one needs a reason.
 
-**On a spec or epic PR, blocks 1 and 2 take a fixed shape, and the diagram is already
-spoken for.** They open on **the goal**: one sentence, the *how we'll know it's met* figure as
-a mermaid fence, and one line naming the goal check and the control that must fail. Then the
-problem and the solution are one **people table** — *someone who… · today ·
+**On a spec or epic PR, blocks 1 and 2 take a fixed shape, and the diagrams are already
+spoken for.** Block 1 opens on **the goal**: one sentence, the *how we'll know it's met* figure as
+a mermaid fence, and one line naming the goal check and the control that must fail. Then,
+across blocks 1 and 2, the problem and the solution are one **people table** — *someone who… · today ·
 after* (a spec) or *a team that… · today · after this epic* (an epic) — cut from the spec's own
 `SPEC.md`. Under it goes the spec's figure, as a raw image pinned to the commit that holds it
 ([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence: the *what
