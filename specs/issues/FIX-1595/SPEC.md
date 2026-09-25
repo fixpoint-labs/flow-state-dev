@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Feature · `orchestration` · small · 1 PR · epic [FIX-1553](../../epics/FIX-1553/SPEC.md) (done; a
+Feature · `orchestration`, plus one generic history option in `core`/`engine` · small · 1 PR · epic [FIX-1553](../../epics/FIX-1553/SPEC.md) (done; a
 follow-on) · extends [FIX-1559](../FIX-1559/SPEC.md) (shipped)
 
 ## Five people, before and after
@@ -46,7 +46,7 @@ without the option, and it must fail.
 |---|---|
 | **Goal check** | `goals/skill-activator/follow-up-uses-recent-turns/` · real model (`typesafe-ai/jev` and `openai/gpt-5.4-mini` as an evaluation model, via the AI Gateway, as its sibling goal) · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | On both models: each targeted follow-up activates exactly the skill its prior offer was about, and the turn has an evaluator row; the small-talk follow-up activates nothing |
-| **Input** | A three-skill catalog; per case, one prior exchange (a user ask and an assistant offer) then a follow-up with no skill name, keyword or slash. Different offers and follow-ups must pass too |
+| **Input** | A three-skill catalog; per case, one prior turn (a user ask and an assistant offer) then a follow-up with no skill name, keyword or slash. Different offers and follow-ups must pass too |
 | **Anti-game** | Don't assert on the evaluator's input alone, and don't pass the prior turns in the action input. A follow-up that names the skill or a keyword is refused by the run |
 | **Control that must fail** | `GOAL_CONTROL=no-recent` builds `skillEvaluator(model)` with no option. Both targeted follow-ups must activate nothing, on both models, before the PASS counts |
 
@@ -71,16 +71,19 @@ Same catalog, same message. The only difference is the column of earlier turns o
 ```mermaid
 flowchart LR
   M["user message"] --> T{"slash or keyword match?"}
-  T -->|"no"| C["read the catalog once"]
+  T -->|"no"| C["read the catalog"]
   C -->|"empty · no call"| A["apply"]
-  C -->|"skills"| G["gather last N prior exchanges · text only"]
+  C -->|"skills"| G["history view · last N earlier turns · prior only · text"]
   G -->|"message · skills · recentMessages"| E["skillEvaluator · one pick"]
-  E --> A
+  E --> R["re-read the catalog · the pick must still be offered"]
+  R --> A
   T -->|"yes"| A
 ```
 
 The activator gathers the turns only when the evaluator will run, and hands them over as a typed
-field beside the message and the skills.
+field beside the message and the skills. It reads them through the session's history view, with a
+new generic option that leaves out the request in flight ([D3](DECISIONS.md#d3)). After the pick,
+the catalog is read again, as today, so a skill removed while the model was answering can't activate.
 
 ## What stays as it is
 
@@ -89,6 +92,8 @@ field beside the message and the skills.
 - The default generator classifier and the built-in agent kind.
 - An evaluator built by hand from `skillQuestions`: it is handed `{ message, skills }` as today.
 - An empty catalog still makes no call ([FIX-1372](https://linear.app/fixpoint-labs/issue/FIX-1372)).
+- The catalog re-read after the pick: a skill removed or disabled mid-call never activates.
+- `items.history()` without the new option: the in-flight request is still appended, as today.
 
 ## Sign off
 
@@ -96,12 +101,19 @@ field beside the message and the skills.
 offered skill on a real model, and small talk still doesn't. If wrong: we ship a field the
 evaluator receives but whose effect nobody can feel.
 
-1. **[D1](DECISIONS.md#d1) · `recentMessages: 3` means the last three exchanges (a message and
-   its reply), not three single messages.** If wrong: up to twice the context, and cost, an
-   author expected, and changing the unit later silently changes every app that set it.
+1. **[D1](DECISIONS.md#d1) · `recentMessages: 3` counts the last three earlier turns, not three
+   single messages.** A turn is one earlier request: what the user said and everything the
+   assistant said back, which in a flow that replies in several steps can be more than one
+   message. I recommend turns: it's how the framework's history already counts, and it never
+   hands over an answer without its question. If wrong: an author who pictured three messages
+   sends more context, and cost, than they counted, and changing the unit after release silently
+   changes every app that set it.
 2. **[D2](DECISIONS.md#d2) · The evaluator sees what was said: user and assistant text, oldest
    first, never tool calls, tool results or reasoning.** If wrong: a follow-up whose referent
    lived only in a tool result ("use that on the file it found") still misses.
+
+Also decided, not asked: the in-flight turn is left out by a generic option on the core/engine
+history view, not by orchestration rebuilding history itself ([D3](DECISIONS.md#d3)).
 
 **Open: none.** Number 1 is the one to weigh. Reasoning and what lost:
 [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).

@@ -4,7 +4,7 @@
 
 Two destinations, both extensions. No new page: this is one option on a documented helper.
 Voice notes for the implementer: no issue numbers in `apps/docs`, minimal em-dashes, and say
-"exchange" once in plain words before relying on it.
+"turn" once in plain words before relying on it.
 
 ## UPDATE · `apps/docs/docs/skills/activation.md` · "Tier 3 with an evaluator", after the paragraph that starts "`skillEvaluator` takes any model"
 
@@ -14,8 +14,9 @@ By default the evaluator sees only the current message. That misses the replies 
 most often after an offer: "yes, do that", "go ahead", "use it on what I just asked". On their
 own they don't fit any skill.
 
-Pass `recentMessages` to let it see the last few exchanges too. An exchange is one earlier turn:
-what the user said and what the assistant answered.
+Pass `recentMessages` to let it see the last few turns too. A turn is one earlier request: what
+the user said and everything the assistant said back, which may be more than one message if your
+flow replies in several steps.
 
 ```ts
 export const skillActivator = createSkillActivator({
@@ -24,7 +25,7 @@ export const skillActivator = createSkillActivator({
 });
 ```
 
-With it set, the model evaluates the earlier exchanges, oldest first, and then the message.
+With it set, the model evaluates the earlier turns, oldest first, and then the message.
 It still picks one skill or none, from the same skills, and the pick is still final.
 
 What it reads:
@@ -40,7 +41,7 @@ empty skill list resolves the turn before any history is read. On a session's fi
 is nothing to add, so the evaluator sees the message alone.
 
 Leave it out, or pass `0`, and the evaluator behaves exactly as before. A negative or
-fractional value throws when you call `skillEvaluator`. Each exchange adds tokens to every
+fractional value throws when you call `skillEvaluator`. Each turn adds tokens to every
 evaluator call, so start small: two or three is usually enough for a follow-up to make sense.
 
 ## UPDATE · `apps/docs/docs/skills/activation.md` · the paragraph "The activator passes the block `{ message, skills }`…"
@@ -56,7 +57,7 @@ Replace the paragraph with:
 
 After "It picks one skill or none, and its answer is final." insert:
 
-> Pass `skillEvaluator(model, { recentMessages: 3 })` to let it read the last three exchanges
+> Pass `skillEvaluator(model, { recentMessages: 3 })` to let it read the last three turns
 > too, so follow-ups like "yes, do that" can match.
 
 ## Publication ownership
