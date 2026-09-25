@@ -470,6 +470,56 @@ export const REFUSED_SEAT_TOOLS_KEY_MESSAGE =
   `folders register is the loader's job.`;
 
 /**
+ * `packages` — the `WORKER.md` key a worker takes packages from its team's or
+ * the org's library with, by name: `packages: [escalation]`.
+ *
+ * Read by the hire step and never handed to a kind as a setting, like
+ * `resources:`. A package in the worker's own folder needs no line here.
+ */
+export const PACKAGES_KEY = "packages";
+
+/**
+ * `seatPackages` — imposed by the seat factory, and where the packages a seat
+ * HOLDS arrive in its flow's settings bag: each one's name, address,
+ * instructions and blocks.
+ *
+ * **Imposed only on a seat that holds at least one package**, the way
+ * `teamInstructions` is imposed only on a seat whose team wrote some. A seat
+ * holding none carries no such key, so every kind that hires today keeps
+ * hiring; a hand-rolled kind that has not declared it is refused, by name, the
+ * first time a seat of it holds a package, rather than dropping the package.
+ *
+ * Its own key rather than {@link SEAT_TOOLS_KEY}, whose meaning is what the
+ * seat's `tools:` line named. What a kind does with a held package is the
+ * kind's: the built-in `agent` kind puts the instructions in the prompt after
+ * the team's and the seat's own, and offers the blocks when the seat wrote no
+ * `tools:` line.
+ */
+export const SEAT_PACKAGES_KEY = "seatPackages";
+
+/**
+ * The one wording for {@link SEAT_PACKAGES_KEY}, shared by every door that
+ * refuses an authored one. Names no subject — the caller supplies what it can
+ * name.
+ */
+export const REFUSED_SEAT_PACKAGES_KEY_MESSAGE =
+  `declares \`${SEAT_PACKAGES_KEY}:\`, which is not a setting a worker declares. ` +
+  `A seat holds the packages in its own \`${PACKAGES_KEY}/\` folder and the ones its ` +
+  `\`${PACKAGES_KEY}:\` line names, and reading them is the loader's job.`;
+
+/**
+ * The one wording for a package block that declares its own resources — the
+ * package form of {@link colocatedResourceMessage}, refused for its reason: a
+ * package is held per seat and a store is the kind's.
+ */
+export const packageResourceMessage = (packagePath: string, key: string, accessors: string[]): string =>
+  `holds package "${packagePath}", whose block "${key}" declares ` +
+  `${accessors.map((a) => `"${a}"`).join(", ")}. A package is held by one seat at a time and a ` +
+  `store is the kind's, so there is nowhere to install it that would not also install it for ` +
+  `every other seat of this kind. Declare the store on the kind ` +
+  `(\`defineAgentWorkerFlow({ uses })\`) and let the block use it.`;
+
+/**
  * The one wording for a block registered under a name its own `name` does not
  * match — the one-name rule, on either map.
  *

@@ -1,12 +1,13 @@
 /**
- * The admission contract: the four settings every hireable worker kind
+ * The admission contract: the five settings every hireable worker kind
  * accepts.
  *
  * Declared and imposed are different sets, and this file is where they are
- * easiest to confuse. The contract DECLARES four keys, and the seat factory
+ * easiest to confuse. The contract DECLARES five keys, and the seat factory
  * IMPOSES each on its own condition: `instructions` when the record has a
- * body, `teamInstructions` when the record's team wrote a `TEAM.md`, and
- * `seatSkills` and `seatTools` on every record. Those last two are the
+ * body, `teamInstructions` when the record's team wrote a `TEAM.md`,
+ * `seatPackages` when the seat holds a package, and `seatSkills` and
+ * `seatTools` on every record. Those last two are the
  * unconditional ones — present and empty is a real answer for a seat's skills
  * and for what its own folders register, and there is no equivalent answer for
  * a team layer, so a seat whose team wrote none carries no such key at all
@@ -27,7 +28,7 @@
  * composed kind gets it for free, and a hand-rolled one refuses — loudly, at
  * boot, naming the key — until its author adds it too.
  *
- * **Four keys, and that is the whole bag.** A kind's own settings sit at the
+ * **Five keys, and that is the whole bag.** A kind's own settings sit at the
  * TOP LEVEL beside them, where the framework closes the set and an undeclared
  * key refuses by name. There is no nested bag for a kind's own settings: known
  * keys belong in the closed set, and genuinely open-ended data gets one
@@ -44,6 +45,7 @@ import { z } from "zod";
 import type { BlockDefinition } from "@flow-state-dev/core";
 import {
   INSTRUCTIONS_KEY,
+  SEAT_PACKAGES_KEY,
   SEAT_SKILLS_KEY,
   SEAT_TOOLS_KEY,
   TEAM_INSTRUCTIONS_KEY
@@ -152,7 +154,24 @@ export function workerConfigSchema() {
      * — the subset of the registry the seat actually declared. Names that fell
      * through to the app's catalog stay in the kind's own `tools` setting.
      */
-    [SEAT_TOOLS_KEY]: z.array(seatToolSchema).default([])
+    [SEAT_TOOLS_KEY]: z.array(seatToolSchema).default([]),
+
+    /**
+     * The packages this seat holds — the ones in its own `packages/` folder,
+     * then the ones its `packages:` line took from its team's or the org's
+     * library — each with its instructions and its blocks.
+     *
+     * **Imposed only when the seat holds at least one**, and absent otherwise,
+     * the way {@link TEAM_INSTRUCTIONS_KEY} is. Never authored: a worker file
+     * that declares `seatPackages:` is refused by name.
+     *
+     * What to do with it is the kind's. The built-in `agent` kind renders each
+     * package's instructions after the team's and the seat's own, and offers
+     * its blocks as tools when the seat wrote no `tools:` line. A kind that
+     * composes the contract and never reads it hires and runs; its seats'
+     * packages then simply do nothing.
+     */
+    [SEAT_PACKAGES_KEY]: z.array(seatPackageSchema).optional()
   });
 }
 
@@ -173,6 +192,24 @@ export const seatToolSchema = z.custom<BlockDefinition<any, any>>(
     typeof (value as { name?: unknown }).name === "string",
   { message: "must be a block definition" }
 );
+
+/**
+ * One held package as it rides into the bag. Structural, like
+ * {@link seatSkillSchema}: the hire built it from records the loader already
+ * validated.
+ */
+export const seatPackageSchema = z
+  .object({
+    /** The package's folder name. */
+    name: z.string().min(1),
+    /** Its address under the workforce root, e.g. `teams/support/packages/escalation`. */
+    path: z.string().min(1),
+    /** Its `PACKAGE.md` body. Absent when the body is empty. */
+    instructions: z.string().optional(),
+    /** Its blocks, in name order. Empty for an instructions-only package. */
+    tools: z.array(seatToolSchema)
+  })
+  .strict();
 
 /**
  * What a hireable kind receives, as a type — the parsed shape of

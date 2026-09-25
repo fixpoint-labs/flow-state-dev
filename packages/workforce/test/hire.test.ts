@@ -545,8 +545,30 @@ describe("hireWorkforce", () => {
       actions: { run: { inputSchema, block: work } }
     });
 
+    // Some contract keys are imposed only on a condition — a team that wrote
+    // instructions, a package the seat holds — so the record meets every one
+    // of them: the newest key has to actually arrive for its absence from the
+    // kind to be what refuses.
     const message = refusalOf(
-      [record({ id: "engineering.stale", declared: { flow: "missing-newest" }, body: "Work." })],
+      [
+        record({
+          id: "engineering.stale",
+          declared: { flow: "missing-newest" },
+          body: "Work.",
+          teamInstructions: "Team.",
+          packages: [
+            {
+              name: "kit",
+              path: "teams/engineering/workers/stale/packages/kit",
+              level: "worker",
+              team: "engineering",
+              worker: "engineering.stale",
+              description: "A kit.",
+              instructions: "Use the kit."
+            }
+          ]
+        })
+      ],
       { ...kinds, "missing-newest": missingNewest as never }
     );
 
