@@ -1,0 +1,18 @@
+# cascading-router › it fails closed on a real evaluation model
+
+**Issue:** FIX-1558
+**Outcome:** An author writes a two-level `utility.cascadingRouter` tree (which team, then, for billing, how urgent) with a floor on the costly edges. On Jev, which reports how confident it is, a clear billing-urgent ticket walks both levels and reaches the urgent-billing block with the ticket as its input. On OpenAI's evaluation model, which reports no confidence, no ticket is routed on the bare answer: every one lands on the author's `ambiguous` block at the first level, with the reason `no-confidence` in the trace.
+**Input:** `fixtures/input.json`: one clear billing-urgent ticket for the Jev leg, three mixed tickets for the OpenAI leg, and the two choice questions. Held-out: any ticket passes the OpenAI leg on a correct implementation, since no confidence means `ambiguous` whatever the model chose; the Jev leg needs a ticket that is plainly billing and plainly urgent.
+**Signal:** Leg (j), Jev via the gateway through `runAction` on the default model resolver: (j0) the run succeeds; (j1) the output is the urgent-billing leaf's and that leaf received the ticket, deep-equal; (j2) the trace carries a verdict for both levels (`root`, `root/billing`), each an opened edge; (j3) both walked evaluator answers carry a confidence in [0, 1]. Leg (o), `openai.evaluationModel("gpt-5.4-mini")`, per ticket: (o0) the run succeeds; (o1) the output is `ambiguous`'s and it received the ticket; (o2) exactly one verdict, at `root`, `ambiguous` with `no-confidence`; (o3) the level-2 evaluator never ran.
+**Anti-game:** A hollow pass would be a gate that treats a missing confidence as a pass (every OpenAI ticket then routes on the bare answer), or a check that asserts Jev's numbers or a specific OpenAI choice. The check asserts routes and verdict reasons only, never a confidence value. The control below proves leg (o) can fail.
+**Model:** real. `typesafe-ai/jev` via Vercel's AI Gateway (`AI_GATEWAY_API_KEY`). `@ai-sdk/openai`'s `evaluationModel("gpt-5.4-mini")`: direct with `OPENAI_API_KEY`, else the same adapter pointed at the gateway's OpenAI-compatible endpoint (`openai/gpt-5.4-mini`); the evidence line says which.
+**Run:** `pnpm tsx goals/cascading-router/fails-closed-on-a-real-evaluation-model/run.mts`
+**Controls:** `GOAL_CONTROL=open-on-missing` fills every missing confidence with 1 before the gate reads it, which routes exactly as a gate that opens on a missing confidence would. Must FAIL, and must name legs **o1/o2** (and o3 where level 1 then opened onto level 2), not j or o0.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-09-24 | 53b50f0 | typesafe-ai/jev (gateway); openai/gpt-5.4-mini via @ai-sdk/openai on the gateway's OpenAI-compatible endpoint | PASS | Jev: T-1042 → root:billing (confidence 1) → root/billing:high (confidence 1) → escalate received the ticket. OpenAI: T-1042 chose billing, T-1043 technical, T-1044 billing; each `no-confidence` at root → review, level 2 never asked. |
+| 2026-09-24 | 53b50f0 | same | FAIL (expected) | `GOAL_CONTROL=open-on-missing`: o1/o2 for all three tickets (routed to escalate, tech-queue, billing-queue on confidence 1), o3 for the two billing tickets. No j or o0 failure. |
+| 2026-09-25 | 4195c48 | same | PASS | Same routes as above after review round 1 (connector composition, per-placement levels, typed input/output). One earlier attempt failed j0 with the gateway's "Service temporarily unavailable" and passed on re-run. |
+| 2026-09-25 | 4195c48 | same | FAIL (expected) | `GOAL_CONTROL=open-on-missing`: o1/o2 for all three tickets, o3 for the two billing tickets; no j or o0 failure. |

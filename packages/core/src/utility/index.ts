@@ -103,3 +103,15 @@ export {
 export type {
   UpsertResourceConfig
 } from "./upsert-resource";
+
+export {
+  cascadingRouter
+} from "./cascading-router";
+
+export type {
+  CascadeAmbiguousReason,
+  CascadeBranch,
+  CascadeLevel,
+  CascadeVerdict,
+  CascadingRouterConfig
+} from "./cascading-router";
