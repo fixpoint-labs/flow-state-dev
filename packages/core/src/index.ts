@@ -217,6 +217,7 @@ export { collapseToCanonicalLog } from "./items/canonical-log";
 export {
   dispatcher,
   dispatchHandleSchema,
+  assertEvaluatorBlock,
   boolean,
   choice,
   evaluator,
@@ -226,6 +227,7 @@ export {
   type EvaluatorDefinition,
   type EvaluatorOutputSchema,
   type EvaluatorQuestionsSlot,
+  type EvaluatorSlotNames,
   handler,
   providerTool,
   router,

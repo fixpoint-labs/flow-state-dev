@@ -227,6 +227,11 @@ export type {
   MemoryCapabilityPreset,
 } from './memory-system'
 
+// The capture evaluator: memory's one question and the helper that builds
+// core's evaluator block for it on the app's model.
+export { captureEvaluator, captureQuestions } from './capture-evaluator'
+export type { CaptureEvaluatorBlock, CaptureQuestions, CaptureChoice } from './capture-evaluator'
+
 // ---------------------------------------------------------------------------
 // Layer 3: Composed memory capability factory
 // ---------------------------------------------------------------------------

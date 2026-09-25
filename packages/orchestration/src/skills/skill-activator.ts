@@ -33,7 +33,7 @@
  */
 
 import { z } from "zod";
-import { sequencer } from "@flow-state-dev/core";
+import { assertEvaluatorBlock, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import type { ExplicitActivationScope } from "./activation-store";
 import {
@@ -129,15 +129,11 @@ export interface SkillActivatorOptions {
 function checkEvaluatorOption(options: SkillActivatorOptions): void {
   const block = options.evaluator as unknown;
   if (block === undefined) return;
-  const kind = (block as { kind?: unknown } | null)?.kind;
-  if (kind !== "evaluator") {
-    const name = (block as { name?: unknown } | null)?.name;
-    throw new Error(
-      `createSkillActivator: "evaluator" must be an evaluator block` +
-        (typeof kind === "string" ? ` (got ${kind} "${String(name)}")` : "") +
-        ". Build one with skillEvaluator(model), or core's evaluator() with skillQuestions.",
-    );
-  }
+  assertEvaluatorBlock(block, {
+    slot: 'createSkillActivator: "evaluator"',
+    helper: "skillEvaluator(model)",
+    questions: "skillQuestions",
+  });
   const clashing = [
     options.classifierModel !== undefined ? "classifierModel" : undefined,
     options.confidenceThreshold !== undefined ? "confidenceThreshold" : undefined,

@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { APICallError } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
-import { boolean, choice, evaluator, score } from "../src/blocks/evaluator";
+import { assertEvaluatorBlock, boolean, choice, evaluator, score } from "../src/blocks/evaluator";
 import type { BlockContext } from "../src/types/block";
 import type { EvaluationModel } from "../src/types/evaluation";
 import type { GeneratorModel, ModelResolver } from "../src/types/model";
@@ -467,5 +467,37 @@ describe("evaluator — trace (BR-23, BR-24)", () => {
       usage: { promptTokens: 40, completionTokens: 2, totalTokens: 42 },
       identity: { actual: "jev-latest", requested: "mock.evaluation/jev-latest" },
     });
+  });
+});
+
+describe("assertEvaluatorBlock", () => {
+  const names = { slot: 'widget: "evaluator"', helper: "widgetEvaluator(model)", questions: "widgetQuestions" };
+  const model = {
+    specificationVersion: "v4",
+    provider: "mock.evaluation",
+    modelId: "m",
+    supportedQuestionTypes: ["choice"],
+    doEvaluate: async () => ({}),
+  } as unknown as EvaluationModel;
+
+  it("accepts an evaluator block", () => {
+    const block = evaluator({ name: "e", model, questions: { q: choice("Q?", { a: null }) } });
+    expect(() => assertEvaluatorBlock(block, names)).not.toThrow();
+  });
+
+  it("refuses a block of another kind, naming its kind, its name and both ways to build one", () => {
+    expect(() => assertEvaluatorBlock({ kind: "handler", name: "h" }, names)).toThrow(
+      'widget: "evaluator" must be an evaluator block (got handler "h"). ' +
+        "Build one with widgetEvaluator(model), or core's evaluator() with widgetQuestions.",
+    );
+  });
+
+  it("refuses a value with no kind, without a (got ...) clause", () => {
+    for (const value of [{}, null, undefined, "x"]) {
+      expect(() => assertEvaluatorBlock(value, names)).toThrow(
+        'widget: "evaluator" must be an evaluator block. ' +
+          "Build one with widgetEvaluator(model), or core's evaluator() with widgetQuestions.",
+      );
+    }
   });
 });

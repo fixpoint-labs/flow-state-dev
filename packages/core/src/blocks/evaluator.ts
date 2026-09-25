@@ -238,6 +238,42 @@ async function resolveModelString(
 }
 
 // ---------------------------------------------------------------------------
+// Evaluator slots
+// ---------------------------------------------------------------------------
+
+/** How a slot that takes an evaluator block names itself and its two fixes. */
+export type EvaluatorSlotNames = {
+  /** The slot, as its refusal starts: e.g. `createSkillActivator: "evaluator"`. */
+  slot: string;
+  /** The helper that builds a fitting block: e.g. `skillEvaluator(model)`. */
+  helper: string;
+  /** The question set to build one by hand with: e.g. `skillQuestions`. */
+  questions: string;
+};
+
+/**
+ * Refuse, when a consumer is built, a value in an evaluator slot that is not
+ * an evaluator block. Every package that takes an evaluator in an option
+ * (memory's capture, the skill activator) refuses the same way, with one
+ * message shape:
+ *
+ *   `<slot> must be an evaluator block (got <kind> "<name>"). Build one with
+ *   <helper>, or core's evaluator() with <questions>.`
+ *
+ * The `(got …)` clause appears only when the value has a string `kind`.
+ */
+export function assertEvaluatorBlock(block: unknown, names: EvaluatorSlotNames): void {
+  const kind = (block as { kind?: unknown } | null)?.kind;
+  if (kind === "evaluator") return;
+  const name = (block as { name?: unknown } | null)?.name;
+  throw new Error(
+    `${names.slot} must be an evaluator block` +
+      (typeof kind === "string" ? ` (got ${kind} "${String(name)}")` : "") +
+      `. Build one with ${names.helper}, or core's evaluator() with ${names.questions}.`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
