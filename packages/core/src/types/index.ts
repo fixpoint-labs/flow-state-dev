@@ -259,6 +259,18 @@ export {
 } from "./resource-collection";
 
 export type {
+  FacetedClientConfig,
+  FacetedCollection,
+  FacetedCollectionConfig,
+  FacetedState,
+  FacetReindexInput,
+  FacetReindexOutput,
+  FacetSearchInput,
+  FacetSearchOutput,
+  FacetsOf,
+} from "./faceted-collection";
+
+export type {
   DefinedProjectedResourceCollection,
   ProjectedRecordHit,
   ProjectedReactiveBindings,

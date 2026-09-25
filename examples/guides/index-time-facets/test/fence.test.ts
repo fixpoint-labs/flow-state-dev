@@ -1,8 +1,8 @@
 /**
- * The fence around the recipe. Apps copy this example, so it may use only
- * published FSD packages and must never build its own classifier: no lab, no
- * kitchen-sink, no intent classifier, no generator. And its collection grants
- * no client content edits, which would change a body without classifying it.
+ * The fence around the example. It may use only published FSD packages and
+ * must never build its own classifier: no lab, no kitchen-sink, no intent
+ * classifier, no generator. And its collection grants no client content
+ * edits, which would change a body without classifying it.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import { ticketsFlow } from "../src/flow";
 import { scriptedModel, triageOn } from "./helpers";
 
 const ROOT = join(__dirname, "..");
-const ALLOWED = new Set(["@flow-state-dev/core", "@flow-state-dev/core/types", "@flow-state-dev/engine", "zod", "node:crypto"]);
+const ALLOWED = new Set(["@flow-state-dev/core", "@flow-state-dev/engine", "zod"]);
 
 /** Why a source file breaks the fence; empty when it doesn't. */
 function fenceViolations(source: string): string[] {
@@ -29,7 +29,7 @@ function recipeSources(): Array<[string, string]> {
   return [...files, "fsdev.config.ts"].map((f) => [f, readFileSync(join(ROOT, f), "utf8")]);
 }
 
-describe("V8: the recipe's fence", () => {
+describe("V8: the example's fence", () => {
   it("imports only published FSD packages and builds no classifier of its own", () => {
     const violations = recipeSources().flatMap(([file, src]) => fenceViolations(src).map((v) => `${file}: ${v}`));
     expect(violations).toEqual([]);
