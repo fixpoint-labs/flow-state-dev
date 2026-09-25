@@ -1023,7 +1023,7 @@ check('the `spec approved` label passes an issue spec gate too', async () => {
 
 check('a finished prerequisite stops blocking; a cancelled one does not', async () => {
   // A scout that keeps reporting a prerequisite after it merged blocks the dependent PERMANENTLY:
-  // `pendingAction` refuses any row with a `blockedBy`, and the refresh overwrites the carried
+  // `pendingAction` withholds implementation from any row with a `blockedBy`, and the refresh overwrites the carried
   // value, so the coordinator cannot correct it from args either. Observed live — an issue came
   // back blocked by three already-Done prerequisites.
   const done = await run('epic-wake.js', {
@@ -6328,6 +6328,7 @@ check('the wake computes blockedBy from the raw inverseRelations edges, so the p
     ['FIX-1555', 'FIX-1556', 'FIX-1557', 'FIX-1558', 'FIX-1559'],
     'only the prerequisite is free to be built; every dependent waits on it',
   )
+  assert.ok(workerLabels(calls).includes('spec:FIX-1554'), 'and the prerequisite itself is not parked: its spec is written')
 })
 
 check('contradictory Linear relations void the whole observation and the carried blockedBy stands', async () => {
@@ -9238,7 +9239,7 @@ check('INVARIANT: no assemble state is a dead end', async () => {
   assert.ok(space.length >= 200, `expected a real space, enumerated ${space.length}`)
 })
 
-check('INVARIANT: a parked row is never dispatched, whatever else is true', async () => {
+check('INVARIANT: a decision parks everything; a prerequisite parks only implementation', async () => {
   const { pendingAction } = loadRules('epic-wake.js', ['atReviewBudget', 'pendingAction'])
   const space = product({
     phase: ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL', 'NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE'],

@@ -800,9 +800,8 @@ returns a ready/blocked verdict).
 
 Then decide whether it joins the epic:
 
-- **Belongs under the epic and unblocked** (nothing it's blocked-by is still open/in-progress
-  — the wake enforces this from Linear each refresh and reports anything blocked in `blocked`)
-  → it *may be added to the active set*, up to the concurrency cap, entering at its
+- **Belongs under the epic** — blocked or not → it *may be added to the active set*, up to
+  the concurrency cap, entering at its
   route's entry phase — NEEDS_SPEC for a feature, NEEDS_IMPLEMENTATION for a bug. A
   feature still hits its own **spec-approval gate** before any implementation, so what
   this starts is a *spec*, not unreviewed code; a discovered **bug** goes straight to a
@@ -813,10 +812,13 @@ Then decide whether it joins the epic:
   `issue-spec` won't discover the epic via `issue.parent`.
 - **Doesn't belong under this epic** → it isn't an addition to this run. File it and leave it
   for its own lifecycle; don't stretch the epic's objective to cover it.
-- **Blocked** → track it (a row in the epic record, marked blocked-by). **Blocked-by gates
-  implementation only:** all its spec-phase work runs now, like any other row; only the
-  build waits for its blocker to merge (a merge event re-enters the loop). Never park a
-  dependent's spec on the relation — that serialises the epic's spec work behind its first merge.
+- **Blocked** (something it's blocked-by is still open) → admitted all the same, as a row
+  marked blocked-by; the wake reads the relation from Linear each refresh and reports it in
+  `blocked`. **Blocked-by gates implementation only:** all its spec-phase work runs now, like
+  any other row; only the build waits for its blocker to merge (a merge event re-enters the
+  loop). A blocked **bug** enters at NEEDS_IMPLEMENTATION, so it has nothing to run until then.
+  Never keep a dependent out of the active set, or park its spec, on the relation — that
+  serialises the epic's spec work behind its first merge.
 - Over the cap → queue it; admit it when a slot frees.
 
 This is how discovered work flows into the loop without a human re-filing it — while

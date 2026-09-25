@@ -2658,8 +2658,8 @@ if (discovered.length) {
  * Drop blocked-by relations whose prerequisite has already finished.
  *
  * The scout schema calls this field "Open blocked-by relations", but nothing enforces it, and a
- * scout that reports a merged prerequisite blocks the row PERMANENTLY: `pendingAction` refuses a
- * row with any `blockedBy`, and the refresh overwrites the carried value, so the coordinator
+ * scout that reports a merged prerequisite blocks the row PERMANENTLY: `pendingAction` withholds
+ * implementation from a row with any `blockedBy`, and the refresh overwrites the carried value, so the coordinator
  * cannot correct it from `args` either. One over-reported id is enough to strand an issue for the
  * rest of the epic.
  *
