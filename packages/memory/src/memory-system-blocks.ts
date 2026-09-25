@@ -1651,6 +1651,13 @@ function evaluatedCapture(
   gate: CaptureEvaluatorBlock,
   reflectBlock: ReturnType<typeof memorySystemReflect>,
 ) {
+  const kind = (gate as { kind?: unknown } | null)?.kind
+  if (kind !== 'evaluator') {
+    throw new Error(
+      `memory system: "evaluator" must be an evaluator block (got ${String(kind)} "${String((gate as { name?: unknown } | null)?.name)}"). ` +
+        "Build one with captureEvaluator(model), or core's evaluator() with captureQuestions.",
+    )
+  }
   const prefix = config.name ?? 'memory'
 
   const windowBlock = handler({

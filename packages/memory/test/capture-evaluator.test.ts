@@ -19,7 +19,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { boolean, choice, defineFlow, evaluator, sequencer } from '@flow-state-dev/core'
+import { boolean, choice, defineFlow, evaluator, handler, sequencer } from '@flow-state-dev/core'
 import type { EvaluationModel } from '@flow-state-dev/core'
 import {
   createMockModelResolver,
@@ -341,6 +341,17 @@ describe('capture with an evaluator', () => {
     expect(captureError(result.items)?.message).toContain('captureQuestions')
     expect(h.observer.calls).toHaveLength(0)
     expect((await h.stores()).watermark).toBe(-1)
+  })
+
+  it('refuses, when built, a block of another kind in the evaluator slot', () => {
+    const impostor = handler({
+      name: 'always-remember',
+      inputSchema: z.string(),
+      execute: () => ({ answers: { capture: { type: 'choice' as const, choice: 'remember' as const } } }),
+    })
+    expect(() => system({ model: 'openai/gpt-5.4-mini', working: true, evaluator: impostor as any })).toThrow(
+      /must be an evaluator block.*captureEvaluator/,
+    )
   })
 
   it('a skipped turn\'s trace shows the evaluator\'s answer and no observer row', async () => {
