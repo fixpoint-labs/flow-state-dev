@@ -175,6 +175,34 @@ function packageInstructionsOf(packages: SeatConfig["seatPackages"]): string | u
 }
 
 /**
+ * The names a seat's `tools:` line resolved to a held package's block that the
+ * kind's catalog also carries — one message each, naming the package and the
+ * catalog. Only names the line actually granted count: a package block the
+ * line left out is never offered, so a catalog key of the same name clashes
+ * with nothing.
+ */
+function packageCatalogCollisions(
+  catalog: ToolCatalog,
+  seatTools: ReadonlyArray<{ name?: unknown }> | undefined,
+  packages: ReadonlyArray<{ path: string; tools: ReadonlyArray<{ name?: unknown }> }>
+): string[] {
+  const granted = new Set((seatTools ?? []).map((tool) => tool.name));
+  const problems: string[] = [];
+  for (const held of packages) {
+    for (const tool of held.tools) {
+      const name = tool.name;
+      if (typeof name !== "string" || !granted.has(name) || !Object.hasOwn(catalog, name)) continue;
+      problems.push(
+        `Its \`tools:\` line names "${name}", which is both a block of package "${held.path}" and ` +
+          `a key in the kind's tool catalog. One name is one tool, and neither shadows the other — ` +
+          `rename the block, or drop "${name}" from the catalog.`
+      );
+    }
+  }
+  return problems;
+}
+
+/**
  * This seat's own skills, off its config — the per-execution read the whole
  * per-seat catalog hangs on.
  *
@@ -1070,6 +1098,12 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
    * is still visible. After the flow's own mint, so the schema's refusals come
    * first; thrown, so the hire collects it under the worker's id.
    *
+   * A worker that DID write a line has one clash of its own: a name on the line
+   * that is both a held package's block and a key in this kind's catalog. The
+   * hire resolved it to the package block because the hire cannot see the
+   * catalog; here both are visible, so it is refused rather than letting the
+   * package silently shadow the catalog's tool.
+   *
    * Every property of the defined flow is carried over unchanged: this is the
    * same flow with one more check at its door, not a different one.
    */
@@ -1087,6 +1121,13 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       if (problems.length > 0) {
         throw new Error(`This worker writes no \`tools:\` line, and it ${problems.join(" It also ")}`);
       }
+    } else {
+      const problems = packageCatalogCollisions(
+        catalog,
+        seat.config[SEAT_TOOLS_KEY] as ReadonlyArray<{ name?: unknown }> | undefined,
+        seat.config[SEAT_PACKAGES_KEY] ?? []
+      );
+      if (problems.length > 0) throw new Error(problems.join(" "));
     }
     return seat;
   };

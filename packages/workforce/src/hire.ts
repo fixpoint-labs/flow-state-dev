@@ -661,7 +661,9 @@ export function hireWorkforce(
     // `packages:` line takes from its team's or the org's library. Their
     // blocks join the seat's registry for resolving a written `tools:` line —
     // a package's blocks are the seat's own for that purpose — after every
-    // name among them has been shown to be one tool.
+    // name among them has been shown to be one tool. This step cannot see a
+    // kind's catalog, so a named package block that is also a catalog key is
+    // refused by the kind at its mint (the built-in one does), not here.
     const { held, problems: heldProblems } = resolveHeldPackages(
       manifest.id,
       manifest.declared[PACKAGES_KEY],

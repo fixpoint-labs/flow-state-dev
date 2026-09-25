@@ -412,6 +412,27 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     expect(String((got.error as Error | undefined)?.message)).toContain('two tools named "issue-refund"');
   });
 
+  it("refuses a `tools:` line naming a held package's block that the kind's catalog also carries, naming both", () => {
+    const agent = defineAgentWorkerFlow({ catalog: { "issue-refund": tool("issue-refund") } });
+    const message = refusal(
+      [record({ id: "support.clerk", declared: { tools: ["issue-refund"] }, packages: clerkReach })],
+      { kinds: { [AGENT_KIND]: agent } }
+    );
+    expect(message).toContain('worker "support.clerk"');
+    expect(message).toContain('"issue-refund"');
+    expect(message).toContain(refunds.path);
+    expect(message).toContain("catalog");
+  });
+
+  it("hires when the catalog's same-named tool is one the line does not name (the clash is only in what is granted)", () => {
+    const agent = defineAgentWorkerFlow({ catalog: { "issue-refund": tool("issue-refund") } });
+    const seat = hire(
+      [record({ id: "support.clerk", declared: { tools: ["void-refund"] }, packages: clerkReach })],
+      { kinds: { [AGENT_KIND]: agent } }
+    );
+    expect(seat("support.clerk").id).toBe("support.clerk");
+  });
+
   it("refuses a package block registered under a name its own `name` does not match", () => {
     const message = refusal([record({ id: "support.clerk", packages: clerkReach })], {
       packageBlocks: { [refunds.path]: { "issue-refund": tool("issue-refunds") } }
