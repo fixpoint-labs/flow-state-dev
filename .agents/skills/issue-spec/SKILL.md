@@ -368,7 +368,7 @@ carries, the SVG-versus-mermaid bar, the rendering check.
 
 How this workflow's research feeds the set:
 
-- **`SPEC.md` opens on the goal, and how we'll know it's met** — the template's four parts:
+- **Right after the people table, `SPEC.md` states the goal, and how we'll know it's met** — the template's four parts:
   the goal in one sentence, *is it the right goal?* (the real need in the requester's own
   words, the smaller goal named and rejected, *not done if*), the *how we'll know* figure, and
   *how we verify* with a control that must fail. Write it **first**, before the plan: the
@@ -376,7 +376,7 @@ How this workflow's research feeds the set:
   checks describes what the checks happen to test. Take *the real need* from the issue, the
   requester's message and the epic's goal, not from your approach; if the approach only meets
   a smaller goal, that is a Step 3.5 verdict to surface, not a goal to quietly shrink.
-- **`SPEC.md` is the scan-first human surface.** After the goal it carries the people table — someone
+- **`SPEC.md` is the scan-first human surface.** It opens on the people table — someone
   who… · today · after, three to six rows, in observable behaviour — then the *what
   changes* figure with its sentence, the file-shaped surface as a **diff** (from Agent D +
   your synthesis: the actual code or config a person writes, not the signature), one mermaid
@@ -459,7 +459,8 @@ against what is being built, which is the undersell this check exists to catch. 
 - **Is the goal the real need, at full size?** State the need in your own words from the
   issue alone, then compare. Name any part of the need the goal leaves out, and whether *smaller,
   and rejected* is actually what the goal says.
-- **Is *not done if* complete?** Name one more state that would look done and isn't.
+- **Is *not done if* complete?** Name any state that would look done and isn't and is missing,
+  or say the list is complete.
 - **Would the check fail if the goal were not met?** For each leg: what would a hollow
   implementation (the mocked path, the easy input, a downstream workaround) make it report?
   Does *anti-game* forbid that, and does the named control degrade exactly the behaviour the
@@ -507,13 +508,13 @@ Publish canonical content in the repository; Linear carries status and links, no
    approach chosen, and the build shape>.` This directory is the canonical reviewable
    artifact.
 
-   **The goal section is the first content in `SPEC.md`**, under the title and the header
-   line, and the people table follows it — structural navigation is exempt — with no metadata,
-   status block, or timeline above either (BP-039). *How it got here* is the change story and sits at the bottom of
+   **The people table is the first content in `SPEC.md`**, under the title and the header
+   line — structural navigation is exempt — with no metadata, status block, or timeline above
+   it (BP-039). The goal section follows it. *How it got here* is the change story and sits at the bottom of
    `DECISIONS.md`; it never leads.
 
-2. **Draw, render and check the figures** before the commit — the *how we'll know it's met*
-   and *what changes* figures at least, the rest where position carries the meaning
+2. **Draw, render and check the figures** before the commit — the *what changes* figure and,
+   unless the spec states that no goal check applies, the *how we'll know it's met* fence at least, the rest where position carries the meaning
    ([`spec-figures.md`](../../../docs/contributing/spec-figures.md)). Run its verify block
    over the directory and open every rendered SVG in both themes. A figure nobody looked at
    is how a wrong one ships, and a figure is what the gate actually looks at.
@@ -531,11 +532,15 @@ Publish canonical content in the repository; Linear carries status and links, no
 
    **Write the PR description to [`spec-template.md`](../../../docs/contributing/spec-template.md) → "The PR body"** — the instance — under the rules in [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout". Don't restate them here. What's specific to a **spec** PR:
 
-   - **The goal comes first**: its sentence, the *how we'll know* mermaid fence with its
-     sentence, and one line naming the goal check and the control that must fail.
-   - **The people table**, cut from `SPEC.md` to five rows, follows it; together they are blocks 1 and 2. **The *what changes* figure** goes under it as a raw-content image pinned to the commit that holds it, with its one sentence ([`spec-figures.md`](../../../docs/contributing/spec-figures.md) → "In the PR body"); then one line on **how**. Read the stored body back ([`spec-figures.md`](../../../docs/contributing/spec-figures.md) → "In the PR body"). A `src` with no backtick renders, and a later edit keeps it. If the `src` comes back with a backtick in it, leave a link to `SPEC.md`'s blob view in its place and hand the person the clean `<img>` line — the line you sent, not the stored one — and never rewrite a body a person has pasted into.
+   - **The people table**, cut from `SPEC.md` to five rows, is blocks 1 and 2. **The goal**
+     follows it: its sentence, the *how we'll know* mermaid fence with its sentence, and one
+     line naming the goal check and the control that must fail (or, when no goal check
+     applies, the one line saying what proves the goal instead). **The *what changes* figure** goes under it as a raw-content image pinned to the commit that holds it, with its one sentence ([`spec-figures.md`](../../../docs/contributing/spec-figures.md) → "In the PR body"); then one line on **how**. Read the stored body back ([`spec-figures.md`](../../../docs/contributing/spec-figures.md) → "In the PR body"). A `src` with no backtick renders, and a later edit keeps it. If the `src` comes back with a backtick in it, leave a link to `SPEC.md`'s blob view in its place and hand the person the clean `<img>` line — the line you sent, not the stored one — and never rewrite a body a person has pasted into.
    - **`## Sign off`** ← the decisions in `DECISIONS.md`, **sorted and shaped per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → §3** in its compact form — a numbered bold line and *If wrong:* each, hardest first, the one to weigh named, a link to `DECISIONS.md`. Two things are spec-specific: every decision the filters drop goes one bullet each in the collapsed **engineering calls** block, so the sign-off surface stays complete and nothing is approved unseen; and **every open question in `DECISIONS.md → Open` is a live fork** and gets the full six-part ask per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), above the ratified lines.
-   - **Count decisions and open questions together against the ceiling of three.** If the combined total exceeds three, fix the upstream spec rather than lengthening the ask. Keep Linear pointed at the current review artifact.
+   - **Count decisions and open questions together against the ceiling of three.** The goal's
+     sign-off line is not a decision and does not count: it is what approval already certifies
+     ([`orchestration.md`](../../../docs/contributing/orchestration.md) → the bar), stated so the
+     size is visible. When the smaller goal is what ships, that is a live fork and it counts. If the combined total exceeds three, fix the upstream spec rather than lengthening the ask. Keep Linear pointed at the current review artifact.
    - **`## Reviewers · look here`** — one to three items, each naming the document and the question, plus what is deliberately not here.
    - **The links line** — the required documents, applicable evolution, Linear, the epic, predecessors, and the spec merge contract.
    - **The collapsed contract** — `## How to review this` from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted **verbatim**. Smoothing it weakens the only instruction an external bot ever receives, and no spec PR ships without it. A second collapsed block, **engineering calls**, only when the filters dropped a decision.
@@ -704,7 +709,7 @@ This step is required, not optional. The spec now exists as the authoritative so
 Present the ready spec PR for human direction review, including the documentation draft and applicable evolution. Explain that approval authorizes merging that reviewed spec after required checks, then implementation; it does not authorize merging the later implementation PR.
 
 1. **Necessity & refinement verdict** (one line): "Build as scoped", "Refine the substrate — <primitive> covers it", or "Build smaller — dropped <X>." Surfacing this in the summary lets the user see that Step 3.5 actually ran and what its outcome was; future readers can audit whether the gate worked. If the verdict was anything other than "Build as scoped," you will not have reached Step 8 without user confirmation — note that confirmation here too.
-2. **`SPEC.md`'s goal, people table and sign-off**: paste them verbatim, **leading with the goal sentence and its check line, then the table** (BP-039) so the user gets the gist before any dense detail. This is the same scan-first surface the spec PR body leads with (Step 6, item 3) — the user should see exactly what they'd see opening the spec. If you find yourself rewording it for the summary, `SPEC.md` itself is wrong; fix it in the spec and then paste here. Link the *what changes* figure; a chat can't carry it.
+2. **`SPEC.md`'s goal, people table and sign-off**: paste them verbatim, **leading with the table, then the goal sentence and its check line** (BP-039) so the user gets the gist before any dense detail. This is the same scan-first surface the spec PR body leads with (Step 6, item 3) — the user should see exactly what they'd see opening the spec. If you find yourself rewording it for the summary, `SPEC.md` itself is wrong; fix it in the spec and then paste here. Link the *what changes* figure; a chat can't carry it.
 3. **Approach chosen**: 2-3 sentences on what the spec proposes and why
 4. **Decisions**: the sign-off lines, each linking its card in `DECISIONS.md` — the decision, what it rejected, what it locks in are one click away. This is what the user reviews to sign off on the direction, not just the code. **Two or three is normal** — a longer list usually means mechanical calls leaked in, and those belong in `PLAN.md`, not here ([`spec-template.md`](../../../docs/contributing/spec-template.md) → `DECISIONS.md`).
 5. **Documentation draft**: link `DOCS.md`, name target operations and ownership, and call out a justified no-impact result when applicable.

@@ -32,10 +32,11 @@ exists. Authored `assets/` and `poc/<experiment>/` stay beside `figures/` under 
 The storage, authority and lifecycle contract is
 [`orchestration.md` → Spec retention and authority](orchestration.md#spec-retention-and-authority).
 
-**The goal comes first.** `SPEC.md` opens on the goal in one sentence, a check that it is the
-right goal, a figure of how we'll know it's met, and the exact check that proves it, with a
-control that must fail. The PR body carries the same block. A reader who stops there knows what
-done means and how it will be proved. See [`SPEC.md` → The goal](#the-goal-and-how-well-know-its-met).
+**The goal follows the problem, before any solution.** Right after the people table,
+`SPEC.md` states the goal in one sentence, a check that it is the right goal, a figure of how
+we'll know it's met, and the exact check that proves it, with a control that must fail. The PR
+body carries the same block in the same place. A reader who stops there knows what done means
+and how it will be proved. See [`SPEC.md` → The goal](#the-goal-and-how-well-know-its-met).
 
 **The pictures carry the meaning; the prose reads them.** The spec, decisions and rules open on
 a table or figure, and every figure has one sentence under it saying what to look at. What a
@@ -160,9 +161,9 @@ Optional comments do not require another design round merely to reach zero comme
 Budget ~475 prose words above the fold. The body is not another spec document: every line
 in it is in `SPEC.md` too, shorter.)*
 
-**The goal**, in its one sentence, then the *how we'll know* figure (a mermaid fence, pasted
-as text) with its sentence, then one line naming the goal check and the control that must
-fail. Then the people table from `SPEC.md`, cut to five rows. The *what changes* figure, as a pinned raw
+The people table from `SPEC.md`, cut to five rows. Then **the goal**, in its one sentence,
+the *how we'll know* figure (a mermaid fence, pasted as text) with its sentence, and one line
+naming the goal check and the control that must fail. The *what changes* figure, as a pinned raw
 image ([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence. One line
 on **how**. Then **Sign off**: the decisions, numbered, hardest first, each a bold line and an
 *If wrong:* clause, with the one to weigh named and a pointer to the decisions doc. Then
@@ -172,6 +173,14 @@ it builds on, and that merge follows approval and required checks. Then the coll
 
 > ```md
 > # spec(FIX-775): resume a stream after a disconnect
+>
+> | Someone who… | Today | After |
+> |---|---|---|
+> | **loses the connection mid-answer on a phone** | Watches the whole answer duplicate itself | Picks up at the next item |
+> | **derives a total from the stream** | Double-counts every reconnect | Counts each item once |
+> | **reconnects after the answer finished** | Gets the answer again, from the top | Gets the tail they missed, then a clean close |
+> | **sends no cursor at all** | Today's behaviour | Today's behaviour, byte for byte |
+> | **runs a proxy that strips headers** | Nothing to strip yet | Resume still works: the cursor also rides a query param |
 >
 > **Goal:** a client that loses its connection mid-answer reconnects and ends up with exactly
 > the answer it would have had, with nothing repeated and nothing missing.
@@ -189,14 +198,6 @@ it builds on, and that merge follows approval and required checks. Then the coll
 > control it must fail, or it proves nothing. Check: `goals/resume-after-disconnect/reconnect-midstream/`,
 > real model, control `GOAL_CONTROL=ignore-cursor`. Why this goal and not a smaller one:
 > [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met).
->
-> | Someone who… | Today | After |
-> |---|---|---|
-> | **loses the connection mid-answer on a phone** | Watches the whole answer duplicate itself | Picks up at the next item |
-> | **derives a total from the stream** | Double-counts every reconnect | Counts each item once |
-> | **reconnects after the answer finished** | Gets the answer again, from the top | Gets the tail they missed, then a clean close |
-> | **sends no cursor at all** | Today's behaviour | Today's behaviour, byte for byte |
-> | **runs a proxy that strips headers** | Nothing to strip yet | Resume still works: the cursor also rides a query param |
 >
 > <img src="https://raw.githubusercontent.com/<owner>/<repo>/<sha>/specs/issues/<ISSUE-ID>/figures/resume.svg" width="940" alt="Two timelines: today a reconnect replays from item 1; after, it continues from the item after the cursor" />
 >
@@ -256,11 +257,11 @@ The document the product owner reads. It answers *who feels this, what do they s
 after, and what am I signing*, in observable behaviour with no file paths. Sections, in order:
 
 1. **The header line** — kind · packages · size · PR count · epic, and sibling links.
-2. **The goal, and how we'll know it's met** — the section below this list says what it owes.
-   It comes first because every other section is judged against it.
-3. **People, before and after** — a table: someone who… · today · after. Three to six rows.
+2. **People, before and after** — a table: someone who… · today · after. Three to six rows.
    Each row is a person doing one thing and what they see. This table is the spec's problem
    statement and its solution statement at once, and the PR body cuts it to five rows.
+3. **The goal, and how we'll know it's met** — the section below this list says what it owes.
+   It sits right after the problem because every section after it is judged against it.
 4. **What changes** — the one figure, with its sentence. Then any surface a person edits, **as
    a diff**: a config file, a worker file, a call site. The diff is the highest-density form we
    have for a file-shaped surface, and it is what a person will actually type.
@@ -322,6 +323,20 @@ check" is a statement with a reason, never a blank.
 >
 > Feature · `engine` + `client` · medium · 1 PR · no epic
 >
+> ## Three people, before and after
+>
+> | Someone who… | Today | After |
+> |---|---|---|
+> | **loses the connection mid-answer on a phone** | Watches the assistant's answer duplicate itself from the top. Anything the app derived from the stream double-counts | Picks up at the next item. Nothing re-sent, nothing skipped |
+> | **reconnects after the answer already finished** | Gets the whole answer again | Gets the items they missed, then a clean close. A cursor past the end is an ordinary empty replay |
+> | **reconnects with a stale or malformed cursor** | n/a | Streams from the start, as today. Caller-controllable input is never an error |
+> | **runs behind a proxy that strips `Last-Event-ID`** | n/a | Resume still works: the same cursor rides a query param, which wins when both are sent |
+> | **sends no cursor** | Today's behaviour | Today's behaviour, byte for byte |
+>
+> Mobile clients drop connections routinely, so this is the first thing every app built on FSD
+> hits in the field. The workaround — throw away the old items and re-render — loses scroll
+> position and local edits, so nobody uses it twice.
+>
 > ## The goal, and how we'll know it's met
 >
 > **A client that loses its connection mid-answer reconnects and ends up with exactly the
@@ -353,20 +368,6 @@ check" is a statement with a reason, never a blank.
 > | **Input** | A recorded prompt with a long answer. A different prompt, or a drop at a different item, must pass too |
 > | **Anti-game** | Don't assert on the seam's filter output or on a mocked stream. Both pass while the client still double-renders |
 > | **Control that must fail** | `GOAL_CONTROL=ignore-cursor`, and today's `main`. Both must FAIL on the duplicates leg, and the PR shows it before the PASS |
->
-> ## Three people, before and after
->
-> | Someone who… | Today | After |
-> |---|---|---|
-> | **loses the connection mid-answer on a phone** | Watches the assistant's answer duplicate itself from the top. Anything the app derived from the stream double-counts | Picks up at the next item. Nothing re-sent, nothing skipped |
-> | **reconnects after the answer already finished** | Gets the whole answer again | Gets the items they missed, then a clean close. A cursor past the end is an ordinary empty replay |
-> | **reconnects with a stale or malformed cursor** | n/a | Streams from the start, as today. Caller-controllable input is never an error |
-> | **runs behind a proxy that strips `Last-Event-ID`** | n/a | Resume still works: the same cursor rides a query param, which wins when both are sent |
-> | **sends no cursor** | Today's behaviour | Today's behaviour, byte for byte |
->
-> Mobile clients drop connections routinely, so this is the first thing every app built on FSD
-> hits in the field. The workaround — throw away the old items and re-render — loses scroll
-> position and local edits, so nobody uses it twice.
 >
 > ## What changes
 >

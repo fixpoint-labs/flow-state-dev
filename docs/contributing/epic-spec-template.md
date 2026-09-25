@@ -34,7 +34,7 @@ and the change is the whole of this file:
 | `PLAN.md` | Surfaces, DAG, checks, guardrails — for the implementer | **Sequencing, not building**: **the path** as lanes against time · what each issue consumes, delivers and releases · what unblocks what · coordination seams · not-children · the wrap | ~900 |
 | `DOCS.md` | Concrete proposed prose for the issue's changed surface | Shared reader narrative, destination operations, and which issue publishes each specific | Changed material only |
 | `EVOLUTION.md` (conditional) | Relevant predecessor decisions/rules | Cross-epic or multi-issue lineage, without duplicating child-specific evolution | Relevant lineage only |
-| `figures/` | Two the PR body carries: how we'll know, what changes | Four the PR body carries: how we'll know, the box, the ownership matrix, the path | — |
+| `figures/` | One SVG the PR body carries (what changes); *how we'll know* is an inline mermaid fence, not a file | Three SVGs the PR body carries (the box, the ownership matrix, the path), plus the inline *how we'll know* fence | — |
 
 **The nav line is the same at both altitudes.** The third line of every document is
 `[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)` with
@@ -121,9 +121,9 @@ Optional comments are triaged, not a reason to grind to zero or restart the desi
 leave this original review record intact; a follow-up amendment describes its own delta.
 Budget ~525 prose words above the fold. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
 
-**The goal** in its one sentence, the *how we'll know* figure as a mermaid fence with its
-sentence, and one line naming which issue's goal check proves it and the control that must
-fail. Then the teams table from `SPEC.md`. **What's in the box**, pinned, with its sentence. **Why now.**
+The teams table from `SPEC.md`. Then **the goal** in its one sentence, the *how we'll know*
+figure as a mermaid fence with its sentence, and one line naming which issue's goal check
+proves it and the control that must fail. **What's in the box**, pinned, with its sentence. **Why now.**
 **The set** in one line each, with as-of counts and links to live Linear/PR state. **The
 path**, pinned, with a sentence — this is what a reader arriving mid-epic wants first. **Who owns
 what**, pinned, with a sentence. Then **Sign off**: the objective and the one or two cross-cutting
@@ -132,6 +132,13 @@ the links line and the collapsed contract.
 
 > ```md
 > # spec(epic): a dropped connection is a non-event (FIX-770)
+>
+> | A team that… | Today | After this epic |
+> |---|---|---|
+> | **ships to phones** | Every blip duplicates the answer on screen | Nothing visible happens |
+> | **derives totals from the stream** | Defends against duplicates by hand | Counts each item once, with no code of their own |
+> | **has a connection go silently dead** | Never reconnects, because nothing noticed | Notices within a heartbeat and resumes |
+> | **wants their own reconnect policy** | Writes it | Still writes it; the default is one line to override |
 >
 > **Goal:** an app built on FSD that does nothing special survives a dropped *or silently dead*
 > connection, and its user sees the answer they would have seen anyway.
@@ -150,13 +157,6 @@ the links line and the collapsed contract.
 > Two legs, because resume alone passes leg a and still leaves the user staring at a dead
 > answer. Proved by the reconnect proof issue's goal check; why this goal and not a smaller one:
 > [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met).
->
-> | A team that… | Today | After this epic |
-> |---|---|---|
-> | **ships to phones** | Every blip duplicates the answer on screen | Nothing visible happens |
-> | **derives totals from the stream** | Defends against duplicates by hand | Counts each item once, with no code of their own |
-> | **has a connection go silently dead** | Never reconnects, because nothing noticed | Notices within a heartbeat and resumes |
-> | **wants their own reconnect policy** | Writes it | Still writes it; the default is one line to override |
 >
 > <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/end-state.svg" width="940" alt="What's in the box: resume and heartbeats; composed in by the app: reconnect policy; not built: offline queueing and a durable history" />
 >
@@ -220,7 +220,10 @@ The document the product owner reads at the gate and everyone reads when they ar
 Sections, in order:
 
 1. **The header line** — epic · N issues · project · the objective it serves, and the links.
-2. **The goal, and how we'll know it's met** — the same four parts as an issue spec
+2. **Teams, before and after** — a table: a team that… · today · after this epic. Three to
+   five rows. This is the objective stated in observable behaviour.
+3. **Why now**, in a paragraph.
+4. **The goal, and how we'll know it's met** — the same four parts as an issue spec
    ([`spec-template.md`](spec-template.md#the-goal-and-how-well-know-its-met)): the goal in one
    sentence, *is it the right goal?*, the figure, and *how we verify*. At this altitude the
    goal is the epic's outcome, *smaller, and rejected* is usually a subset of the issues
@@ -228,9 +231,6 @@ Sections, in order:
    whole (a proof issue, per [`orchestration.md`](orchestration.md)), not a check of its own.
    Each child spec still states its own goal, and says in *the real need* which part of this
    one it carries.
-3. **Teams, before and after** — a table: a team that… · today · after this epic. Three to
-   five rows. This is the objective stated in observable behaviour.
-4. **Why now**, in a paragraph.
 5. **What's in the box** — the one figure: in the box · composed in by the app · replaced in
    one line · not built. And its sentence.
 6. **The set · as of `<date>`** — the reviewed snapshot: issue · what it delivers · why the set needs
@@ -250,6 +250,19 @@ Sections, in order:
 > **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 >
 > Epic · 4 issues · Streaming · Goal 1, validate through real usage
+>
+> ## Four teams, before and after
+>
+> | A team that… | Today | After this epic |
+> |---|---|---|
+> | **ships to phones** | Every network blip is visible as a duplicated answer | An app that does nothing special survives a reconnect |
+> | **derives a total from the stream** | Double-counts on every reconnect, or dedupes by hand | Counts each item once |
+> | **has a connection go silently dead** | Never reconnects, because nothing noticed it died | A heartbeat makes the death detectable, and resume fires |
+> | **wants their own reconnect policy** | Writes it from scratch | Overrides a shipped default in one line |
+>
+> **Why now.** Mobile is the first surface every app built on FSD ships to, and each of them is
+> re-implementing the same defence. The cost isn't a crash; it's every app carrying stream
+> hygiene code that belongs in the transport.
 >
 > ## The goal, and how we'll know it's met
 >
@@ -284,19 +297,6 @@ Sections, in order:
 > | **Input** | A held-out prompt; the drop point and the death point are chosen at random each run |
 > | **Anti-game** | Don't assert on a child's own output, or run in an app with custom reconnect code. Both pass while a plain app still breaks |
 > | **Control that must fail** | Heartbeats off: leg b must FAIL. Today's `main`: both legs must FAIL |
->
-> ## Four teams, before and after
->
-> | A team that… | Today | After this epic |
-> |---|---|---|
-> | **ships to phones** | Every network blip is visible as a duplicated answer | An app that does nothing special survives a reconnect |
-> | **derives a total from the stream** | Double-counts on every reconnect, or dedupes by hand | Counts each item once |
-> | **has a connection go silently dead** | Never reconnects, because nothing noticed it died | A heartbeat makes the death detectable, and resume fires |
-> | **wants their own reconnect policy** | Writes it from scratch | Overrides a shipped default in one line |
->
-> **Why now.** Mobile is the first surface every app built on FSD ships to, and each of them is
-> re-implementing the same defence. The cost isn't a crash; it's every app carrying stream
-> hygiene code that belongs in the transport.
 >
 > ## What's in the box
 >
