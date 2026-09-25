@@ -975,7 +975,7 @@ Compare this to the manual `intentClassifier` + `router` approach above — the 
 
 Some routing takes more than one question. Which team gets this ticket, and then, if it's billing, how urgent is it. `cascadingRouter` walks a tree like that. Each level asks one [evaluator](/docs/fundamentals/blocks#evaluator--the-questions-you-already-know) a choice question, and each answer picks the next level or a block to run.
 
-The point is what happens when the model isn't sure. Every edge in the tree opens only if the model chose that option **and** reported how confident it is. If an edge has a `minConfidence`, the confidence also has to reach it. Anything else goes to the `ambiguous` block you supply, at whatever level it happened. A case that should go to a person never lands on the wrong branch.
+The point is what happens when the model isn't sure. Every edge in the tree opens only if the model chose that option **and** reported how confident it is. If an edge has a `minConfidence`, the confidence also has to reach it. Anything else goes to the `ambiguous` block you supply, at whatever level it happened.
 
 ```ts
 import { evaluator, choice, utility } from "@flow-state-dev/core";
@@ -1026,7 +1026,7 @@ export const triage = utility.cascadingRouter({
 });
 ```
 
-`escalate`, `billingQueue`, `techQueue` and `review` are ordinary blocks. Each one, including `ambiguous`, receives the router's own input, and the router returns whatever the chosen block returns. So they share one output type.
+`escalate`, `billingQueue`, `techQueue` and `review` are ordinary blocks. Each one, including `ambiguous`, receives the router's own input, and the router returns whatever the chosen block returns. They must all return the same output type.
 
 Each level is `{ ask, on, branches }`: the evaluator to ask, the id of the choice question to route on, and one branch per option you want to route. A branch is either `{ block }` or `{ next }`, plus an optional `minConfidence` between 0 and 1. The branch keys are checked against the question's options, so a typo is a compile error.
 
@@ -1039,7 +1039,7 @@ Each level is `{ ask, on, branches }`: the evaluator to ask, the id of the choic
 
 There's no default floor. An edge without `minConfidence` opens on any confidence the model reports, however low, so set one wherever a wrong branch costs something.
 
-**Which models route.** Jev reports its confidence for choice questions. The popular providers' evaluation models, like `openai.evaluationModel(...)`, don't report any, so on them every edge goes to `ambiguous`. That's on purpose: a routing tree that can't tell how sure the model is should hand the case to a person. To branch on the bare answer from one of those models, use a plain `router` that reads it:
+**Which models route.** Jev (`typesafe-ai/jev`, see [Evaluation models](/docs/fundamentals/models#evaluation-models)) reports its confidence for choice questions. The popular providers' evaluation models, like `openai.evaluationModel(...)`, don't report any, so on them every edge goes to `ambiguous`. To branch on the bare answer from one of those models, use a plain `router` that reads it:
 
 ```ts
 const pickTeam = router({
@@ -1053,11 +1053,11 @@ const triage = sequencer({ name: "triage" }).step(department).step(pickTeam);
 
 Here the leaves receive the evaluator's answers, not the ticket, so write them to work from the answer.
 
-**When the call fails.** A provider error or a refused model fails the router with that error. It doesn't go to `ambiguous`, because an outage isn't the model being unsure. To send failures to review too, wrap the router in a sequencer and add `.rescue`.
+**When the call fails.** A provider error or a refused model fails the router with that error. It doesn't go to `ambiguous`. To send failures to review too, wrap the router in a sequencer and add `.rescue`.
 
 **In the trace.** Each level the router walked shows its evaluator, with the answer and any confidence, and the verdict: the branch it took, or `ambiguous` with the reason (`no-confidence`, `below-floor` or `no-branch`). Levels on other branches never run, so they cost nothing.
 
-**`cascadingRouter` or `intentRouter`?** `intentRouter` asks a generator to name a category and to score its own confidence, and that score is whatever the model wrote. Use `cascadingRouter` when the decision should rest on confidence the model actually measured, or when it takes more than one question.
+**`cascadingRouter` or `intentRouter`?** `intentRouter` has a generator write its category and a confidence score as output. `cascadingRouter` uses the confidence an evaluation model reports alongside its answer, and needs a model that reports one. Reach for it when that matters, or when the decision takes more than one question.
 
 ---
 
