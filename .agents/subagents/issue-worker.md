@@ -85,8 +85,11 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
 - **Ready to merge** means approved, green, and an automated review (Codex or Cursor) has
   returned on the PR's **current head** — [Gates](../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge).
   A head you just pushed has not been reviewed. Under `epic-wake`, set `implHeadSha` and
-  `implReviewedHeadSha` (the head that review ran against) alongside `readyToMerge`; the
-  wake offers the merge only when they match.
+  `implReviewedHeadSha` alongside `readyToMerge`: `implReviewedHeadSha` is the current head
+  sha if ANY completed automated review (a Codex review's `commit_id` or a Cursor check run's
+  `head_sha`) ran against it, otherwise the most recent reviewed sha, or null. The wake
+  offers the merge only when the two match and are non-null. Leaving the pair out is
+  allowed: it holds the merge gate back, and the next refresh scan decides.
 
 Work on the issue's own branch inside this worktree so your commits never collide
 with sibling workers. Commit and push only as authorized; never merge an implementation PR.

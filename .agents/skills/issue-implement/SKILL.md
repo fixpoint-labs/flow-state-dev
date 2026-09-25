@@ -553,7 +553,7 @@ When the answer comes back, carry it in as given (implement the decision, don't 
 
 - If reviews requested changes and you've addressed them all, re-request review:
   `gh pr edit {PR} --add-reviewer {handle}`
-- If the PR is approved with no open threads, it's ready to merge — but defer the merge decision to the user unless the workflow explicitly allows auto-merge.
+- If the PR is approved with no open threads **and an automated review (Codex or Cursor) has returned on its current head** (some completed automated review ran against the PR's head sha: a Codex review's `commit_id` from `get_reviews`, or a Cursor check run's `head_sha`, equals it), it's ready to merge — but defer the merge decision to the user unless the workflow explicitly allows auto-merge.
 - If new activity arrives later, re-enter at Step 10.1.
 - If merge conflicts are detected (and you should check), then automatically handle them. If there is any major concern about how to merge, ask the user first before merging
 
