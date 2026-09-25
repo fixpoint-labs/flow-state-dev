@@ -90,8 +90,14 @@ async function main(): Promise<void> {
   }
   out.loadErrors = loaded.errors ?? [];
   out.packageErrors = loaded.packageErrors ?? [];
+  // HELD, not reach: `w.packages` is every package in the seat's reach, and an
+  // org or team library there is held only when a `packages:` line names it.
+  // This goal forbids that line, so a seat holds exactly its own folder's.
   out.held = Object.fromEntries(
-    loaded.workers.map((w) => [w.id, (w.packages ?? []).map((p) => p.path)]),
+    loaded.workers.map((w) => [
+      w.id,
+      (w.packages ?? []).filter((p) => p.level === "worker").map((p) => p.path),
+    ]),
   );
 
   const generated = (await import(GEN_MODULE)) as {
