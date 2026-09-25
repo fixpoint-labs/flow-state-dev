@@ -4,7 +4,7 @@
 
 What was considered, what was chosen, why, and what each choice locks in. Three decisions are the
 sign-off surface. The epic's D2 (a post a seat wrote wakes no seat) is FIX-1590's and is consumed
-here, not re-decided. So is FIX-1589's `seatId`, the seat's own id imposed by the hire.
+here, not re-decided. So is FIX-1589's `seatId`, imposed by the hire, whose value is the seat record's id: the name a `CHANNEL.md` `members:` lists ([FIX-1589 D3](../FIX-1589/DECISIONS.md#d3)).
 
 ## The tree
 
@@ -40,7 +40,7 @@ than instead of it.
 | | |
 |---|---|
 | **Instead of** | (a) An `author` argument on the tool. (b) The channel reading who sent the post from the dispatch record. (c) The member name the wake hands the woken turn. (d) A `seatId` of this issue's own |
-| **Because** | A block cannot see which seat it runs in; the seat's settings are the only per-seat fact it can read, and only the hire writes them. FIX-1589's clerk needed the same fact first, so FIX-1589 imposes `seatId` at the hire and refuses it when a worker file writes it; this issue reads it. (a) lets a model sign as anyone on the roster (BP-031, epic ER-4): the author has to come from a server-set source, and the seat's settings are one. (b) The dispatch record names the sending session, not the seat: an engine change, which is the epic's Kill line. (c) Exists only on a woken turn, so a directly asked seat could not post. The POC's negative control shows what the author carries: without it the line reads `devuser`, the seat wakes itself, and a channel it is not in accepts the post (P1, P2, P4 red) |
+| **Because** | A block cannot see which seat it runs in; the seat's settings are the only per-seat fact it can read, and only the hire writes them. FIX-1589's clerk needed the same fact first, so FIX-1589 imposes `seatId` at the hire and refuses it when a worker file writes it; this issue reads it ([FIX-1589 D3](../FIX-1589/DECISIONS.md#d3)). Its value is the seat record's id, the name `members:` lists, not the seat's address: the two differ for an org-prefixed hired seat, and the channel's member check compares the author against record ids, as `fileTask` does. (a) lets a model sign as anyone on the roster (BP-031, epic ER-4): the author has to come from a server-set source, and the seat's settings are one. (b) The dispatch record names the sending session, not the seat: an engine change, which is the epic's Kill line. (c) Exists only on a woken turn, so a directly asked seat could not post. The POC's negative control shows what the author carries: without it the line reads `devuser`, the seat wakes itself, and a channel it is not in accepts the post (P1, P2, P4 red) |
 | **Locks in** | The key is on every seat, not only on seats holding the tool, because every mint path (the file roster, the runtime `hire`, the boot reload) goes through the one hire step, and a seat minted without it would post unattributed: read as `devuser`, wake every member, and skip the member check. Scoping it to otto re-opens this decision. A seat whose settings lack `seatId` is refused by the tool, never posted author-less. The line is still stored `authorVerified: false`: the server set the name, but the channel cannot check who called, which stays [FIX-1493](https://linear.app/fixpoint-labs/issue/FIX-1493)'s |
 
 <a name="d3"></a>

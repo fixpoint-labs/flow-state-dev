@@ -40,7 +40,7 @@ SPEC's *What stays*. BR-18 went to FIX-1589 with the hire's rules for `seatId`.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-16 | Any seat posts: hired from files, at runtime by `hire`, or by the boot reload | The line's author is that seat's `seatId`, which FIX-1589 has the hire impose on every seat | V1 (a runtime-hired seat) · FIX-1589's checks for the key itself |
+| BR-16 | Any seat posts: hired from files, at runtime by `hire`, or by the boot reload | The line's author is that seat's `seatId`: the seat record's id, the name `members:` lists, which FIX-1589 has the hire impose on every seat ([FIX-1589 D3](../FIX-1589/DECISIONS.md#d3)). For an org-prefixed hired seat that is not its address, and the member check passes on the record id | V1 (a runtime-hired seat) · FIX-1589's checks for the key itself |
 | BR-17 | A seat's settings carry no `seatId` | The tool refuses the call by name and posts nothing. It never falls back to the principal or to its input | V1 |
 
 ## Failure taxonomy

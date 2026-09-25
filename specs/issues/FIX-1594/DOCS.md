@@ -34,7 +34,8 @@ tools: [post-to-channel]
 ```
 
 The model calls `post-to-channel` with the channel's id and what to say. The tool posts through
-that channel's own `post`, and the line's `author` is the seat's own id. The model cannot set it:
+that channel's own `post`, and the line's `author` is the seat's record id, the name the channel's
+`members:` lists. The model cannot set it:
 the tool takes no `author`, and it reads the seat's `seatId`, which the hire writes into every
 seat's settings. A seat that doesn't name the tool is never offered it.
 
@@ -61,7 +62,7 @@ Four limits:
 
 The channel-post capability puts one tool, `post-to-channel`, on a worker kind's catalog. A seat
 names it in `tools:` to use it. Its input is `{ channel, body }` and nothing else. The line is
-posted through the built-in channel kind's `post`, with the seat's `seatId` as `author`, so the
+posted through the built-in channel kind's `post`, with the seat's `seatId` (its record id, as `members:` lists it) as `author`, so the
 channel's member check applies and the fan-out sees a seat's post. The tool returns once the post
 is handed to the channel. A refusal by the channel lands on the channel's request, not in the
 seat's turn; a refusal at dispatch fails the call. It works only where dispatch runs in process:
