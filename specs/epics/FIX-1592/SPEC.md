@@ -25,12 +25,13 @@ channel talks to several agents, or one on a topic, and an agent can answer in i
 |---|---|
 | **Outcome** | In kitchen-sink, a person talks to an agent seat directly, posts to a channel whose member agent seats receive it, and sees a member agent's reply in that channel |
 | **Proof** | Three browser checks on a production build, keyless on kitchen-sink's scripted model ([D3](DECISIONS.md#d3)). FIX-1585: a message to `support.otto` and its reply both survive a reload. FIX-1590: one post to `support.desk` runs each member agent seat once. FIX-1594: a member agent's reply shows in the channel transcript under that seat's name, survives a reload, and wakes no seat ([ER-17](BUSINESS-RULES.md#the-proof)) |
-| **Lead measure** | Goal-proven child issues, named off the status table. **None today** |
+| **Lead measure** | Browser checks passing on `main`, of the three above, named off the status table. **None today** |
 | **Not doing** | The clerk's model answer ([FIX-1589](https://linear.app/fixpoint-labs/issue/FIX-1589)) and the boards ([FIX-1591](https://linear.app/fixpoint-labs/issue/FIX-1591)), now follow-ons · Assistant tools that post or ask · channel admin ([FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415)) · verified identity ([FIX-1493](https://linear.app/fixpoint-labs/issue/FIX-1493)) · any Layer 1 channel, notify or dispatch substrate · live updates of other people's posts |
 | **Kill line** | A path needs a change in core or engine, or one of the three browser checks can't pass without a live model key |
 
 **What it closes of the objective's gap:** none of the number; the set adds no goal. It adds
-the reference app's first use of Workforce's two ways of talking, from a browser.
+the reference app's first use, from a browser, of Workforce's three ways of talking: to a seat,
+to a channel, and back into the channel.
 
 ## Why now
 
@@ -65,8 +66,10 @@ flowchart LR
   B -->|"a woken seat, the wake rule"| C["FIX-1594 · an agent replies in the channel"]
 ```
 
-Each solid edge is a hard dependency, wired in Linear as blocked-by. The dashed input gates every
-edit to `agent-worker-flow.ts`, and each child makes one ([ER-11](BUSINESS-RULES.md#what-no-child-may-do)).
+Each edge is a hard dependency on implementation, wired in Linear as blocked-by. The dashed input
+gates every edit to `agent-worker-flow.ts`: FIX-1585 and FIX-1590 each make one
+([ER-11](BUSINESS-RULES.md#what-no-child-may-do)). If FIX-1594's posting path lands in that
+file, it waits the same way.
 
 ## What stays as it is
 
@@ -76,7 +79,7 @@ edit to `agent-worker-flow.ts`, and each child makes one ([ER-11](BUSINESS-RULES
 - **`desk-clerk` and `followup-runner` seats.** A post does not run them; they keep the notify
   stub's name-only line. `support.ada` still answers by echo until FIX-1589.
 - **`escalations` stays unattended**, and the boot warning stays visible, as FIX-1476 shipped it.
-- **Related, not children:** FIX-1589, FIX-1591 (follow-ons), [FIX-1459](https://linear.app/fixpoint-labs/issue/FIX-1459),
+- **Related, not children:** FIX-1589, FIX-1591 (follow-ons), [FIX-1459](https://linear.app/fixpoint-labs/issue/FIX-1459) (a blocker, not a child),
   FIX-1415, FIX-1493, [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) ([PLAN.md](PLAN.md#not-children-deliberately)).
 
 ## Sign off

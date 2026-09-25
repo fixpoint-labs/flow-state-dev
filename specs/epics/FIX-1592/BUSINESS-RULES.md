@@ -4,9 +4,9 @@
 
 At epic altitude the rules aren't behaviours of one feature; they're the constraints every child
 spec and implementation must satisfy, and the place a cross-spec review checks. Each says who
-owns it and where it's checked. Numbers restart with the re-scope; the first version's ER-n are
-in [#2265](https://github.com/fixpoint-labs/flow-state-dev/pull/2265) and mapped in
-[EVOLUTION.md](EVOLUTION.md).
+owns it and where it's checked. Numbers restart with the re-scope. The first version's ER-n are
+in [#2265](https://github.com/fixpoint-labs/flow-state-dev/pull/2265), superseded as a set
+([EVOLUTION.md](EVOLUTION.md)); none carries over by number.
 
 ## What a person gets
 
@@ -27,7 +27,7 @@ in [#2265](https://github.com/fixpoint-labs/flow-state-dev/pull/2265) and mapped
 | ER-8 | Change `packages/workforce` only where a path needs it. No Workforce concept in core, engine, client or react; no new Layer 1 channel, notify or dispatch piece | The owner's layer rule. Replaces the first version's "one package line" fence ([D1](DECISIONS.md#d1)) |
 | ER-9 | No kitchen-sink-only route or messaging API. Every browser verb calls an action a flow declares | A reference app with a private API teaches the private API |
 | ER-10 | No second kind→action map and no invented Dispatcher | Architect fence |
-| ER-11 | No edit to `packages/workforce/src/agent-worker-flow.ts` until FIX-1459 lands | Another thread is implementing FIX-1459 there. ER-1 and ER-2 each need that file |
+| ER-11 | No edit to `packages/workforce/src/agent-worker-flow.ts` until FIX-1459 lands | Another thread is implementing FIX-1459 there. Two children edit it: FIX-1585 adds the kept message to the agent kind's `run` (ER-1), FIX-1590 adds the internal receiver (ER-2). Wired in Linear as FIX-1459 blocks both |
 | ER-12 | A seat's reply in a channel is a peer post. Not an assistant item on the channel's session, not a channel-side responder | Architect fence. A channel is a log of posts |
 | ER-13 | Nothing from the follow-ons: no model answer for `desk-clerk` (FIX-1589), no board verbs and no change to `escalations` (FIX-1591), no Assistant tool that posts or asks, no channel admin (FIX-1415), no verified identity (FIX-1493) | Not doing. Each is its own decision |
 
@@ -35,7 +35,7 @@ in [#2265](https://github.com/fixpoint-labs/flow-state-dev/pull/2265) and mapped
 
 | # | Rule | Because |
 |---|---|---|
-| ER-14 | FIX-1590 starts when FIX-1585's implementation merges; FIX-1594 when FIX-1590's does. Wired in Linear as blocked-by | D1. A spec merge is not a start signal |
+| ER-14 | FIX-1590's implementation starts when FIX-1585's merges; FIX-1594's when FIX-1590's does. Wired in Linear as blocked-by. Each child's spec may be written earlier, so a cross-spec review sees them together | D1. A spec merge is not a start signal for the next implementation. Blocked-by holds implementation only, never spec work (AGENTS.md) |
 | ER-15 | A child that finds it needs a core or engine change, or a live key to pass its browser check, stops and comments up on this epic | The Kill line. Deciding it locally hides the one fact that ends the epic |
 | ER-16 | FIX-1585's spec (#2258) folds ER-1 before its approval. This amendment is its authority to widen | The owner's re-scope moves "keep the message" into FIX-1585's proof |
 
