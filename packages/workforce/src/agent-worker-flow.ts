@@ -1024,8 +1024,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
    */
   const mint = (options?: Parameters<typeof flow>[0]) => {
     const seat = flow(options);
-    const config = options?.config as Partial<SeatConfig> | undefined;
-    if (config?.tools === undefined) {
+    if (!Object.hasOwn(seat.config, "tools")) {
       const problems = pickedToolCollisions(seatCapabilityCatalog, seat.config.capabilities);
       if (problems.length > 0) {
         throw new Error(`This worker writes no \`tools:\` line, and it ${problems.join(" It also ")}`);
