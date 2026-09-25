@@ -86,7 +86,7 @@ What you get back is one skill or none. The model's pick is final:
 - "No skill" activates nothing.
 - An error fails the activator, the same way a failed default classifier does. It doesn't fall back to the default classifier. If you'd rather the turn go on without a skill, wrap the activator in [`.rescue`](/docs/sequencers/composing-blocks#rescue--catch-errors-route-to-recovery).
 
-Two things work differently from the default classifier. It activates at most one skill per turn; keyword matches can still activate several. And it can't pull an argument out of the message, so `input` is empty. A slash command is still how a user passes `$ARGUMENTS`.
+Unlike the default classifier, it activates at most one skill per turn (keyword matches can still activate several), and it can't pull an argument out of the message, so `input` is empty. Users pass `$ARGUMENTS` with a slash command.
 
 To name the block yourself, change what it evaluates, or give it `uses`, build it from `skillQuestions`:
 
