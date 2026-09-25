@@ -77,7 +77,7 @@ would simply stop receiving an authored value. The narrowed map it produces repl
 flow-level resource map for that seat; `packages/workforce/src/seat-resources.ts` is canonical for
 the grant shapes and the refusals.
 
-**`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then the kind's catalog), and the ones that resolved to the seat's own folders are moved onto `seatTools` as live blocks. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
+**`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then the kind's catalog), and the ones that resolved to the seat's own folders are moved onto `seatTools` as live blocks. The hire step also keeps whether the file wrote a `tools:` line at all, decided before that split: the key reaches the kind only when a line was written, and stays present even when every name was the seat's own and the list emptied. An omitted line is never filled in as `[]`, so a kind can tell a written list from an omitted one; the built-in `agent` kind grants an omitted line the tools of the capability presets the seat picked, and a written one exactly its names. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
 
 The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` kind re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each kind to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed kind-probing after a probe produced a false accusation (`admissionHint`, `packages/workforce/src/hire.ts`).
 
@@ -139,12 +139,15 @@ check there proves order, which is a neighbour of precedence rather than precede
 a seat's line genuinely win would mean resolving contradictions before the prompt is sent, which
 is a different and much larger feature.
 
-`tools` is a hard runtime fence over the app's catalog, not a hint: a seat may call exactly the
-catalog keys it names, and an empty list means no catalog tools, regardless of what the app's
+A written `tools:` line is a hard runtime fence over the app's catalog, not a hint: a seat may call
+exactly the catalog keys it names, and an empty list means no catalog tools, regardless of what the app's
 catalog carries, what a bound skill's `allowed-tools` declares (see C5), or what a capability
-attached through `uses` would otherwise contribute. The delegation surface
-is fenced to the same list (FIX-1362's `toolSeatFence`), so a seat with `tools: []` reaches no
-catalog tool through a skill's `agents:` either.
+attached through `uses` would otherwise contribute. A seat that writes **no** `tools:` line may
+call the tools of the capability presets its own file picked under `capabilities:` (FIX-1459);
+presets this kind switches on by default grant nothing the seat did not pick. The delegation surface
+is fenced to the names the seat listed (FIX-1362's `toolSeatFence`), so a seat with `tools: []`
+reaches no catalog tool through a skill's `agents:` either, and a seat with no line takes none of the
+tools it chose with it.
 
 **Capability tools are fenced by mechanism (FIX-1393).** The core resolver drops a capability's
 catalog-granted tools when the consuming block declares `tools:`, so an app's `uses` can no longer
