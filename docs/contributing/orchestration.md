@@ -269,8 +269,9 @@ standard of a release, and the epic cannot wrap while it is open.
   line, and the new blocked-by relations park it. When the last one merges, the wake dispatches
   implementation again and the **whole plan runs again** on a fresh `main` commit, not only the
   fixed bugs' repros, because a fix can break a neighbour. This repeats until a run files
-  nothing. `epic-wake` needs nothing special for this: blocked-by, child discovery and
-  `mayWrap`'s every-row-terminal rule already carry it.
+  nothing. This needs no `epic-wake` change: blocked-by, child discovery and `mayWrap`'s
+  every-row-terminal rule already carry it. `verify.mjs` covers those pieces one at a time, but
+  has no scenario yet for a closure run that files findings and is re-dispatched.
 - **A clean run opens the closure PR.** It commits the end-to-end checks where they can live in
   the repo, so they keep running after the wrap, and its body is the QA report: the `main`
   commit, each check with its PASS and its control's FAIL, and each finding with its bug and
