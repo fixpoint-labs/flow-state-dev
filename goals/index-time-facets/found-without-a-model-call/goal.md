@@ -14,5 +14,6 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-09-25 | fix/FIX-1557-facets (pre-commit, on acc01bb) | typesafe-ai/jev (Vercel AI Gateway) | PASS | 3 tickets classified at write, 1476 tokens; held-out-1 stored topic=billing; search topic=billing returned held-out-1 and held-out-3; 1 trace row, no evaluator or generator row, 0 tokens. |
-| 2026-09-25 | fix/FIX-1557-facets (pre-commit, on acc01bb) | typesafe-ai/jev (Vercel AI Gateway) | FAIL (expected) | `GOAL_CONTROL=classify-at-query`: `e2: the search turn ran a model: evaluator:ticket-facets` and `e2: the search turn spent 467 tokens`. e1 passed. |
+| 2026-09-25 | 48df030 | typesafe-ai/jev (Vercel AI Gateway) | PASS | 3 tickets classified at write, 1476 tokens; held-out-1 stored topic=billing; search topic=billing returned held-out-1 and held-out-3; 1 trace row, no evaluator or generator row, 0 tokens. Same result on 3 of 5 runs. |
+| 2026-09-25 | 48df030 | typesafe-ai/jev (Vercel AI Gateway) | FAIL (provider) | 2 of 5 runs: Jev answered `Service temporarily unavailable` while classifying held-out-1. The write turn still succeeded and the ticket was left with no facets, as designed; e1 names the cause. Not a mechanism failure; re-run. |
+| 2026-09-25 | 48df030 | typesafe-ai/jev (Vercel AI Gateway) | FAIL (expected) | `GOAL_CONTROL=classify-at-query`: `e2: the search turn ran a model: evaluator:ticket-facets` and `e2: the search turn spent 467 tokens`. e1 passed. (One control run hit the same provider outage and failed on e1 instead; re-run.) |

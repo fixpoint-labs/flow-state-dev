@@ -112,11 +112,19 @@ export async function checkFoundWithoutAModelCall(
   const failures: string[] = [];
 
   // Turn 1: write every held-out ticket; each body is classified as it lands.
+  // A failed classification leaves the ticket without facets by design; keep
+  // the cause so e1 can name it instead of just "no facets".
   let writeTokens = 0;
+  const classifyErrors: string[] = [];
   for (const [n, t] of fx.tickets.entries()) {
     const { result, traces } = await runTurn(flow, stores, "write", t, `req_write_${n}`);
     if (result.error !== undefined) failures.push(`e0: writing ${t.key} failed: ${result.error.message}`);
     writeTokens += traces.reduce((sum, r) => sum + (r.modelUsage?.totalTokens ?? 0), 0);
+    for (const r of traces) {
+      if (r.status === "failed" && r.blockKind === "evaluator") {
+        classifyErrors.push(`${t.key}: ${r.error?.message ?? "evaluator failed"}`);
+      }
+    }
   }
 
   // Take the search value from what was stored, never from an expected label.
@@ -124,7 +132,8 @@ export async function checkFoundWithoutAModelCall(
   const stored = (await stores.resourceState.get("user", USER, `tickets/${target.key}`))?.state as TicketState | undefined;
   const topic = stored?.facets?.topic.choice;
   if (topic === undefined) {
-    failures.push(`e1: ${target.key} has no stored facets after its write: ${JSON.stringify(stored)}`);
+    const cause = classifyErrors.length > 0 ? ` (classification failed: ${classifyErrors.join("; ")})` : "";
+    failures.push(`e1: ${target.key} has no stored facets after its write${cause}: ${JSON.stringify(stored)}`);
     return { failures, evidence: "" };
   }
   const query: FacetQuery = { topic };
