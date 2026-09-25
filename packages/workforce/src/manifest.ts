@@ -231,6 +231,15 @@ export const TEAM_INSTRUCTIONS_KEY = "teamInstructions";
 export const TEAM_MD = "TEAM.md";
 
 /**
+ * The file that makes a folder under `packages/` a package — the one name in
+ * that convention an author types.
+ *
+ * Required, unlike {@link TEAM_MD}: a folder in `packages/` is a package or a
+ * mistake, and a package with no file is refused rather than read as empty.
+ */
+export const PACKAGE_MD = "PACKAGE.md";
+
+/**
  * The one wording for {@link TEAM_INSTRUCTIONS_KEY}, shared by every door that
  * refuses an authored one. Names no subject — the caller supplies what it can
  * name.
