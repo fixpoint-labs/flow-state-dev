@@ -20,7 +20,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { useSession } from "@flow-state-dev/react";
-import { CHANNEL_POST_COMPONENT, type ChannelTranscriptLine } from "@flow-state-dev/workforce";
+import { CHANNEL_POST_COMPONENT, type ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { isChannelKind, seatAskFor } from "@/lib/workforce-shell";

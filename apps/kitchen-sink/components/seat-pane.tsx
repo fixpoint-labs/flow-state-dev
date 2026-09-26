@@ -29,7 +29,7 @@ import {
   type RequestSSECallbacks,
 } from "@flow-state-dev/client";
 import { SeatDetail, type PanelItemSource } from "@flow-state-dev/react";
-import { HIRED_ROSTER_RESOURCE, splitSeatAddress } from "@flow-state-dev/workforce";
+import { HIRED_ROSTER_RESOURCE, splitSeatAddress } from "@flow-state-dev/workforce/browser";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

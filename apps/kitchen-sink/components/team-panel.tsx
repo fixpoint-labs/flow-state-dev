@@ -11,7 +11,7 @@
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { BoardColumns, Roster, type PanelRowSource } from "@flow-state-dev/react";
-import { HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
+import { HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce/browser";
 
 import {
   ROSTER_BOOT_REPORT_REF,

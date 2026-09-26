@@ -20,10 +20,10 @@
  * and `contracts-zero-dep.spec.ts` is the precedent for pinning them at their
  * own boundary.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { builtinModules } from "node:module";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { findNodeBuiltinsFromEntry } from "@flow-state-dev/testing";
 import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -32,71 +32,11 @@ const pkgRoot = path.resolve(here, "..");
 /** Entry points this package publishes as safe to bundle for a browser. */
 const BROWSER_SAFE_ENTRIES = ["src/tasks/index.ts"];
 
-const NODE_BUILTINS = new Set(builtinModules);
-
-// `import ... from "X"`, `export ... from "X"`, and bare `import "X"`.
-const importPattern =
-  /(?:import|export)\b[^"';]*?\bfrom\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
-
-function isNodeBuiltin(specifier: string): boolean {
-  if (specifier.startsWith("node:")) return true;
-  // `fs`, `path`, … and their subpaths (`fs/promises`).
-  return NODE_BUILTINS.has(specifier) || NODE_BUILTINS.has(specifier.split("/")[0]);
-}
-
-/** Resolve a relative specifier to a concrete source file, or `undefined`. */
-function resolveRelative(fromFile: string, specifier: string): string | undefined {
-  const base = path.resolve(path.dirname(fromFile), specifier);
-  const candidates = [
-    base,
-    `${base}.ts`,
-    `${base}.tsx`,
-    path.join(base, "index.ts"),
-    path.join(base, "index.tsx"),
-  ];
-  return candidates.find((c) => existsSync(c) && c.endsWith(".ts"));
-}
-
-/**
- * Walk the relative import graph from `entry`, returning one
- * `file -> node:builtin` line per violation, each with the chain that reached
- * it — the chain is the point, since the offending import is usually several
- * modules away from the entry that has to stay clean.
- */
-function findNodeBuiltins(entry: string): string[] {
-  const offenders: string[] = [];
-  const seen = new Set<string>();
-
-  const walk = (file: string, chain: string[]): void => {
-    if (seen.has(file)) return;
-    seen.add(file);
-
-    const content = readFileSync(file, "utf8");
-    const rel = path.relative(pkgRoot, file);
-    const nextChain = [...chain, rel];
-
-    for (const match of content.matchAll(importPattern)) {
-      const statement = match[0];
-      // `import type` / `export type` is erased before it reaches a bundler.
-      if (/^(?:import|export)\s+type\b/.test(statement)) continue;
-
-      const specifier = match[1] ?? match[2];
-      if (specifier === undefined) continue;
-
-      if (isNodeBuiltin(specifier)) {
-        offenders.push(`  "${specifier}" via ${nextChain.join(" -> ")}`);
-        continue;
-      }
-      if (!specifier.startsWith("./") && !specifier.startsWith("../")) continue;
-
-      const resolved = resolveRelative(file, specifier);
-      if (resolved !== undefined) walk(resolved, nextChain);
-    }
-  };
-
-  walk(path.join(pkgRoot, entry), []);
-  return offenders;
-}
+// Package-local on purpose (see "Scope" above). Following workspace packages
+// today reaches `node:module`/`node:url` via define-task-collection.ts -> the
+// `@flow-state-dev/core` root -> core/src/models/createModelResolver.ts.
+const findNodeBuiltins = (entry: string): string[] =>
+  findNodeBuiltinsFromEntry(path.join(pkgRoot, entry), { followWorkspacePackages: false });
 
 describe("browser-safe subpath exports", () => {
   for (const entry of BROWSER_SAFE_ENTRIES) {
