@@ -29,7 +29,7 @@
  * `<org>.<seatId>`. When the seats passed hold one logical id in several
  * organizations, the post's organization picks the one that runs.
  */
-import { dispatcher, handler, router } from "@flow-state-dev/core";
+import { dispatcher, handler, router, type RouterConfig } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { SEAT_ID_KEY } from "../manifest";
@@ -127,8 +127,12 @@ export function wakeMemberSeats(
       // never send the fallback to a member it would not reach anyway.
       const wake = wakeFor(post.member, ctx);
       if (wake === undefined) return fallback;
+      // A seat wrote it: silent, not the fallback (BR-3). The author only withholds.
       if (post.author !== undefined) return silent;
       return wake;
     }
-  } as never) as BlockDefinition<typeof channelNotifyInputSchema, any>;
+  } as unknown as RouterConfig<typeof channelNotifyInputSchema, any, ChannelNotifyInput>) as BlockDefinition<
+    typeof channelNotifyInputSchema,
+    any
+  >;
 }
