@@ -1,5 +1,42 @@
 # @flow-state-dev/testing
 
+## 0.3.0
+
+### Minor Changes
+
+- 211679a: New core block kind: `evaluator` (FIX-1554). It asks an evaluation model typed questions (`choice`, `score`, `boolean`) and returns typed answers, with the model's confidence when it reports one. Model strings resolve through your existing providers and gateways; models that can only generate are refused before any call. `BlockKind` and the trace's `blockKind` gain `"evaluator"`: code that switches on block kind should handle it. `ai` minimum raised to the first release with evaluation. `@ai-sdk/typesafe-ai` is an optional peer. `ModelResolver` gains an optional `resolveEvaluationModel`; a custom resolver without it runs generators as before and refuses evaluator model strings. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. `@flow-state-dev/testing` adds `mockEvaluationModel`.
+
+### Patch Changes
+
+- b2d2679: A hand-written `MockGeneratorInstance`'s `next()` now receives `{ toolResults }` as a second argument, what the tools the current call already ran returned, so a scripted step can depend on a tool's result (FIX-1589).
+- Updated dependencies [53b50f0]
+- Updated dependencies [e4fb1f1]
+- Updated dependencies [538cd1a]
+- Updated dependencies [585b75b]
+- Updated dependencies [b75c1ed]
+- Updated dependencies [8dc242e]
+- Updated dependencies [1355483]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [8a55e23]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [c57890d]
+- Updated dependencies [7d4c413]
+- Updated dependencies [a64132b]
+- Updated dependencies [3311cc2]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [8b8ba8d]
+- Updated dependencies [64b3ed7]
+- Updated dependencies [407964a]
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/engine@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

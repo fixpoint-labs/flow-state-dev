@@ -1,5 +1,29 @@
 # @flow-state-dev/orchestration
 
+## 0.3.1
+
+### Patch Changes
+
+- 69a9e29: `awaitReview` with no reason now clears the task's `feedback` instead of leaving the previous note in place, so a failed attempt's error text no longer reads as the reason a parked task is waiting (FIX-1505).
+- d994f51: `createSkillActivator` takes an optional `evaluator` for tier 3, with `skillEvaluator(model)` and `skillQuestions` to build one (FIX-1559). The evaluator picks one skill or none from the same catalog the classifier would see, and its pick is final: no confidence threshold, no fallback to the classifier. Without it, activation is unchanged.
+- afb512f: `skillEvaluator(model, { recentMessages: N })` lets the skill activator's evaluator see the last N turns before the message, so follow-ups like "yes, do that" activate the skill an earlier offer was about (FIX-1595).
+- Updated dependencies [53b50f0]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [7d4c413]
+- Updated dependencies [3311cc2]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [407964a]
+  - @flow-state-dev/core@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

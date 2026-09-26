@@ -1,5 +1,26 @@
 # @flow-state-dev/voice-openai
 
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies [53b50f0]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [7d4c413]
+- Updated dependencies [3311cc2]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [407964a]
+  - @flow-state-dev/core@0.3.0
+
 ## 0.1.3
 
 ### Patch Changes
