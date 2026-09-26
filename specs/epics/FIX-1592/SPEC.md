@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 4 issues · Workforce: Layer 2 Abstraction · Goal 1, validate through real usage
+Epic · 4 issues and a closure issue · Workforce: Layer 2 Abstraction · Goal 1, validate through real usage
 ([`docs/objectives.md`](../../../docs/objectives.md)) ·
 [FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592) · re-scoped by the owner on
 2026-09-25; the first version was [#2265](https://github.com/fixpoint-labs/flow-state-dev/pull/2265)
@@ -53,7 +53,7 @@ own leg.
 
 | How we verify | |
 |---|---|
-| **Goal check** | No proof issue: each leg is its owner's browser goal check, all four run on one `main` commit at wrap ([ER-17](BUSINESS-RULES.md#the-proof)). **Leg a:** FIX-1585 (otto) and FIX-1589 (ada). **Leg b:** FIX-1590. **Leg c:** FIX-1594. Model: the scripted model, keyless ([D3](DECISIONS.md#d3)) |
+| **Goal check** | [FIX-1601](https://linear.app/fixpoint-labs/issue/FIX-1601)'s QA plan ([#2288](https://github.com/fixpoint-labs/flow-state-dev/pull/2288)), run on one `main` commit per [the closure issue](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa) ([ER-17](BUSINESS-RULES.md#the-proof)). Model: the scripted model, keyless ([D3](DECISIONS.md#d3)) |
 | **Signal** | **a:** otto shows the message and the reply after a reload; ada's reply is not the note and carries its scenario marker, so a model call made it. **b:** one post runs iris and otto once each, no other seat. **c:** otto's reply is a line in `support.desk` under its name, survives a reload, runs no seat |
 | **Input** | Text each child picks, with a scenario marker in it; a different text must pass too |
 | **Anti-game** | Don't assert on a reply's wording: the script wrote it. Don't assert on a flow's return value, a package test or a CLI run; none is what a person sees |
@@ -61,7 +61,7 @@ own leg.
 
 | | |
 |---|---|
-| **Lead measure** | Browser goal checks passing on `main`, of the four above, named off the status table. **None today** |
+| **Lead measure** | A clean FIX-1601 run on one `main` commit. **None today** |
 | **Not doing** | The boards' drain and the `escalations` call ([FIX-1591](https://linear.app/fixpoint-labs/issue/FIX-1591), held) · Assistant tools that post or ask · channel admin ([FIX-1415](https://linear.app/fixpoint-labs/issue/FIX-1415)) · verified identity ([FIX-1493](https://linear.app/fixpoint-labs/issue/FIX-1493)) · any Layer 1 channel, notify or dispatch substrate · live updates of other people's posts |
 | **Kill line** | A path needs a change in core or engine, or one of the four browser checks can't pass without a live model key |
 
@@ -76,7 +76,8 @@ The three paths are Workforce's own. Kitchen-sink is where a person first sees t
 
 ## The set · as of 2026-09-25
 
-A dated snapshot. Live state is Linear and the implementation PRs. All four are Features.
+A dated snapshot. Live state is Linear and the implementation PRs. The four are Features;
+FIX-1601 is the closure issue.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
@@ -84,8 +85,10 @@ A dated snapshot. Live state is Linear and the implementation PRs. All four are 
 | [FIX-1589](https://linear.app/fixpoint-labs/issue/FIX-1589) · the clerk answers | The clerk's `answer` calls a model, or files the note through the channel's `fileTask` | Path one for the clerk, which otherwise parrots | Backlog · after FIX-1585 |
 | [FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590) · a post reaches its agents | Each member agent seat runs once on a post with no seat author, through an internal receiver on the agent kind | Path two ([D1](DECISIONS.md#d1)) | Backlog · after FIX-1589 |
 | [FIX-1594](https://linear.app/fixpoint-labs/issue/FIX-1594) · an agent replies in the channel | An agent seat posts into a channel it belongs to, authored as itself | Path three | Backlog · after FIX-1590 |
+| [FIX-1601](https://linear.app/fixpoint-labs/issue/FIX-1601) · closure · required | The QA plan, per [the closure issue](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa), run on one `main` commit | Proves the assembled set, which no child's check does ([ER-17](BUSINESS-RULES.md#the-proof)) | QA plan [#2288](https://github.com/fixpoint-labs/flow-state-dev/pull/2288) · runs after all four and FIX-1598 |
 
-**0 done · 1 in spec review · 3 not started.** Wrap needs evidence from all four.
+**0 done · 1 in spec review · 3 not started · the closure plan in review.** Wrap needs FIX-1601's closure PR merged, which a
+clean run opens.
 
 ## How the issues flow into each other
 
@@ -97,11 +100,14 @@ flowchart LR
   D -->|"an honest clerk first"| B["FIX-1590 · a post reaches its agents"]
   A -->|"composers, the D3 map"| B
   B -->|"a woken seat, the wake rule"| C["FIX-1594 · an agent replies in the channel"]
+  A & D & B & C -->|"merged, on one main commit"| Z["FIX-1601 · closure · required"]
+  X["FIX-1598 · durable-hire check, red on main"] -.->|"green before the closure run"| Z
 ```
 
 Each solid edge is blocked-by on implementation, wired in Linear; specs may start early
-([ER-14](BUSINESS-RULES.md#how-the-set-is-run)). The dashed input gates the two builds that edit
-`agent-worker-flow.ts` ([ER-11](BUSINESS-RULES.md#what-no-child-may-do)). FIX-1591 is held and
+([ER-14](BUSINESS-RULES.md#how-the-set-is-run)). FIX-1459's dashed input gates the two builds that edit
+`agent-worker-flow.ts` ([ER-11](BUSINESS-RULES.md#what-no-child-may-do)); FIX-1598's gates the
+closure run. FIX-1591 is held and
 on no chain.
 
 ## What stays as it is
