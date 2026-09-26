@@ -26,8 +26,10 @@
  * is matched on its seat's logical id (the `seatId` setting the hire stamps),
  * and the dispatch goes to the seat's address. The two differ for a seat the
  * boot reload minted from a stored roster row, whose address is
- * `<org>.<seatId>`. When the seats passed hold one logical id in several
- * organizations, the post's organization picks the one that runs.
+ * `<org>.<seatId>`. When the seats passed hold one logical id more than once
+ * (in several organizations, or owned by several users of one), the one the
+ * post's caller may reach runs: owned by that user, else organization-wide,
+ * else shared.
  */
 import { dispatcher, handler, router, type RouterConfig } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
@@ -102,16 +104,21 @@ export function wakeMemberSeats(
   }
 
   /**
-   * The seat a member names, for a post in this organization: one pinned to
-   * the organization first, else one pinned to none.
+   * The seat a member names, for this post's caller: one pinned to the
+   * caller's organization and user first, then one visible to the whole
+   * organization, then one pinned to none. A seat pinned to anyone else is not
+   * this caller's to wake, so the member gets the fallback.
    */
   const wakeFor = (member: string, ctx: BlockContext): BlockDefinition<any, any> | undefined => {
     const group = wakes.get(member);
     if (group === undefined) return undefined;
     const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
+    const userId = ctx.user?.identity.userId ?? ctx.user?.identity.id;
+    const pin = (seat: FlowInstance) => seat.ownerPin;
     const found =
-      group.find(({ seat }) => seat.ownerPin !== undefined && seat.ownerPin.orgId === orgId) ??
-      group.find(({ seat }) => seat.ownerPin === undefined);
+      group.find(({ seat }) => pin(seat)?.orgId === orgId && pin(seat)?.userId !== undefined && pin(seat)?.userId === userId) ??
+      group.find(({ seat }) => pin(seat) !== undefined && pin(seat)!.orgId === orgId && pin(seat)!.userId === undefined) ??
+      group.find(({ seat }) => pin(seat) === undefined);
     return found?.wake;
   };
 

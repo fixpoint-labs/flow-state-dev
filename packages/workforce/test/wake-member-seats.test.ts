@@ -123,8 +123,8 @@ function worker(id: string, flow?: string): WorkerManifest {
 }
 
 /** A seat minted from a stored roster row, as the boot reload does: at `<org>.<seatId>`. */
-function reloaded(orgId: string, seatId: string, flow: string): WorkerManifest {
-  const bound = hiredSeatManifest(orgId, toHiredSeatRow({ seatId, flow }));
+function reloaded(orgId: string, seatId: string, flow: string, ownerUserId?: string): WorkerManifest {
+  const bound = hiredSeatManifest(orgId, toHiredSeatRow({ seatId, flow, ownerUserId }));
   if (!("manifest" in bound)) throw new Error(bound.problem);
   return bound.manifest;
 }
@@ -374,6 +374,29 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
       await settle(runtime, "desk.front", 1);
 
       expect(heard.map((h) => `${h.seat}|${h.body}`)).toEqual(["acme.desk.rex|for acme"]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("wakes the caller's own seat when users of one organization each own a seat of that id (BR-5)", async () => {
+    const { heard, map } = kinds();
+    // Another user's seat first, so a pick by organization alone takes the wrong one.
+    const seats = hireWorkforce(
+      [reloaded("acme", "desk.rex", "listener", "u_other"), reloaded("acme", "desk.rex", "listener", USER_ID)],
+      { kinds: map }
+    );
+    const fallback = recordingFallback();
+    const { channel, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, "desk.front", ["desk.rex"], "acme");
+      await post(runtime, channel, "desk.front", "for me", { orgId: "acme" });
+      await settle(runtime, "desk.front", 1);
+
+      const mine = seats.find((s) => s.ownerPin?.userId === USER_ID)!.id;
+      expect(heard.map((h) => `${h.seat}|${h.body}`)).toEqual([`${mine}|for me`]);
+      expect(fallback.ran).toEqual([]);
     } finally {
       await state.dispose();
     }

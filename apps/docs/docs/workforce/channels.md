@@ -316,7 +316,8 @@ For each post, and each member of the channel, it decides one thing: does this m
 - **Nobody runs** for a member whose kind can't hear a post, or who has no hired seat. That
   includes a seat hired after boot: the wake is built from the seats you pass at boot. A runtime
   hire your boot reloads is one of those seats, and wakes. If the seats you pass hold one seat id
-  in several organizations, the post's organization decides which one runs.
+  more than once, in several organizations or owned by several users, the one the channel's
+  caller can reach runs: their own, then the organization's, then a shared one.
 
 The seats you pass are the only addresses it uses. It never reads them off a channel's stored
 members, so you can pass fewer seats than you hired to wake fewer, but a member it has no seat for
