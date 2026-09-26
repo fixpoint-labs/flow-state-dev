@@ -43,6 +43,23 @@ const seatRow = (page: Page, address: string): Locator =>
 
 const token = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
+/** Open a new conversation on a desk-clerk seat and send it a note. */
+async function sendClerkNote(page: Page, seat: string, note: string): Promise<string> {
+  await openShell(page);
+  await open(page, "desk-clerk");
+  await open(page, seat);
+  await seatRow(page, seat).getByRole("button", { name: "New conversation" }).click();
+  const panel = picked(page);
+  await panel.getByLabel("Message this seat").fill(note);
+  await panel.getByRole("button", { name: "Send" }).click();
+  await expect(panel.locator('[data-message-role="user"]').filter({ hasText: note })).toHaveCount(1);
+  const sessionId = await rail(page)
+    .locator(`ul[data-leaf="${seat}"] [aria-current="true"]`)
+    .getAttribute("data-session-id");
+  expect(sessionId).toBeTruthy();
+  return sessionId!;
+}
+
 test("a line posted to support.desk shows as devuser, and is still there after a reload", async ({
   page,
   consoleErrors: _consoleErrors,
@@ -138,4 +155,48 @@ test("a failed New conversation shows in the seat's row, opens nothing, and can 
   await expect(rail(page).getByTestId("seat-create-error")).toHaveCount(0);
   // The refused create's own 503 is the one console error this scenario causes.
   consoleErrors.splice(0, consoleErrors.length, ...consoleErrors.filter((e) => !e.includes("503")));
+});
+
+test("a note to support.ada gets a reply a model wrote, under its desk, and both are kept across a reload", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  const mark = `clerk-token-${token()}`;
+  const note = `[scenario:clerk-answer] ${mark} where is my refund?`;
+  const sessionId = await sendClerkNote(page, "support.ada", note);
+  await expect(picked(page).getByText(/\[front desk\] \[clerk:answered\]/)).toBeVisible();
+
+  await page.reload();
+  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+  await open(page, "desk-clerk");
+  await open(page, "support.ada");
+  await rail(page).locator(`[data-session-id="${sessionId}"]`).click();
+  const kept = picked(page);
+  await expect(kept.locator('[data-message-role="user"]').filter({ hasText: note })).toHaveCount(1);
+  const reply = kept.locator('[data-message-role="assistant"]');
+  await expect(reply).toHaveCount(1);
+  await expect(reply).toContainText("[front desk] [clerk:answered]");
+  // The reply is the model's, not the note handed back.
+  await expect(reply).not.toContainText(mark);
+});
+
+test("a note the clerk files shows as a row on escalations in the team panel after a reload", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  const mark = `clerk-token-${token()}`;
+  await sendClerkNote(page, "support.ada", `[scenario:clerk-file] ${mark} the charger caught fire`);
+  await expect(picked(page).getByText(/\[front desk\] \[clerk:filed\]/)).toBeVisible();
+  // The row is written by the channel's own request, a moment after the
+  // dispatch. Let it land before the reload; nothing here is graded.
+  await expect
+    .poll(async () =>
+      (await page.request.get("/api/flows/sessions/support.desk/resources/support.desk.escalations")).text(),
+    )
+    .toContain(mark);
+
+  await page.reload();
+  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+  const board = page.getByTestId("board-support.desk.escalations");
+  await expect(board.locator("li[data-task-id]").filter({ hasText: mark })).toHaveCount(1);
 });

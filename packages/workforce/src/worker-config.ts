@@ -1,14 +1,15 @@
 /**
- * The admission contract: the five settings every hireable worker kind
+ * The admission contract: the six settings every hireable worker kind
  * accepts.
  *
  * Declared and imposed are different sets, and this file is where they are
- * easiest to confuse. The contract DECLARES five keys, and the seat factory
+ * easiest to confuse. The contract DECLARES six keys, and the seat factory
  * IMPOSES each on its own condition: `instructions` when the record has a
  * body, `teamInstructions` when the record's team wrote a `TEAM.md`,
- * `seatPackages` when the seat holds a package, and `seatSkills` and
- * `seatTools` on every record. Those last two are the
- * unconditional ones — present and empty is a real answer for a seat's skills
+ * `seatPackages` when the seat holds a package, and `seatSkills`, `seatTools`
+ * and `seatId` on every record. `seatId` always has a value, the record's id;
+ * `seatSkills` and `seatTools` are imposed unconditionally because
+ * present and empty is a real answer for a seat's skills
  * and for what its own folders register, and there is no equivalent answer for
  * a team layer, so a seat whose team wrote none carries no such key at all
  * rather than an empty string.
@@ -28,7 +29,7 @@
  * composed kind gets it for free, and a hand-rolled one refuses — loudly, at
  * boot, naming the key — until its author adds it too.
  *
- * **Five keys, and that is the whole bag.** A kind's own settings sit at the
+ * **Six keys, and that is the whole bag.** A kind's own settings sit at the
  * TOP LEVEL beside them, where the framework closes the set and an undeclared
  * key refuses by name. There is no nested bag for a kind's own settings: known
  * keys belong in the closed set, and genuinely open-ended data gets one
@@ -45,6 +46,7 @@ import { z } from "zod";
 import type { BlockDefinition } from "@flow-state-dev/core";
 import {
   INSTRUCTIONS_KEY,
+  SEAT_ID_KEY,
   SEAT_PACKAGES_KEY,
   SEAT_SKILLS_KEY,
   SEAT_TOOLS_KEY,
@@ -171,7 +173,20 @@ export function workerConfigSchema() {
      * composes the contract and never reads it hires and runs; its seats'
      * packages then simply do nothing.
      */
-    [SEAT_PACKAGES_KEY]: z.array(seatPackageSchema).optional()
+    [SEAT_PACKAGES_KEY]: z.array(seatPackageSchema).optional(),
+
+    /**
+     * The seat's own id — its record's id, the name a team's `members:` lists.
+     *
+     * **Imposed by the factory on every record, never authored.** A block
+     * inside the seat reads it as `ctx.flow.config.seatId`, for example to
+     * sign what it files or posts; the flow's own id is not on the block
+     * context. A worker file that declares `seatId:` is refused by name.
+     *
+     * Optional in the schema only so a kind can still be run outside a hire
+     * (a test, a single-flow app); every hired seat carries it.
+     */
+    [SEAT_ID_KEY]: z.string().min(1).optional()
   });
 }
 

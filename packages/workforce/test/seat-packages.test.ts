@@ -575,7 +575,9 @@ describe("the settings key a package arrives on (BR-32)", () => {
         instructions: z.string().optional(),
         teamInstructions: z.string().optional(),
         seatSkills: z.array(z.any()).default([]),
-        seatTools: z.array(z.any()).default([])
+        seatTools: z.array(z.any()).default([]),
+        // Imposed on every record, so a hand-rolled kind declares it to hire at all.
+        seatId: z.string().optional()
       }),
       actions: { run: { inputSchema, block: work } }
     });

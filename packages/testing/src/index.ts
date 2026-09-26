@@ -35,6 +35,7 @@ export {
   type MockGeneratorScriptStep,
   type MockGeneratorPredicateEntry,
   type MockGeneratorScriptEntry,
+  type MockToolResult,
   type UnmockedGeneratorPolicy,
   type UnmockedDefault
 } from "./mocks/mockGenerator";

@@ -205,6 +205,9 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  *     load-bearing.
  *   - `body` is the instructions, which the hire step turns into the
  *     `instructions` setting exactly as it does for a file's Markdown body.
+ *   - `seatId` is the row's own seat id, the logical id a channel's
+ *     `members:` lists, which the hire step stamps as the seat's `seatId`
+ *     setting. The address is not it.
  *
  * `skills` and `teamInstructions` are deliberately ABSENT rather than empty. On
  * a manifest those two fields distinguish *nobody read any folders for this
@@ -250,6 +253,7 @@ export function hiredSeatManifest(
       declared: { ...row.settings, flow: row.flow },
       body: row.instructions ?? "",
       ownerPin: hiredSeatOwnerPin(owningOrgId, row),
+      seatId: row.seatId,
     },
   };
 }

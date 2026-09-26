@@ -28,9 +28,15 @@
  *      either route and only the second survives a grep for the token.
  *      Without this leg, (a) and (b) are equally consistent with somebody
  *      having written the kind into the app by hand — which is the thing
- *      "from files alone" denies.
+ *      "from files alone" denies. The scan covers the places a kind could be
+ *      REGISTERED, and so skips the shell's names module
+ *      (`lib/workforce-shell.ts`, which names each kind's answering action for
+ *      the page and registers nothing) and the `test/` and `e2e/` trees, which
+ *      are not served.
  *
- * Real path, real build, no mocking, no model. See goal.md for the contract.
+ * Real path, real build, on kitchen-sink's scripted model (keyless): the clerk's
+ * answer calls a model, and the goal grades the desk tag the kind writes, not
+ * the model's words. See goal.md for the contract.
  *
  * Run: pnpm tsx goals/workforce-conventions/code-comes-from-files-alone/run.mts
  */
@@ -54,6 +60,7 @@ const ORIGIN = `http://127.0.0.1:${fixture.port}`;
 const NEXT_DIR = join(KITCHEN_SINK, ".next");
 const GEN_MODULE = join(KITCHEN_SINK, "workforce", "workforce.gen.ts");
 const KIND_MODULE = join(KITCHEN_SINK, "workforce", "flows", "workers", `${fixture.kind}.ts`);
+const SHELL_NAMES_MODULE = join(KITCHEN_SINK, "lib", "workforce-shell.ts");
 
 /** Every file under `dir`, skipping the trees that are not the app's source. */
 function walk(dir: string, skip: (name: string) => boolean, out: string[] = []): string[] {
@@ -249,7 +256,9 @@ await runGoal(async () => {
     // leaves the server running and the next run grading a stale artifact.
     server = spawn("pnpm", ["start"], {
       cwd: KITCHEN_SINK,
-      env: { ...process.env, PORT: String(fixture.port) },
+      // The clerk's answer calls a model: the scripted one, keyless. The goal
+      // grades the desk tag the kind writes from each seat's own settings.
+      env: { ...process.env, PORT: String(fixture.port), KITCHEN_SINK_TEST_MODE: "1" },
       stdio: ["ignore", "ignore", "ignore"],
       detached: true,
     });
@@ -299,8 +308,16 @@ await runGoal(async () => {
     KITCHEN_SINK,
     (name) => name === "node_modules" || name === ".next" || name === ".fsdev"
   ).filter((path) => /\.(ts|tsx|mts|mjs|js|jsx)$/.test(path));
+  // Registration routes only. The shell's names module names each kind so the
+  // page knows which action answers a person, and tests and e2e specs name it
+  // to drive it; none of them is served as a flow or reaches `createFlowState`.
+  // A hand registration anywhere else still fails this leg.
+  const notRegistration = (path: string) =>
+    path === SHELL_NAMES_MODULE ||
+    path.startsWith(join(KITCHEN_SINK, "test") + "/") ||
+    path.startsWith(join(KITCHEN_SINK, "e2e") + "/");
   const registrars = sources
-    .filter((path) => path !== GEN_MODULE && path !== KIND_MODULE)
+    .filter((path) => path !== GEN_MODULE && path !== KIND_MODULE && !notRegistration(path))
     .map((path) => {
       const text = readFileSync(path, "utf8");
       const routes: string[] = [];
@@ -316,7 +333,8 @@ await runGoal(async () => {
     );
   }
   evidence.push(
-    `${sources.length} source files scanned under apps/kitchen-sink for both routes to the kind — the ` +
+    `${sources.filter((path) => !notRegistration(path)).length} of ${sources.length} source files under ` +
+      `apps/kitchen-sink scanned as registration routes for both routes to the kind — the ` +
       `literal "${fixture.kind}" and an import of its module — and the only file taking either is ` +
       `workforce.gen.ts (the kind's own module is itself)`
   );

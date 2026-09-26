@@ -3,7 +3,7 @@
  *
  * Composed into `lib/flowstate.ts` only when `KITCHEN_SINK_TEST_MODE === "1"`
  * (Playwright E2E). Mocks every generator on the chat-agent run path, and the
- * `agent` seat kind's answer, so the suite never calls a real model. `policy: "allow"` returns an empty no-op
+ * `agent` and `desk-clerk` seat kinds' answers, so the suite never calls a real model. `policy: "allow"` returns an empty no-op
  * result for any straggler generator (memory capture, bias analyzers, etc.)
  * whose silence doesn't break the user-visible response.
  *
@@ -18,6 +18,7 @@ import {
   autoTitleMock,
   sideChainBriefMock,
   agentSeatMock,
+  deskClerkMock,
 } from "@/lib/e2e-mock-script";
 
 /** Build the mocked model resolver used in `KITCHEN_SINK_TEST_MODE`. */
@@ -31,6 +32,8 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
       // An `agent` seat answers through one of these two, by its own setting.
       "agent-answer": agentSeatMock,
       "agent-answer-with-activate-tool": agentSeatMock,
+      // A `desk-clerk` seat's answer.
+      "desk-clerk-answer": deskClerkMock,
     },
     policy: "allow",
   });

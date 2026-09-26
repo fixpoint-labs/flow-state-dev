@@ -178,6 +178,8 @@ export const noContractFlow = defineFlow({
     // Declared so `seatSkills` stays the SINGLE missing key: the contract grew a
     // fourth, and a control that omitted two would no longer isolate one cause.
     seatTools: z.array(z.any()).default([]),
+    // The sixth, imposed on every seat: its own id.
+    seatId: z.string().optional(),
     // `seatSkills` omitted — the single reason the imposed bag is refused.
     desk: z.string().default("front")
   }),
@@ -206,6 +208,8 @@ export const handRolledFlow = defineFlow({
     // contract grows — which is the cost this fixture exists to show, not a
     // reason to stop hand-rolling.
     seatTools: z.array(z.any()).default([]),
+    // The sixth, imposed on every seat: its own id.
+    seatId: z.string().optional(),
     desk: z.string().default("front")
   }),
   actions: controlActions,
