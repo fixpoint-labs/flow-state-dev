@@ -138,8 +138,9 @@ cannot be read or is a symlink — a folder that produces no worker lands in `er
 path, and every other worker still loads. Treat a non-empty `errors` as fatal at startup unless you
 have a reason to run a short roster.
 
-The subpath is separate because the reader imports `node:fs`. The package root has none, but it is
-still server code; a browser component imports from [`./browser`](#importing-from-a-browser-component).
+The subpath is separate because the reader imports `node:fs`. The package root is server-only too:
+it reaches Node built-ins through the packages it builds on. A browser component imports from
+[`./browser`](#importing-from-a-browser-component).
 
 ## Reading one seat's skills
 
@@ -1173,8 +1174,9 @@ cannot be read or is a symlink. A folder that produces no channel lands in `erro
 path, and every other channel still loads. Treat a non-empty `errors` as fatal at startup unless you
 have a reason to run a short roster.
 
-The subpath is separate because the reader imports `node:fs`. The package root has none, but it is
-still server code; a browser component imports from [`./browser`](#importing-from-a-browser-component).
+The subpath is separate because the reader imports `node:fs`. The package root is server-only too:
+it reaches Node built-ins through the packages it builds on. A browser component imports from
+[`./browser`](#importing-from-a-browser-component).
 
 ### Posting and reading
 

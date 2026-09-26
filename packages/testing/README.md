@@ -27,6 +27,8 @@ This package provides:
 - `testRouter(router, options)`
 - `testFlow(options)`
 - `testItems(items)`
+- `findNodeBuiltinsFromEntry(entry, { followWorkspacePackages? })` — lists every Node built-in reachable from a source entry, with the import chain; for guarding browser-safe subpaths
+- `findImportsFromEntry(entry, isOffending, { followWorkspacePackages?, aliases? })` — the same walk with your own predicate over import specifiers
 - `snapshotTrace(result)`
 - `mockGenerator(options)`
 - `createMockModelResolver(options)`

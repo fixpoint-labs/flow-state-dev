@@ -10,12 +10,17 @@
  * `packages/workforce/test/browser-subpath-safe.test.ts`; this holds the app to
  * using it.
  *
- * Red state: point any `"use client"` module's workforce import back at
- * `@flow-state-dev/workforce` and the case fails naming that file.
+ * A client component's whole graph is bundled for the browser, including the
+ * helpers it imports that carry no directive of their own (`lib/workforce-shell.ts`),
+ * so the check walks each `"use client"` module's relative and `@/` imports.
+ *
+ * Red state: value-import `@flow-state-dev/workforce` in any module a client
+ * component reaches and the case fails naming the chain.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findImportsFromEntry } from "@flow-state-dev/testing";
 import { describe, expect, it } from "vitest";
 
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,10 +38,6 @@ const clientModules = ["app", "components", "lib"]
   .flatMap((dir) => sourceFiles(join(appDir, dir)))
   .filter((path) => /^\s*["']use client["']/.test(readFileSync(path, "utf8")));
 
-// A value import or re-export from the root. `import type` is erased and fine.
-const rootValueImport =
-  /(?:import|export)(?!\s+type\b)\b[^"';]*?\bfrom\s*["']@flow-state-dev\/workforce["']/;
-
 describe("client components and the workforce package", () => {
   it("finds the client components it checks", () => {
     // Guards the scan itself: an empty list would pass the case below.
@@ -45,10 +46,13 @@ describe("client components and the workforce package", () => {
     );
   });
 
-  it("no client component value-imports the workforce package root", () => {
-    const offenders = clientModules
-      .filter((path) => rootValueImport.test(readFileSync(path, "utf8")))
-      .map((path) => relative(appDir, path));
+  it("no client component reaches a value import of the workforce package root", () => {
+    // `import type` is erased and fine; the walk skips it.
+    const offenders = clientModules.flatMap((path) =>
+      findImportsFromEntry(path, (specifier) => specifier === "@flow-state-dev/workforce", {
+        aliases: { "@/": appDir },
+      }),
+    );
     expect(offenders).toEqual([]);
   });
 });

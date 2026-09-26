@@ -49,14 +49,6 @@ export function seatAddress(
 }
 
 /**
- * The inverse of {@link seatAddress}: recover the org and the seat id from an
- * address, or `undefined` when the address does not belong to this org.
- *
- * One split at the FIRST dot, which is correct only because the org is a
- * validated segment. Splitting at the last dot, or splitting on every dot,
- * would mangle every ordinary `"<teamId>.<name>"` seat id.
- */
-/**
  * The seat id inside an address this org owns, or `undefined`.
  *
  * One split at the first dot, which is correct only because the org is a

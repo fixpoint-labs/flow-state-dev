@@ -12,126 +12,20 @@
  * `channel-flow.ts`, and that module reaches the orchestration task board,
  * which imports `node:async_hooks`. The offending import sat in ANOTHER
  * package, so unlike `orchestration/test/tasks-subpath-browser-safe.spec.ts`
- * this walk follows `@flow-state-dev/*` specifiers into their source through
+ * this walk follows workspace-package specifiers into their source through
  * each package's `exports`. Other bare specifiers (`zod`) are not followed.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { builtinModules } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { findNodeBuiltinsFromEntry } from "@flow-state-dev/testing";
 import { describe, expect, it } from "vitest";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const pkgRoot = path.resolve(here, "..");
-const packagesDir = path.resolve(pkgRoot, "..");
-
-const NODE_BUILTINS = new Set(builtinModules);
-
-// `import ... from "X"`, `export ... from "X"`, and bare `import "X"`.
-const importPattern =
-  /(?:import|export)\b[^"';]*?\bfrom\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
-
-function isNodeBuiltin(specifier: string): boolean {
-  if (specifier.startsWith("node:")) return true;
-  return NODE_BUILTINS.has(specifier) || NODE_BUILTINS.has(specifier.split("/")[0]);
-}
-
-function resolveRelative(fromFile: string, specifier: string): string | undefined {
-  const base = path.resolve(path.dirname(fromFile), specifier);
-  const candidates = [
-    base,
-    `${base}.ts`,
-    `${base}.tsx`,
-    path.join(base, "index.ts"),
-    path.join(base, "index.tsx"),
-  ];
-  return candidates.find((c) => existsSync(c) && /\.tsx?$/.test(c));
-}
-
-/** Workspace package name → its directory, read once. */
-const workspacePackages = new Map<string, string>();
-for (const dir of readdirSync(packagesDir)) {
-  const manifest = path.join(packagesDir, dir, "package.json");
-  if (!existsSync(manifest)) continue;
-  const { name } = JSON.parse(readFileSync(manifest, "utf8")) as { name?: string };
-  if (name !== undefined) workspacePackages.set(name, path.join(packagesDir, dir));
-}
-
-/** Resolve `@flow-state-dev/x[/sub]` to the source file its `exports` names. */
-function resolveWorkspace(specifier: string): string | undefined {
-  const parts = specifier.split("/");
-  const name = parts.slice(0, 2).join("/");
-  const dir = workspacePackages.get(name);
-  if (dir === undefined) return undefined;
-  const subpath = parts.length > 2 ? `./${parts.slice(2).join("/")}` : ".";
-  const { exports } = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) as {
-    exports?: Record<string, string | { default?: string }>;
-  };
-  let entry = exports?.[subpath];
-  let star: string | undefined;
-  if (entry === undefined) {
-    // A pattern export: `"./items/*": "./src/items/*.ts"`.
-    for (const [key, value] of Object.entries(exports ?? {})) {
-      const [head, tail] = key.split("*");
-      if (tail === undefined || !subpath.startsWith(head) || !subpath.endsWith(tail)) continue;
-      entry = value;
-      star = subpath.slice(head.length, subpath.length - tail.length);
-      break;
-    }
-  }
-  const pattern = typeof entry === "string" ? entry : entry?.default;
-  const target = star === undefined ? pattern : pattern?.replace("*", star);
-  if (target === undefined) {
-    throw new Error(`${specifier} is not an export of ${name}; the walk cannot follow it`);
-  }
-  return path.join(dir, target);
-}
-
-/**
- * Walk the import graph from `entry`, returning one line per Node built-in
- * reached, each with the chain that reached it.
- */
-function findNodeBuiltins(entry: string): string[] {
-  const offenders: string[] = [];
-  const seen = new Set<string>();
-
-  const walk = (file: string, chain: string[]): void => {
-    if (seen.has(file)) return;
-    seen.add(file);
-
-    const content = readFileSync(file, "utf8");
-    const nextChain = [...chain, path.relative(packagesDir, file)];
-
-    for (const match of content.matchAll(importPattern)) {
-      // `import type` / `export type` is erased before it reaches a bundler.
-      if (/^(?:import|export)\s+type\b/.test(match[0])) continue;
-
-      const specifier = match[1] ?? match[2];
-      if (specifier === undefined) continue;
-
-      if (isNodeBuiltin(specifier)) {
-        offenders.push(`  "${specifier}" via ${nextChain.join(" -> ")}`);
-        continue;
-      }
-      const resolved =
-        specifier.startsWith("./") || specifier.startsWith("../")
-          ? resolveRelative(file, specifier)
-          : specifier.startsWith("@flow-state-dev/")
-            ? resolveWorkspace(specifier)
-            : undefined;
-      if (resolved !== undefined) walk(resolved, nextChain);
-    }
-  };
-
-  walk(entry, []);
-  return offenders;
-}
-
-const browserEntry = resolveWorkspace("@flow-state-dev/workforce/browser");
+const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const browserEntry = path.join(pkgRoot, "src/browser.ts");
 
 describe("@flow-state-dev/workforce/browser", () => {
   it("reaches no Node built-in, in this package or a workspace package it imports", () => {
-    const offenders = findNodeBuiltins(browserEntry!);
+    const offenders = findNodeBuiltinsFromEntry(browserEntry, { followWorkspacePackages: true });
     expect(
       offenders,
       `the browser entry reaches Node built-ins:\n${offenders.join("\n")}\n\n` +
@@ -139,18 +33,30 @@ describe("@flow-state-dev/workforce/browser", () => {
     ).toEqual([]);
   });
 
+  it("resolves, as a consumer imports it, to the file the walk starts from", async () => {
+    // A consumer goes through `exports["./browser"]`; if that pointed anywhere
+    // else, the walk above would be guarding the wrong module.
+    const published = await import("@flow-state-dev/workforce/browser");
+    expect(published).toBe(await import("../src/browser"));
+  });
+
   it("still exports the names the kitchen-sink panels import", async () => {
     // The other direction: emptying the entry would pass the walk above.
-    const entry = await import("../src/browser");
+    const entry = await import("@flow-state-dev/workforce/browser");
     expect(entry.CHANNEL_POST_COMPONENT).toBe("channel-post");
     expect(entry.HIRED_ROSTER_RESOURCE).toBe("hiredRoster");
+    expect(entry.SEAT_INVENTORY_RESOURCE).toBe("seatInventory");
     expect(typeof entry.splitSeatAddress).toBe("function");
+    expect(typeof entry.channelTranscriptLineSchema.parse).toBe("function");
+    // The sixth, the `ChannelTranscriptLine` type, is pinned in `browser-exports.test-d.ts`.
   });
 
   it("finds the Node built-in the package root reaches through the channel floor", () => {
     // Proves the walk crosses into workspace packages: the root is NOT
     // browser-safe, and the offender lives in orchestration, not here.
-    const offenders = findNodeBuiltins(resolveWorkspace("@flow-state-dev/workforce")!);
+    const offenders = findNodeBuiltinsFromEntry(path.join(pkgRoot, "src/index.ts"), {
+      followWorkspacePackages: true,
+    });
     expect(offenders.join("\n")).toMatch(/"node:async_hooks" via .*orchestration\/src\//);
   });
 });

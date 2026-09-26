@@ -10,6 +10,11 @@ export { testFlow } from "./test-utilities/testFlow";
 export { testItems } from "./test-utilities/testItems";
 export { runForTest } from "./test-utilities/runForTest";
 export { createReplayingRef, type ReplayingRef } from "./test-utilities/replayingRef";
+export {
+  findImportsFromEntry,
+  findNodeBuiltinsFromEntry,
+  type FindNodeBuiltinsOptions
+} from "./test-utilities/findNodeBuiltinsFromEntry";
 
 export type {
   StateChange,

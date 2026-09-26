@@ -183,7 +183,7 @@ lead.body;     // "You are the engineering lead. …"
 
 Reading the tree starts nothing. No flow is built, nothing is registered, and no model is contacted. Turning records into workers you can talk to is a separate call.
 
-The subpath matters. `@flow-state-dev/workforce/loader` imports `node:fs`, so it only runs on Node. The package root, where `hireWorkforce` lives, has no `node:fs` import. It is still server code, so a browser component takes the names it needs from `@flow-state-dev/workforce/browser`.
+The subpath matters. `@flow-state-dev/workforce/loader` imports `node:fs`, so it only runs on Node. The package root, where `hireWorkforce` lives, is server code too. It reaches Node built-ins through the packages it builds on, so it is server-only. A browser component takes the names it needs from `@flow-state-dev/workforce/browser`, the one entry that reaches no Node built-in.
 
 ### When a folder is wrong
 
