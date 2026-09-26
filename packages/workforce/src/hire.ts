@@ -38,10 +38,12 @@ import {
   PACKAGES_KEY,
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
+  REFUSED_SEAT_ID_KEY_MESSAGE,
   REFUSED_SEAT_PACKAGES_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
   REFUSED_SEAT_TOOLS_KEY_MESSAGE,
   REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
+  SEAT_ID_KEY,
   SEAT_PACKAGES_KEY,
   SEAT_SKILLS_KEY,
   SEAT_TOOLS_KEY,
@@ -536,6 +538,14 @@ export function hireWorkforce(
       continue;
     }
 
+    // The sixth, and the sharpest case: an authored `seatId` would be accepted
+    // by every composed kind, and the seat would sign what it files or posts
+    // as whichever seat the record named.
+    if (Object.hasOwn(settings, SEAT_ID_KEY)) {
+      refuse(REFUSED_SEAT_ID_KEY_MESSAGE);
+      continue;
+    }
+
     // A body is instructions; whitespace is not. An empty string handed to a
     // flow that declares `instructions` would be a worse lie than omitting it —
     // and it would turn every thin seat into a failed hire.
@@ -624,6 +634,12 @@ export function hireWorkforce(
     // still distinguishes *never read for* (absent) from *read and empty*, and
     // that distinction stays on the record, where it belongs.
     settings[SEAT_SKILLS_KEY] = manifest.skills ?? [];
+
+    // The seat's own id, on EVERY record: the one per-seat fact a block inside
+    // the seat can read, since the flow's id is kept off the block context.
+    // Written here and nowhere else, so every mint path (files, the runtime
+    // `hire` tool, the boot reload) carries it.
+    settings[SEAT_ID_KEY] = manifest.id;
 
     // The seat's TEAM-level instructions — and **only when the record carries
     // them**, which is the opposite of the line above and deliberately so.

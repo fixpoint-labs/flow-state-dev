@@ -155,7 +155,12 @@ describe("hireWorkforce", () => {
     // The sibling's setting is absent, not merely different — one shared bag
     // is always right for somebody.
     expect(Object.hasOwn(opinionated.config, "desk")).toBe(false);
-    expect(thin.config).toEqual({ desk: "front", seatSkills: [], seatTools: [] });
+    expect(thin.config).toEqual({
+      desk: "front",
+      seatSkills: [],
+      seatTools: [],
+      seatId: "engineering.intake"
+    });
     expect(Object.hasOwn(thin.config, "model")).toBe(false);
   });
 
@@ -169,6 +174,7 @@ describe("hireWorkforce", () => {
       instructions: LEAD_BODY,
       seatSkills: [],
       seatTools: [],
+      seatId: "engineering.lead",
       model: "openai/gpt-5.4-mini",
       tools: ["board", "search"]
     });
@@ -471,6 +477,7 @@ describe("hireWorkforce", () => {
         // `seatSkills`, so it has to keep accepting every key the factory
         // imposes as the contract grows.
         seatTools: z.array(z.any()).optional(),
+        seatId: z.string().optional(),
         retries: z.number().default(3)
       }),
       actions: { run: { inputSchema, block: work } }

@@ -28,10 +28,12 @@ import {
 import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,
+  REFUSED_SEAT_ID_KEY_MESSAGE,
   REFUSED_SEAT_PACKAGES_KEY_MESSAGE,
   REFUSED_SEAT_SKILLS_KEY_MESSAGE,
   REFUSED_SEAT_TOOLS_KEY_MESSAGE,
   REFUSED_TEAM_INSTRUCTIONS_KEY_MESSAGE,
+  SEAT_ID_KEY,
   SEAT_PACKAGES_KEY,
   SEAT_SKILLS_KEY,
   SEAT_TOOLS_KEY,
@@ -315,6 +317,11 @@ function refusedDeclaration(
   // its holds.
   if (Object.hasOwn(declared, SEAT_PACKAGES_KEY)) {
     return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_PACKAGES_KEY_MESSAGE}`);
+  }
+
+  // The sixth: a seat signing as whichever seat its file named.
+  if (Object.hasOwn(declared, SEAT_ID_KEY)) {
+    return new Error(`${WORKER_MD} in "${workerName}/" ${REFUSED_SEAT_ID_KEY_MESSAGE}`);
   }
 
   return undefined;

@@ -56,7 +56,7 @@ You are the engineering lead. You do not write code yourself. You break the
 request into tasks, assign them, and report what came back.
 ```
 
-`description` is the only key the file itself requires. It refuses `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:` and `teamInstructions:` outright. A seat's skills and the blocks it can reach come from where its folders sit, and its team's instructions from that team's [`TEAM.md`](#what-a-teammd-says). `flow` names which of your flow kinds this worker runs. Leave it out and the worker is hired into [the built-in worker kind](./built-in-worker.md), which needs no flow of yours.
+`description` is the only key the file itself requires. It refuses `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` and `teamInstructions:` outright. A seat's skills and the blocks it can reach come from where its folders sit, and its team's instructions from that team's [`TEAM.md`](#what-a-teammd-says). `flow` names which of your flow kinds this worker runs. Leave it out and the worker is hired into [the built-in worker kind](./built-in-worker.md), which needs no flow of yours.
 
 `resources:` is a list of the [documents](./documents-on-disk.md) this worker may touch, chosen from the ones its kind holds. Each entry is a document's [ref](./documents-on-disk.md#a-documents-ref), the name it gets from where its file sits. A ref on its own is read-only. `<ref>: rw` grants writes, and `<ref>: ro` spells the default out. Leave the key out and the worker reaches every document its kind installed, and writes the ones that allow writes; `resources: []` is how you say it gets none.
 
@@ -201,7 +201,7 @@ What lands in `errors`:
 
 - a worker folder with no `WORKER.md`, including one that holds only other files (custom behavior is [a flow kind](#when-a-worker-needs-more-than-settings), not a second file in the folder);
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
-- a `WORKER.md` that declares `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:` or `teamInstructions:`, none of which is a setting a worker declares — team instructions go in the team's own [`TEAM.md`](#what-a-teammd-says);
+- a `WORKER.md` that declares `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` or `teamInstructions:`, none of which is a setting a worker declares — team instructions go in the team's own [`TEAM.md`](#what-a-teammd-says);
 - a team or worker folder name that breaks the naming rules;
 - a symlink where a folder or a worker file belongs, refused rather than read;
 - a directory that exists but cannot be listed, reported under its own path (`teams`, `teams/<team>`, or `teams/<team>/workers`) so the seats beneath it are not lost silently.
@@ -346,9 +346,11 @@ Settings are spelled the way the flow declares them.
 
 ### The body arrives as `instructions`
 
-A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes `instructions` when the body is not empty, `seatSkills` and `seatTools` always, `teamInstructions` when the record carries what its team's [`TEAM.md`](#what-a-teammd-says) said, and `seatPackages` when the worker holds a package.
+A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes `instructions` when the body is not empty, `seatSkills`, `seatTools` and `seatId` always, `teamInstructions` when the record carries what its team's [`TEAM.md`](#what-a-teammd-says) said, and `seatPackages` when the worker holds a package.
 
-What the refusals cover is what a **file** declares. No frontmatter may set `teamInstructions`, `seatSkills` or `seatTools`: they are refused in a `WORKER.md`, and at hiring for a record you built by hand. A `TEAM.md` refuses `teamInstructions` too. On a record you build yourself, the *fields* of the same name are yours to set, and hiring uses them. `skills` works the same way: whatever a record carries there arrives as the seat's `seatSkills`.
+Every hired seat knows its own id. It arrives as the `seatId` setting, the same id the team's `members:` lists, so a block running inside the seat can sign what it files or posts without being told who it is. A worker file can't set it.
+
+What the refusals cover is what a **file** declares. No frontmatter may set `teamInstructions`, `seatSkills`, `seatTools` or `seatId`: they are refused in a `WORKER.md`, and at hiring for a record you built by hand. A `TEAM.md` refuses `teamInstructions` too. On a record you build yourself, the *fields* of the same name are yours to set, and hiring uses them. `skills` works the same way: whatever a record carries there arrives as the seat's `seatSkills`.
 
 The two instruction settings stay apart. A worker's own text is never merged into its team's, so a kind can read one without the other. On the [built-in worker kind](./built-in-worker.md) both go into the prompt, the team's first and the worker's own last. That order is fixed, and it is an order rather than a ranking: nothing resolves a contradiction between the two, so a team rule and a worker rule that disagree are left to the model that reads them.
 
@@ -433,7 +435,7 @@ A record is refused when it:
 - declares a setting its flow never declared, or omits one its flow requires;
 - names a flow kind whose schema will not take what hiring imposes, leaving it nowhere to receive a seat's skills and instructions — composing `workerConfigSchema()` is the fix. That one refuses the whole roster, not just this record;
 - declares `instructions:` and carries a body;
-- declares `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:` or `teamInstructions:`, none of which is a setting a worker declares;
+- declares `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` or `teamInstructions:`, none of which is a setting a worker declares;
 - declares a `packages:` line the hire step cannot resolve, or holds a package whose blocks clash with another tool it can call. [Packages on disk](./packages-on-disk.md#when-a-file-is-wrong) lists each case;
 - declares `teamInstructions:` in its frontmatter, wherever that frontmatter came from — a team's instructions come from its [`TEAM.md`](#what-a-teammd-says) body, read by the loader;
 - declares a `references:` list the hire step cannot resolve: a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this worker cannot reach from where its folder sits — which includes every ref when no `references` map was passed. A worker whose id names no place in the tree is refused too, once its kind holds references;

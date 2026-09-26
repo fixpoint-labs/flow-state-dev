@@ -1,0 +1,6 @@
+{
+  "port": 3038,
+  "seat": { "kind": "desk-clerk", "id": "support.ada", "desk": "front" },
+  "answer": { "marker": "[scenario:clerk-answer]", "replyMarker": "[clerk:answered]" },
+  "file": { "marker": "[scenario:clerk-file]", "replyMarker": "[clerk:filed]", "channel": "support.desk", "board": "escalations" }
+}

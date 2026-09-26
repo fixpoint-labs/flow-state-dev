@@ -50,13 +50,16 @@ Exported as `richTextComponentFlow` (`kind: "rich-text-component"`). Consumed by
 
 ### The support team (`workforce/`)
 
-A hired team, declared in files rather than wired in code. Each seat is a `WORKER.md` under `workforce/teams/support/workers/`, and its frontmatter is the whole of its configuration: which flow kind it runs, and the settings that kind offers. `support.ada` and `support.grace` both run the `desk-clerk` kind and declare different desks; `support.iris` and `support.otto` run the built-in agent kind with different tools, and `support.mara` runs it too, naming `hire` and `fire`: she can add a seat to the team, which the section on hiring below covers.
+A hired team, declared in files rather than wired in code. Each seat is a `WORKER.md` under `workforce/teams/support/workers/`, and its frontmatter is the whole of its configuration: which flow kind it runs, and the settings that kind offers. `support.ada` and `support.grace` both run the `desk-clerk` kind and declare different desks; `support.iris` and `support.otto` run the built-in agent kind with different tools, and `support.mara` runs it too, naming `hire` and `fire`: she can add a seat to the team, which the section on hiring below covers. `support.ada` is a desk clerk: ask it something and a model answers, or, when the note needs someone else, files it onto `followups` or `escalations`.
 
 Worker kinds, blocks and capabilities are picked up the same way: a file under `workforce/flows/workers/`, `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That generated module is committed, so the *code* an app can run is fixed when you run the command. No code is discovered while the app runs, which is what lets a bundler see it.
 
 The roster is the other half, and it is read at boot: `hireKitchenSinkWorkforce()` walks `workforce/teams/` and hires a seat per `WORKER.md`. So the kinds are decided at generate time and the seats at startup, which is why adding a kind takes `fsdev gen` and adding a seat takes only a restart.
 
-Each seat is addressed by its own id, so a seat answers on the same route as any other flow:
+Each seat is addressed by its own id, so a seat answers on the same route as any other flow. The desk clerk's `answer` calls a model, so it needs the same model key the rest of the app uses; without one the call fails with the provider's error rather than answering. Its reply starts with the desk its `WORKER.md` sets, `[front desk]` for Ada and `[back desk]` for Grace, and the rest is the model's.
+
+Filing needs the in-process dispatcher. Run the app with `FSD_BULLMQ_DISPATCH=1` and the clerk still answers, but says it cannot file.
+
 
 ```bash
 # A note to the front desk, from the CLI
@@ -90,6 +93,8 @@ The check is on the claimed `author`, which the channel does not verify, so the 
 [workforce] channel "support.desk" holds board "escalations" (ledger
 "support.desk.escalations"), and no flow hired in this call declares it. …
 ```
+
+The clerk files there when a note needs a person, so this is where you see those rows wait. It files through the channel's own `fileTask` action, the same one any flow can call, and it declares no board itself, which is why the warning stays.
 
 That is the one failure a declared board can produce in silence: rows filed there sit pending with nothing said. The reference ships in the state that shows you the message. Wire a seat to it the way `followup-runner` wires `followups` and the line goes away.
 

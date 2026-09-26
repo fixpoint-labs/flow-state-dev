@@ -73,6 +73,10 @@ const SERVER_ENV = {
   FSD_ENV: "dev",
   STORE_TYPE: "filesystem",
   WORKFORCE_ADMIN_TOKENS: ADMIN_TOKENS,
+  // The clerk's answer calls a model: the scripted one, keyless. The goal
+  // grades the desk tag the kind writes from the seat's settings, not the
+  // model's words.
+  KITCHEN_SINK_TEST_MODE: "1",
 };
 
 /**

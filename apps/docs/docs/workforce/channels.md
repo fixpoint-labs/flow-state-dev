@@ -330,6 +330,24 @@ Both actions take the board's **local** name. Filing says where the row landed:
 
 `fileTask` also takes `title`, `context`, `priority`, `maxAttempts`, `labels` and `input`. The row's id is minted, not chosen. Its `author` is the same unverified claim a post's is: checked against the declared members, stored beside `authorVerified: false`, and optional. A row filed without one is accepted.
 
+A dispatcher is a block, so it can also be a tool. Hand it to a generator and the model decides when to file and onto which board, while your code keeps the parts the model shouldn't choose:
+
+```ts
+const fileOntoDesk = dispatcher({
+  name: "desk-clerk-file",
+  description: "File this onto a board: followups for work a seat runs, escalations for a person.",
+  flowKind: "channel",
+  action: "fileTask",
+  inputSchema: z.object({ board: z.enum(["followups", "escalations"]), goal: z.string() }),
+  session: { id: () => "support.desk" },
+  payload: (input, ctx) => ({ ...input, author: ctx.flow.config.seatId }),
+});
+```
+
+The model picks the board and writes the goal. The `author` is the seat's own `seatId`, which hiring gives every seat, not something the model chooses. The tool's result is the dispatch, not the row: the row is written when the channel runs `fileTask`, a moment later. If the channel refuses it, say because the author is not a member, the model has already been told the filing was sent, and the refusal is a failed request on the channel's session.
+
+The dispatch goes into an existing session by its id, which needs the in-process dispatcher. Under an external dispatcher such as BullMQ it is refused with a `DispatchRefusedError` whose `refused` is `"external-dispatcher"`. To tell the model the board is unavailable rather than letting the tool fail, put the dispatcher in a sequencer and handle the error in the sequencer's `.rescue()`.
+
 `readBoard` gives back every row on one board. The channel's own `read` lists what it holds, by name:
 
 ```ts

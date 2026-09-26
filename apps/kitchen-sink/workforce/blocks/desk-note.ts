@@ -10,14 +10,9 @@
  * useful as a demonstration: the answer names the desk this particular seat was
  * configured with, so two seats on one kind produce visibly different answers.
  *
- * It returns and says nothing else. The block is reachable two ways — as the
- * `desk-clerk` kind's `answer` action, and as a tool a seat names in its
- * `WORKER.md` — and only the first of those wants a user-facing utterance. A
- * seat calling it as a tool already has its own answer to give, so a message
- * emitted from in here would publish the model's tool argument as a second,
- * client- and history-visible turn nobody asked for. The utterance therefore
- * belongs to the action that wants it, and lives in
- * `flows/workers/desk-clerk.ts`.
+ * It returns and says nothing else. It is the tool `support.otto` names in its
+ * `WORKER.md`; the desk clerk used to run it as its whole answer and no longer
+ * does.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -41,9 +36,8 @@ export default handler({
     const config = ctx.flow.config as { desk?: string; instructions?: string };
     return {
       answered: input.note,
-      // `unassigned` on a kind that declares no desk — this block is reachable
-      // both as a flow action and as a seat's tool, and only one of those
-      // kinds has the setting.
+      // `unassigned` on a kind that declares no desk, like the `agent` kind
+      // whose seat names this block as a tool.
       desk: config.desk ?? "unassigned",
       instructions: config.instructions ?? "",
     };

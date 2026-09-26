@@ -65,7 +65,7 @@ at boot:
 
 | | Keys | Whose |
 |---|---|---|
-| **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools`, `seatPackages?` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
+| **The admission contract** | `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools`, `seatPackages?`, `seatId` | The framework's. Every hireable kind admits these, by composing `workerConfigSchema()` (`packages/workforce/src/worker-config.ts`). |
 | **This kind's own** | `model`, `tools`, `skills` (the switches) | The default kind's alone. They sit at the top level beside the contract's, where the framework closes the set and an undeclared key refuses by name. `tools` is the one of the three that is **reserved** — see below. |
 | **The hire step's** | `flow`, `description`, `resources` | Never a kind's. Read and removed before admission, so no `configSchema` sees them — see `resources` below. |
 
@@ -104,13 +104,19 @@ is not worth the second authority it would create. That replaces a branch whose 
 whose folders declared skills used to mint, run, and hold none, with nothing said anywhere.
 
 **Imposed and never-authored are two different properties, and the contract's keys do not line up
-on them.** All five are what hire puts in the bag — `instructions` when the body is non-empty,
+on them.** All six are what hire puts in the bag — `instructions` when the body is non-empty,
 `teamInstructions` when the seat's team wrote a `TEAM.md`, `seatPackages` when the seat holds at
-least one package, and `seatSkills` and `seatTools` on every record. `seatSkills`, `seatTools`,
-`seatPackages` and `teamInstructions` are the ones no file may author, refused by name at the worker
+least one package, and `seatSkills`, `seatTools` and `seatId` on every record. `seatSkills`, `seatTools`,
+`seatPackages`, `seatId` and `teamInstructions` are the ones no file may author, refused by name at the worker
 loader and at the hire, from the shared constants in `manifest.ts` that every door references rather
-than re-spelling. Those four are both; `instructions` is the one key that is imposed and authored all
+than re-spelling. Those five are both; `instructions` is the one key that is imposed and authored all
 the same — as the file's body.
+
+`seatId` is the seat's record id (FIX-1589). It exists because a seat that files or posts must
+name itself, and a block cannot see which seat it runs in: core keeps the flow's id off the block
+context, so the seat's settings are the one per-seat fact a block can read, and only the hire writes
+them. Every mint path (files, the runtime `hire` tool, the boot reload) stamps it, so no seat is
+without one.
 
 `teamInstructions` is imposed the same way and refused at **three** doors rather than two — a
 `TEAM.md`, a `WORKER.md`, and the hire — all reading one exported constant

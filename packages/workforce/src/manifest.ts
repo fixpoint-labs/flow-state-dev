@@ -508,6 +508,30 @@ export const REFUSED_SEAT_PACKAGES_KEY_MESSAGE =
   `\`${PACKAGES_KEY}:\` line names, and reading them is the loader's job.`;
 
 /**
+ * `seatId` — imposed by the seat factory on every record: the seat's own id,
+ * the record id a team's `members:` lists.
+ *
+ * A block cannot see which seat it runs in, because core keeps the flow's id
+ * off the block context. The seat's settings are the one per-seat fact a block
+ * can read, so this is how a block inside a seat signs what it files or posts
+ * (`ctx.flow.config.seatId`).
+ *
+ * **Imposed on every record, never authored.** Refused by name at every door
+ * for the sharpest version of `seatSkills`'s reason: every composed kind
+ * declares it, so an authored one would be accepted and the seat could sign as
+ * any other seat on the roster.
+ */
+export const SEAT_ID_KEY = "seatId";
+
+/**
+ * The one wording for {@link SEAT_ID_KEY}, shared by every door that refuses
+ * an authored one. Names no subject — the caller supplies what it can name.
+ */
+export const REFUSED_SEAT_ID_KEY_MESSAGE =
+  `declares \`${SEAT_ID_KEY}:\`, which is not a setting a worker declares. ` +
+  `A seat's id is its record's id, and the hire step hands it to every seat.`;
+
+/**
  * The one wording for a package block that declares its own resources — the
  * package form of {@link colocatedResourceMessage}, refused for its reason: a
  * package is held per seat and a store is the kind's.
