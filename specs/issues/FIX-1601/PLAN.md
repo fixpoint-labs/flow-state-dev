@@ -66,7 +66,7 @@ What part 4 adds:
 |---|---|
 | **Runtime hire (C1)** | Hire another `desk-clerk` seat from the rail and send it `[scenario:clerk-file]` with a token. After a reload, no `escalations` row carries the token, because the channel refused a seat that is not a member |
 | **Control containment (C4)** | Nothing under `packages/` reads `GOAL_CONTROL`, and each kitchen-sink control is read only under `KITCHEN_SINK_TEST_MODE=1` |
-| **Stock routing (epic ER-17)** | Kitchen-sink's channel wake goes through Workforce's stock seat-wake routing: `apps/kitchen-sink` defines no `notifyFor` and no loop of its own over hired seats, and its channel's notify slot is built from the Workforce export. Read off the commit's source; P1b's control can't tell the two apart |
+| **Stock routing (epic ER-17)** | Kitchen-sink's channel wake goes through Workforce's stock seat-wake routing: `apps/kitchen-sink` builds no dispatcher or router for the wake and has no loop of its own over hired seats, and its channel's notify slot is built from Workforce's `wakeMemberSeats` export (a thin app function that wraps it, like `notifyFor`, is allowed). Read off the commit's source; P1b's control can't tell the two apart |
 | **In-process dispatch** | FIX-1589's and FIX-1594's external-dispatcher tests pass on the commit |
 | **Channels with no agent** | Posts to `support.ada-wren` and `support.noticeboard` run no seat |
 | **Docs smoke** | An agent that has not read the specs follows the kitchen-sink README and `apps/docs/docs/workforce/channels.md` along the flows legs a to d use, C5's paragraph included, and they work as written |
