@@ -11,8 +11,8 @@
  * state each was seen in before its green was trusted:
  *
  *   V3 A post with no author lands on `support.desk` only, labelled with the
- *      server's principal (`devuser`), and the app's notify block runs once
- *      for each member of that channel. A `digest` post lands with no
+ *      server's principal (`devuser`), and the app's name-only line reaches
+ *      each member of that channel that is not an agent seat. A `digest` post lands with no
  *      principal, runs no notify block, and `read` still returns the tail.
  *      Red: the `digest` kind copying the notice into state and emitting no
  *      item — the post leaves nothing for the page to read. (The built-in
@@ -95,7 +95,8 @@ async function until(predicate: () => Promise<boolean>, label: string): Promise<
   throw new Error(`timed out waiting for ${label}`);
 }
 
-const DESK_MEMBERS = ["support.ada", "support.grace", "support.iris", "support.otto", "support.wren"];
+/** The `support.desk` members a post gives the name-only line: every member but its agent seats. */
+const LINE_MEMBERS = ["support.ada", "support.grace", "support.wren"];
 
 describe("V3 · a post from the page, on the app's own channels", () => {
   it("lands on the channel it was sent to only, as devuser, and wakes each member once", async () => {
@@ -111,8 +112,10 @@ describe("V3 · a post from the page, on the app's own channels", () => {
     expect((await linesOf(router, "support.ada-wren")).some((line) => line.body === text)).toBe(false);
 
     // Nobody is skipped: the poster is not a member, so nobody is the writer.
-    await until(async () => (await notifiedOn(router, "support.desk")).length >= DESK_MEMBERS.length, "the fan-out");
-    expect((await notifiedOn(router, "support.desk")).sort()).toEqual(DESK_MEMBERS);
+    // The agent members run on the post instead of getting the line
+    // (`channel-wake.test.ts`); every other member gets it.
+    await until(async () => (await notifiedOn(router, "support.desk")).length >= LINE_MEMBERS.length, "the fan-out");
+    expect((await notifiedOn(router, "support.desk")).sort()).toEqual(LINE_MEMBERS);
 
     // The same text to the other channel lands there only.
     await post(router, "channel", "support.ada-wren", text);

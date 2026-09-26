@@ -44,7 +44,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
 import { workforceRegistrar } from "../lib/workforce-registrar";
-import notify from "./channel-notify";
+import { notifyFor } from "./channel-notify";
 import { blocks, channelKinds, kinds, packageBlocks, resourceModules, seatBlocks } from "./workforce.gen";
 
 /**
@@ -221,31 +221,37 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
     );
   }
 
+  // `seatBlocks` registers what each worker's own folder holds, for that
+  // worker alone. It grants nothing: a seat still names the block in its
+  // `tools:` before the model can call it.
+  //
+  // `packageBlocks` carries every package's blocks by folder; the hire gives
+  // each worker the ones of the packages it holds, and nothing else.
+  //
+  // `channelBoards` is what lets the hire say which declared board no seat
+  // drains. Without it the check has no roster to read and says nothing —
+  // which is the silence this app ships to make visible.
+  //
+  // Hired before the channels are built, because the fan-out block wakes these
+  // seats: its addresses are the seats hired here, never a channel's stored
+  // members.
+  const seats = hireWorkforce(workers, {
+    kinds: kitchenSinkKinds,
+    seatBlocks,
+    packageBlocks,
+    channelBoards: channelBoardIds(channels),
+  });
+
   // The generated map, plus the built-in under the key the binder seeds. No
   // kind of this app's own is named here: `channelKinds` carries whatever
   // files live under `flows/channels/`, and `channel` is the framework's own
   // seed, rebuilt only to give it this app's fan-out block.
   const channelFlows = channelInstances(channels, {
-    kinds: { ...channelKinds, channel: defineChannelFlow({ notify }) },
+    kinds: { ...channelKinds, channel: defineChannelFlow({ notify: notifyFor(seats) }) },
   });
 
   return {
-    // `seatBlocks` registers what each worker's own folder holds, for that
-    // worker alone. It grants nothing: a seat still names the block in its
-    // `tools:` before the model can call it.
-    //
-    // `packageBlocks` carries every package's blocks by folder; the hire gives
-    // each worker the ones of the packages it holds, and nothing else.
-    //
-    // `channelBoards` is what lets the hire say which declared board no seat
-    // drains. Without it the check has no roster to read and says nothing —
-    // which is the silence this app ships to make visible.
-    seats: hireWorkforce(workers, {
-      kinds: kitchenSinkKinds,
-      seatBlocks,
-      packageBlocks,
-      channelBoards: channelBoardIds(channels),
-    }),
+    seats,
     channelFlows,
     channels,
     errors: [

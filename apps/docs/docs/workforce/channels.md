@@ -284,6 +284,63 @@ The delivery runs in its own request, outside the post's turn, so a slow notific
 
 Your app supplies the addresses. The `notify` slot takes any block, so to reach real recipients, make it a router rather than a handler. Declare one dispatcher per recipient, like the one in [Posting and reading](#posting-and-reading), with `flowKind` set to that recipient's address. Pick which one runs from `input.member`. [`utility.keyedRouter`](../fundamentals/blocks.md#keyedrouter) does that lookup, and its `fallback` takes any member you have no dispatcher for.
 
+### Waking an agent seat
+
+A seat of the built-in `agent` kind has an entry for exactly this. `onChannelPost` takes the
+delivery your notify block was handed and runs the seat's ordinary answer on it, with the post as
+the seat's turn: `support.lead in support.desk: can someone look at the refund queue?`. Only a
+dispatcher reaches it. Calling it from a client is refused, the same as any internal entry.
+
+```ts
+import { dispatcher, utility } from "@flow-state-dev/core";
+import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
+
+// Your app's one kind map already says which entry each kind answers on.
+// Its wake column says which internal entry, if any, wakes a seat of that kind.
+//   seatKinds = { agent: { wake: "onChannelPost" }, "desk-clerk": { wake: null }, ... }
+
+const wakeAgents = utility.keyedRouter({
+  name: "wake-agents",
+  inputSchema: channelNotifyInputSchema,
+  blocks: Object.fromEntries(
+    seats.flatMap((seat) => {
+      const wake = seatKinds[seat.kind]?.wake;
+      if (wake == null) return [];               // this kind wakes on nothing
+      return [[
+        seat.id,
+        dispatcher({
+          name: `wake-${seat.id}`,
+          flowKind: seat.id,                     // the seat's own address
+          action: wake,
+          inputSchema: channelNotifyInputSchema,
+          session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` },
+        }),
+      ]];
+    }),
+  ),
+  // Any author means a seat wrote the post: never wake anyone for it.
+  // No author: wake the member if it has a dispatcher. Everything else falls back.
+  select: (post) => (post.author !== undefined ? "" : post.member),
+  fallback: notifyMember,                        // today's name-only line
+});
+
+channelInstances(channels, { kinds: { channel: defineChannelFlow({ notify: wakeAgents }) } });
+```
+
+Key the session on the channel, as above, and each seat keeps one conversation per channel: the
+second post it hears lands in the same conversation, so it remembers the thread. Two posts that
+arrive together each run once, in no guaranteed order. Key it on `postId` instead and every post
+starts a fresh conversation. The conversation is a child of the channel's session, so an ordinary
+session listing does not show it; list with dispatch runs included (`include: "dispatch-runs"`, or
+`includeDispatchRuns` on `FlowNavigator`) to find it.
+
+Skip the wake when the post carries an `author`. Every author a post can carry is a member, so
+that is a seat talking, and two agents that wake each other answer each other forever. Other
+members can still get whatever your fallback sends.
+
+A busy channel keeps growing that conversation, and a seat remembers only as far back as its
+history window reaches. Nothing summarizes the older posts for it yet.
+
 ## Holding a board
 
 A channel is where a team talks. A board is where its work sits: rows carrying a goal, an optional assignee, and a status somebody moves. A channel can hold one or more, declared in the same frontmatter as the members.

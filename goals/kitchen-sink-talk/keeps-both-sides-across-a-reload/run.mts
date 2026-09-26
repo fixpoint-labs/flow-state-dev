@@ -23,10 +23,22 @@
  *           GOAL_CONTROL=drop-user-message  (must FAIL at the otto leg only)
  * Held-out: GOAL_CHANNEL=<another built-in channel> GOAL_SEAT=<another agent seat>
  */
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Page, Route } from "playwright";
-import { KITCHEN_SINK, REPO_ROOT, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
+import { loadFixture, runGoal } from "../../lib/index.mts";
+import {
+  buildKitchenSink,
+  conversation,
+  newConversation,
+  open,
+  openShell as openShellAt,
+  panel,
+  rail,
+  readUntil,
+  row,
+  startKitchenSink,
+  type KitchenSinkServer,
+} from "../../lib/kitchen-sink.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 interface Fixture {
@@ -49,54 +61,6 @@ const EXPECTED: Record<string, string> = {
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
-}
-
-// ---------------------------------------------------------------------------
-// The built app
-// ---------------------------------------------------------------------------
-
-async function flowIndexStatus(): Promise<number | undefined> {
-  try {
-    return (await fetch(`${ORIGIN}/api/flows`)).status;
-  } catch {
-    return undefined;
-  }
-}
-
-let server: ChildProcess | undefined;
-let serverLog = "";
-
-/** The production server, on the scripted model and the in-memory store. */
-async function startServer(): Promise<void> {
-  if ((await flowIndexStatus()) !== undefined) {
-    throw new Error(`something is already answering on ${ORIGIN}; stop it first, or this check would grade it`);
-  }
-  // Detached, so the kill reaches `next start` and not only the pnpm shim.
-  server = spawn("pnpm", ["exec", "next", "start", "--port", String(fixture.port)], {
-    cwd: KITCHEN_SINK,
-    env: intentFreeEnv(process.env, { KITCHEN_SINK_TEST_MODE: "1", STORE_TYPE: "memory" }),
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-  });
-  server.stdout?.on("data", (chunk: Buffer) => (serverLog += chunk.toString()));
-  server.stderr?.on("data", (chunk: Buffer) => (serverLog += chunk.toString()));
-  for (let i = 0; i < 180; i += 1) {
-    if ((await flowIndexStatus()) === 200) return;
-    if (server.exitCode !== null) throw new Error(`the app exited (${server.exitCode}) before serving:\n${serverLog}`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error(`the built app never served ${ORIGIN}/api/flows:\n${serverLog}`);
-}
-
-function stopServer(): void {
-  if (server?.pid !== undefined) {
-    try {
-      process.kill(-server.pid, "SIGTERM");
-    } catch {
-      // already gone
-    }
-  }
-  server = undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,39 +120,7 @@ async function applyControl(page: Page): Promise<void> {
 // The page, as a person uses it
 // ---------------------------------------------------------------------------
 
-const rail = (page: Page) => page.getByTestId("rail");
-const row = (page: Page, name: string) => rail(page).getByRole("button", { name, exact: true });
-const panel = (page: Page) => page.locator('[data-testid="picked-session"]:visible');
-
-async function openShell(page: Page): Promise<void> {
-  await page.goto(`${ORIGIN}/`);
-  await page.locator('[data-testid="message-input"]:visible').waitFor({ state: "visible", timeout: 30_000 });
-}
-
-async function open(page: Page, name: string): Promise<void> {
-  const button = row(page, name);
-  await button.waitFor({ timeout: 15_000 });
-  if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
-}
-
-async function newConversation(page: Page, seat: string): Promise<void> {
-  await rail(page)
-    .locator(`[data-instance-id="${seat}"]`)
-    .locator("xpath=..")
-    .getByRole("button", { name: "New conversation" })
-    .click();
-  await panel(page).waitFor({ timeout: 15_000 });
-}
-
-/** Poll `read` until `done` holds, or the time is up; return the last reading either way. */
-async function readUntil<T>(read: () => Promise<T>, done: (value: T) => boolean, ms = 15_000): Promise<T> {
-  let value = await read();
-  for (let waited = 0; !done(value) && waited < ms; waited += 250) {
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    value = await read();
-  }
-  return value;
-}
+const openShell = (page: Page) => openShellAt(page, ORIGIN);
 
 /** The channel's transcript as drawn: each line's label and body. */
 const transcript = (page: Page) =>
@@ -198,17 +130,6 @@ const transcript = (page: Page) =>
       lines.map((line) => ({
         label: line.querySelector('[data-testid="channel-line-label"]')?.textContent ?? "",
         body: line.querySelector('[data-testid="channel-line-body"]')?.textContent ?? "",
-      })),
-    );
-
-/** The seat's conversation as drawn: each message's role and text, in order. */
-const conversation = (page: Page) =>
-  panel(page)
-    .locator("[data-message-role]")
-    .evaluateAll((messages) =>
-      messages.map((message) => ({
-        role: message.getAttribute("data-message-role") ?? "",
-        text: message.textContent ?? "",
       })),
     );
 
@@ -222,21 +143,12 @@ await runGoal(async () => {
   const line = `goal line ${run}`;
   const message = `${fixture.seat.marker} goal message ${run}`;
 
-  // The packages the app imports, then the app itself, so the check grades
-  // this checkout and not a `.next` or a `dist` an earlier branch left behind.
-  execFileSync("pnpm", ["exec", "turbo", "run", "build", "--filter=@flow-state-dev/kitchen-sink^..."], {
-    cwd: REPO_ROOT,
-    stdio: "inherit",
-  });
-  execFileSync("pnpm", ["build"], {
-    cwd: KITCHEN_SINK,
-    stdio: "inherit",
-    env: { ...process.env, NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE: "1" },
-  });
+  buildKitchenSink();
 
   const browser = await launchChromium();
+  let server: KitchenSinkServer | undefined;
   try {
-    await startServer();
+    server = await startKitchenSink(fixture.port);
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await applyControl(page);
 
@@ -320,7 +232,7 @@ await runGoal(async () => {
     }
   } finally {
     await browser.close();
-    stopServer();
+    server?.stop();
   }
 
   // A control must redden its own leg, and only that one.

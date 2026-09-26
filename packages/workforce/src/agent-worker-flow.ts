@@ -89,6 +89,7 @@ import {
   pushActiveSkill
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
+import { channelNotifyInputSchema, type ChannelNotifyInput } from "./channel/channel-flow";
 import { SEAT_PACKAGES_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
   catalogSeatCapabilities,
@@ -1084,7 +1085,22 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     configSchema: settings,
     // `userMessage` keeps the caller's message as their turn, so a seat's
     // conversation holds both sides and survives a reload.
-    actions: { run: { inputSchema, block: run, userMessage: (input) => input.message } }
+    actions: { run: { inputSchema, block: run, userMessage: (input) => input.message } },
+    // A channel's notify block reaches a seat here: a dispatch resolves only
+    // internal entries, so this is never caller-addressed. It runs `run`'s own
+    // sequence, so a seat answers a post exactly as it answers a person; the
+    // only difference is that the post, as the seat hears it, is the turn.
+    // Default concurrency on purpose: a queued request is refused after the
+    // engine's wait, which would drop a post arriving behind a slow answer.
+    internal: {
+      actions: {
+        onChannelPost: {
+          inputSchema: channelNotifyInputSchema,
+          block: run.connectInput((post: ChannelNotifyInput) => ({ message: heardTurn(post) })),
+          userMessage: heardTurn
+        }
+      }
+    }
   });
 
   /**
@@ -1135,4 +1151,13 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     return seat;
   };
   return Object.assign(mint, flow) as typeof flow;
+}
+
+/**
+ * A channel post as an agent seat hears it: `<writer> in <channel>: <body>`.
+ * The writer is the post's `author` (a seat wrote it), else its `principal`;
+ * the channel is the channel's session id.
+ */
+function heardTurn(post: ChannelNotifyInput): string {
+  return `${post.author ?? post.principal} in ${post.channelId}: ${post.body}`;
 }

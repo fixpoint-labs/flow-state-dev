@@ -17,10 +17,18 @@
  *   - remove `workforcePanelResources` from the chat-agent flow: the
  *     declaration case fails, which is the state in which every panel read
  *     answers "unknown resource".
+ *   - misname `agent`'s wake `onChannelPost`: the wake case fails, naming the
+ *     receiver the kind actually declares.
+ *   - drop `followup-runner`'s wake: the wake case fails, naming the kind.
  */
 import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
-import { channelBoard, channelBoardIds, HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
+import {
+  channelBoard,
+  channelBoardIds,
+  channelNotifyInputSchema,
+  HIRED_ROSTER_RESOURCE,
+} from "@flow-state-dev/workforce";
 import { readChannelsDirectory } from "@flow-state-dev/workforce/loader";
 
 import chatAgentFlow from "../flows/chat-agent/flow";
@@ -33,6 +41,7 @@ import {
   SEAT_KINDS,
   SHELL_BOARDS,
   seatAskFor,
+  seatWakeFor,
 } from "../lib/workforce-shell";
 
 describe("the shell's names match the workforce tree", () => {
@@ -92,6 +101,37 @@ describe("each seat kind's composer sends to an action the kind declares", () =>
     } else {
       expect(actions[ask.action], `"${kind}"'s one-string actions: ${JSON.stringify(actions)}`).toBe(ask.field);
     }
+  });
+});
+
+/**
+ * The internal entries of a kind that take a channel's delivery: the ones a
+ * notify block can wake a seat of that kind through.
+ */
+function channelReceivers(kind: string): string[] {
+  const factory = (kitchenSinkKinds as Record<string, unknown>)[kind] as {
+    internal?: { actions: Record<string, { inputSchema?: ZodTypeAny }> };
+  };
+  return Object.entries(factory.internal?.actions ?? {})
+    .filter(([, entry]) => entry.inputSchema === channelNotifyInputSchema)
+    .map(([name]) => name);
+}
+
+describe("each seat kind's wake names a channel receiver the kind declares", () => {
+  it.each([...SEAT_KINDS])("%s: the wake is one of its receivers, or none only where it has none", (kind) => {
+    const wake = seatWakeFor(kind);
+    if (wake === undefined) throw new Error(`SEAT_ASKS gives "${kind}" no wake; write its receiver, or null`);
+    const receivers = channelReceivers(kind);
+    if (wake === null) {
+      // "None" is only honest where there is truly no receiver to wake.
+      expect(receivers, `"${kind}" is written down as waking on nothing`).toEqual([]);
+    } else {
+      expect(receivers, `"${kind}"'s channel receivers`).toContain(wake);
+    }
+  });
+
+  it("is not vacuous: some kind wakes", () => {
+    expect(SEAT_KINDS.some((kind) => seatWakeFor(kind) != null)).toBe(true);
   });
 });
 
