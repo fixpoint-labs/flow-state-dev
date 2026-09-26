@@ -92,6 +92,9 @@ Fences from the FSD Architect and the cycle PM (2026-09-25), as the re-scope lea
 - **FIX-1589 inserted (owner, 2026-09-25):** the clerk is made honest before the talk loop. The
   Linear Manager called the talk loop "soft-after 1589"; this set reads that as blocked-by on
   implementation, which is what Linear wires, with specs free to start early (ER-14).
+- **FIX-1602 added (owner, 2026-09-26):** path two's fan-out moves into Workforce as a required
+  child, built after FIX-1594, so the closure run grades the stock path. Its Linear text's
+  "soft-after, not a child" is superseded (ER-14, ER-17).
 - **FIX-1591 held:** not a child and not on the chain, pending the owner's `escalations` versus
   boot-warning call.
 - **FIX-1585's transcript is its posts:** each post leaves one `channel-post` item on its own

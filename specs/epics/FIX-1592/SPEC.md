@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 4 issues and a closure issue · Workforce: Layer 2 Abstraction · Goal 1, validate through real usage
+Epic · 5 issues and a closure issue · Workforce: Layer 2 Abstraction · Goal 1, validate through real usage
 ([`docs/objectives.md`](../../../docs/objectives.md)) ·
 [FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592) · re-scoped by the owner on
 2026-09-25; the first version was [#2265](https://github.com/fixpoint-labs/flow-state-dev/pull/2265)
@@ -33,7 +33,7 @@ reaches each agent in it, and an agent that heard the post can answer back in th
 | **The real need** | Jake, 2026-09-25: *"A seat is a direct conversation. I should be able to talk to a seat using the normal agent flow that comes with workforce. A seat is just a specific agent with its own memory and its own identity. A channel is a way of talking to two or more agents, or one agent under a specific topic, work stream, or whatever. The system needs to show that if you talk to a channel, it sends it to the agents, and if you talk to the agents, then you're just talking to the agent. But the system also needs to show that if you talk to an agent through a channel, that the agent can respond back to that channel."* |
 | **Smaller, and rejected** | "Seats and channels are reachable from the page." FIX-1585 alone meets it while the clerk parrots and a post runs nobody. "A post reaches its agents" without FIX-1594 drops Jake's last sentence |
 | **Bigger, and not this epic's** | "A working support desk": boards drained and `escalations` served (FIX-1591, held), agents talking to each other (D2 reversed) |
-| **Not done if** | Every child is Done but the four checks never ran on one `main` commit · a check passes only with a key, or only from the CLI · the agent's channel reply wakes the other agent · the clerk's reply is a fixed string |
+| **Not done if** | Every child is Done but the four checks never ran on one `main` commit · a check passes only with a key, or only from the CLI · the agent's channel reply wakes the other agent · the clerk's reply is a fixed string · leg b passes on kitchen-sink's own fan-out, not Workforce's stock one (FIX-1602) |
 
 ```mermaid
 flowchart LR
@@ -70,24 +70,25 @@ browser use of Workforce's three ways of talking.
 
 ## What's in the box
 
-![What's in the box: talk to a seat (FIX-1585, FIX-1589), a post reaches its agents (FIX-1590), an agent replies in the channel (FIX-1594); fenced so Workforce changes only where a path needs them and a seat's post wakes no seat; not built: the boards' drain, the escalations call, channel admin, verified identity](figures/end-state.svg)
+![What's in the box: talk to a seat (FIX-1585, FIX-1589), a post reaches its agents (FIX-1590, FIX-1602), an agent replies in the channel (FIX-1594); fenced so Workforce changes only where a path needs them and a seat's post wakes no seat; not built: the boards' drain, the escalations call, channel admin, verified identity](figures/end-state.svg)
 
 The three paths are Workforce's own. Kitchen-sink is where a person first sees them work.
 
-## The set · as of 2026-09-25
+## The set · as of 2026-09-26
 
-A dated snapshot. Live state is Linear and the implementation PRs. The four are Features;
+A dated snapshot. Live state is Linear and the implementation PRs. The five are Features;
 FIX-1601 is the closure issue.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1585](https://linear.app/fixpoint-labs/issue/FIX-1585) · talk from the page | Channel and seat composers; the agent seat keeps the person's message | Path one; nothing below is reachable without it | In Spec Review · spec [#2258](https://github.com/fixpoint-labs/flow-state-dev/pull/2258), round 2, must fold [ER-1](BUSINESS-RULES.md#what-a-person-gets) |
-| [FIX-1589](https://linear.app/fixpoint-labs/issue/FIX-1589) · the clerk answers | The clerk's `answer` calls a model, or files the note through the channel's `fileTask` | Path one for the clerk, which otherwise parrots | Backlog · after FIX-1585 |
-| [FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590) · a post reaches its agents | Each member agent seat runs once on a post with no seat author, through an internal receiver on the agent kind | Path two ([D1](DECISIONS.md#d1)) | Backlog · after FIX-1589 |
-| [FIX-1594](https://linear.app/fixpoint-labs/issue/FIX-1594) · an agent replies in the channel | An agent seat posts into a channel it belongs to, authored as itself | Path three | Backlog · after FIX-1590 |
-| [FIX-1601](https://linear.app/fixpoint-labs/issue/FIX-1601) · closure · required | The QA plan, per [the closure issue](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa), run on one `main` commit | Proves the assembled set, which no child's check does ([ER-17](BUSINESS-RULES.md#the-proof)) | QA plan [#2288](https://github.com/fixpoint-labs/flow-state-dev/pull/2288) · runs after all four and FIX-1598 |
+| [FIX-1585](https://linear.app/fixpoint-labs/issue/FIX-1585) · talk from the page | Channel and seat composers; the agent seat keeps the person's message | Path one; nothing below is reachable without it | Done · spec [#2258](https://github.com/fixpoint-labs/flow-state-dev/pull/2258), impl [#2282](https://github.com/fixpoint-labs/flow-state-dev/pull/2282) |
+| [FIX-1589](https://linear.app/fixpoint-labs/issue/FIX-1589) · the clerk answers | The clerk's `answer` calls a model, or files the note through the channel's `fileTask` | Path one for the clerk, which otherwise parrots | Done · [#2283](https://github.com/fixpoint-labs/flow-state-dev/pull/2283) |
+| [FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590) · a post reaches its agents | Each member agent seat runs once on a post with no seat author, through an internal receiver on the agent kind | Path two ([D1](DECISIONS.md#d1)) | In Development · impl [#2290](https://github.com/fixpoint-labs/flow-state-dev/pull/2290) in review |
+| [FIX-1594](https://linear.app/fixpoint-labs/issue/FIX-1594) · an agent replies in the channel | An agent seat posts into a channel it belongs to, authored as itself | Path three | In Development · spec [#2280](https://github.com/fixpoint-labs/flow-state-dev/pull/2280) merged; build after FIX-1590 |
+| [FIX-1602](https://linear.app/fixpoint-labs/issue/FIX-1602) · stock notify fan-out · required | Workforce's stock channel→agent fan-out; kitchen-sink thins onto it | The closure grades path two on the stock path, not on kitchen-sink glue ([ER-17](BUSINESS-RULES.md#the-proof)) | Backlog · spec on `spec/FIX-1602`; build after FIX-1590 and FIX-1594 |
+| [FIX-1601](https://linear.app/fixpoint-labs/issue/FIX-1601) · closure · required | The QA plan, per [the closure issue](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa), run on one `main` commit | Proves the assembled set, which no child's check does ([ER-17](BUSINESS-RULES.md#the-proof)) | QA plan [#2288](https://github.com/fixpoint-labs/flow-state-dev/pull/2288) merged · runs after the other five and FIX-1598 |
 
-**0 done · 1 in spec review · 3 not started · the closure plan in review.** Wrap needs FIX-1601's closure PR merged, which a
+**2 done · 2 in development · 1 spec being written · the closure plan merged.** Wrap needs FIX-1601's closure PR merged, which a
 clean run opens.
 
 ## How the issues flow into each other
@@ -100,7 +101,9 @@ flowchart LR
   D -->|"an honest clerk first"| B["FIX-1590 · a post reaches its agents"]
   A -->|"composers, the D3 map"| B
   B -->|"a woken seat, the wake rule"| C["FIX-1594 · an agent replies in the channel"]
-  A & D & B & C -->|"merged, on one main commit"| Z["FIX-1601 · closure · required"]
+  B -->|"the fan-out it promotes"| F["FIX-1602 · stock notify fan-out"]
+  C -->|"both paths merged"| F
+  A & D & B & C & F -->|"merged, on one main commit"| Z["FIX-1601 · closure · required"]
   X["FIX-1598 · durable-hire check, red on main"] -.->|"green before the closure run"| Z
 ```
 
