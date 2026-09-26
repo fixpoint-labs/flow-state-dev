@@ -112,7 +112,9 @@ loader and at the hire, from the shared constants in `manifest.ts` that every do
 than re-spelling. Those five are both; `instructions` is the one key that is imposed and authored all
 the same — as the file's body.
 
-`seatId` is the seat's record id (FIX-1589). It exists because a seat that files or posts must
+`seatId` is the seat's logical id, the one a channel's `members:` lists (FIX-1589). A file
+record's `id` is that id; a runtime-hired record's `id` is its org-qualified address, so the roster
+row carries the logical id on the record's `seatId` field and the hire stamps that. It exists because a seat that files or posts must
 name itself, and a block cannot see which seat it runs in: core keeps the flow's id off the block
 context, so the seat's settings are the one per-seat fact a block can read, and only the hire writes
 them. Every mint path (files, the runtime `hire` tool, the boot reload) stamps it, so no seat is

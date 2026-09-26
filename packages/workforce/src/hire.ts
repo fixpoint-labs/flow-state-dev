@@ -638,8 +638,10 @@ export function hireWorkforce(
     // The seat's own id, on EVERY record: the one per-seat fact a block inside
     // the seat can read, since the flow's id is kept off the block context.
     // Written here and nowhere else, so every mint path (files, the runtime
-    // `hire` tool, the boot reload) carries it.
-    settings[SEAT_ID_KEY] = manifest.id;
+    // `hire` tool, the boot reload) carries it. A hired record's `id` is its
+    // org-qualified address, so it brings the logical id a channel's
+    // `members:` lists on `manifest.seatId`; a file record's `id` is that id.
+    settings[SEAT_ID_KEY] = manifest.seatId ?? manifest.id;
 
     // The seat's TEAM-level instructions — and **only when the record carries
     // them**, which is the opposite of the line above and deliberately so.

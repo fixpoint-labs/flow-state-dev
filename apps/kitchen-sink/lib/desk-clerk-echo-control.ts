@@ -8,7 +8,8 @@
  * its legs under it.
  *
  * Honoured only under `KITCHEN_SINK_TEST_MODE=1`, so a control can never reach
- * a deployed build. A test seam like `mock-flowstate.ts`, not product code.
+ * a deployed build. A test seam, kept in `lib/` so the kind module does not
+ * import from `test/`.
  */
 import { sequencer } from "@flow-state-dev/core";
 

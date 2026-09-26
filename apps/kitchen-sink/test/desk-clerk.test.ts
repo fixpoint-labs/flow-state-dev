@@ -293,6 +293,13 @@ describe("V3 · the clerk files what the desk can't close", () => {
     expect(ran.error).toBeUndefined();
     const toolOutputs = JSON.stringify((ran.items ?? []).filter((item) => (item as Item).type === "tool_output"));
     expect(toolOutputs).toContain("unavailable");
+    // What the person sees: a reply that says nothing was filed, never one
+    // that claims it was.
+    const replies = (ran.items ?? [])
+      .filter((item) => (item as Item).type === "message" && (item as Item).role === "assistant")
+      .map((item) => textOf(item as Item));
+    expect(replies).toEqual([expect.stringMatching(/^\[front desk\] \[clerk:unfiled\] /)]);
+    expect(replies.join("\n")).not.toContain("[clerk:filed]");
     expect(await fileRequestsWith(app, mark)).toEqual([]);
     expect(await rowsWith(app, "escalations", mark, false)).toEqual([]);
   });

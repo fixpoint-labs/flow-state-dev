@@ -446,7 +446,7 @@ A worker kind is an ordinary flow. What makes it *hireable* is that its `configS
 | `seatSkills` | The skills its folders resolved for it, in level order. Imposed on every seat, present and empty when there are none. |
 | `seatTools` | The blocks this seat's `tools:` resolved to from its own folders and the packages it holds, already resolved. Imposed on every seat, present and empty when there are none. Live blocks, not names — names that resolved to the kind's catalog stay on the kind's own `tools` setting. |
 | `seatPackages?` | The [packages](#packages-from-files) this seat holds, in the order it holds them: `{ name, path, instructions?, tools }[]`, where `tools` is the package's blocks. Imposed when the seat holds at least one, absent otherwise. |
-| `seatId` | The seat's own id — the one its team's `members:` lists and a channel checks an author against. Imposed on every seat. A block inside the seat reads it from `ctx.flow.config.seatId` to sign what it files or posts. |
+| `seatId` | The seat's own id — the one a channel's `members:` lists and checks an author against. For a runtime-hired seat it is the roster's seat id, not its `<orgId>.<seatId>` address. Imposed on every seat. A block inside the seat reads it from `ctx.flow.config.seatId` to sign what it files or posts. |
 
 So hiring imposes `instructions` when the body is not empty, `seatSkills`, `seatTools` and `seatId`
 always, `teamInstructions` when the seat's team wrote a `TEAM.md`, and `seatPackages` when the seat

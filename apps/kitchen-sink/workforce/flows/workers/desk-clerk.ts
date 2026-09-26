@@ -34,7 +34,7 @@ import { CHANNEL_KIND, workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 import { deskNoteInput } from "../../blocks/desk-note";
-import { deskClerkEchoControl } from "../../../test/desk-clerk-echo-control";
+import { deskClerkEchoControl } from "../../../lib/desk-clerk-echo-control";
 
 /**
  * `desk` is this kind's own setting and sits at the top level of a worker
@@ -71,7 +71,8 @@ function refusalIn(error: unknown): DispatchRefusedError | undefined {
  */
 const filingUnavailable = handler({
   name: "desk-clerk-file-unavailable",
-  inputSchema: z.any(),
+  // Whatever the dispatch threw: narrowed below, and rethrown unless it is the refusal.
+  inputSchema: z.unknown(),
   outputSchema: z.object({ filed: z.literal(false), reason: z.string() }),
   execute: (error: unknown) => {
     // Only the external-dispatcher refusal is this deployment's to report. Any

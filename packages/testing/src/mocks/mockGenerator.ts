@@ -38,6 +38,9 @@ import type {
 
 type MockToolCall = { toolCallId: string; toolName: string; args: unknown };
 
+/** What one tool call returned, in the order the script's tool loop ran it. */
+export type MockToolResult = { toolCallId: string; toolName: string; result: unknown };
+
 type ScriptOutcome =
   | { kind: "tool_call"; toolCall: MockToolCall }
   | { kind: "tool_result"; toolCallId: string; toolName: string; result: unknown }
@@ -82,9 +85,10 @@ async function* runScript(
   const tools = options.tools ?? [];
   const toolByName = new Map(tools.map((tool) => [tool.name, tool] as const));
   const accumulatedToolCalls: MockToolCall[] = [];
+  const toolResults: MockToolResult[] = [];
 
   for (let i = 0; i < maxSteps; i += 1) {
-    const step = mock.next(options.messages);
+    const step = mock.next(options.messages, { toolResults: [...toolResults] });
     if (step === undefined) {
       const mockName = blockName ?? modelId;
       throw new Error(
@@ -104,6 +108,7 @@ async function* runScript(
         const result = tool?.execute === undefined
           ? { ok: true }
           : await tool.execute(call.args, { toolCallId: call.toolCallId });
+        toolResults.push({ toolCallId: call.toolCallId, toolName: call.toolName, result });
         yield { kind: "tool_result", toolCallId: call.toolCallId, toolName: call.toolName, result };
       }
       continue;
@@ -162,8 +167,12 @@ export type MockGeneratorInstance = {
    * messages or whatever shape the test wants predicates to inspect.
    * Returns `undefined` only when the script is empty and no predicate
    * matched — most scenarios should treat that as an error condition.
+   *
+   * `context.toolResults` holds what the tools this call already ran returned,
+   * oldest first, so a hand-written instance can script a step that depends
+   * on a tool's result. `mockGenerator`'s own instance ignores it.
    */
-  next(input?: unknown): MockGeneratorScriptStep | undefined;
+  next(input?: unknown, context?: { toolResults: MockToolResult[] }): MockGeneratorScriptStep | undefined;
   reset(): void;
 };
 

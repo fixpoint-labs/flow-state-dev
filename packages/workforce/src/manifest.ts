@@ -83,6 +83,13 @@ export interface WorkerManifest {
    * Not parsed from {@link WorkerManifest.id}.
    */
   ownerPin?: InstanceOwnerPin;
+  /**
+   * The seat's logical id, as a channel's `members:` lists it (`"<teamId>.<name>"`).
+   * Set by a hire row, never by a `WORKER.md`. Absent, the hire uses
+   * {@link WorkerManifest.id}, which on a file record is that id. A hired
+   * record's `id` is its org-qualified address, so the row carries this.
+   */
+  seatId?: string;
 }
 
 /**

@@ -21,6 +21,7 @@
  */
 import type {
   MockGeneratorInstance,
+  MockToolResult,
   MockGeneratorScriptStep,
   MockGeneratorScriptEntry,
 } from "@flow-state-dev/testing";
@@ -29,7 +30,10 @@ import { mockGenerator } from "@flow-state-dev/testing";
 type ScenarioScript = {
   /** Whether the latest user turn picks this scenario. */
   match: (turn: string) => boolean;
-  steps: MockGeneratorScriptStep[] | ((turn: string) => MockGeneratorScriptStep[]);
+  /** The steps, or a function of the turn and what this call's tools returned so far. */
+  steps:
+    | MockGeneratorScriptStep[]
+    | ((turn: string, toolResults: MockToolResult[]) => MockGeneratorScriptStep[]);
 };
 
 const SCENARIO_SCRIPTS: ScenarioScript[] = [
@@ -86,7 +90,8 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
  * note does not contain. `[scenario:clerk-file]` files the note through the
  * kind's `desk-clerk-file` tool, onto `escalations` unless the note names
  * another board as `[board:<name>]`, with the note's `clerk-token-…` in the
- * row's goal, then says where it went.
+ * row's goal, then says where it went, or, when the tool reports that nothing
+ * was filed, says that instead (`[clerk:unfiled]`).
  */
 const DESK_CLERK_SCRIPTS: ScenarioScript[] = [
   {
@@ -95,7 +100,7 @@ const DESK_CLERK_SCRIPTS: ScenarioScript[] = [
   },
   {
     match: (turn) => turn.includes("[scenario:clerk-file]"),
-    steps: (turn) => {
+    steps: (turn, toolResults) => {
       const board = /\[board:([a-z-]+)\]/.exec(turn)?.[1] ?? "escalations";
       const token = /clerk-token-[a-z0-9]+/.exec(turn)?.[0] ?? "no-token";
       // `[forge-author]` makes the model try to sign as another seat, which
@@ -111,11 +116,22 @@ const DESK_CLERK_SCRIPTS: ScenarioScript[] = [
             },
           ],
         },
-        { text: `[clerk:filed] Filed onto ${board}.` },
+        unfiled(toolResults)
+          ? { text: "[clerk:unfiled] Nothing was filed: filing is unavailable here." }
+          : { text: `[clerk:filed] Filed onto ${board}.` },
       ];
     },
   },
 ];
+
+/** Whether the clerk's filing tool reported that it filed nothing. */
+function unfiled(toolResults: MockToolResult[]): boolean {
+  return toolResults.some(
+    (entry) =>
+      entry.toolName === "desk-clerk-file" &&
+      (entry.result as { filed?: unknown } | null)?.filed === false,
+  );
+}
 
 /**
  * The latest user turn of a model call, as the text a scenario matches on.
@@ -152,7 +168,7 @@ function buildScenarioMock(name: string, scripts: ScenarioScript[]): MockGenerat
   const byTurn = new Map<string, number>();
   const calls: MockGeneratorInstance["calls"] = [];
 
-  const next = (input?: unknown): MockGeneratorScriptStep | undefined => {
+  const next: MockGeneratorInstance["next"] = (input, context) => {
     const turn = latestUserTurn(input);
     const scenario = scripts.find((s) => s.match(turn));
     if (!scenario) {
@@ -162,7 +178,10 @@ function buildScenarioMock(name: string, scripts: ScenarioScript[]): MockGenerat
     const i = (keyed ? byRequest.get(input) : byTurn.get(turn)) ?? 0;
     if (keyed) byRequest.set(input, i + 1);
     else byTurn.set(turn, i + 1);
-    const steps = typeof scenario.steps === "function" ? scenario.steps(turn) : scenario.steps;
+    const steps =
+      typeof scenario.steps === "function"
+        ? scenario.steps(turn, context?.toolResults ?? [])
+        : scenario.steps;
     return steps[Math.min(i, steps.length - 1)];
   };
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockModelResolver, mockGenerator } from "../src";
+import { createMockModelResolver, mockGenerator, type MockGeneratorInstance } from "../src";
 
 describe("mockGenerator", () => {
   it("returns scripted steps in order and supports reset", () => {
@@ -207,6 +207,32 @@ describe("mockGenerator", () => {
         { toolCallId: "tc_a", toolName: "ping", args: { n: 1 } }
       ]);
       expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands a hand-written instance what the tools it already ran returned", async () => {
+      // A scripted reply that depends on a tool's result (it filed, or it
+      // could not) has to be able to read that result.
+      const seen: unknown[] = [];
+      const mock: MockGeneratorInstance = {
+        name: "reads-results",
+        calls: [],
+        next: (_input, context) => {
+          seen.push(context?.toolResults);
+          const done = context?.toolResults[0]?.result as { pong?: number } | undefined;
+          return done === undefined
+            ? { toolCalls: [{ toolCallId: "tc_r", toolName: "ping", args: { n: 2 } }] }
+            : { text: `got ${done.pong}` };
+        },
+        reset: () => {}
+      };
+      const model = createMockModelResolver({ generators: { g: mock } })("any/model", "g");
+      const result = await model.generate({
+        messages: [],
+        tools: [{ name: "ping", execute: async () => ({ pong: 2 }) }]
+      });
+
+      expect(result.text).toBe("got 2");
+      expect(seen).toEqual([[], [{ toolCallId: "tc_r", toolName: "ping", result: { pong: 2 } }]]);
     });
 
     it("records one calls[] entry per external invocation regardless of surface", async () => {
