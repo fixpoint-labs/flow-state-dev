@@ -7,17 +7,18 @@
  * `goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it` must FAIL both of
  * its legs under it.
  *
- * Honoured only under `KITCHEN_SINK_TEST_MODE=1`, so a control can never reach
- * a deployed build. A test seam, kept in `lib/` so the kind module does not
+ * Honoured only under `KITCHEN_SINK_TEST_MODE=1` (`goalControl`), so a control
+ * can never reach a deployed build. A test seam, kept in `lib/` so the kind module does not
  * import from `test/`.
  */
 import { sequencer } from "@flow-state-dev/core";
 
 import deskNote, { deskNoteInput, deskNoteOutput } from "../workforce/blocks/desk-note";
+import { goalControl } from "./goal-control";
 
 /** The echo `answer` action when the control is on; `undefined` otherwise. */
 export function deskClerkEchoControl() {
-  if (process.env.KITCHEN_SINK_TEST_MODE !== "1" || process.env.GOAL_CONTROL !== "echo") return undefined;
+  if (goalControl() !== "echo") return undefined;
   const echo = sequencer({ name: "desk-clerk-echo", inputSchema: deskNoteInput, outputSchema: deskNoteOutput })
     .step(deskNote)
     .tap((said, ctx) => {
