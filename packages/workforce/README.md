@@ -1303,6 +1303,12 @@ nobody is woken.
 The framework carries the policy and your app supplies the addresses: the framework will not pick a
 dispatch target out of stored data, so a notify block declares its own recipients.
 
+A seat of the built-in `agent` kind declares `onChannelPost`, an internal entry that takes a
+`ChannelNotifyInput` and runs the seat's answer with the post as its turn. Point one dispatcher
+per agent member at it (`flowKind` = the seat id, `session: { key }` on the channel) and choose
+between them by `member`. Skip it when the post has an `author`, or two agents answer each other
+forever. See the channels guide, "Waking an agent seat".
+
 ### Registering your own kind
 
 The escape hatch, not a setup step. Reach for it when the workflow graph genuinely diverges. A
@@ -1780,7 +1786,7 @@ membershipPrefix("");
 
 | Export | Description |
 |--------|-------------|
-| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. |
+| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and `onChannelPost` (internal, for a channel's notify block). |
 | `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |

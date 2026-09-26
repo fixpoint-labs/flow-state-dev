@@ -17,6 +17,13 @@
  * its reply across a reload), BR-15 (`support.wren` has no composer and says
  * why), BR-17 (a failed "New conversation" shows in the seat's row, opens
  * nothing, and can be pressed again).
+ *
+ * And by `specs/issues/FIX-1590/BUSINESS-RULES.md`: BR-1, BR-8 and BR-9 (a
+ * post to `support.desk` runs `support.iris` and `support.otto`, each in one
+ * conversation of its own for the channel, listed under the seat as a run of
+ * the channel, the post heard once with the reply under it after a reload,
+ * and a second post lands in the same conversation), and BR-2 (no clerk or
+ * runner seat lists a run of the channel).
  */
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -199,4 +206,68 @@ test("a note the clerk files shows as a row on escalations in the team panel aft
   await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
   const board = page.getByTestId("board-support.desk.escalations");
   await expect(board.locator("li[data-task-id]").filter({ hasText: mark })).toHaveCount(1);
+});
+
+/** A seat's conversation for a channel: the run the channel started, listed under the seat. */
+const channelRun = (page: Page, seat: string, channel: string): Locator =>
+  rail(page).locator(`ul[data-leaf="${seat}"] [data-dispatch-run-of="${channel}"]`);
+
+test("a post to support.desk runs each agent seat once, in its own conversation for the channel, kept across a reload", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  const first = `[scenario:wake] wake ${token()} can someone look at the refund queue?`;
+  const second = `[scenario:wake] wake ${token()} and the shipping one`;
+  await openShell(page);
+  await open(page, "channel");
+  await row(page, "support.desk").click();
+  const channel = picked(page);
+  for (const line of [first, second]) {
+    await channel.getByLabel("Post to this channel").fill(line);
+    await channel.getByRole("button", { name: "Send" }).click();
+    await expect(channel.getByTestId("channel-line").filter({ hasText: line })).toHaveCount(1);
+  }
+
+  // Each seat answers in its own request, after the post has landed. Let both
+  // answers land before the reload; nothing here is graded, so a seat that
+  // never ran fails below, on what the page shows.
+  const answered = async (seat: string): Promise<boolean> => {
+    const listed = await page.request.get(`/api/flows/sessions?flowId=${seat}&include=dispatch-runs&limit=100`);
+    const { sessions } = (await listed.json()) as { sessions: Array<{ id: string; parentSessionId?: string | null }> };
+    const run = sessions.find((s) => s.parentSessionId === "support.desk");
+    if (run === undefined) return false;
+    const state = await page.request.get(`/api/flows/sessions/${run.id}/state?include_items=true&item_types=message&limit=1000`);
+    const text = await state.text();
+    return text.includes(first) && text.includes(second) && (text.match(/\[reply:wake\]/g) ?? []).length >= 2;
+  };
+  for (let waited = 0; waited < 20_000; waited += 250) {
+    if ((await answered("support.iris")) && (await answered("support.otto"))) break;
+    await page.waitForTimeout(250);
+  }
+
+  await page.reload();
+  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+  await open(page, "agent");
+  for (const seat of ["support.iris", "support.otto"]) {
+    await open(page, seat);
+    // One conversation for the channel, whatever else the seat holds.
+    await expect(channelRun(page, seat, "support.desk")).toHaveCount(1);
+    await channelRun(page, seat, "support.desk").click();
+    const conversation = picked(page);
+    for (const line of [first, second]) {
+      const heard = conversation.locator('[data-message-role="user"]').filter({ hasText: line });
+      await expect(heard).toHaveCount(1);
+      await expect(heard).toContainText(`in support.desk: ${line}`);
+    }
+    await expect(conversation.locator('[data-message-role="assistant"]').filter({ hasText: "[reply:wake]" })).not.toHaveCount(0);
+  }
+
+  // The clerks and the runner list no run of the channel: a post runs nothing on them.
+  await open(page, "desk-clerk");
+  await open(page, "followup-runner");
+  for (const seat of ["support.ada", "support.grace", "support.wren"]) {
+    await open(page, seat);
+    await expect(rail(page).locator(`ul[data-leaf="${seat}"]`)).toBeVisible();
+    await expect(channelRun(page, seat, "support.desk")).toHaveCount(0);
+  }
 });

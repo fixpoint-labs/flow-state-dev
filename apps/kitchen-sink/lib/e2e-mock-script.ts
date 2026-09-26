@@ -83,6 +83,12 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
     match: (turn) => turn.includes("[scenario:talk-to-seat]"),
     steps: [{ text: "[reply:talk-to-seat] Noted, I have your message." }],
   },
+  {
+    // A post to a channel the seat is a member of (FIX-1590). The seat hears
+    // it as `<writer> in <channel>: <body>`, so the marker is still in the turn.
+    match: (turn) => turn.includes("[scenario:wake]"),
+    steps: [{ text: "[reply:wake] Heard it in the channel." }],
+  },
 ];
 
 /**

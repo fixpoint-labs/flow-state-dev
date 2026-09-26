@@ -1,0 +1,15 @@
+{
+  "port": 3039,
+  "channel": { "kind": "channel", "id": "support.desk" },
+  "agents": [
+    { "kind": "agent", "id": "support.iris" },
+    { "kind": "agent", "id": "support.otto" }
+  ],
+  "others": [
+    { "kind": "desk-clerk", "id": "support.ada" },
+    { "kind": "desk-clerk", "id": "support.grace" },
+    { "kind": "followup-runner", "id": "support.wren" }
+  ],
+  "marker": "[scenario:wake]",
+  "replyMarker": "[reply:wake]"
+}

@@ -814,8 +814,11 @@ function Rail({
   return (
     <>
       <div className="min-h-0 flex-1 py-1" style={RAIL_THEME}>
+        {/* Dispatch runs too: a seat's conversation for a channel is a run the
+            channel started, and is listed only when they are included. */}
         <FlowNavigator
           sections={RAIL_SECTIONS}
+          includeDispatchRuns
           selectedSessionId={selectedSessionId}
           onSelectSession={onSelectSession}
           slots={slots}
