@@ -15,6 +15,7 @@
     "@electric-sql/pglite": "^0.5.4",
     "@flow-state-dev/bullmq": "workspace:*",
     "@flow-state-dev/claude-code": "workspace:*",
+    "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/codex": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",

@@ -1303,11 +1303,12 @@ nobody is woken.
 The framework carries the policy and your app supplies the addresses: the framework will not pick a
 dispatch target out of stored data, so a notify block declares its own recipients.
 
-A seat of the built-in `agent` kind declares `onChannelPost`, an internal entry that takes a
-`ChannelNotifyInput` and runs the seat's answer with the post as its turn. Point one dispatcher
-per agent member at it (`flowKind` = the seat id, `session: { key }` on the channel) and choose
-between them by `member`. Skip it when the post has an `author`, or two agents answer each other
-forever. See the channels guide, "Waking an agent seat".
+`wakeMemberSeats(seats, { fallback? })` returns a notify block that wakes each member whose hired
+seat declares the internal `onChannelPost` entry, once per post, in one conversation per seat per
+channel. A post with an `author` wakes nobody. Members whose seat can't hear a post get
+`fallback`, or nothing. Pass the seats `hireWorkforce` returned, and hire before you build
+channels. The built-in `agent` kind declares `onChannelPost`; a kind of your own hears posts by
+declaring it too. See the channels guide, "Waking agent seats".
 
 ### Registering your own kind
 
@@ -1853,6 +1854,7 @@ membershipPrefix("");
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. |
+| `wakeMemberSeats(seats, options?)` | The notify block that wakes each member seat declaring `onChannelPost`, never on a post with an `author`. `options.fallback` runs for members whose seat can't hear a post. |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds?, inventory? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Register these. |
 | `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |

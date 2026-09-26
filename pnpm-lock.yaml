@@ -646,6 +646,9 @@ importers:
       '@flow-state-dev/claude-code':
         specifier: workspace:*
         version: link:../packages/claude-code
+      '@flow-state-dev/client':
+        specifier: workspace:*
+        version: link:../packages/client
       '@flow-state-dev/codex':
         specifier: workspace:*
         version: link:../packages/codex

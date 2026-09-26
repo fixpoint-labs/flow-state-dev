@@ -48,38 +48,22 @@ export type SeatAsk =
   | { readonly none: string };
 
 /**
- * A seat kind's wake: the internal entry a channel's notify block dispatches a
- * post to, so a seat of that kind runs on it, or `null` for a kind a post runs
- * nothing on (its members get the name-only line).
- */
-export type SeatWake = { readonly wake: string | null };
-
-/**
- * Each seat kind's answer and wake, written down rather than picked from the
- * served schemas: a kind that grew a second one-string action would be picked
- * from silently, where a missing or wrong entry here fails
+ * Each seat kind's answer, written down rather than picked from the served
+ * schemas: a kind that grew a second one-string action would be picked from
+ * silently, where a missing or wrong entry here fails
  * `test/workforce-shell.test.ts` instead.
  */
 export const SEAT_ASKS = {
-  agent: { action: "run", field: "message", wake: "onChannelPost" },
-  "desk-clerk": { action: "answer", field: "note", wake: null },
+  agent: { action: "run", field: "message" },
+  "desk-clerk": { action: "answer", field: "note" },
   "followup-runner": {
     none: "This seat runs rows from a board and has nothing to answer with, so it takes no messages.",
-    wake: null,
   },
-} as const satisfies Record<(typeof SEAT_KINDS)[number], SeatAsk & SeatWake>;
+} as const satisfies Record<(typeof SEAT_KINDS)[number], SeatAsk>;
 
 /** A seat kind's answer, or `undefined` for a kind the shell does not know. */
 export function seatAskFor(kind: string): SeatAsk | undefined {
   return (SEAT_ASKS as Record<string, SeatAsk | undefined>)[kind];
-}
-
-/**
- * A seat kind's wake entry, `null` for a kind that wakes on nothing, or
- * `undefined` for a kind the shell does not know.
- */
-export function seatWakeFor(kind: string): string | null | undefined {
-  return (SEAT_ASKS as Record<string, Partial<SeatWake> | undefined>)[kind]?.wake;
 }
 
 /**

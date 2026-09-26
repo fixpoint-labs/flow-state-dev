@@ -17,23 +17,33 @@
  *   BR-2  `support.ada`, `support.grace` and `support.wren` get the name-only
  *         line and nothing runs on them. Red: the same stub, where the line
  *         reaches all five members.
- *   BR-3  a post a seat wrote runs no seat; every other member gets the line
- *         and the writer nothing. Red: the author filter dropped
+ *   BR-3  a post a seat wrote runs no seat; the non-agent members get the
+ *         line, and the agent members and the writer nothing (FIX-1602's
+ *         BR-3). Red: the author dropped before the wake
  *         (`GOAL_CONTROL=no-author-filter`).
  *   BR-4  a post to `support.ada-wren`, which has no agent member, runs nobody.
  *   BR-9  a second post lands in the same conversation of each seat.
  *   BR-10 two posts at once each run exactly once, in that same conversation.
  *   BR-14 the post's own request carries no seat's answer: the wake runs in
  *         the channel's hand-off request.
+ *   FIX-1602 BR-11: a seat conversation this app's own wake opened before
+ *         it moved onto Workforce's `wakeMemberSeats` takes the next post.
+ *         Red: the helper's key changed, so the next post opens a second.
  *   BR-6, BR-11, BR-12 need a roster this app does not have (a member whose
  *         seat is missing, a seat in two channels, a refused wake), so they are
  *         held on the factory below, with a roster built for them.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, dispatcher, utility, type BlockDefinition } from "@flow-state-dev/core";
 import type { FlowState, StoreRegistry } from "@flow-state-dev/engine";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { CHANNEL_KIND, defineChannelFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import {
+  CHANNEL_KIND,
+  channelNotifyInputSchema,
+  defineChannelFlow,
+  hireWorkforce,
+  type ChannelNotifyInput,
+} from "@flow-state-dev/workforce";
 
 // Each case boots the whole app afresh, and the first import is cold.
 vi.setConfig({ testTimeout: 60_000 });
@@ -204,17 +214,18 @@ describe("V3 · a post runs each member agent seat once, on the app's own channe
     }
   });
 
-  it("runs no seat on a post a seat wrote; the other members get the line and the writer nothing", async () => {
+  it("runs no seat on a post a seat wrote; the non-agent members get the line, the agents and the writer nothing", async () => {
     const router = await bootApp();
     const mark = token("authored");
     await post(router, "support.desk", `[scenario:wake] ${mark}`, "support.otto");
-    const others = DESK_MEMBERS.filter((m) => m !== "support.otto");
     await until(async () => (await notifiedOn(router, "support.desk")).filter((m) => m !== "").length >= OTHERS.length, "the lines");
     // Give a wrongly woken seat time to answer, so its absence is not a race.
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     for (const seat of DESK_MEMBERS) expect(await holding(router, seat, mark), seat).toEqual([]);
-    expect((await notifiedOn(router, "support.desk")).filter((m) => m !== "").sort()).toEqual(others);
+    // support.iris could have woken, so the author withholds its wake and
+    // sends it nothing else either: the line goes only where it always would.
+    expect((await notifiedOn(router, "support.desk")).filter((m) => m !== "").sort()).toEqual(OTHERS);
   });
 
   it("runs nobody on a post to a channel with no agent member", async () => {
@@ -256,9 +267,9 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
 
 describe("V3 · the wake factory, off the app's own roster", () => {
   /**
-   * `support.otto` is hired and registered. `support.iris` is an agent the
-   * wake was built for whose flow is not registered, so its dispatch is
-   * refused. `support.lost` never loaded, so no dispatcher exists for it.
+   * `support.otto` is hired and registered. `support.iris` is hired and handed
+   * to the wake, but its flow is not registered, so its dispatch is refused.
+   * `support.lost` never loaded, so it has no seat to wake.
    */
   async function host() {
     vi.resetModules();
@@ -266,13 +277,11 @@ describe("V3 · the wake factory, off the app's own roster", () => {
     vi.stubEnv("GOAL_CONTROL", "");
     const { notifyFor } = await import("@/workforce/channel-notify");
     const { createKitchenSinkTestModelResolver } = await import("@/test/mock-flowstate");
-    const [otto] = hireWorkforce([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
-    const channel = defineChannelFlow({
-      notify: notifyFor([
-        { id: "support.otto", kind: "agent" },
-        { id: "support.iris", kind: "agent" },
-      ]),
-    })();
+    const [iris, otto] = hireWorkforce([
+      { id: "support.iris", declared: {}, body: "You answer questions." },
+      { id: "support.otto", declared: {}, body: "You answer questions." },
+    ]);
+    const channel = defineChannelFlow({ notify: notifyFor([iris!, otto!]) })();
     const state = createFlowState({
       flows: { [CHANNEL_KIND]: channel, [otto!.id]: otto! },
       stores: { default: { primary: inMemoryStores() } },
@@ -341,5 +350,83 @@ describe("V3 · the wake factory, off the app's own roster", () => {
     } finally {
       await state.dispose();
     }
+  });
+});
+
+describe("V3 · a restart onto the package's wake", () => {
+  it("lands the next post in the seat conversation the app's own wake opened before the move (BR-11)", async () => {
+    vi.resetModules();
+    vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
+    vi.stubEnv("GOAL_CONTROL", "");
+    const { notifyFor, notifyMember } = await import("@/workforce/channel-notify");
+    const { createKitchenSinkTestModelResolver } = await import("@/test/mock-flowstate");
+    const [otto] = hireWorkforce([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
+    const stores = inMemoryStores();
+
+    // The wake this app built for itself before it moved onto the package's,
+    // as it was in what finds a conversation: the dispatcher's name, target,
+    // entry and key.
+    const before = utility.keyedRouter({
+      name: "kitchen-sink-notify",
+      inputSchema: channelNotifyInputSchema,
+      blocks: {
+        "support.otto": dispatcher({
+          name: "wake-support.otto",
+          flowKind: "support.otto",
+          action: "onChannelPost",
+          inputSchema: channelNotifyInputSchema,
+          session: { key: (p: ChannelNotifyInput) => `channel:${p.channelId}` },
+        }),
+      },
+      select: (p: ChannelNotifyInput) => (p.author !== undefined ? "" : p.member),
+      fallback: notifyMember,
+    });
+
+    /** Boot on one wake, post once, wait for otto to hear it, and shut down. */
+    const runOn = async (notify: BlockDefinition<any, any>, body: string) => {
+      const channel = defineChannelFlow({ notify })();
+      const state = createFlowState({
+        flows: { [CHANNEL_KIND]: channel, [otto!.id]: otto! },
+        stores: { default: { primary: stores } },
+        modelResolver: createKitchenSinkTestModelResolver(),
+      });
+      try {
+        const runtime = await state.getRuntime();
+        if ((await runtime.stores.session.get("room.one")) === undefined) {
+          await bind(runtime.stores, "room.one", ["support.otto"]);
+        }
+        const sent = await runAction({
+          orgId: DEFAULT_ORG_ID,
+          flow: channel,
+          actionName: "post",
+          input: { body },
+          userId: USER,
+          sessionId: "room.one",
+          stores: runtime.stores,
+          runtimeConfig: { ...runtime.runtimeConfig },
+        });
+        expect(sent.error).toBeUndefined();
+        const runs = async () =>
+          (await runtime.stores.session.list({ flowId: "support.otto", parentage: "all" })).filter(
+            (s) => s.parentSessionId === "room.one",
+          );
+        const heard = async () => {
+          for (const run of await runs()) {
+            const requests = await runtime.stores.request.list({ sessionId: run.id });
+            if (requests.some((r) => r.status === "completed" && JSON.stringify(r.input).includes(body))) return true;
+          }
+          return false;
+        };
+        await until(heard, `otto to hear "${body}"`);
+        return (await runs()).map((r) => r.id);
+      } finally {
+        await state.dispose();
+      }
+    };
+
+    const opened = await runOn(before, "[scenario:wake] before the move");
+    expect(opened).toHaveLength(1);
+    const after = await runOn(notifyFor([otto!]), "[scenario:wake] after the move");
+    expect(after).toEqual(opened);
   });
 });
