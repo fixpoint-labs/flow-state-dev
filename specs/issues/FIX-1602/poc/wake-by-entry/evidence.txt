@@ -1,0 +1,20 @@
+# run against fix/FIX-1594-agent-replies-in-channel @ a9bab737b, 2026-09-26
+--- no control
+P1 · desk.amy(agent): declares onChannelPost · desk.ivy(listener): declares onChannelPost · desk.ned(note): no onChannelPost · desk.oz(listener): declares onChannelPost
+P2 · heard lines:
+  desk.ivy | dsx_c47ec74239b281ddec18458b954c658c | 4a1317a2-3cae-47a7-a9b6-2a4565b5e2fd | first t1790428669060
+  desk.oz | dsx_776cd4a3512888de96c017e46f196d34 | 4a1317a2-3cae-47a7-a9b6-2a4565b5e2fd | first t1790428669060
+  desk.ivy | dsx_c47ec74239b281ddec18458b954c658c | bfa8511f-2a6d-4888-8276-81aec82a8735 | second t1790428669060
+  desk.oz | dsx_776cd4a3512888de96c017e46f196d34 | bfa8511f-2a6d-4888-8276-81aec82a8735 | second t1790428669060
+PASS — P1 and P2 hold
+--- control: GOAL_CONTROL=no-author-filter
+P1 · desk.amy(agent): declares onChannelPost · desk.ivy(listener): declares onChannelPost · desk.ned(note): no onChannelPost · desk.oz(listener): declares onChannelPost
+P2 · heard lines:
+  desk.ivy | dsx_c47ec74239b281ddec18458b954c658c | 25f191e6-8bbf-4c32-9caf-178c4fea5f86 | first t1790428672929
+  desk.oz | dsx_776cd4a3512888de96c017e46f196d34 | 25f191e6-8bbf-4c32-9caf-178c4fea5f86 | first t1790428672929
+  desk.ivy | dsx_c47ec74239b281ddec18458b954c658c | 31c75462-58c8-4a78-b0af-4533dede205f | second t1790428672929
+  desk.oz | dsx_776cd4a3512888de96c017e46f196d34 | 31c75462-58c8-4a78-b0af-4533dede205f | second t1790428672929
+  desk.ivy | dsx_c47ec74239b281ddec18458b954c658c | 68a4231c-acc0-492f-9f15-3fbaba48471e | from ivy t1790428672929
+  desk.oz | dsx_776cd4a3512888de96c017e46f196d34 | 68a4231c-acc0-492f-9f15-3fbaba48471e | from ivy t1790428672929
+FAIL —
+  - P2: a seat's own post woke desk.ivy, desk.oz

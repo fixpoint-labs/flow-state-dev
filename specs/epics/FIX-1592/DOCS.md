@@ -36,9 +36,9 @@ decide; this draft is the shared kitchen-sink text.
 
 | Material | Publisher | Specific draft |
 |---|---|---|
-| The opening's first two paragraphs | FIX-1585 publishes the seat half without the clerk sentence; FIX-1589 adds the clerk sentence; FIX-1594 adds the channel half, once every sentence is true | This document |
+| The opening's first two paragraphs | FIX-1585 publishes the seat half without the clerk sentence; FIX-1589 adds the clerk sentence; FIX-1594 adds the channel half, once every sentence is true. Complete before FIX-1601 (ER-19) | This document |
 | The `escalations` sentence, and `desk-clerk.ts`'s header | FIX-1589 | This document · its `DOCS.md` |
-| The fan-out paragraph, and `channel-notify.ts`'s header | FIX-1590 | This document · its `DOCS.md` |
+| The fan-out paragraph, and `channel-notify.ts`'s header | FIX-1590 publishes; FIX-1602 makes the last touch, when kitchen-sink moves onto stock seat-wake routing | This document · their `DOCS.md` |
 | The agent kind's receiver and posting, in the channels guide | FIX-1590, FIX-1594 | Their `DOCS.md` |
 | The composers | FIX-1585 | [Its `DOCS.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/spec/FIX-1585/specs/issues/FIX-1585/DOCS.md) |
 

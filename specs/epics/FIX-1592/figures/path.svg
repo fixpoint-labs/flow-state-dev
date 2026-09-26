@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 350" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 25 September 2026, drawn in steps rather than dates because the epic is unscheduled. Input lane: FIX-1459, PACKAGE.md, in development on another thread; it gates FIX-1585's implementation and FIX-1590, the two that edit agent-worker-flow.ts. Step 1: FIX-1585, its spec in review, then its implementation; the now line sits inside the spec bar. Step 2: FIX-1589, the clerk answers. Step 3: FIX-1590, a post reaches its agents. Step 4: FIX-1594, an agent replies in the channel. Then wrap. FIX-1591, the boards, sits below the chain as held, with no bar. The critical path runs from FIX-1459 through FIX-1585's implementation, FIX-1589, FIX-1590 and FIX-1594 to wrap.">
+<svg viewBox="0 0 940 452" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 26 September 2026, drawn in steps rather than dates because the epic is unscheduled. Input lane: FIX-1459, PACKAGE.md, done; it freed agent-worker-flow.ts. FIX-1598, the durable-hire goal check, its fix in review; it gates the closure run. Step 1: FIX-1585, spec and implementation merged. Step 2: FIX-1589, the clerk answers, merged. Step 3: FIX-1590, a post reaches its agents, its implementation PR in review; the now line sits inside that bar, and inside FIX-1602&#39;s spec, being written. Step 4: FIX-1594, an agent replies in the channel. Step 5: FIX-1602, Workforce&#39;s stock seat-wake routing, built once FIX-1590 and FIX-1594 merge; kitchen-sink moves onto it. Step 6: FIX-1601, the closure issue; its QA plan is merged, its run waits for every other child and FIX-1598; a clean run opens the closure PR, and that PR&#39;s merge releases wrap. FIX-1591, the boards, sits below the chain as held, with no bar. The critical path runs from FIX-1590&#39;s implementation through FIX-1594, FIX-1602 and FIX-1601&#39;s closure PR to wrap.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -11,6 +11,7 @@
     .bg     { fill:var(--surface); }
     .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
     .input  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
     .todo   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
     .axis   { stroke:var(--rule); stroke-width:1; }
     .tick   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 3; }
@@ -25,69 +26,88 @@
     .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-g    { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="350"/>
-  <text class="t-lbl" x="16" y="18">THE PATH &#183; AS OF 25 SEP 2026 &#183; UNSCHEDULED, SO THE AXIS IS ORDER, NOT DATES</text>
+    <rect class="bg" x="0" y="0" width="940" height="452"/>
+  <text class="t-lbl" x="16" y="18">THE PATH &#183; AS OF 26 SEP 2026 &#183; UNSCHEDULED, SO THE AXIS IS ORDER, NOT DATES</text>
 
   <g id="axis">
     <path class="axis" d="M232 44 L924 44"/>
     <text class="t-s" x="232" y="36">step 1</text>
-    <path class="tick" d="M404 44 L404 292"/>
-    <text class="t-s" x="412" y="36">step 2</text>
-    <path class="tick" d="M544 44 L544 292"/>
-    <text class="t-s" x="552" y="36">step 3</text>
-    <path class="tick" d="M704 44 L704 292"/>
-    <text class="t-s" x="712" y="36">step 4</text>
-    <path class="tick" d="M844 44 L844 292"/>
-    <text class="t-s" x="852" y="36">wrap</text>
-    <path class="now" d="M290 104 L290 292"/>
-    <text class="t-now" x="286" y="304" text-anchor="end">now</text>
+    <path class="tick" d="M372 44 L372 372"/>
+    <text class="t-s" x="380" y="36">step 2</text>
+    <path class="tick" d="M480 44 L480 372"/>
+    <text class="t-s" x="488" y="36">step 3</text>
+    <path class="tick" d="M608 44 L608 372"/>
+    <text class="t-s" x="616" y="36">step 4</text>
+    <path class="tick" d="M716 44 L716 372"/>
+    <text class="t-s" x="724" y="36">step 5</text>
+    <path class="tick" d="M824 44 L824 372"/>
+    <text class="t-s" x="832" y="36">step 6</text>
+    <path class="now" d="M584 128 L584 372"/>
+    <text class="t-now" x="590" y="127">now</text>
   </g>
 
   <g id="in-1459">
     <text class="t-ln" x="16" y="72">FIX-1459 &#183; PACKAGE.md</text>
-    <rect class="input" x="232" y="60" width="100" height="18" rx="3"/>
-    <text class="t-in" x="238" y="73">in development</text>
-    <text class="t-in" x="616" y="73">input &#183; another thread &#183; frees agent-worker-flow.ts</text>
-    <path class="gate" d="M332 69 L356 69 L356 110"/>
-    <path class="gate" d="M356 69 L604 69 L604 190"/>
+    <rect class="done" x="232" y="60" width="100" height="18" rx="3"/>
+    <text class="t-s" x="238" y="73">merged</text>
+    <text class="t-in" x="344" y="73">input &#183; done &#183; freed agent-worker-flow.ts</text>
   </g>
-  <path class="axis" d="M16 90 L924 90"/>
+  <g id="in-1598">
+    <text class="t-ln" x="16" y="97">FIX-1598 &#183; durable hire</text>
+    <rect class="input" x="232" y="84" width="100" height="18" rx="3"/>
+    <text class="t-in" x="238" y="97">fix #2291</text>
+    <text class="t-in" x="344" y="97">input &#183; green before the closure run</text>
+    <path class="gate" d="M560 93 L872 93 L872 334"/>
+  </g>
+  <path class="axis" d="M16 114 L924 114"/>
 
   <g id="l-1585">
-    <text class="t-ln" x="16" y="122">FIX-1585 &#183; talk from the page</text>
-    <rect class="flight" x="232" y="110" width="80" height="18" rx="3"/>
-    <text class="t-s" x="240" y="123">spec #2258</text>
-    <rect class="todo" x="318" y="110" width="80" height="18" rx="3"/>
-    <text class="t-s" x="326" y="123">impl PR</text>
+    <text class="t-ln" x="16" y="146">FIX-1585 &#183; talk from the page</text>
+    <rect class="done" x="232" y="134" width="64" height="18" rx="3"/>
+    <text class="t-s" x="238" y="147">spec</text>
+    <rect class="done" x="300" y="134" width="64" height="18" rx="3"/>
+    <text class="t-s" x="306" y="147">#2282</text>
   </g>
   <g id="l-1589">
-    <text class="t-ln" x="16" y="162">FIX-1589 &#183; the clerk answers</text>
-    <rect class="todo" x="412" y="150" width="124" height="18" rx="3"/>
-    <text class="t-s" x="420" y="163">spec &#8594; build</text>
+    <text class="t-ln" x="16" y="186">FIX-1589 &#183; the clerk answers</text>
+    <rect class="done" x="380" y="174" width="92" height="18" rx="3"/>
+    <text class="t-s" x="386" y="187">#2283</text>
   </g>
   <g id="l-1590">
-    <text class="t-ln" x="16" y="202">FIX-1590 &#183; a post reaches agents</text>
-    <rect class="todo" x="552" y="190" width="144" height="18" rx="3"/>
-    <text class="t-s" x="560" y="203">spec &#8594; build</text>
+    <text class="t-ln" x="16" y="226">FIX-1590 &#183; a post reaches agents</text>
+    <rect class="flight" x="488" y="214" width="112" height="18" rx="3"/>
+    <text class="t-s" x="494" y="227">impl #2290</text>
   </g>
   <g id="l-1594">
-    <text class="t-ln" x="16" y="242">FIX-1594 &#183; an agent replies</text>
-    <rect class="todo" x="712" y="230" width="128" height="18" rx="3"/>
-    <text class="t-s" x="720" y="243">spec &#8594; build &#183; README</text>
-    <text class="t-g" x="852" y="243">proof holds</text>
+    <text class="t-ln" x="16" y="266">FIX-1594 &#183; an agent replies</text>
+    <rect class="todo" x="616" y="254" width="92" height="18" rx="3"/>
+    <text class="t-s" x="622" y="267">build &#183; README</text>
   </g>
-  <path class="axis" d="M16 258 L924 258"/>
+  <g id="l-1602">
+    <text class="t-ln" x="16" y="306">FIX-1602 &#183; stock seat-wake routing</text>
+    <rect class="flight" x="488" y="294" width="112" height="18" rx="3"/>
+    <text class="t-s" x="494" y="307">spec, writing</text>
+    <rect class="todo" x="724" y="294" width="92" height="18" rx="3"/>
+    <text class="t-s" x="730" y="307">build &#183; thin KS</text>
+  </g>
+  <g id="l-1601">
+    <text class="t-ln" x="16" y="346">FIX-1601 &#183; closure PR &#8594; wrap</text>
+    <rect class="done" x="232" y="334" width="64" height="18" rx="3"/>
+    <text class="t-s" x="238" y="347">QA plan</text>
+    <rect class="todo" x="832" y="334" width="84" height="18" rx="3"/>
+    <text class="t-s" x="838" y="347">run &#8594; PR</text>
+  </g>
+  <path class="axis" d="M16 362 L924 362"/>
   <g id="l-1591">
-    <text class="t-ln" x="16" y="280">FIX-1591 &#183; the boards</text>
-    <text class="t-s" x="412" y="280">held for the owner's escalations call &#183; not a child &#183; on no chain</text>
+    <text class="t-ln" x="16" y="386">FIX-1591 &#183; the boards</text>
+    <text class="t-s" x="232" y="386">held for the owner's escalations call &#183; not a child &#183; on no chain</text>
   </g>
 
   <g id="critical">
-    <path class="crit" d="M398 119 L404 119 L404 159 L412 159"/>
-    <path class="crit" d="M536 159 L544 159 L544 199 L552 199"/>
-    <path class="crit" d="M696 199 L704 199 L704 239 L712 239"/>
-    <path class="crit" d="M840 239 L848 239"/>
-    <text class="t-g" x="16" y="326">Critical path: FIX-1459 &#8594; FIX-1585 impl &#8594; FIX-1589 &#8594; FIX-1590 &#8594; FIX-1594 &#8594; wrap.</text>
-    <text class="t-in" x="16" y="340">Amber lines: FIX-1459 gates the two builds that edit agent-worker-flow.ts. Specs may start early; builds wait.</text>
+    <path class="crit" d="M600 223 L608 223 L608 263 L616 263"/>
+    <path class="crit" d="M708 263 L716 263 L716 303 L724 303"/>
+    <path class="crit" d="M816 303 L824 303 L824 343 L832 343"/>
+    <text class="t-g" x="16" y="420">Critical path: FIX-1590 impl &#8594; FIX-1594 &#8594; FIX-1602 &#8594; FIX-1601 closure PR merged &#8594; wrap.</text>
+    <text class="t-in" x="16" y="436">Amber line: FIX-1598 gates the closure run. Green bars are merged. Specs may start early.</text>
   </g>
 </svg>
