@@ -91,7 +91,7 @@ interface ChannelManifest {
 
 `channels` is the array `channelInstances` and `openChannels` take. Reading the tree opens nothing. No instance is registered and no session exists yet.
 
-`@flow-state-dev/workforce/loader` imports `node:fs`, so it only runs on Node. The package root, where the binding calls live, stays isomorphic.
+`@flow-state-dev/workforce/loader` imports `node:fs`, so it only runs on Node. The package root, where the binding calls live, has no `node:fs` import. It is still server code, so a browser component takes the names it needs from `@flow-state-dev/workforce/browser`.
 
 ### A channel's id comes from the folders
 
