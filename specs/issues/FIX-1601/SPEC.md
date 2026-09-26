@@ -52,7 +52,7 @@ that child's leg.
 | **Signal** | Read after a reload. Each leg's pass condition is in [PLAN.md → Checks](PLAN.md#checks) |
 | **Input** | A fresh token per leg, so another run's lines never count |
 | **Anti-game** | Nothing is graded on a reply's wording, a return value or a CLI run. Only this run's tokens count |
-| **Control that must fail** | `drop-user-message` fails a. `name-only-notify` fails b, and c with it. `no-author-filter` and `post-without-author` each fail c. `echo` fails d. None may redden another leg. `name-only-notify` can't tell Workforce's stock seat-wake routing from kitchen-sink glue, so part 4's **stock routing** check does: it fails if kitchen-sink still carries its own `notifyFor` |
+| **Control that must fail** | `drop-user-message` fails a. `name-only-notify` fails b, and c with it. `no-author-filter` and `post-without-author` each fail c. `echo` fails d. None may redden another leg. `name-only-notify` can't tell Workforce's stock seat-wake routing from kitchen-sink glue, so part 4's **stock routing** check does ([PLAN.md → Part 4](PLAN.md#part-4--gap-sweep) holds its pass condition) |
 
 Part 3 re-runs all five children's goal checks; part 4 covers what the rest doesn't. Both run on
 the same commit ([PLAN.md](PLAN.md)).
