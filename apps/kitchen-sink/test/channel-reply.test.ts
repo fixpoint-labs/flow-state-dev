@@ -15,7 +15,12 @@
  *   BR-15  otto's own conversation holds the tool call and its own reply,
  *          never a copy of the line.
  *   BR-9   otto's line runs no seat: each agent heard the token once, in the
- *          person's post. Red under `GOAL_CONTROL=no-author-filter`.
+ *          person's post.
+ *
+ * These run on the default wiring only. The controls' red states
+ * (`GOAL_CONTROL=no-author-filter`, `GOAL_CONTROL=post-without-author`) are
+ * graded in `goals/kitchen-sink-talk/agent-replies-in-the-channel/run.mts` and
+ * the talk Playwright case, not here.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FlowState } from "@flow-state-dev/engine";
