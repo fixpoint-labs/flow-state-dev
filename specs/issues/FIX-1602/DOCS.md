@@ -34,10 +34,12 @@ For each post, and each member of the channel, it decides one thing: does this m
   of the built-in `agent` kind can. It runs its ordinary answer, with the post as its turn:
   `support.lead in support.desk: can someone look at the refund queue?`.
 - **Nobody runs** when the post names an `author`. Every author a post can carry is a member, so
-  that is a seat talking, and two agents that wake each other answer each other forever. There is
-  no switch for this. If you want agents to hear each other, write your own notify block.
+  that is a seat talking, and two agents that wake each other answer each other forever. A member
+  that would have run gets nothing at all. There is no switch for this. If you want agents to hear
+  each other, write your own notify block.
 - **Nobody runs** for a member whose kind can't hear a post, or who has no hired seat. That
-  includes a seat hired at runtime: the wake is built from the seats you pass at boot.
+  includes a seat hired after boot: the wake is built from the seats you pass at boot. A runtime
+  hire your boot reloads is one of those seats, and wakes.
 
 Each woken seat keeps one conversation per channel. The second post it hears lands in the same
 conversation, so it remembers the thread. Two posts that arrive together each run once, in no
@@ -45,15 +47,17 @@ guaranteed order. The conversation is a child of the channel's session, so an or
 listing does not show it. List with dispatch runs included (`include: "dispatch-runs"`, or
 `includeDispatchRuns` on `FlowNavigator`) to find it.
 
-Members who don't run get nothing, the same as a channel with no notify slot. To send them
-something else, pass a `fallback` block. It receives the same input a notify block does:
+Members whose seat can't hear a post get nothing, the same as a channel with no notify slot. To
+send them something else, pass a `fallback` block. It runs for those members on every post, and
+never for a member the wake would have run. It receives the same input a notify block does:
 
 ```ts
 defineChannelFlow({ notify: wakeMemberSeats(seats, { fallback: tellByEmail }) });
 ```
 
-The fallback also receives the writer's own delivery when a seat posts. Skip it there if you
-don't want to tell someone about their own post, as the handler earlier on this page does.
+When the writer is one of those members, the fallback receives the writer's own delivery. Skip
+it there if you don't want to tell someone about their own post, as the handler earlier on this
+page does.
 
 #### Making a kind of your own hear posts
 
@@ -80,7 +84,8 @@ export const triager = defineFlow({
 
 A post's `author` is the poster's own claim, and the channel does not verify it. Someone who can
 post can name a member as the author and so stop that one post from waking anyone. They can't make
-a seat run, and they can't reach anyone outside the channel. Verified authorship is not built yet.
+a seat run, make your fallback reach anyone it wouldn't reach anyway, or reach anyone outside the
+channel. Verified authorship is not built yet.
 
 A busy channel keeps growing each seat's conversation, and a seat remembers only as far back as
 its history window reaches. Nothing summarizes older posts for it yet.
@@ -95,20 +100,21 @@ Append one sentence:
 
 `wakeMemberSeats(seats, { fallback? })` returns a notify block that wakes each member whose hired
 seat declares the internal `onChannelPost` entry, once per post, in one conversation per seat per
-channel. A post with an `author` wakes nobody. Members who aren't woken get `fallback`, or nothing.
+channel. A post with an `author` wakes nobody. Members whose seat can't hear a post get
+`fallback`, or nothing.
 Pass the seats `hireWorkforce` returned, and hire before you build channels. See the channels
 guide, "Waking agent seats".
 
 Add a row to the Exports table, beside `defineChannelFlow`:
 
-| `wakeMemberSeats(seats, options?)` | The notify block that wakes each member seat declaring `onChannelPost`, never on a post with an `author`. `options.fallback` runs for everyone else. |
+| `wakeMemberSeats(seats, options?)` | The notify block that wakes each member seat declaring `onChannelPost`, never on a post with an `author`. `options.fallback` runs for members whose seat can't hear a post. |
 
 ## UPDATE · `apps/kitchen-sink/README.md` · the paragraph "Posting to a channel reaches its members…"
 
 Replace its last sentence with:
 
 > The wake is Workforce's `wakeMemberSeats`. `workforce/channel-notify.ts` only adds this app's
-> name-only line as the fallback, for every member the wake doesn't run.
+> name-only line as the fallback, for every member whose seat can't hear a post.
 
 ## UPDATE · `apps/kitchen-sink/workforce/channel-notify.ts` · file header
 

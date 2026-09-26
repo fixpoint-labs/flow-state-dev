@@ -2,15 +2,14 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
-(BR-n) and [DECISIONS.md](DECISIONS.md) (D-n). `tdd`. One PR, branched from `main` after FIX-1590
-and FIX-1594 have both merged.
+For the implementing agent. IDs cite [BUSINESS-RULES.md](BUSINESS-RULES.md) (BR-n) and
+[DECISIONS.md](DECISIONS.md) (D-n). `tdd`. One PR, from `main` after FIX-1590 and FIX-1594 merge.
 
 ## Surfaces
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · a new module beside the channel flow | `wakeMemberSeats(seats, { fallback? })`: one dispatcher per seat whose `internal.actions` owns `onChannelPost`, keyed `channel:<channelId>`, named `wake-<seatId>`; a keyed router on `member`, with any `author` routed to the fallback; a silent fallback by default (D1, D2) | BR-1 to BR-10, BR-12 to BR-15 |
+| S1 | `workforce` · a new module beside the channel flow | `wakeMemberSeats(seats, { fallback? })`: one dispatcher per seat whose `internal.actions` owns `onChannelPost`, addressed to `seat.id`, keyed `channel:<channelId>`, named `wake-<seatId>`; a router keyed on each seat's logical `seatId` setting, matched against `member`; an authored post sends wakeable members to a silent path, never the fallback; a silent fallback by default (D1, D2) | BR-1 to BR-10, BR-12 to BR-15 |
 | S2 | `workforce` · exports | Export S1 from the channel barrel and the package root. `patch` changeset | — |
 | S3 | kitchen-sink · `workforce/channel-notify.ts` | **Remove** `notifyFor`'s router, its dispatchers and `HiredSeatAddress`. Keep `notifyMember` as the name-only fallback. The notify block becomes `wakeMemberSeats(seats, { fallback: notifyMember })`, wrapped by S4's controls | BR-16, BR-17, BR-20 |
 | S4 | kitchen-sink · `lib/channel-wake-control.ts` and its caller | Both controls stay in the app. `name-only-notify` installs `notifyMember` alone. `no-author-filter` wraps the helper with an input adapter that drops `author` | BR-18, BR-19 |
@@ -39,15 +38,15 @@ flowchart TD
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S1 | Package unit tests on a real in-process host, not a mocked dispatcher: BR-1 to BR-10, BR-12 to BR-15. Seats come from `hireWorkforce` over a small tree, one kind with the entry and one without, plus the built-in agent kind for BR-1. BR-14 as a type test |
+| V1 | S1 | Unit tests on a real in-process host, not a mocked dispatcher: BR-1 to BR-10, BR-12 to BR-15. Seats from `hireWorkforce`: a kind with the entry, one without, the built-in agent. BR-5 with a seat minted from a stored roster row, as the boot reload does. BR-3 with an effectful fallback that must not run for wakeable members |
 | V2 | S2 | `wakeMemberSeats` resolves from `@flow-state-dev/workforce` in a consumer outside the package |
-| V3 | S4 | Kitchen-sink's existing `channel-wake` and `channel-reply` tests pass unchanged, except imports of removed symbols. BR-11: a seat conversation created before the move receives the next post. BR-18 and BR-19 each flip the check they name |
+| V3 | S4 | Kitchen-sink's `channel-wake` and `channel-reply` tests pass, changed only for removed imports and BR-17's seat-post case. BR-11: a seat conversation created before the move receives the next post. BR-18 and BR-19 each flip the check they name |
 | V4 | S6 | BR-20 by reading source: `channel-notify.ts` calls neither `dispatcher(` nor `keyedRouter(`; `SEAT_ASKS` has no `wake`. The workforce-shell suite otherwise green |
-| VG | S7 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/workforce-channels/a-fresh-host-wakes-its-member-agents/run.mts` PASSES, including its source leg over kitchen-sink's notify module (V4's reading, run by the goal), after the same run FAILED under `GOAL_CONTROL=no-wake` (woken leg) and under `GOAL_CONTROL=no-author-filter` (seat-post leg). Then FIX-1590's `a-post-runs-each-member-agent-once` and FIX-1594's `agent-replies-in-the-channel` PASS on the thinned kitchen-sink, each after its own control FAILED |
+| VG | S7 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/workforce-channels/a-fresh-host-wakes-its-member-agents/run.mts` PASSES, including its source leg over kitchen-sink's notify module, after the same run FAILED under `GOAL_CONTROL=no-wake` (woken leg) and under `GOAL_CONTROL=no-author-filter` (seat-post leg). Then FIX-1590's `a-post-runs-each-member-agent-once` and FIX-1594's `agent-replies-in-the-channel` PASS on the thinned kitchen-sink, each after its own control FAILED |
 
 One check per decision: D1 is V2 with VG's leg 0; D2 is V1's BR-2 and BR-6 cases; D3 is V3 with
-VG's kitchen-sink half. The second path (BP-035) is BR-11, an existing conversation, and BR-4, a
-seat hired at runtime.
+VG's kitchen-sink half. The second path (BP-035) is BR-11, an existing conversation, BR-4, a seat
+hired after boot, and BR-5, a runtime hire re-minted at boot.
 
 ## Pinned names
 
@@ -66,11 +65,11 @@ Everything else is yours to name, including the module file.
 | Rule | Because |
 |---|---|
 | Choose seats by the entry on the seat, never by kind name or a table | D2. A table is the drift this issue removes |
-| Addresses come only from the seats passed in, never from `members:` | A dispatch target read from stored data is caller-reachable input (BP-031), and the substrate refuses it anyway |
-| The author check sits before the seat lookup, in the package, with no option | It is the rule most worth not copying (epic D2); an option is a KS test knob in the package |
+| Match on the seat's logical `seatId`, dispatch to `seat.id`, never an address from `members:` | A reloaded seat's address is `<org>.<seatId>`. A target read from stored data is caller-reachable (BP-031) |
+| The author check lives in the package, after the seat check, with no option | The rule most worth not copying (epic D2). After the seat check, a forged `author` can't widen the fallback |
 | No kitchen-sink control, `SEAT_ASKS`, goal harness or e2e script in the package | The issue's invent-kill. Controls wrap the helper from the app |
 | Keep the key and the dispatcher names byte for byte | Existing conversations and traces continue (BP-030) |
-| No change below Workforce | Layer 2 owns seats and channels; Layer 1 offers the slot and the dispatcher, and that is enough |
+| No change below Workforce | Layer 2 owns seats and channels |
 
 ## Docs
 
@@ -83,18 +82,17 @@ FIX-1590's recipe rather than adding beside it.
 wakeMemberSeats(seats, { fallback = silent }):
     wakes = {}
     for seat in seats where seat's internal entries own "onChannelPost":   ← D2, the whole selection
-        wakes[seat.id] = dispatcher to seat.id · onChannelPost · keyed "channel:" + channelId
-    return keyed router over wakes:
-        select(post) = post.author set ? "no-such-seat" : post.member         ← epic D2
-        fallback     = fallback
+        wakes[seat's seatId setting] = dispatcher to seat.id · onChannelPost · keyed "channel:" + channelId
+    per post and member:
+        member not in wakes  → fallback
+        post.author set      → silent                                          ← epic D2
+        otherwise            → wakes[member]
 ```
 
-**POC:** [`poc/wake-by-entry/`](poc/wake-by-entry/README.md). It showed a hired seat carries its
-kind's internal entries, and that the sketch wakes each declaring member once per post, in one
-conversation per channel, and nobody on a seat's post; dropping the author check fails that leg.
-The premise held; nothing changed. No counted factual base needs a checker: the one count,
-"about fifty lines", is kitchen-sink's notify module less comments (47) plus the `wake` column, and
-nothing rests on it.
+**POC:** [`poc/wake-by-entry/`](poc/wake-by-entry/README.md). A hired seat carries its kind's
+internal entries, and a block built from them wakes each declaring member once per post, one
+conversation per channel, nobody on a seat's post. The premise held. No counted factual base needs
+a checker: "about fifty lines" is kitchen-sink's notify module less comments (47) plus the column.
 
 ## At implement time
 
@@ -106,6 +104,5 @@ nothing rests on it.
 
 ## Follow-ups
 
-- Runtime hires join the wake only at the next boot. A live roster read is its own issue, if
-  anyone asks.
+- Seats hired after boot join the wake at the next boot. A live roster read is its own issue.
 - Verified authorship (FIX-1493) would let the author check compare a verified principal.

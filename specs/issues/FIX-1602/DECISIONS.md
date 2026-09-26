@@ -58,16 +58,16 @@ seat.
 - **The author rule has no off switch.** A host that wants agents to hear each other writes its
   own block. An option would put kitchen-sink's test control in the package, which the issue rules
   out.
-- **The fallback defaults to silence.** A member who isn't woken gets nothing, the same as a
-  channel with no notify slot. Kitchen-sink passes its name-only line.
+- **The fallback defaults to silence**, like a channel with no notify slot. Kitchen-sink passes
+  its name-only line.
 - **The addresses are the hired seats, never the channel's stored members** (BP-031). The helper
   takes only what `hireWorkforce` returned, so a host has to hire before it builds channels.
-- **Boot-time seats only.** A runtime hire gets the fallback until the next boot, as in
-  kitchen-sink today (FIX-1590 BR-6).
+- **The seats passed at boot.** Members match on the logical `seatId`, so a runtime hire the boot
+  reload re-mints at `<org>.<seatId>` wakes. One hired after boot gets the fallback until the next.
 - **The conversation key stays `channel:<channelId>`**, and each dispatcher stays named
   `wake-<seatId>`. Kitchen-sink's conversations and traces read the same after the move.
-- **Authorship stays unverified** until FIX-1493. A post claiming a member's name withholds that
-  post's wakes; it can't forge one. The docs say so.
+- **Authorship stays unverified** until FIX-1493. A claimed `author` withholds that post's wakes
+  and nothing more: a member that would have woken gets silence, not the fallback.
 
 ## Considered and dropped
 
@@ -75,7 +75,7 @@ seat.
 |---|---|
 | The name-only line as the package's default fallback | Kitchen-sink's teaching line. It writes an item on the fan-out request a real app may not want |
 | Export the dispatcher-per-seat builder and leave the router to the host | Leaves the author rule in every host, which is the rule most worth not copying |
-| Put the helper in `@flow-state-dev/core` next to `keyedRouter` | Seats, hires and channels are Workforce concepts. Layer 1 stays generic |
+| Put the helper in `@flow-state-dev/core` | Seats and channels are Workforce concepts |
 
 ## Settled
 

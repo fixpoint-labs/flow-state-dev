@@ -82,7 +82,8 @@ points at the same helper as a new app.
 flowchart LR
   P["channel post"] -->|"once per member"| W["wakeMemberSeats"]
   W -->|"no author · seat declares onChannelPost"| D["that seat's dispatcher"]
-  W -->|"author set · or no entry · or not hired"| F["fallback · silent by default"]
+  W -->|"no entry · or not hired"| F["fallback · silent by default"]
+  W -->|"author set, seat would wake"| N["nothing"]
   D -->|"keyed channel:id"| S["the seat's conversation for this channel"]
 ```
 
