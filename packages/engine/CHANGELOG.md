@@ -1,5 +1,46 @@
 # @flow-state-dev/engine
 
+## 0.3.0
+
+### Minor Changes
+
+- b75c1ed: `fsdev run` and `fsdev chat` now run as whoever the app's resolver names (new `FlowState.resolveInProcessPrincipal`, with `source: "cli"` reserved for it), stop with exit 2 before writing anything when that resolver or a seat's pin refuses the terminal (a `--session` owned by another user or organization now also exits 2 instead of 1), and take `--org`/`--user` to name the identity locally (FIX-1551).
+- 211679a: New core block kind: `evaluator` (FIX-1554). It asks an evaluation model typed questions (`choice`, `score`, `boolean`) and returns typed answers, with the model's confidence when it reports one. Model strings resolve through your existing providers and gateways; models that can only generate are refused before any call. `BlockKind` and the trace's `blockKind` gain `"evaluator"`: code that switches on block kind should handle it. `ai` minimum raised to the first release with evaluation. `@ai-sdk/typesafe-ai` is an optional peer. `ModelResolver` gains an optional `resolveEvaluationModel`; a custom resolver without it runs generators as before and refuses evaluator model strings. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. `@flow-state-dev/testing` adds `mockEvaluationModel`.
+- 712dc22: A hired seat now keeps what it saves for a person (shared user-scoped resources and user state) under one user-scope key per organization and person, `<userId>:~org:<orgId>`, so the same person's seat in another organization starts empty and no seat reads the person's app-wide data; data seats saved before upgrading is not read for them until you run the optional offline copy in the persistence docs under "Upgrading: moving hired seats' stored data" (FIX-1538).
+- 7d4c413: Resource collections can be declared owner-private with `ownerPrivate: { param }`, and `ownerSegment(userId)` builds the owner key segment. Key segments beginning `~` are reserved for owner-private collections in every app, and flow registration refuses a single resource whose key has one. `defineResourceCollection` and flow registration no longer refuse collection patterns on Workforce's account, and `@flow-state-dev/core` no longer exports `assertRosterCollectionIsNotDeep`. Workforce's private roster collection is now owner-private; its refusal messages name the owner-private collection instead of the roster (FIX-1549).
+- a64132b: `InstancePinMismatchError.reason` is `"owning-user"` where it was `"roster-owner"` (FIX-1549).
+- 8195995: Schedule index rows are now identified by the storage cell the schedule lives in plus its key, so a person's same-named schedules in two hired seats (or a seat and their app-wide flow) are two rows and turning one off no longer stops the other (FIX-1546). `ScheduleIndexRow` gains a required `cell`, `ScheduleIndex.remove` takes `{ cell, key }` instead of `(userId, key)`, and `CollectionHookContext` gains `cell`, the storage key the instance is persisted under. A custom `ScheduleIndex` must key its storage on `(cell, key)` and store `cell`; the conformance suite covers it. The SQLite and Postgres `schedule_index` tables are re-keyed on `(cell, key)` automatically at schema init, adopting every existing row as its person's own cell; with `skipSchemaInit: true`, apply the upgrade SQL in the schedule index reference. BullMQ scheduler ids are built from the cell and key; an app-wide schedule for an ordinary user id keeps its existing scheduler id.
+
+### Patch Changes
+
+- e4fb1f1: `GET /api/flows` now lists a pinned flow instance that has its own `authentication.resolvePrincipal` to the callers that resolver accepts and the pin matches, the same callers who can already open and run it (FIX-1552).
+- 538cd1a: `POST /api/flows/users/:userId/check-interrupted` now only reports and sweeps in-flight requests in the caller's own tenant (the tenant header, `x-tenant-id` by default), so a caller on one tenant can no longer see another tenant's request ids or mark its live requests `interrupted` (FIX-1569).
+- 585b75b: `POST /api/flows/users/:userId/check-interrupted` and `createRecoveryClient().checkInterrupted({ staleThresholdMs })` now use the larger of the caller's `staleThresholdMs` and the server's `staleSweepThresholdMs`, so a smaller, zero, or negative value sweeps as if it were left out and a request that is still heartbeating is never marked `interrupted` (to sweep sooner, lower `staleSweepThresholdMs` on the server) (FIX-1571).
+- 1355483: The debug resource endpoints no longer list, count, or return another user's user-owned hired seats, and fetching content for a collection topic that doesn't match the collection's pattern now returns 404 (FIX-1535).
+- 8a55e23: A dispatch into a hired seat whose pin the sending session is outside now refuses at the seam as `flow-not-found`, the same answer an unregistered address gets, before any child session is written. A task board handing a row to such a seat now fails that row with the refusal instead of leaving it claimed until its lease lapses (FIX-1534).
+- 01b29f0: A hired seat stays with the organization and user that hired it, so another organization or roster peer cannot list, open, or run that seat (FIX-1529).
+- afb512f: `ItemQuery` gains `includeInFlight`: pass `false` to `ctx.session.items.history()` (or `all()`, `client()`, `selectForContext()`) to get earlier items only, without the items the current request has produced so far (FIX-1595).
+- c57890d: `GET /api/flows/sessions` and `GET /api/flows/active-requests` now list the rows of a flow instance that has its own `authentication.resolvePrincipal` to the callers that resolver accepts as their owner (and the instance's pin admits), the same callers who can already open those sessions (FIX-1566).
+- 0503c38: A schedule created with `schedules.create(key, { cron, kind, enabled })` on a `defineScheduleCollection` collection now fires and keeps firing after a reschedule: the resolver reads the row from resource state (`ScheduleResolutionStores` now requires `resourceState`), and a new `stampOrgId` collection option records the creating run's organization on the row, keeps it across updates, and refuses any write that names another organization (FIX-1545).
+- 8b8ba8d: Served requests that die during setup now settle as `failed` instead of hanging at `in_progress` (FIX-1511).
+- 64b3ed7: `ctx.session.appendJournal` and `ctx.session.setMetadata` no longer overwrite session state or journal entries another request committed meanwhile: they now write at the version they read, retry on conflict, and throw `ConcurrentModificationError` once retries run out (FIX-1376).
+- Updated dependencies [53b50f0]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [7d4c413]
+- Updated dependencies [3311cc2]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [407964a]
+  - @flow-state-dev/core@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
