@@ -1578,8 +1578,8 @@ The tool returns once the post is handed to the channel, as `{ handedTo, note }`
 channel, such as an author who is not a member, lands on the channel's request, not in the seat's
 turn. A refusal at dispatch fails the call by name: `session-not-found` for an id nobody opened,
 `session-not-addressable` for a session on another channel kind, and `external-dispatcher` behind
-a dispatcher that hands work to an external queue, where a delivery into an existing session is
-refused. So the tool works only where dispatch runs in process.
+a dispatcher that hands work to an external queue. The tool works only where dispatch runs in
+process.
 
 Also exported: `CHANNEL_POST_CAPABILITY` (`"channel-post"`), `POST_TO_CHANNEL_TOOL`
 (`"post-to-channel"`) and `postToChannelInputSchema`.
