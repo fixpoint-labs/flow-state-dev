@@ -10,45 +10,47 @@ cards are what that leaves between the children.
 
 ```mermaid
 flowchart TD
-  E["FIX-1592"] --> D1["D1 · three ways of talking, the clerk first: 1585, 1589, 1590, 1594"]
+  E["FIX-1592"] --> D1["D1 · three ways of talking, the clerk first: 1585, 1589, 1590, 1594, then 1602"]
   D1 -.->|"superseded by the owner"| X1["a usable desk, 1585 then 1589 then 1591"]
   D1 -.->|"superseded by the owner"| X1b["talk loop first, 1585 then 1590 then 1594, the clerk later"]
-  E --> D2["D2 · a post a seat wrote wakes no seat"]
+  E --> D2["D2 · a post a seat wrote wakes no seat: 1590 builds it, 1602 moves it into Workforce"]
   D2 -.->|"rejected"| X2["every post wakes, a hop limit stops loops"]
   E --> D3["D3 · keyless checks on the scripted model"]
   D3 -.->|"rejected"| X3["browser checks on a live model"]
 ```
 
 <a name="d1"></a>
-## D1 · The epic is the three ways of talking, with the clerk made honest first: FIX-1585 → FIX-1589 → FIX-1590 → FIX-1594, and Workforce changes where a path needs them · decided by the owner
+## D1 · The epic is the three ways of talking, with the clerk made honest first: FIX-1585 → FIX-1589 → FIX-1590 → FIX-1594 → FIX-1602, and Workforce changes where a path needs them · decided by the owner
 
 | | |
 |---|---|
 | **Instead of** | The re-scope's first order, 1585 → 1590 → 1594 with FIX-1589 a follow-on · or the first version: a usable support desk, 1585 → 1589 → 1591, with FIX-1590 cut and one package line allowed in the set |
 | **Because** | The goal is Jake's ([the real need](SPEC.md#the-goal-and-how-well-know-its-met)): a seat is a conversation, a channel reaches its agents, an agent answers back in the channel. The clerk goes first because the day FIX-1585 ships, `support.ada` is the first seat a person reaches, and it hands their note back word for word. A parrot that looks like it works is worse than a reply loop that isn't finished (the Prod/Eng stamp on #2269; the owner chose "Insert 1589" on a decision card). FIX-1590 needs a Workforce change, because core's dispatcher resolves only internal actions and `defineAgentWorkerFlow` declares only a public `run`; the owner lifted that fence |
-| **Locks in** | Workforce changes are allowed where a path needs them (ER-8): the agent kind keeps the person's message (ER-1), declares an internal receiver for posts (ER-2), and gets a way to post to its channel (ER-4). The clerk's `answer` calls a model and may file through the channel's `fileTask` (ER-20). The order is blocked-by on implementation (ER-14). FIX-1590 wakes member **agent** seats only (below). FIX-1591 is held, not a child. FIX-1585 widens to keep the message (ER-16) |
+| **Locks in** | Workforce changes are allowed where a path needs them (ER-8): the agent kind keeps the person's message (ER-1), declares an internal receiver for posts (ER-2), and gets a way to post to its channel (ER-4). The clerk's `answer` calls a model and may file through the channel's `fileTask` (ER-20). The order is blocked-by on implementation (ER-14). FIX-1602 is not a fourth path: it moves path two's wake into Workforce as stock seat-wake routing before FIX-1601. FIX-1590 wakes member **agent** seats only (below). FIX-1591 is held, not a child. FIX-1585 widens to keep the message (ER-16) |
 
 **Why the wake stays agent-only.** The first reason given, that waking a clerk would run the echo
 FIX-1589 replaces, is gone now that FIX-1589 lands first. Two reasons remain. A clerk answers in
 its own seat conversation, and only the agent kind gets a way to post back (FIX-1594), so a clerk
 woken by a post would answer where nobody reading the channel looks. And a woken clerk may file,
 so every post could put a row on `escalations`, which moves the call held with FIX-1591. Adding
-clerks to the wake is one entry in FIX-1590's wake, once that call is made.
+clerks to the wake is one entry in the wake's dispatchers (FIX-1590's, then FIX-1602's stock
+routing), once that call is made.
 
 **What would change my mind on the objective:** a path that needs core or engine to learn what
 a seat is. Then the layer rule and the outcome collide, and the Kill line fires.
 
 <a name="d2"></a>
-## D2 · A post a seat wrote wakes no seat; only a post with no seat author wakes members · FIX-1590 owns it, reversible
+## D2 · A post a seat wrote wakes no seat; only a post with no seat author wakes members · FIX-1590 builds it, FIX-1602 moves it into Workforce, reversible
 
 | | |
 |---|---|
 | **Instead of** | Every post wakes every other member agent, with a hop limit or a per-thread budget to stop loops · or FIX-1594 filters at the seat, declining to answer a seat |
 | **Because** | Two agents in one channel would answer each other forever. The fan-out is the one place that sees every post and already reads `author` to skip the writer, so the filter is one comparison where the wake is decided. A hop limit needs a counter carried across posts, which is new state for a demo |
-| **Locks in** | FIX-1590 builds the filter at the wake. FIX-1594 must stamp every seat post with the seat's `author` (ER-4), or its posts would wake everyone. Agents in one channel don't hear each other. `author` is an unverified claim, so a raw caller can name a seat and withhold a wake; it can't forge one (FIX-1493 owns verified identity) |
+| **Locks in** | FIX-1590 builds the filter at the wake, in kitchen-sink host glue; FIX-1602 moves it, unchanged, into Workforce's stock seat-wake routing. No other child implements it. FIX-1594 must stamp every seat post with the seat's `author` (ER-4), or its posts would wake everyone. Agents in one channel don't hear each other. `author` is an unverified claim, so a raw caller can name a seat and withhold a wake; it can't forge one (FIX-1493 owns verified identity) |
 
 **The owner can reverse this** when a flow needs agents to talk to each other. Reversing it means
-adding a loop stop in FIX-1590's wake, not a change to any other child.
+adding a loop stop in the wake: FIX-1590's host glue until FIX-1602 merges, Workforce's stock
+seat-wake routing after. No other child changes.
 
 <a name="d3"></a>
 ## D3 · The goal checks run keyless on kitchen-sink's scripted model, which can drive agent seats and the clerk once their entries are added
@@ -92,8 +94,9 @@ Fences from the FSD Architect and the cycle PM (2026-09-25), as the re-scope lea
 - **FIX-1589 inserted (owner, 2026-09-25):** the clerk is made honest before the talk loop. The
   Linear Manager called the talk loop "soft-after 1589"; this set reads that as blocked-by on
   implementation, which is what Linear wires, with specs free to start early (ER-14).
-- **FIX-1602 added (owner, 2026-09-26):** path two's fan-out moves into Workforce as a required
-  child, built after FIX-1594, so the closure run grades the stock path. Its Linear text's
+- **FIX-1602 added (owner, 2026-09-26):** path two's wake moves into Workforce as stock
+  seat-wake routing (the dispatchers and the author filter, on the existing `channel-fan-out`
+  loop, not a second fan-out layer), a required child, built after FIX-1594, so the closure run grades the stock path. Its Linear text's
   "soft-after, not a child" is superseded (ER-14, ER-17).
 - **FIX-1591 held:** not a child and not on the chain, pending the owner's `escalations` versus
   boot-warning call.

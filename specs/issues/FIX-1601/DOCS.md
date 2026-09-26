@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-**No reader-facing documentation changes.** This issue proves what the four children shipped
+**No reader-facing documentation changes.** This issue proves what the five children shipped
 and publishes nothing a user of the framework or of kitchen-sink reads.
 
 - **What it adds** is a goal check under `goals/` and a QA report in the closure PR. The goal

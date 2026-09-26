@@ -33,7 +33,7 @@ reaches each agent in it, and an agent that heard the post can answer back in th
 | **The real need** | Jake, 2026-09-25: *"A seat is a direct conversation. I should be able to talk to a seat using the normal agent flow that comes with workforce. A seat is just a specific agent with its own memory and its own identity. A channel is a way of talking to two or more agents, or one agent under a specific topic, work stream, or whatever. The system needs to show that if you talk to a channel, it sends it to the agents, and if you talk to the agents, then you're just talking to the agent. But the system also needs to show that if you talk to an agent through a channel, that the agent can respond back to that channel."* |
 | **Smaller, and rejected** | "Seats and channels are reachable from the page." FIX-1585 alone meets it while the clerk parrots and a post runs nobody. "A post reaches its agents" without FIX-1594 drops Jake's last sentence |
 | **Bigger, and not this epic's** | "A working support desk": boards drained and `escalations` served (FIX-1591, held), agents talking to each other (D2 reversed) |
-| **Not done if** | Every child is Done but the four checks never ran on one `main` commit · a check passes only with a key, or only from the CLI · the agent's channel reply wakes the other agent · the clerk's reply is a fixed string · leg b passes on kitchen-sink's own fan-out, not Workforce's stock one (FIX-1602) |
+| **Not done if** | Every child is Done but the four checks never ran on one `main` commit · a check passes only with a key, or only from the CLI · the agent's channel reply wakes the other agent · the clerk's reply is a fixed string · leg b passes on kitchen-sink's own wake glue, not Workforce's stock seat-wake routing (FIX-1602) |
 
 ```mermaid
 flowchart LR
@@ -83,9 +83,9 @@ FIX-1601 is the closure issue.
 |---|---|---|---|
 | [FIX-1585](https://linear.app/fixpoint-labs/issue/FIX-1585) · talk from the page | Channel and seat composers; the agent seat keeps the person's message | Path one; nothing below is reachable without it | Done · spec [#2258](https://github.com/fixpoint-labs/flow-state-dev/pull/2258), impl [#2282](https://github.com/fixpoint-labs/flow-state-dev/pull/2282) |
 | [FIX-1589](https://linear.app/fixpoint-labs/issue/FIX-1589) · the clerk answers | The clerk's `answer` calls a model, or files the note through the channel's `fileTask` | Path one for the clerk, which otherwise parrots | Done · [#2283](https://github.com/fixpoint-labs/flow-state-dev/pull/2283) |
-| [FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590) · a post reaches its agents | Each member agent seat runs once on a post with no seat author, through an internal receiver on the agent kind | Path two ([D1](DECISIONS.md#d1)) | In Development · impl [#2290](https://github.com/fixpoint-labs/flow-state-dev/pull/2290) in review |
+| [FIX-1590](https://linear.app/fixpoint-labs/issue/FIX-1590) · a post reaches its agents | Each member agent seat runs once on a post with no seat author, through an internal receiver on the agent kind | Path two ([D1](DECISIONS.md#d1)); proves ER-2 and ER-3, and its host wiring is promoted in FIX-1602 | In Development · impl [#2290](https://github.com/fixpoint-labs/flow-state-dev/pull/2290) in review |
 | [FIX-1594](https://linear.app/fixpoint-labs/issue/FIX-1594) · an agent replies in the channel | An agent seat posts into a channel it belongs to, authored as itself | Path three | In Development · spec [#2280](https://github.com/fixpoint-labs/flow-state-dev/pull/2280) merged; build after FIX-1590 |
-| [FIX-1602](https://linear.app/fixpoint-labs/issue/FIX-1602) · stock notify fan-out · required | Workforce's stock channel→agent fan-out; kitchen-sink thins onto it | The closure grades path two on the stock path, not on kitchen-sink glue ([ER-17](BUSINESS-RULES.md#the-proof)) | Backlog · spec on `spec/FIX-1602`; build after FIX-1590 and FIX-1594 |
+| [FIX-1602](https://linear.app/fixpoint-labs/issue/FIX-1602) · stock seat-wake routing · required | Stock seat-wake routing in Workforce: the dispatchers and the author filter, on the existing `channel-fan-out` loop, not a second fan-out layer. Kitchen-sink thins onto it | The closure grades path two on the stock path, not on kitchen-sink glue ([ER-17](BUSINESS-RULES.md#the-proof)) | Backlog · spec on `spec/FIX-1602`; build after FIX-1590 and FIX-1594 |
 | [FIX-1601](https://linear.app/fixpoint-labs/issue/FIX-1601) · closure · required | The QA plan, per [the closure issue](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa), run on one `main` commit | Proves the assembled set, which no child's check does ([ER-17](BUSINESS-RULES.md#the-proof)) | QA plan [#2288](https://github.com/fixpoint-labs/flow-state-dev/pull/2288) merged · runs after the other five and FIX-1598 |
 
 **2 done · 2 in development · 1 spec being written · the closure plan merged.** Wrap needs FIX-1601's closure PR merged, which a
@@ -101,7 +101,7 @@ flowchart LR
   D -->|"an honest clerk first"| B["FIX-1590 · a post reaches its agents"]
   A -->|"composers, the D3 map"| B
   B -->|"a woken seat, the wake rule"| C["FIX-1594 · an agent replies in the channel"]
-  B -->|"the fan-out it promotes"| F["FIX-1602 · stock notify fan-out"]
+  B -->|"the wake it promotes"| F["FIX-1602 · stock seat-wake routing"]
   C -->|"both paths merged"| F
   A & D & B & C & F -->|"merged, on one main commit"| Z["FIX-1601 · closure · required"]
   X["FIX-1598 · durable-hire check, red on main"] -.->|"green before the closure run"| Z
@@ -132,11 +132,13 @@ a post reaches its agents, an agent answers back in the channel, proved in a bro
 key. If wrong: the page still can't show Jake's last sentence, or we carry a leg nobody needed.
 
 1. **[D1](DECISIONS.md#d1) · The three ways of talking, with the clerk made honest first:
-   1585 → 1589 → 1590 → 1594, and Workforce changes where a path needs them.** The owner chose
-   this on 2026-09-25. If wrong: the talk loop waits one issue longer than it had to, while the
+   1585 → 1589 → 1590 → 1594 → 1602, and Workforce changes where a path needs them.** The owner
+   chose this on 2026-09-25. FIX-1602 is not a fourth way of talking: it moves path two's wake
+   into Workforce as stock seat-wake routing, before FIX-1601 runs. If wrong: the talk loop waits one issue longer than it had to, while the
    page shows a clerk that answers.
 2. **[D2](DECISIONS.md#d2) · A post a seat wrote wakes no seat.** Only a post with no seat author
-   wakes members. If wrong: two agents in one channel answer each other and never stop, or, the
+   wakes members. FIX-1590 builds the rule in host glue; FIX-1602 moves it into Workforce's stock
+   seat-wake routing; no other child implements it. If wrong: two agents in one channel answer each other and never stop, or, the
    other way, agents never hear each other. Reversible in one rule.
 
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The rules every child obeys:

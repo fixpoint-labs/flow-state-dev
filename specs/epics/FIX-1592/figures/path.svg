@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 452" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 26 September 2026, drawn in steps rather than dates because the epic is unscheduled. Input lane: FIX-1459, PACKAGE.md, done; it freed agent-worker-flow.ts. FIX-1598, the durable-hire goal check, its fix in review; it gates the closure run. Step 1: FIX-1585, spec and implementation merged. Step 2: FIX-1589, the clerk answers, merged. Step 3: FIX-1590, a post reaches its agents, its implementation PR in review; the now line sits inside that bar, and inside FIX-1602&#39;s spec, being written. Step 4: FIX-1594, an agent replies in the channel. Step 5: FIX-1602, Workforce&#39;s stock notify fan-out, built once FIX-1590 and FIX-1594 merge; kitchen-sink moves onto it. Step 6: FIX-1601, the closure issue; its QA plan is merged, its run waits for every other child and FIX-1598; a clean run opens the closure PR, and that PR&#39;s merge releases wrap. FIX-1591, the boards, sits below the chain as held, with no bar. The critical path runs from FIX-1590&#39;s implementation through FIX-1594, FIX-1602 and FIX-1601&#39;s closure PR to wrap.">
+     aria-label="The path as of 26 September 2026, drawn in steps rather than dates because the epic is unscheduled. Input lane: FIX-1459, PACKAGE.md, done; it freed agent-worker-flow.ts. FIX-1598, the durable-hire goal check, its fix in review; it gates the closure run. Step 1: FIX-1585, spec and implementation merged. Step 2: FIX-1589, the clerk answers, merged. Step 3: FIX-1590, a post reaches its agents, its implementation PR in review; the now line sits inside that bar, and inside FIX-1602&#39;s spec, being written. Step 4: FIX-1594, an agent replies in the channel. Step 5: FIX-1602, Workforce&#39;s stock seat-wake routing, built once FIX-1590 and FIX-1594 merge; kitchen-sink moves onto it. Step 6: FIX-1601, the closure issue; its QA plan is merged, its run waits for every other child and FIX-1598; a clean run opens the closure PR, and that PR&#39;s merge releases wrap. FIX-1591, the boards, sits below the chain as held, with no bar. The critical path runs from FIX-1590&#39;s implementation through FIX-1594, FIX-1602 and FIX-1601&#39;s closure PR to wrap.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -84,7 +84,7 @@
     <text class="t-s" x="622" y="267">build &#183; README</text>
   </g>
   <g id="l-1602">
-    <text class="t-ln" x="16" y="306">FIX-1602 &#183; stock notify fan-out</text>
+    <text class="t-ln" x="16" y="306">FIX-1602 &#183; stock seat-wake routing</text>
     <rect class="flight" x="488" y="294" width="112" height="18" rx="3"/>
     <text class="t-s" x="494" y="307">spec, writing</text>
     <rect class="todo" x="724" y="294" width="92" height="18" rx="3"/>

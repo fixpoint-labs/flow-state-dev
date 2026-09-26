@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 368" role="img" aria-label="Two panels over a line of main commits. Today: the four child checks, FIX-1585, FIX-1589, FIX-1590 and FIX-1594, each sit on a different commit, green alone, never run together. After: one main commit, picked after the last child merges, carries four stacked parts: the end-to-end goal check, the clerk journey, all four children's goal checks re-run, and a gap sweep of what the rest does not grade. A finding is filed under the epic and sends the whole stack round again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 940 368" role="img" aria-label="Two panels over a line of main commits. Today: the four child checks, FIX-1585, FIX-1589, FIX-1590 and FIX-1594, each sit on a different commit, green alone, never run together. After: one main commit, picked after the last child merges, carries four stacked parts: the end-to-end goal check, the clerk journey, all five children's goal checks re-run, and a gap sweep of what the rest does not grade. A finding is filed under the epic and sends the whole stack round again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -53,7 +53,7 @@
     <text class="t-b" x="612" y="116">2 · the clerk journey, leg d</text>
     <text class="t-s" x="612" y="132">ada answers or files · a post never wakes her</text>
     <rect class="n-part" x="600" y="148" width="324" height="44" rx="5"/>
-    <text class="t-b" x="612" y="168">3 · all four children's checks, re-run</text>
+    <text class="t-b" x="612" y="168">3 · all five children's checks, re-run</text>
     <text class="t-s" x="612" y="184">1585 · 1589 · 1590 · 1594 · ER-18 · Playwright</text>
     <rect class="n-part" x="600" y="200" width="324" height="44" rx="5"/>
     <text class="t-b" x="612" y="220">4 · the gap sweep</text>
