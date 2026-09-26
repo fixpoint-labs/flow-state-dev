@@ -9,14 +9,14 @@
  *   wakes the agent members too. A check that a seat's own post runs no seat
  *   must FAIL under it.
  *
- * Honoured only under `KITCHEN_SINK_TEST_MODE=1`, so a control can never reach
- * a deployed build. A test seam, kept in `lib/` so the notify block does not
- * import from `test/`.
+ * Honoured only under `KITCHEN_SINK_TEST_MODE=1` (`goalControl`), so a control
+ * can never reach a deployed build. A test seam, kept in `lib/` so the notify
+ * block does not import from `test/`.
  */
+import { goalControl } from "./goal-control";
 
 /** The channel-wake control in force, or `undefined` when none is. */
 export function channelWakeControl(): "name-only-notify" | "no-author-filter" | undefined {
-  if (process.env.KITCHEN_SINK_TEST_MODE !== "1") return undefined;
-  const control = process.env.GOAL_CONTROL;
+  const control = goalControl();
   return control === "name-only-notify" || control === "no-author-filter" ? control : undefined;
 }

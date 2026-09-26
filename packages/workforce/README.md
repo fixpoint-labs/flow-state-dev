@@ -1562,6 +1562,28 @@ session whose principal names no organization belongs to the default organizatio
 cannot start a seat address, so a hire there is refused before anything is written. Configure a
 `resolvePrincipal` that returns an `orgId` on the flow that mounts these.
 
+### Posting to a channel from a seat
+
+`channelPostCapability` puts one tool, `post-to-channel`, on a worker kind's catalog. Install it
+with `defineAgentWorkerFlow({ uses: [channelPostCapability] })`, and a seat names the tool in
+`tools:` to use it. Its input is `{ channel, body }` and nothing else, so an `author` from the
+model is refused.
+
+The line is posted through the built-in channel kind's `post`, with the seat's `seatId` (its
+record id, as `members:` lists it) as `author`, so the channel's member check applies and the
+fan-out can see a seat wrote it. A seat whose settings carry no `seatId` is refused by name and
+posts nothing.
+
+The tool returns once the post is handed to the channel, as `{ handedTo, note }`. A refusal by the
+channel, such as an author who is not a member, lands on the channel's request, not in the seat's
+turn. A refusal at dispatch fails the call by name: `session-not-found` for an id nobody opened,
+`session-not-addressable` for a session on another channel kind, and `external-dispatcher` behind
+a dispatcher that hands work to an external queue. The tool works only where dispatch runs in
+process.
+
+Also exported: `CHANNEL_POST_CAPABILITY` (`"channel-post"`), `POST_TO_CHANNEL_TOOL`
+(`"post-to-channel"`) and `postToChannelInputSchema`.
+
 ## The inventory
 
 The tree tells you what a workforce is meant to be. A `WORKER.md` declares a seat, a `CHANNEL.md`

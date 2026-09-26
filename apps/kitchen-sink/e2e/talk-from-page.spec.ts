@@ -24,6 +24,11 @@
  * the channel, the post heard once with the reply under it after a reload,
  * and a second post lands in the same conversation), and BR-2 (no clerk or
  * runner seat lists a run of the channel).
+ *
+ * And by `specs/issues/FIX-1594/BUSINESS-RULES.md`: BR-2, BR-12 and BR-13
+ * (`support.otto`, woken by a post, answers in `support.desk` itself; the line
+ * is labelled `support.otto` after a reload) and BR-9 (its line wakes nobody:
+ * each agent seat heard the token once, in the person's post).
  */
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -269,5 +274,58 @@ test("a post to support.desk runs each agent seat once, in its own conversation 
     await open(page, seat);
     await expect(rail(page).locator(`ul[data-leaf="${seat}"]`)).toBeVisible();
     await expect(channelRun(page, seat, "support.desk")).toHaveCount(0);
+  }
+});
+
+test("a woken support.otto answers in support.desk under its own name, and its line wakes nobody", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  const mark = `reply-token-${token()}`;
+  const line = `[scenario:reply-in-channel] ${mark} when do refunds post?`;
+  await openShell(page);
+  await open(page, "channel");
+  await row(page, "support.desk").click();
+  const channel = picked(page);
+  await channel.getByLabel("Post to this channel").fill(line);
+  await channel.getByRole("button", { name: "Send" }).click();
+  await expect(channel.getByTestId("channel-line").filter({ hasText: line })).toHaveCount(1);
+
+  // Otto's line is written by the channel's own request, after otto's run.
+  // Let it land, and both agents answer, before the reload; nothing here is
+  // graded, so what did not happen fails below, on what the page shows.
+  await expect
+    .poll(async () => (await page.request.get("/api/flows/sessions/support.desk/state?include_items=true&item_types=component&limit=1000")).text())
+    .toContain(`[reply:in-channel] ${mark}`);
+  for (const seat of ["support.iris", "support.otto"]) {
+    await expect
+      .poll(async () => {
+        const listed = await page.request.get(`/api/flows/sessions?flowId=${seat}&include=dispatch-runs&limit=100`);
+        const { sessions } = (await listed.json()) as { sessions: Array<{ id: string; parentSessionId?: string | null }> };
+        const run = sessions.find((s) => s.parentSessionId === "support.desk");
+        if (run === undefined) return "";
+        return (await page.request.get(`/api/flows/sessions/${run.id}/state?include_items=true&item_types=message&limit=1000`)).text();
+      })
+      .toContain(mark);
+  }
+  // Time for a wrongly woken seat to run, so its absence below is not a race.
+  await page.waitForTimeout(1_500);
+
+  await page.reload();
+  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+  await open(page, "channel");
+  await row(page, "support.desk").click();
+  const reply = picked(page).getByTestId("channel-line").filter({ hasText: `[reply:in-channel] ${mark}` });
+  await expect(reply).toHaveCount(1);
+  await expect(reply.getByTestId("channel-line-label")).toHaveText("support.otto");
+
+  await open(page, "agent");
+  for (const seat of ["support.iris", "support.otto"]) {
+    await open(page, seat);
+    await channelRun(page, seat, "support.desk").click();
+    // The person's post, heard once; otto's line never reached a seat.
+    const heard = picked(page).locator('[data-message-role="user"]').filter({ hasText: mark });
+    await expect(heard).toHaveCount(1);
+    await expect(heard).toContainText(`devuser in support.desk: ${line}`);
   }
 });

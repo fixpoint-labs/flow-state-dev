@@ -1,0 +1,11 @@
+{
+  "port": 3040,
+  "channel": { "kind": "channel", "id": "support.desk" },
+  "replier": { "kind": "agent", "id": "support.otto" },
+  "agents": [
+    { "kind": "agent", "id": "support.iris" },
+    { "kind": "agent", "id": "support.otto" }
+  ],
+  "marker": "[scenario:reply-in-channel]",
+  "lineMarker": "[reply:in-channel]"
+}

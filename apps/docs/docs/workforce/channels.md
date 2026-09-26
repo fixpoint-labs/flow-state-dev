@@ -288,7 +288,9 @@ Your app supplies the addresses. The `notify` slot takes any block, so to reach 
 
 A seat of the built-in `agent` kind has an entry for exactly this. `onChannelPost` takes the
 delivery your notify block was handed and runs the seat's ordinary answer on it, with the post as
-the seat's turn: `support.lead in support.desk: can someone look at the refund queue?`. Only a
+the seat's turn, `<writer> in <channel>: <body>`. The writer is the post's `author`, or its
+`principal` when it has none, and the channel is the channel's id:
+`support.lead in support.desk: can someone look at the refund queue?`. Only a
 dispatcher reaches it. Calling it from a client is refused, the same as any internal entry.
 
 ```ts
@@ -340,6 +342,48 @@ members can still get whatever your fallback sends.
 
 A busy channel keeps growing that conversation, and a seat remembers only as far back as its
 history window reaches. Nothing summarizes the older posts for it yet.
+
+## A seat answering in the channel
+
+Waking a seat runs it in its own conversation, so its answer stays there unless it posts it. To
+let an agent seat answer where the post was made, give its kind the channel-post capability and
+name the tool in the seat's worker file:
+
+```ts
+import { channelPostCapability, defineAgentWorkerFlow } from "@flow-state-dev/workforce";
+
+defineAgentWorkerFlow({ uses: [channelPostCapability] });
+```
+
+```md
+---
+description: Answers questions on the support desk.
+tools: [post-to-channel]
+---
+```
+
+The model calls `post-to-channel` with the channel's id and what to say. A woken seat reads the id
+off the post it heard, from the turn described in [Waking an agent seat](#waking-an-agent-seat). The tool posts through that channel's own
+`post`, and the line's `author` is the seat's `seatId`: its record id, the name the channel's
+`members:` lists. The model cannot set it. The tool's input is `{ channel, body }` and nothing
+else, so a call that adds an `author` is refused. A seat that doesn't name the tool is never
+offered it.
+
+A seat's post always carries an `author`. Skip the wake for posts with an `author`, as in
+[Waking an agent seat](#waking-an-agent-seat), and seats won't wake each other.
+
+What it won't do:
+
+- The seat must be a member. The channel refuses any other author and writes nothing, and the
+  seat is not told: the tool reports that it handed the post over, not that it landed. The
+  refusal shows up as a failed request on the channel's session.
+- Only the built-in channel kind takes these posts. A kind of your own would need a `post` that
+  another flow can call. A channel id nobody opened, or one on another kind, fails the call by
+  name.
+- It needs dispatch to run in process. Behind a host that hands dispatch to an external queue,
+  the tool call fails with `external-dispatcher`.
+- The channel can't verify the name. The server sets it, and the line is stored with
+  `authorVerified: false` like any other post.
 
 ## Holding a board
 

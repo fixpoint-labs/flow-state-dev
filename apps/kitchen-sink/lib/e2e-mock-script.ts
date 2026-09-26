@@ -6,7 +6,8 @@
  * assistant-generator, auto-title). Each gets its own mock instance below.
  * An `agent` seat answers through `agent-answer` (or
  * `agent-answer-with-activate-tool`, when the seat turns that tool on); both
- * share `agentSeatMock`, keyed on its own scenario markers. The `desk-clerk`
+ * share `agentSeatMock`, keyed on its own scenario markers, one of which
+ * answers in a channel through `post-to-channel`. The `desk-clerk`
  * kind answers through `desk-clerk-answer`, scripted by `deskClerkMock`: one
  * scenario answers, the other files the note through the kind's
  * `desk-clerk-file` tool and then says so.
@@ -88,6 +89,31 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
     // it as `<writer> in <channel>: <body>`, so the marker is still in the turn.
     match: (turn) => turn.includes("[scenario:wake]"),
     steps: [{ text: "[reply:wake] Heard it in the channel." }],
+  },
+  {
+    // A post the seat answers in the channel itself (FIX-1594). The first step
+    // calls `post-to-channel` with no text, so the real tool runs, into the
+    // channel the heard turn names; the second says so in the seat's own
+    // conversation. The line carries `[reply:in-channel]` and the post's
+    // `reply-token-…`, never the scenario marker, so a seat that hears the
+    // line does not answer it again. A seat without the tool posts nothing.
+    match: (turn) => turn.includes("[scenario:reply-in-channel]"),
+    steps: (turn) => {
+      const channel = /^"?\S+ in ([^\s:]+): /.exec(turn)?.[1] ?? "no-channel";
+      const token = /reply-token-[a-z0-9]+/.exec(turn)?.[0] ?? "no-token";
+      return [
+        {
+          toolCalls: [
+            {
+              toolCallId: `tc_${token}`,
+              toolName: "post-to-channel",
+              args: { channel, body: `[reply:in-channel] ${token} Refunds post on Fridays.` },
+            },
+          ],
+        },
+        { text: "[reply:in-channel] Answered in the channel." },
+      ];
+    },
   },
 ];
 

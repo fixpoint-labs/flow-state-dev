@@ -26,6 +26,7 @@
 import {
   channelBoardIds,
   channelInstances,
+  channelPostCapability,
   createSeatHireCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
@@ -43,6 +44,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
+import { channelPostControl } from "../lib/channel-post-control";
 import { workforceRegistrar } from "../lib/workforce-registrar";
 import { notifyFor } from "./channel-notify";
 import { blocks, channelKinds, kinds, packageBlocks, resourceModules, seatBlocks } from "./workforce.gen";
@@ -121,6 +123,14 @@ const discover = createWorkforceCapability({
 });
 
 /**
+ * `post-to-channel`, so an agent seat can answer in a channel it belongs to,
+ * under its own name. Offered, not granted: only a seat whose file names the
+ * tool can post, and in this app that is `support.otto`. The goal check's
+ * `post-without-author` control swaps in a stand-in, in test mode only.
+ */
+const channelPost = channelPostControl() ?? channelPostCapability;
+
+/**
  * The built-in worker kind, carrying what the team's folder declared.
  *
  * Registered under `agent`, so it is the kind every seat that names no `flow:`
@@ -134,7 +144,7 @@ const discover = createWorkforceCapability({
  * each seat decides which of it to use, and a key nobody names reaches nobody.
  */
 kitchenSinkKinds.agent = defineAgentWorkerFlow({
-  uses: [...capabilities, seatHire, discover],
+  uses: [...capabilities, seatHire, discover, channelPost],
   catalog: blocks,
 });
 
