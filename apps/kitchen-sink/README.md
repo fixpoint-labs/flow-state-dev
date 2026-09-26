@@ -198,12 +198,14 @@ The wiring is the part to copy: `workforce/hire.ts`, which adds `createSeatHireC
 pnpm install
 ```
 
-2. Copy the environment template and add your OpenAI API key:
+2. Copy the environment template and add your Vercel AI Gateway API key:
 
 ```bash
 cp apps/kitchen-sink/.env.local.example apps/kitchen-sink/.env.local
-# Edit .env.local and set OPENAI_API_KEY
+# Edit .env.local and set AI_GATEWAY_API_KEY
 ```
+
+Every model the app uses goes through the Vercel AI Gateway, so `AI_GATEWAY_API_KEY` is required. `OPENAI_API_KEY` is optional and only enables voice.
 
 3. Start the dev server:
 
