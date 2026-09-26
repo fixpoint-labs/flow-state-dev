@@ -1,0 +1,66 @@
+<svg viewBox="0 0 940 320" role="img"
+     aria-label="What's in the box: a dispatched OMP run is observed and cancelled through the shipped contract, captures a real question as attempt-correlated durable evidence, parks while the attempt and worker request end, and continues the same saved session after an answer. A fence marks that the runtime holds nothing durable and the manager owns the task, the inbox and the answer. Host tool-permission policy is composed in unchanged. The manager, inbox, answer action and operator surface are reused as is. Not built: upstream pi, an operator console, a second inbox or answer verb, operator-approved tool execution, worker suspension or live-held wait, a bespoke HTTP answer channel, a shared pi and OMP layer."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .reuse { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .gone  { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence { stroke:var(--code); stroke-width:1.2; stroke-dasharray:4 4; }
+    .dot   { fill:var(--code); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="596" height="186" rx="6"/>
+    <text class="t-lbl" x="32" y="38">IN THE BOX · WHAT A DISPATCHED OMP RUN GETS</text>
+    <circle class="dot" cx="36" cy="58" r="3"/>
+    <text class="t-b" x="50" y="62">Dispatched, observed, cancelled on the shipped contract</text>
+    <circle class="dot" cx="36" cy="86" r="3"/>
+    <text class="t-b" x="50" y="90">A real question, captured as durable attempt evidence</text>
+    <circle class="dot" cx="36" cy="114" r="3"/>
+    <text class="t-b" x="50" y="118">The task parks; the attempt and the request end</text>
+    <circle class="dot" cx="36" cy="142" r="3"/>
+    <text class="t-b" x="50" y="146">An answer continues the same saved session, later</text>
+    <path class="fence" d="M32 164 H596"/>
+    <text class="t-s" x="32" y="182">The runtime holds nothing durable. The manager owns</text>
+    <text class="t-s" x="32" y="195">the task, the inbox and the answer.</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="comp" x="628" y="16" width="296" height="80" rx="6"/>
+    <text class="t-lbl" x="644" y="38">COMPOSED IN BY THE HOST</text>
+    <text class="t-s" x="644" y="60">Tool permissions stay the host's</text>
+    <text class="t-s" x="644" y="76">configured allow / deny policy.</text>
+  </g>
+
+  <g id="reused">
+    <rect class="reuse" x="628" y="110" width="296" height="92" rx="6"/>
+    <text class="t-lbl" x="644" y="132">REUSED AS IS, NOT REBUILT</text>
+    <text class="t-s" x="644" y="154">The harness manager, the inbox,</text>
+    <text class="t-s" x="644" y="170">the answer action and the</text>
+    <text class="t-s" x="644" y="186">existing operator surface.</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="gone" x="16" y="218" width="908" height="86" rx="6"/>
+    <text class="t-lbl" x="32" y="240">NOT BUILT — REFUSED BY THIS SET</text>
+    <text class="t-x" x="32" y="262">Upstream pi support</text>
+    <text class="t-x" x="32" y="278">An operator console or FSD-in-pi extension</text>
+    <text class="t-x" x="32" y="294">A second inbox or answer verb</text>
+    <text class="t-x" x="478" y="262">Operator-approved tool execution</text>
+    <text class="t-x" x="478" y="278">Worker suspension or live-held human wait</text>
+    <text class="t-x" x="478" y="294">A bespoke HTTP answer channel · a shared pi/OMP layer</text>
+  </g>
+</svg>
