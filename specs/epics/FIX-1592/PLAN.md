@@ -24,10 +24,11 @@ doesn't touch it. FIX-1591 is held and off the chain. The dependency graph is in
 | **FIX-1589** the clerk answers | spec → impl PR | FIX-1585 | The D3 map (`desk-clerk` → `answer`) · the scripted model · the channel's `fileTask` | A model-backed `answer`, the answer-or-file decision, its clerk mock entry, a browser check (ER-20) | FIX-1590 | Small–medium |
 | **FIX-1590** a post reaches its agents | spec → impl PR | FIX-1589 · FIX-1585 · FIX-1459 | The D3 map · the notify slot · the scripted model | The agent kind's internal receiver; the wake of member agent seats (ER-2); the no-ping-pong filter (ER-3) | FIX-1594 | Medium |
 | **FIX-1594** an agent replies in the channel | spec → impl PR | FIX-1590 | A woken seat · the wake rule · FIX-1585's transcript | A seat's way to post to its channel, authored as itself (ER-4, ER-5); the README (ER-19) | Wrap | Medium |
+| **FIX-1601** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit | The four checks and each child's goal check | The QA report, a bug child per failure | Wrap | Medium |
 
 **Linear.** FIX-1585 blocks FIX-1589 and FIX-1590; FIX-1589 blocks FIX-1590 and FIX-1594;
-FIX-1590 blocks FIX-1594. All four are sub-issues of FIX-1592. FIX-1459 blocks FIX-1585 and
-FIX-1590; it stays another thread's issue, not a child. FIX-1589 also blocks FIX-1591, which is
+FIX-1590 blocks FIX-1594. All four block FIX-1601, the closure issue. All five are sub-issues
+of FIX-1592. FIX-1459 blocks FIX-1585 and FIX-1590; it stays another thread's issue, not a child. FIX-1589 also blocks FIX-1591, which is
 held and not a child.
 
 ## Where it is
@@ -42,7 +43,7 @@ links for live state.
 3. **FIX-1459 lands and FIX-1585's implementation merges** → FIX-1589 is built.
 4. **FIX-1589 merges** → FIX-1590 is built.
 5. **FIX-1590 merges** → FIX-1594 is built.
-6. **All four browser goal checks hold on one `main` commit** (ER-17, ER-18) and the README says
+6. **FIX-1601's run is clean on one `main` commit** (ER-17, ER-18) and the README says
    the three paths (ER-19) → wrap.
 
 ## Coordination seams to watch
