@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 430" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, three ways of talking: talk to a seat, where an agent seat keeps your message and its reply, and the desk clerk answers with a model or files your note onto a board (FIX-1585, FIX-1589); a post to a channel with no seat author runs each member agent seat once (FIX-1590); an agent seat replies into a channel it belongs to, under its own name (FIX-1594). The fence: Workforce changes where a path needs them; no Workforce word in core, engine, client or react; no kitchen-sink-only messaging API; one kind-to-action map; the clerk files only through the channel's fileTask; a post a seat wrote wakes no seat. Composed in by the app: the model, scripted in the browser checks; the one kind-to-action map; which members are agent seats. Replaced in one line: the model, and the no-ping-pong rule. Not built: the boards' drain and the escalations call (FIX-1591, held), Assistant tools that post or ask, channel admin, verified identity, Layer 1 substrate, live updates of others' posts.">
+     aria-label="What's in the box. In the box, three ways of talking: talk to a seat, where an agent seat keeps your message and its reply, and the desk clerk answers with a model or files your note onto a board (FIX-1585, FIX-1589); a post to a channel with no seat author runs each member agent seat once, through Workforce's stock seat-wake routing (FIX-1590, FIX-1602); an agent seat replies into a channel it belongs to, under its own name (FIX-1594). The fence: Workforce changes where a path needs them; no Workforce word in core, engine, client or react; no kitchen-sink-only messaging API; one kind-to-action map; the clerk files only through the channel's fileTask; a post a seat wrote wakes no seat. Composed in by the app: the model, scripted in the browser checks; the one kind-to-action map; which members are agent seats. Replaced in one line: the model, and the no-ping-pong rule. Not built: the boards' drain and the escalations call (FIX-1591, held), Assistant tools that post or ask, channel admin, verified identity, Layer 1 substrate, live updates of others' posts.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -37,7 +37,7 @@
     <text class="t-b" x="230" y="70">posts reach agents</text>
     <text class="t-s" x="230" y="88">each member agent seat</text>
     <text class="t-s" x="230" y="102">runs once on the post</text>
-    <text class="t-ok" x="230" y="138">FIX-1590</text>
+    <text class="t-ok" x="230" y="138">FIX-1590 &#183; FIX-1602</text>
     <rect class="door" x="404" y="50" width="176" height="100" rx="4"/>
     <text class="t-b" x="416" y="70">an agent replies in it</text>
     <text class="t-s" x="416" y="88">a post into its channel,</text>

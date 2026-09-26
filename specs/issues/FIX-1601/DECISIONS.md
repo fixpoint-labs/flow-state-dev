@@ -29,7 +29,7 @@ Solid edges are what was chosen. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | (a) The four child checks as the proof, as the epic first wrote ("no proof issue"). (b) One story that also sends ada a note between the otto message and the post |
 | **Because** | (a) passes whenever each piece works alone, which the children already showed. Only one session reaches the seams between them: the post landing in otto's direct chat, otto's desk line waking iris. Otto is the one seat in all three legs, so the story is his. (b) Ada answers in her own conversation and a post never runs her, so she is not a step in the story. A separate leg d keeps a failure naming which half broke |
-| **Locks in** | Part 3 still re-runs all four children's goal checks: one rule, no judgement about what the session already covers. Leg d is part 2's one journey, since legs a to c walk the other people-table rows. The script is committed under `goals/` so it outlives the wrap |
+| **Locks in** | Part 3 still re-runs every child's goal check: one rule, no judgement about what the session already covers. Leg d is part 2's one journey, since legs a to c walk the other people-table rows. The script is committed under `goals/` so it outlives the wrap |
 
 **What would change my mind:** a second agent seat that holds `post-to-channel`. Then the story
 should run on it too.
@@ -54,8 +54,9 @@ should run on it too.
 
 ## Decided, not asked
 
-- **The run starts only when all four children, FIX-1598 and the epic amendment
-  [#2289](https://github.com/fixpoint-labs/flow-state-dev/pull/2289) are merged and CI is
+- **The run starts only when all five children, FIX-1598 and the epic amendments
+  [#2289](https://github.com/fixpoint-labs/flow-state-dev/pull/2289) and
+  [#2294](https://github.com/fixpoint-labs/flow-state-dev/pull/2294) are merged and CI is
   green**, on one commit.
 - **Part 2 is one journey**, leg d. Kitchen-sink has one team, `support`, so "per team
   configuration" gives the same count.
@@ -87,3 +88,6 @@ should run on it too.
   cross-spec review's own C1 to C7; the flake rule became an engineering call.
 - **Review round 2** — D3 lost its carve-out: FIX-1598 blocks this issue and durable-hire must
   pass. The run waits on #2289 too.
+- **Epic amendment #2294** — FIX-1602 joins as a fifth child: the run waits on it, part 3
+  re-runs its check, and part 4 adds a stock-routing check, since `name-only-notify` can't tell
+  Workforce's routing from kitchen-sink glue.

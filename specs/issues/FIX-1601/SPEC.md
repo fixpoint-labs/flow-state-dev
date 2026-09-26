@@ -4,7 +4,7 @@
 
 Improvement · closure (QA) · kitchen-sink + `goals/` · medium · 1 PR after a clean run · epic
 [FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592), closure · required · runs after
-all four children, FIX-1598 and #2289 merge
+all five children (FIX-1602 included), FIX-1598, #2289 and #2294 merge
 
 ## Five people, before and after
 
@@ -18,7 +18,7 @@ all four children, FIX-1598 and #2289 merge
 
 ## The goal, and how we'll know it's met
 
-**On one `main` commit with all four children merged, a person in the kitchen-sink browser talks
+**On one `main` commit with all five children merged, a person in the kitchen-sink browser talks
 to a seat and keeps the conversation, posts to a channel that each agent in it hears once, and
 reads an agent's answer in that channel, with no model key, and every child's own check still
 passes on that commit.**
@@ -26,7 +26,7 @@ passes on that commit.**
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The [epic's goal](../../epics/FIX-1592/SPEC.md#the-goal-and-how-well-know-its-met), proven on the assembled set, as the [closure rule](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa) asks |
-| **Smaller, and rejected** | "All four child checks are green." Each can pass alone while the pieces break together, say a post landing in otto's direct chat |
+| **Smaller, and rejected** | "All five child checks are green." Each can pass alone while the pieces break together, say a post landing in otto's direct chat |
 | **Bigger, and not this issue's** | The boards drained (FIX-1591, held). Agents answering each other. A live-model check |
 | **Not done if** | The checks ran on different commits. One needed a key. One read a return value or the CLI instead of the page. A control never failed. A finding was deferred |
 
@@ -52,14 +52,14 @@ that child's leg.
 | **Signal** | Read after a reload. Each leg's pass condition is in [PLAN.md → Checks](PLAN.md#checks) |
 | **Input** | A fresh token per leg, so another run's lines never count |
 | **Anti-game** | Nothing is graded on a reply's wording, a return value or a CLI run. Only this run's tokens count |
-| **Control that must fail** | `drop-user-message` fails a. `name-only-notify` fails b, and c with it. `no-author-filter` and `post-without-author` each fail c. `echo` fails d. None may redden another leg |
+| **Control that must fail** | `drop-user-message` fails a. `name-only-notify` fails b, and c with it. `no-author-filter` and `post-without-author` each fail c. `echo` fails d. None may redden another leg. `name-only-notify` can't tell Workforce's stock seat-wake routing from kitchen-sink glue, so part 4's **stock routing** check does: it fails if kitchen-sink still carries its own `notifyFor` |
 
-Part 3 re-runs all four children's goal checks; part 4 covers what the rest doesn't. Both run on
+Part 3 re-runs all five children's goal checks; part 4 covers what the rest doesn't. Both run on
 the same commit ([PLAN.md](PLAN.md)).
 
 ## What changes
 
-![Two panels. Today: four child checks, each a box on its own commit along a commit line, none connected. After: one main commit carrying four stacked parts: the end-to-end goal check, the clerk journey, all four children's goal checks re-run, and a gap sweep of what the rest doesn't grade. A finding loops back to the epic and the whole stack runs again on a fresh commit.](figures/what-changes.svg)
+![Two panels. Today: four child checks, each a box on its own commit along a commit line, none connected. After: one main commit carrying four stacked parts: the end-to-end goal check, the clerk journey, all five children's goal checks re-run, and a gap sweep of what the rest doesn't grade. A finding loops back to the epic and the whole stack runs again on a fresh commit.](figures/what-changes.svg)
 
 Read the commit line. Today each check sits on a different commit. After, everything sits on
 one, and a finding sends the whole stack round again, not only its own repro.
