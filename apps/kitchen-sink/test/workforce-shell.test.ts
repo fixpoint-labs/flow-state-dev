@@ -9,12 +9,17 @@
  *
  * Red states produced before these were trusted:
  *   - drop `followup-runner` from `SEAT_KINDS`: the seat-kind case fails.
+ *   - drop `followup-runner`'s entry from `SEAT_ASKS`: the answering-action
+ *     case fails, naming the kind with no entry.
+ *   - misname `desk-clerk`'s field `note`: the answering-action case fails,
+ *     naming the field the kind actually takes.
  *   - drop one board from `SHELL_BOARDS`: the board case fails.
  *   - remove `workforcePanelResources` from the chat-agent flow: the
  *     declaration case fails, which is the state in which every panel read
  *     answers "unknown resource".
  */
 import { describe, expect, it } from "vitest";
+import { z, type ZodTypeAny } from "zod";
 import { channelBoard, channelBoardIds, HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
 import { readChannelsDirectory } from "@flow-state-dev/workforce/loader";
 
@@ -24,8 +29,10 @@ import { channelKinds } from "../workforce/workforce.gen";
 import {
   CHANNEL_KINDS,
   ROSTER_BOOT_REPORT_REF,
+  SEAT_ASKS,
   SEAT_KINDS,
   SHELL_BOARDS,
+  seatAskFor,
 } from "../lib/workforce-shell";
 
 describe("the shell's names match the workforce tree", () => {
@@ -46,6 +53,44 @@ describe("the shell's names match the workforce tree", () => {
     expect(SHELL_BOARDS.map((board) => board.ref).sort()).toEqual(declared);
     for (const board of SHELL_BOARDS) {
       expect(channelBoard(board.channelId, board.board).id).toBe(board.ref);
+    }
+  });
+});
+
+/**
+ * The actions of a kind a person could answer through: the public ones whose
+ * input is exactly one required string field. Keyed by action, valued by that
+ * field's name.
+ */
+function oneStringActions(kind: string): Record<string, string> {
+  const factory = (kitchenSinkKinds as Record<string, unknown>)[kind] as {
+    actions: Record<string, { inputSchema?: ZodTypeAny; block: { inputSchema?: ZodTypeAny } }>;
+  };
+  const found: Record<string, string> = {};
+  for (const [name, action] of Object.entries(factory.actions)) {
+    const schema = action.inputSchema ?? action.block.inputSchema;
+    if (!(schema instanceof z.ZodObject)) continue;
+    const fields = Object.entries(schema.shape as Record<string, ZodTypeAny>);
+    if (fields.length === 1 && fields[0]![1] instanceof z.ZodString) found[name] = fields[0]![0];
+  }
+  return found;
+}
+
+describe("each seat kind's composer sends to an action the kind declares", () => {
+  it("names every seat kind, and no other", () => {
+    expect(Object.keys(SEAT_ASKS).sort()).toEqual([...SEAT_KINDS].sort());
+  });
+
+  it.each([...SEAT_KINDS])("%s: the named action takes exactly the named one string field, or it has none", (kind) => {
+    const ask = seatAskFor(kind);
+    if (ask === undefined) throw new Error(`SEAT_ASKS has no entry for "${kind}"`);
+    const actions = oneStringActions(kind);
+    if ("none" in ask) {
+      // "None" is only honest where there is truly nothing to answer through.
+      expect(actions, `"${kind}" is written down as taking no messages`).toEqual({});
+      expect(ask.none.length).toBeGreaterThan(0);
+    } else {
+      expect(actions[ask.action], `"${kind}"'s one-string actions: ${JSON.stringify(actions)}`).toBe(ask.field);
     }
   });
 });

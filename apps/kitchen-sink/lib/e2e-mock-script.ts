@@ -4,6 +4,9 @@
  *
  * The chat-agent flow runs three generators per turn (skill-classifier,
  * assistant-generator, auto-title). Each gets its own mock instance below.
+ * An `agent` seat answers through `agent-answer` (or
+ * `agent-answer-with-activate-tool`, when the seat turns that tool on); both
+ * share `agentSeatMock`, keyed on its own scenario markers.
  * `policy: "allow"` (set in `test/mock-flowstate.ts`) catches anything else
  * with a no-op model.
  *
@@ -63,19 +66,31 @@ const SCENARIO_SCRIPTS: ScenarioScript[] = [
 ];
 
 /**
+ * An `agent` seat's scenarios. The reply carries a marker of its own, so a
+ * check can tell a scripted answer ran without reading what it says.
+ */
+const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
+  {
+    // A person talking to a seat from the page (FIX-1585).
+    match: (json) => json.includes("[scenario:talk-to-seat]"),
+    steps: [{ text: "[reply:talk-to-seat] Noted, I have your message." }],
+  },
+];
+
+/**
  * `MockGeneratorInstance`-shaped dispatcher: routes by the message
  * sentinel and walks the matched scenario's plain-step list per call.
  * The framework calls `next()` once per generator step, including each
  * iteration of the internal tool loop, so a single turn that wants two
  * tool calls + a terminal text needs three sequential entries.
  */
-function buildAssistantMock(): MockGeneratorInstance {
+function buildScenarioMock(name: string, scripts: ScenarioScript[]): MockGeneratorInstance {
   const cursors = new Map<ScenarioScript, number>();
   const calls: MockGeneratorInstance["calls"] = [];
 
   const next = (input?: unknown): MockGeneratorScriptStep | undefined => {
     const json = JSON.stringify(input ?? "");
-    const scenario = SCENARIO_SCRIPTS.find((s) => s.match(json));
+    const scenario = scripts.find((s) => s.match(json));
     if (!scenario) {
       return { text: "Test mode (no scenario sentinel matched)." };
     }
@@ -86,14 +101,17 @@ function buildAssistantMock(): MockGeneratorInstance {
   };
 
   return {
-    name: "assistant-generator",
+    name,
     calls,
     next,
     reset: () => cursors.clear(),
   };
 }
 
-export const assistantMock = buildAssistantMock();
+export const assistantMock = buildScenarioMock("assistant-generator", SCENARIO_SCRIPTS);
+
+/** Both of the `agent` kind's answering generators. */
+export const agentSeatMock = buildScenarioMock("agent-answer", AGENT_SEAT_SCRIPTS);
 
 const alwaysTrue = (_input: unknown) => true;
 

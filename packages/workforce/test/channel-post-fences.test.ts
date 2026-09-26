@@ -22,6 +22,7 @@ import type { FlowDispatcher, StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { channelFlow, CHANNEL_KIND, openChannels, type ChannelManifest } from "../src/index";
+import { postedLines } from "./channel-post-lines";
 
 const USER_ID = "u_fences";
 const POSTER = "poster";
@@ -148,9 +149,8 @@ function sessionApi(stores: StoreRegistry) {
   };
 }
 
-async function transcriptOf(stores: StoreRegistry, sessionId: string): Promise<unknown[] | undefined> {
-  const record = await stores.session.get(sessionId);
-  return (record?.state as { transcript?: unknown[] } | undefined)?.transcript;
+async function transcriptOf(stores: StoreRegistry, sessionId: string): Promise<unknown[]> {
+  return await postedLines(stores, sessionId);
 }
 
 async function until(predicate: () => boolean | Promise<boolean>, label: string): Promise<void> {
@@ -289,7 +289,7 @@ describe("the post path's fences", () => {
 
       expect(result.error).toBeDefined();
       expect(String(result.error)).toContain("channel-not-bound");
-      expect(await transcriptOf(runtime.stores, "engineering.standup")).toBeUndefined();
+      expect(await transcriptOf(runtime.stores, "engineering.standup")).toEqual([]);
     } finally {
       await state.dispose();
     }
@@ -335,7 +335,7 @@ describe("the post path's fences", () => {
 
       expect(result.error).toBeUndefined();
       await until(
-        async () => ((await transcriptOf(runtime.stores, "engineering.standup")) ?? []).length === 1,
+        async () => (await transcriptOf(runtime.stores, "engineering.standup")).length === 1,
         "the dispatched post to land in the channel's transcript"
       );
     } finally {
@@ -362,7 +362,7 @@ describe("the post path's fences", () => {
 
       expect(dispatched.error).toBeDefined();
       expect(String(dispatched.error)).toContain("external-dispatcher");
-      expect((await transcriptOf(runtime.stores, "engineering.standup")) ?? []).toHaveLength(0);
+      expect(await transcriptOf(runtime.stores, "engineering.standup")).toHaveLength(0);
 
       // The public action door is unaffected: only the dispatch door closes.
       const direct = await runAction({
@@ -377,7 +377,7 @@ describe("the post path's fences", () => {
       });
 
       expect(direct.error).toBeUndefined();
-      expect((await transcriptOf(runtime.stores, "engineering.standup")) ?? []).toHaveLength(1);
+      expect(await transcriptOf(runtime.stores, "engineering.standup")).toHaveLength(1);
     } finally {
       await state.dispose();
     }

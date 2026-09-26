@@ -28,6 +28,7 @@ import {
   defineChannelFlow,
   type ChannelNotifyInput
 } from "../src/index";
+import { postedLines } from "./channel-post-lines";
 
 const USER_ID = "u_fanout";
 
@@ -68,8 +69,7 @@ async function membersOf(stores: StoreRegistry, sessionId: string): Promise<stri
 }
 
 async function transcriptLength(stores: StoreRegistry, sessionId: string): Promise<number> {
-  const record = await stores.session.get(sessionId);
-  return ((record?.state as { transcript?: unknown[] } | undefined)?.transcript ?? []).length;
+  return (await postedLines(stores, sessionId)).length;
 }
 
 async function journalLength(stores: StoreRegistry, sessionId: string): Promise<number> {
@@ -78,10 +78,7 @@ async function journalLength(stores: StoreRegistry, sessionId: string): Promise<
 }
 
 async function bodiesOf(stores: StoreRegistry, sessionId: string): Promise<string[]> {
-  const record = await stores.session.get(sessionId);
-  const transcript = ((record?.state as { transcript?: Array<{ body: string }> } | undefined)
-    ?.transcript ?? []);
-  return transcript.map((line) => line.body);
+  return (await postedLines(stores, sessionId)).map((line) => line.body);
 }
 
 /** A promise a test can resolve by hand, so an interleaving is forced rather than raced. */

@@ -497,6 +497,10 @@ through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is tol
 turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only
 refuses, because it names no kind — only an absent key means the built-in.
 
+A seat on the `agent` kind is talked to through its `run` action, which takes `{ message }`. The
+message a seat is sent is kept as the caller's turn in that seat's conversation, so a conversation
+reads as both sides.
+
 Configure that kind by replacing it. Build the flow with `defineAgentWorkerFlow` and pass it under
 `agent` (`kinds: { agent: defineAgentWorkerFlow({ catalog, skills }) }`). It takes over for every
 seat that runs on the `agent` kind — the records that leave `flow:` out, and any that name `agent`
@@ -1196,6 +1200,11 @@ A post into a session nobody opened refuses `channel-not-bound` and writes nothi
 instance answers for every session id and the action path creates what it does not find, so
 boundness, not existence, is what makes a session a channel.
 
+Each post leaves one `channel-post` item on the channel's session, and that item is the line.
+A page renders the channel from those items; `read` is for models and other flows, returns the
+lines inside the session's history window, and never reaches a browser. A person posting from
+a page sends no `author`, since they are not a member. The line's `principal` names them.
+
 ### Holding a board
 
 `boards:` declares durable task ledgers the channel keeps, as a list of plain local names:
@@ -1829,6 +1838,7 @@ membershipPrefix("");
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
 | `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. |
+| `CHANNEL_POST_COMPONENT` / `emitChannelPostLine(ctx, line)` / `readChannelPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a channel kind of your own. |
 | `defineHiredRosterCollection()` | The hired roster's browser collection: one org-scoped row per org-visible seat, at `workforce/roster/<seatId>`. One segment, so a user-owned row is not listed. Takes no options. Write org-visible rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
 | `defineHiredRosterPrivateCollection()` | The server-side writer for a user-owned row, at `workforce/roster/~<escaped user>/<seatId>`. No browser read. It is an owner-private collection (`ownerPrivate: { param: "owner" }`): a row is served only to the member it belongs to, and any other collection whose pattern can reach those rows is refused at startup. Declare `workforce/roster/*` for the org roster. |
 | `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId }`. `owningOrgId` and `ownerUserId` are nullable and default to `null`. The envelope is closed; `settings` is a passthrough bag belonging to the kind's own schema. |

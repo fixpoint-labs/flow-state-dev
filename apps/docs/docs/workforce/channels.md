@@ -205,9 +205,32 @@ The flow you address is the **kind**; the channel is the **session id**. Address
 }
 ```
 
-The transcript is not the session's item history, which carries tool calls, dispatch handles and refusals. The transcript is the part a human or another agent should read.
+The transcript is the channel's `channel-post` items and nothing else from its history, which also carries fan-out requests, dispatch handles and refusals. `read` returns the recent lines: the ones inside the session's history window, which is 50 requests by default. On a channel with a notify block, each post uses two of them.
 
 Posts on one channel are serialized, so two that land at once both make it into the transcript. Posts on two different channels never wait on each other, because they are different sessions.
+
+### Showing a channel on screen
+
+A browser never receives an action's return value, so `read` is no help to a page. Each post leaves one `channel-post` item on the channel's session, carrying the line, and a page reads those the way it reads any conversation:
+
+```tsx
+const channel = useSession("engineering.standup", { flowKind: "channel", items: { itemTypes: ["component"] } });
+const lines = channel.items
+  .filter((item) => item.type === "component" && item.component === "channel-post")
+  .map((item) => item.data as ChannelTranscriptLine);
+```
+
+The channel's members and charter never reach the page.
+
+To post from the page, call the channel's own action on the same session:
+
+```tsx
+await channel.sendAction("post", { body });
+```
+
+Leave `author` out when a person is posting. `author` has to be one of the channel's members, and a person using your app usually isn't one, so naming them is refused. The line still says who posted: `principal` is the identity your server resolved for the request. A post with no `author` notifies every member, which is right here, because the person who wrote it is not among them.
+
+A line another member posts appears when the page reads the channel again: after its own post, or when it opens the channel.
 
 ## What the transcript proves, and what it doesn't
 
@@ -398,6 +421,8 @@ A record carrying `flow: my-channel` then runs on that kind's own instance, and 
 That map is the whole registration surface. There is no second API, and a custom factory carries the same contract the built-in does: one kind, one instance.
 
 The factory the framework ships builds only the built-in kind, so a kind of your own is a flow you write: its own state, its own post, its own read. It cannot hold a board: `boards:` on a record naming your kind is refused by name when you bind the roster.
+
+A kind of your own shows on a page the same way when its `post` keeps the line as a `channel-post` item: `await emitChannelPostLine(ctx, line)`. It resolves once the item is stored and throws if the write fails, so a post never hands back a line nothing kept. Its `read` gets the posted lines back with `readChannelPostLines(ctx, yourLineSchema)`.
 
 Different members, a different charter and a different set of boards are not a diverging workflow; they are all one kind. A different `read` is.
 

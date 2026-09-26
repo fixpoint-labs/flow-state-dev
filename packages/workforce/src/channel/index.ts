@@ -14,6 +14,9 @@
 
 export {
   CHANNEL_KIND,
+  CHANNEL_POST_COMPONENT,
+  emitChannelPostLine,
+  readChannelPostLines,
   ChannelPostRefusedError,
   INVENTORY_REGISTER_CHANNEL,
   INVENTORY_REGISTER_SEATS,

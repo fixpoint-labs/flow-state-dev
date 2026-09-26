@@ -27,11 +27,44 @@ export const SHELL_FLOW_KIND = "chat-agent";
  */
 export const CHANNEL_KINDS = ["channel", "digest"] as const;
 
+/** Whether a picked flow kind is a channel kind, whose panel shows a transcript rather than a conversation. */
+export function isChannelKind(kind: string): boolean {
+  return (CHANNEL_KINDS as readonly string[]).includes(kind);
+}
+
 /**
  * The seat kinds: the built-in `agent`, plus every kind under
  * `workforce/flows/workers/`.
  */
 export const SEAT_KINDS = ["agent", "desk-clerk", "followup-runner"] as const;
+
+/**
+ * What a seat's composer sends: the one action its kind answers a person with,
+ * and that action's one input field. A kind with nothing to answer with says
+ * so instead, and its seats get no composer, only this reason.
+ */
+export type SeatAsk =
+  | { readonly action: string; readonly field: string }
+  | { readonly none: string };
+
+/**
+ * Each seat kind's answer, written down rather than picked from the served
+ * schemas: a kind that grew a second one-string action would be picked from
+ * silently, where a missing or wrong entry here fails
+ * `test/workforce-shell.test.ts` instead.
+ */
+export const SEAT_ASKS = {
+  agent: { action: "run", field: "message" },
+  "desk-clerk": { action: "answer", field: "note" },
+  "followup-runner": {
+    none: "This seat runs rows from a board and has nothing to answer with, so it takes no messages.",
+  },
+} as const satisfies Record<(typeof SEAT_KINDS)[number], SeatAsk>;
+
+/** A seat kind's answer, or `undefined` for a kind the shell does not know. */
+export function seatAskFor(kind: string): SeatAsk | undefined {
+  return (SEAT_ASKS as Record<string, SeatAsk | undefined>)[kind];
+}
 
 /**
  * The tag on the session of the shell's flow that the rail's "Hire another"

@@ -26,6 +26,7 @@ import {
   channelNotifyInputSchema,
   defineChannelFlow
 } from "../src/index";
+import { postedLines } from "./channel-post-lines";
 
 const USER_ID = "u_queue";
 
@@ -145,13 +146,11 @@ describe("what the post entry's queue holds", () => {
 
       await Promise.all([post("first"), post("second"), post("third")]);
 
-      // The append is commutative — `pushState`, not a read-modify-write — so
-      // simultaneous posts can never silently drop one, and this floor needs no
-      // compare-and-swap.
-      const record = await runtime.stores.session.get("engineering.standup");
-      const bodies = (
-        (record?.state as { transcript?: Array<{ body: string }> } | undefined)?.transcript ?? []
-      ).map((line) => line.body);
+      // Each post's line is its own request's item, not a read-modify-write
+      // of shared state, so simultaneous posts can never silently drop one.
+      const bodies = (await postedLines(runtime.stores, "engineering.standup")).map(
+        (line) => line.body
+      );
       expect(bodies.sort()).toEqual(["first", "second", "third"]);
     } finally {
       await state.dispose();
