@@ -33,8 +33,8 @@
  * tool works where dispatch runs in process.
  */
 
-import { defineCapability, dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, DefinedCapability } from "@flow-state-dev/core";
+import { defineCapability, dispatcher, sequencer } from "@flow-state-dev/core";
+import type { DefinedCapability } from "@flow-state-dev/core";
 import { z } from "zod";
 import { CHANNEL_KIND } from "./channel/channel-flow";
 import { SEAT_ID_KEY } from "./manifest";
@@ -56,59 +56,47 @@ export const postToChannelInputSchema = z
 
 export type PostToChannelInput = z.infer<typeof postToChannelInputSchema>;
 
-const signedPostSchema = z.object({ channel: z.string(), body: z.string(), author: z.string() });
+const postToChannelResultSchema = z.object({ handedTo: z.string(), note: z.string() });
 
-/** The seat's own id, from the settings the hire wrote; refused by name when absent. */
-const signPost = handler({
-  name: "post-to-channel-sign",
-  inputSchema: postToChannelInputSchema,
-  outputSchema: signedPostSchema,
-  execute: (input: PostToChannelInput, ctx: BlockContext) => {
-    const seatId = (ctx.flow.config as Record<string, unknown>)[SEAT_ID_KEY];
-    if (typeof seatId !== "string" || seatId.length === 0) {
-      throw new Error(
-        `${POST_TO_CHANNEL_TOOL}: this seat's settings carry no \`${SEAT_ID_KEY}\`, so there is no ` +
-          `name to post under. The hire step writes it on every seat it mints. Nothing was posted.`,
-      );
-    }
-    return { channel: input.channel, body: input.body, author: seatId };
-  },
-});
-
-/** The dispatch into the named channel's own `post`. `{ id }`: a channel is an existing session. */
-const dispatchPost = dispatcher({
-  name: "post-to-channel-dispatch",
-  flowKind: CHANNEL_KIND,
-  action: "post",
-  inputSchema: signedPostSchema,
-  session: { id: (input: z.infer<typeof signedPostSchema>) => input.channel },
-  payload: (input: z.infer<typeof signedPostSchema>) => ({ body: input.body, author: input.author }),
-});
-
-/** What the model is told: handed over, not posted. */
-const handedOver = handler({
-  name: "post-to-channel-handed-over",
-  inputSchema: z.object({ sessionId: z.string() }).passthrough(),
-  outputSchema: z.object({ handedTo: z.string(), note: z.string() }),
-  execute: (dispatched: { sessionId: string }) => ({
-    handedTo: dispatched.sessionId,
-    note:
-      "The post was handed to the channel. It lands if you are one of its members; " +
-      "a refusal by the channel is not reported back.",
-  }),
-});
-
-/** The tool. The model supplies the channel and the words; the author is the seat's. */
+/**
+ * The tool: one dispatch into the named channel's own `post`, then "handed
+ * over". The author is the seat's `seatId`, read from the settings the hire
+ * wrote and stamped in the payload, so a seat without one throws before
+ * anything is dispatched. `{ id }`: a channel is an existing session.
+ */
 const postToChannel = sequencer({
   name: POST_TO_CHANNEL_TOOL,
   description:
     "Post a line to a channel you are a member of, under your own name. " +
     "`channel` is the channel's id, as the post that woke you names it.",
   inputSchema: postToChannelInputSchema,
+  outputSchema: postToChannelResultSchema,
 })
-  .step(signPost)
-  .step(dispatchPost)
-  .step(handedOver);
+  .step(
+    dispatcher({
+      name: "post-to-channel-dispatch",
+      flowKind: CHANNEL_KIND,
+      action: "post",
+      inputSchema: postToChannelInputSchema,
+      session: { id: (input: PostToChannelInput) => input.channel },
+      payload: (input: PostToChannelInput, ctx) => {
+        const seatId = (ctx.flow.config as Record<string, unknown>)[SEAT_ID_KEY];
+        if (typeof seatId !== "string" || seatId.length === 0) {
+          throw new Error(
+            `${POST_TO_CHANNEL_TOOL}: this seat's settings carry no \`${SEAT_ID_KEY}\`, so there is no ` +
+              `name to post under. The hire step writes it on every seat it mints. Nothing was posted.`,
+          );
+        }
+        return { body: input.body, author: seatId };
+      },
+    }),
+  )
+  .map((dispatched: { sessionId: string }) => ({
+    handedTo: dispatched.sessionId,
+    note:
+      "The post was handed to the channel. It lands if you are one of its members; " +
+      "a refusal by the channel is not reported back.",
+  }));
 
 /**
  * The channel-post capability: one catalog tool, `post-to-channel`, on the
