@@ -15,9 +15,9 @@ flowchart TD
   D1 -.->|"rejected · a failure names neither half"| X1b["ada inside the story"]
   I --> D2["D2 · engineering call · only FIX-1600's test may be re-run"]
   D2 -.->|"rejected · hides a real regression"| X2["retry anything"]
-  I --> D3["D3 · durable-hire runs · FIX-1598's known failure does not block"]
+  I --> D3["D3 · durable-hire must pass · FIX-1598 blocks this issue"]
   D3 -.->|"rejected · a child touched it"| X3a["skip it"]
-  D3 -.->|"rejected · waits on another epic's bug"| X3b["block on it"]
+  D3 -.->|"rejected · a red check wraps the epic"| X3b["carve out its known failure"]
 ```
 
 Solid edges are what was chosen. Dashed edges lost, and the label says why.
@@ -44,17 +44,19 @@ should run on it too.
 | **Locks in** | The suite runs serially, which removes the pair's cross-talk. FIX-1600's test alone may be re-run up to twice; a pass on re-run is reported with the attempt count and FIX-1600's link. Any other retry is a finding. The end-to-end goal check is never retried. If FIX-1600 merges first, the allowance lapses |
 
 <a name="d3"></a>
-## D3 · `durable-hire-survives-redeploy` runs; failing in FIX-1598's known way does not block the closure, and any other failure does
+## D3 · `durable-hire-survives-redeploy` must pass. [FIX-1598](https://linear.app/fixpoint-labs/issue/FIX-1598) blocks this issue
 
 | | |
 |---|---|
-| **Instead of** | Skip it as unrelated, or block the closure until [FIX-1598](https://linear.app/fixpoint-labs/issue/FIX-1598) is fixed |
-| **Because** | It has been red on `main` since kitchen-sink went single-org: its `acme` and `bravo` admin tokens are refused, `workforce-admin` answers `Unknown flow`, and leg 4 finds no roster rows for `support.bo`. FIX-1598 owns that, under another epic. But FIX-1589 edited this check to run on the scripted model and grade the desk tag, so skipping it leaves a child's change unproven |
-| **Locks in** | The report quotes the failure and names FIX-1598. The control leg FIX-1589 recorded as green must still be green. Any other failure is a finding. If FIX-1598 has merged by the run, the check must pass |
+| **Instead of** | Skip it as unrelated, or let it fail in FIX-1598's known way without blocking |
+| **Because** | It has been red on `main` since kitchen-sink went single-org: its admin tokens are refused and `workforce-admin` answers `Unknown flow`. FIX-1598 owns that, under another epic. But FIX-1589 edited this check to grade the desk tag, so skipping it, or accepting a "known" red, leaves a child's change unproven |
+| **Locks in** | No run starts until FIX-1598 merges (QR-1). Any failure of the check is a finding, with no signature carve-out |
 
 ## Decided, not asked
 
-- **The run starts only when all four children are merged and CI is green**, on one commit.
+- **The run starts only when all four children, FIX-1598 and the epic amendment
+  [#2289](https://github.com/fixpoint-labs/flow-state-dev/pull/2289) are merged and CI is
+  green**, on one commit.
 - **Part 2 is one journey**, leg d. Kitchen-sink has one team, `support`, so "per team
   configuration" gives the same count.
 - **Part 4 covers only what parts 1 to 3 don't grade**, against the cross-spec review's C1 to C7
@@ -83,3 +85,5 @@ should run on it too.
 - **Review round 1** — part 3 re-runs all four child checks; part 4 narrowed to what the rest
   doesn't grade, page-only, with a docs smoke instead of a full docs audit; the seams use the
   cross-spec review's own C1 to C7; the flake rule became an engineering call.
+- **Review round 2** — D3 lost its carve-out: FIX-1598 blocks this issue and durable-hire must
+  pass. The run waits on #2289 too.

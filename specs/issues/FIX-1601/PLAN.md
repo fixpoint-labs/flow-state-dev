@@ -3,7 +3,8 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Written for the closure worker. This plan owns the leg definitions; the other documents point
-here. It starts when all four children are merged (QR-1), and adds only the goal check.
+here. It starts when all four children, FIX-1598 and the epic amendment #2289 are merged (QR-1),
+and adds only the goal check.
 
 ## Surfaces
 
@@ -17,7 +18,7 @@ here. It starts when all four children are merged (QR-1), and adds only the goal
 
 ```mermaid
 flowchart TD
-  M["all four children merged · CI green · pick the commit"] --> B["build once"]
+  M["four children, FIX-1598, #2289 merged · CI green · pick the commit"] --> B["build once"]
   B --> P1["part 1 · legs a to c and controls"]
   B --> P2["part 2 · leg d and echo"]
   P1 --> P3["part 3 · all four child checks, ER-18, Playwright serially"]
@@ -36,7 +37,7 @@ flowchart TD
 | P1c | **Leg c, otto answers in the desk.** After a reload, `support.desk` shows exactly one line labelled `support.otto` carrying B, and iris and otto still hold one woken turn each. `no-author-filter` fails the woken-once half; `post-without-author` fails the label half. Neither reddens a, d or b's post |
 | P2d | **Leg d, the clerk.** Send ada `[scenario:clerk-answer]` and token D1: after a reload the reply carries `[clerk:answered]`, not D1. Send `[scenario:clerk-file]` and D2: the reply carries `[clerk:filed]`, and the team panel's `escalations` column has one row with D2. Post `[scenario:wake]` and D3 to the desk: ada holds nothing with D3 and the row count is unchanged. The server log shows the unattended-`escalations` warning. `echo` fails d only |
 | P3.1 | All four children's goal checks under `goals/kitchen-sink-talk/` pass with their held-outs, and each named control fails its own leg |
-| P3.2 | ER-18: `a-channel-holds-the-work-a-seat-drains` passes. `code-comes-from-files-alone` passes, and its planted registration still fails leg (c). `durable-hire-survives-redeploy` follows [D3](DECISIONS.md#d3) |
+| P3.2 | ER-18: `a-channel-holds-the-work-a-seat-drains` passes. `code-comes-from-files-alone` passes, and its planted registration still fails leg (c). `durable-hire-survives-redeploy` passes ([D3](DECISIONS.md#d3)) |
 | P3.3 | The kitchen-sink Playwright suite passes with `--workers=1`, including FIX-1594's leg-c scenario in `talk-from-page.spec.ts`. FIX-1600's test follows QR-7 |
 | P4 | Every row of part 4 holds |
 
@@ -91,5 +92,4 @@ A doc gap blocks this issue only when it breaks one of those flows. Any other do
 
 - Read markers and controls off the merged code; two children were unbuilt when this was written.
 - Build once, and restart `next start` for each server-side control.
-- If FIX-1600 merges first, its re-run allowance lapses ([D2](DECISIONS.md#d2)). If FIX-1598
-  merges first, durable-hire must pass ([D3](DECISIONS.md#d3)).
+- If FIX-1600 merges first, its re-run allowance lapses ([D2](DECISIONS.md#d2)).

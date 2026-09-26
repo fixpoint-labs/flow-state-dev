@@ -10,7 +10,7 @@ What each leg checks is defined in [PLAN.md](PLAN.md#checks); these rules point 
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| QR-1 | Any of the four children is not merged, or CI is red on `main` | No run. This issue is blocked by each child | Linear · the report lists each merge commit |
+| QR-1 | Any of the four children, [FIX-1598](https://linear.app/fixpoint-labs/issue/FIX-1598) or the epic amendment [#2289](https://github.com/fixpoint-labs/flow-state-dev/pull/2289) is not merged, or CI is red on `main` | No run. This issue is blocked by each child and by FIX-1598 | Linear · the report lists each merge commit |
 | QR-2 | A child joins mid-run | It blocks this issue; the run in flight cannot open the closure PR | The epic wake |
 | QR-3 | The last child merges | One `main` commit is picked, and every check in parts 1 to 4 runs against it | Every verdict row carries that SHA |
 
@@ -31,7 +31,7 @@ What each leg checks is defined in [PLAN.md](PLAN.md#checks); these rules point 
 | QR-9 | Part 1 runs | Legs a to c pass, and each of their four controls fails exactly its leg | P1a to P1c |
 | QR-10 | Part 2 runs | Leg d passes, and fails under `echo` | P2d |
 | QR-11 | Part 3 runs | All four children's goal checks pass with their held-outs, each control fails its own leg, and the epic's ER-18 set stays green | P3.1 to P3.3 |
-| QR-12 | `durable-hire-survives-redeploy` fails | Not a finding if the failure matches FIX-1598's signature and FIX-1589's recorded control leg stays green. Any other failure is. If FIX-1598 has merged, it must pass ([D3](DECISIONS.md#d3)) | P3.2 |
+| QR-12 | `durable-hire-survives-redeploy` runs | It passes. Any failure is a finding, with no carve-out ([D3](DECISIONS.md#d3)) | P3.2 |
 | QR-13 | Part 4 runs | Each part-4 row holds, and each state below is shown absent | P4 |
 
 ## What happens to a finding

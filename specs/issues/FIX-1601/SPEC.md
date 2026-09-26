@@ -4,7 +4,7 @@
 
 Improvement · closure (QA) · kitchen-sink + `goals/` · medium · 1 PR after a clean run · epic
 [FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592), closure · required · runs after
-all four children merge
+all four children, FIX-1598 and #2289 merge
 
 ## Five people, before and after
 
@@ -79,8 +79,8 @@ wraps on four green checks that never met, or waits on a bar nobody asked for.
 1. **[D1](DECISIONS.md#d1) · The goal check is one person's session: otto directly, then the
    desk, then otto's answer in the desk. The clerk is its own journey in the same script.** If
    wrong: a seam between ada and the rest goes unwalked.
-2. **[D3](DECISIONS.md#d3) · The durable-hire check runs, and fails without blocking only in
-   FIX-1598's known way.** If wrong: the epic wraps with a red check a child touched.
+2. **[D3](DECISIONS.md#d3) · The durable-hire check must pass, so FIX-1598 blocks this
+   issue.** If wrong: the epic waits on another epic's bug.
 
-**Open: none.** Number 2 is the one to weigh. The flake rule is an engineering call
+**Open: none.** The flake rule is an engineering call
 ([D2](DECISIONS.md#d2)), not asked.
