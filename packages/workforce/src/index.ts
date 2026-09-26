@@ -63,6 +63,13 @@ export {
   type SeatHireBlocks,
   type SeatHireCapabilityOptions,
 } from "./seat-hire-capability";
+export {
+  channelPostCapability,
+  CHANNEL_POST_CAPABILITY,
+  POST_TO_CHANNEL_TOOL,
+  postToChannelInputSchema,
+  type PostToChannelInput,
+} from "./channel-post-capability";
 export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
 export { resourcesFromDocs } from "./resources-from-docs";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";
