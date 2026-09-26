@@ -282,6 +282,23 @@ for (const channel of TREE.channels) {
 }
 out.notified = notified;
 
+// ---- V14: which declared members' seats can hear a post -------------------
+//
+// Read off the seats the app registered, the way Workforce's `wakeMemberSeats`
+// reads it: a seat can hear a post when its kind declares the internal
+// `onChannelPost` entry. A member with no seat at that address cannot. Reported,
+// not graded — run.mts decides what the fan-out owed each member.
+{
+  const registry = (await flowstate.getRuntime()).registry;
+  const members = new Set(Object.values(TREE.membersByChannel).flat());
+  out.hearsPosts = [...members]
+    .filter((member) => {
+      const seat = registry.get(member) as { internal?: { actions?: object } } | undefined;
+      return Object.prototype.hasOwnProperty.call(seat?.internal?.actions ?? {}, "onChannelPost");
+    })
+    .sort();
+}
+
 // ---- file one row on each board, then drain -------------------------------
 const followupGoal = `chase the printer quote ${Date.now()}`;
 const escalationGoal = `the refund needs a person ${Date.now()}`;
