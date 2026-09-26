@@ -303,7 +303,7 @@ const channelFlows = channelInstances(channels, {
 });
 ```
 
-For each post, and each member of the channel, it decides one thing: does this member run?
+For each post, it decides per member whether that member runs:
 
 - **A member runs** when the post names no `author` and the member's seat can hear a post. A seat
   of the built-in `agent` kind can. It runs its ordinary answer, with the post as its turn,
@@ -311,17 +311,15 @@ For each post, and each member of the channel, it decides one thing: does this m
   has none: `support.lead in support.desk: can someone look at the refund queue?`.
 - **Nobody runs** when the post names an `author`. Every author a post can carry is a member, so
   that is a seat talking, and two agents that wake each other answer each other forever. A member
-  that would have run gets nothing at all. There is no switch for this. If you want agents to hear
-  each other, write your own notify block.
-- **Nobody runs** for a member whose kind can't hear a post, or who has no hired seat. That
-  includes a seat hired after boot: the wake is built from the seats you pass at boot. A runtime
-  hire your boot reloads is one of those seats, and wakes. If the seats you pass hold one seat id
-  more than once, in several organizations or owned by several users, the one the channel's
-  caller can reach runs: their own, then the organization's, then a shared one.
+  that would have run gets nothing at all. If you want agents to hear each other, write your own
+  notify block.
+- **Nobody runs** for a member whose kind can't hear a post, or who has no seat in the list you
+  passed. A seat hired while the app is running isn't in that list until the app restarts and
+  passes it in.
 
-The seats you pass are the only addresses it uses. It never reads them off a channel's stored
-members, so you can pass fewer seats than you hired to wake fewer, but a member it has no seat for
-never runs.
+If the same seat id appears more than once (in several organizations, or owned by several users),
+the one the channel's caller can reach runs, in this order: their own, the organization's, a shared
+one. To wake fewer seats, pass fewer.
 
 Each woken seat keeps one conversation per channel. The second post it hears lands in the same
 conversation, so it remembers the thread. Two posts that arrive together each run once, in no
@@ -345,7 +343,7 @@ page does.
 
 A kind can hear a post by declaring an internal entry named `onChannelPost` that takes
 `ChannelNotifyInput`. An internal entry is one only a dispatch can reach, never a client. That
-declaration is all `wakeMemberSeats` looks for. There is no list of kinds to update.
+declaration is all `wakeMemberSeats` looks for.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -367,10 +365,10 @@ export const triager = defineFlow({
 A post's `author` is the poster's own claim, and the channel does not verify it. Someone who can
 post can name a member as the author and so stop that one post from waking anyone. They can't make
 a seat run, make your fallback reach anyone it wouldn't reach anyway, or reach anyone outside the
-channel. Verified authorship is not built yet.
+channel. Authorship is not verified.
 
 A busy channel keeps growing each seat's conversation, and a seat remembers only as far back as
-its history window reaches. Nothing summarizes older posts for it yet.
+its history window reaches. Nothing summarizes older posts for it.
 
 ## A seat answering in the channel
 
