@@ -14,6 +14,7 @@
  *
  *   1  HIRE two seats. One good, one naming a kind the app does not carry. The
  *      good one answers; the bad one is refused and leaves no address behind.
+ *      A credential bound to another organization is refused outright.
  *
  *   2  HIRE a third carrying a token GENERATED AT CHECK TIME, then restart.
  *
@@ -35,12 +36,19 @@
  * The store directory is removed before the run, so a stale roster from an
  * earlier run can never be what passes leg 3.
  *
+ * The app runs as one organization, `kitchen-sink`, and every admin token must
+ * name it (`apps/kitchen-sink/lib/workforce-admin-auth.ts`). A seat the admin
+ * credential hires is owned by the admin user, so it answers at
+ * `kitchen-sink.~workforce-admin.<seat>` and resolves its callers with that
+ * same credential.
+ *
  * Run: pnpm tsx goals/workforce-conventions/durable-hire-survives-redeploy/run.mts
  */
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { seatAddress } from "@flow-state-dev/workforce";
 import { KITCHEN_SINK, loadFixture, runGoal } from "../../lib/index.mts";
 
 interface Fixture {
@@ -48,12 +56,14 @@ interface Fixture {
   note: string;
   port: number;
   org: string;
+  adminUser: string;
   otherOrg: string;
   controlSeat: string;
   controlDesk: string;
   goodSeat: string;
   missingKindSeat: string;
   tokenSeat: string;
+  otherOrgSeat: string;
   kind: string;
   missingKind: string;
 }
@@ -62,10 +72,15 @@ const fixture = loadFixture<Fixture>(import.meta.url);
 const ORIGIN = `http://127.0.0.1:${fixture.port}`;
 const DATA_DIR = join(KITCHEN_SINK, ".fsdev", "data");
 
-/** The admin credentials this run configures — two orgs, so "which org" has a wrong answer to give. */
-const ADMIN_TOKEN = `tok-${randomUUID()}`;
-const OTHER_TOKEN = `tok-${randomUUID()}`;
-const ADMIN_TOKENS = `${fixture.org}:${ADMIN_TOKEN},${fixture.otherOrg}:${OTHER_TOKEN}`;
+/** The admin credential for the one organization this app runs as. */
+const TOKEN = `tok-${randomUUID()}`;
+/**
+ * A token whose entry names another organization. The app refuses it when the
+ * credentials are read, so "which org" still has a wrong answer to give: a hire
+ * carrying it must be turned away and write nothing.
+ */
+const OTHER_ORG_TOKEN = `tok-${randomUUID()}`;
+const ADMIN_TOKENS = `${fixture.org}:${TOKEN},${fixture.otherOrg}:${OTHER_ORG_TOKEN}`;
 
 const SERVER_ENV = {
   ...process.env,
@@ -76,7 +91,8 @@ const SERVER_ENV = {
 };
 
 /**
- * A runtime-hired seat's address. Only these carry the organization.
+ * A runtime-hired seat's address. Only these carry the organization, and the
+ * admin user who owns them.
  *
  * A FILE-declared seat does not: `hireKitchenSinkWorkforce` mints it under the
  * id its folders spell (`support.ada`), with no org segment, because a file is
@@ -84,7 +100,7 @@ const SERVER_ENV = {
  * bare id — using this helper for it is what made the first run of this check
  * report a blind probe, which is the control working rather than failing.
  */
-const address = (seat: string): string => `${fixture.org}.${seat}`;
+const address = (seat: string, org = fixture.org): string => seatAddress(org, seat, fixture.adminUser);
 
 // ---------------------------------------------------------------------------
 // The server, and the two predicates that must not be shared
@@ -177,12 +193,16 @@ async function restart(): Promise<string> {
 // The app's surfaces
 // ---------------------------------------------------------------------------
 
+function seatHeaders(): Record<string, string> {
+  return { "content-type": "application/json", authorization: `Bearer ${TOKEN}` };
+}
+
 interface AdminResult {
   status: number;
   body: string;
 }
 
-async function admin(action: "hire" | "fire", input: unknown, token = ADMIN_TOKEN): Promise<AdminResult> {
+async function admin(action: "hire" | "fire", input: unknown, token = TOKEN): Promise<AdminResult> {
   const res = await fetch(`${ORIGIN}/api/flows/workforce-admin/actions/${action}`, {
     method: "POST",
     headers: {
@@ -201,11 +221,15 @@ async function admin(action: "hire" | "fire", input: unknown, token = ADMIN_TOKE
  *
  * Read off the inline SSE stream an `Accept: text/event-stream` POST returns —
  * the same stream a browser client reads, so nothing here is a back channel.
+ *
+ * Every seat call carries the admin credential. A seat the admin hired resolves
+ * its callers with it, and refuses anyone else; the file-declared control
+ * resolves through the app's host resolver, which reads nothing on the request.
  */
 async function answerOf(seatAddress: string): Promise<string | undefined> {
   const created = await fetch(`${ORIGIN}/api/flows/${seatAddress}/sessions`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: seatHeaders(),
     body: JSON.stringify({ userId: fixture.userId, orgId: fixture.org }),
   });
   if (created.status === 404) return undefined;
@@ -214,7 +238,7 @@ async function answerOf(seatAddress: string): Promise<string | undefined> {
 
   const res = await fetch(`${ORIGIN}/api/flows/${seatAddress}/${sessionId}/actions/answer`, {
     method: "POST",
-    headers: { "content-type": "application/json", accept: "text/event-stream" },
+    headers: { ...seatHeaders(), accept: "text/event-stream" },
     body: JSON.stringify({ userId: fixture.userId, orgId: fixture.org, input: { note: fixture.note } }),
   });
   if (res.status === 404) return undefined;
@@ -237,7 +261,7 @@ async function answerOf(seatAddress: string): Promise<string | undefined> {
 async function resolves(seatAddress: string): Promise<boolean> {
   const created = await fetch(`${ORIGIN}/api/flows/${seatAddress}/sessions`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: seatHeaders(),
     body: JSON.stringify({ userId: fixture.userId, orgId: fixture.org }),
   });
   return created.status !== 404;
@@ -373,6 +397,22 @@ await runGoal(async () => {
       failures.push(`${address(fixture.missingKindSeat)} resolves, but its hire was refused`);
     }
 
+    // A credential bound to another organization administers nothing here.
+    const elsewhere = await admin(
+      "hire",
+      { seatId: fixture.otherOrgSeat, flow: fixture.kind, settings: { desk: "elsewhere" } },
+      OTHER_ORG_TOKEN
+    );
+    if (elsewhere.status !== 401) {
+      failures.push(
+        `a hire carrying a token bound to "${fixture.otherOrg}" returned ${elsewhere.status} rather than 401 — ` +
+          `this app runs as "${fixture.org}" only: ${elsewhere.body.slice(0, 400)}`
+      );
+    }
+    if ((await resolves(address(fixture.otherOrgSeat))) || (await resolves(address(fixture.otherOrgSeat, fixture.otherOrg)))) {
+      failures.push(`${fixture.otherOrgSeat} resolves, but its hire carried a refused credential`);
+    }
+
     // ---- (2) hire a seat carrying a token minted right now ------------------
     const tokenHire = await admin("hire", {
       seatId: fixture.tokenSeat,
@@ -393,7 +433,7 @@ await runGoal(async () => {
       flow: fixture.kind,
       settings: { desk: "spoofed" },
     });
-    if (await resolves(`${fixture.otherOrg}.support.spoof`)) {
+    if (await resolves(address("support.spoof", fixture.otherOrg))) {
       failures.push(
         `a hire whose BODY named "${fixture.otherOrg}" landed there; under "${fixture.org}"'s credential it ` +
           `must land in "${fixture.org}" and leave the other organization untouched`

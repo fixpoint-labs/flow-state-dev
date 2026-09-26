@@ -2,13 +2,15 @@
   "userId": "goal-durable-hire",
   "note": "is the printer fixed?",
   "port": 3991,
-  "org": "acme",
-  "otherOrg": "bravo",
+  "org": "kitchen-sink",
+  "adminUser": "workforce-admin",
+  "otherOrg": "elsewhere",
   "controlSeat": "support.ada",
   "controlDesk": "front",
   "goodSeat": "support.bo",
   "missingKindSeat": "support.cy",
   "tokenSeat": "support.di",
+  "otherOrgSeat": "support.ev",
   "kind": "desk-clerk",
   "missingKind": "kind-this-app-does-not-carry"
 }
