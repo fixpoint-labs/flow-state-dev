@@ -85,7 +85,7 @@ The team also has three channels, under `workforce/teams/support/channels/`. Eac
 
 The `followups` board has a seat that runs it. `support.wren` is on the `followup-runner` kind, which names the board in code (`channelBoard("support.desk", "followups")`), declares it as a resource, and exposes its drain. A seat sees the boards it names and no others.
 
-Posting to a channel reaches its members, and never the member who wrote the post. An agent seat runs on a post a person writes: `support.iris` and `support.otto` each answer once, in a conversation of their own for that channel, which you find under the seat in the rail. A post a seat writes runs nobody. The `desk-clerk` and `followup-runner` seats get a line naming them and nothing more. The rule lives in `workforce/channel-notify.ts`, this app's own fan-out block: the framework addresses every declared member, and the block decides who hears what.
+Posting to a channel reaches its members, and never the member who wrote the post. An agent seat runs on a post a person writes: `support.iris` and `support.otto` each answer once, in a conversation of their own for that channel, which you find under the seat in the rail. A post a seat writes runs nobody. The `desk-clerk` and `followup-runner` seats get a line naming them and nothing more. The wake is Workforce's `wakeMemberSeats`. `workforce/channel-notify.ts` is the fallback: it sends this app's name-only line to every member whose seat can't hear a post.
 
 The check is on the claimed `author`, which the channel does not verify, so the skip is only as good as the claim. An app with a real identity model should compare whatever it resolves a caller to.
 

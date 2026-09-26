@@ -282,66 +282,93 @@ Compare on `author`, not `principal`: `principal` is the id the channel was open
 
 The delivery runs in its own request, outside the post's turn, so a slow notification never delays the next post. A delivery that fails is recorded and the rest are still attempted; the post stays written either way, because the transcript is the durable record and waking people is best-effort.
 
-Your app supplies the addresses. The `notify` slot takes any block, so to reach real recipients, make it a router rather than a handler. Declare one dispatcher per recipient, like the one in [Posting and reading](#posting-and-reading), with `flowKind` set to that recipient's address. Pick which one runs from `input.member`. [`utility.keyedRouter`](../fundamentals/blocks.md#keyedrouter) does that lookup, and its `fallback` takes any member you have no dispatcher for.
+Your app supplies the addresses. The `notify` slot takes any block, so to reach real recipients, make it a router rather than a handler. Declare one dispatcher per recipient, like the one in [Posting and reading](#posting-and-reading), with `flowKind` set to that recipient's address. Pick which one runs from `input.member`. [`utility.keyedRouter`](../fundamentals/blocks.md#keyedrouter) does that lookup, and its `fallback` takes any member you have no dispatcher for. For agent seats you don't have to build this yourself: see [Waking agent seats](#waking-agent-seats).
 
-### Waking an agent seat
+### Waking agent seats
 
-A seat of the built-in `agent` kind has an entry for exactly this. `onChannelPost` takes the
-delivery your notify block was handed and runs the seat's ordinary answer on it, with the post as
-the seat's turn, `<writer> in <channel>: <body>`. The writer is the post's `author`, or its
-`principal` when it has none, and the channel is the channel's id:
-`support.lead in support.desk: can someone look at the refund queue?`. Only a
-dispatcher reaches it. Calling it from a client is refused, the same as any internal entry.
+Most apps want a post to reach the agents in the channel and nobody else. Workforce ships that as
+one call. Hand `wakeMemberSeats` the seats you hired, and put what it returns in the notify slot:
 
 ```ts
-import { dispatcher, utility } from "@flow-state-dev/core";
-import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
+import {
+  channelInstances,
+  defineChannelFlow,
+  hireWorkforce,
+  wakeMemberSeats,
+} from "@flow-state-dev/workforce";
 
-// Your app's one kind map already says which entry each kind answers on.
-// Its wake column says which internal entry, if any, wakes a seat of that kind.
-//   seatKinds = { agent: { wake: "onChannelPost" }, "desk-clerk": { wake: null }, ... }
-
-const wakeAgents = utility.keyedRouter({
-  name: "wake-agents",
-  inputSchema: channelNotifyInputSchema,
-  blocks: Object.fromEntries(
-    seats.flatMap((seat) => {
-      const wake = seatKinds[seat.kind]?.wake;
-      if (wake == null) return [];               // this kind wakes on nothing
-      return [[
-        seat.id,
-        dispatcher({
-          name: `wake-${seat.id}`,
-          flowKind: seat.id,                     // the seat's own address
-          action: wake,
-          inputSchema: channelNotifyInputSchema,
-          session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` },
-        }),
-      ]];
-    }),
-  ),
-  // Any author means a seat wrote the post: never wake anyone for it.
-  // No author: wake the member if it has a dispatcher. Everything else falls back.
-  select: (post) => (post.author !== undefined ? "" : post.member),
-  fallback: notifyMember,                        // today's name-only line
+const seats = hireWorkforce(workers, { kinds });   // hire first: the wake reaches these seats
+const channelFlows = channelInstances(channels, {
+  kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) },
 });
-
-channelInstances(channels, { kinds: { channel: defineChannelFlow({ notify: wakeAgents }) } });
 ```
 
-Key the session on the channel, as above, and each seat keeps one conversation per channel: the
-second post it hears lands in the same conversation, so it remembers the thread. Two posts that
-arrive together each run once, in no guaranteed order. Key it on `postId` instead and every post
-starts a fresh conversation. The conversation is a child of the channel's session, so an ordinary
-session listing does not show it; list with dispatch runs included (`include: "dispatch-runs"`, or
+For each post, it decides per member whether that member runs:
+
+- **A member runs** when the post names no `author` and the member's seat can hear a post. A seat
+  of the built-in `agent` kind can. It runs its ordinary answer, with the post as its turn,
+  `<writer> in <channel>: <body>`. The writer is the post's `author`, or its `principal` when it
+  has none: `support.lead in support.desk: can someone look at the refund queue?`.
+- **Nobody runs** when the post names an `author`. Every author a post can carry is a member, so
+  that is a seat talking, and two agents that wake each other answer each other forever. A member
+  that would have run gets nothing at all. If you want agents to hear each other, write your own
+  notify block.
+- **Nobody runs** for a member whose kind can't hear a post, or who has no seat in the list you
+  passed. A seat hired while the app is running isn't in that list until the app restarts and
+  passes it in.
+
+If the same seat id appears more than once (in several organizations, or owned by several users),
+the one the channel's caller can reach runs, in this order: their own, the organization's, a shared
+one. To wake fewer seats, pass fewer.
+
+Each woken seat keeps one conversation per channel. The second post it hears lands in the same
+conversation, so it remembers the thread. Two posts that arrive together each run once, in no
+guaranteed order. The conversation is a child of the channel's session, so an ordinary session
+listing does not show it. List with dispatch runs included (`include: "dispatch-runs"`, or
 `includeDispatchRuns` on `FlowNavigator`) to find it.
 
-Skip the wake when the post carries an `author`. Every author a post can carry is a member, so
-that is a seat talking, and two agents that wake each other answer each other forever. Other
-members can still get whatever your fallback sends.
+Members whose seat can't hear a post get nothing, the same as a channel with no notify slot. To
+send them something else, pass a `fallback` block. It runs for those members on every post, and
+never for a member the wake would have run. It receives the same input a notify block does:
 
-A busy channel keeps growing that conversation, and a seat remembers only as far back as its
-history window reaches. Nothing summarizes the older posts for it yet.
+```ts
+defineChannelFlow({ notify: wakeMemberSeats(seats, { fallback: tellByEmail }) });
+```
+
+When the writer is one of those members, the fallback receives the writer's own delivery. Skip
+it there if you don't want to tell someone about their own post, as the handler earlier on this
+page does.
+
+#### Making a kind of your own hear posts
+
+A kind can hear a post by declaring an internal entry named `onChannelPost` that takes
+`ChannelNotifyInput`. An internal entry is one only a dispatch can reach, never a client. That
+declaration is all `wakeMemberSeats` looks for.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { channelNotifyInputSchema, workerConfigSchema } from "@flow-state-dev/workforce";
+
+export const triager = defineFlow({
+  kind: "triager",
+  cardinality: "collection",
+  configSchema: workerConfigSchema(),
+  actions: { run: { block: triage } },
+  internal: {
+    actions: { onChannelPost: { inputSchema: channelNotifyInputSchema, block: triageFromPost } },
+  },
+});
+```
+
+#### What the author check can and can't promise
+
+A post's `author` is the poster's own claim, and the channel does not verify it. Someone who can
+post can name a member as the author and so stop that one post from waking anyone. They can't make
+a seat run, make your fallback reach anyone it wouldn't reach anyway, or reach anyone outside the
+channel. Authorship is not verified.
+
+A busy channel keeps growing each seat's conversation, and a seat remembers only as far back as
+its history window reaches. Nothing summarizes older posts for it.
 
 ## A seat answering in the channel
 
@@ -363,14 +390,14 @@ tools: [post-to-channel]
 ```
 
 The model calls `post-to-channel` with the channel's id and what to say. A woken seat reads the id
-off the post it heard, from the turn described in [Waking an agent seat](#waking-an-agent-seat). The tool posts through that channel's own
+off the post it heard, from the turn described in [Waking agent seats](#waking-agent-seats). The tool posts through that channel's own
 `post`, and the line's `author` is the seat's `seatId`: its record id, the name the channel's
 `members:` lists. The model cannot set it. The tool's input is `{ channel, body }` and nothing
 else, so a call that adds an `author` is refused. A seat that doesn't name the tool is never
 offered it.
 
-A seat's post always carries an `author`. Skip the wake for posts with an `author`, as in
-[Waking an agent seat](#waking-an-agent-seat), and seats won't wake each other.
+A seat's post always carries an `author`, and `wakeMemberSeats` wakes nobody on a post with an
+`author` (see [Waking agent seats](#waking-agent-seats)), so seats won't wake each other.
 
 What it won't do:
 

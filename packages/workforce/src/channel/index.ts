@@ -48,6 +48,8 @@ export {
   type DefineChannelFlowOptions
 } from "./channel-flow";
 
+export { wakeMemberSeats, type WakeMemberSeatsOptions } from "./wake-member-seats";
+
 export {
   channelBoardIds,
   channelInstances,
