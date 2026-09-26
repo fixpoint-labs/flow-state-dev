@@ -86,6 +86,8 @@ interface Observation {
    * DELIVERED to (the app's half).
    */
   notified: Record<string, { reached: number; delivered: string[]; problem?: string }>;
+  /** Declared members whose registered seat declares `onChannelPost` — the ones a post can wake. */
+  hearsPosts: string[];
   notes: any;
 }
 
@@ -633,6 +635,12 @@ await runGoal(() => {
   // "fewer than everybody" would be green on one that notified nobody — which
   // is the shape a one-sided check invites. Every other member must still get
   // theirs, so a broken fan-out fails here rather than passing quietly.
+  //
+  // "Every other member" is those whose seat cannot hear a post. The post names
+  // an `author`, and Workforce's wake gives a member whose seat declares
+  // `onChannelPost` nothing on such a post — no wake and no name-only line
+  // (FIX-1602). Which seats can hear is read off the seats the app registered,
+  // never a list of names, so a seat that changes kind moves the set with it.
   {
     for (const m of manifests) {
       const members = (m.frontmatter.match(/^members:\s*\[(.*)\]\s*$/m)?.[1] ?? "")
@@ -659,13 +667,15 @@ await runGoal(() => {
 
       // The harness posts as the channel's first declared member.
       const author = members[0];
-      const wanted = members.filter((name) => name !== author).sort();
+      const wanted = members
+        .filter((name) => name !== author && !o.hearsPosts.includes(name))
+        .sort();
       const got = [...seen.delivered].sort();
       if (JSON.stringify(got) !== JSON.stringify(wanted)) {
         failures.push(
           `V14: ${m.id} was written by ${JSON.stringify(author)} and the fan-out delivered to ` +
-            `${JSON.stringify(got)} — every other declared member and nobody else should have ` +
-            `been told, which is ${JSON.stringify(wanted)}`,
+            `${JSON.stringify(got)} — every other declared member whose seat can't hear a post, ` +
+            `and nobody else, should have been told, which is ${JSON.stringify(wanted)}`,
         );
       }
       // The framework's half, asserted separately: the fan-out still addresses

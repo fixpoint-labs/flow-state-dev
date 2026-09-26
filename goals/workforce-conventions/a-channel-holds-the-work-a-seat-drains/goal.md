@@ -33,7 +33,7 @@ Then the boot, driven by `harness.mts` inside the app:
 - **V7 — the row is claimed, run, and settled on the minted ledger.** One row filed through the channel's own `fileTask`, then the seat's drain, handed nothing. Proof of execution is the note the worker body wrote **outside** the board, read straight out of org-scoped storage — the board's own report is generated on the path under test. The row then reads `completed` from `readBoard` **and** out of `resourceState` under the minted id.
 - **V8 — the drain is a subset.** A row filed on the unwired board is still `pending` after the drain runs.
 - **V13 — the channels are reachable by the app's own users.** Sessions are per-user, so a channel opened under an id the app's pages never call as is one the app ships and none of its users can list. Asserted on the listing; acting as a non-owner is deliberately not asserted, because this app resolves no principal and the route's owner check never engages, so such a leg could not fail.
-- **V14 — nobody is told about their own post.** One post per channel, then every delivery the fan-out made, asserted as a SET against the roster minus the writer. Two halves on purpose: the framework's fan-out still addresses the whole roster (that is asserted too), and what the app decides in its notify slot is whether a delivery happens. A count alone would pass on a fan-out that notified the wrong people, and "fewer than everybody" would pass on one that notified nobody.
+- **V14 — nobody is told about their own post.** One post per channel, then every delivery the fan-out made, asserted as a SET against the roster minus the writer and minus every member whose seat can hear a post. The probe names an `author`, and on such a post Workforce's wake gives a seat that declares `onChannelPost` nothing, not even the name-only line (FIX-1602); which seats can hear is read off the seats the app registered, not a list of names. Two halves on purpose: the framework's fan-out still addresses the whole roster (that is asserted too), and what the app decides in its notify slot is whether a delivery happens. A count alone would pass on a fan-out that notified the wrong people, and "fewer than everybody" would pass on one that notified nobody.
 
 ## Anti-game
 
@@ -61,7 +61,7 @@ Every leg's red state is a mutation of the implementation, not of this file. `GO
 | V8 | Point the drain's `taskBoard` at the unwired board — it is claimed, and the subset claim is gone. **Not** "add it to the runner's resources": `warnUnattendedBoards` reads `seat.resources` and `taskBoard` destructures one `collection`, so declaring the resource silences the warning and claims nothing — that mutation is V9's, below |
 | V9 | Declare the unwired board as a resource on the runner without draining it — a seat names it, so the boot warns about nothing (count 0) |
 | V13 | Open the channels as any id the app's pages do not call as |
-| V14 | Delete the author check from `workforce/channel-notify.ts` — the writer is notified of their own post |
+| V14 | Delete the author check from `workforce/channel-notify.ts` — the writer is notified of their own post. The other direction: swap the wake for `notifyMember` in `notifyFor` — the members whose seats can hear a post get the name-only line too |
 | V10 | Write a refused word into a `description:` or a charter |
 | V11 | Delete the `openChannels` call from `fsdev.config.ts` — nothing opens the tree's channels and the first read meets an empty session |
 | V11b | Change `await openChannels(…)` to `void openChannels(…)` |
