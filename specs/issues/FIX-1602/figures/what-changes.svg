@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 440" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels split by a line between the host and the package. Before: kitchen-sink holds a kind table, a dispatcher per seat, the channel key, the author rule and a fallback, a new app copies all five, and the package holds only the onChannelPost entry and the notify slot. After: kitchen-sink and a new app each hold one call, and the package holds the helper with the seat check, the dispatchers, the channel key and the author rule, next to the entry and the slot.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .copy  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .pkg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .host  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .fence { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .arrow { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--accent); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="headers">
+    <text class="t-lbl" x="24" y="26">BEFORE · FIX-1590 AND FIX-1594 MERGED</text>
+    <text class="t-lbl" x="492" y="26">AFTER · THIS ISSUE</text>
+    <text class="t-lbl" x="24" y="52">WHAT EACH APP WRITES</text>
+    <text class="t-lbl" x="492" y="52">WHAT EACH APP WRITES</text>
+    <text class="t-lbl" x="24" y="300">@flow-state-dev/workforce</text>
+    <text class="t-lbl" x="492" y="300">@flow-state-dev/workforce</text>
+    <line class="fence" x1="16" y1="282" x2="924" y2="282"/>
+    <line x1="470" y1="16" x2="470" y2="424" stroke="var(--rule)" stroke-width="1"/>
+  </g>
+
+  <g id="before-host">
+    <rect class="n-box" x="24" y="64" width="210" height="200" rx="5"/>
+    <text class="t-b" x="36" y="86">kitchen-sink</text>
+    <text class="t-s" x="36" y="112">kind table · wake column</text>
+    <text class="t-s" x="36" y="136">a dispatcher per seat</text>
+    <text class="t-s" x="36" y="160">key channel:&lt;id&gt;</text>
+    <text class="t-s" x="36" y="184">author post wakes nobody</text>
+    <text class="t-s" x="36" y="208">fallback · name-only line</text>
+    <text class="t-s" x="36" y="232">+ two test controls</text>
+    <rect class="copy" x="246" y="64" width="210" height="200" rx="5"/>
+    <text class="t-b" x="258" y="86">a new app</text>
+    <text class="t-g" x="258" y="112">kind table · copied</text>
+    <text class="t-g" x="258" y="136">dispatchers · copied</text>
+    <text class="t-g" x="258" y="160">key · copied</text>
+    <text class="t-g" x="258" y="184">author rule · if kept</text>
+    <text class="t-g" x="258" y="208">fallback · copied</text>
+  </g>
+
+  <g id="before-pkg">
+    <rect class="pkg" x="24" y="316" width="210" height="92" rx="5"/>
+    <text class="t-b" x="36" y="340">agent kind</text>
+    <text class="t-s" x="36" y="364">onChannelPost entry</text>
+    <rect class="pkg" x="246" y="316" width="210" height="92" rx="5"/>
+    <text class="t-b" x="258" y="340">channel kind</text>
+    <text class="t-s" x="258" y="364">notify slot · fan-out</text>
+  </g>
+
+  <g id="after-host">
+    <rect class="host" x="492" y="64" width="210" height="130" rx="5"/>
+    <text class="t-b" x="504" y="86">kitchen-sink</text>
+    <text class="t-s" x="504" y="112">wakeMemberSeats(seats,</text>
+    <text class="t-s" x="504" y="128">  { fallback: nameOnly })</text>
+    <text class="t-s" x="504" y="160">+ two test controls,</text>
+    <text class="t-s" x="504" y="176">  wrapping the helper</text>
+    <rect class="host" x="714" y="64" width="210" height="130" rx="5"/>
+    <text class="t-b" x="726" y="86">a new app</text>
+    <text class="t-s" x="726" y="112">wakeMemberSeats(seats)</text>
+    <path class="arrow" d="M597,194 L700,318"/>
+    <path class="arrow" d="M819,194 L800,318"/>
+    <path class="head" d="M700,318 L691.8,314.4 L698.0,309.2 z"/>
+    <path class="head" d="M800,318 L797.3,309.5 L805.2,310.7 z"/>
+  </g>
+
+  <g id="after-pkg">
+    <rect class="pkg" x="540" y="320" width="376" height="104" rx="5"/>
+    <text class="t-b" x="552" y="342">wakeMemberSeats</text>
+    <text class="t-s" x="552" y="364">seat declares onChannelPost?</text>
+    <text class="t-s" x="552" y="382">a dispatcher per seat · key channel:&lt;id&gt;</text>
+    <text class="t-s" x="552" y="400">author post wakes nobody · fallback</text>
+    <text class="t-lbl" x="552" y="416">+ AGENT KIND ENTRY · NOTIFY SLOT, AS BEFORE</text>
+  </g>
+</svg>
