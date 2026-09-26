@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 368" role="img" aria-label="Two panels over a line of main commits. Today: the four child checks, FIX-1585, FIX-1589, FIX-1590 and FIX-1594, each sit on a different commit, green alone, never run together. After: one main commit, picked after the last child merges, carries four stacked parts: the end-to-end goal check, the clerk journey, all five children's goal checks re-run, and a gap sweep of what the rest does not grade. A finding is filed under the epic and sends the whole stack round again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-alone { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-part { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-find { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .line  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .tick  { fill:var(--ink-3); }
+    .pin   { fill:var(--accent); }
+    .loop  { stroke:var(--prose); stroke-width:1.3; fill:none; stroke-dasharray:5 3; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-pr  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="368"/>
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · EACH CHECK ON ITS OWN COMMIT</text>
+    <rect class="n-alone" x="16" y="44" width="96" height="54" rx="5"/>
+    <text class="t-b" x="28" y="66">FIX-1585</text>
+    <text class="t-s" x="28" y="84">green alone</text>
+    <rect class="n-alone" x="128" y="44" width="96" height="54" rx="5"/>
+    <text class="t-b" x="140" y="66">FIX-1589</text>
+    <text class="t-s" x="140" y="84">green alone</text>
+    <rect class="n-alone" x="240" y="44" width="96" height="54" rx="5"/>
+    <text class="t-b" x="252" y="66">FIX-1590</text>
+    <text class="t-s" x="252" y="84">green alone</text>
+    <rect class="n-alone" x="352" y="44" width="96" height="54" rx="5"/>
+    <text class="t-b" x="364" y="66">FIX-1594</text>
+    <text class="t-s" x="364" y="84">green alone</text>
+    <path class="rule" d="M64 98 V300 M176 98 V300 M288 98 V300 M400 98 V300"/>
+    <text class="t-s" x="16" y="350">never run together, so the seams between them are never walked</text>
+  </g>
+  <g id="divider">
+    <path class="rule" d="M470 16 V356"/>
+  </g>
+  <g id="after">
+    <text class="t-lbl" x="492" y="24">AFTER · ONE COMMIT, FOUR PARTS</text>
+    <rect class="n-part" x="600" y="44" width="324" height="44" rx="5"/>
+    <text class="t-b" x="612" y="64">1 · the goal check, legs a to c</text>
+    <text class="t-s" x="612" y="80">otto · the desk · otto answers in the desk</text>
+    <rect class="n-part" x="600" y="96" width="324" height="44" rx="5"/>
+    <text class="t-b" x="612" y="116">2 · the clerk journey, leg d</text>
+    <text class="t-s" x="612" y="132">ada answers or files · a post never wakes her</text>
+    <rect class="n-part" x="600" y="148" width="324" height="44" rx="5"/>
+    <text class="t-b" x="612" y="168">3 · all five children's checks, re-run</text>
+    <text class="t-s" x="612" y="184">1585 · 1589 · 1590 · 1594 · ER-18 · Playwright</text>
+    <rect class="n-part" x="600" y="200" width="324" height="44" rx="5"/>
+    <text class="t-b" x="612" y="220">4 · the gap sweep</text>
+    <text class="t-s" x="612" y="236">seams not graded above · docs smoke</text>
+    <path class="rule" d="M560 244 V300"/>
+    <path class="rule" d="M560 66 H600 M560 118 H600 M560 170 H600 M560 222 H600 M560 66 V244"/>
+    <circle class="pin" cx="560" cy="300" r="6"/>
+    <text class="t-acc" x="492" y="330">the closure commit, after the last merge</text>
+    <rect class="n-find" x="712" y="264" width="212" height="40" rx="5"/>
+    <text class="t-pr" x="724" y="282">a finding · a child of the epic</text>
+    <text class="t-pr" x="724" y="296">blocks FIX-1601 until fixed</text>
+    <path class="loop" d="M712 284 H640 Q620 284 620 300 H566"/>
+    <text class="t-pr" x="582" y="264">the whole stack, again</text>
+  </g>
+  <g id="commit-line">
+    <path class="line" d="M16 300 H454"/>
+    <circle class="tick" cx="64" cy="300" r="4"/>
+    <circle class="tick" cx="176" cy="300" r="4"/>
+    <circle class="tick" cx="288" cy="300" r="4"/>
+    <circle class="tick" cx="400" cy="300" r="4"/>
+    <text class="t-lbl" x="16" y="330">MAIN, OLDER TO NEWER</text>
+    <path class="line" d="M492 300 H554"/>
+  </g>
+</svg>
