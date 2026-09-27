@@ -443,9 +443,12 @@ reads it.
 
 Query parameters, both optional:
 
-- `since`: the `at` of the last event you heard. The stream starts a few
-  seconds before it, so nothing is missed. Without it, the stream starts one
-  minute back.
+- `since`: a server time (epoch ms) to start from, either the `at` of the last
+  event you heard or, when the stream follows a snapshot, the snapshot's `at`.
+  A snapshot's `at` is the time its read began, and everything saved before it
+  is in the snapshot; when you read its items over several pages, use the
+  first page's `at`. The stream starts a few seconds before `since`, so
+  nothing is missed. Without it, the stream starts one minute back.
 - `item_types`: comma-separated item types, applied as on the snapshot route.
 
 Each SSE frame's `event` is the event's `type`, and its `data` is the whole
@@ -457,7 +460,11 @@ a server time (epoch ms) to resume from. Reconnecting with any event's `at` as
   the session. An item the session snapshot hides is never sent, and neither is
   one still being generated. Tell items apart by `requestId` and `item.id`
   together: two requests can save items with the same id, and an item can
-  arrive twice across a reconnect.
+  arrive twice, across a reconnect or because the stream starts a few seconds
+  before `since`. Items from different requests arrive in no set order. Sort
+  merged items with `compareItemOrder` (from `@flow-state-dev/client` or
+  `@flow-state-dev/core/items`), the order the snapshot uses: `ts`, then
+  `itemIndex`, then `requestId`, then `id`.
 - `session.runs`: `{ runs }`, every run under the session that hasn't finished,
   each `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate? }`.
   Sent when the stream opens and again whenever that set changes.

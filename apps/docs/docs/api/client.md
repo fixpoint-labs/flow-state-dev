@@ -155,17 +155,37 @@ Supports resume via `Last-Event-ID` or `starting_after`.
 
 Opens one stream for a whole session: `GET /api/flows/sessions/:sessionId/stream`. It delivers each finished item from any request in the session, with the id of the request that kept it, and a notice naming the session's unfinished background runs whenever that set changes. Items the session snapshot hides are never sent.
 
-```ts
-import { createSessionSSEClient } from "@flow-state-dev/client";
+To build a live view, read the session snapshot, then open the stream from the snapshot's `at`, the server time the read began. With `includeItems: true` the snapshot's items come oldest first, 100 to a page by default. `pagination.hasMore` says another page follows, and `pagination.nextOffset` is the `offset` to ask for. Read every page and pass the first page's `at` as `since`. That read began earliest, so everything saved before it is somewhere in the pages, and a stream started there picks up everything saved after. `useSession` with `live: true` does all of this for you.
 
-const seen = new Set<string>();
+```ts
+import {
+  compareItemOrder,
+  createSessionClient,
+  createSessionSSEClient,
+} from "@flow-state-dev/client";
+
+const sessions = createSessionClient();
+const snapshot = await sessions.getSessionState(sessionId, { includeItems: true });
+const snapshotItems = [...(snapshot.items ?? [])];
+let page = snapshot;
+while (page.pagination?.hasMore) {
+  page = await sessions.getSessionState(sessionId, {
+    includeItems: true,
+    offset: page.pagination.nextOffset,
+  });
+  snapshotItems.push(...(page.items ?? []));
+}
+
+// Keyed by request id and item id together: two requests can save items with the same id.
+const items = new Map(snapshotItems.map((item) => [`${item.requestId}:${item.id}`, item]));
+
 const stream = createSessionSSEClient({
   sessionId,
+  since: snapshot.at, // the first page's `at`
   onItem: ({ requestId, item }) => {
-    const key = `${requestId}:${item.id}`; // two requests can keep the same item id
-    if (seen.has(key)) return;
-    seen.add(key);
-    render(item);
+    // A streamed item is finished, so it replaces any in-progress copy from the snapshot.
+    items.set(`${requestId}:${item.id}`, item);
+    render([...items.values()].sort(compareItemOrder));
   },
   onRuns: ({ runs }) => showWorking(runs), // every unfinished run, each time the set changes
   onStop: ({ status }) => { /* refused, or the server has no session stream */ },
@@ -174,7 +194,14 @@ const stream = createSessionSSEClient({
 stream.close();
 ```
 
-It reconnects with backoff, including when the server closes the connection after at most 15 minutes, and passes back the server time it last heard so the server resends what it might have missed. So after a reconnect an item can arrive twice: drop repeats by request id and item id together, since two requests can keep items with the same id. `useSession` does this for you with `live: true`. It stops, without retrying, when the server refuses the session or has no such route.
+| Option | Notes |
+|--------|-------|
+| `since` | A server time (epoch ms) to start from: the snapshot's `at`, or `stream.lastAt` from an earlier connection. The stream starts a few seconds before it. Omitted, or when a snapshot comes back without `at`, it starts about a minute back. |
+| `itemTypes` | Item types to send. Give it the same list as the snapshot's `itemTypes` so the stream sends what the snapshot shows. |
+
+The snapshot's items come in `compareItemOrder` order: `ts`, then `itemIndex`, then `requestId`, then `id`. The stream sends different requests' items in no set order, so sort anything you merge with the same comparator and a live view shows what a reload shows.
+
+It reconnects with backoff, including when the server closes the connection after at most 15 minutes, and passes back the server time it last heard so the server resends what it might have missed. So an item can arrive more than once, after a reconnect or when it was saved just before the snapshot's `at`. Holding items by request id and item id, as above, absorbs the repeats. It stops, without retrying, when the server refuses the session or has no such route.
 
 ### `createRequestStreamStore()` and `bindStoreToCallbacks(store, options?)`
 

@@ -110,6 +110,9 @@ const snapshot = await sessions.getSessionState("sess_1", {
   includeItems: true,
   clientData: ["session.artifactsList", "user.preferences"],
 });
+// `snapshot.at` is the server time the read began. Items come in pages
+// (`pagination.hasMore`, `pagination.nextOffset`); to follow the session, read
+// every page and pass the first page's `at` to `createSessionSSEClient` as `since`.
 
 // List a session's requests. Returns summaries only by default; pass
 // `includeItems` to back-fill each request's item log — useful for inspecting
@@ -289,6 +292,7 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 - `createSessionClient(options)` — Session CRUD and state snapshots
 - `createSSEClient(options)` — Request stream consumer
 - `createSessionSSEClient(options)` — Whole-session stream: finished items from every request, and run changes
+- `compareItemOrder(a, b)` — Display order for items from many requests (`ts`, `itemIndex`, `requestId`, then `id`); a session snapshot's items come in this order, so sort merged items with it
 - `createUserSSEClient(options)` — User-level stream consumer
 - `createRequestStreamStore({ keyOf? })` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
