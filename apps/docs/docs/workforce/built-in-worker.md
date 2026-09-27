@@ -162,7 +162,7 @@ Skills reach every hireable kind the same way, this one included: they arrive in
 
 ## Giving workers memory
 
-The built-in forgets everything between turns. Memory costs tokens on every turn and latency on most of them, so it is something you switch on rather than something you inherit.
+The built-in sees only the conversation it's in: each turn, its model gets that conversation's last 50 turns and nothing said in any other. Memory costs tokens on every turn and latency on most of them, so it is something you switch on rather than something you inherit.
 
 You turn it on by composing it into your own copy of the kind. A *capability* is a bundle you attach to a block — the context it injects, the tools it adds, the storage it needs — and memory ships as one. [Memory](../memory/overview.md) covers the system itself: its tiers, what each one stores, and every knob `system()` takes. What follows is how a roster of workers picks it up.
 

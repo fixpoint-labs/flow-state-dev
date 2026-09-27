@@ -496,8 +496,9 @@ so all three doors refuse it, from one exported constant rather than a literal s
 
 **A record that leaves `flow:` out is hired into the built-in `agent` kind** — it talks, its body
 arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
-through `defineAgentWorkerFlow({ skills })`. It has no memory: nothing it is told survives the
-turn. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only
+through `defineAgentWorkerFlow({ skills })`. It sees the earlier turns of the conversation it is
+in, up to the session's history window (the last 50 by default), and nothing from any other
+conversation. `kinds` is therefore optional. A `flow:` that is present but empty or whitespace-only
 refuses, because it names no kind — only an absent key means the built-in.
 
 A seat on the `agent` kind is talked to through its `run` action, which takes `{ message }`. The

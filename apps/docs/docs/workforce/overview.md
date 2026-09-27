@@ -61,7 +61,7 @@ const seats = hireWorkforce(workers);
 flowRegistry.registerMany(seats);
 ```
 
-That worker file names no `flow:`, so it runs on the built-in worker kind. Its body becomes its instructions, and it talks. It has no memory: nothing it is told survives the turn.
+That worker file names no `flow:`, so it runs on the built-in worker kind. Its body becomes its instructions, and it talks. It sees the recent turns of the conversation it's in, and nothing it's told there reaches any other conversation.
 
 A **skill** is a folder of instructions a worker can pull into a turn. `readWorkforce` collects the skills sitting beside each worker in the tree, and the built-in reads them. Each organization keeps its own copy of a seat's skills. When you call the worker's action, send `userId` beside `input`. The call never names the organization: every request runs in one, and [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers where it comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 

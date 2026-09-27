@@ -872,6 +872,12 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       inputSchema,
       flowConfigSchema: settings,
       itemVisibility: { client: true, history: true },
+      // The earlier turns of THIS conversation, so a follow-up keeps its
+      // subject. A conversation is one session: a seat has one per channel it
+      // hears and one per direct conversation, so nothing said in one reaches
+      // another. Bounded by the session's history window (the framework's
+      // default, 50 turns); older turns fall out rather than being summarized.
+      history: true,
       // What the app's catalog tools declare, declared here so `defineFlow`'s
       // static walk installs it — see `catalogDeclaredResources`. Omitted
       // entirely when the catalog declares nothing, so a kind built without one
