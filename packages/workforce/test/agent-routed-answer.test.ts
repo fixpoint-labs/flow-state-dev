@@ -7,14 +7,18 @@
  * capability, hired through `hireWorkforce`. The route's evaluation is scripted
  * by block name (`[route:<member>]` picks); the seats' answers are scripted by
  * a marker in the post: `[answer:text]` replies in text, `[answer:tool]` posts
- * through the tool once, `[answer:tool-twice]` twice, `[answer:empty]` replies
- * with nothing. Every landing assertion is on the lines the channel stored.
+ * through the tool once, `[answer:tool-twice]` twice, `[answer:tool-then-away]`
+ * once and then into a channel nobody opened, `[answer:empty]` replies with
+ * nothing. Every landing assertion is on the lines the channel stored.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1610/BUSINESS-RULES.md`, V3):
  *   BR-9  a text reply lands as the seat: one line, `author` its seat id;
  *   BR-10 the tool's first post for the post is the line; a second posts
  *         nothing and says the answer is in; a second delivery of the same
- *         post lands no second line;
+ *         post lands no second line, and two at once land one; a hand-off
+ *         the channel refused leaves the post unanswered, so it is answered
+ *         when delivered again, and a refused post into another channel
+ *         leaves an answered post answered;
  *   BR-11 an empty reply lands nothing and fails the run;
  *   BR-12 the landed line wakes no seat and takes no route;
  *   BR-13 the routed heard turn says the reply is posted to the channel; the
@@ -87,10 +91,12 @@ function scriptedAnswers(): MockGeneratorInstance & { answers: AnswerCall[] } {
       if (step === 0) answers.push({ system, turn, sent: JSON.stringify(messages) });
       const channel = / in ([a-z.]+): /.exec(turn)?.[1] ?? "support.nowhere";
       const said = turn.replace(/\[[a-z-]+:[a-z.-]+\]\s*/g, "").split(": ").slice(1).join(": ").split("\n")[0];
-      const toolCall = (body: string) => ({
-        toolCalls: [{ toolCallId: `tc_${step}_${Math.random().toString(36).slice(2)}`, toolName: POST_TO_CHANNEL_TOOL, args: { channel, body } }]
+      const toolCall = (body: string, into = channel) => ({
+        toolCalls: [{ toolCallId: `tc_${step}_${Math.random().toString(36).slice(2)}`, toolName: POST_TO_CHANNEL_TOOL, args: { channel: into, body } }]
       });
       if (turn.includes("[answer:empty]")) return { text: "" };
+      if (turn.includes("[answer:tool-then-away]") && step === 0) return toolCall("From the tool.");
+      if (turn.includes("[answer:tool-then-away]") && step === 1) return toolCall("Elsewhere.", "support.nowhere");
       if (turn.includes("[answer:tool-twice]") && step < 2) return toolCall(`From the tool, ${step + 1}.`);
       if (turn.includes("[answer:tool]") && step === 0) return toolCall("From the tool.");
       if (turn.includes("[answer:tool")) return { text: "done" };
@@ -256,6 +262,21 @@ function storedMessages(requests: Array<{ items?: unknown[] }>): string[] {
 const lines = async (runtime: FlowStateRuntime, sessionId: string) =>
   (await postedLines(runtime.stores, sessionId)).map((line) => ({ author: line.author, body: line.body }));
 
+/** One routed delivery of `postId` in HELP to support.devices, from the one sender session the redelivery tests share. */
+async function deliver(runtime: FlowStateRuntime, redeliver: FlowInstance, postId: string, body: string) {
+  const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
+    flow: redeliver,
+    actionName: "deliver",
+    input: { channelId: HELP, member: "support.devices", postId, body, principal: USER_ID, routed: true, recent: [] },
+    userId: USER_ID,
+    sessionId: "redeliver-session",
+    stores: runtime.stores,
+    runtimeConfig: { ...runtime.runtimeConfig }
+  });
+  expect(result.error).toBeUndefined();
+}
+
 describe("a routed agent's answer lands in the channel", () => {
   it("posts a text reply as the seat, one line, which wakes no seat and takes no route (BR-9, BR-12)", async () => {
     const { channel, state, answers } = host();
@@ -379,6 +400,64 @@ describe("a routed agent's answer lands in the channel", () => {
       await state.dispose();
     }
   }, 60_000);
+
+  it("lands one line when the same post reaches the seat twice at once (BR-10)", async () => {
+    const { state, redeliver, answers } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      await Promise.all([
+        deliver(runtime, redeliver, "p_twice", "[answer:text] my laptop won't join the wifi"),
+        deliver(runtime, redeliver, "p_twice", "[answer:text] my laptop won't join the wifi")
+      ]);
+      await quiet(runtime);
+
+      // Both turns answered; only one of them landed.
+      expect(answers.answers).toHaveLength(2);
+      expect(await lines(runtime, HELP)).toEqual([{ author: "support.devices", body: "Re: my laptop won't join the wifi" }]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it.each([
+    ["the landing", "[answer:text]", "Re: my laptop won't join the wifi"],
+    ["the tool", "[answer:tool]", "From the tool."]
+  ])("answers a post delivered again after the channel refused %s's hand-off: one line (BR-10)", async (_how, marker, line) => {
+    const { state, redeliver, seat } = host();
+    try {
+      const runtime = await state.getRuntime();
+      // The channel's session is not open yet, so the first hand-off is refused.
+      await deliver(runtime, redeliver, "p_refused", `${marker} my laptop won't join the wifi`);
+      await quiet(runtime);
+      const [first] = await seatRequests(runtime, seat("support.devices").id, "redeliver-session");
+      expect(JSON.stringify(first)).toMatch(/session-not-found/);
+
+      await bind(runtime.stores, HELP);
+      await deliver(runtime, redeliver, "p_refused", `${marker} my laptop won't join the wifi`);
+      await quiet(runtime);
+
+      expect(await lines(runtime, HELP)).toEqual([{ author: "support.devices", body: line }]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("keeps the answer's claim when a post into another channel is refused: delivered again, it lands nothing more (BR-10)", async () => {
+    const { state, redeliver } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      for (let delivery = 0; delivery < 2; delivery += 1) {
+        await deliver(runtime, redeliver, "p_away", "[answer:tool-then-away] my laptop won't join the wifi");
+        await quiet(runtime);
+      }
+
+      expect(await lines(runtime, HELP)).toEqual([{ author: "support.devices", body: "From the tool." }]);
+    } finally {
+      await state.dispose();
+    }
+  });
 
   it("lands nothing on an empty reply and fails the run, recorded in the seat's conversation (BR-11)", async () => {
     const { channel, state, seat } = host();
