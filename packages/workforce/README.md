@@ -1161,7 +1161,7 @@ Each record is plain data:
 | Field | Description |
 |-------|-------------|
 | `id` | `"<teamId>.<channelName>"`, minted from the two folder names — e.g. `"engineering.standup"`. This is the channel's session id. An `id:` in the frontmatter does not set it, and refuses. |
-| `declared` | The frontmatter exactly as written. A `CHANNEL.md` must set `description`, and cannot set `system:`; either one fails at load. The rest of what a channel may declare (`flow`, `members`, `boards`, `instructions`) is checked when you call `channelInstances`, so a misspelled key loads without complaint and refuses at registration. |
+| `declared` | The frontmatter exactly as written. A `CHANNEL.md` must set `description`, and cannot set `system:`; either one fails at load. The rest of what a channel may declare (`flow`, `members`, `boards`, `instructions`, `routing`) is checked when you call `channelInstances`, so a misspelled key loads without complaint and refuses at registration. |
 | `body` | The Markdown below the frontmatter — the channel's charter. |
 
 **A channel is a folder, not a file**, unlike a resource. A loose file in a `channels/` folder is
