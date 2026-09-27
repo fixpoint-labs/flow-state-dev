@@ -185,9 +185,11 @@ a reader learns the palette once.
 
 ### The trade-off — one per decision someone signs
 
-Every decision on a spec or epic PR's sign-off gets one: each numbered line and each live fork.
-The goal's sign-off line doesn't (its picture is *how we'll know*), and neither does a decision
-the filters sent to the collapsed engineering block. The prose already says *what* was chosen.
+Every decision on `SPEC.md`'s sign-off gets one, beside its card in `DECISIONS.md`, and so does
+every live fork. The PR body pins the figure of each decision *its* sign-off lists, which can be
+fewer: an epic PR often names the objective and one call, while `SPEC.md` signs all three. The
+goal's sign-off line gets none (its picture is *how we'll know*), and neither does a card the
+filters sent to the collapsed engineering block. The prose already says *what* was chosen.
 The figure shows **what the choice comes down to**: the options on the same rows, so the eye
 reads across, with the one row that settled it marked.
 
@@ -199,10 +201,12 @@ The layout is fixed so a reviewer learns it once. Copy
 | Part | What goes there |
 |---|---|
 | **The call** | `D<N> · THE CALL`, then the fork as a plain question. The question, not the answer: the answer is the column marked chosen |
-| **The options** | The chosen one first, solid `--code`, tagged `CHOSEN`. What it was chosen instead of beside it, dashed and muted, tagged `INSTEAD OF`. Two columns, three at most; the rest are the card's *considered and dropped*. On a **live fork** nothing is chosen yet: the recommendation is tagged `RECOMMENDED` with a dashed `--code` border, and every other option keeps the muted border |
+| **The options** | The chosen one first, solid `--code`, tagged `CHOSEN`. What it was chosen instead of beside it, dashed and muted, tagged `INSTEAD OF`. Two columns by default. A third only when the card's *Instead of* names two options a reader
+would weigh; then the three columns sit at `x=212 · 452 · 692`, 224 wide, with shorter cell
+text. Anything past that stays in *considered and dropped*. On a **live fork** nothing is chosen yet: the recommendation is tagged `RECOMMENDED` with a dashed `--code` border, and every other option keeps the muted border |
 | **The rows** | Two to four criteria, each the same row across every option. A cell opens with `+` (a gain, `--code`), `−` (a cost, `--gone`) or `=` (a tie), then a bold line and a small one. A tie row earns its place only when a reader would otherwise assume a difference |
 | **Decides it** | Exactly one row, first, in an `--accent-soft` band with a bar and a `▸ DECIDES IT` tag |
-| **Locks in · Flips if** | Two cells at the foot: the card's *Locks in*, as a consequence, and the fact that would reverse the call, which is the card's *what would change my mind* |
+| **Locks in · Flips if** | Two cells at the foot: the card's *Locks in*, as a consequence, and the fact that would reverse the call. That is the card's *what would change my mind* where it has one; otherwise it is the *Because*, stated as the fact that would have to stop being true |
 
 Three rules make it more than the card redrawn:
 
@@ -213,7 +217,9 @@ Three rules make it more than the card redrawn:
 - **Draw it from the card, not beside it.** *Instead of* is the other column, *Because* is the
   deciding row, *Locks in* is the foot. The card stays the text record; the figure adds the
   alignment, which a three-row table can't show. A figure that disagrees with its card is a
-  defect in both.
+  defect in both. A markdown comparison table could carry the rows, but block 3 of a PR takes
+  no tables ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3), and a table can't
+  mark the deciding row or keep a cost red.
 
 Name it `figures/d<N>-<slug>.svg` beside card `dN`, and a live fork `figures/open-<slug>.svg`, so
 check 7 below can pair each card with its figure. The sentence under it names the deciding row
@@ -348,8 +354,13 @@ for f in "$D"/*.md; do echo "$f $(awk '/^```/{f=!f; next} !f' "$f" | wc -w)"; do
 # 6. The nav line — line 3 names the required set (Evolution when present), the current one bold; must print nothing
 for f in "$D"/*.md; do sed -n 3p "$f" | grep -qE 'Spec.*Decisions.*Rules.*Plan' || echo "$f: no nav line"; done
 
-# 7. One trade-off per decision card — the numbers match, unless a card went to the engineering block
-echo "cards=$(grep -c '<a name="d[0-9]' "$D"/DECISIONS.md) trade-offs=$(grep -cE 'figures/d[0-9]+-' "$D"/DECISIONS.md)"
+# 7. Every decision card has its trade-off — names each card without one; each named card must be
+#    one the filters sent to the engineering block, and a live fork needs figures/open-<slug>.svg
+for n in $(grep -oE '<a name="d[0-9]+"' "$D"/DECISIONS.md | grep -oE '[0-9]+'); do
+  grep -qE "figures/d$n-" "$D"/DECISIONS.md || echo "d$n: no trade-off figure"
+done
+#    …and every figure a document references exists — must print nothing
+grep -ohE 'figures/[A-Za-z0-9._-]+\.svg' "$D"/*.md | sort -u | while read -r f; do [ -f "$D/$f" ] || echo "missing: $f"; done
 ```
 
 Check 2 covers node labels `[…]` and edge labels `|…|`, scoped to fence contents so a markdown

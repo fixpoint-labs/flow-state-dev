@@ -514,7 +514,7 @@ Publish canonical content in the repository; Linear carries status and links, no
    `DECISIONS.md`; it never leads.
 
 2. **Draw, render and check the figures** before the commit — the *what changes* figure, a
-   **trade-off figure per decision card** (and per live fork), and,
+   **trade-off figure per decision on `SPEC.md`'s sign-off** and per live fork (none for a card the filters sent to the engineering block), and,
    unless the spec states that no goal check applies, the *how we'll know it's met* fence at least, the rest where position carries the meaning
    ([`spec-figures.md`](../../../docs/contributing/spec-figures.md)). Run its verify block
    over the directory and open every rendered SVG in both themes. A figure nobody looked at

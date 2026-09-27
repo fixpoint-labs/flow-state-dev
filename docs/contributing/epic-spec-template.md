@@ -257,7 +257,8 @@ Sections, in order:
    with what one issue hands the next, inputs from other epics dashed, unfiled issues as
    placeholders. Then the legend sentence.
 8. **What stays as it is** — the neighbours the set deliberately leaves alone.
-9. **Sign off** — the goal first, then the objective and the cross-cutting calls that pass the filters, each linking
+9. **Sign off** — one-liners with no figures; the trade-offs stay beside their cards, and only
+   the PR body pins them. The goal first, then the objective and the cross-cutting calls that pass the filters, each linking
    its card, each with *If wrong:*. **Open: none**, or the live forks named.
 
 > # FIX-770 · Stream resilience: a dropped connection is a non-event
@@ -402,7 +403,8 @@ cross-cutting decision.** Sections, in order:
 2. **One card per decision**, anchored, with *Instead of · Because · Locks in*, **what would
    change my mind** on the objective, and its **trade-off figure**, `figures/dN-<slug>.svg`, with
    the sentence naming the row it came down to ([`spec-figures.md`](spec-figures.md) → "The
-   trade-off"). The PR body pins the same file under the decision's sign-off line.
+   trade-off"). Every card on `SPEC.md`'s sign-off has one; the PR body pins only the ones its
+   own sign-off lists, which in the PR body example above is D1 and D3.
 3. **Who owns what** — the ownership matrix figure: rule × issue, each rule with exactly one
    *decides* or *builds* cell and any number of *consumes* cells. Read a row to see where a
    decision is made, where it's built, and where it's only consumed; a *consumes* cell is a

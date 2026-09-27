@@ -225,7 +225,8 @@ Each item is self-contained — they will answer #3 without re-reading #1.
 
 **Most decisions are not live forks, and most don't reach them at all** — see the two filters
 above. Of the few that do, most are being *ratified*: a subheading naming the decision and a
-line on what a wrong one costs. The full six-part shape is for the one or two genuinely open,
+line on what a wrong one costs — on a spec or epic PR, with the decision's trade-off figure
+between them ([`spec-figures.md`](spec-figures.md) → "The trade-off"). The full six-part shape is for the one or two genuinely open,
 plus anything open in a spec's `DECISIONS.md`. Applying it to every decision buries the live
 ones; applying it to none leaves them to be found.
 

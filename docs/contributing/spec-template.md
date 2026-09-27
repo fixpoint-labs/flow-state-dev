@@ -289,7 +289,8 @@ after, and what am I signing*, in observable behaviour with no file paths. Secti
 5. **Optionally, one more figure** where a quantity carries the argument — what a turn costs,
    what a request carries — and **one mermaid** for the mechanism as a path through layers.
 6. **What stays as it is** — the neighbours a reader would otherwise assume changed.
-7. **Sign off** — **the goal first**, unnumbered, with its *If wrong:*: approval certifies the
+7. **Sign off** — here, one-liners with no figures; the trade-offs stay beside their cards, and
+   only the PR body pins them (see "The PR body"). **The goal first**, unnumbered, with its *If wrong:*: approval certifies the
    goal's size as much as the approach. Then the numbered decisions as one-liners linking to
    their cards, each with *If wrong:*, and the one to weigh named. **Open: none**, or the live
    forks named.
@@ -474,8 +475,8 @@ open or settled, then how the document got here. Sections, in order:
 2. **One card per decision**, anchored `<a name="dN"></a>` so `SPEC.md` can link to it. A table
    with three rows — **Instead of** · **Because** · **Locks in** — then its **trade-off figure**,
    `figures/dN-<slug>.svg`, with the sentence naming the row it came down to
-   ([`spec-figures.md`](spec-figures.md) → "The trade-off"); the PR body pins the same file under
-   the decision's sign-off line. A second figure only when the decision's mechanism is itself
+   ([`spec-figures.md`](spec-figures.md) → "The trade-off"), unless the filters sent the card to
+   the engineering block. The PR body pins the same file under the decision's sign-off heading. A second figure only when the decision's mechanism is itself
    positional (a layer boundary, a grid of moments). **At most three decisions**, only the calls that shape the outcome; each is a
    business decision or it does not belong here (the filters in
    [`asking-for-decisions.md`](asking-for-decisions.md) → "What reaches them at all").
