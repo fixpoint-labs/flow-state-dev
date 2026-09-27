@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 368" role="img" aria-label="Two panels over a line of main commits. Today: the four child checks, FIX-1585, FIX-1589, FIX-1590 and FIX-1594, each sit on a different commit, green alone, never run together. After: one main commit, picked after the last child merges, carries four stacked parts: the end-to-end goal check, the clerk journey, all five children's goal checks re-run, and a gap sweep of what the rest does not grade. A finding is filed under the epic and sends the whole stack round again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 940 368" role="img" aria-label="Two panels over a line of main commits. Today: the kitchen-sink child checks, FIX-1585, FIX-1589, FIX-1590 and FIX-1594, each sit on a different commit and read the page after a reload, never run together. After: one main commit, picked after the last child merges, carries four stacked parts: legs a to c read on the open page with no reload, then the real-model smoke; the escalation journey; every child's check re-run as FIX-1611 re-points them; and a gap sweep with the docs smoke. A finding is filed under the epic and sends the whole stack round again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -28,18 +28,18 @@
     <text class="t-lbl" x="16" y="24">TODAY · EACH CHECK ON ITS OWN COMMIT</text>
     <rect class="n-alone" x="16" y="44" width="96" height="54" rx="5"/>
     <text class="t-b" x="28" y="66">FIX-1585</text>
-    <text class="t-s" x="28" y="84">green alone</text>
+    <text class="t-s" x="28" y="84">after a reload</text>
     <rect class="n-alone" x="128" y="44" width="96" height="54" rx="5"/>
     <text class="t-b" x="140" y="66">FIX-1589</text>
-    <text class="t-s" x="140" y="84">green alone</text>
+    <text class="t-s" x="140" y="84">after a reload</text>
     <rect class="n-alone" x="240" y="44" width="96" height="54" rx="5"/>
     <text class="t-b" x="252" y="66">FIX-1590</text>
-    <text class="t-s" x="252" y="84">green alone</text>
+    <text class="t-s" x="252" y="84">after a reload</text>
     <rect class="n-alone" x="352" y="44" width="96" height="54" rx="5"/>
     <text class="t-b" x="364" y="66">FIX-1594</text>
-    <text class="t-s" x="364" y="84">green alone</text>
+    <text class="t-s" x="364" y="84">after a reload</text>
     <path class="rule" d="M64 98 V300 M176 98 V300 M288 98 V300 M400 98 V300"/>
-    <text class="t-s" x="16" y="350">never run together, so the seams between them are never walked</text>
+    <text class="t-s" x="16" y="350">never run together, and none reads the page a person has open</text>
   </g>
   <g id="divider">
     <path class="rule" d="M470 16 V356"/>
@@ -47,14 +47,14 @@
   <g id="after">
     <text class="t-lbl" x="492" y="24">AFTER · ONE COMMIT, FOUR PARTS</text>
     <rect class="n-part" x="600" y="44" width="324" height="44" rx="5"/>
-    <text class="t-b" x="612" y="64">1 · the goal check, legs a to c</text>
-    <text class="t-s" x="612" y="80">otto · the desk · otto answers in the desk</text>
+    <text class="t-b" x="612" y="64">1 · legs a to c, then the real-model smoke</text>
+    <text class="t-s" x="612" y="80">open page, no reload · support · devices direct</text>
     <rect class="n-part" x="600" y="96" width="324" height="44" rx="5"/>
-    <text class="t-b" x="612" y="116">2 · the clerk journey, leg d</text>
-    <text class="t-s" x="612" y="132">ada answers or files · a post never wakes her</text>
+    <text class="t-b" x="612" y="116">2 · the escalation journey</text>
+    <text class="t-s" x="612" y="132">a specialist files · nobody drains it</text>
     <rect class="n-part" x="600" y="148" width="324" height="44" rx="5"/>
-    <text class="t-b" x="612" y="168">3 · all five children's checks, re-run</text>
-    <text class="t-s" x="612" y="184">1585 · 1589 · 1590 · 1594 · ER-18 · Playwright</text>
+    <text class="t-b" x="612" y="168">3 · every child's check, re-run</text>
+    <text class="t-s" x="612" y="184">as FIX-1611 re-points them · ER-18 · Playwright</text>
     <rect class="n-part" x="600" y="200" width="324" height="44" rx="5"/>
     <text class="t-b" x="612" y="220">4 · the gap sweep</text>
     <text class="t-s" x="612" y="236">seams not graded above · docs smoke</text>

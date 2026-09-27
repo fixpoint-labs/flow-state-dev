@@ -3,76 +3,75 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The [closure rule](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)
-fixes what the plan contains and in what order. These cards are the calls it leaves open. D1 and
-D3 are the sign-off; D2 is an engineering call, recorded so nobody decides it on the day.
+fixes what the plan contains and in what order, and the epic's
+[ER-17](../../epics/FIX-1592/BUSINESS-RULES.md#the-proof) fixes the legs. These cards are the
+calls left open. D1 and D3 are the sign-off; D2 is an engineering call, recorded so nobody
+decides it on the day.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1601"] --> D1["D1 · one session: otto, the desk, otto in the desk · ada her own journey"]
-  D1 -.->|"rejected · proves nothing the children did not"| X1a["the four child checks as the proof"]
-  D1 -.->|"rejected · a failure names neither half"| X1b["ada inside the story"]
+  I["FIX-1601"] --> D1["D1 · legs a to c on the open page, then the smoke · the escalation its own journey"]
+  D1 -.->|"rejected · how both failures passed"| X1a["the merged legs, read after a reload"]
+  D1 -.->|"rejected · a failure names no child"| X1b["one story through all three legs"]
   I --> D2["D2 · engineering call · only FIX-1600's test may be re-run"]
-  D2 -.->|"rejected · hides a real regression"| X2["retry anything"]
-  I --> D3["D3 · durable-hire must pass · FIX-1598 blocks this issue"]
-  D3 -.->|"rejected · a child touched it"| X3a["skip it"]
-  D3 -.->|"rejected · a red check wraps the epic"| X3b["carve out its known failure"]
+  D2 -.->|"rejected · hides a real regression"| X2["retry anything, the smoke included"]
+  I --> D3["D3 · durable-hire must pass, as re-pointed"]
+  D3 -.->|"rejected · the rebuild touches it"| X3["skip it, or accept a known red"]
 ```
 
 Solid edges are what was chosen. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The goal check is one person's session: talk to otto, post to the desk, read otto's answer there. Ada is a second journey in the same script
+## D1 · The goal check is the epic's legs a to c, each read on the open page before any reload, then one real-model smoke. The escalation is part 2's journey
 
 | | |
 |---|---|
-| **Instead of** | (a) The four child checks as the proof, as the epic first wrote ("no proof issue"). (b) One story that also sends ada a note between the otto message and the post |
-| **Because** | (a) passes whenever each piece works alone, which the children already showed. Only one session reaches the seams between them: the post landing in otto's direct chat, otto's desk line waking iris. Otto is the one seat in all three legs, so the story is his. (b) Ada answers in her own conversation and a post never runs her, so she is not a step in the story. A separate leg d keeps a failure naming which half broke |
-| **Locks in** | Part 3 still re-runs every child's goal check: one rule, no judgement about what the session already covers. Leg d is part 2's one journey, since legs a to c walk the other people-table rows. The script is committed under `goals/` so it outlives the wrap |
+| **Instead of** | (a) The merged plan: one session through otto, the desk and otto's answer, each leg read after a reload, with the clerk as leg d. (b) One story walking a, b and c in a single session. (c) The smoke as a gated leg |
+| **Because** | Both failures the owner met on 2026-09-26 passed every check that reloaded first ([epic D3](../../epics/FIX-1592/DECISIONS.md#d3)). (a) proves a roster that is gone, the way that let them through. (b) fails without naming which child broke; separate legs each name one, and each control points at one. (c) A real model's choices can't be scripted keyless; the smoke is where they are seen |
+| **Locks in** | A reload only at a leg's end, to check that what showed persisted. Leg a's script never calls the post tool, so its answer lands by FIX-1610's rule alone. Leg c adds a follow-up that needs the earlier turn, so [FIX-1612](https://linear.app/fixpoint-labs/issue/FIX-1612) blocks this issue. The person who needs a human ([epic ER-25](../../epics/FIX-1592/BUSINESS-RULES.md#what-a-person-gets)) is the one people-table row no leg walks, so part 2 is that journey. Part 3 still re-runs every child's check |
 
-**What would change my mind:** a second agent seat that holds `post-to-channel`. Then the story
-should run on it too.
+**What would change my mind:** a second team or routed channel on the page. Then part 2 walks
+each.
 
 <a name="d2"></a>
-## D2 · Engineering call, not asked: only FIX-1600's otto test may be re-run, and the goal check never is
+## D2 · Engineering call, not asked: only FIX-1600's test may be re-run. The goal check and the smoke never are
 
 | | |
 |---|---|
 | **Instead of** | Every check passes first time, or retries allowed anywhere, as CI's `retries: 1` does |
-| **Because** | Two flakes are known, and neither is this epic's regression. [FIX-1600](https://linear.app/fixpoint-labs/issue/FIX-1600): the otto test in `talk-from-page.spec.ts` failed once on a locator, then passed. The `devtool-reflects-request` / `background-work` pair shows each other's reply in parallel; serially the suite passed 18 of 18 on [#2283](https://github.com/fixpoint-labs/flow-state-dev/pull/2283). Retrying anything waves real regressions through |
-| **Locks in** | The suite runs serially, which removes the pair's cross-talk. FIX-1600's test alone may be re-run up to twice; a pass on re-run is reported with the attempt count and FIX-1600's link. Any other retry is a finding. The end-to-end goal check is never retried. If FIX-1600 merges first, the allowance lapses |
+| **Because** | Two flakes are known, and neither is this epic's regression. [FIX-1600](https://linear.app/fixpoint-labs/issue/FIX-1600): the otto test in `talk-from-page.spec.ts` failed once on a locator, then passed. The `devtool-reflects-request` / `background-work` pair shows each other's reply in parallel; serially the suite passed 18 of 18 on [#2283](https://github.com/fixpoint-labs/flow-state-dev/pull/2283). A retry waves real regressions through, and a missing smoke answer is the very failure the owner met |
+| **Locks in** | The suite runs serially. FIX-1600's test, as FIX-1611 re-points it, alone may be re-run up to twice; a pass on re-run is reported with the attempt count and FIX-1600's link. Any other retry is a finding. The goal check and the smoke are never retried. If FIX-1600 merges first, the allowance lapses |
 
 <a name="d3"></a>
-## D3 · `durable-hire-survives-redeploy` must pass. [FIX-1598](https://linear.app/fixpoint-labs/issue/FIX-1598) blocks this issue
+## D3 · `durable-hire-survives-redeploy` must pass, as FIX-1611 re-points it
 
 | | |
 |---|---|
-| **Instead of** | Skip it as unrelated, or let it fail in FIX-1598's known way without blocking |
-| **Because** | It has been red on `main` since kitchen-sink went single-org: its admin tokens are refused and `workforce-admin` answers `Unknown flow`. FIX-1598 owns that, under another epic. But FIX-1589 edited this check to grade the desk tag, so skipping it, or accepting a "known" red, leaves a child's change unproven |
-| **Locks in** | No run starts until FIX-1598 merges (QR-1). Any failure of the check is a finding, with no signature carve-out |
+| **Instead of** | Skip it as another epic's check, or let it fail in a known way without blocking |
+| **Because** | It was red on `main` until [FIX-1598](https://linear.app/fixpoint-labs/issue/FIX-1598) fixed it. The rebuild removes the `desk` setting it grades, so FIX-1611 moves it to another hire-time value on the real app ([epic D8](../../epics/FIX-1592/DECISIONS.md#d8), ER-27). Skipping it, or accepting a known red, leaves that change unproven |
+| **Locks in** | Any failure of the check is a finding, with no signature carve-out |
 
 ## Decided, not asked
 
-- **The run starts only when all five children, FIX-1598 and the epic amendments
-  [#2289](https://github.com/fixpoint-labs/flow-state-dev/pull/2289) and
-  [#2294](https://github.com/fixpoint-labs/flow-state-dev/pull/2294) are merged and CI is
-  green**, on one commit.
-- **Part 2 is one journey**, leg d. Kitchen-sink has one team, `support`, so "per team
-  configuration" gives the same count.
-- **Part 4 covers only what parts 1 to 3 don't grade**, against the cross-spec review's C1 to C7
-  ([PLAN.md → Part 4](PLAN.md#part-4--gap-sweep)).
+- **The run starts only when FIX-1609, FIX-1610, FIX-1611, FIX-1612 and this amendment are
+  merged and CI is green**, on one commit.
+- **Each control must fail its legs and leave the rest green** ([PLAN.md → Controls](PLAN.md#controls)).
+  Leg b's answers come through the post tool, so `no-landing` reddens leg a alone.
+- **Today's `main` is a control**, built from the last commit before FIX-1609 and FIX-1610 with
+  the old names passed in. It counts only when a leg fails at its own signal, not at setup.
 - **Everything is graded on the page.** No leg or sweep row reads the CLI.
-- **Docs get a smoke-follow along legs a to d.** A gap blocks only when it breaks those flows;
-  corpus-wide compliance is `polish-docs`' at wrap.
+- **Docs get a smoke-follow** along legs a to c and the smoke. A gap blocks only when it breaks
+  those flows; corpus-wide compliance is `polish-docs`' at wrap.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
-| A live-model leg | Epic D3 keeps it out of the proof |
-| Skip FIX-1590's and FIX-1594's checks because legs b and c cover them | Saves a run, but "covers" becomes a judgement nobody can check |
-| A second post in the goal check | FIX-1590's own held-out, re-run in part 3, already proves it lands in the same conversation |
+| A live-model gated leg | Epic D3 keeps the gate keyless; the smoke is where a real model is seen |
+| Skip a child's check because a leg covers it | "Covers" becomes a judgement nobody can check |
+| Read leg b's routing from the route records | They are hidden from the page; FIX-1610's own check counts evaluator calls in part 3 |
 | Fix a small gap inside the closure PR | A gap is a child of the epic, with its own route |
 
 ## Open / Settled
@@ -83,11 +82,10 @@ should run on it too.
 
 - **Draft** — the epic's missing proof: the four children together, in one browser, on one
   commit, with stated rules for known flakes and one pre-existing red check.
-- **Review round 1** — part 3 re-runs all four child checks; part 4 narrowed to what the rest
-  doesn't grade, page-only, with a docs smoke instead of a full docs audit; the seams use the
-  cross-spec review's own C1 to C7; the flake rule became an engineering call.
-- **Review round 2** — D3 lost its carve-out: FIX-1598 blocks this issue and durable-hire must
-  pass. The run waits on #2289 too.
-- **Epic amendment #2294** — FIX-1602 joins as a fifth child: the run waits on it, part 3
-  re-runs its check, and part 4 adds a stock-routing check, since `name-only-notify` can't tell
-  Workforce's routing from kitchen-sink glue.
+- **Review rounds 1 and 2** — part 3 re-runs every child check; part 4 narrowed, page-only; the
+  flake rule became an engineering call; D3 lost its carve-out.
+- **Epic amendment #2294** — FIX-1602 joins as a fifth child; part 4 adds a stock-routing check.
+- **Amendment, 2026-09-27** — the epic's routed-desk rebuild
+  ([#2310](https://github.com/fixpoint-labs/flow-state-dev/pull/2310)): legs a to c on the open
+  page, the real-model smoke, D7's names, the escalation as part 2, and FIX-1612 blocking. The
+  otto, clerk, followups and digest legs retired; D1 rewritten, D2 and D3 re-pointed.
