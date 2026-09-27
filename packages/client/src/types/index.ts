@@ -412,6 +412,12 @@ export type ResourceManifest = {
 export type SessionStateSnapshotResponse = {
   sessionId: string;
   flowKind: string;
+  /**
+   * The server time this read began. Everything kept before it is in the
+   * snapshot, so a client that then follows the session passes it to the
+   * session stream as `since`. An older server omits it.
+   */
+  at?: number;
   clientData: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;

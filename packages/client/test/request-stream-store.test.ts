@@ -54,10 +54,33 @@ describe("compareItemOrder", () => {
     expect(compareItemOrder(b, a)).toBeGreaterThan(0);
   });
 
-  it("returns zero for identical ordering keys", () => {
-    const a = makeItem({ id: "a", ts: 100, itemIndex: 1 });
-    const b = makeItem({ id: "b", ts: 100, itemIndex: 1 });
-    expect(compareItemOrder(a, b)).toBe(0);
+  // A store that merges several requests' items would otherwise keep a tie in
+  // arrival order, while a reload keeps the server's order. The server sorts a
+  // snapshot with this same comparator, so a total order makes the two agree.
+  it("breaks a tie on time and index by request id, then item id", () => {
+    const fromA = makeItem({ id: "z", requestId: "req_a", ts: 100, itemIndex: 0 });
+    const fromB = makeItem({ id: "a", requestId: "req_b", ts: 100, itemIndex: 0 });
+    expect(compareItemOrder(fromA, fromB)).toBeLessThan(0);
+    expect(compareItemOrder(fromB, fromA)).toBeGreaterThan(0);
+
+    const first = makeItem({ id: "a", ts: 100, itemIndex: 1 });
+    const second = makeItem({ id: "b", ts: 100, itemIndex: 1 });
+    expect(compareItemOrder(first, second)).toBeLessThan(0);
+    expect(compareItemOrder(first, { ...first })).toBe(0);
+  });
+
+  it("inserts a tie across requests in the same place whatever order it arrives in", () => {
+    const fromA = makeItem({ id: "m", requestId: "req_a", ts: 100, itemIndex: 0 });
+    const fromB = makeItem({ id: "m", requestId: "req_b", ts: 100, itemIndex: 0 });
+    const byRequest = (item: OutputItem) => `${item.requestId}/${item.id}`;
+    const aFirst = createRequestStreamStore({ keyOf: byRequest });
+    aFirst.upsert(fromA);
+    aFirst.upsert(fromB);
+    const bFirst = createRequestStreamStore({ keyOf: byRequest });
+    bFirst.upsert(fromB);
+    bFirst.upsert(fromA);
+    expect(bFirst.getSorted()).toEqual(aFirst.getSorted());
+    expect(aFirst.getSorted()).toEqual([fromA, fromB]);
   });
 });
 

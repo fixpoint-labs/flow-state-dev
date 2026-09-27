@@ -40,6 +40,10 @@ export async function handleGetSessionState(
   route: Extract<ParsedFlowRoute, { kind: "get_session_state" }>,
   ctx: StateRouteContext
 ): Promise<Response> {
+  // Taken before anything is read, so everything kept before it is in this
+  // snapshot. A client that then follows the session hands it to the session
+  // stream as `since`, which starts reading from here.
+  const at = Date.now();
   const session = await loadTenantSession(
     ctx.stores.session,
     route.sessionId,
@@ -223,6 +227,7 @@ export async function handleGetSessionState(
     // Bare session id — `session.id` is the namespaced storage key (FIX-682).
     sessionId: route.sessionId,
     flowKind: session.flowKind,
+    at,
     clientData: {
       session:
         Object.keys(sessionClientData).length > 0

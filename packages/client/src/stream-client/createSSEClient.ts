@@ -351,9 +351,10 @@ export type CreateSessionSSEClientOptions = SessionSSECallbacks & {
   baseUrl?: string;
   fetcher?: ClientFetch;
   /**
-   * A server time an earlier connection heard (`handle.lastAt`). The server's
-   * first read reaches a few seconds before it. Omitted, it reaches back about
-   * a minute.
+   * A server time to start from: one an earlier connection heard
+   * (`handle.lastAt`), or the session snapshot's `at` when the stream follows a
+   * snapshot. The server's first read reaches a few seconds before it.
+   * Omitted, it reaches back about a minute.
    */
   since?: number;
   /** The session snapshot's type filter, so the stream sends what the snapshot shows. */

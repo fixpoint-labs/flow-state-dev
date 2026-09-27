@@ -103,9 +103,9 @@ type SessionStreamRouteContext = {
  * unknown session is a 404 and an unattributed one a 409, before anything is
  * streamed.
  *
- * Query: `since`, a server time the stream sent earlier (the first read reaches
- * a few seconds before it; without it, the last minute), and `item_types`,
- * the snapshot's own type filter.
+ * Query: `since`, a server time the stream sent earlier or the session
+ * snapshot's `at` (the first read reaches a few seconds before it; without it,
+ * the last minute), and `item_types`, the snapshot's own type filter.
  */
 export async function handleSessionStream(
   request: Request,

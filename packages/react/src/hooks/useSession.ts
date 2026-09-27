@@ -22,7 +22,9 @@ import {
 import type {
   ContentAudioDeltaEvent,
   ItemVisibility,
+  MessageItem,
   OutputItem,
+  ReasoningItem,
   ResourceChangeItem,
   SessionItemEvent,
   SessionMetadataChangedEvent,
@@ -78,6 +80,28 @@ function itemKey(requestId: string, itemId: string): string {
 /** {@link itemKey} of an item. */
 function keyOfItem(item: OutputItem): string {
   return itemKey(item.requestId, item.id);
+}
+
+/**
+ * Whether a copy of an item is finished. The view joins three sources that can
+ * deliver one item in any order: its own request stream, the session stream,
+ * and snapshots. Once the view holds a finished copy, an unfinished copy of
+ * that item is older than it, whichever source it came from.
+ */
+function isFinished(item: OutputItem | undefined): boolean {
+  return item !== undefined && item.status !== "in_progress";
+}
+
+/** Whether `next` may replace `held`: never an unfinished copy over a finished one. */
+function mayReplace(held: OutputItem | undefined, next: OutputItem): boolean {
+  return !isFinished(held) || isFinished(next);
+}
+
+/** How many content parts a message or reasoning item holds. */
+function partCount(item: OutputItem): number {
+  if (item.type === "message") return (item as MessageItem).content?.length ?? 0;
+  if (item.type === "reasoning") return (item as ReasoningItem).summary?.length ?? 0;
+  return 0;
 }
 
 /**
@@ -473,6 +497,10 @@ export function useSession(
   const [snapshotAppliedFor, setSnapshotAppliedFor] = useState<string | undefined>(undefined);
   // Live items no snapshot has held yet, re-applied over one that lands later.
   const unconfirmedLiveItemsRef = useRef(new Map<string, { item: OutputItem; at: number }>());
+  // The server time the applied snapshot's read began. The live stream starts
+  // from it, so nothing kept after that read is missed however long the
+  // snapshot took to arrive.
+  const snapshotAtRef = useRef<number | undefined>(undefined);
   // Two guards, and they answer different questions. The generation asks
   // "is this response still about the thing we are reading?" and advances
   // whenever the read identity changes (session id, or the client itself,
@@ -711,6 +739,7 @@ export function useSession(
 
   const applySnapshot = useCallback(
     (nextSnapshot: SessionStateSnapshotResponse) => {
+      snapshotAtRef.current = nextSnapshot.at;
       // Drain any state_changes that arrived while snapshot was null. The
       // snapshot represents server state at fetch time; replaying queued
       // events on top brings the local view up to whatever state the
@@ -753,17 +782,20 @@ export function useSession(
         )
         .sort(compareItemOrder);
 
+      // A read taken while an item was still being written holds it
+      // unfinished; a finished copy the view already holds stays.
+      const finishedHeld = new Map<string, OutputItem>();
+      for (const item of storeRef.current.getRaw()) {
+        if (isFinished(item)) finishedHeld.set(keyOfItem(item), item);
+      }
       storeRef.current.loadSnapshot(filtered);
+      for (const item of filtered) {
+        const kept = finishedHeld.get(keyOfItem(item));
+        if (kept !== undefined && !mayReplace(kept, item)) storeRef.current.upsert(kept);
+      }
       const unconfirmed = unconfirmedLiveItemsRef.current;
       if (unconfirmed.size > 0) {
-        // Only a finished copy confirms a live item. A read taken while the
-        // item was still being written holds a partial copy, which the live
-        // finished one replaces.
-        const held = new Set(
-          filtered
-            .filter((item) => item.status !== "in_progress")
-            .map((item) => itemKey(item.requestId, item.id))
-        );
+        const held = new Set(filtered.map((item) => itemKey(item.requestId, item.id)));
         const now = Date.now();
         for (const [key, entry] of unconfirmed) {
           if (held.has(key) || now - entry.at > UNCONFIRMED_LIVE_ITEM_TTL_MS) {
@@ -997,6 +1029,8 @@ export function useSession(
             optimisticKeyRef.current = null;
           }
 
+          // The session stream may already have delivered this item finished.
+          if (!mayReplace(storeRef.current.getById(keyOfItem(event.item)), event.item)) return;
           storeRef.current.upsert(event.item);
           setItems(storeRef.current.getSorted());
         },
@@ -1007,11 +1041,16 @@ export function useSession(
             return;
           }
 
+          if (!mayReplace(storeRef.current.getById(keyOfItem(event.item)), event.item)) return;
           storeRef.current.upsert(event.item);
           setItems(storeRef.current.getSorted());
         },
         onContentAdded: (event) => {
           const key = itemKey(event.requestId, event.itemId);
+          // On a finished copy, a part it already has is older than it. A part
+          // added after the item finished (synthesized audio, say) is new.
+          const held = storeRef.current.getById(key);
+          if (held !== undefined && isFinished(held) && event.contentIndex < partCount(held)) return;
           if (storeRef.current.applyContentAdded(key, event.contentIndex, event.content)) {
             setItems(storeRef.current.getSorted());
           }
@@ -1021,6 +1060,8 @@ export function useSession(
           // enter the store, so buffering them just grows the queue.
           if (rejectedItemIdsRef.current.has(event.itemId)) return;
           const key = itemKey(event.requestId, event.itemId);
+          // Every text delta comes before its item finishes.
+          if (isFinished(storeRef.current.getById(key))) return;
           storeRef.current.accumulateDelta(key, event.contentIndex, event.delta);
 
           scheduleContentFlush();
@@ -1348,10 +1389,9 @@ export function useSession(
       // from another request is a different item, held under its own key, as
       // a reload holds it.
       const key = itemKey(requestId, item.id);
-      const held = storeRef.current.getById(key);
-      if (held !== undefined && held.status !== "in_progress") return;
-      // Text still queued for the partial copy is already in the finished one.
-      if (held !== undefined) storeRef.current.discardDeltas(key);
+      if (isFinished(storeRef.current.getById(key))) return;
+      // Text still queued for this item is already in the finished copy.
+      storeRef.current.discardDeltas(key);
       unconfirmedLiveItemsRef.current.set(key, {
         item,
         at: Date.now()
@@ -1363,6 +1403,7 @@ export function useSession(
     const handle = createSessionSSEClient({
       sessionId,
       baseUrl,
+      since: snapshotAtRef.current,
       itemTypes: itemConfig.itemTypes,
       onItem: acceptItem,
       onRuns: (event) => {

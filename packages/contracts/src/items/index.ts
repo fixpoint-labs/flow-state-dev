@@ -47,6 +47,8 @@ export { resolveItemVisibility } from "./resolve-visibility";
 
 export { collapseToCanonicalLog } from "./canonical-log";
 
+export { compareItemOrder } from "./order";
+
 export {
   attributeItemsToTasks,
   itemsForTask,

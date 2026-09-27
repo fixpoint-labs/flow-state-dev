@@ -93,10 +93,11 @@ function message(requestId: string, id: string, text: string, ts: number): Outpu
   } as unknown as OutputItem;
 }
 
-function snapshot(items: OutputItem[] = []) {
+function snapshot(items: OutputItem[] = [], at?: number) {
   return {
     sessionId: "sess1",
     flowKind: "demo",
+    at,
     clientData: {},
     items,
     pagination: { offset: 0, limit: 100, total: items.length, hasMore: false, nextOffset: items.length }
@@ -202,6 +203,20 @@ describe("useSession live", () => {
     expect(streams[0].options).toMatchObject({ sessionId: "sess1", itemTypes: ["message"] });
   });
 
+  // An omitted `since` reaches back only a minute, and a snapshot can take
+  // longer than that to arrive. Starting from the snapshot's own read time
+  // loses nothing kept after it.
+  it("starts the stream where the snapshot's read began, by the server's clock", async () => {
+    sessionClientMock.getSessionState.mockResolvedValue(snapshot([], 1_700_000_000_000));
+    await mountLive();
+    expect(streams[0]?.options.since).toBe(1_700_000_000_000);
+  });
+
+  it("opens without `since` when the snapshot names no read time", async () => {
+    await mountLive();
+    expect(streams[0]?.options.since).toBeUndefined();
+  });
+
   it("shows a line another request kept, once, however often it arrives (BR-1, BR-13)", async () => {
     sessionClientMock.getSessionState.mockResolvedValue(snapshot([message("req_mine", "m0", "hello", 1)]));
     const { result } = await mountLive();
@@ -245,6 +260,24 @@ describe("useSession live", () => {
     deliver(item("req_2", message("req_2", "later", "second", 20)));
     deliver(item("req_1", message("req_1", "earlier", "first", 10)));
     expect(texts(result.current.items)).toEqual(["first", "second"]);
+  });
+
+  // Two requests' items can share a time and a request-local index. Live, they
+  // arrive in any order; a reload lists them in whatever order the server's
+  // store gave. Both have to come out the same.
+  it("orders two requests' items that tie on time and index the same way live and on reload", async () => {
+    const fromA = message("req_a", "a1", "from a", 5);
+    const fromB = message("req_b", "b1", "from b", 5);
+    const { result } = await mountLive();
+
+    deliver(item("req_b", fromB));
+    deliver(item("req_a", fromA));
+    expect(texts(result.current.items)).toEqual(["from a", "from b"]);
+
+    sessionClientMock.getSessionState.mockResolvedValue(snapshot([fromB, fromA]));
+    const reload = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await waitFor(() => expect(reload.result.current.isLoading).toBe(false));
+    expect(texts(reload.result.current.items)).toEqual(["from a", "from b"]);
   });
 
   it("applies the view's own item filter to live items", async () => {
@@ -344,6 +377,51 @@ describe("useSession live", () => {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       });
+      expect(texts(result.current.items)).toEqual(["Hello there"]);
+    });
+
+    it("keeps the finished item when its own stream catches up after it, then drops", async () => {
+      const { result, own } = await mountAttached();
+      deliver(item("req_mine", message("req_mine", "m1", "Hello there", 2)));
+
+      // The own stream lags: it now sends the item's start, then drops.
+      act(() => {
+        own.onItemAdded?.(requestEvent("item.added", { item: partial("") }));
+        own.onContentAdded?.(
+          requestEvent("content.added", { itemId: "m1", contentIndex: 0, content: { type: "output_text", text: "" } })
+        );
+        own.onContentDelta?.(requestEvent("content.delta", { itemId: "m1", contentIndex: 0, delta: "Hel" }));
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      act(() => {
+        own.onError?.(new Error("connection dropped"));
+      });
+
+      expect(texts(result.current.items)).toEqual(["Hello there"]);
+      expect(result.current.items[0]?.status).toBe("completed");
+    });
+
+    // A finished message can still gain a part, such as synthesized audio,
+    // after its text is done. That is not an older copy, so it lands.
+    it("still takes a part added to an item after it finished", async () => {
+      const { result, own } = await mountAttached();
+      const audio = { type: "output_audio", audio: "AAAA", mediaType: "audio/mpeg" };
+      const partTypes = () =>
+        (result.current.items[0] as unknown as { content: Array<{ type: string }> }).content.map((part) => part.type);
+      act(() => {
+        own.onItemAdded?.(requestEvent("item.added", { item: partial("") }));
+        own.onItemDone?.(requestEvent("item.done", { item: message("req_mine", "m1", "Hello there", 2) }));
+        // Streamed audio opens its part here and closes it once playback is sent.
+        own.onContentAdded?.(requestEvent("content.added", { itemId: "m1", contentIndex: 1, content: audio }));
+      });
+      expect(partTypes()).toEqual(["output_text", "output_audio"]);
+
+      act(() => {
+        own.onContentDone?.(requestEvent("content.done", { itemId: "m1", contentIndex: 1, content: audio }));
+      });
+      expect(partTypes()).toEqual(["output_text", "output_audio"]);
       expect(texts(result.current.items)).toEqual(["Hello there"]);
     });
 

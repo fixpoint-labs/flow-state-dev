@@ -13,6 +13,7 @@
  */
 import {
   collapseToCanonicalLog,
+  compareItemOrder,
   ITEM_UPDATE_INVARIANT_KEYS
 } from "@flow-state-dev/contracts/items";
 import { looseDeepEqual } from "@flow-state-dev/contracts/helpers";
@@ -92,13 +93,12 @@ export type RequestStreamStore = {
 };
 
 /**
- * Compares two items for chronological ordering (ts ascending, itemIndex tiebreaker).
+ * Compares two items for display order: `ts`, then `itemIndex`, then
+ * `requestId`, then `id`. The server sorts a session snapshot with the same
+ * comparator, so a store that merges several requests' items orders them as a
+ * reload does.
  */
-export function compareItemOrder(a: OutputItem, b: OutputItem): number {
-  const tsDiff = a.ts - b.ts;
-  if (tsDiff !== 0) return tsDiff;
-  return a.itemIndex - b.itemIndex;
-}
+export { compareItemOrder };
 
 // ---------------------------------------------------------------------------
 // Internal helpers

@@ -247,6 +247,111 @@ describe("the stream shows what the snapshot shows (V2)", () => {
   });
 });
 
+/** Keep one finished request `id` in `s1`, holding `items`, last updated at `updatedAt`. */
+async function keepRequest(
+  stores: StoreRegistry,
+  id: string,
+  items: OutputItem[],
+  updatedAt: number
+): Promise<void> {
+  await stores.request.set(
+    id,
+    {
+      id,
+      sessionId: "s1",
+      flowKind: "chat",
+      actionName: "say",
+      userId: "alice",
+      orgId: DEFAULT_ORG_ID,
+      source: "http",
+      status: "completed",
+      startedAtMs: updatedAt,
+      state: {},
+      version: 0,
+      createdAt: updatedAt,
+      updatedAt,
+      items
+    } as RequestRecord,
+    "any"
+  );
+}
+
+/** Request `requestId`'s one message, at time 0 and index 0, as every request's first item is. */
+function reply(requestId: string): OutputItem {
+  return item(requestId, `${requestId}_m`, "message", 0, buildBlockInstanceId(requestId, "root", 0), text(requestId));
+}
+
+/** The snapshot of `s1`: its read time and its (request, item) pairs in order. */
+async function snapshotOf(router: Router): Promise<{ at: unknown; pairs: string[] }> {
+  const res = await router.GET(
+    new Request("http://localhost/api/flows/sessions/s1/state?include_items=true"),
+    { params: { path: ["sessions", "s1", "state"] } }
+  );
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { at?: unknown; items: OutputItem[] };
+  return { at: body.at, pairs: body.items.map((i) => `${i.requestId}/${i.id}`) };
+}
+
+describe("the snapshot hands over to the stream", () => {
+  const shipped = { ...SESSION_STREAM_TIMINGS };
+  let router: Router | undefined;
+
+  beforeEach(() => {
+    SESSION_STREAM_TIMINGS.intervalMs = 25;
+  });
+
+  afterEach(async () => {
+    Object.assign(SESSION_STREAM_TIMINGS, shipped);
+    if (router !== undefined) await disposeFlowApiRouter(router);
+    router = undefined;
+  });
+
+  // The store lists a session's requests newest-updated first, so before a
+  // tie-breaker two items that share a time and an index swapped whenever the
+  // older request was touched. A client sorts with the same comparator.
+  it("orders two requests' items that tie on time and index by request id, whichever was updated last", async () => {
+    for (const [first, second] of [
+      [REQ_A, REQ_B],
+      [REQ_B, REQ_A]
+    ] as const) {
+      const built = buildRouter();
+      router = built.router;
+      // The session, then both requests replaced by one message each.
+      await seedSession(built.stores);
+      await keepRequest(built.stores, first, [reply(first)], 100);
+      await keepRequest(built.stores, second, [reply(second)], 200);
+
+      const { pairs } = await snapshotOf(router);
+      expect(pairs, `${second} updated last`).toEqual([`${REQ_A}/${REQ_A}_m`, `${REQ_B}/${REQ_B}_m`]);
+      await disposeFlowApiRouter(router);
+      router = undefined;
+    }
+  });
+
+  // Without `since` the first read reaches back a fixed window (a minute in
+  // production). A snapshot that takes longer than that to reach the client
+  // would leave an item kept just after it in neither.
+  it("sends an item kept just after the snapshot, however long the snapshot took, from the snapshot's `at`", async () => {
+    // Both windows shortened, so a 150 ms wait stands in for a snapshot slower
+    // than the first read's minute (and than every later read's margin).
+    SESSION_STREAM_TIMINGS.firstReadWindowMs = 50;
+    SESSION_STREAM_TIMINGS.marginMs = 20;
+    const built = buildRouter();
+    router = built.router;
+    await seedSession(built.stores, Date.now() - 60_000);
+
+    const { at, pairs } = await snapshotOf(router);
+    expect(typeof at).toBe("number");
+    await keepRequest(built.stores, "req_after", [item("req_after", "m_after", "message", 0, buildBlockInstanceId("req_after", "root", 0), text("after"))], Date.now());
+    expect(pairs).not.toContain("req_after/m_after");
+    // The snapshot took longer to arrive than the first read's window.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(await streamedPairs(router)).not.toContain("req_after/m_after");
+    expect(await streamedPairs(router, `&since=${String(at)}`)).toContain("req_after/m_after");
+  });
+});
+
 describe("a connection that ends", () => {
   const shipped = { ...SESSION_STREAM_TIMINGS };
   let router: Router | undefined;
