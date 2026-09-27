@@ -287,6 +287,16 @@ describe("createRequestStreamStore — keyOf", () => {
     expect(shown.map((item) => item.content[0]?.text)).toEqual(["", "for b"]);
   });
 
+  // A view whose own request stream dropped mid-item holds a partial copy; the
+  // finished copy that arrives later must take its place, not be skipped.
+  it("replaces a held partial item with a finished copy under the same key", () => {
+    const store = createRequestStreamStore({ keyOf: byRequest });
+    store.upsert(makeItem({ id: "keyed", requestId: "req_a", ts: 1, status: "in_progress" }));
+    store.upsert(fromA);
+    expect(store.getById("req_a/keyed")).toBe(fromA);
+    expect(store.getSorted()).toEqual([fromA]);
+  });
+
   it("keys by id alone by default, where a later copy replaces the earlier", () => {
     const store = createRequestStreamStore();
     store.upsert(fromA);

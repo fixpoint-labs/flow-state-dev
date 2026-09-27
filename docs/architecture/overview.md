@@ -198,8 +198,9 @@ These decisions are canonical and cannot change without architecture review:
 - Actions are flow-level (`defineFlow({ actions })`)
 - Required caller input: `userId`
 - Stream model: item/content lifecycle (no part-envelope model)
-- Stream cursor: `${requestId}:${sequence_number}`
-- Resume: both `Last-Event-ID` and `starting_after`
+- Request-stream cursor: `${requestId}:${sequence_number}`
+- Request-stream resume: both `Last-Event-ID` and `starting_after`
+- Session-stream cursor: the event's `at`, handed back as `?since=`; no sequence number ([Streaming](./streaming.md#session-stream))
 - Generator provider: Vercel AI SDK in Phase 1
 - Observational hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
 

@@ -9,13 +9,16 @@
  *
  * Reads are counted where the view would look the same either way: a hook
  * that polls, or opens a stream nobody asked for, renders identically.
+ *
+ * A request stream the hook attaches to is captured too, so a case can drop
+ * the view's own stream partway through an item.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act, cleanup } from "@testing-library/react";
 import type { OutputItem, SessionStreamEvent } from "@flow-state-dev/core/items";
-import type { CreateSessionSSEClientOptions } from "@flow-state-dev/client";
+import type { CreateSessionSSEClientOptions, CreateSSEClientOptions } from "@flow-state-dev/client";
 
-const { sessionClientMock, clientMock, recoveryClientMock, streams, realStream } = vi.hoisted(
+const { sessionClientMock, clientMock, recoveryClientMock, streams, requestStreams, realStream } = vi.hoisted(
   () => ({
     sessionClientMock: {
       getSession: vi.fn(),
@@ -36,6 +39,7 @@ const { sessionClientMock, clientMock, recoveryClientMock, streams, realStream }
       checkInterrupted: vi.fn()
     },
     streams: [] as Array<{ options: CreateSessionSSEClientOptions; closed: boolean }>,
+    requestStreams: [] as CreateSSEClientOptions[],
     realStream: { on: false }
   })
 );
@@ -50,7 +54,10 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   });
   return {
     ...actual,
-    createSSEClient: noopSSE,
+    createSSEClient: (options: CreateSSEClientOptions) => {
+      requestStreams.push(options);
+      return noopSSE();
+    },
     createSSEClientFromResponse: noopSSE,
     createRecoveryClient: () => recoveryClientMock,
     createSessionClient: () => ({ ...sessionClientMock }),
@@ -144,6 +151,7 @@ describe("useSession live", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     streams.length = 0;
+    requestStreams.length = 0;
     realStream.on = false;
     sessionClientMock.getSession.mockResolvedValue({
       id: "sess1",
@@ -278,6 +286,87 @@ describe("useSession live", () => {
       await refreshing;
     });
     expect(texts(result.current.items)).toEqual(["arrived mid-read"]);
+  });
+
+  // The session stream sends only finished items, so a held copy that is
+  // still unfinished can only be a partial one.
+  describe("a finished copy over a partial one (BR-3)", () => {
+    const partial = (text: string): OutputItem =>
+      ({ ...message("req_mine", "m1", text, 2), status: "in_progress" }) as OutputItem;
+
+    /** Mount live, attached to the view's own running request `req_mine`. */
+    async function mountAttached() {
+      sessionClientMock.getSession.mockResolvedValue({
+        id: "sess1",
+        flowKind: "demo",
+        userId: "devuser",
+        createdAt: 0,
+        updatedAt: 0,
+        latestRequestId: "req_mine"
+      });
+      sessionClientMock.listSessionRequests.mockResolvedValue([
+        { id: "req_mine", sessionId: "sess1", status: "in_progress", createdAt: 1, updatedAt: 1 }
+      ]);
+      const view = await mountLive({ autoResume: true });
+      await waitFor(() => expect(requestStreams).toHaveLength(1));
+      return { ...view, own: requestStreams[0]! };
+    }
+
+    function requestEvent(type: string, fields: Record<string, unknown>) {
+      return { stream: "request", requestId: "req_mine", sequence_number: 1, ts: 2, type, ...fields } as never;
+    }
+
+    it("shows the finished item when the view's own stream dropped partway through it", async () => {
+      const { result, own } = await mountAttached();
+      act(() => {
+        own.onItemAdded?.(requestEvent("item.added", { item: partial("Hel") }));
+        own.onError?.(new Error("connection dropped"));
+      });
+      expect(texts(result.current.items)).toEqual(["Hel"]);
+
+      deliver(item("req_mine", message("req_mine", "m1", "Hello there", 2)));
+      expect(texts(result.current.items)).toEqual(["Hello there"]);
+      expect(result.current.items[0]?.status).toBe("completed");
+    });
+
+    it("drops text still queued for the partial copy, which the finished one already holds", async () => {
+      const { result, own } = await mountAttached();
+      act(() => {
+        own.onItemAdded?.(requestEvent("item.added", { item: partial("") }));
+      });
+      act(() => {
+        // Queued for the next flush, and the finished copy lands first.
+        own.onContentDelta?.(requestEvent("content.delta", { itemId: "m1", contentIndex: 0, delta: "Hel" }));
+        streams[streams.length - 1]!.options.onItem?.(
+          item("req_mine", message("req_mine", "m1", "Hello there", 2)) as never
+        );
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(texts(result.current.items)).toEqual(["Hello there"]);
+    });
+
+    it("keeps a live finished item over a slower snapshot read that holds it partial", async () => {
+      const { result } = await mountLive();
+
+      let release: (value: unknown) => void = () => {};
+      sessionClientMock.getSessionState.mockImplementationOnce(
+        () => new Promise((resolve) => (release = resolve))
+      );
+      let refreshing: Promise<void> = Promise.resolve();
+      act(() => {
+        refreshing = result.current.refresh();
+      });
+      deliver(item("req_mine", message("req_mine", "m1", "Hello there", 2)));
+
+      await act(async () => {
+        // Read while the line was still being written.
+        release(snapshot([partial("Hel")]));
+        await refreshing;
+      });
+      expect(texts(result.current.items)).toEqual(["Hello there"]);
+    });
   });
 
   it("re-reads the runs on a nudge and keeps a run the page lacks (BR-7, BR-23)", async () => {

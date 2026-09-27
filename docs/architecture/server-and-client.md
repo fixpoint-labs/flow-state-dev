@@ -84,6 +84,7 @@ custom) mount alongside it via the `adapters` option — see
 | GET | `/api/flows/sessions/:sessionId` | Session detail |
 | GET | `/api/flows/sessions/:sessionId/requests` | Session requests |
 | GET | `/api/flows/sessions/:sessionId/state` | State snapshot |
+| GET | `/api/flows/sessions/:sessionId/stream` | SSE session stream (every request's finished items, unfinished runs) |
 | POST | `/api/flows/:flowId/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
 

@@ -756,7 +756,14 @@ export function useSession(
       storeRef.current.loadSnapshot(filtered);
       const unconfirmed = unconfirmedLiveItemsRef.current;
       if (unconfirmed.size > 0) {
-        const held = new Set(filtered.map((item) => itemKey(item.requestId, item.id)));
+        // Only a finished copy confirms a live item. A read taken while the
+        // item was still being written holds a partial copy, which the live
+        // finished one replaces.
+        const held = new Set(
+          filtered
+            .filter((item) => item.status !== "in_progress")
+            .map((item) => itemKey(item.requestId, item.id))
+        );
         const now = Date.now();
         for (const [key, entry] of unconfirmed) {
           if (held.has(key) || now - entry.at > UNCONFIRMED_LIVE_ITEM_TTL_MS) {
@@ -1334,11 +1341,17 @@ export function useSession(
     };
     const acceptItem = ({ requestId, item }: SessionItemEvent): void => {
       if (!itemConfig.enabled || !passesItemFilter(item, filter)) return;
-      // Already held: a request this view sent (its own stream delivered it),
-      // or a repeat across a reconnect. A same id from another request is a
-      // different item, held under its own key, as a reload holds it.
+      // Already held finished: a request this view sent (its own stream
+      // delivered it), or a repeat across a reconnect. Held unfinished: a
+      // partial copy, because this view's own stream dropped partway through
+      // the item or is still behind. The finished copy replaces it. A same id
+      // from another request is a different item, held under its own key, as
+      // a reload holds it.
       const key = itemKey(requestId, item.id);
-      if (storeRef.current.getById(key) !== undefined) return;
+      const held = storeRef.current.getById(key);
+      if (held !== undefined && held.status !== "in_progress") return;
+      // Text still queued for the partial copy is already in the finished one.
+      if (held !== undefined) storeRef.current.discardDeltas(key);
       unconfirmedLiveItemsRef.current.set(key, {
         item,
         at: Date.now()
