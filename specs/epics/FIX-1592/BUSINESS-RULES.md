@@ -11,7 +11,7 @@ to ER-27. A dropped number is not reused: ER-24 folded into ER-21, ER-28 is a st
 
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
-| ER-21 | A post to a routed channel runs exactly one member, resolved in order: the specialist already holding the case, read from recent lines with no model call; else one `evaluator` call with a `choice` over the members, built from their `description:`; else the fallback, only when neither yields a member. That member hears only that post, in its own conversation for the channel ([D5](DECISIONS.md#d5)) | FIX-1610 | Its browser check · FIX-1601 leg b |
+| ER-21 | A post to a routed channel runs exactly one member, resolved in order: the specialist already holding the case, read from recent lines with no model call; else one core `evaluator` call, a typed `choice` among the declared members built from their `description:`; else the fallback, when the call fails or picks no member. That member hears only that post, in its own conversation for the channel ([D5](DECISIONS.md#d5)) | FIX-1610 | Its browser check · FIX-1601 leg b |
 | ER-22 | The routed specialist's answer lands as its own line, every time ([D6](DECISIONS.md#d6)) | FIX-1610 | Its check on a script that never calls the tool · the smoke |
 | ER-23 | An open channel view shows other requests' lines and who is working, with no reload ([D4](DECISIONS.md#d4)) | FIX-1609 | Its no-reload check, red on today's `main` · FIX-1601 leg a |
 | ER-25 | A case that needs a person is filed onto `escalations` through the channel's own `fileTask`, and the specialist says so. Nobody drains it; the boot warning stays | FIX-1611 | Its browser check · FIX-1601 |
@@ -22,7 +22,7 @@ to ER-27. A dropped number is not reused: ER-24 folded into ER-21, ER-28 is a st
 | ER-4 | A seat posts only to its own channels, as its own id, set on the server | FIX-1594, shipped · FIX-1610 consumes | FIX-1610's spec review |
 | ER-5 | A seat's line shows under its name and survives a reload | FIX-1594, shipped | FIX-1601 leg a |
 | ER-6 | One kind→action map; with the clerk cut it has one row, `agent` → `run` | FIX-1585, shipped · FIX-1611 consumes | FIX-1611's spec review |
-| ER-7 | One scripted model, one script file. FIX-1610 adds its evaluator's scripted answer and a scenario that never calls the post tool | FIX-1585 · new children consume | Each browser check, keyless |
+| ER-7 | One scripted model, one script file. FIX-1610 adds a scripted evaluation answer for its route step and a scenario that never calls the post tool | FIX-1585 · new children consume | Each browser check, keyless |
 
 ## What no child may do
 

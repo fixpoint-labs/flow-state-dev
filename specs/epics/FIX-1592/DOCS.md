@@ -38,9 +38,9 @@ until FIX-1611's spec confirms them.
 > You help with devices. Answer in a sentence or two, and say plainly when you don't know.
 > ```
 >
-> A follow-up goes back to the specialist already on the case. Any other post gets one model
-> call that picks among those descriptions, and a post that fits none of them goes to
-> `support.general`. Take the routing line out and every specialist hears every post, which is
+> A follow-up goes back to the specialist already on the case. Any other post gets one
+> evaluation: an `evaluator` block picks one specialist from those descriptions, a choice from a
+> fixed list rather than written text. A post that fits none of them goes to `support.general`. Take the routing line out and every specialist hears every post, which is
 > what a channel does by default.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · Web application, the Channels and Seats bullets

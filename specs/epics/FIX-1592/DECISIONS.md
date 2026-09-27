@@ -70,9 +70,9 @@ D4 to D6 would still stand; the rebuild would move to another example.
 
 | | |
 |---|---|
-| **Instead of** | A kitchen-sink-local router, in its notify slot or anywhere else · a generator-shaped router that writes a member's name as text or a tool call · a triage seat that re-posts every post · a custom channel kind |
+| **Instead of** | A kitchen-sink-local router, in its notify slot or anywhere else · a generator-shaped router that writes a member's name as prose or a tool call · reviving the killed System One package · a triage seat that re-posts every post · a custom channel kind |
 | **Because** | The fan-out already sees every post, so narrowing its members there leaves the stock wake and D2 alone. Who hears is a typed pick among known members, which is what an `evaluator`'s `choice` question is; `utility.cascadingRouter` routes the same way. A generator's pick has to be parsed and can name a member that isn't there. An app-side router is what every host would copy, and a goal check forbids one in kitchen-sink. A triage seat adds a hop, a bot line and the old contrivance. A custom kind can't hold `escalations` |
-| **Locks in** | The route runs once per post in the channel flow, before the fan-out, never inside per-member notify. Order (ER-21): the specialist already holding the case, from recent lines, no model call; else one `evaluator` call with a `choice` over the members, built from each member's `WORKER.md` `description:`, at the same altitude as `cascadingRouter`; else the fallback member. So a failed call never pulls a follow-up away from its specialist. The specialist's answer stays a generator ([D6](#d6)). A `CHANNEL.md` line opts in; without it a channel wakes every agent member, as today. Kitchen-sink writes no router |
+| **Locks in** | The route runs once per post in the channel flow, before the fan-out, never inside per-member notify. Order (ER-21): the specialist already holding the case, from recent lines, no model call; else one core `evaluator` call: a typed `choice` among the declared agent members, its options each member's id and `WORKER.md` `description:`; else the fallback member, when the call fails or picks no member. `cascadingRouter` is the altitude to match, not a tree to build. So a failed call never pulls a follow-up away from its specialist. The specialist's answer stays a generator ([D6](#d6)). A `CHANNEL.md` line opts in; without it a channel wakes every agent member, as today. Kitchen-sink writes no router |
 
 **The trade-off, decided.** A specialist hears only the post routed to it, so its history holds
 only its cases. A post leaning on something told to another specialist arrives without it; the
@@ -137,7 +137,8 @@ The FIX-1459 fence on `agent-worker-flow.ts` is lifted: FIX-1459 merged.
   lands are one mechanism. The rebuild is FIX-1611, after FIX-1609 and FIX-1610 (#2310 review).
 - **Routing order:** the specialist holding the case, then the evaluator, then the fallback
   (ER-21), so a failed call can't split a case (#2310 review).
-- **Who hears is an `evaluator` choice, not a generator** (#2310, a Workforce peer's note).
+- **Who hears is an `evaluator` choice, not a generator**; the seat's answer stays a generator
+  (#2310, the Workforce EM and the Architect).
 - **FIX-1591 held**, pending the owner's `escalations` call.
 - **A channel's transcript is its posts** (FIX-1585 D1); the live view reads the same items.
 - Earlier rounds' calls (the internal receiver, FIX-1589 first, FIX-1602 required) all shipped.
