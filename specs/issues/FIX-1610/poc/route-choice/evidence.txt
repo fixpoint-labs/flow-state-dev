@@ -1,0 +1,93 @@
+FIX-1610 · poc/route-choice · raw output, 2026-09-27
+Run from the worktree root on spec/FIX-1610 (main at 1e2831fd2), FSDEV_* unset,
+AI_GATEWAY_API_KEY set. Each block is one command; "exit=" is its exit code.
+
+$ pnpm exec tsx specs/issues/FIX-1610/poc/route-choice/run.mts --model sonnet --repeat 3
+model: anthropic/claude-sonnet-5 via gateway, generic evaluation adapter
+repeat: 3
+
+PASS  L1 device    expect support.devices  got support.devices, support.devices, support.devices
+PASS  L2 account   expect support.accounts got support.accounts, support.accounts, support.accounts
+PASS  L3 fsd       expect support.fsd      got support.fsd, support.fsd, support.fsd
+PASS  L4 follow-up expect support.devices  got support.devices, support.devices, support.devices
+PASS  L5 unclear   expect support.general  got support.general, support.general, support.general
+
+latency ms: median 1679, max 2194
+
+ALL LEGS PASS
+exit=0
+
+$ POC_CONTROL=no-transcript pnpm exec tsx specs/issues/FIX-1610/poc/route-choice/run.mts --model sonnet --repeat 3
+model: anthropic/claude-sonnet-5 via gateway, generic evaluation adapter
+repeat: 3 · POC_CONTROL=no-transcript
+
+PASS  L1 device    expect support.devices  got support.devices, support.devices, support.devices
+PASS  L2 account   expect support.accounts got support.accounts, support.accounts, support.accounts
+PASS  L3 fsd       expect support.fsd      got support.fsd, support.fsd, support.fsd
+FAIL  L4 follow-up expect support.devices  got support.accounts, support.accounts, support.accounts
+PASS  L5 unclear   expect support.general  got support.general, support.general, support.general
+
+latency ms: median 1710, max 2369
+
+3 run(s) picked the wrong member or failed
+exit=1
+
+$ pnpm exec tsx specs/issues/FIX-1610/poc/route-choice/run.mts --model jev --repeat 3
+model: typesafe-ai/jev via gateway
+repeat: 3
+
+PASS  L1 device    expect support.devices  got support.devices@0.95, support.devices@0.94, support.devices@0.94
+PASS  L2 account   expect support.accounts got support.accounts@0.98, support.accounts@0.98, support.accounts@0.98
+PASS  L3 fsd       expect support.fsd      got support.fsd@0.88, support.fsd@0.87, support.fsd@0.87
+PASS  L4 follow-up expect support.devices  got support.devices@1.00, support.devices@1.00, support.devices@1.00
+PASS  L5 unclear   expect support.general  got support.general@0.94, support.general@0.94, support.general@0.90
+
+latency ms: median 300, max 463
+
+ALL LEGS PASS
+exit=0
+
+$ POC_CONTROL=no-transcript pnpm exec tsx specs/issues/FIX-1610/poc/route-choice/run.mts --model jev --repeat 3
+model: typesafe-ai/jev via gateway
+repeat: 3 · POC_CONTROL=no-transcript
+
+PASS  L1 device    expect support.devices  got support.devices@1.00, support.devices@1.00, support.devices@1.00
+PASS  L2 account   expect support.accounts got support.accounts@1.00, support.accounts@1.00, support.accounts@1.00
+PASS  L3 fsd       expect support.fsd      got support.fsd@1.00, support.fsd@1.00, support.fsd@1.00
+FAIL  L4 follow-up expect support.devices  got support.accounts@0.94, support.accounts@0.96, support.accounts@0.96
+PASS  L5 unclear   expect support.general  got support.general@0.97, support.general@0.97, support.general@0.98
+
+latency ms: median 277, max 520
+
+3 run(s) picked the wrong member or failed
+exit=1
+
+$ pnpm exec tsx specs/issues/FIX-1610/poc/route-choice/run.mts --model nano --repeat 1
+model: openai/gpt-5-nano via gateway, generic evaluation adapter
+repeat: 1
+
+FAIL  L1 device    expect support.devices  got ERROR(Unsupported value: 'none' is not supported with the 'gpt-5-nano-2025-08-07' model. Supported values are: 'minimal', 'low', 'medium', and 'high'.)
+FAIL  L2 account   expect support.accounts got ERROR(Unsupported value: 'none' is not supported with the 'gpt-5-nano-2025-08-07' model. Supported values are: 'minimal', 'low', 'medium', and 'high'.)
+FAIL  L3 fsd       expect support.fsd      got ERROR(Unsupported value: 'none' is not supported with the 'gpt-5-nano-2025-08-07' model. Supported values are: 'minimal', 'low', 'medium', and 'high'.)
+FAIL  L4 follow-up expect support.devices  got ERROR(Unsupported value: 'none' is not supported with the 'gpt-5-nano-2025-08-07' model. Supported values are: 'minimal', 'low', 'medium', and 'high'.)
+FAIL  L5 unclear   expect support.general  got ERROR(Unsupported value: 'none' is not supported with the 'gpt-5-nano-2025-08-07' model. Supported values are: 'minimal', 'low', 'medium', and 'high'.)
+
+latency ms: median 800, max 1271
+
+5 run(s) picked the wrong member or failed
+exit=1
+
+$ pnpm exec tsx specs/issues/FIX-1610/poc/route-choice/run.mts --model string --repeat 1
+model: the string "vercel/anthropic/claude-sonnet-5"
+repeat: 1
+
+FAIL  L1 device    expect support.devices  got ERROR(Model 'anthropic/claude-sonnet-5' is a language model, not an evaluation model. Use the language generation API instead.)
+FAIL  L2 account   expect support.accounts got ERROR(Model 'anthropic/claude-sonnet-5' is a language model, not an evaluation model. Use the language generation API instead.)
+FAIL  L3 fsd       expect support.fsd      got ERROR(Model 'anthropic/claude-sonnet-5' is a language model, not an evaluation model. Use the language generation API instead.)
+FAIL  L4 follow-up expect support.devices  got ERROR(Model 'anthropic/claude-sonnet-5' is a language model, not an evaluation model. Use the language generation API instead.)
+FAIL  L5 unclear   expect support.general  got ERROR(Model 'anthropic/claude-sonnet-5' is a language model, not an evaluation model. Use the language generation API instead.)
+
+latency ms: median 130, max 306
+
+5 run(s) picked the wrong member or failed
+exit=1

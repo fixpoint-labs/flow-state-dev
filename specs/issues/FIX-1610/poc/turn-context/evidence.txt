@@ -1,0 +1,37 @@
+FIX-1610 · poc/turn-context · raw output, 2026-09-27
+Run from the worktree root on spec/FIX-1610 (main at 1e2831fd2). Keyless: scripted models only.
+Each block is one command; "exit=" is its exit code.
+
+$ pnpm exec tsx specs/issues/FIX-1610/poc/turn-context/run.mts
+[flowstate] active profile: "default"
+C1  agent kind, turn 2 sends 2 message(s): system, user
+    turn 1 ("MacBook") stored in the conversation: true
+    turn 1 sent to the model on turn 2: false
+[flowstate] active profile: "default"
+C2  context slot
+    PASS  turn 1 sends LINE-A
+    PASS  turn 2 sends LINE-B
+    PASS  turn 2 sends turn 1's post as history
+    PASS  turn 2 does not send LINE-A
+    PASS  the stored conversation holds neither line
+    note: non-conversation items that record the lines: block_trace
+
+C2 HOLDS
+exit=0
+
+$ POC_CONTROL=in-user-message pnpm exec tsx specs/issues/FIX-1610/poc/turn-context/run.mts
+[flowstate] active profile: "default"
+C1  agent kind, turn 2 sends 2 message(s): system, user
+    turn 1 ("MacBook") stored in the conversation: true
+    turn 1 sent to the model on turn 2: false
+[flowstate] active profile: "default"
+C2  context slot · POC_CONTROL=in-user-message
+    PASS  turn 1 sends LINE-A
+    PASS  turn 2 sends LINE-B
+    PASS  turn 2 sends turn 1's post as history
+    FAIL  turn 2 does not send LINE-A
+    FAIL  the stored conversation holds neither line
+    note: non-conversation items that record the lines: block_trace
+
+C2 FAILS
+exit=1
