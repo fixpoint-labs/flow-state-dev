@@ -19,7 +19,7 @@ critical path.
 | Issue | Route | Blocked by | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|---|
 | **FIX-1609** live channel view | spec → impl PR | this amendment | The session's requests and running child runs | A session-wide live stream the open view hears; "working" in the channel view; a no-reload browser check red on today's `main` (ER-23) | FIX-1611 · FIX-1601 | Large |
-| **FIX-1610** routed channel, the answer lands | spec with a routing POC → impl PR | this amendment | The fan-out, the stock wake, members' `description:` · ER-3 · ER-4 | The opt-in route step, a stock purpose router with a fallback, the `CHANNEL.md` line, the answer that lands every time, its scripted-model entries, the channels guide section (ER-21, ER-22) | FIX-1611 · FIX-1601 | Medium |
+| **FIX-1610** routed channel, the answer lands | spec with a routing POC → impl PR | this amendment | The fan-out, the stock wake, members' `description:` · ER-3 · ER-4 | The opt-in route step, a stock `evaluator` pick with a fallback, the `CHANNEL.md` line, the answer that lands every time, its scripted-model entries, the channels guide section (ER-21, ER-22) | FIX-1611 · FIX-1601 | Medium |
 | **FIX-1611** support desk rebuild | spec → impl PR | FIX-1609 · FIX-1610 | The route line · the answer rule · the live view · D8's cut list | The roster (ER-26), escalation filing (ER-25), every check and e2e re-pointed (ER-27), the README (ER-19) | FIX-1601 | Large |
 | **FIX-1605** dev page 500 · **FIX-1606** README key | bug → impl PR ([#2306](https://github.com/fixpoint-labs/flow-state-dev/pull/2306), [#2305](https://github.com/fixpoint-labs/flow-state-dev/pull/2305)) | — | — | The page renders under `next dev`; the README names the gateway key | FIX-1601 | Small |
 | **FIX-1601** closure · required | [plan amendment](#fix-1601s-plan-amendment) → runs until one is clean → PR | every other child, on one `main` commit | ER-17's legs and the smoke | The report, a bug child per failure | Wrap | Medium |
@@ -31,10 +31,15 @@ their relations stay.
 ## Notes for the child specs
 
 - **FIX-1610, before it is built:** D5's one-call premise is untested. Its spec runs a small
-  spec-poc first: a fixed transcript, three intents, a real model. Compose the existing
-  `intentRouter` or `intentClassifier` and the `keyedRouter` utility; narrow the members in the
-  channel flow before the fan-out's forEach. Routing is capped at one model call per post; the
-  specialist's own run is separate.
+  spec-poc first: a fixed transcript, three intents, a real evaluation model.
+  - Who hears is one `evaluator` block with a `choice` question over the members, its options
+    built from each member's `WORKER.md` `description:`, at the altitude of
+    `utility.cascadingRouter`. `utility.intentClassifier` is a generator, so it doesn't fit.
+  - Narrow the members in the channel flow before the fan-out's forEach. Capped at one evaluator
+    call per post; the specialist's own generator run is separate.
+  - Unlike `cascadingRouter`, where a failed evaluation propagates, a failed call here goes to
+    the fallback (ER-21). The keyless run needs a scripted evaluation answer in the one script
+    file (ER-7).
 - **FIX-1609:** prefer session-visible item and post events, with "working" from child-run
   summaries, over multiplexing every child request's full delta stream. Word-by-word streaming
   is out of scope.

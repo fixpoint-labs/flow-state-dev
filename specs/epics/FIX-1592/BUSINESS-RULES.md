@@ -11,7 +11,7 @@ to ER-27. A dropped number is not reused: ER-24 folded into ER-21, ER-28 is a st
 
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
-| ER-21 | A post to a routed channel runs exactly one member, resolved in order: the specialist already holding the case, read from recent lines with no model call; else one classifier call over the members' `description:`; else the fallback, only when neither yields a member. That member hears only that post, in its own conversation for the channel ([D5](DECISIONS.md#d5)) | FIX-1610 | Its browser check · FIX-1601 leg b |
+| ER-21 | A post to a routed channel runs exactly one member, resolved in order: the specialist already holding the case, read from recent lines with no model call; else one `evaluator` call with a `choice` over the members, built from their `description:`; else the fallback, only when neither yields a member. That member hears only that post, in its own conversation for the channel ([D5](DECISIONS.md#d5)) | FIX-1610 | Its browser check · FIX-1601 leg b |
 | ER-22 | The routed specialist's answer lands as its own line, every time ([D6](DECISIONS.md#d6)) | FIX-1610 | Its check on a script that never calls the tool · the smoke |
 | ER-23 | An open channel view shows other requests' lines and who is working, with no reload ([D4](DECISIONS.md#d4)) | FIX-1609 | Its no-reload check, red on today's `main` · FIX-1601 leg a |
 | ER-25 | A case that needs a person is filed onto `escalations` through the channel's own `fileTask`, and the specialist says so. Nobody drains it; the boot warning stays | FIX-1611 | Its browser check · FIX-1601 |
@@ -22,14 +22,14 @@ to ER-27. A dropped number is not reused: ER-24 folded into ER-21, ER-28 is a st
 | ER-4 | A seat posts only to its own channels, as its own id, set on the server | FIX-1594, shipped · FIX-1610 consumes | FIX-1610's spec review |
 | ER-5 | A seat's line shows under its name and survives a reload | FIX-1594, shipped | FIX-1601 leg a |
 | ER-6 | One kind→action map; with the clerk cut it has one row, `agent` → `run` | FIX-1585, shipped · FIX-1611 consumes | FIX-1611's spec review |
-| ER-7 | One scripted model, one script file. FIX-1610 adds its classifier's entry and a scenario that never calls the post tool | FIX-1585 · new children consume | Each browser check, keyless |
+| ER-7 | One scripted model, one script file. FIX-1610 adds its evaluator's scripted answer and a scenario that never calls the post tool | FIX-1585 · new children consume | Each browser check, keyless |
 
 ## What no child may do
 
 | # | Rule | Because |
 |---|---|---|
 | ER-8 | Change Workforce only where a path needs it. Engine, client and react may gain a session-wide live stream in their own words. No Workforce word below Workforce; no Layer 1 channel, notify, route or dispatch piece | The layer rule. [D4](DECISIONS.md#d4) lifts "no engine change" |
-| ER-9 | No kitchen-sink-only route or API. The live view uses the framework's stream, never a poll or remount | A reference app teaches its fixes |
+| ER-9 | No kitchen-sink-only route, router or API. The live view uses the framework's stream, never a poll or remount | A reference app teaches its fixes |
 | ER-10 | No second kind→action map, no invented Dispatcher | Architect fence |
 | ER-12 | A seat's answer is a peer post. The route picks who hears; it never answers or posts | A channel is a log of posts |
 | ER-13 | No board drain or board UI, no change to who attends `escalations` (FIX-1591); no hired specialist joining a channel (FIX-1415); no verified identity (FIX-1493) | Each is its own decision |
@@ -41,7 +41,7 @@ to ER-27. A dropped number is not reused: ER-24 folded into ER-21, ER-28 is a st
 | # | Rule | Because |
 |---|---|---|
 | ER-14 | FIX-1609 and FIX-1610 build in parallel. FIX-1611 builds after both merge. FIX-1601 runs after every other child. Blocked-by holds implementation only | [D1](DECISIONS.md#d1) |
-| ER-15 | A child that needs a Workforce word below Workforce, a second model call per post to route, or a key for a gated leg, stops and comments up here | The Kill line |
+| ER-15 | A child that needs a Workforce word below Workforce, more than one `evaluator` call per post to route, or a key for a gated leg, stops and comments up here | The Kill line |
 | ER-16 | *Done:* FIX-1585 folded ER-1 | — |
 
 ## The proof

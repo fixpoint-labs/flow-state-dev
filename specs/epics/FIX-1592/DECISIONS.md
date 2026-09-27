@@ -17,6 +17,7 @@ flowchart TD
   D4 -.->|"rejected"| X4["a kitchen-sink poll"]
   E --> D5["D5 · routing is an opt-in route step in Workforce"]
   D5 -.->|"rejected"| X5["a triage seat that re-posts"]
+  D5 -.->|"rejected"| X5b["a generator or kitchen-sink router"]
   E --> D6["D6 · the routed answer lands every time"]
   E --> D7["D7 · four specialists by purpose, no care"]
   E --> D8["D8 · only the support story on the page"]
@@ -65,13 +66,13 @@ D4 to D6 would still stand; the rebuild would move to another example.
 | **Locks in** | Engine, client and react may change in their own words (session, request, child run), never Workforce's (ER-8). "Working" reads the session's running child runs. The old Kill line's "no change in core or engine" is lifted |
 
 <a name="d5"></a>
-## D5 · Routing is an opt-in route step in Workforce: a channel that declares it sends each post to one member, picked by the members' stated purpose · FIX-1610
+## D5 · Routing is an opt-in route step in Workforce: a channel that declares it sends each post to one member, picked by one `evaluator` choice over the members' stated purpose · FIX-1610
 
 | | |
 |---|---|
-| **Instead of** | A router in kitchen-sink's notify slot · a triage seat that re-posts every post · a custom channel kind |
-| **Because** | The fan-out already sees every post, so narrowing its members there leaves the stock wake and D2 alone. An app-side router is what every host would copy, and a goal check forbids one in kitchen-sink. A triage seat adds a hop, a bot line and the old contrivance. A custom kind can't hold `escalations` |
-| **Locks in** | The route runs once per post in the channel flow, before the fan-out, never inside per-member notify. Order (ER-21): the specialist already holding the case, from recent lines, no model call; else one classifier call over the members' `WORKER.md` `description:`; else the fallback member. So a failed call never pulls a follow-up away from its specialist. A `CHANNEL.md` line opts in; without it a channel wakes every agent member, as today. Kitchen-sink writes no routing code |
+| **Instead of** | A kitchen-sink-local router, in its notify slot or anywhere else · a generator-shaped router that writes a member's name as text or a tool call · a triage seat that re-posts every post · a custom channel kind |
+| **Because** | The fan-out already sees every post, so narrowing its members there leaves the stock wake and D2 alone. Who hears is a typed pick among known members, which is what an `evaluator`'s `choice` question is; `utility.cascadingRouter` routes the same way. A generator's pick has to be parsed and can name a member that isn't there. An app-side router is what every host would copy, and a goal check forbids one in kitchen-sink. A triage seat adds a hop, a bot line and the old contrivance. A custom kind can't hold `escalations` |
+| **Locks in** | The route runs once per post in the channel flow, before the fan-out, never inside per-member notify. Order (ER-21): the specialist already holding the case, from recent lines, no model call; else one `evaluator` call with a `choice` over the members, built from each member's `WORKER.md` `description:`, at the same altitude as `cascadingRouter`; else the fallback member. So a failed call never pulls a follow-up away from its specialist. The specialist's answer stays a generator ([D6](#d6)). A `CHANNEL.md` line opts in; without it a channel wakes every agent member, as today. Kitchen-sink writes no router |
 
 **The trade-off, decided.** A specialist hears only the post routed to it, so its history holds
 only its cases. A post leaning on something told to another specialist arrives without it; the
@@ -84,7 +85,7 @@ customer may repeat it. Passing lines with the post is a later, one-rule change.
 |---|---|
 | **Instead of** | A firmer prompt · a channel-side responder writing the answer itself |
 | **Because** | On real models the seat posted its answer 4 times in 6 on one and 0 in 2 on another; the script always did. A prompt makes it likelier, not certain. A channel-side responder writes words no seat wrote |
-| **Locks in** | "Meant to answer" is the routed member, so FIX-1610 defines it with the route ([D5](#d5)), never as "every woken member of an unrouted channel posts". The line is authored as the seat (ER-4), so D2 keeps it from waking anyone |
+| **Locks in** | "Meant to answer" is the routed member, so FIX-1610 defines it with the route ([D5](#d5)), never as "every woken member of an unrouted channel posts". The answer is the seat's own generator turn; only who hears is an evaluator. The line is authored as the seat (ER-4), so D2 keeps it from waking anyone |
 
 <a name="d7"></a>
 ## D7 · The support team is four specialists by purpose and one routed channel
@@ -134,15 +135,16 @@ The FIX-1459 fence on `agent-worker-flow.ts` is lifted: FIX-1459 merged.
 - **FIX-1609 and FIX-1610 block FIX-1601**; the owner chose the framework fix for the live view.
 - **The routed channel folds into FIX-1610**, since who hears a post and whether its answer
   lands are one mechanism. The rebuild is FIX-1611, after FIX-1609 and FIX-1610 (#2310 review).
-- **Routing order:** the specialist holding the case, then the classifier, then the fallback
+- **Routing order:** the specialist holding the case, then the evaluator, then the fallback
   (ER-21), so a failed call can't split a case (#2310 review).
+- **Who hears is an `evaluator` choice, not a generator** (#2310, a Workforce peer's note).
 - **FIX-1591 held**, pending the owner's `escalations` call.
 - **A channel's transcript is its posts** (FIX-1585 D1); the live view reads the same items.
 - Earlier rounds' calls (the internal receiver, FIX-1589 first, FIX-1602 required) all shipped.
 
 ## What the end-state POC showed
 
-None built. The untested premise is D5: one classifier call routing well on a real model.
+None built. The untested premise is D5: one evaluator choice routing well on a real model.
 FIX-1610's spec builds a small routing POC before it is built
 ([PLAN.md](PLAN.md#notes-for-the-child-specs)); the smoke confirms it.
 

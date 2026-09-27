@@ -70,11 +70,11 @@ today's `main` fails it.
 |---|---|
 | **Lead measure** | A clean FIX-1601 run on one `main` commit, no-reload leg and smoke included. **None today** |
 | **Not doing** | Hired specialists in the channel (FIX-1415) · draining `escalations` (FIX-1591) · a `care` specialist ([D7](DECISIONS.md#d7)) · word-by-word streaming · verified identity (FIX-1493) |
-| **Kill line** | A gated leg can't pass keyless · the live view or routing needs a Workforce word in core, engine, client or react · routing a post takes more than one model call. The chosen specialist's own run is separate, and the classifier never runs inside per-member notify |
+| **Kill line** | A gated leg can't pass keyless · the live view or routing needs a Workforce word in core, engine, client or react · routing a post takes more than one `evaluator` call. The chosen specialist's own generator run is separate, and the evaluator never runs inside per-member notify |
 
 ## What's in the box
 
-![What's in the box: one support conversation, routed to one specialist by purpose, whose answer always lands (both FIX-1610), in a live view (FIX-1609), plus direct talk (FIX-1585). Fenced: no Workforce word below Workforce, routing opt-in, one model call per post. The app composes four specialists, the fallback, escalations and the model. Not built: hired specialists in the channel, escalations served, a care specialist.](figures/end-state.svg)
+![What's in the box: one support conversation, routed to one specialist by purpose, whose answer always lands (both FIX-1610), in a live view (FIX-1609), plus direct talk (FIX-1585). Fenced: no Workforce word below Workforce, routing opt-in, one evaluator call per post. The app composes four specialists, the fallback, escalations and the model. Not built: hired specialists in the channel, escalations served, a care specialist.](figures/end-state.svg)
 
 Inside the box is what any Workforce app gets; kitchen-sink composes the roster. The fence keeps
 the live fix in the framework's own words.
@@ -89,7 +89,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | [FIX-1603](https://linear.app/fixpoint-labs/issue/FIX-1603), [FIX-1604](https://linear.app/fixpoint-labs/issue/FIX-1604) · closure-prep bugs | A goal leg and a plan check follow FIX-1602 | Found before the run | Done · [#2301](https://github.com/fixpoint-labs/flow-state-dev/pull/2301), [#2300](https://github.com/fixpoint-labs/flow-state-dev/pull/2300) |
 | [FIX-1605](https://linear.app/fixpoint-labs/issue/FIX-1605) · dev page 500 · [FIX-1606](https://linear.app/fixpoint-labs/issue/FIX-1606) · wrong README key | The page renders under `next dev`; the README names the gateway key | Closure findings | Backlog · [#2306](https://github.com/fixpoint-labs/flow-state-dev/pull/2306), [#2305](https://github.com/fixpoint-labs/flow-state-dev/pull/2305) open |
 | [FIX-1609](https://linear.app/fixpoint-labs/issue/FIX-1609) · live channel view | A session-wide live stream; "working" in the channel view | Leg a ([D4](DECISIONS.md#d4)) | Backlog |
-| [FIX-1610](https://linear.app/fixpoint-labs/issue/FIX-1610) · routed channel (Workforce) | The opt-in route step, a purpose router with a fallback, the `CHANNEL.md` line; the routed answer, whatever the tool choice | Legs a and b, the smoke ([D5](DECISIONS.md#d5), [D6](DECISIONS.md#d6)) | Backlog |
+| [FIX-1610](https://linear.app/fixpoint-labs/issue/FIX-1610) · routed channel (Workforce) | The opt-in route step, an `evaluator` pick with a fallback, the `CHANNEL.md` line; the routed answer, whatever the tool choice | Legs a and b, the smoke ([D5](DECISIONS.md#d5), [D6](DECISIONS.md#d6)) | Backlog |
 | [FIX-1611](https://linear.app/fixpoint-labs/issue/FIX-1611) · support desk rebuild (kitchen-sink) | The roster, escalation filing, every check and doc re-pointed | The page a person uses ([D7](DECISIONS.md#d7), [D8](DECISIONS.md#d8)) | Backlog |
 | [FIX-1601](https://linear.app/fixpoint-labs/issue/FIX-1601) · closure · required | The amended QA plan, run on one `main` commit | Proves the whole ([ER-17](BUSINESS-RULES.md#the-proof)) | In Development · plan [#2288](https://github.com/fixpoint-labs/flow-state-dev/pull/2288) to amend |
 
