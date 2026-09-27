@@ -44,6 +44,11 @@ An evaluator is a block that answers typed questions with one model call. Not ev
 that; see [Evaluation models](/docs/fundamentals/models#evaluation-models). A channel without the
 `routing:` line keeps waking every agent member, even on a kind built with a route.
 
+The fallback has to be a member whose hired seat can hear a post, or the app refuses to start and
+names the channel. The `routing:` line is read from the file each time the app starts, so adding
+it to a channel that is already open routes that channel from the next start, with its lines
+kept.
+
 #### How a post finds its member
 
 For each post from a person, in this order:
@@ -55,7 +60,8 @@ For each post from a person, in this order:
    in its `WORKER.md`. The model also sees the channel's recent lines, which is how "it fails
    right after the password" reaches the specialist who asked about the password.
 3. **The fallback.** If the call fails, or answers with something that isn't a member, the
-   fallback member takes the post.
+   fallback member takes the post. If the person posting can't reach any seat of the fallback's,
+   nobody answers, and the route records why.
 
 Only that member receives the post. Nobody else in the channel is told about it. A post a seat
 wrote is never routed and wakes nobody, as in any channel.
@@ -65,24 +71,35 @@ better than "Our devices person".
 
 Each decision is recorded on the channel's session as a `channel-route` item: which member, and
 whether it came from the member already on it, the evaluator, or the fallback, with the reason
-when the fallback took it. It never shows as a line in the channel.
+when the fallback took it or nobody could. It never shows as a line in the channel, and the chat
+renderers skip it.
 
 #### The answer lands in the channel
 
 The routed member answers the way any woken seat does, in its own conversation. The difference is
 what happens to the reply: it is posted into the channel as that seat's line, every time. The
-model doesn't have to call `post-to-channel`, and if it does, nothing is posted twice. An empty
-reply posts nothing and ends that seat's run as failed.
+model doesn't have to call `post-to-channel`. If it does, its first post is the answer and
+nothing more is posted for that question. An empty reply posts nothing and ends that seat's run
+as failed.
+
+#### What the member sees when it answers
+
+The routed member's model sees the channel's last 20 lines along with the post, whoever wrote
+them and whoever they went to. That's how "where can I buy it?" finds its "it" when the laptop
+came up with another member. The lines are there for that one answer. They aren't kept in the
+member's conversation, so anything older than the last 20 lines is out of its view. A seat woken
+in an unrouted channel, or talked to directly, gets no lines.
 
 #### What routing can't do
 
-- A member hears only the posts routed to it. If a customer told `support.devices` something and
-  then asks `support.accounts` about it, they may have to say it again.
+- A member sees only the last 20 lines when it answers. Something said earlier may have to be
+  said again.
 - A second question sent before the first is answered goes to the same member, whatever it's
   about.
 - A follow-up after an answer relies on the evaluator call. If that call fails, the follow-up goes
   to the fallback.
 - One model per channel kind. Two channels on the same kind route with the same model.
+- A change to `routing:` waits for the next start.
 
 In a test, script the route's evaluation by its block name, `channel-route`, with
 `createMockModelResolver` from `@flow-state-dev/testing`.
@@ -101,12 +118,6 @@ with:
 > routed to: its reply is posted for it. The tool is for everything else, such as a seat talked
 > to directly that wants to say something in a channel.
 
-## UPDATE · `apps/docs/docs/workforce/channels.md` · "What channels do not do yet"
-
-Add:
-
-> - No shared memory between routed members. Each hears only the posts routed to it.
-
 ## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · after "`description` is the only key the file itself requires."
 
 > In a [routed channel](./channels.md#routing-a-channel), it is also what the route reads to decide
@@ -119,12 +130,12 @@ channels guide, "Routing a channel").
 
 Exports table, beside `wakeMemberSeats`:
 
-| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each post from a person goes to one member: the one still on the person's last post, else one evaluator call's pick (block name `channel-route`), else the declared fallback. That member's reply is posted into the channel as its line. |
+| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each post from a person goes to one member: the one still on the person's last post, else one evaluator call's pick (block name `channel-route`), else the declared fallback. That member answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line. |
 
 `defineChannelFlow(options?)` row: add "`options.route` is the route from `routeByPurpose`."
 
 "Posting to a channel from a seat": add one sentence: a routed member's reply is posted for it;
-the notify input carries `routed: true` for that delivery.
+the notify input carries `routed: true` and `recent`, the channel's last lines, for that delivery.
 
 ## UPDATE · `packages/testing/README.md` · the paragraph "`createMockModelResolver` has no `resolveEvaluationModel`…"
 
@@ -134,8 +145,10 @@ the notify input carries `routed: true` for that delivery.
 
 ## Changesets
 
-`@flow-state-dev/workforce` minor: routed channels, `routeByPurpose`, the `routing:` key, the
-`routed` notify field. `@flow-state-dev/testing` patch: `evaluators` on `createMockModelResolver`.
+`@flow-state-dev/workforce` patch: routed channels, `routeByPurpose`, the `routing:` key, the
+`routed` and `recent` notify fields. Additive, so a patch before 1.0. `@flow-state-dev/testing`
+patch: `evaluators` on `createMockModelResolver`. `@flow-state-dev/ui` is private: its registry
+line gets none.
 
 ## Publication ownership
 

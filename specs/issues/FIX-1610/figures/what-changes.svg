@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 424" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels. Before: a person's post reaches a channel with no routing line, the fan-out wakes all four agent specialists, and the channel shows a line only where a model chose to call the post tool. After: the channel declares routing with general as the fallback; the route step checks the specialist still on the last post, else makes one evaluator call, else takes the fallback, and wakes devices alone; its reply is posted into the channel as one line authored by the seat.">
+     aria-label="Two panels. Before: a person's post reaches a channel with no routing line, the fan-out wakes all four agent specialists, and the channel shows a line only where a model chose to call the post tool. After: the channel declares routing with general as the fallback; the route step checks the specialist still on the last post, else makes one evaluator call, else takes the fallback, and wakes devices alone, handing its turn the channel's last 20 lines as context; its reply is posted into the channel as one line authored by the seat.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -68,6 +68,7 @@
     <text class="t-s" x="504" y="140">1 still on the last post · 2 one evaluator call · 3 fallback</text>
     <path class="arrow" d="M539,152 L539,177"/>
     <path class="head" d="M539,184 L535,176 L543,176 z"/>
+    <text class="t-s" x="552" y="172">the post, and the last 20 lines as context</text>
     <rect class="host" x="492" y="184" width="94" height="60" rx="5"/>
     <rect class="n-box" x="602" y="184" width="94" height="60" rx="5"/>
     <rect class="n-box" x="712" y="184" width="94" height="60" rx="5"/>
