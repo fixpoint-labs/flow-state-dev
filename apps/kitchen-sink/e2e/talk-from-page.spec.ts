@@ -107,10 +107,16 @@ async function answerLanded(page: Page, mark: string): Promise<void> {
     .toBe(true);
 }
 
-/** The channel as drawn after a reload: each line's label and text, oldest first. */
-async function drawnAfterReload(page: Page): Promise<Array<{ label: string; text: string }>> {
+/**
+ * The channel as drawn after a reload: each line's label and text, oldest
+ * first. The transcript mounts before its lines load, so this waits for the
+ * person's line carrying `mark` first.
+ */
+async function drawnAfterReload(page: Page, mark: string): Promise<Array<{ label: string; text: string }>> {
   await page.reload();
   const panel = await openChannel(page);
+  const person = page.getByTestId("channel-line-label").getByText("devuser", { exact: true });
+  await expect(panel.getByTestId("channel-line").filter({ has: person }).filter({ hasText: mark }).first()).toBeVisible();
   return await panel
     .getByTestId("channel-line")
     .evaluateAll((els) =>
@@ -133,6 +139,33 @@ function answersTo(drawn: Array<{ label: string; text: string }>, mark: string) 
 /** A seat's conversation for a channel: the run the channel started, listed under the seat. */
 const channelRun = (page: Page, seat: string, channel: string): Locator =>
   rail(page).locator(`ul[data-leaf="${seat}"] [data-dispatch-run-of="${channel}"]`);
+
+/**
+ * `seat`'s conversation for the channel, opened and drawn, or `undefined` when
+ * it has none. A seat keeps one conversation per channel.
+ *
+ * Reloads first, so nothing is picked, then waits for the seat's list to load
+ * and the conversation to draw its first turn: a turn counted as missing is
+ * read off a loaded conversation, never off one still fetching.
+ */
+async function channelConversationOf(page: Page, seat: string): Promise<Locator | undefined> {
+  await page.reload();
+  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+  await open(page, "agent");
+  await open(page, seat);
+  const leaf = rail(page).locator(`ul[data-leaf="${seat}"]`);
+  // The list is loaded once it shows a row or says it has none.
+  await expect(leaf.locator("[data-session-id]").or(leaf.getByText("No sessions yet")).first()).toBeVisible();
+  const runs = channelRun(page, seat, CHANNEL);
+  const count = await runs.count();
+  expect(count, `${seat} lists ${count} conversations for ${CHANNEL}`).toBeLessThanOrEqual(1);
+  if (count === 0) return undefined;
+  await runs.click();
+  const conversation = picked(page);
+  // A conversation for the channel opens on a person's post.
+  await expect(conversation.locator('[data-message-role="user"]').first()).toBeVisible();
+  return conversation;
+}
 
 test("a line posted to support.help shows as devuser, and is still there after a reload", async ({
   page,
@@ -224,7 +257,7 @@ test("a post to support.help gets one answer, as a line under the specialist it 
   await post(await openChannel(page), line);
   await answerLanded(page, mark);
 
-  const answers = answersTo(await drawnAfterReload(page), mark);
+  const answers = answersTo(await drawnAfterReload(page, mark), mark);
   // One line, by the specialist the post was routed to, and not the post handed back.
   expect(answers.map((l) => l.label)).toEqual(["support.accounts"]);
   expect(answers[0]!.text).toContain("[reply:wake]");
@@ -246,7 +279,7 @@ test("a post that needs a person is one row on escalations in the team panel aft
     )
     .toContain(mark);
 
-  const answers = answersTo(await drawnAfterReload(page), mark);
+  const answers = answersTo(await drawnAfterReload(page, mark), mark);
   expect(answers.map((l) => l.label)).toEqual(["support.devices"]);
   expect(answers[0]!.text).toContain("[reply:escalated]");
   const board = page.getByTestId(`board-${CHANNEL}.escalations`);
@@ -282,16 +315,12 @@ test("a post to support.help runs the specialist it was routed to once, in its o
   }
   await expect(conversation.locator('[data-message-role="assistant"]').filter({ hasText: "[reply:wake]" })).not.toHaveCount(0);
 
-  // The other specialists never heard either post, in any run of the channel.
+  // The other specialists never heard either post.
   for (const seat of SPECIALISTS.filter((s) => s !== "support.fsd")) {
-    await open(page, seat);
-    await expect(rail(page).locator(`ul[data-leaf="${seat}"]`)).toBeVisible();
-    const runs = channelRun(page, seat, CHANNEL);
-    for (let i = 0; i < (await runs.count()); i++) {
-      await runs.nth(i).click();
-      for (const line of [first, second]) {
-        await expect(picked(page).locator('[data-message-role="user"]').filter({ hasText: line })).toHaveCount(0);
-      }
+    const other = await channelConversationOf(page, seat);
+    if (other === undefined) continue;
+    for (const line of [first, second]) {
+      await expect(other.locator('[data-message-role="user"]').filter({ hasText: line })).toHaveCount(0);
     }
   }
 });
@@ -307,24 +336,22 @@ test("a specialist that answers through post-to-channel has one line under its o
   // Time for a wrongly woken seat to run, so its absence below is not a race.
   await page.waitForTimeout(1_500);
 
-  const answers = answersTo(await drawnAfterReload(page), mark);
+  const answers = answersTo(await drawnAfterReload(page, mark), mark);
   // The tool's line is the answer: one line, not the tool's and the reply's.
   expect(answers.map((l) => l.label)).toEqual(["support.devices"]);
   expect(answers[0]!.text).toContain(`[reply:in-channel] ${mark}`);
 
-  await open(page, "agent");
   for (const seat of SPECIALISTS) {
-    await open(page, seat);
-    const runs = channelRun(page, seat, CHANNEL);
-    let heard = 0;
-    for (let i = 0; i < (await runs.count()); i++) {
-      await runs.nth(i).click();
-      const turns = picked(page).locator('[data-message-role="user"]').filter({ hasText: mark });
-      heard += await turns.count();
-      // Only ever the person's post: the specialist's own line reached no seat.
-      if ((await turns.count()) > 0) await expect(turns).toContainText(`devuser in ${CHANNEL}: ${line}`);
+    const routed = seat === "support.devices";
+    const conversation = await channelConversationOf(page, seat);
+    if (conversation === undefined) {
+      expect(routed, `${seat} has no conversation for ${CHANNEL}`).toBe(false);
+      continue;
     }
-    expect(heard, `${seat} heard ${mark} ${heard} times`).toBe(seat === "support.devices" ? 1 : 0);
+    const turns = conversation.locator('[data-message-role="user"]').filter({ hasText: mark });
+    // The routed specialist heard the person's post once; its own line reached no seat.
+    await expect(turns, `${seat}'s turns carrying ${mark}`).toHaveCount(routed ? 1 : 0);
+    if (routed) await expect(turns).toContainText(`devuser in ${CHANNEL}: ${line}`);
   }
 });
 
@@ -343,7 +370,7 @@ test("a post routed to one specialist names a token from the line another specia
 
   // support.accounts was never sent the earlier post: the token reached it
   // only as one of the channel's recent lines.
-  const answers = answersTo(await drawnAfterReload(page), ask);
+  const answers = answersTo(await drawnAfterReload(page, ask), ask);
   expect(answers.map((l) => l.label)).toEqual(["support.accounts"]);
   expect(answers[0]!.text).toContain("[reply:recall]");
   expect(answers[0]!.text).toContain(mark);
