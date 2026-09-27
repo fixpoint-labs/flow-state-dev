@@ -240,7 +240,8 @@ describe("a seat's panel", () => {
     expect(sendAction.mock.calls[0]).toEqual([action, input]);
   });
 
-  it("a seat of a kind the page has no action for has no composer, and says so (FIX-1611 BR-15)", () => {
+  // FIX-1611 BR-15.
+  it("a seat of a kind the page has no action for has no composer, and says so", () => {
     panel("a-kind-this-page-does-not-know", session());
     expect(screen.queryByTestId("picked-composer")).toBeNull();
     expect(screen.getByTestId("picked-read-only").textContent).toBe(

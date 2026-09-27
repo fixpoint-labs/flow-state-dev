@@ -25,7 +25,7 @@
 
 - `GOAL_CONTROL=no-landing` (`apps/kitchen-sink/lib/channel-landing-control.ts`): the agent kind swapped for one that hears posts and answers with the seat's tools, and lands nothing. A text answer no longer lands, and the specialist's "filed" is a text answer too, so it must FAIL at **answer** and **file:line**. The row still lands, so **file:row** stays green: nothing else.
 - `GOAL_CONTROL=no-filing` (`apps/kitchen-sink/lib/escalate-control.ts`): `escalate` swapped for a stand-in that says it filed and files nothing. Must FAIL at **file:row** only: the line still says it filed.
-- Today's `main`, before this issue, must FAIL at **roster**: it lists three channels, six seats on three kinds, and "Hire another".
+- Today's `main`, before this issue, must FAIL at **roster**: it lists three channels on two kinds, and six seats on three kinds. Its "Hire another" is never reached there: the button draws only on an opened seat, and none of the four specialists exists to open. That assertion's own red state is the button put back by hand, recorded below.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

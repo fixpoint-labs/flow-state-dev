@@ -14,7 +14,7 @@ The ledger id is never written anywhere. It is minted from where the channel fol
 
 (0) **The tree names a board and never an id.** Every file under `fixtures/` is read and searched for the minted id `eng.feature.triage`. A hit is a failure. This is the leg that makes the rest mean something: if a fixture could name the ledger directly, legs (c)–(e) would pass for a seat that simply agreed with a string somebody typed.
 
-(a) **The tree alone produces the roster, the instances and the seats.** `readWorkforce` + `readChannelsDirectory` load clean, `channelInstances` builds the channel kind holding the declared board, `hireWorkforce` hires both seats with `channelBoards: channelBoardIds(channels)`.
+(a) **The tree alone produces the roster, the instances and the seats.** `readWorkforce` + `readChannelsDirectory` load clean, `channelInstances` builds the channel kind holding the declared board, `hireWorkforce` hires the tree's seats with `channelBoards: channelBoardIds(channels)`.
 
 (b) **The channel says what it holds, by name.** The channel's own `read` action returns `boards: ["triage"]` — the local name a human wrote, not the mint. Asserted as a whole-array equality, so a read that returned every board in the process would be red.
 

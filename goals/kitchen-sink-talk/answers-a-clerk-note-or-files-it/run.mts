@@ -132,18 +132,30 @@ async function waitAnswered(page: Page, origin: string, mark: string, ms: number
   );
 }
 
-/** Reload, reopen the channel, and read it as drawn. */
-async function drawnAfterReload(page: Page, origin: string): Promise<Drawn> {
+/**
+ * Reload, reopen the channel, and read it as drawn.
+ *
+ * The transcript mounts before its lines load, so this waits until the
+ * person's lines carrying `marks` are drawn: every grade counts from them.
+ * The wait is not graded: a line that never shows is reported by the grade
+ * that reads it.
+ */
+async function drawnAfterReload(page: Page, origin: string, marks: string[]): Promise<Drawn> {
   await page.reload();
   await openChannel(page, origin);
-  return await panel(page)
-    .getByTestId("channel-line")
-    .evaluateAll((els) =>
-      els.map((el) => ({
-        label: el.querySelector('[data-testid="channel-line-label"]')?.textContent ?? "",
-        text: el.textContent ?? "",
-      })),
-    );
+  return await readUntil(
+    () =>
+      panel(page)
+        .getByTestId("channel-line")
+        .evaluateAll((els) =>
+          els.map((el) => ({
+            label: el.querySelector('[data-testid="channel-line-label"]')?.textContent ?? "",
+            text: el.textContent ?? "",
+          })),
+        ),
+    (drawn) => marks.every((mark) => drawn.some((l) => l.label === "devuser" && l.text.includes(mark))),
+    10_000,
+  );
 }
 
 /** The lines drawn after the person's line carrying `mark`, up to the person's next line. */
@@ -283,7 +295,7 @@ await runGoal(async () => {
       10_000,
     );
 
-    const drawn = await drawnAfterReload(page, origin);
+    const drawn = await drawnAfterReload(page, origin, [answerToken, fileToken]);
 
     const answered = oneLineBySeat(drawn, answerToken);
     if (answered.problem !== undefined) fail("answer", answered.problem);
@@ -328,7 +340,7 @@ await runGoal(async () => {
         await waitAnswered(page, live.origin, mark, 120_000);
         // Let a filing's row land before the reload; not graded.
         await page.waitForTimeout(3_000);
-        const liveDrawn = await drawnAfterReload(page, live.origin);
+        const liveDrawn = await drawnAfterReload(page, live.origin, [mark]);
         const answers = answersTo(liveDrawn, mark) ?? [];
         const after = (await boardRows(page)).length;
         const who = answers.map((l) => l.label).join(", ") || "nobody";

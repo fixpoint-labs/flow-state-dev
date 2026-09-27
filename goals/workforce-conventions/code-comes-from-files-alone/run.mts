@@ -55,6 +55,7 @@ import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
@@ -398,6 +399,8 @@ await runGoal(async () => {
         actionName: "answer",
         input: { note: fixture.host.note },
         userId: fixture.host.userId,
+        // A fixture host with one organization: the development default.
+        orgId: DEFAULT_ORG_ID,
         sessionId: `s_${seatId}`,
         stores: runtime.stores,
         runtimeConfig: { ...runtime.runtimeConfig },
