@@ -1,0 +1,93 @@
+<svg viewBox="0 0 940 336" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels, today and after. Each shows the open channel page on the left and the channel's session on the right, holding the person's post, the seat's reply sent as a separate request, and the seat's run as background work. Today only the person's own post reaches the page; the seat's reply stops short and shows only after a reload, and nothing shows the run. After, one live stream covers the whole session, so the page shows the seat working and then its reply, with no reload.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .req   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .run   { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .own   { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .own-h { fill:var(--accent); }
+    .miss  { stroke:var(--gone); stroke-width:1.4; fill:none; stroke-dasharray:4 3; }
+    .live  { stroke:var(--code); stroke-width:2; fill:none; }
+    .live-h { fill:var(--code); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-p   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-a   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-w   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-style:italic; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="336"/>
+  <line x1="470" y1="12" x2="470" y2="324" stroke="var(--rule)" stroke-width="1"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="26">TODAY</text>
+    <rect class="n-box" x="16" y="40" width="180" height="240" rx="5"/>
+    <text class="t-lbl" x="28" y="58">THE OPEN PAGE</text>
+    <text class="t-s" x="28" y="84">devuser</text>
+    <text class="t-p" x="28" y="100">I need a new laptop</text>
+    <text class="t-g" x="28" y="150">nothing else shows</text>
+    <text class="t-g" x="28" y="164">until you reload</text>
+
+    <rect class="n-box" x="236" y="40" width="218" height="240" rx="5"/>
+    <text class="t-lbl" x="248" y="58">SESSION · support.desk</text>
+    <rect class="req" x="248" y="70" width="194" height="46" rx="4"/>
+    <text class="t-b" x="260" y="90">your post</text>
+    <text class="t-s" x="260" y="106">a request this page sent</text>
+    <rect class="req" x="248" y="126" width="194" height="46" rx="4"/>
+    <text class="t-b" x="260" y="146">support.otto's reply</text>
+    <text class="t-s" x="260" y="162">a request the seat sent</text>
+    <rect class="run" x="248" y="182" width="194" height="86" rx="4"/>
+    <text class="t-b" x="260" y="204">support.otto's run</text>
+    <text class="t-s" x="260" y="222">background work</text>
+    <text class="t-s" x="260" y="238">not finished</text>
+
+    <path class="own" d="M248 93 H206"/>
+    <path class="own-h" d="M198 93 l9 -5 v10 z"/>
+    <path class="miss" d="M248 149 H214"/>
+    <text class="t-g" x="202" y="153">×</text>
+    <text class="t-a" x="16" y="304">the page hears only the request it sent;</text>
+    <text class="t-a" x="16" y="318">its session's background work is read when you act</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="486" y="26">AFTER · THE VIEW ASKS TO BE LIVE</text>
+    <rect class="n-box" x="486" y="40" width="180" height="240" rx="5"/>
+    <text class="t-lbl" x="498" y="58">THE OPEN PAGE</text>
+    <text class="t-s" x="498" y="84">devuser</text>
+    <text class="t-p" x="498" y="100">I need a new laptop</text>
+    <text class="t-w" x="498" y="136">support.otto is working</text>
+    <text class="t-s" x="498" y="172">support.otto</text>
+    <text class="t-p" x="498" y="188">its answer, whole</text>
+
+    <rect class="n-box" x="706" y="40" width="218" height="240" rx="5"/>
+    <text class="t-lbl" x="718" y="58">SESSION · support.desk</text>
+    <rect class="req" x="718" y="70" width="194" height="46" rx="4"/>
+    <text class="t-b" x="730" y="90">your post</text>
+    <text class="t-s" x="730" y="106">a request this page sent</text>
+    <rect class="req" x="718" y="126" width="194" height="46" rx="4"/>
+    <text class="t-b" x="730" y="146">support.otto's reply</text>
+    <text class="t-s" x="730" y="162">a request the seat sent</text>
+    <rect class="run" x="718" y="182" width="194" height="86" rx="4"/>
+    <text class="t-b" x="730" y="204">support.otto's run</text>
+    <text class="t-s" x="730" y="222">background work</text>
+    <text class="t-s" x="730" y="238">not finished</text>
+
+    <path class="own" d="M718 93 H676"/>
+    <path class="own-h" d="M668 93 l9 -5 v10 z"/>
+    <path class="live" d="M712 126 H698 V268 H712"/>
+    <path class="live" d="M698 160 H678"/>
+    <path class="live-h" d="M668 160 l10 -6 v12 z"/>
+    <text class="t-c" x="486" y="304">one live stream from the session:</text>
+    <text class="t-c" x="486" y="318">lines once kept, runs until they finish</text>
+  </g>
+</svg>
