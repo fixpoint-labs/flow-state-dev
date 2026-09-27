@@ -29,6 +29,7 @@
  * implementation.
  */
 import type {
+  EvaluationModel,
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelStreamChunk,
@@ -228,10 +229,17 @@ function resolveUnmockedDefault(
  * (default), produce a no-op model under `"warn" | "allow"`, and yield the
  * caller-supplied `unmockedDefault` script under `"default"` — so a large
  * e2e flow can fall back for the generators it didn't mock instead of breaking.
+ *
+ * `evaluators` scripts `evaluator` blocks that name a model **string**, keyed
+ * by block name like `generators` (e.g. a `mockEvaluationModel`). Passing it
+ * gives the resolver its `resolveEvaluationModel` hook, which refuses a block
+ * with no entry, naming it. Without it the resolver has no hook, so such a
+ * block refuses to run, as a resolver without the hook always does.
  */
 export function createMockModelResolver(options: {
   generators?: Record<string, MockGeneratorInstance>;
   models?: Record<string, MockGeneratorInstance>;
+  evaluators?: Record<string, EvaluationModel>;
   policy?: UnmockedGeneratorPolicy;
   onUnmocked?: (message: string) => void;
   unmockedDefault?: UnmockedDefault;
@@ -401,6 +409,20 @@ export function createMockModelResolver(options: {
   }) as ModelResolver;
 
   resolver.resolveId = (modelId: string): string => modelId;
+
+  const evaluators = options.evaluators;
+  if (evaluators !== undefined) {
+    resolver.resolveEvaluationModel = (modelId: string, blockName?: string): EvaluationModel => {
+      const scripted = blockName === undefined ? undefined : evaluators[blockName];
+      if (scripted === undefined) {
+        throw new Error(
+          `No mock evaluation for evaluator "${blockName ?? "(unnamed)"}" / model "${modelId}". ` +
+            `Provide evaluators["${blockName ?? ""}"].`
+        );
+      }
+      return scripted;
+    };
+  }
 
   return resolver;
 }

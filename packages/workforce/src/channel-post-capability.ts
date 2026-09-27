@@ -31,10 +31,20 @@
  * hands work to an external queue (`external-dispatcher`), where a delivery
  * into an existing session is refused before anything is enqueued. So the
  * tool works where dispatch runs in process.
+ *
+ * ## One line per routed post
+ *
+ * On a turn the built-in agent kind marks as answering a routed post, the
+ * tool's first post into that post's channel is the answer's line; a later
+ * one posts nothing and says the answer is already in. The claim is keyed on
+ * the post's id in the seat's session, which the kind's own landing reads
+ * too, so a turn that posted through the tool lands nothing more. Any other
+ * turn, and any other channel, posts as before.
  */
 
-import { defineCapability, dispatcher, sequencer } from "@flow-state-dev/core";
+import { defineCapability, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { CHANNEL_KIND } from "./channel/channel-flow";
 import { SEAT_ID_KEY } from "./manifest";
@@ -59,10 +69,112 @@ export type PostToChannelInput = z.infer<typeof postToChannelInputSchema>;
 const postToChannelResultSchema = z.object({ handedTo: z.string(), note: z.string() });
 
 /**
+ * The request-state field the built-in agent kind marks a routed turn with:
+ * the channel and the post the turn answers. Written only by the kind's own
+ * `onChannelPost`, from the channel fan-out's delivery, never from a caller.
+ */
+export const ROUTED_TURN_STATE = "channelRoutedPost";
+
+/**
+ * The seat-session field listing the routed posts the seat has answered in
+ * that channel, by post id, newest last. Kept to the last
+ * {@link ANSWERED_POSTS_KEPT}: a post is delivered again soon or never.
+ */
+export const ANSWERED_POSTS_STATE = "channelAnsweredPosts";
+
+/** How many answered post ids a seat's channel session keeps. */
+const ANSWERED_POSTS_KEPT = 50;
+
+/** A routed turn's mark: the channel and the post it answers. */
+export const routedTurnSchema = z.object({ channelId: z.string(), postId: z.string() });
+
+export type RoutedTurn = z.infer<typeof routedTurnSchema>;
+
+/**
+ * The routed post this turn answers, or `undefined` on any other turn.
+ *
+ * @param ctx Any block's context in the turn's request.
+ */
+export function routedTurnOf(ctx: BlockContext): RoutedTurn | undefined {
+  const marked = (ctx.request.state as Record<string, unknown> | undefined)?.[ROUTED_TURN_STATE];
+  const parsed = routedTurnSchema.safeParse(marked);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Whether the seat already has its line for this post, in this session.
+ *
+ * @param ctx A block's context in the seat's channel session.
+ * @param postId The routed post's line id.
+ */
+export function answeredAlready(ctx: BlockContext, postId: string): boolean {
+  const held = (ctx.session.state as Record<string, unknown> | undefined)?.[ANSWERED_POSTS_STATE];
+  return Array.isArray(held) && held.includes(postId);
+}
+
+/**
+ * Claim the one line for a routed post, in the seat's session. Atomic, so two
+ * claims racing for one post see one winner.
+ *
+ * @param ctx A block's context in the seat's channel session.
+ * @param postId The routed post's line id.
+ * @returns `true` for the claim that gets to post; `false` when the seat already has its line.
+ */
+export async function claimRoutedAnswer(ctx: BlockContext, postId: string): Promise<boolean> {
+  return ctx.session.atomicState((state: Readonly<Record<string, unknown>>) => {
+    const held = state[ANSWERED_POSTS_STATE];
+    const answered = Array.isArray(held) ? (held as string[]) : [];
+    if (answered.includes(postId)) return {};
+    return { [ANSWERED_POSTS_STATE]: [...answered, postId].slice(-ANSWERED_POSTS_KEPT) };
+  });
+}
+
+/**
+ * One dispatch into the named channel's own `post`, as the seat. The author is
+ * the seat's `seatId`, read from the settings the hire wrote and stamped in
+ * the payload, so a seat without one throws before anything is dispatched.
+ * `{ id }`: a channel is an existing session. The tool and the agent kind's
+ * landing both post through it, so a line has one way in.
+ */
+export const postAsSeat = dispatcher({
+  name: "post-to-channel-dispatch",
+  flowKind: CHANNEL_KIND,
+  action: "post",
+  inputSchema: postToChannelInputSchema,
+  session: { id: (input: PostToChannelInput) => input.channel },
+  payload: (input: PostToChannelInput, ctx) => {
+    const seatId = (ctx.flow.config as Record<string, unknown>)[SEAT_ID_KEY];
+    if (typeof seatId !== "string" || seatId.length === 0) {
+      throw new Error(
+        `${POST_TO_CHANNEL_TOOL}: this seat's settings carry no \`${SEAT_ID_KEY}\`, so there is no ` +
+          `name to post under. The hire step writes it on every seat it mints. Nothing was posted.`,
+      );
+    }
+    return { body: input.body, author: seatId };
+  },
+});
+
+/**
+ * On a routed turn, and only into that post's channel: claim the post's one
+ * line. Claimed before the dispatch, so two calls in one step cannot both post.
+ */
+const claimToolLine = handler({
+  name: "post-to-channel-claim",
+  inputSchema: postToChannelInputSchema,
+  outputSchema: z.object({ channel: z.string(), body: z.string(), answeredAlready: z.boolean() }),
+  execute: async (input: PostToChannelInput, ctx) => {
+    const routed = routedTurnOf(ctx);
+    if (routed === undefined || routed.channelId !== input.channel) {
+      return { ...input, answeredAlready: false };
+    }
+    return { ...input, answeredAlready: !(await claimRoutedAnswer(ctx, routed.postId)) };
+  },
+});
+
+/**
  * The tool: one dispatch into the named channel's own `post`, then "handed
- * over". The author is the seat's `seatId`, read from the settings the hire
- * wrote and stamped in the payload, so a seat without one throws before
- * anything is dispatched. `{ id }`: a channel is an existing session.
+ * over"; or, for a routed post the seat already answered, nothing and a note
+ * saying so.
  */
 const postToChannel = sequencer({
   name: POST_TO_CHANNEL_TOOL,
@@ -72,31 +184,25 @@ const postToChannel = sequencer({
   inputSchema: postToChannelInputSchema,
   outputSchema: postToChannelResultSchema,
 })
-  .step(
-    dispatcher({
-      name: "post-to-channel-dispatch",
-      flowKind: CHANNEL_KIND,
-      action: "post",
-      inputSchema: postToChannelInputSchema,
-      session: { id: (input: PostToChannelInput) => input.channel },
-      payload: (input: PostToChannelInput, ctx) => {
-        const seatId = (ctx.flow.config as Record<string, unknown>)[SEAT_ID_KEY];
-        if (typeof seatId !== "string" || seatId.length === 0) {
-          throw new Error(
-            `${POST_TO_CHANNEL_TOOL}: this seat's settings carry no \`${SEAT_ID_KEY}\`, so there is no ` +
-              `name to post under. The hire step writes it on every seat it mints. Nothing was posted.`,
-          );
-        }
-        return { body: input.body, author: seatId };
-      },
-    }),
+  .step(claimToolLine)
+  .stepIf(
+    (claim: { answeredAlready: boolean }) => !claim.answeredAlready,
+    (claim: PostToChannelInput) => ({ channel: claim.channel, body: claim.body }),
+    postAsSeat,
   )
-  .map((dispatched: { sessionId: string }) => ({
-    handedTo: dispatched.sessionId,
-    note:
-      "The post was handed to the channel. It lands if you are one of its members; " +
-      "a refusal by the channel is not reported back.",
-  }));
+  .map((value: { sessionId: string } | { channel: string }) =>
+    "sessionId" in value
+      ? {
+          handedTo: value.sessionId,
+          note:
+            "The post was handed to the channel. It lands if you are one of its members; " +
+            "a refusal by the channel is not reported back.",
+        }
+      : {
+          handedTo: value.channel,
+          note: "Your answer to this post is already in the channel, so nothing more was posted.",
+        },
+  );
 
 /**
  * The channel-post capability: one catalog tool, `post-to-channel`, on the

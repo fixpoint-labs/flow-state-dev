@@ -52,6 +52,17 @@ export {
 
 export { wakeMemberSeats, type WakeMemberSeatsOptions } from "./wake-member-seats";
 
+export { routeByPurpose, type RouteByPurposeOptions } from "./route-by-purpose";
+
+export {
+  CHANNEL_ROUTE_COMPONENT,
+  CHANNEL_ROUTE_EVALUATOR,
+  channelRouteRecordSchema,
+  type ChannelRoute,
+  type ChannelRouteRecord,
+  type ChannelRouting
+} from "./channel-route";
+
 export {
   channelBoardIds,
   channelInstances,

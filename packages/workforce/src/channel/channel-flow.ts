@@ -39,6 +39,15 @@ import {
   type ChannelTranscriptLine
 } from "./channel-post-line";
 import {
+  CHANNEL_ROUTE_COMPONENT,
+  channelRouteBlock,
+  channelRouteRecordSchema,
+  type ChannelRoute,
+  type ChannelRouteRecord,
+  type ChannelRouting,
+  type RouteDecision
+} from "./channel-route";
+import {
   defineChannelInventoryCollection,
   defineMembershipIndexCollection,
   defineSeatInventoryCollection,
@@ -242,6 +251,20 @@ export async function emitChannelPostLine(ctx: BlockContext, line: Record<string
 }
 
 /**
+ * Keep a route's record on the channel's session, resolving once it is stored,
+ * by {@link emitChannelPostLine}'s rule: the next post's route reads it back,
+ * so a record nobody can confirm was kept is a failure. Not re-exported from
+ * the package root.
+ */
+export async function emitChannelRouteRecord(ctx: BlockContext, record: ChannelRouteRecord): Promise<void> {
+  const emit = ctx._emitComponentAwaited;
+  if (emit === undefined) {
+    throw new Error("channel route: this context cannot confirm the route was recorded, so it routes nobody");
+  }
+  await emit.call(ctx, CHANNEL_ROUTE_COMPONENT, record);
+}
+
+/**
  * The posted lines inside this request's history window, oldest first.
  *
  * Inside a block every item arrives wrapped, so the component name and its
@@ -253,11 +276,24 @@ export async function emitChannelPostLine(ctx: BlockContext, line: Record<string
  * @returns Each `channel-post` item's data that parses under `schema`.
  */
 export function readChannelPostLines<T>(ctx: BlockContext, schema: z.ZodType<T>): T[] {
+  return readChannelComponents(ctx, CHANNEL_POST_COMPONENT, schema);
+}
+
+/**
+ * The route records inside this request's history window, oldest first, read
+ * as {@link readChannelPostLines} reads lines. Not re-exported from the root.
+ */
+export function readChannelRouteRecords(ctx: BlockContext): ChannelRouteRecord[] {
+  return readChannelComponents(ctx, CHANNEL_ROUTE_COMPONENT, channelRouteRecordSchema);
+}
+
+/** One component's items on the session, each data that parses under `schema`. */
+function readChannelComponents<T>(ctx: BlockContext, component: string, schema: z.ZodType<T>): T[] {
   return ctx.session.items.all({ itemTypes: ["component"] }).flatMap((item) => {
     const payload = item.payload as { component?: unknown; data?: unknown } | undefined;
-    if (payload?.component !== CHANNEL_POST_COMPONENT) return [];
-    const line = schema.safeParse(payload.data);
-    return line.success ? [line.data] : [];
+    if (payload?.component !== component) return [];
+    const parsed = schema.safeParse(payload.data);
+    return parsed.success ? [parsed.data] : [];
   });
 }
 
@@ -569,7 +605,13 @@ const channelFanOutInputSchema = z.object({
 
 export type ChannelFanOutInput = z.infer<typeof channelFanOutInputSchema>;
 
-/** What a notify block is handed, once per declared member per post. */
+/**
+ * What a notify block is handed, once per declared member per post, or once
+ * in all for a routed post.
+ *
+ * `routed` and `recent` are set by the channel's own fan-out and nothing else:
+ * a caller's post has no field that reaches them.
+ */
 export const channelNotifyInputSchema = z.object({
   /** The channel's session id. */
   channelId: z.string(),
@@ -578,7 +620,19 @@ export const channelNotifyInputSchema = z.object({
   postId: z.string(),
   body: z.string(),
   principal: z.string(),
-  author: z.string().optional()
+  author: z.string().optional(),
+  /**
+   * `true` when the channel's route picked this member, the one member the
+   * post is delivered to. Absent on every other delivery. A kind that hears
+   * posts decides what it does with the mark; the built-in agent kind posts
+   * its reply into the channel.
+   */
+  routed: z.boolean().optional(),
+  /**
+   * On a routed delivery, the channel's last lines before the post (up to
+   * 20), oldest first: the ones the route read. Absent on every other delivery.
+   */
+  recent: z.array(channelTranscriptLineSchema).optional()
 });
 
 export type ChannelNotifyInput = z.infer<typeof channelNotifyInputSchema>;
@@ -905,6 +959,23 @@ export interface DefineChannelFlowOptions {
    * app turns the inventory on at one call rather than by rebuilding the kind.
    */
   inventory?: boolean;
+
+  /**
+   * The route, from `routeByPurpose(seats, { model })`. A channel on this kind
+   * that declares `routing:` sends each person's post to one member, the one
+   * the route picks, instead of to every member. A channel without the line
+   * fans out as before. Needs `notify`: the route picks a member, and the
+   * notify block delivers to it.
+   */
+  route?: ChannelRoute;
+
+  /**
+   * Each routed channel's `routing:`, by channel id. Supplied by
+   * `channelInstances` from the roster, as `boards` is, never by an app: it is
+   * read from the files at every boot and never stored, so an edited
+   * `routing:` reaches an open channel at the next boot.
+   */
+  routing?: Readonly<Record<string, ChannelRouting>>;
 }
 
 /**
@@ -920,6 +991,8 @@ export interface DefineChannelFlowOptions {
 export type ChannelFlowFactory = ReturnType<typeof defineFlow> & {
   /** The same kind, rebuilt holding these minted board ids. */
   withBoards: (boards: readonly string[]) => ChannelFlowFactory;
+  /** The same kind, rebuilt with each routed channel's `routing:`, by channel id. */
+  withRouting: (routing: Readonly<Record<string, ChannelRouting>>) => ChannelFlowFactory;
 };
 
 /** Is this channel kind one {@link defineChannelFlow} built? */
@@ -930,6 +1003,18 @@ export function holdsBoards(kind: unknown): kind is ChannelFlowFactory {
   );
 }
 
+/** Each kind {@link defineChannelFlow} built with a route, and that route. */
+const kindRoutes = new WeakMap<object, ChannelRoute>();
+
+/**
+ * The route a channel kind was built with, or `undefined` for a kind built
+ * without one, or one {@link defineChannelFlow} did not build. The binder reads
+ * it to check a `routing:` line. Not re-exported from the package root.
+ */
+export function routeOf(kind: unknown): ChannelRoute | undefined {
+  return typeof kind === "function" ? kindRoutes.get(kind) : undefined;
+}
+
 /**
  * Build a channel kind.
  *
@@ -938,12 +1023,27 @@ export function holdsBoards(kind: unknown): kind is ChannelFlowFactory {
  * kind passed through `channelInstances`'s `kinds` map must carry it too.
  *
  * @param options `notify`: the per-member fan-out block, absent by default.
- *   `boards`: the minted ledger ids this kind holds, supplied by the binder.
+ *   `route`: from `routeByPurpose`, for channels that declare `routing:`.
+ *   `boards` and `routing`: supplied by the binder from the roster.
  * @returns The flow factory. Call it (no arguments) to mint the one instance.
  */
 export function defineChannelFlow(options: DefineChannelFlowOptions = {}): ChannelFlowFactory {
   const notify = options.notify;
   const boardIds = [...(options.boards ?? [])].sort();
+
+  // Only `routeByPurpose` makes a route, so the order a post is placed in, the
+  // one-call cap and the record hold on every routed channel.
+  const routeBlock = options.route === undefined ? undefined : channelRouteBlock(options.route);
+  if (options.route !== undefined && routeBlock === undefined) {
+    throw new Error("defineChannelFlow: `route` must be what routeByPurpose(seats, { model }) returned.");
+  }
+  if (routeBlock !== undefined && notify === undefined) {
+    throw new Error(
+      "defineChannelFlow: a `route` needs a `notify` block to deliver to. Pass the wake as well: " +
+        "`defineChannelFlow({ notify: wakeMemberSeats(seats), route })`."
+    );
+  }
+  const routing = options.routing ?? {};
 
   // One declaration object per minted id, always from the memo. Two separate
   // `defineTaskCollection` calls sharing an id share ROWS and not POLICY — the
@@ -967,30 +1067,66 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   const inventoryActions =
     options.inventory === true ? inventoryWriterActions(CHANNEL_KIND) : undefined;
 
+  /**
+   * This channel's `routing:`, when the route places this post: a person's
+   * post (no `author`) to a channel that declares the line, on a kind built
+   * with a route. A seat's post is never routed; it fans out as unrouted.
+   */
+  const routingFor = (post: ChannelFanOutInput, ctx: BlockContext): ChannelRouting | undefined =>
+    routeBlock === undefined || post.author !== undefined
+      ? undefined
+      : routing[ctx.session.identity.id];
+
   // Declared ONLY when a slot was supplied. With no slot there is nothing to
   // deliver, so there is no entry to declare and no dispatch to make — rather
   // than a declared entry that exists to do nothing.
+  const fanOutHead = sequencer({ name: "channel-fan-out", inputSchema: channelFanOutInputSchema });
   const fanOut =
     notify === undefined
       ? undefined
-      : sequencer({
-          name: "channel-fan-out",
-          inputSchema: channelFanOutInputSchema
-        })
+      : // The route runs once per post, before the per-member delivery, and
+        // only on a post it places: the one evaluator call is never repeated
+        // per member, and an unrouted post pays nothing for it.
+        (routeBlock === undefined
+          ? fanOutHead
+          : fanOutHead.stepIf(
+              (post: ChannelFanOutInput, ctx) => routingFor(post, ctx) !== undefined,
+              (post: ChannelFanOutInput, ctx) => ({ post, fallback: routingFor(post, ctx)!.fallback }),
+              routeBlock
+            )
+        )
           // Iterated from the session's own declared roster, read here rather
           // than carried in the payload: the roster is the channel's, and a
           // caller-supplied copy would be caller-controllable input on a
-          // delivery path (BP-031).
+          // delivery path (BP-031). A routed post goes to the route's one
+          // member instead, or to nobody when the route failed.
           .forEach(
-            (post: ChannelFanOutInput, ctx): ChannelNotifyInput[] => {
+            (value: ChannelFanOutInput | RouteDecision, ctx): ChannelNotifyInput[] => {
+              const channelId = ctx.session.identity.id;
+              if ("by" in value) {
+                const { post, member, recent } = value;
+                return member === undefined
+                  ? []
+                  : [
+                      {
+                        channelId,
+                        member,
+                        postId: post.postId,
+                        body: post.body,
+                        principal: post.principal,
+                        routed: true,
+                        recent
+                      }
+                    ];
+              }
               const channel = boundChannel(ctx.session.state);
               return (channel?.members ?? []).map((member) => ({
-                channelId: ctx.session.identity.id,
+                channelId,
                 member,
-                postId: post.postId,
-                body: post.body,
-                principal: post.principal,
-                ...(post.author === undefined ? {} : { author: post.author })
+                postId: value.postId,
+                body: value.body,
+                principal: value.principal,
+                ...(value.author === undefined ? {} : { author: value.author })
               }));
             },
             // One member's failure is absorbed and the rest are still
@@ -1141,9 +1277,13 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   // notify slot keeps it when the binder hands it the roster's board ids —
   // which is what stops "give this channel a board" and "wake its members"
   // from being two mutually exclusive ways to configure one kind.
-  return Object.assign(flow, {
-    withBoards: (boards: readonly string[]) => defineChannelFlow({ ...options, boards })
+  const factory = Object.assign(flow, {
+    withBoards: (boards: readonly string[]) => defineChannelFlow({ ...options, boards }),
+    withRouting: (routing: Readonly<Record<string, ChannelRouting>>) =>
+      defineChannelFlow({ ...options, routing })
   }) as ChannelFlowFactory;
+  if (options.route !== undefined) kindRoutes.set(factory, options.route);
+  return factory;
 }
 
 /**

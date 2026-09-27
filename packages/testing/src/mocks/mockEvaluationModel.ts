@@ -8,8 +8,12 @@
  * reports it (in provider metadata), so the evaluator's own mapping decides
  * where it lands; leave it out to model a provider that reports none.
  *
+ * `answers` may be a function of the call's state, so one script answers
+ * several states, for example one routing decision per post.
+ *
  * Failure modes:
  * - `error`: every call rejects with it (a provider failure);
+ * - an `answers` function that throws: that call rejects with what it threw;
  * - `hold: true`: every call stays pending until its abort signal fires, then
  *   rejects with the abort reason (a request cancelled mid-call);
  * - a malformed result: script answers that do not match the questions (one
@@ -30,10 +34,20 @@ export type MockEvaluationCall = {
   abortSignal?: AbortSignal;
 };
 
+/** Scripted answers, keyed by question id. */
+export type MockEvaluationAnswers = Record<string, MockEvaluationAnswer>;
+
 /** Options for {@link mockEvaluationModel}. */
 export type MockEvaluationModelOptions = {
-  /** Answers returned from every call, keyed by question id. */
-  answers?: Record<string, MockEvaluationAnswer>;
+  /**
+   * Answers returned from every call, keyed by question id. A function is
+   * handed each call's state and questions and answers that call, so one
+   * script can answer differently per state; throwing from it rejects the
+   * call like `error` does.
+   */
+  answers?:
+    | MockEvaluationAnswers
+    | ((call: { state: unknown; questions: Record<string, unknown> }) => MockEvaluationAnswers);
   /** Reported token usage. Defaults to 10 input and 1 output token. */
   usage?: { inputTokens?: number; outputTokens?: number };
   /** Model id. Defaults to `"mock-evaluation"`. */
@@ -90,7 +104,11 @@ export function mockEvaluationModel(options: MockEvaluationModelOptions = {}): M
       }
       const answers: Record<string, unknown> = {};
       const confidence: Record<string, number> = {};
-      for (const [id, scripted] of Object.entries(options.answers ?? {})) {
+      const scriptedAnswers =
+        typeof options.answers === "function"
+          ? options.answers({ state: call.state, questions: call.questions })
+          : options.answers;
+      for (const [id, scripted] of Object.entries(scriptedAnswers ?? {})) {
         const { confidence: reported, ...answer } = scripted;
         answers[id] = answer;
         if (reported !== undefined) confidence[id] = reported;

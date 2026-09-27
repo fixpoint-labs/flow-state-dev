@@ -48,6 +48,7 @@ export {
 export {
   mockEvaluationModel,
   type MockEvaluationAnswer,
+  type MockEvaluationAnswers,
   type MockEvaluationCall,
   type MockEvaluationModel,
   type MockEvaluationModelOptions
