@@ -4,7 +4,7 @@
  * behaviour (what is read, when, and when it stops) is the conformance suite's,
  * run per adapter.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildBlockInstanceId, DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { OutputItem, SessionStreamEvent } from "@flow-state-dev/core/items";
 import {
@@ -110,8 +110,8 @@ const REQUEST_B_ITEMS: OutputItem[] = [
   item(REQ_B, "m_b", "message", 4, IN_B, text("from b"))
 ];
 
-async function seedSession(stores: StoreRegistry): Promise<void> {
-  const now = Date.now();
+/** Seed `s1` with both requests, finished and last updated at `now`. */
+async function seedSession(stores: StoreRegistry, now = Date.now()): Promise<void> {
   const record: SessionRecord = {
     orgId: DEFAULT_ORG_ID,
     id: "s1",
@@ -171,8 +171,8 @@ async function snapshotPairs(router: Router, query = ""): Promise<string[]> {
   return items.map((i) => `${i.requestId}/${i.id}`).sort();
 }
 
-/** The (request, item) pairs the stream sends for `s1` over a few reads. */
-async function streamedPairs(router: Router, query = ""): Promise<string[]> {
+/** Every event the stream sends for `s1` over a few reads. */
+async function streamedEvents(router: Router, query = ""): Promise<SessionStreamEvent[]> {
   const controller = new AbortController();
   const res = await router.GET(
     new Request(`http://localhost/api/flows/sessions/s1/stream${query === "" ? "" : `?${query.slice(1)}`}`, {
@@ -187,9 +187,19 @@ async function streamedPairs(router: Router, query = ""): Promise<string[]> {
     .split("\n\n")
     .map((frame) => frame.split("\n").find((line) => line.startsWith("data: ")))
     .filter((line): line is string => line !== undefined)
-    .map((line) => JSON.parse(line.slice(6)) as SessionStreamEvent)
-    .filter((event) => event.type === "session.item")
-    .map((event) => (event.type === "session.item" ? `${event.requestId}/${event.item.id}` : ""))
+    .map((line) => JSON.parse(line.slice(6)) as SessionStreamEvent);
+}
+
+/** The (request, item) pair a `session.item` event names; `undefined` for any other event. */
+function pairOf(event: SessionStreamEvent): string | undefined {
+  return event.type === "session.item" ? `${event.requestId}/${event.item.id}` : undefined;
+}
+
+/** The (request, item) pairs the stream sends for `s1` over a few reads. */
+async function streamedPairs(router: Router, query = ""): Promise<string[]> {
+  return (await streamedEvents(router, query))
+    .map(pairOf)
+    .filter((pair): pair is string => pair !== undefined)
     .sort();
 }
 
@@ -234,5 +244,69 @@ describe("the stream shows what the snapshot shows (V2)", () => {
       [`${REQ_A}/m_hidden`, `${REQ_A}/m_rerun`, `${REQ_A}/status`, `${REQ_B}/m_b`].sort()
     );
     expect(await streamedPairs(router, "&item_types=message,status")).toEqual(snapshot);
+  });
+});
+
+describe("a connection that ends", () => {
+  const shipped = { ...SESSION_STREAM_TIMINGS };
+  let router: Router | undefined;
+
+  beforeEach(() => {
+    SESSION_STREAM_TIMINGS.intervalMs = 25;
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    Object.assign(SESSION_STREAM_TIMINGS, shipped);
+    if (router !== undefined) await disposeFlowApiRouter(router);
+    router = undefined;
+  });
+
+  // A client hands back the last `at` it heard as `since`. Whatever event the
+  // connection dropped after (the opening notice, or an item midway through a
+  // read), the reconnect has to send every item the client had not heard yet.
+  it("sends every item not yet heard, whichever event it dropped after", async () => {
+    const built = buildRouter();
+    router = built.router;
+    // Kept half a minute before the view opens: inside the first read's
+    // window, and well before the time that read starts.
+    await seedSession(built.stores, Date.now() - 30_000);
+
+    const events = await streamedEvents(router);
+    const pairs = events.map(pairOf);
+    const all = pairs.filter((pair): pair is string => pair !== undefined);
+    // The opening notice comes first, then more than one item, so some drop
+    // points fall before the first read and some midway through it.
+    expect(events[0]?.type).toBe("session.runs");
+    expect(all.length).toBeGreaterThan(1);
+
+    for (const [index, event] of events.entries()) {
+      const heard = new Set(pairs.slice(0, index + 1));
+      const resumed = new Set(await streamedPairs(router, `&since=${event.at}`));
+      const missed = all.filter((pair) => !heard.has(pair) && !resumed.has(pair));
+      expect(missed, `dropped after event ${index} (${event.type})`).toEqual([]);
+    }
+  });
+
+  // A failed read ends the connection and the client reconnects, so a store
+  // outage fails every read of every open view. It is worth one line, not one
+  // per read.
+  it("ends the connection on a failed read, and logs each kind of failure once", async () => {
+    const built = buildRouter();
+    router = built.router;
+    await seedSession(built.stores);
+    class StoreDown extends Error {
+      override name = "StoreDownForTest";
+    }
+    vi.spyOn(built.stores.request, "list").mockRejectedValue(new StoreDown("down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const events = await streamedEvents(router);
+      // The opening notice, then the failed read ends the connection.
+      expect(events.map((event) => event.type)).toEqual(["session.runs"]);
+    }
+    const logged = warn.mock.calls.filter((call) => call[1] instanceof StoreDown);
+    expect(logged).toHaveLength(1);
   });
 });

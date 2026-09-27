@@ -15,7 +15,8 @@
  * nobody ships proves nothing about it.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { OutputItem, SessionStreamEvent } from "@flow-state-dev/core/items";
 import { createFlowRegistry } from "../../registry/flow-registry";
 import {
@@ -71,27 +72,52 @@ function hold(key: string): () => void {
   return release;
 }
 
+/** What `spawn` takes: the key its child is derived from, and what to say there. */
+const spawnInput = z.object({ key: z.string(), text: z.string(), hold: z.string().optional() });
+type SpawnInput = z.infer<typeof spawnInput>;
+
 function sayFlow(kind: string, secure = false) {
+  const say = handler({
+    name: `${kind}-say`,
+    execute: async (input, ctx) => {
+      const { text, before, hold: key } = input as {
+        text: string;
+        before?: string;
+        hold?: string;
+      };
+      if (before !== undefined) await held.get(before);
+      ctx.emit.message(text);
+      if (key !== undefined) await held.get(key);
+      return {};
+    }
+  });
   return defineFlow({
     kind,
     actions: {
-      say: {
-        block: handler({
-          name: `${kind}-say`,
-          execute: async (input, ctx) => {
-            const { text, before, hold: key } = input as {
-              text: string;
-              before?: string;
-              hold?: string;
-            };
-            if (before !== undefined) await held.get(before);
-            ctx.emit.message(text);
-            if (key !== undefined) await held.get(key);
-            return {};
-          }
+      say: { block: say },
+      // A run under the session: a child derived from a key, as a channel's
+      // seats are.
+      spawn: {
+        block: dispatcher({
+          name: `${kind}-spawn`,
+          action: "work",
+          inputSchema: spawnInput,
+          session: { key: (input: SpawnInput) => input.key },
+          payload: (input: SpawnInput) => ({ text: input.text, hold: input.hold })
+        })
+      },
+      // A run delivered into a session that already exists, by its id.
+      deliver: {
+        block: dispatcher({
+          name: `${kind}-deliver`,
+          action: "work",
+          inputSchema: z.object({ to: z.string(), text: z.string(), hold: z.string().optional() }),
+          session: { id: (input) => input.to },
+          payload: (input) => ({ text: input.text, hold: input.hold })
         })
       }
     },
+    internal: { actions: { work: { block: say } } },
     ...(secure
       ? {
           authentication: {
@@ -213,14 +239,24 @@ async function say(
   input: { text: string; before?: string; hold?: string },
   opts: { kind?: string; headers?: Record<string, string> } = {}
 ): Promise<string> {
+  return act(router, sessionId, "say", input, opts);
+}
+
+async function act(
+  router: FlowApiRouter,
+  sessionId: string,
+  action: string,
+  input: Record<string, unknown>,
+  opts: { kind?: string; headers?: Record<string, string> } = {}
+): Promise<string> {
   const kind = opts.kind ?? "chat";
   const res = await router.POST(
-    new Request(`http://localhost/api/flows/${kind}/${sessionId}/actions/say`, {
+    new Request(`http://localhost/api/flows/${kind}/${sessionId}/actions/${action}`, {
       method: "POST",
       headers: opts.headers ?? {},
       body: JSON.stringify({ userId: "alice", input })
     }),
-    { params: { path: [kind, sessionId, "actions", "say"] } }
+    { params: { path: [kind, sessionId, "actions", action] } }
   );
   expect(res.status).toBe(202);
   return ((await res.json()) as { request: { id: string } }).request.id;
@@ -672,6 +708,59 @@ export function createSessionStreamConformanceTests(
         "any"
       );
       await live.waitFor((e) => e.type === "session.runs" && e.runs.length === 0);
+    });
+
+    /**
+     * A run under the session that finished, then starts again later: a seat
+     * answering a second post in the same conversation. `how` is the way the
+     * second run reaches the child.
+     */
+    async function runStartsAgain(how: "spawn" | "deliver"): Promise<void> {
+      // Reads that reach back only a moment, so the second run is found
+      // because it started, not because the child was written recently.
+      SESSION_STREAM_TIMINGS.marginMs = 50;
+      const stores = await createStores();
+      const r = router(stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+
+      const releaseFirst = hold("first");
+      await finished(stores, await act(r, "s1", "spawn", { key: "seat", text: "first", hold: "first" }));
+      const started = await live.waitFor((e) => runsOf(e).length === 1);
+      const [child] = runsOf(started);
+      releaseFirst();
+      await live.waitFor((e) => e.type === "session.runs" && e.runs.length === 0 && e.at > started.at);
+
+      // Well past the floor: nothing about the child has moved since.
+      await delay(400);
+      const quiet = live.events.length;
+      const releaseSecond = hold("second");
+      const second =
+        how === "spawn"
+          ? { key: "seat", text: "second", hold: "second" }
+          : { to: child!, text: "second", hold: "second" };
+      const sent = await act(r, "s1", how, second);
+      await finished(stores, sent);
+      // The dispatch was accepted: the second run is really under way.
+      expect((await stores.request.get(sent))?.status).toBe("completed");
+      await live.waitFor((e) => live.events.indexOf(e) >= quiet && runsOf(e).includes(child!));
+
+      // Let the second run finish inside the case, so its last writes land in
+      // this case's store rather than in whatever the next case sets up.
+      const nudged = live.events.length;
+      releaseSecond();
+      await live.waitFor(
+        (e) => live.events.indexOf(e) >= nudged && e.type === "session.runs" && !runsOf(e).includes(child!)
+      );
+    }
+
+    it("nudges when a run starts again in a child whose last run finished (BR-7)", async () => {
+      await runStartsAgain("spawn");
+    });
+
+    it("nudges when a run is delivered into an existing child by its id (BR-7)", async () => {
+      await runStartsAgain("deliver");
     });
 
     it("keeps an unfinished run older than a page of runs listed (BR-23)", async () => {

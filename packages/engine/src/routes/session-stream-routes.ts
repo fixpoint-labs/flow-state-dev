@@ -35,7 +35,9 @@
  * ends the connection, and the client reconnects with backoff. The server
  * closes the connection after at most 15 minutes, so access is checked again at
  * least that often; the client reconnects with the last `at` it heard as
- * `since`, and the server reads from a little before it.
+ * `since`, and the server reads from a little before it. An event's `at` moves
+ * to a read's start only once that read's items are all sent, so a connection
+ * that drops midway through a read misses nothing on the next one.
  */
 import type {
   OutputItem,
@@ -45,6 +47,7 @@ import type {
 import type { RequestRecord, RequestStatus, SessionRecord, StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { toBareSessionId } from "../stores/scope-keys";
+import { abortableSleep } from "../stores/subscribe-helpers";
 import { serializeSSEFrame } from "../streaming/sse";
 import { createSSEStream, type SSEStreamHandle } from "../streaming/sse-stream";
 import {
@@ -165,6 +168,12 @@ async function followSession(options: FollowOptions): Promise<void> {
     options.since !== undefined
       ? options.since - timings.marginMs
       : openedAt - timings.firstReadWindowMs;
+  // The `at` every event carries: a time a reconnect can hand back as `since`
+  // without missing anything this connection has not sent yet. It becomes a
+  // read's start only once that read's items are all sent, so a connection
+  // that drops before or midway through a read resumes from where that read
+  // began, and the items it had already sent arrive again.
+  let resumeAt = floor + timings.marginMs;
   const sent = new Set<string>();
   const runs = new RunTracker(options);
   let lastSentAt = openedAt;
@@ -175,9 +184,8 @@ async function followSession(options: FollowOptions): Promise<void> {
   };
 
   try {
-    const openStart = Date.now();
     await runs.readAll();
-    send({ stream: "session", sessionId, type: "session.runs", at: openStart, runs: runs.list() });
+    send({ stream: "session", sessionId, type: "session.runs", at: resumeAt, runs: runs.list() });
 
     while (!handle.closed && !signal.aborted) {
       const start = Date.now();
@@ -187,31 +195,51 @@ async function followSession(options: FollowOptions): Promise<void> {
         const key = `${requestId}\u0000${item.id}`;
         if (sent.has(key)) continue;
         sent.add(key);
-        send({ stream: "session", sessionId, type: "session.item", at: start, requestId, item });
+        send({ stream: "session", sessionId, type: "session.item", at: resumeAt, requestId, item });
       }
+      resumeAt = start;
 
       if (await runs.refresh(floor)) {
-        send({ stream: "session", sessionId, type: "session.runs", at: start, runs: runs.list() });
+        send({ stream: "session", sessionId, type: "session.runs", at: resumeAt, runs: runs.list() });
       } else if (Date.now() - lastSentAt >= timings.pingMs) {
-        send({ stream: "session", sessionId, type: "ping", at: start });
+        send({ stream: "session", sessionId, type: "ping", at: resumeAt });
       }
 
       floor = start - timings.marginMs;
-      await sleep(Math.max(0, start + timings.intervalMs - Date.now()), signal);
+      await abortableSleep(Math.max(0, start + timings.intervalMs - Date.now()), signal);
     }
-  } catch {
+  } catch (error) {
     // A failed read ends the connection; the client reconnects with backoff
-    // and hands back the last `at` it heard, so nothing is lost.
+    // and hands back the last `at` it heard, so nothing is lost. A read cut
+    // short by the connection ending is not a failure worth a line.
+    if (!handle.closed && !signal.aborted) warnOnce(error);
   } finally {
     handle.close();
   }
 }
 
+/** Failure kinds already logged, so a store outage costs one line, not one per read. */
+const loggedFailures = new Set<string>();
+
+/** Log a failed read the first time its kind (error name and code) is seen. */
+function warnOnce(error: unknown): void {
+  const name = error instanceof Error ? error.name : typeof error;
+  const code = (error as { code?: unknown } | null)?.code;
+  const kind = code === undefined ? name : `${name}:${String(code)}`;
+  if (loggedFailures.has(kind)) return;
+  loggedFailures.add(kind);
+  console.warn(
+    "[flow-state] a session stream read failed; the connection ends and the client reconnects. Later failures of this kind are not logged.",
+    error
+  );
+}
+
 /**
- * The finished items to consider on this read, in each request's log order:
- * everything the session's unfinished requests hold, plus everything the
- * requests updated since `floor` hold. Already-sent items are the caller's to
- * skip.
+ * The finished items to consider on this read: everything the session's
+ * unfinished requests hold, plus everything the requests updated since `floor`
+ * hold. Each request's items keep their log order; the order across requests
+ * is not defined (the client orders what it shows). Already-sent items are the
+ * caller's to skip.
  */
 async function readFinishedItems(
   options: FollowOptions,
@@ -230,28 +258,17 @@ async function readFinishedItems(
   });
   for (const record of unfinished) records.set(record.id, record);
 
-  for (let offset = 0; ; offset += RECENT_PAGE_SIZE) {
-    const page = await stores.request.list({
-      sessionId,
-      tenantId,
-      orderBy: "updatedAt",
-      limit: RECENT_PAGE_SIZE,
-      offset
-    });
-    let reachedFloor = false;
-    for (const record of page) {
-      if (record.updatedAt < floor) {
-        reachedFloor = true;
-        break;
-      }
-      if (records.has(record.id)) continue;
+  await forEachUpdatedSince(
+    floor,
+    (page) => stores.request.list({ sessionId, tenantId, orderBy: "updatedAt", ...page }),
+    async (record) => {
+      if (records.has(record.id)) return;
       // Adapters that keep items apart from the record leave them off a list
       // read without `withItems`; read the few updated since the floor whole.
       const whole = record.items !== undefined ? record : await stores.request.get(record.id);
       if (whole !== undefined) records.set(whole.id, whole);
     }
-    if (reachedFloor || page.length < RECENT_PAGE_SIZE) break;
-  }
+  );
 
   const found: Array<{ requestId: string; item: OutputItem }> = [];
   for (const record of records.values()) {
@@ -303,24 +320,19 @@ class RunTracker {
     const before = new Set(this.open.keys());
     const checked = new Set<string>();
 
-    for (let offset = 0; ; offset += RECENT_PAGE_SIZE) {
-      const page = await stores.session.list({
-        parentage: { parentOf: sessionId },
-        orderBy: "updatedAt",
-        limit: RECENT_PAGE_SIZE,
-        offset,
-        ...identity
-      });
-      let reachedFloor = false;
-      for (const child of page) {
-        if (child.updatedAt < floor) {
-          reachedFloor = true;
-          break;
-        }
+    await forEachUpdatedSince(
+      floor,
+      (page) =>
+        stores.session.list({
+          parentage: { parentOf: sessionId },
+          orderBy: "updatedAt",
+          ...page,
+          ...identity
+        }),
+      async (child) => {
         checked.add(await this.check(child));
       }
-      if (reachedFloor || page.length < RECENT_PAGE_SIZE) break;
-    }
+    );
 
     for (const run of [...this.open.values()]) {
       if (checked.has(run.id)) continue;
@@ -356,16 +368,21 @@ function toSessionRun(child: SessionRecord, id: string, parentSessionId: string)
   };
 }
 
-/** Wait `ms`, or less if the connection ends first. */
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) return resolve();
-    const timer = setTimeout(done, ms);
-    function done(): void {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", done);
-      resolve();
+/**
+ * Visit rows newest-updated first, a page at a time, until one is older than
+ * `floor` or a page comes back short. `readPage` reads the page it is given.
+ */
+async function forEachUpdatedSince<T extends { updatedAt: number }>(
+  floor: number,
+  readPage: (page: { limit: number; offset: number }) => Promise<T[]>,
+  visit: (row: T) => Promise<void>
+): Promise<void> {
+  for (let offset = 0; ; offset += RECENT_PAGE_SIZE) {
+    const page = await readPage({ limit: RECENT_PAGE_SIZE, offset });
+    for (const row of page) {
+      if (row.updatedAt < floor) return;
+      await visit(row);
     }
-    signal.addEventListener("abort", done, { once: true });
-  });
+    if (page.length < RECENT_PAGE_SIZE) return;
+  }
 }

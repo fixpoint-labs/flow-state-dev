@@ -67,9 +67,17 @@ const IN_PROGRESS_LOOKUP_LIMIT = 10;
  */
 const UNCONFIRMED_LIVE_ITEM_TTL_MS = 60_000;
 
-/** Items are told apart by request and item id: two requests can keep the same id. */
-function liveItemKey(requestId: string, itemId: string): string {
+/**
+ * The key the view holds an item under: request and item id together, since
+ * two requests can keep the same id (a keyed item's id comes from its key).
+ */
+function itemKey(requestId: string, itemId: string): string {
   return `${requestId}\u0000${itemId}`;
+}
+
+/** {@link itemKey} of an item. */
+function keyOfItem(item: OutputItem): string {
+  return itemKey(item.requestId, item.id);
 }
 
 /**
@@ -247,8 +255,11 @@ export type SessionView = {
    * finished work falls off the end and is not reachable from here.
    *
    * A row's `status` is absent until its work has run anything, and `"active"`
-   * means only *not finished* — never render it as "running", "working" or
-   * "thinking", and never treat it as proof a worker is alive.
+   * means only *not finished*. Without `live`, the list may be stale: never
+   * render `"active"` as "running", "working" or "thinking", and never treat
+   * it as proof a worker is alive. With `live: true` the list is re-read as
+   * runs start and finish, so `"active"` may read as "working", which clears
+   * when the run ends; a paused or stopped run reads the same.
    */
   readonly childSessions: ReadonlyArray<ChildSessionSummary>;
   /**
@@ -513,7 +524,7 @@ export function useSession(
    * request lifecycle transitions.
    */
   const latestRequestRef = useRef<SessionRequestSummary | null>(null);
-  const storeRef = useRef(createRequestStreamStore());
+  const storeRef = useRef(createRequestStreamStore({ keyOf: keyOfItem }));
   // Item ids the filter rejected this stream. The shared store keeps deltas for
   // not-yet-present items buffered (so early deltas survive), so a filtered item
   // — which never enters the store — would otherwise buffer deltas forever.
@@ -538,7 +549,8 @@ export function useSession(
    */
   const pendingResourceChangesRef = useRef<ResourceChangeItem[]>([]);
   const flushHandleRef = useRef<number | null>(null);
-  const optimisticIdRef = useRef<string | null>(null);
+  /** The store key of the optimistic user message, until the server's own replaces it. */
+  const optimisticKeyRef = useRef<string | null>(null);
   /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
   const resourceChangedDuringStreamRef = useRef(false);
   /**
@@ -744,7 +756,7 @@ export function useSession(
       storeRef.current.loadSnapshot(filtered);
       const unconfirmed = unconfirmedLiveItemsRef.current;
       if (unconfirmed.size > 0) {
-        const held = new Set(filtered.map((item) => liveItemKey(item.requestId, item.id)));
+        const held = new Set(filtered.map((item) => itemKey(item.requestId, item.id)));
         const now = Date.now();
         for (const [key, entry] of unconfirmed) {
           if (held.has(key) || now - entry.at > UNCONFIRMED_LIVE_ITEM_TTL_MS) {
@@ -962,7 +974,7 @@ export function useSession(
             // Never enters the store — drop any deltas it streams (buffered ones
             // now, future ones via the rejected set) so they don't accumulate.
             rejectedItemIdsRef.current.add(event.item.id);
-            storeRef.current.discardDeltas(event.item.id);
+            storeRef.current.discardDeltas(keyOfItem(event.item));
             return;
           }
 
@@ -972,10 +984,10 @@ export function useSession(
           if (
             serverItem.type === "message" &&
             serverItem.role === "user" &&
-            optimisticIdRef.current !== null
+            optimisticKeyRef.current !== null
           ) {
-            storeRef.current.deleteById(optimisticIdRef.current);
-            optimisticIdRef.current = null;
+            storeRef.current.deleteById(optimisticKeyRef.current);
+            optimisticKeyRef.current = null;
           }
 
           storeRef.current.upsert(event.item);
@@ -984,7 +996,7 @@ export function useSession(
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {
             rejectedItemIdsRef.current.add(event.item.id);
-            storeRef.current.discardDeltas(event.item.id);
+            storeRef.current.discardDeltas(keyOfItem(event.item));
             return;
           }
 
@@ -992,7 +1004,8 @@ export function useSession(
           setItems(storeRef.current.getSorted());
         },
         onContentAdded: (event) => {
-          if (storeRef.current.applyContentAdded(event.itemId, event.contentIndex, event.content)) {
+          const key = itemKey(event.requestId, event.itemId);
+          if (storeRef.current.applyContentAdded(key, event.contentIndex, event.content)) {
             setItems(storeRef.current.getSorted());
           }
         },
@@ -1000,7 +1013,8 @@ export function useSession(
           // Skip deltas for items the filter already rejected — they will never
           // enter the store, so buffering them just grows the queue.
           if (rejectedItemIdsRef.current.has(event.itemId)) return;
-          storeRef.current.accumulateDelta(event.itemId, event.contentIndex, event.delta);
+          const key = itemKey(event.requestId, event.itemId);
+          storeRef.current.accumulateDelta(key, event.contentIndex, event.delta);
 
           scheduleContentFlush();
         },
@@ -1008,7 +1022,8 @@ export function useSession(
           // Settle the slot to its authoritative final content (drops any
           // queued delta for it). Inherited from the shared store — the prior
           // hand-rolled callbacks had no content.done handler.
-          if (storeRef.current.applyContentDone(event.itemId, event.contentIndex, event.content)) {
+          const key = itemKey(event.requestId, event.itemId);
+          if (storeRef.current.applyContentDone(key, event.contentIndex, event.content)) {
             setItems(storeRef.current.getSorted());
           }
         },
@@ -1321,10 +1336,10 @@ export function useSession(
       if (!itemConfig.enabled || !passesItemFilter(item, filter)) return;
       // Already held: a request this view sent (its own stream delivered it),
       // or a repeat across a reconnect. A same id from another request is a
-      // different item and is kept, as a reload keeps it.
-      const held = storeRef.current.getById(item.id);
-      if (held !== undefined && held.requestId === requestId) return;
-      unconfirmedLiveItemsRef.current.set(liveItemKey(requestId, item.id), {
+      // different item, held under its own key, as a reload holds it.
+      const key = itemKey(requestId, item.id);
+      if (storeRef.current.getById(key) !== undefined) return;
+      unconfirmedLiveItemsRef.current.set(key, {
         item,
         at: Date.now()
       });
@@ -1542,10 +1557,9 @@ export function useSession(
 
       try {
         if (itemConfig.enabled) {
-          const optimisticId = actionOptions?.userMessage !== undefined
-            ? `item_msg_optimistic_${requestId}`
-            : undefined;
-          optimisticIdRef.current = optimisticId ?? null;
+          optimisticKeyRef.current = actionOptions?.userMessage !== undefined
+            ? itemKey(requestId, `item_msg_optimistic_${requestId}`)
+            : null;
         }
 
         // Use sendActionStream to POST with Accept: text/event-stream.

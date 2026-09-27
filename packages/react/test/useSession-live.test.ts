@@ -213,13 +213,22 @@ describe("useSession live", () => {
     expect(texts(result.current.items)).toEqual(["as streamed"]);
   });
 
-  it("keeps an item from another request that shares an id, as a reload keeps it (BR-22)", async () => {
-    sessionClientMock.getSessionState.mockResolvedValue(snapshot([message("req_a", "keyed", "from a", 1)]));
+  // A keyed item's id comes from its key, so two requests that keep the same
+  // key keep the same id. Each is its own item: neither is a repeat of the
+  // other, and neither replaces the other.
+  it("shows both of two requests' items that share an id, as a reload shows them (BR-22)", async () => {
+    const fromA = message("req_a", "keyed", "from a", 1);
+    const fromB = message("req_b", "keyed", "from b", 2);
+    sessionClientMock.getSessionState.mockResolvedValue(snapshot([fromA]));
     const { result } = await mountLive();
 
-    deliver(item("req_b", message("req_b", "keyed", "from b", 2)));
-    // Not dropped as a repeat of req_a's: told apart by request and item id.
-    expect(texts(result.current.items)).toEqual(["from b"]);
+    deliver(item("req_b", fromB));
+    expect(texts(result.current.items)).toEqual(["from a", "from b"]);
+
+    sessionClientMock.getSessionState.mockResolvedValue(snapshot([fromA, fromB]));
+    const reload = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+    await waitFor(() => expect(reload.result.current.isLoading).toBe(false));
+    expect(texts(reload.result.current.items)).toEqual(["from a", "from b"]);
   });
 
   it("orders live items as a reload would, not by arrival (BR-5)", async () => {

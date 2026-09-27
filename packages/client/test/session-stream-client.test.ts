@@ -213,6 +213,34 @@ describe("createSessionSSEClient", () => {
     }
   );
 
+  // A session kept before records named their owner is refused the same way on
+  // every try until an operator migrates it; retrying only adds load.
+  it("stops quietly on a 409 migration-required: no error, no retry (BR-15)", async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "migration-required", message: "unattributed" }), {
+          status: 409,
+          headers: { "content-type": "application/json" }
+        })
+    );
+    const onStop = vi.fn();
+    const onError = vi.fn();
+    const handle = createSessionSSEClient({
+      sessionId: "s1",
+      fetcher: fetcher as unknown as ClientFetch,
+      retry: { initialDelayMs: 5 },
+      onStop,
+      onError
+    });
+    handles.push(handle);
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(onStop).toHaveBeenCalledWith({ status: 409 });
+    expect(onError).not.toHaveBeenCalled();
+    expect(handle.stopped).toBe(true);
+  });
+
   it("does not stop on a server error: a 500 is retried", async () => {
     let call = 0;
     const fetcher: ClientFetch = (async (_url: string, init?: RequestInit) => {

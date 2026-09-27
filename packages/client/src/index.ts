@@ -37,7 +37,8 @@ export {
 export {
   createRequestStreamStore,
   compareItemOrder,
-  type RequestStreamStore
+  type RequestStreamStore,
+  type RequestStreamStoreOptions
 } from "./stream-client/request-stream-store";
 
 export {

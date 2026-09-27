@@ -703,8 +703,9 @@ export type SessionSSECallbacks = {
   onEvent?: (event: SessionStreamEvent) => void;
   /**
    * The server refused the stream (401 or 403), does not have it (404, 501),
-   * or the session is gone. The client does not retry; the view carries on as
-   * it would without the stream.
+   * cannot say who owns the session until it is migrated (409), or the session
+   * is gone. The client does not retry; the view carries on as it would
+   * without the stream.
    */
   onStop?: (reason: { status: number }) => void;
   /** An event the client could not parse. Connection drops are retried, not reported. */

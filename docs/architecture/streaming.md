@@ -24,8 +24,9 @@ Server (execution)                    Client (SSE)
 **Key concepts:**
 - POST returns `202 Accepted` immediately — execution is async
 - Client establishes SSE connection for the `requestId` to receive live events
-- Each event has a `sequence_number` for ordering and replay
+- Each request-stream event has a `sequence_number` for ordering and replay
 - SSE `id` format: `${requestId}:${sequence_number}`
+- The [session stream](#session-stream), which follows a whole session rather than one request, has neither: it resumes by time, with overlap and dedupe
 
 ## Item Types
 
@@ -210,6 +211,28 @@ GET /stream?starting_after=42
 - `content.delta` events are NOT replayed (FIX-479). The current item snapshot in `request.items` carries the running text up to the most recent coalesced flush; reconnecting clients pick up live deltas from the new connection forward, and the eventual `item.done` payload supersedes with the authoritative final text. Page-load bootstrap (`/items` synthesis path) shows the latest accumulated text rather than empty content for in-flight messages
 - `content.audio.delta` events are NOT replayed (FIX-523). The durable `OutputAudioContent` snapshot is delivered via `content.added` / `content.done` and survives reconnects; in-flight audio chunks are lost. Clients hear a gap from disconnect to the next live delta. This matches every comparable system (OpenAI Realtime, ElevenLabs WS, Cartesia, LiveKit) — nobody does mid-stream audio resume
 
+## Session Stream
+
+`GET /sessions/:sessionId/stream` follows a whole session: every finished item any request in it keeps, including requests this client did not send, and the session's unfinished runs. `useSession(id, { live: true })` opens it through `createSessionSSEClient`. Everything above about sequence numbers is the request stream's contract; the session stream's differs.
+
+| Event | Carries |
+|-------|---------|
+| `session.item` | `requestId` and one finished `item`, filtered as the session snapshot filters its items |
+| `session.runs` | Every unfinished run under the session. Sent when the stream opens, then whenever that set changes |
+| `ping` | Nothing; sent while nothing else is |
+
+Envelope: `{ stream: "session", sessionId, at, type, ... }`. There is no `sequence_number` and no SSE `id`: a session has many writers, often on other servers, and no single log to number.
+
+Resume is by time, with overlap and dedupe:
+
+- **The cursor is `at`**, a server time. A client that reconnects hands back the last `at` it heard as `?since=`. Without `since`, the first read reaches back about a minute.
+- **Overlap.** Each read reaches back a margin (5 s) before the cursor, to cover other servers' clocks and write latency. Within one connection each item is sent once; after a reconnect, an item can arrive again.
+- **The cursor never runs ahead of delivery.** An event's `at` moves to a read's start only once that read's items are all sent, so a connection that drops before or midway through a read resumes from where that read began.
+- **Dedupe by `(requestId, item.id)`**, never `item.id` alone: a keyed item's id comes from its key, so two requests can keep the same id. `useSession` holds a session's items under that pair.
+- **Ends.** The server closes the connection after at most 15 minutes, and the client reconnects. A 401, 403, 404, 409 (`migration-required`) or 501 stops the client for good, without an error; anything else is retried with backoff.
+
+The server reads the store about once a second per open connection, with filters every adapter has, so a reply written by another server reaches a view held by this one. Each read costs what is running now, not the session's history; the store-side indexes live with each adapter.
+
 ## Store-driven event subscriptions
 
 Live tail is owned by `RequestStore.subscribeToEvents(requestId, options)`. The route handler does catch-up + live in a single iterator; the legacy in-process active-streams registry is gone (FIX-569).
@@ -264,6 +287,8 @@ State/resource mutations auto-emit `state_change` and `resource_change` items.
 3. Materialize item lifecycle state from events
 4. On `request.completed`, refetch state snapshot (required correctness path)
 5. Treat `state_change`/`resource_change` as invalidation signals for mid-request reactivity
+
+On the [session stream](#session-stream), the cursor is the last `at` heard and dedupe is by `(requestId, item.id)`.
 
 ## Item Provenance
 

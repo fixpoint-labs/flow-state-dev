@@ -364,9 +364,10 @@ export type CreateSessionSSEClientOptions = SessionSSECallbacks & {
 
 /**
  * Answers that mean the stream is not there for this caller: refused, absent,
- * or not built. Retrying cannot change them.
+ * not built, or (409) a session kept before records named their owner, which
+ * stays refused until it is migrated. Retrying cannot change them.
  */
-const SESSION_STREAM_STOP_STATUSES: ReadonlySet<number> = new Set([401, 403, 404, 501]);
+const SESSION_STREAM_STOP_STATUSES: ReadonlySet<number> = new Set([401, 403, 404, 409, 501]);
 
 /**
  * Follow a whole session: every finished item any request in it keeps, and a
@@ -379,8 +380,8 @@ const SESSION_STREAM_STOP_STATUSES: ReadonlySet<number> = new Set([401, 403, 404
  * cover clock skew, so an item can arrive twice across a reconnect; tell items
  * apart by `requestId` and `item.id` and keep the first.
  *
- * A 401, 403, 404 or 501 stops the client for good, quietly: `onStop` fires,
- * `onError` does not, and nothing is retried.
+ * A 401, 403, 404, 409 or 501 stops the client for good, quietly: `onStop`
+ * fires, `onError` does not, and nothing is retried.
  */
 export function createSessionSSEClient(
   options: CreateSessionSSEClientOptions

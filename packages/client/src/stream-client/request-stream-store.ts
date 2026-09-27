@@ -37,6 +37,8 @@ export type ContentDeltaAccumulator = {
  * with a binary-insert-maintained sorted id list, an ownership index, and a
  * content-delta queue, plus the request's status, sequence cursor, and
  * status-event log. All methods are synchronous; no React state is touched.
+ * An "id" a method takes is the item's key: its id, unless the store was
+ * created with `keyOf`.
  */
 export type RequestStreamStore = {
   /** Replace all items with a pre-sorted snapshot. Rebuilds the ownership index. Leaves status/sequence/status-events untouched. */
@@ -190,19 +192,20 @@ function sameChronologicalOrder(left: OutputItem, right: OutputItem): boolean {
 function insertSortedItemId(
   sortedIds: string[],
   newItem: OutputItem,
+  newKey: string,
   itemsById: ReadonlyMap<string, OutputItem>
 ): string[] {
   const next = [...sortedIds];
   const len = next.length;
 
   if (len === 0) {
-    next.push(newItem.id);
+    next.push(newKey);
     return next;
   }
 
   const lastItem = itemsById.get(next[len - 1]!);
   if (lastItem !== undefined && compareItemOrder(newItem, lastItem) >= 0) {
-    next.push(newItem.id);
+    next.push(newKey);
     return next;
   }
 
@@ -218,7 +221,7 @@ function insertSortedItemId(
     }
   }
 
-  next.splice(lo, 0, newItem.id);
+  next.splice(lo, 0, newKey);
   return next;
 }
 
@@ -238,7 +241,8 @@ function buildItemsFromMap(
 
 function trackOwnership(
   ownershipIndex: Map<string, Set<string>>,
-  item: OutputItem
+  item: OutputItem,
+  key: string
 ): void {
   const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
   if (ownedBy === undefined) return;
@@ -247,15 +251,30 @@ function trackOwnership(
     set = new Set();
     ownershipIndex.set(ownedBy, set);
   }
-  set.add(item.id);
+  set.add(key);
 }
 
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
+/** Options for {@link createRequestStreamStore}. */
+export type RequestStreamStoreOptions = {
+  /**
+   * The key an item is held under. Defaults to `item.id`, which is unique
+   * within one request. A store that holds a whole session's items keys by
+   * request and item id together, because two requests can keep the same id
+   * (a keyed item's id comes from its key). Every method that takes an item id
+   * then takes this key instead. It must not change over an item's life.
+   */
+  keyOf?: (item: OutputItem) => string;
+};
+
 /** Create a new imperative request-stream store. */
-export function createRequestStreamStore(): RequestStreamStore {
+export function createRequestStreamStore(
+  options: RequestStreamStoreOptions = {}
+): RequestStreamStore {
+  const keyOf = options.keyOf ?? ((item: OutputItem) => item.id);
   let itemsById = new Map<string, OutputItem>();
   let sortedIds: string[] = [];
   let ownershipIndex = new Map<string, Set<string>>();
@@ -286,7 +305,8 @@ export function createRequestStreamStore(): RequestStreamStore {
   // sort key (ts/itemIndex) or `ownedBy` re-sorts and re-indexes instead of
   // leaving those indexes stale. Returns true if sorted order changed.
   const upsertItem = (item: OutputItem): boolean => {
-    const existing = itemsById.get(item.id);
+    const key = keyOf(item);
+    const existing = itemsById.get(key);
     const isNew = existing === undefined;
     const orderChanged = existing !== undefined && !sameChronologicalOrder(existing, item);
 
@@ -297,25 +317,26 @@ export function createRequestStreamStore(): RequestStreamStore {
       if (oldOwner !== undefined && oldOwner !== newOwner) {
         const set = ownershipIndex.get(oldOwner);
         if (set !== undefined) {
-          set.delete(item.id);
+          set.delete(key);
           if (set.size === 0) ownershipIndex.delete(oldOwner);
         }
       }
     }
 
-    itemsById.set(item.id, item);
-    trackOwnership(ownershipIndex, item);
+    itemsById.set(key, item);
+    trackOwnership(ownershipIndex, item, key);
     invalidateCanonical();
 
     if (isNew) {
-      sortedIds = insertSortedItemId(sortedIds, item, itemsById);
+      sortedIds = insertSortedItemId(sortedIds, item, key, itemsById);
       return true;
     }
 
     if (orderChanged) {
       sortedIds = insertSortedItemId(
-        sortedIds.filter((id) => id !== item.id),
+        sortedIds.filter((id) => id !== key),
         item,
+        key,
         itemsById
       );
       return true;
@@ -333,9 +354,10 @@ export function createRequestStreamStore(): RequestStreamStore {
       deltaQueue.clear();
 
       for (const item of items) {
-        itemsById.set(item.id, item);
-        sortedIds.push(item.id);
-        trackOwnership(ownershipIndex, item);
+        const key = keyOf(item);
+        itemsById.set(key, item);
+        sortedIds.push(key);
+        trackOwnership(ownershipIndex, item, key);
       }
     },
 

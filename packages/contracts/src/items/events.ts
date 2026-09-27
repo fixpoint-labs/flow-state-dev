@@ -227,14 +227,20 @@ export type StreamEvent = RequestStreamEvent | UserStreamEvent;
  * Fields every session-stream event carries.
  *
  * The session stream follows a whole session rather than one request, so its
- * events have no per-request sequence number. `at` is the server time the read
- * behind the event started; a client that reconnects hands the last `at` it
- * heard back as `since`, and the server reads from a little before it.
+ * events have no per-request sequence number. `at` is where a reconnect picks
+ * up: a client that reconnects hands the last `at` it heard back as `since`,
+ * and the server reads from a little before it. Items can arrive twice across
+ * a reconnect; tell them apart by `requestId` and `item.id`.
  */
 export type SessionEventBase = {
   stream: "session";
   sessionId: string;
-  /** Server time (epoch ms) the read that produced this event started. */
+  /**
+   * Server time (epoch ms) a reconnect can resume from without missing an
+   * item this connection had not sent yet: the start of the last read whose
+   * items were all sent. Before the first read finishes, the point that read
+   * reaches back to (less the server's margin).
+   */
   at: number;
 };
 

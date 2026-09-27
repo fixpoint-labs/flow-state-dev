@@ -255,6 +255,47 @@ describe("createRequestStreamStore — loadSnapshot", () => {
 });
 
 // ---------------------------------------------------------------------------
+// keyOf: a store holding more than one request's items
+// ---------------------------------------------------------------------------
+
+describe("createRequestStreamStore — keyOf", () => {
+  // Two requests that keep a keyed item with the same key keep the same id.
+  const fromA = makeItem({ id: "keyed", requestId: "req_a", ts: 1 });
+  const fromB = makeItem({ id: "keyed", requestId: "req_b", ts: 2 });
+  const byRequest = (item: OutputItem) => `${item.requestId}/${item.id}`;
+
+  it("holds both requests' items when keyed by request and id", () => {
+    const loaded = createRequestStreamStore({ keyOf: byRequest });
+    loaded.loadSnapshot([fromA, fromB]);
+    expect(loaded.getSorted()).toEqual([fromA, fromB]);
+
+    const upserted = createRequestStreamStore({ keyOf: byRequest });
+    upserted.upsert(fromA);
+    upserted.upsert(fromB);
+    expect(upserted.getSorted()).toEqual([fromA, fromB]);
+    expect(upserted.getById("req_a/keyed")).toBe(fromA);
+  });
+
+  it("sends a delta to the request it names", () => {
+    const store = createRequestStreamStore({ keyOf: byRequest });
+    const text = (item: OutputItem) =>
+      ({ ...item, content: [{ type: "output_text", text: "" }] }) as OutputItem;
+    store.loadSnapshot([text(fromA), text(fromB)]);
+    store.accumulateDelta("req_b/keyed", 0, "for b");
+    store.flushDeltas();
+    const shown = store.getSorted() as Array<OutputItem & { content: Array<{ text: string }> }>;
+    expect(shown.map((item) => item.content[0]?.text)).toEqual(["", "for b"]);
+  });
+
+  it("keys by id alone by default, where a later copy replaces the earlier", () => {
+    const store = createRequestStreamStore();
+    store.upsert(fromA);
+    store.upsert(fromB);
+    expect(store.getSorted()).toEqual([fromB]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // clear
 // ---------------------------------------------------------------------------
 
