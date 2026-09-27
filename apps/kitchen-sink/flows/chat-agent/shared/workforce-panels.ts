@@ -9,9 +9,9 @@
  * - `HIRED_ROSTER_RESOURCE` — the hired roster, from the same factory the
  *   admin flow and the boot reload use, so there is one declaration of that
  *   contract. Declared under the package's key, not a name of this app's,
- *   because the rail's hire (`flow.ts`) runs the package's hire sequence, which
- *   reads the roster from there; a second key for the same collection would
- *   be refused as a resource collision.
+ *   because the operator's hire (`flows/workforce-admin/`) writes the roster
+ *   there; a second key for the same collection would be refused as a
+ *   resource collision.
  * - `rosterBootReport` — what the last boot could not bring back, one row per
  *   organization. The boot writes it (`lib/roster-reload-report.ts`); nothing
  *   in this flow does. The key and the row's schema are declared in

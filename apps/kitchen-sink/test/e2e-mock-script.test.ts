@@ -5,53 +5,135 @@
  * Two promises, and why each matters:
  *
  *   - A scenario is picked by a marker in the LATEST user turn only. A seat's
- *     conversation carries its earlier notes, so matching the whole history
- *     would answer a new note with an old note's scenario.
+ *     conversation carries its earlier turns, so matching the whole history
+ *     would answer a new message with an old message's scenario.
  *   - Each request walks its own copy of a scenario's steps. A multi-step
  *     scenario (a tool call, then the reply) run twice in one process must
  *     start at its first step both times; one shared cursor made the second
  *     run start mid-script and skip the tool call.
  *
- * Red state, before the green was trusted: today's dispatcher (whole-history
- * match, one cursor per scenario) failed both cases.
+ * Red state, before the green was trusted: the dispatcher before FIX-1589
+ * (whole-history match, one cursor per scenario) failed both cases.
+ *
+ * And the two scenarios FIX-1611 adds (`specs/issues/FIX-1611/BUSINESS-RULES.md`,
+ * V3): BR-19 `[scenario:recall]` names every token found before the latest
+ * turn, and no other, and under `GOAL_CONTROL=no-history` only those in the
+ * system message (BR-23); BR-20 `[scenario:needs-a-person]` calls `escalate`
+ * once with the post's token, then says it filed, or that it did not; BR-21
+ * `[route:<member>]` routes, below.
  */
-import { describe, expect, it } from "vitest";
-import { agentSeatMock, channelRouteMock, deskClerkMock } from "@/lib/e2e-mock-script";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { agentSeatMock, channelRouteMock } from "@/lib/e2e-mock-script";
 import { createKitchenSinkTestModelResolver } from "./mock-flowstate";
 
+const system = (content: string) => ({ role: "system", content });
 const user = (content: string) => ({ role: "user", content });
 const assistant = (content: string) => ({ role: "assistant", content });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("the scripted model's scenario dispatcher", () => {
   it("starts a multi-step scenario at its first step on every request", () => {
-    deskClerkMock.reset();
-    const note = "[scenario:clerk-file] clerk-token-aaa the charger caught fire";
+    agentSeatMock.reset();
+    const turn = "[scenario:needs-a-person] case-token-aaa the charger caught fire";
 
-    const first = [user(note)];
-    expect(deskClerkMock.next(first)?.toolCalls?.[0]?.toolName).toBe("desk-clerk-file");
-    expect(deskClerkMock.next(first)?.text).toContain("[clerk:filed]");
+    const first = [user(turn)];
+    expect(agentSeatMock.next(first)?.toolCalls?.[0]?.toolName).toBe("escalate");
+    expect(agentSeatMock.next(first)?.text).toContain("[reply:escalated]");
 
-    // A second request with the very same note: a fresh messages array, so a
+    // A second request with the very same turn: a fresh messages array, so a
     // fresh walk of the script.
-    const second = [user(note)];
-    expect(deskClerkMock.next(second)?.toolCalls?.[0]?.toolName).toBe("desk-clerk-file");
-    expect(deskClerkMock.next(second)?.text).toContain("[clerk:filed]");
+    const second = [user(turn)];
+    expect(agentSeatMock.next(second)?.toolCalls?.[0]?.toolName).toBe("escalate");
+    expect(agentSeatMock.next(second)?.text).toContain("[reply:escalated]");
   });
 
-  it("matches the latest user turn only, not an earlier note in the conversation", () => {
-    deskClerkMock.reset();
+  it("matches the latest user turn only, not an earlier turn in the conversation", () => {
+    agentSeatMock.reset();
     const history = [
-      user("[scenario:clerk-file] clerk-token-bbb please escalate"),
-      assistant("[front desk] [clerk:filed] Filed onto escalations."),
-      user("[scenario:clerk-answer] clerk-token-ccc where is my refund?"),
+      user("[scenario:needs-a-person] case-token-bbb please escalate"),
+      assistant("[reply:escalated] Filed onto escalations."),
+      user("[scenario:talk-to-seat] where is my refund?"),
     ];
-    const step = deskClerkMock.next(history);
+    const step = agentSeatMock.next(history);
     expect(step?.toolCalls).toBeUndefined();
-    expect(step?.text).toContain("[clerk:answered]");
+    expect(step?.text).toContain("[reply:talk-to-seat]");
 
     // And a latest turn with no marker is unmatched, however marked the history.
     const unmarked = [...history, assistant("..."), user("just saying hello")];
-    expect(deskClerkMock.next(unmarked)?.text).not.toMatch(/\[clerk:/);
+    expect(agentSeatMock.next(unmarked)?.text).not.toMatch(/\[reply:/);
+  });
+});
+
+describe("the needs-a-person scenario (BR-20)", () => {
+  it("calls escalate once with the post's token as the case, then says it filed", () => {
+    agentSeatMock.reset();
+    const messages = [user("devuser in support.help: [route:support.devices] [scenario:needs-a-person] case-token-ccc it smokes")];
+    const call = agentSeatMock.next(messages);
+    expect(call?.toolCalls).toHaveLength(1);
+    expect(call?.toolCalls?.[0]).toMatchObject({ toolName: "escalate", args: { case: expect.stringContaining("case-token-ccc") } });
+    // The case alone: the script names no author, board or channel.
+    expect(Object.keys(call?.toolCalls?.[0]?.args ?? {})).toEqual(["case"]);
+    expect(agentSeatMock.next(messages)?.text).toMatch(/^\[reply:escalated\] /);
+  });
+
+  it("says nothing was filed when the tool reports it filed nothing", () => {
+    agentSeatMock.reset();
+    const messages = [user("[scenario:needs-a-person] case-token-ddd it smokes")];
+    agentSeatMock.next(messages);
+    const reply = agentSeatMock.next(messages, {
+      toolResults: [{ toolCallId: "tc", toolName: "escalate", result: { filed: false, reason: "unavailable" } }],
+    } as never);
+    expect(reply?.text).toMatch(/^\[reply:unfiled\] /);
+    expect(reply?.text).not.toContain("[reply:escalated]");
+  });
+
+  it("with [forge-author], also names an author, a board and a channel of its own", () => {
+    agentSeatMock.reset();
+    const call = agentSeatMock.next([user("[scenario:needs-a-person] [forge-author] case-token-eee refund me")]);
+    expect(call?.toolCalls?.[0]?.args).toEqual({
+      case: expect.stringContaining("case-token-eee"),
+      author: "support.fsd",
+      board: "followups",
+      channel: "support.elsewhere",
+    });
+  });
+});
+
+describe("the recall scenario (BR-19)", () => {
+  const conversation = [
+    system("You answer questions.\n\nRecent lines in the channel, oldest first:\n- support.devices: [reply:in-channel] reply-token-aaa Refunds post on Fridays."),
+    user("devuser in support.help: a question naming case-token-bbb"),
+    assistant("[reply:wake] Heard it in the channel."),
+    user("devuser in support.help: [scenario:recall] what have we said? recall-token-ccc"),
+  ];
+
+  it("names every token found before the latest turn, in the system message or an earlier turn, and no other", () => {
+    agentSeatMock.reset();
+    const text = agentSeatMock.next(conversation)?.text ?? "";
+    expect(text).toMatch(/^\[reply:recall\]/);
+    expect(text).toContain("reply-token-aaa");
+    expect(text).toContain("case-token-bbb");
+    // The latest turn's own token is not something it recalls.
+    expect(text).not.toContain("recall-token-ccc");
+  });
+
+  it("under no-history, recalls only what the system message holds (BR-23)", () => {
+    vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
+    vi.stubEnv("GOAL_CONTROL", "no-history");
+    agentSeatMock.reset();
+    const text = agentSeatMock.next(conversation)?.text ?? "";
+    expect(text).toContain("reply-token-aaa");
+    expect(text).not.toContain("case-token-bbb");
+  });
+
+  it("ignores no-history outside test mode", () => {
+    vi.stubEnv("KITCHEN_SINK_TEST_MODE", "");
+    vi.stubEnv("GOAL_CONTROL", "no-history");
+    agentSeatMock.reset();
+    expect(agentSeatMock.next(conversation)?.text).toContain("case-token-bbb");
   });
 });
 

@@ -1,15 +1,13 @@
 {
   "port": 3039,
-  "channel": { "kind": "channel", "id": "support.desk" },
-  "agents": [
-    { "kind": "agent", "id": "support.iris" },
-    { "kind": "agent", "id": "support.otto" }
-  ],
+  "channel": { "kind": "channel", "id": "support.help" },
+  "agents": [{ "kind": "agent", "id": "support.accounts" }],
   "others": [
-    { "kind": "desk-clerk", "id": "support.ada" },
-    { "kind": "desk-clerk", "id": "support.grace" },
-    { "kind": "followup-runner", "id": "support.wren" }
+    { "kind": "agent", "id": "support.devices" },
+    { "kind": "agent", "id": "support.fsd" },
+    { "kind": "agent", "id": "support.general" }
   ],
+  "route": "[route:support.accounts]",
   "marker": "[scenario:wake]",
   "replyMarker": "[reply:wake]"
 }

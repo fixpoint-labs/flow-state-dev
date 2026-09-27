@@ -163,7 +163,7 @@ async function bootWithHire(stores = inMemoryStores(), options: { hostResolver?:
   const hired = await app.act(
     "workforce-admin",
     "hire",
-    { seatId: "support.bo", flow: "desk-clerk", settings: { desk: "back" } },
+    { seatId: "support.bo", flow: "agent", instructions: "You take refund questions." },
     TOKEN
   );
   // If the hire itself did not land, everything below is about nothing.
@@ -188,7 +188,7 @@ describe("a seat hired over workforce-admin, reached with the hiring credential"
   it("runs an action for the operator who hired it", async () => {
     const app = await bootWithHire();
 
-    const ran = await app.act(SEAT, "answer", { note: "where is my order?" }, TOKEN);
+    const ran = await app.act(SEAT, "run", { message: "where is my order?" }, TOKEN);
 
     expect(ran).toEqual({ http: 202, outcome: "completed" });
   });
@@ -232,7 +232,7 @@ describe("a seat hired over workforce-admin, reached with the hiring credential"
 
     const restarted = await boot(stores);
     expect(await restarted.reload()).toEqual([SEAT]);
-    const ran = await restarted.act(SEAT, "answer", { note: "still there?" }, TOKEN);
+    const ran = await restarted.act(SEAT, "run", { message: "still there?" }, TOKEN);
 
     expect(ran).toEqual({ http: 202, outcome: "completed" });
   });
@@ -244,7 +244,7 @@ describe("a seat hired over workforce-admin stays closed to everyone else", () =
     const app = await bootWithHire();
 
     const opened = await app.call([SEAT, "sessions"], OTHER_ORG_TOKEN, { userId: ADMIN_USER_ID });
-    const ran = await app.act(SEAT, "answer", { note: "hello" }, OTHER_ORG_TOKEN);
+    const ran = await app.act(SEAT, "run", { message: "hello" }, OTHER_ORG_TOKEN);
 
     expect(opened.status).toBe(401);
     expect(opened.json?.error).toMatch(/Invalid workforce-admin credential/);
@@ -287,9 +287,9 @@ describe("a seat hired over workforce-admin stays closed to everyone else", () =
     const claimed = { userId: ADMIN_USER_ID, orgId: KITCHEN_SINK_ORG_ID };
 
     const opened = await app.call([SEAT, "sessions"], undefined, claimed);
-    const ran = await app.call([SEAT, "actions", "answer"], undefined, {
+    const ran = await app.call([SEAT, "actions", "run"], undefined, {
       ...claimed,
-      input: { note: "hello" },
+      input: { message: "hello" },
     });
 
     // The seat's own resolver refuses a missing credential before the pin runs.

@@ -13,6 +13,11 @@
  * sits, which is why leg 0 greps the whole tree for it and fails if it is
  * there.
  *
+ * The tree holds more than this check reads: a second board nobody drains, a
+ * third member whose seat hears posts, and a channel on a kind of its own.
+ * `workforce-conventions/a-channel-holds-the-work-a-seat-drains` reads those;
+ * here they only have to leave the row's path alone.
+ *
  * Legs:
  *   0  the tree declares a local name and never an id
  *   a  the tree alone produces the roster, the instances and the seats
@@ -25,7 +30,7 @@
  */
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
@@ -86,14 +91,21 @@ await runGoal(async () => {
 
   const workers: WorkerManifest[] = roster.workers;
   const channels: ChannelManifest[] = read.channels;
-  const channel = channels[0];
-  if (channel === undefined) return { failures: ["the tree declared no channel"], evidence: "" };
+  // The channel that holds boards. The tree's other channel runs a kind of its
+  // own, which holds none.
+  const channel = channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
+  if (channel === undefined) return { failures: ["the tree declared no channel holding a board"], evidence: "" };
 
   // Read off the FILE, never hardcoded — swap the folder names and a correct
-  // implementation still passes.
-  const boardName = (channel.declared.boards as string[])[0]!;
-  const boardId = channelBoardIds(channels)[0]!;
+  // implementation still passes. The first board the file declares is the one
+  // the coder drains.
+  const boardNames = channel.declared.boards as string[];
+  const boardName = boardNames[0]!;
   const triage = channelBoard(channel.id, boardName);
+  const boardId = triage.id;
+  if (!channelBoardIds(channels).includes(boardId)) {
+    return { failures: [`the roster mints no ledger "${boardId}" for the board the file declares`], evidence: "" };
+  }
 
   // ---- 0. the tree names a board and never an id ----------------------------
   for (const path of treeFiles(TREE)) {
@@ -162,11 +174,16 @@ await runGoal(async () => {
     actions: { drain: { block: board.drain } }
   } as never);
 
-  const instances = channelInstances(channels);
+  // The generated module carries the tree's own channel kind, which the other
+  // channel names.
+  const generated = (await import(pathToFileURL(join(TREE, "workforce.gen.ts")).href)) as {
+    channelKinds: Record<string, never>;
+  };
+  const instances = channelInstances(channels, { kinds: generated.channelKinds });
   const seats = hireWorkforce(workers, {
     kinds: { em: emKind as never, coder: coderKind as never },
-    // Every minted id is declared by a hired seat, so this says nothing. A
-    // warning on stderr here would mean the coder's declaration missed.
+    // One warning on stderr is expected, naming the board nobody drains. A
+    // warning naming the coder's board would mean its declaration missed.
     channelBoards: channelBoardIds(channels)
   });
 
@@ -255,8 +272,9 @@ await runGoal(async () => {
     // ---- b. the channel says what it holds, by name -------------------------
     const view = await act(channelInstance, channel.id, "read", {});
     const held = (view.output as { boards?: string[] } | undefined)?.boards;
-    if (JSON.stringify(held) !== JSON.stringify([boardName])) {
-      failures.push(`the channel read listed ${JSON.stringify(held)}, not ["${boardName}"]`);
+    // Sorted on both sides: the framework sorts the ledgers a kind is built with.
+    if (JSON.stringify(held) !== JSON.stringify([...boardNames].sort())) {
+      failures.push(`the channel read listed ${JSON.stringify(held)}, not ${JSON.stringify([...boardNames].sort())}`);
     }
 
     // ---- c. one seat files one row, through the channel ---------------------

@@ -86,7 +86,7 @@ describe("a channel's panel", () => {
       "channel",
       session({
         items: [
-          line("1", "from a seat", { author: "support.ada", principal: "devuser" }),
+          line("1", "from a seat", { author: "support.devices", principal: "devuser" }),
           { id: "noise", type: "message", role: "assistant", content: [] },
           line("2", "from the page", { principal: "devuser" }),
           line("3", "from the digest kind"),
@@ -96,14 +96,14 @@ describe("a channel's panel", () => {
     const labels = screen.getAllByTestId("channel-line-label").map((el) => el.textContent);
     const bodies = screen.getAllByTestId("channel-line-body").map((el) => el.textContent);
     expect(bodies).toEqual(["from a seat", "from the page", "from the digest kind"]);
-    expect(labels).toEqual(["support.ada", "devuser", "unattributed"]);
+    expect(labels).toEqual(["support.devices", "devuser", "unattributed"]);
     // The stream is not drawn for a channel: its transcript is.
     expect(screen.queryByTestId("stream-items")).toBeNull();
   });
 
-  it("shows an empty transcript and still posts, when the kind emits no channel-post item", async () => {
+  it("shows an empty transcript and still posts, when the session holds no channel-post item", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
-    panel("digest", session({ items: [{ id: "x", type: "message", role: "assistant", content: [] }], sendAction }));
+    panel("channel", session({ items: [{ id: "x", type: "message", role: "assistant", content: [] }], sendAction }));
     expect(screen.queryAllByTestId("channel-line")).toHaveLength(0);
     await type("Post to this channel", "hello");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -228,7 +228,6 @@ describe("switching picks", () => {
 describe("a seat's panel", () => {
   it.each([
     ["agent", "run", { message: "where is my refund?" }],
-    ["desk-clerk", "answer", { note: "where is my refund?" }],
   ])("a %s seat sends its kind's own action", async (kind, action, input) => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
     panel(kind, session({ sendAction }));
@@ -241,10 +240,12 @@ describe("a seat's panel", () => {
     expect(sendAction.mock.calls[0]).toEqual([action, input]);
   });
 
-  it("a seat whose kind takes no messages has no composer, and says why", () => {
-    panel("followup-runner", session());
+  it("a seat of a kind the page has no action for has no composer, and says so (FIX-1611 BR-15)", () => {
+    panel("a-kind-this-page-does-not-know", session());
     expect(screen.queryByTestId("picked-composer")).toBeNull();
-    expect(screen.getByTestId("picked-read-only").textContent).toContain("runs rows from a board");
+    expect(screen.getByTestId("picked-read-only").textContent).toBe(
+      "This a-kind-this-page-does-not-know seat takes no messages from this page.",
+    );
     expect(screen.queryByText(/go to the assistant/)).toBeNull();
   });
 });

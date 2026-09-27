@@ -1,6 +1,25 @@
 {
   "port": 3038,
-  "seat": { "kind": "desk-clerk", "id": "support.ada", "desk": "front" },
-  "answer": { "marker": "[scenario:clerk-answer]", "replyMarker": "[clerk:answered]" },
-  "file": { "marker": "[scenario:clerk-file]", "replyMarker": "[clerk:filed]", "channel": "support.desk", "board": "escalations" }
+  "channel": { "kind": "channel", "id": "support.help", "board": "escalations" },
+  "seatKind": "agent",
+  "specialists": [
+    { "id": "support.devices", "description": "Printers, laptops, phones, wifi and anything else with a power button." },
+    { "id": "support.accounts", "description": "Sign-in, passwords, billing, refunds and subscriptions." },
+    { "id": "support.fsd", "description": "Questions about building apps with the flow-state-dev framework." },
+    { "id": "support.general", "description": "Anything that fits none of the other specialists." }
+  ],
+  "seat": "support.devices",
+  "answer": { "marker": "[scenario:wake]", "replyMarker": "[reply:wake]" },
+  "file": { "marker": "[scenario:needs-a-person]", "replyMarker": "[reply:escalated]" },
+  "live": {
+    "needsAPerson": [
+      "My laptop battery is swelling and the case has started to split. I'm scared to keep using it and need someone on your team to arrange a replacement today.",
+      "I've been charged three times this month for the same subscription and my bank says only you can reverse it. Please have a person look at my account and refund the extra charges.",
+      "Someone else signed in to my account and changed my email and password, so I'm locked out. I need a person to verify it's me and lock the account down."
+    ],
+    "answerable": [
+      "How do I reconnect my laptop to the office wifi after the password changed?",
+      "Where on the billing page do I find my past invoices?"
+    ]
+  }
 }

@@ -1,29 +1,56 @@
 /**
- * Goal check — the reference app's own tree declares three channels, one of
- * them holding two boards, and exactly one seat drains exactly one of them.
+ * Goal check — the reference app's own tree declares a channel holding a
+ * board, the boot says out loud that nobody drains it, and a channel's seats
+ * are never told about their own posts. The shapes the app no longer carries —
+ * a channel on a kind of its own, a seat draining one board of two, a member
+ * whose seat cannot hear a post — are checked on a fixture host.
  *
- * **The subject is `apps/kitchen-sink` itself, not a fixture.** Every other
- * goal under `workforce-conventions/` points the loader at its own
- * `fixtures/workforce/`; this one imports the app's real `fsdev.config`,
- * because the claim is about what somebody who clones the app finds. That
- * makes it a heavy boot and this goal noticeably slower than a fixture goal —
- * `goal:all` should expect that.
+ * Two subjects, one run:
  *
- * Board mechanics are NOT re-proved here. `channel-boards/
- * it-runs-a-row-a-file-declared-board-holds` already covers mint → file →
- * drain → completed and passes. What this adds is the two behaviours that goal
- * cannot reach — the unattended-board warning and the subset drain — plus the
- * structural legs that say this app's own tree is wired.
+ *   **The app** (`apps/kitchen-sink` itself, not a fixture). The claim is
+ *   about what somebody who clones the app finds, so the harness imports the
+ *   app's real `fsdev.config`. That is a heavy boot, and `goal:all` should
+ *   expect it. Legs V2, V5, V6, V9 (the warning), V10 to V13, and V14's writer
+ *   half.
  *
- * Fifteen legs, model-free. The harness owns the real path and reports raw
+ *   **The fixture host**: the tree `goals/channel-boards/
+ *   it-runs-a-row-a-file-declared-board-holds/` runs, which carries a board
+ *   the seat drains, a board nobody does, a member whose seat hears posts,
+ *   and a channel on a kind of its own. Run in process here. Legs V1, V3, V4,
+ *   V8, V9's attended half and V14's non-hearing half. V7 — a row claimed,
+ *   run and settled on the minted ledger, with an effect outside the board —
+ *   is that check's own legs c to e, on the same tree, and is not re-graded.
+ *
+ * Model-free. The harness owns the app's real path and reports raw
  * observations; every assertion lives here.
  *
  * Run: pnpm tsx goals/workforce-conventions/a-channel-holds-the-work-a-seat-drains/run.mts
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, join, sep } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import ts from "typescript";
-import { KITCHEN_SINK, repoPath, runGoal, runHarness } from "../../lib/index.mts";
+import { z } from "zod";
+import { createSessionClient } from "@flow-state-dev/client";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import type { Task, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
+import {
+  channelBoard,
+  channelBoardIds,
+  channelInstances,
+  channelNotifyInputSchema,
+  defineChannelFlow,
+  hireWorkforce,
+  openChannels,
+  wakeMemberSeats,
+  workerConfigSchema,
+  type ChannelManifest,
+} from "@flow-state-dev/workforce";
+import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { KITCHEN_SINK, REPO_ROOT, repoPath, runGoal, runHarness } from "../../lib/index.mts";
 
 const WORKFORCE = join(KITCHEN_SINK, "workforce");
 const GEN_MODULE = join(WORKFORCE, "workforce.gen.ts");
@@ -31,14 +58,16 @@ const HIRE = join(WORKFORCE, "hire.ts");
 const CONFIG = join(KITCHEN_SINK, "fsdev.config.ts");
 const CHANNELS = join(WORKFORCE, "teams", "support", "channels");
 const PUBLISHED = repoPath("apps", "docs", "docs", "workforce", "channels.md");
+/** The fixture host's tree, which `channel-boards/it-runs-a-row-a-file-declared-board-holds` also runs. */
+const FIXTURE = repoPath("goals", "channel-boards", "it-runs-a-row-a-file-declared-board-holds", "fixtures", "workforce");
 
 /**
  * The words the vocabulary table refuses — the "is not" column of
  * `specs/issues/FIX-1476/BUSINESS-RULES.md` → The words.
  *
- * Checked only against the strings this issue ships: `description:` values,
- * channel charters, board names and channel ids under `workforce/`. It does
- * not reach a component label and does not claim to.
+ * Checked only against the strings the app's tree ships: `description:`
+ * values, channel charters, board names and channel ids under `workforce/`. It
+ * does not reach a component label and does not claim to.
  */
 const REFUSED_WORDS = [
   "worker", "bot", "team member", "agent",
@@ -47,6 +76,17 @@ const REFUSED_WORDS = [
   "queue", "backlog", "list", "todo",
   "org", "squad", "workspace",
 ];
+
+/**
+ * Proper nouns the vocabulary check reads past, each for a stated reason.
+ *
+ * `flow-state-dev` is the framework's name. `support.fsd`'s description names
+ * it because the specialist answers questions about building with it, and that
+ * wording is fixed by FIX-1611 D1. The table refuses "flow" as a word for a
+ * seat's kind; a product name that contains it is not that word. Nothing else
+ * is exempt: "flow" anywhere else in a shipped string still fails.
+ */
+const PROPER_NOUNS = ["flow-state-dev"];
 
 /** The two sentences the published page owes a reader who writes a kind. */
 const PUBLISHED_CLAIMS: Array<{ what: string; needle: RegExp }> = [
@@ -63,32 +103,18 @@ const PUBLISHED_CLAIMS: Array<{ what: string; needle: RegExp }> = [
 interface Observation {
   ok: boolean;
   warnings: string[];
-  channelKindNames: string[];
   openAtImport: string[];
-  deskRead: { requestStatus?: string; output?: any; error?: unknown };
+  holderRead: { requestStatus?: string; output?: any; error?: unknown };
   sessions: Record<string, any>;
-  followupGoal: string;
-  escalationGoal: string;
-  filedFollowup: { requestStatus?: string; output?: any; error?: unknown };
-  filedEscalation: { requestStatus?: string; output?: any; error?: unknown };
-  drained: { requestStatus?: string; error?: unknown };
-  board_followups: { requestStatus?: string; output?: any; error?: unknown };
-  board_escalations: { requestStatus?: string; output?: any; error?: unknown };
-  orgId: string;
-  followupRowKey: string | null;
-  /** The whole stored record, so V7 can assert its STATUS and not merely that a row exists. */
-  followupRowInStorage: { state?: { status?: string; goal?: string } } | null;
   /** Channel ids a caller using the APP's own user id can list. */
   visibleToAppUser: string[];
   /**
    * Per channel id, one post's fan-out: how many declared members it ADDRESSED
-   * (the framework's half, unchanged by any app rule) and who it actually
-   * DELIVERED to (the app's half).
+   * (the framework's half) and who it actually DELIVERED to (the app's half).
    */
   notified: Record<string, { reached: number; delivered: string[]; problem?: string }>;
   /** Declared members whose registered seat declares `onChannelPost` — the ones a post can wake. */
   hearsPosts: string[];
-  notes: any;
 }
 
 /** Every file under a directory, recursively. */
@@ -107,14 +133,20 @@ function splitManifest(text: string): { frontmatter: string; body: string } {
     : { frontmatter: "", body: text };
 }
 
-/** The `boards:` names one `CHANNEL.md` declared, read off the file. */
-function declaredBoards(frontmatter: string): string[] {
-  const line = frontmatter.match(/^boards:\s*\[(.*)\]\s*$/m);
+/** A bracketed list one frontmatter key declares, read off the file. */
+function declaredList(frontmatter: string, key: string): string[] {
+  const line = frontmatter.match(new RegExp(`^${key}:\\s*\\[(.*)\\]\\s*$`, "m"));
   if (line === null) return [];
   return line[1]!
     .split(",")
     .map((name) => name.trim())
     .filter((name) => name.length > 0);
+}
+
+/** The `description:` one manifest declared, or null. */
+function declaredDescription(frontmatter: string): string | null {
+  const line = frontmatter.match(/^description:\s*(.+)$/m);
+  return line === null ? null : line[1]!.trim();
 }
 
 /**
@@ -127,11 +159,7 @@ function declaredBoards(frontmatter: string): string[] {
  * itself: an importer of a module with a top-level await is blocked until that
  * module finishes evaluating. Which means no importer can ever *observe* the
  * pre-await state. The only thing a test can observe is whether the open
- * happened to finish before it looked — a race, not the property. Measured on
- * this app: with the open made fire-and-forget, one extra `setImmediate` before
- * the read is enough for all three channels to be there and a behavioural leg
- * to go green with the bug still in place. A check whose verdict turns on a
- * single event-loop turn is not evidence.
+ * happened to finish before it looked — a race, not the property.
  *
  * What this therefore CANNOT catch, said here rather than left to be found:
  *
@@ -139,16 +167,11 @@ function declaredBoards(frontmatter: string): string[] {
  *     before the channels were open, the `await` would still be right here.
  *     V11 is the leg that covers that, by reading the sessions.
  *   - **The open moving out of this file.** It reads `fsdev.config.ts` alone.
- *     An open relocated into a module this one imports without awaiting would
- *     lose the property with nothing here to say so.
  *   - **Ordering.** It does not check the statement sits after
  *     `createFlowState` — only that it is awaited at module scope.
  *
  * @returns `"awaited"` for `await openChannels(…)`, `"loose"` for a call whose
- *   promise is dropped (`void openChannels(…)`, or a bare call), and `"absent"`
- *   when no module-scope statement calls it — which includes the shapes that
- *   stash the promise (`const p = openChannels(…)`). Deliberately: this knows
- *   one correct shape and refuses every other rather than guessing at intent.
+ *   promise is dropped, and `"absent"` when no module-scope statement calls it.
  */
 function moduleScopeCall(
   source: string,
@@ -157,8 +180,6 @@ function moduleScopeCall(
 ): "awaited" | "loose" | "absent" {
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.ESNext, true);
   let seen: "awaited" | "loose" | "absent" = "absent";
-  // The file's OWN statements only. A call nested inside a function or a block
-  // is not a module-scope statement, and being one is half of the property.
   for (const statement of file.statements) {
     if (!ts.isExpressionStatement(statement)) continue;
     const outer = statement.expression;
@@ -172,51 +193,85 @@ function moduleScopeCall(
   return seen;
 }
 
-/** The `description:` one manifest declared, or null. */
-function declaredDescription(frontmatter: string): string | null {
-  const line = frontmatter.match(/^description:\s*(.+)$/m);
-  return line === null ? null : line[1]!.trim();
+/**
+ * V14's grading, shared by both subjects: the fan-out addressed the whole
+ * roster (the framework's half), and delivered to exactly the members who are
+ * neither the writer nor able to hear a post (the delivery rule's half).
+ *
+ * Asserted as a SET, not a count. A count would be green on a fan-out that
+ * notified the wrong people, and "fewer than everybody" would be green on one
+ * that notified nobody.
+ */
+function gradeFanOut(
+  where: string,
+  channelId: string,
+  members: string[],
+  seen: { reached: number; delivered: string[]; problem?: string } | undefined,
+  hearsPosts: string[],
+  failures: string[],
+): void {
+  if (seen === undefined || seen.problem !== undefined) {
+    failures.push(`V14 (${where}): posting to ${channelId} did not settle — ${seen?.problem ?? "not probed"}`);
+    return;
+  }
+  const author = members[0];
+  const wanted = members.filter((name) => name !== author && !hearsPosts.includes(name)).sort();
+  const got = [...seen.delivered].sort();
+  if (JSON.stringify(got) !== JSON.stringify(wanted)) {
+    failures.push(
+      `V14 (${where}): ${channelId} was written by ${JSON.stringify(author)} and the fan-out delivered to ` +
+        `${JSON.stringify(got)} — every other declared member whose seat can't hear a post, ` +
+        `and nobody else, should have been told, which is ${JSON.stringify(wanted)}`,
+    );
+  }
+  if (seen.reached !== members.length) {
+    failures.push(
+      `V14 (${where}): ${channelId}'s fan-out addressed ${seen.reached} of ${members.length} declared ` +
+        `member(s); a seat's post is never routed, so the fan-out walks the whole roster`,
+    );
+  }
 }
 
-await runGoal(() => {
-  const failures: string[] = [];
-  const evidence: string[] = [];
+// ===========================================================================
+// The app
+// ===========================================================================
 
+function appLegs(failures: string[], evidence: string[]): void {
   // Everything the tree says, read off the tree. Nothing below types a channel
   // id, a board name or a ledger id.
-  const channelFolders = readdirSync(CHANNELS).sort();
-  const manifests = channelFolders.map((folder) => {
-    const text = readFileSync(join(CHANNELS, folder, "CHANNEL.md"), "utf8");
-    const { frontmatter, body } = splitManifest(text);
-    return {
-      id: `support.${folder}`,
-      folder,
-      frontmatter,
-      body,
-      boards: declaredBoards(frontmatter),
-      description: declaredDescription(frontmatter),
-      declaredKind: frontmatter.match(/^flow:\s*(.+)$/m)?.[1]?.trim() ?? null,
-    };
-  });
+  const manifests = readdirSync(CHANNELS)
+    .sort()
+    .map((folder) => {
+      const { frontmatter, body } = splitManifest(readFileSync(join(CHANNELS, folder, "CHANNEL.md"), "utf8"));
+      return {
+        id: `support.${folder}`,
+        folder,
+        frontmatter,
+        body,
+        boards: declaredList(frontmatter, "boards"),
+        members: declaredList(frontmatter, "members"),
+        description: declaredDescription(frontmatter),
+        declaredKind: frontmatter.match(/^flow:\s*(.+)$/m)?.[1]?.trim() ?? null,
+      };
+    });
   const genSource = readFileSync(GEN_MODULE, "utf8");
   const hireSource = readFileSync(HIRE, "utf8");
   const configSource = readFileSync(CONFIG, "utf8");
 
   const withBoards = manifests.filter((m) => m.boards.length > 0);
   if (withBoards.length !== 1) {
-    return {
-      failures: [
-        `expected exactly one channel to declare \`boards:\`, found ${withBoards.length} ` +
-          `(${withBoards.map((m) => m.id).join(", ") || "none"})`,
-      ],
-      evidence: "",
-    };
+    failures.push(
+      `app: expected exactly one channel to declare \`boards:\`, found ${withBoards.length} ` +
+        `(${withBoards.map((m) => m.id).join(", ") || "none"})`,
+    );
+    return;
   }
   const boardHolder = withBoards[0]!;
   /** `<channelId>.<boardName>` — computed the way the framework mints it, never typed. */
   const mintedIds = boardHolder.boards.map((name) => `${boardHolder.id}.${name}`);
+  const before = failures.length;
 
-  // ---- V10: the vocabulary, over the strings this issue ships --------------
+  // ---- V10: the vocabulary, over the strings the tree ships -----------------
   {
     const subjects: Array<{ where: string; text: string }> = [];
     for (const m of manifests) {
@@ -237,11 +292,16 @@ await runGoal(() => {
       if (described !== null) subjects.push({ where: `${path} description`, text: described });
     }
 
+    let exempted = 0;
     for (const subject of subjects) {
+      let text = subject.text;
+      for (const noun of PROPER_NOUNS) {
+        if (text.includes(noun)) exempted += 1;
+        text = text.split(noun).join(" ");
+      }
       for (const word of REFUSED_WORDS) {
-        // Whole words only — `workspace` must not fire on nothing, and
-        // `list` must not fire inside `listen`.
-        if (new RegExp(`\\b${word}\\b`, "i").test(subject.text)) {
+        // Whole words only — `list` must not fire inside `listen`.
+        if (new RegExp(`\\b${word}\\b`, "i").test(text)) {
           failures.push(
             `V10: ${subject.where} uses "${word}", which the vocabulary table refuses: ` +
               JSON.stringify(subject.text.slice(0, 120)),
@@ -249,34 +309,21 @@ await runGoal(() => {
         }
       }
     }
-    if (failures.length === 0) {
-      evidence.push(`V10: ${subjects.length} shipped strings carry none of the refused words`);
-    }
-  }
-
-  // ---- V1: the generated map names the kind file ---------------------------
-  // Asserted on the map's CONTENT. Staleness — that the committed module
-  // matches what the tree renders — is CI's own `fsdev gen --check` over this
-  // same app, and `--check` never reads what the map contains.
-  const kindFiles = readdirSync(join(WORKFORCE, "flows", "channels")).sort();
-  const expectedKinds = kindFiles.map((f) => f.replace(/\.ts$/, ""));
-  {
-    const named = genSource.match(/export const channelKinds = \{([^}]*)\}/s)?.[1] ?? "";
-    const keys = [...named.matchAll(/"([^"]+)":/g)].map((m) => m[1]!).sort();
-    if (JSON.stringify(keys) !== JSON.stringify(expectedKinds)) {
-      failures.push(
-        `V1: the committed channelKinds map names ${JSON.stringify(keys)}, and ` +
-          `flows/channels/ holds ${JSON.stringify(expectedKinds)}`,
+    if (failures.length === before) {
+      evidence.push(
+        `V10: ${subjects.length} shipped strings carry none of the refused words ` +
+          `(${exempted} name ${PROPER_NOUNS.join(", ")}, read past as a proper noun)`,
       );
-    }
-    for (const kind of expectedKinds) {
-      if (!genSource.includes(`./flows/channels/${kind}`)) {
-        failures.push(`V1: the generated module does not import ./flows/channels/${kind}`);
-      }
     }
   }
 
   // ---- V2: no hand-written kind name in the wiring -------------------------
+  // The app carries no channel kind of its own today; the spread is what makes
+  // one it adds reach the binder with no edit here.
+  const kindsDir = join(WORKFORCE, "flows", "channels");
+  const expectedKinds = existsSync(kindsDir)
+    ? readdirSync(kindsDir).sort().map((f) => f.replace(/\.ts$/, ""))
+    : [];
   {
     if (!/\.\.\.channelKinds/.test(hireSource)) {
       failures.push("V2: hire.ts does not spread `channelKinds` from the generated module");
@@ -287,6 +334,9 @@ await runGoal(() => {
           failures.push(`V2: ${name} names channel kind "${kind}" by hand`);
         }
       }
+    }
+    if (!genSource.includes("export const channelKinds")) {
+      failures.push("V2: the generated module exports no `channelKinds` map for hire.ts to spread");
     }
   }
 
@@ -310,158 +360,7 @@ await runGoal(() => {
     }
   }
 
-  if (failures.length > 0) {
-    return { failures, evidence: "stopped before the boot — the tree does not agree with itself" };
-  }
-  evidence.push(
-    `V1/V2/V6/V12: the tree declares ${manifests.map((m) => m.id).join(", ")}; ` +
-      `"${boardHolder.id}" holds ${JSON.stringify(boardHolder.boards)}; the framework mints ` +
-      `${JSON.stringify(mintedIds)}, which appears in no file`,
-  );
-
-  // ---- the boot ------------------------------------------------------------
-  // Everything the harness probes is derived HERE and handed over, so the two
-  // halves cannot drift: rename a channel folder or a board and the assertion
-  // and the probe move together. The harness spells no address of its own.
-  const runnerKindFile = readdirSync(join(WORKFORCE, "flows", "workers"))
-    .map((f) => join(WORKFORCE, "flows", "workers", f))
-    .find((path) => readFileSync(path, "utf8").includes("channelBoard("));
-  if (runnerKindFile === undefined) {
-    return { failures: ["no worker kind under flows/workers/ declares a channelBoard"], evidence: "" };
-  }
-  const runnerKind = basename(runnerKindFile, ".ts");
-  const runnerSource = readFileSync(runnerKindFile, "utf8");
-  const attendedBoard = boardHolder.boards.find((name) => runnerSource.includes(`"${name}"`));
-  const unwiredBoards = boardHolder.boards.filter((name) => name !== attendedBoard);
-  const seatFile = filesUnder(join(WORKFORCE, "teams")).find(
-    (path) =>
-      path.endsWith("WORKER.md") &&
-      splitManifest(readFileSync(path, "utf8")).frontmatter.match(/^flow:\s*(.+)$/m)?.[1]?.trim() ===
-        runnerKind,
-  );
-  // The app names one user and one organization for every caller, in
-  // `lib/kitchen-sink-principal.ts`. The config opens the channels as that user
-  // and the page calls as it; each is read only if it still names the constant.
-  const principalSource = readFileSync(join(KITCHEN_SINK, "lib", "kitchen-sink-principal.ts"), "utf8");
-  const appUser = principalSource.match(/KITCHEN_SINK_USER_ID\s*=\s*"([^"]+)"/)?.[1];
-  const orgId = principalSource.match(/KITCHEN_SINK_ORG_ID\s*=\s*"([^"]+)"/)?.[1];
-  const channelOwner = /CHANNEL_OWNER\s*=\s*KITCHEN_SINK_USER_ID\b/.test(configSource)
-    ? appUser
-    : configSource.match(/CHANNEL_OWNER\s*=\s*"([^"]+)"/)?.[1];
-  const appUserId = /userId=\{KITCHEN_SINK_USER_ID\}/.test(
-    readFileSync(join(KITCHEN_SINK, "app", "page.tsx"), "utf8"),
-  )
-    ? appUser
-    : undefined;
-  if (
-    attendedBoard === undefined ||
-    seatFile === undefined ||
-    channelOwner === undefined ||
-    appUserId === undefined ||
-    orgId === undefined
-  ) {
-    return {
-      failures: [
-        attendedBoard === undefined
-          ? `no board "${boardHolder.id}" declares is named in ${runnerKind}`
-          : seatFile === undefined
-            ? `no WORKER.md names \`flow: ${runnerKind}\``
-            : channelOwner === undefined
-              ? "fsdev.config.ts declares no CHANNEL_OWNER this check can read"
-              : appUserId === undefined
-                ? "app/page.tsx passes no userId this check can read"
-                : "lib/kitchen-sink-principal.ts names no organization this check can read",
-      ],
-      evidence: "",
-    };
-  }
-  // `<teamId>.<workerName>` — minted from the folders the way the loader does.
-  const seatParts = seatFile.split(sep);
-  const seatAddress = `${seatParts[seatParts.length - 4]}.${seatParts[seatParts.length - 2]}`;
-
-  const o = runHarness<Observation>({
-    app: KITCHEN_SINK,
-    harness: new URL("./harness.mts", import.meta.url),
-    env: {
-      FSD_ENV: "dev",
-      GOAL_TREE: JSON.stringify({
-        channels: manifests.map((m) => ({ id: m.id, address: m.declaredKind ?? "channel" })),
-        boardHolder: {
-          id: boardHolder.id,
-          address: boardHolder.declaredKind ?? "channel",
-          boards: boardHolder.boards,
-        },
-        attendedBoard,
-        unwiredBoard: unwiredBoards[0],
-        seatAddress,
-        seatKind: runnerKind,
-        author: (boardHolder.frontmatter.match(/^members:\s*\[(.*)\]\s*$/m)?.[1] ?? "")
-          .split(",")[0]
-          ?.trim(),
-        membersByChannel: Object.fromEntries(
-          manifests.map((m) => [
-            m.id,
-            (m.frontmatter.match(/^members:\s*\[(.*)\]\s*$/m)?.[1] ?? "")
-              .split(",")
-              .map((name) => name.trim())
-              .filter((name) => name.length > 0),
-          ]),
-        ),
-        channelOwner,
-        appUserId,
-        orgId,
-      }),
-    },
-  });
-  if (o.ok !== true) {
-    return { failures: ["the harness did not complete"], evidence: "" };
-  }
-
-  /** Did the runtime map agree with the committed one? */
-  if (JSON.stringify([...o.channelKindNames].sort()) !== JSON.stringify(expectedKinds)) {
-    failures.push(
-      `V1: at run time channelKinds holds ${JSON.stringify(o.channelKindNames)}, ` +
-        `wanted ${JSON.stringify(expectedKinds)}`,
-    );
-  }
-
-  // ---- V11: the boot opened them, and the check opened nothing -------------
-  //
-  // What this leg grades is that the CONFIG opens the channels: by the time an
-  // importer can do anything at all, every channel the tree declares is a real
-  // session, and the harness called no open of its own. Its red state is the
-  // call being gone.
-  //
-  // It is NOT the leg that grades the `await`. Read the note on
-  // `moduleScopeCall` above before deciding this one covers a fire-and-forget
-  // open: it catches one today only by winning a race with a one-turn margin,
-  // which is why V11b exists and why nothing here claims otherwise.
-  {
-    const wanted = manifests.map((m) => m.id).sort();
-    const got = [...o.openAtImport].sort();
-    if (JSON.stringify(got) !== JSON.stringify(wanted)) {
-      failures.push(
-        `V11: ${got.length} of ${wanted.length} channels were open when the config module's ` +
-          `import resolved (${JSON.stringify(got)}) — the boot does not open the tree's ` +
-          `channels, so the first caller of one meets an empty session`,
-      );
-    }
-  }
-  if (o.deskRead.requestStatus !== "completed") {
-    failures.push(
-      `V11: the first read after importing the config ended "${o.deskRead.requestStatus}" ` +
-        `(${JSON.stringify(o.deskRead.error)}) — the channels were not open`,
-    );
-  }
-
   // ---- V11b: the open is an awaited module-scope statement -----------------
-  //
-  // Structural on purpose, and `moduleScopeCall`'s note says what that costs.
-  // The short version: ESM blocks every importer until module evaluation
-  // finishes, so no importer can observe the difference between an awaited
-  // open and a loose one except by racing it — and the race has a one-turn
-  // margin. The shape of the statement IS the guarantee, so the shape is what
-  // gets graded.
   {
     const shape = moduleScopeCall(configSource, CONFIG, "openChannels");
     if (shape !== "awaited") {
@@ -476,63 +375,96 @@ await runGoal(() => {
     }
   }
 
-  // ---- V3: each channel opened on the kind its file selected ---------------
-  //
-  // The first clause is not decoration. Without it this leg reads its
-  // expectation off the same `flow:` line it is testing, so deleting that line
-  // moves both sides together and the leg goes green on a tree where no
-  // channel runs a kind of its own — which is the state V3 exists to catch.
-  {
-    const naming = manifests.filter(
-      (m) => m.declaredKind !== null && expectedKinds.includes(m.declaredKind),
+  if (failures.length > before) {
+    evidence.push("app: stopped before the boot — the tree does not agree with itself");
+    return;
+  }
+  evidence.push(
+    `V2/V6/V11b/V12: the tree declares ${manifests.map((m) => m.id).join(", ")}; ` +
+      `"${boardHolder.id}" holds ${JSON.stringify(boardHolder.boards)}; the framework mints ` +
+      `${JSON.stringify(mintedIds)}, which appears in no file; hire.ts spreads the generated channelKinds`,
+  );
+
+  // ---- the boot ------------------------------------------------------------
+  // The app names one user and one organization for every caller, in
+  // `lib/kitchen-sink-principal.ts`. The config opens the channels as that user
+  // and the page calls as it; each is read only if it still names the constant.
+  const principalSource = readFileSync(join(KITCHEN_SINK, "lib", "kitchen-sink-principal.ts"), "utf8");
+  const appUser = principalSource.match(/KITCHEN_SINK_USER_ID\s*=\s*"([^"]+)"/)?.[1];
+  const channelOwner = /CHANNEL_OWNER\s*=\s*KITCHEN_SINK_USER_ID\b/.test(configSource)
+    ? appUser
+    : configSource.match(/CHANNEL_OWNER\s*=\s*"([^"]+)"/)?.[1];
+  const appUserId = /userId=\{KITCHEN_SINK_USER_ID\}/.test(
+    readFileSync(join(KITCHEN_SINK, "app", "page.tsx"), "utf8"),
+  )
+    ? appUser
+    : undefined;
+  if (channelOwner === undefined || appUserId === undefined) {
+    failures.push(
+      channelOwner === undefined
+        ? "app: fsdev.config.ts declares no CHANNEL_OWNER this check can read"
+        : "app: app/page.tsx passes no userId this check can read",
     );
-    const silent = manifests.filter((m) => m.declaredKind === null);
-    if (naming.length !== 1) {
-      failures.push(
-        `V3: ${naming.length} channels select a generated kind with \`flow:\`, wanted exactly ` +
-          `one — the custom-kind half of the reference is not in the tree`,
-      );
-    }
-    if (silent.length === 0) {
-      failures.push("V3: no channel omits `flow:`, so nothing shows the built-in being the default");
-    }
-    for (const m of manifests) {
-      const session = o.sessions[m.id];
-      const wanted = m.declaredKind ?? "channel";
-      if (session?.flowKind !== wanted) {
-        failures.push(
-          `V3: ${m.id} opened on kind "${session?.flowKind}", and its file selects "${wanted}"`,
-        );
-      }
-    }
+    return;
   }
 
-  // ---- V4: the custom kind's state schema admits what the binder writes ----
+  // No worker kind of the app's own declares a board, so every board the tree
+  // declares is one nobody drains. Derived, never typed.
+  const workerKindsDir = join(WORKFORCE, "flows", "workers");
+  const draining = existsSync(workerKindsDir)
+    ? readdirSync(workerKindsDir).map((f) => readFileSync(join(workerKindsDir, f), "utf8"))
+    : [];
+  const unwiredBoards = boardHolder.boards.filter(
+    (name) => !draining.some((source) => source.includes("channelBoard(") && source.includes(`"${name}"`)),
+  );
+
+  const o = runHarness<Observation>({
+    app: KITCHEN_SINK,
+    harness: new URL("./harness.mts", import.meta.url),
+    env: {
+      FSD_ENV: "dev",
+      // Model-free: nothing the probes do should wake a seat. Test mode keeps
+      // it keyless if something does, and lets the app's goal controls reach
+      // the boot when a red state is being taken.
+      KITCHEN_SINK_TEST_MODE: "1",
+      GOAL_TREE: JSON.stringify({
+        channels: manifests.map((m) => ({ id: m.id, address: m.declaredKind ?? "channel" })),
+        boardHolder: { id: boardHolder.id, address: boardHolder.declaredKind ?? "channel" },
+        membersByChannel: Object.fromEntries(manifests.map((m) => [m.id, m.members])),
+        channelOwner,
+        appUserId,
+      }),
+    },
+  });
+  if (o.ok !== true) {
+    failures.push("app: the harness did not complete");
+    return;
+  }
+
+  // ---- V11: the boot opened them, and the check opened nothing -------------
   {
-    const custom = manifests.find((m) => m.declaredKind !== null);
-    if (custom === undefined) {
-      failures.push("V4: no channel in the tree names a kind of its own");
-    } else {
-      const state = o.sessions[custom.id]?.state ?? {};
-      for (const key of ["members", "instructions", "transcript"]) {
-        if (!Object.hasOwn(state, key)) {
-          failures.push(
-            `V4: ${custom.id}'s open session carries no "${key}" — the kind's stateSchema ` +
-              `does not declare it, so the binder's value was silently stripped ` +
-              `(state keys: ${Object.keys(state).join(", ")})`,
-          );
-        }
-      }
+    const wanted = manifests.map((m) => m.id).sort();
+    const got = [...o.openAtImport].sort();
+    if (JSON.stringify(got) !== JSON.stringify(wanted)) {
+      failures.push(
+        `V11: ${got.length} of ${wanted.length} channels were open when the config module's ` +
+          `import resolved (${JSON.stringify(got)}) — the boot does not open the tree's ` +
+          `channels, so the first caller of one meets an empty session`,
+      );
     }
+  }
+  if (o.holderRead.requestStatus !== "completed") {
+    failures.push(
+      `V11: the first read after importing the config ended "${o.holderRead.requestStatus}" ` +
+        `(${JSON.stringify(o.holderRead.error)}) — the channels were not open`,
+    );
   }
 
   // ---- V5: the channel says what it holds, by name -------------------------
   {
-    // Whole-array equality against the names read off the manifest. Sorted on
-    // both sides because the framework sorts the minted ids it is built with,
-    // so declaration order is not preserved and asserting it would be
-    // asserting the sort.
-    const held = o.deskRead.output?.boards;
+    // Sorted on both sides: the framework sorts the minted ids a kind is built
+    // with, so declaration order is not preserved.
+    const held = o.holderRead.output?.boards;
     const wanted = [...boardHolder.boards].sort();
     if (JSON.stringify(held) !== JSON.stringify(wanted)) {
       failures.push(
@@ -542,11 +474,9 @@ await runGoal(() => {
     }
   }
 
-  // ---- V9: exactly one unattended-board warning, naming the unwired board --
+  // ---- V9: one unattended-board warning per board nobody drains ------------
   {
     const unattended = o.warnings.filter((w) => w.startsWith("[workforce] channel "));
-    // `attendedBoard` / `unwiredBoards` are the ones derived above, off whichever
-    // worker kind declares a channelBoard — never a filename typed here.
     if (unattended.length !== unwiredBoards.length) {
       failures.push(
         `V9: the boot emitted ${unattended.length} unattended-board warning(s), and ` +
@@ -558,150 +488,16 @@ await runGoal(() => {
         failures.push(`V9: no warning names the unwired board "${name}"`);
       }
     }
-    if (unattended.some((w) => w.includes(`"${attendedBoard}"`))) {
-      failures.push(`V9: a warning names "${attendedBoard}", which a seat does declare`);
-    }
   }
 
-  // ---- V7: the row the seat's board claimed, and the effect outside it -----
-  {
-    if (o.filedFollowup.requestStatus !== "completed") {
-      failures.push(`V7: filing the followup row ended "${o.filedFollowup.requestStatus}"`);
-    }
-    if (o.drained.requestStatus !== "completed") {
-      failures.push(
-        `V7: the seat's drain ended "${o.drained.requestStatus}" ` +
-          `(${JSON.stringify(o.drained.error)})`,
-      );
-    }
-
-    const rows = o.board_followups.output?.tasks ?? [];
-    const row = rows.find((t: any) => t.goal === o.followupGoal);
-    if (row === undefined) {
-      failures.push(
-        `V7: the attended board holds no row for ${JSON.stringify(o.followupGoal)} ` +
-          `(${rows.length} row(s) there)`,
-      );
-    } else if (row.status !== "completed") {
-      failures.push(`V7: the row is "${row.status}", not completed`);
-    }
-
-    // The durable row, asserted on its STATUS. Existence alone is not the claim:
-    // a row is written to the ledger the moment it is FILED, so `!== null` holds
-    // even when nothing ever ran — it holds under V7's own by-name control,
-    // where the drain claims nothing. What this leg advertises is persistence
-    // proof independent of the board's own projection, and only the status
-    // carries that.
-    const stored = o.followupRowInStorage?.state;
-    if (stored === undefined) {
-      failures.push(
-        `V7: the row is not on the minted ledger — nothing at ` +
-          `resourceState("org", "${o.orgId}", "${o.followupRowKey}")`,
-      );
-    } else if (stored.goal !== o.followupGoal) {
-      failures.push(
-        `V7: the row on the minted ledger records ${JSON.stringify(stored.goal)}, and the desk ` +
-          `filed ${JSON.stringify(o.followupGoal)}`,
-      );
-    } else if (stored.status !== "completed") {
-      failures.push(
-        `V7: the durable row under "${o.followupRowKey}" is "${stored.status}", not completed — ` +
-          `the board's projection and the ledger disagree, or nothing ran`,
-      );
-    }
-
-    // The effect OUTSIDE the board. The board's own report is generated on the
-    // path under test, so it cannot be its own evidence.
-    if (o.notes === null) {
-      failures.push("V7: the seat left no note outside the board — nothing proves the work ran");
-    } else if (o.notes?.state?.followup !== o.followupGoal) {
-      failures.push(
-        `V7: the note outside the board records ${JSON.stringify(o.notes?.state?.followup)}, ` +
-          `and the row asked for ${JSON.stringify(o.followupGoal)}`,
-      );
-    }
-  }
-
-  // ---- V14: the writer is not told about their own post -------------------
-  //
-  // Behavioural, and it grades DELIVERY rather than dispatch. The fan-out is
-  // declared once on the kind, so it still runs and still addresses every
-  // declared member including the writer; what the app controls from its notify
-  // slot is whether a delivery is made. The claim is "no notification goes back
-  // to the author", not "the fan-out skipped them".
-  //
-  // Asserted as a SET, against the roster minus the author, and not as a count.
-  // A count would be green on a fan-out that notified the wrong people, and
-  // "fewer than everybody" would be green on one that notified nobody — which
-  // is the shape a one-sided check invites. Every other member must still get
-  // theirs, so a broken fan-out fails here rather than passing quietly.
-  //
-  // "Every other member" is those whose seat cannot hear a post. The post names
-  // an `author`, and Workforce's wake gives a member whose seat declares
-  // `onChannelPost` nothing on such a post — no wake and no name-only line
-  // (FIX-1602). Which seats can hear is read off the seats the app registered,
-  // never a list of names, so a seat that changes kind moves the set with it.
-  {
-    for (const m of manifests) {
-      const members = (m.frontmatter.match(/^members:\s*\[(.*)\]\s*$/m)?.[1] ?? "")
-        .split(",")
-        .map((name) => name.trim())
-        .filter((name) => name.length > 0);
-      const seen = o.notified[m.id];
-      if (seen === undefined || seen.problem !== undefined) {
-        failures.push(`V14: posting to ${m.id} did not settle — ${seen?.problem ?? "not probed"}`);
-        continue;
-      }
-      // A channel on a kind of its own declares no fan-out slot at all, so
-      // there is no delivery rule of the app's to grade. Skipped by that fact
-      // rather than by name.
-      if (m.declaredKind !== null) {
-        if (seen.reached !== 0) {
-          failures.push(
-            `V14: ${m.id} runs a kind of its own and a fan-out still reached ${seen.reached} ` +
-              `member(s) — a hand-written kind declares no notify slot`,
-          );
-        }
-        continue;
-      }
-
-      // The harness posts as the channel's first declared member.
-      const author = members[0];
-      const wanted = members
-        .filter((name) => name !== author && !o.hearsPosts.includes(name))
-        .sort();
-      const got = [...seen.delivered].sort();
-      if (JSON.stringify(got) !== JSON.stringify(wanted)) {
-        failures.push(
-          `V14: ${m.id} was written by ${JSON.stringify(author)} and the fan-out delivered to ` +
-            `${JSON.stringify(got)} — every other declared member whose seat can't hear a post, ` +
-            `and nobody else, should have been told, which is ${JSON.stringify(wanted)}`,
-        );
-      }
-      // The framework's half, asserted separately: the fan-out still addresses
-      // the whole roster. If this ever changed the leg above would go green for
-      // the wrong reason — the author being skipped by the framework rather
-      // than declined by the app.
-      if (seen.reached !== members.length) {
-        failures.push(
-          `V14: ${m.id}'s fan-out addressed ${seen.reached} of ${members.length} declared ` +
-            `member(s); the framework walks the whole roster and the app declines deliveries`,
-        );
-      }
-    }
+  // ---- V14, the writer half: nobody is told about their own post ----------
+  // Every member of the app's channel is a seat that hears posts, so a post a
+  // member writes is delivered to nobody: not the writer, and not the others.
+  for (const m of manifests) {
+    gradeFanOut("app", m.id, m.members, o.notified[m.id], o.hearsPosts, failures);
   }
 
   // ---- V13: a caller using the app's own user id can reach the channels ---
-  //
-  // Sessions are per-user, and the session listing filters on the caller's id.
-  // The app's pages call as one id; the config opens the channels as another,
-  // and when the two differ the app ships channels no user of it can list.
-  //
-  // The LISTING is the whole leg. Acting as the wrong id is deliberately not
-  // asserted: measured on this app, a post as a non-owner is accepted (202)
-  // because no `resolvePrincipal` is configured, so the route's owner check
-  // never engages. An assertion on it could not fail here, and a leg that
-  // cannot fail is worse than no leg.
   {
     const wanted = manifests.map((m) => m.id).sort();
     const seen = [...o.visibleToAppUser].filter((id) => wanted.includes(id)).sort();
@@ -714,34 +510,339 @@ await runGoal(() => {
     }
   }
 
-  // ---- V8: the drain is a subset, not an ambient sweep ---------------------
+  evidence.push(
+    `app boot: the config opened ${manifests.map((m) => `${m.id}→${o.sessions[m.id]?.flowKind}`).join(", ")} ` +
+      `before any call; ${boardHolder.id}'s read lists ${JSON.stringify(o.holderRead.output?.boards)}; the boot ` +
+      `warned once per unwired board (${JSON.stringify(unwiredBoards)}); a member's post reached ` +
+      `${manifests.map((m) => `${o.notified[m.id]?.reached} of ${m.members.length}`).join(", ")} members and was ` +
+      `delivered to ${JSON.stringify(manifests.flatMap((m) => o.notified[m.id]?.delivered ?? []))}; the app's user lists ` +
+      `${JSON.stringify(o.visibleToAppUser.filter((id) => manifests.some((m) => m.id === id)))}`,
+  );
+}
+
+// ===========================================================================
+// The fixture host
+// ===========================================================================
+
+const FIXTURE_USER = "u_channel_holds";
+
+/**
+ * The delivery rule the fixture's channels are built with, for a member whose
+ * seat cannot hear a post: a name-only line, reported by name, and never to
+ * the member who wrote the post. Compared on `author`, the only field that
+ * names the same thing a member id does.
+ */
+const nameOnlyLine = handler({
+  name: "fixture-notify-member",
+  inputSchema: channelNotifyInputSchema,
+  outputSchema: z.object({ notified: z.string().optional() }),
+  execute: (input: { member: string; author?: string }) =>
+    input.author !== undefined && input.member === input.author ? {} : { notified: input.member },
+});
+
+async function fixtureLegs(failures: string[], evidence: string[]): Promise<void> {
+  // ---- V1: the generated map names the kind file ---------------------------
+  // Content, and currency: the committed module is what `fsdev gen` renders
+  // from this tree, which `--check` decides and the content half does not.
+  const kindFiles = readdirSync(join(FIXTURE, "flows", "channels")).sort();
+  const expectedKinds = kindFiles.map((f) => f.replace(/\.ts$/, ""));
+  const genSource = readFileSync(join(FIXTURE, "workforce.gen.ts"), "utf8");
+  const before = failures.length;
   {
-    if (o.filedEscalation.requestStatus !== "completed") {
-      failures.push(`V8: filing the escalation row ended "${o.filedEscalation.requestStatus}"`);
-    }
-    const rows = o.board_escalations.output?.tasks ?? [];
-    const row = rows.find((t: any) => t.goal === o.escalationGoal);
-    if (row === undefined) {
-      failures.push(`V8: the unwired board holds no row for ${JSON.stringify(o.escalationGoal)}`);
-    } else if (row.status !== "pending") {
+    const named = genSource.match(/export const channelKinds = \{([^}]*)\}/s)?.[1] ?? "";
+    const keys = [...named.matchAll(/"([^"]+)":/g)].map((m) => m[1]!).sort();
+    if (JSON.stringify(keys) !== JSON.stringify(expectedKinds)) {
       failures.push(
-        `V8: the row on the unwired board is "${row.status}" — the drain is not a subset, it ` +
-          `claimed a board its kind never declared`,
+        `V1: the fixture's committed channelKinds map names ${JSON.stringify(keys)}, and ` +
+          `flows/channels/ holds ${JSON.stringify(expectedKinds)}`,
       );
     }
+    for (const kind of expectedKinds) {
+      if (!genSource.includes(`./flows/channels/${kind}`)) {
+        failures.push(`V1: the fixture's generated module does not import ./flows/channels/${kind}`);
+      }
+    }
+    try {
+      execFileSync("pnpm", ["fsdev", "gen", "--check", "--root", FIXTURE], { cwd: REPO_ROOT, stdio: "pipe" });
+    } catch (err) {
+      const e = err as { stderr?: Buffer; stdout?: Buffer };
+      failures.push(`V1: fsdev gen --check says the fixture's module is not what its tree renders: ${String(e.stderr ?? e.stdout ?? "")}`);
+    }
+  }
+  // A map that disagrees with the tree cannot build the channels below: the
+  // kind a file selects would not be there. Stop, so the reason is V1's.
+  if (failures.length > before) return;
+
+  // ---- the tree alone produces the roster -----------------------------------
+  const roster = await readWorkforce(FIXTURE);
+  const read = await readChannelsDirectory(FIXTURE);
+  if (roster.errors.length > 0 || read.errors.length > 0) {
+    failures.push(`fixture: the tree did not load cleanly (${[...roster.errors, ...read.errors].map((e) => e.path).join(", ")})`);
+    return;
+  }
+  const channels: ChannelManifest[] = read.channels;
+  const holder = channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
+  if (holder === undefined) {
+    failures.push("fixture: no channel in the tree declares a board");
+    return;
+  }
+  const boardNames = holder.declared.boards as string[];
+  // The first board the file declares is the one the seat drains; the rest
+  // nobody drains. Read off the file.
+  const attended = boardNames[0]!;
+  const unwired = boardNames.slice(1);
+  const attendedBoard = channelBoard(holder.id, attended);
+
+  // ---- the kinds: one files, one drains the attended board, and the built-in
+  // agent hears posts. None writes a ledger id.
+  const noteRan = handler({
+    name: "fixture-run-row",
+    inputSchema: taskWorkerInputSchema,
+    outputSchema: z.object({ did: z.string() }),
+    execute: (input: TaskWorkerInput) => ({ did: input.goal }),
+  });
+  const board = taskBoard({
+    name: "fixture-triage",
+    boardId: "fixture-triage",
+    collection: attendedBoard,
+    concurrency: 1,
+    workers: { coder: noteRan },
+  });
+  const emKind = defineFlow({
+    kind: "em",
+    cardinality: "collection",
+    configSchema: workerConfigSchema(),
+    actions: {
+      idle: {
+        block: handler({
+          name: "fixture-em-idle",
+          inputSchema: z.object({}),
+          outputSchema: z.object({}),
+          execute: () => ({}),
+        }),
+      },
+    },
+  } as never);
+  const coderKind = defineFlow({
+    kind: "coder",
+    cardinality: "collection",
+    configSchema: workerConfigSchema(),
+    resources: { [attendedBoard.id]: attendedBoard },
+    actions: { drain: { block: board.drain } },
+  } as never);
+
+  // ---- V9's attended half: warned about the board nobody drains, only -----
+  const warnings: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map((a) => String(a)).join(" "));
+  };
+  let seats;
+  try {
+    seats = hireWorkforce(roster.workers, {
+      kinds: { em: emKind as never, coder: coderKind as never },
+      channelBoards: channelBoardIds(channels),
+    });
+  } finally {
+    console.warn = realWarn;
+  }
+  {
+    const unattended = warnings.filter((w) => w.startsWith("[workforce] channel "));
+    if (unattended.length !== unwired.length) {
+      failures.push(
+        `V9: the fixture's hire emitted ${unattended.length} unattended-board warning(s), and ` +
+          `${unwired.length} board(s) are unwired: ${JSON.stringify(unattended)}`,
+      );
+    }
+    for (const name of unwired) {
+      if (!unattended.some((w) => w.includes(`"${name}"`))) failures.push(`V9: no warning names the unwired board "${name}"`);
+    }
+    if (unattended.some((w) => w.includes(`"${attended}"`))) {
+      failures.push(`V9: a warning names "${attended}", which the coder seat does declare`);
+    }
   }
 
-  if (failures.length === 0) {
+  // ---- the channels, on the kinds their files select ------------------------
+  const generated = (await import(pathToFileURL(join(FIXTURE, "workforce.gen.ts")).href)) as {
+    channelKinds: Record<string, never>;
+  };
+  const instances = channelInstances(channels, {
+    kinds: {
+      ...generated.channelKinds,
+      channel: defineChannelFlow({ notify: wakeMemberSeats(seats, { fallback: nameOnlyLine }) }) as never,
+    },
+  });
+  const state = createFlowState({
+    flows: {
+      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
+      ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+    },
+    stores: { default: { primary: inMemoryStores() } },
+  } as never);
+
+  try {
+    const runtime = await state.getRuntime();
+    // The session client over the host's own router, as the app opens its
+    // channels. Load-bearing for V4: a session created through the route is
+    // parsed against the kind's `stateSchema`, and a client that wrote the
+    // store directly would keep a key the schema strips, so V4 could not fail.
+    const router = await state.getRouter();
+    const sessionClient = createSessionClient({
+      fetcher: async (input, init) => {
+        const url = new URL(String(input), "http://fixture-host.local");
+        const path = url.pathname
+          .replace(/^\/api\/flows\/?/, "")
+          .split("/")
+          .filter((segment) => segment.length > 0)
+          .map(decodeURIComponent);
+        const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
+        return await router[method](new Request(url, init), { params: { path } } as never);
+      },
+    });
+    await openChannels(channels, { client: sessionClient, userId: FIXTURE_USER });
+    // The organization the route opened them in, which every action below runs in.
+    const orgId = ((await runtime.stores.session.get(holder.id)) as { orgId?: string } | undefined)?.orgId;
+
+    const act = async (flow: unknown, sessionId: string, actionName: string, input: unknown) =>
+      (await runAction({
+        flow,
+        actionName,
+        input,
+        userId: FIXTURE_USER,
+        orgId,
+        sessionId,
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig },
+      } as never)) as { output?: unknown; error?: unknown };
+
+    // ---- V3: each channel opened on the kind its file selected -------------
+    // The first clause is not decoration: without it the leg reads its
+    // expectation off the same `flow:` line it is testing, so deleting that
+    // line moves both sides together.
+    const naming = channels.filter((c) => typeof c.declared.flow === "string" && expectedKinds.includes(c.declared.flow as string));
+    if (naming.length !== 1) {
+      failures.push(`V3: ${naming.length} fixture channels select a generated kind with \`flow:\`, wanted exactly one`);
+    }
+    if (!channels.some((c) => c.declared.flow === undefined)) {
+      failures.push("V3: no fixture channel omits `flow:`, so nothing shows the built-in being the default");
+    }
+    const sessions: Record<string, { flowKind?: string; state?: Record<string, unknown> } | undefined> = {};
+    for (const c of channels) {
+      sessions[c.id] = (await runtime.stores.session.get(c.id)) as never;
+      const wanted = (c.declared.flow as string | undefined) ?? "channel";
+      if (sessions[c.id]?.flowKind !== wanted) {
+        failures.push(`V3: ${c.id} opened on kind "${sessions[c.id]?.flowKind}", and its file selects "${wanted}"`);
+      }
+    }
+
+    // ---- V4: the custom kind's state schema admits what the binder writes --
+    const custom = naming[0];
+    if (custom !== undefined) {
+      const opened = sessions[custom.id]?.state ?? {};
+      for (const key of ["members", "instructions", "transcript"]) {
+        if (!Object.hasOwn(opened, key)) {
+          failures.push(
+            `V4: ${custom.id}'s open session carries no "${key}" — the kind's stateSchema does not ` +
+              `declare it, so the binder's value was silently stripped (state keys: ${Object.keys(opened).join(", ")})`,
+          );
+        }
+      }
+    }
+
+    // ---- V14, the non-hearing half -----------------------------------------
+    // One post on the board-holding channel, written by its first member. The
+    // fan-out walks the roster; the member whose seat hears posts is silent on
+    // a seat's post, the writer is told nothing, and every other member gets
+    // the name-only line.
+    const channelInstance = instances.find((instance) => instance.kind === "channel")!;
+    const members = (holder.declared.members as string[] | undefined) ?? [];
+    const hearsPosts = members.filter((member) => {
+      const seat = seats.find((s) => s.id === member) as { internal?: { actions?: object } } | undefined;
+      return Object.prototype.hasOwnProperty.call(seat?.internal?.actions ?? {}, "onChannelPost");
+    });
+    if (hearsPosts.length === 0) {
+      failures.push(`V14 (fixture): no member of ${holder.id} has a seat that hears posts, so the silent half is untested`);
+    }
+    const posted = await act(channelInstance, holder.id, "post", { body: `probe ${Date.now()}`, author: members[0] });
+    let notified: { reached: number; delivered: string[]; problem?: string };
+    if (posted.error !== undefined) {
+      notified = { reached: 0, delivered: [], problem: `the post failed: ${String(posted.error)}` };
+    } else {
+      const readTraces = async () => {
+        const requests = (await runtime.stores.request.list({ sessionId: holder.id })) as any[];
+        const traces = requests.flatMap((r) => (r.items ?? []).filter((item: any) => item.type === "block_trace"));
+        const fanOut = traces.filter((t: any) => t.blockName === "channel-fan-out");
+        return {
+          sawFanOut: fanOut.length > 0,
+          reached: fanOut.reduce((n: number, t: any) => n + (t.output?.shape?.entries?.length ?? 0), 0),
+          delivered: [
+            ...members.filter((member) => traces.some((t: any) => t.blockName === `wake-${member}`)),
+            ...traces
+              .filter((t: any) => t.blockName === "fixture-notify-member")
+              .map((t: any) => String(t.output?.value?.notified ?? ""))
+              .filter((who: string) => who.length > 0),
+          ],
+        };
+      };
+      let seen = await readTraces();
+      const deadline = Date.now() + 15_000;
+      while (!seen.sawFanOut && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+        seen = await readTraces();
+      }
+      if (seen.sawFanOut) {
+        await new Promise((r) => setTimeout(r, 500));
+        seen = await readTraces();
+      }
+      notified = seen.sawFanOut
+        ? { reached: seen.reached, delivered: [...new Set(seen.delivered)] }
+        : { reached: 0, delivered: [], problem: "no fan-out ran within 15s" };
+    }
+    gradeFanOut("fixture", holder.id, members, notified, hearsPosts, failures);
+
+    // ---- V8: the drain is a subset, not an ambient sweep ---------------------
+    const parkedGoals: string[] = [];
+    for (const name of unwired) {
+      const goal = `leave this on ${name} ${Date.now()}`;
+      parkedGoals.push(goal);
+      const filed = await act(channelInstance, holder.id, "fileTask", { board: name, goal, assignee: "coder", author: members[0] });
+      if (filed.error !== undefined) failures.push(`V8: filing onto ${name} failed: ${String(filed.error)}`);
+    }
+    const coder = seats.find((seat) => seat.kind === "coder");
+    if (coder === undefined) {
+      failures.push("V8: the fixture hired no seat on the draining kind");
+    } else {
+      const drained = await act(coder, `s_${coder.id}`, "drain", {});
+      if (drained.error !== undefined) failures.push(`V8: the coder's drain failed: ${String(drained.error)}`);
+    }
+    for (const [i, name] of unwired.entries()) {
+      const view = await act(channelInstance, holder.id, "readBoard", { board: name });
+      const rows = ((view.output as { tasks?: Task[] } | undefined)?.tasks ?? []) as Task[];
+      const row = rows.find((t) => t.goal === parkedGoals[i]);
+      if (row === undefined) {
+        failures.push(`V8: ${name} holds no row for ${JSON.stringify(parkedGoals[i])}`);
+      } else if (row.status !== "pending") {
+        failures.push(`V8: the row on ${name} is "${row.status}" — the drain claimed a board its kind never declared`);
+      }
+    }
+
     evidence.push(
-      `boot: the config opened ${manifests.length} channels and the first router call found ` +
-        `them open; ${manifests.map((m) => `${m.id}→${o.sessions[m.id]?.flowKind}`).join(", ")}`,
-      `V7: one row filed through the channel's own action was claimed and run by the app's ` +
-        `seat — proved by a note under resourceState("org", "${o.orgId}", ` +
-        `"support-followup-notes/…"), an effect the board could not have produced by reporting ` +
-        `— and reads completed out of org-scoped storage under "${o.followupRowKey}"`,
-      `V8/V9: the row on the unwired board is still pending, and the boot said so once`,
+      `fixture ${basename(FIXTURE)} tree: ${channels.map((c) => `${c.id}→${sessions[c.id]?.flowKind}`).join(", ")}; ` +
+        `the hire warned only about ${JSON.stringify(unwired)}; ${members[0]}'s post reached ${notified.reached} of ` +
+        `${members.length} members and was delivered to ${JSON.stringify(notified.delivered)}, ${JSON.stringify(hearsPosts)} ` +
+        `hearing it silently; the drain left ${JSON.stringify(unwired)}'s row pending`,
     );
+  } finally {
+    await state.dispose();
   }
+}
 
+// ---------------------------------------------------------------------------
+
+await runGoal(async () => {
+  const failures: string[] = [];
+  const evidence: string[] = [];
+  await fixtureLegs(failures, evidence);
+  appLegs(failures, evidence);
   return { failures, evidence: evidence.join("; ") };
 });

@@ -1,27 +1,30 @@
 /**
- * Goal check: when a person posts to `support.desk` from the kitchen-sink page,
- * each agent seat in that channel runs once on the post and no other seat
- * runs, and each run is there in that seat's conversation after a reload.
+ * Goal check: when a person posts to `support.help` from the kitchen-sink page,
+ * the one specialist the channel's route picks runs once on the post and no
+ * other member runs, and that run is there in the specialist's conversation
+ * after a reload.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
  *
  * One real browser against the app's PRODUCTION build (built here, never
- * assumed), on its scripted model, keyless. Three legs:
+ * assumed), on its scripted model, keyless. The scripted route picks the
+ * member a post names in `[route:<member>]`. Two legs:
  *
- *   support.iris, support.otto  post a line carrying a fresh token from the
+ *   support.accounts  post a line naming it, carrying a fresh token, from the
  *         channel's panel; reload; open every conversation the seat lists.
  *         Exactly one holds the token: the post heard once, as the seat's
  *         turn, with one reply carrying the wake marker under it. Then a
  *         second line, different text; reload; it is in that same
  *         conversation, heard once, answered once.
- *   others  support.ada, support.grace and support.wren hold nothing with
- *         either token.
+ *   others  support.devices, support.fsd and support.general, the members the
+ *         route did not pick, hold nothing with either token.
  *
  * Everything graded is read off the page after a reload, from the seats' own
  * conversations, so only a run the server kept can pass.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/run.mts
- * Controls: GOAL_CONTROL=name-only-notify  (today's stub: must FAIL at support.iris and support.otto, and nothing else)
+ * Controls: GOAL_CONTROL=name-only-notify  (a line naming each member, no seat run: must FAIL at support.accounts, and nothing else)
+ *           GOAL_CONTROL=no-route          (the channel's `routing:` lines taken off, so every member hears: must FAIL at others, and nothing else)
  *           GOAL_CONTROL=no-author-filter  (leg c's control: must leave every leg here green)
  */
 import { randomUUID } from "node:crypto";
@@ -51,6 +54,8 @@ interface Fixture {
   channel: Seat;
   agents: Seat[];
   others: Seat[];
+  /** The tag the scripted route reads to pick who answers. */
+  route: string;
   marker: string;
   replyMarker: string;
 }
@@ -61,6 +66,9 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 /** The legs each control must redden, and only those. */
 const EXPECTED: Record<string, string[]> = {
   "name-only-notify": fixture.agents.map((seat) => seat.id),
+  // Every member hears an unrouted post, so the members the route would have
+  // passed over run too. The routed specialist still answers.
+  "no-route": ["others"],
   // Leg c's control (a seat's own post wakes nobody). A post from the page has
   // no author, so here it must change nothing.
   "no-author-filter": [],
@@ -86,7 +94,7 @@ async function post(page: Page, origin: string, line: string): Promise<void> {
 }
 
 /**
- * Let every agent seat answer `token` before the reload. Not graded: a seat
+ * Let the routed specialist answer `token` before the reload. Not graded: a seat
  * that never ran simply times out here and fails on the page below.
  */
 async function letAgentsAnswer(page: Page, origin: string, token: string, replies: number): Promise<void> {
@@ -145,8 +153,8 @@ await runGoal(async () => {
   const run = randomUUID().replace(/-/g, "").slice(0, 10);
   const firstToken = `wake-token-a${run}`;
   const secondToken = `wake-token-b${run}`;
-  const firstLine = `${fixture.marker} ${firstToken} can someone look at the refund queue?`;
-  const secondLine = `${fixture.marker} ${secondToken} and the shipping one, while you are there`;
+  const firstLine = `${fixture.route} ${fixture.marker} ${firstToken} can someone look at the refund queue?`;
+  const secondLine = `${fixture.route} ${fixture.marker} ${secondToken} and the subscription one, while you are there`;
 
   buildKitchenSink();
 
@@ -214,7 +222,7 @@ await runGoal(async () => {
       const convs = await conversationsOf(page, origin, seat);
       const holding = convs.filter((c) => c.messages.some((m) => m.text.includes(firstToken) || m.text.includes(secondToken)));
       if (holding.length > 0) {
-        fail("others", `${seat.id} holds ${holding.length} conversation(s) with the posts' tokens: a post ran a seat that is not an agent`);
+        fail("others", `${seat.id} holds ${holding.length} conversation(s) with the posts' tokens: a post ran a member the route did not pick`);
       } else {
         evidence.push(`${seat.id}: none of its ${convs.length} conversations holds either token`);
       }

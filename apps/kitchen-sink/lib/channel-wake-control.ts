@@ -16,8 +16,9 @@
  * can never reach a deployed build. A test seam, kept in `lib/` so the notify
  * block does not import from `test/`.
  */
-import type { BlockDefinition } from "@flow-state-dev/core";
-import type { ChannelNotifyInput } from "@flow-state-dev/workforce";
+import { handler, type BlockDefinition } from "@flow-state-dev/core";
+import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
+import { z } from "zod";
 
 import { goalControl } from "./goal-control";
 
@@ -28,14 +29,26 @@ function channelWakeControl(): "name-only-notify" | "no-author-filter" | undefin
 }
 
 /**
- * The notify block with the control in force applied: `wake` unchanged when
- * none is, `nameOnly` in its place under `name-only-notify`, and `wake` fed
- * author-less deliveries under `no-author-filter`.
+ * `name-only-notify`'s stand-in: a transient line naming the member, and no
+ * seat runs. Nobody is told about their own post.
  */
-export function withChannelWakeControl(
-  wake: BlockDefinition<any, any>,
-  nameOnly: BlockDefinition<any, any>,
-): BlockDefinition<any, any> {
+const nameOnly = handler({
+  name: "kitchen-sink-notify-member",
+  inputSchema: channelNotifyInputSchema,
+  outputSchema: z.object({ notified: z.string() }),
+  execute: (input: ChannelNotifyInput, ctx) => {
+    if (input.author !== undefined && input.member === input.author) return { notified: "" };
+    ctx.emit.message(`[${input.channelId}] → ${input.member}: ${input.body}`, { transient: true });
+    return { notified: input.member };
+  },
+});
+
+/**
+ * The notify block with the control in force applied: `wake` unchanged when
+ * none is, the name-only stand-in in its place under `name-only-notify`, and
+ * `wake` fed author-less deliveries under `no-author-filter`.
+ */
+export function withChannelWakeControl(wake: BlockDefinition<any, any>): BlockDefinition<any, any> {
   const control = channelWakeControl();
   if (control === "name-only-notify") return nameOnly;
   if (control === "no-author-filter") {

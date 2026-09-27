@@ -1,19 +1,21 @@
 /**
  * The names the shell writes down, held to the tree they describe.
  *
- * The rail's kind lists and the panel's board ids are literals in
- * `lib/workforce-shell.ts`, because a browser cannot read `workforce/`. That
- * makes them a second copy, and a copy drifts: add a worker kind, or a board
- * to a `CHANNEL.md`, and the rail or the panel silently stops showing it.
- * These cases fail on that drift.
+ * The rail's kind lists, the seats' descriptions and the panel's board ids are
+ * literals in `lib/workforce-shell.ts`, because a browser cannot read
+ * `workforce/`. That makes them a second copy, and a copy drifts: add a worker
+ * kind, reword a `description:`, or add a board to a `CHANNEL.md`, and the
+ * rail or the panel silently shows the old one. These cases fail on that drift.
  *
  * Red states produced before these were trusted:
- *   - drop `followup-runner` from `SEAT_KINDS`: the seat-kind case fails.
- *   - drop `followup-runner`'s entry from `SEAT_ASKS`: the answering-action
- *     case fails, naming the kind with no entry.
- *   - misname `desk-clerk`'s field `note`: the answering-action case fails,
+ *   - add a kind to the tree and not to `SEAT_KINDS`: the seat-kind case fails.
+ *   - drop `agent`'s entry from `SEAT_ASKS`: the answering-action case fails,
+ *     naming the kind with no entry.
+ *   - misname `agent`'s field `message`: the answering-action case fails,
  *     naming the field the kind actually takes.
- *   - drop one board from `SHELL_BOARDS`: the board case fails.
+ *   - reword one `description:` in a `WORKER.md`, or drop one entry from
+ *     `SEAT_DESCRIPTIONS`: the description case fails, naming the seat.
+ *   - drop the board from `SHELL_BOARDS`: the board case fails.
  *   - remove `workforcePanelResources` from the chat-agent flow: the
  *     declaration case fails, which is the state in which every panel read
  *     answers "unknown resource".
@@ -21,7 +23,7 @@
 import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
 import { channelBoard, channelBoardIds, HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
-import { readChannelsDirectory } from "@flow-state-dev/workforce/loader";
+import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 
 import chatAgentFlow from "../flows/chat-agent/flow";
 import { kitchenSinkKinds, workforceRoot } from "../workforce/hire";
@@ -30,6 +32,7 @@ import {
   CHANNEL_KINDS,
   ROSTER_BOOT_REPORT_REF,
   SEAT_ASKS,
+  SEAT_DESCRIPTIONS,
   SEAT_KINDS,
   SHELL_BOARDS,
   seatAskFor,
@@ -38,6 +41,17 @@ import {
 describe("the shell's names match the workforce tree", () => {
   it("lists every seat kind the app can hire into", () => {
     expect([...SEAT_KINDS].sort()).toEqual(Object.keys(kitchenSinkKinds).sort());
+  });
+
+  it("carries every declared seat's description as its WORKER.md has it, and no other seat's", async () => {
+    const { workers, errors } = await readWorkforce(workforceRoot);
+    expect(errors).toEqual([]);
+    const declared = Object.fromEntries(
+      workers.map((worker) => [worker.id, (worker.declared as { description?: string }).description]),
+    );
+    // Not vacuous: the tree does declare seats.
+    expect(Object.keys(declared).length).toBeGreaterThan(0);
+    expect(SEAT_DESCRIPTIONS).toEqual(declared);
   });
 
   it("lists every channel kind: the framework's own, plus the tree's", () => {

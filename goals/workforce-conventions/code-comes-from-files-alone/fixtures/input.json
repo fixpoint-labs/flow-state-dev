@@ -1,9 +1,18 @@
 {
-  "userId": "goal-code-from-files",
-  "note": "is the printer fixed?",
   "port": 3987,
-  "seats": ["support.ada", "support.grace"],
-  "kind": "desk-clerk",
-  "block": "desk-note",
-  "controlKinds": ["chat-agent", "rich-text-component", "weekly-digest"]
+  "app": {
+    "channel": "support.help",
+    "board": "escalations",
+    "seat": "support.devices",
+    "block": "escalate",
+    "blockToken": "escalate-file",
+    "marker": "[scenario:needs-a-person]",
+    "controlKinds": ["chat-agent", "rich-text-component", "weekly-digest"]
+  },
+  "host": {
+    "userId": "goal-code-from-files",
+    "note": "is the printer fixed?",
+    "seats": ["support.ada", "support.grace"],
+    "kind": "desk-clerk"
+  }
 }

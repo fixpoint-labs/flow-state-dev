@@ -1,16 +1,16 @@
 {
   "userId": "goal-durable-hire",
-  "note": "is the printer fixed?",
+  "ask": "[scenario:recall] what were you told before this?",
+  "replyMarker": "[reply:recall]",
   "port": 3991,
   "org": "kitchen-sink",
   "adminUser": "workforce-admin",
   "otherOrg": "elsewhere",
-  "controlSeat": "support.ada",
-  "controlDesk": "front",
+  "controlSeat": "support.general",
   "goodSeat": "support.bo",
   "missingKindSeat": "support.cy",
   "tokenSeat": "support.di",
   "otherOrgSeat": "support.ev",
-  "kind": "desk-clerk",
+  "kind": "agent",
   "missingKind": "kind-this-app-does-not-carry"
 }

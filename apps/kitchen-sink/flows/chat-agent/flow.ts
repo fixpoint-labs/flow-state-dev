@@ -10,11 +10,8 @@
  * also owns the `saveArtifact` action), and the single-file root actions
  * (`approval-gate`, `task-queue-demo`, `settings`).
  *
- * `hireSeat` is the rail's hire door. The rail's panels read through this
- * flow's session, so the hire runs here too, and a hire and the read after it
- * resolve the same organization: the session's own. Its block is the
- * `workforce` package's hire sequence, built from the options the seats' own
- * `hire` tool uses (`workforce/hire.ts`); nothing in this app writes the roster.
+ * The rail's panels read through this flow's session: the hired roster, the
+ * boot report and `support.help`'s board.
  *
  * Pipeline (see run/run.ts):
  *   applyRequestedMode → applyFeatures → skillActivator → resolveThinkingStyle
@@ -22,13 +19,6 @@
  *     → autoTitle → incrementRequestCount
  */
 import { defineFlow } from "@flow-state-dev/core";
-import {
-  createSeatHireBlocks,
-  defineSeatInventoryCollection,
-  SEAT_INVENTORY_RESOURCE,
-} from "@flow-state-dev/workforce";
-
-import { kitchenSinkSeatHireOptions } from "@/workforce/hire";
 
 import { runSequencer } from "./run/run";
 import { backgroundWorkTasks } from "./run/thinking-styles";
@@ -117,11 +107,6 @@ const chatAgentFlow = defineFlow({
       durable: true,
       userMessage: (input) => input.question,
     },
-    // The rail's "Hire another". The organization is the session's binding,
-    // read by the sequence through `ctx.org`; an `orgId` in the body is ignored.
-    hireSeat: {
-      block: createSeatHireBlocks(kitchenSinkSeatHireOptions).hire,
-    },
   },
 
   session: {
@@ -161,12 +146,10 @@ const chatAgentFlow = defineFlow({
   // FIX-435: resources live in a single flat flow.resources map; their
   // intrinsic scope routes them to the right storage layer.
   // `workforcePanelResources`: the roster, the boot report and the boards the
-  // shell's right panel reads through this flow's session. The seat inventory
-  // is the other collection `hireSeat` writes, under the key it reads.
+  // shell's right panel reads through this flow's session.
   resources: {
     ...(mem.userResources ?? {}),
     ...workforcePanelResources,
-    [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection(),
   },
 
   // Tear down the bash sandbox at request end. Required when the bash

@@ -58,15 +58,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
-import {
-  CHANNEL_KINDS,
-  isChannelKind,
-  SEAT_HIRES_TAG,
-  SEAT_HIRES_TITLE,
-  SEAT_KINDS,
-  SHELL_FLOW_KIND,
-  isSeatHiresSession,
-} from "@/lib/workforce-shell";
+import { CHANNEL_KINDS, isChannelKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
@@ -175,13 +167,13 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   // only one selected: the hook neither picks the latest nor creates another.
   const flow = useFlow({
     autoCreateSession: e2eSessionId === null,
-    // Chosen below instead: the most recent session can be the one hires run on.
+    // Chosen below instead, so a test's own session is never replaced.
     autoSelectSession: false,
   });
   const { selectSession, createSession } = flow;
   // The conversation the stream opens on: the test's own when one is named;
-  // otherwise the most recent that is not the hire session, and a new one when
-  // there is none. An empty list is `useFlow`'s to fill.
+  // otherwise the most recent, and a new one when there is none. An empty list
+  // is `useFlow`'s to fill.
   const isCreatingSession = useRef(false);
   useEffect(() => {
     if (e2eSessionId !== null) {
@@ -189,7 +181,7 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
       return;
     }
     if (flow.activeSessionId !== undefined || flow.sessions.length === 0 || isCreatingSession.current) return;
-    const latest = flow.sessions.find((listed) => !isSeatHiresSession(listed));
+    const latest = flow.sessions[0];
     if (latest !== undefined) {
       selectSession(latest.id);
       return;
@@ -211,10 +203,6 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   const [isRailDrawerOpen, setIsRailDrawerOpen] = useState(false);
   const [isTeamSheetOpen, setIsTeamSheetOpen] = useState(false);
   const [picked, setPicked] = useState<PickedSession | null>(null);
-  // Hires made from the rail. The rail and the roster panel are keyed on it:
-  // neither publishes a refresh, so a hire remounts both, and each reads the
-  // seats again on mount. A remount also clears any other open hire form.
-  const [hires, setHires] = useState(0);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
     const stored = sessionStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -271,36 +259,9 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   // record, is the one a seat's address is read against.
   const panelSessionId = flow.activeSessionId;
   const panelOrgId = session.detail?.orgId;
-  const handleHired = useCallback(() => setHires((n) => n + 1), []);
 
-  // The session "Hire another" runs on: one of the assistant's flow, tagged so
-  // it is never the conversation opened by default. Found in the listing, or
-  // created on the first hire, and reused after that.
+  // Starts a seat's new conversation from the rail.
   const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
-  const hireSession = useRef<Promise<string> | null>(null);
-  const listedSessions = flow.sessions;
-  const hireSessionId = useCallback(() => {
-    if (hireSession.current === null) {
-      const listed = listedSessions.find(isSeatHiresSession);
-      const pending =
-        listed !== undefined
-          ? Promise.resolve(listed.id)
-          : sessionClient
-              .createSession({
-                flowKind: SHELL_FLOW_KIND,
-                userId: KITCHEN_SINK_USER_ID,
-                title: SEAT_HIRES_TITLE,
-                tags: [SEAT_HIRES_TAG],
-              })
-              .then((created) => created.id);
-      hireSession.current = pending;
-      // A failed create is not remembered, so the next hire tries again.
-      pending.catch(() => {
-        if (hireSession.current === pending) hireSession.current = null;
-      });
-    }
-    return hireSession.current;
-  }, [listedSessions, sessionClient]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
@@ -466,7 +427,7 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
             <Plus className="size-3.5" />
           </Button>
         ) : null,
-      // An open seat shows its kind, its instructions and "Hire another"
+      // An open seat shows its kind, what it handles and its instructions
       // under its row, and why its last "New conversation" failed, if it did.
       leafDetail: (leaf: FlowNavigatorLeafState) =>
         isSeatKind(leaf.kind) ? (
@@ -485,8 +446,6 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
                 kind={leaf.kind}
                 address={leaf.address}
                 resourceClient={resourceClient}
-                hireSessionId={hireSessionId}
-                onHired={handleHired}
               />
             )}
           </>
@@ -500,8 +459,6 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
       panelSessionId,
       panelOrgId,
       resourceClient,
-      hireSessionId,
-      handleHired,
     ]
   );
 
@@ -601,7 +558,6 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
 
   const teamPanel = (
     <TeamPanel
-      key={hires}
       sessionId={panelSessionId}
       resourceClient={resourceClient}
       top={
@@ -645,7 +601,6 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
         aria-label="Channels, seats and conversations"
       >
         <Rail
-          key={hires}
           slots={railSlots}
           selectedSessionId={picked?.sessionId ?? flow.activeSessionId}
           onSelectSession={handleSelectSession}
