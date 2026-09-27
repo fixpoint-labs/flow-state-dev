@@ -440,12 +440,15 @@ whether it came from the member already on it, the evaluator, or the fallback, w
 when the fallback took it or nobody could. It never shows as a line in the channel, and the chat
 renderers skip it.
 
-A routed channel keeps its last 20 lines, and the person's last post with where it went, in its
-session state under `channelRouteLedger`. So neither the lines a routed member sees nor the hold in step 1
-is limited by the session's [history window](#posting-and-reading). The exception is the first routed post on a
-channel, and the first after lines were posted with `routing:` removed. That post is never held,
-and its member sees only the earlier lines still inside the history window, which can be fewer
-than 20. A channel without `routing:` keeps no such record.
+Every channel on a kind built with a route (`defineChannelFlow({ route })`) keeps its last 20 lines,
+and the person's last post with where it went, in its session state under `channelRouteLedger`,
+whether or not its `CHANNEL.md` declares `routing:`. Each post updates it. So neither the lines a
+routed member sees nor the hold in step 1 is limited by the session's [history
+window](#posting-and-reading). The exception is the first post after a channel's kind gains a route: its first post on a kind built with one, or its first after the channel was posted to while the app ran its kind without a route. That post is
+never held, and its member sees only the earlier lines still inside the history window, which can be
+fewer than 20. Removing `routing:` from a channel's file and restoring it loses no lines. A person's
+post made while it was removed holds nothing, so the next routed post after it is placed by the
+evaluator or the fallback. A channel on a kind built without a route keeps no record.
 
 ### The answer lands in the channel
 
