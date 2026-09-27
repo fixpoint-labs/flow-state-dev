@@ -144,29 +144,34 @@ The schema uses:
 
 ### Indexes for the ordered listings, and how they are built
 
-Two composite indexes serve the ordered reads behind a session's background-job listing. Both are plain btrees; no column and no data migration comes with them.
+Three composite indexes serve the ordered reads behind a session's background-job listing. All are plain btrees; no column and no data migration comes with them.
 
 | Index | Serves |
 | --- | --- |
 | `idx_sessions_parent_created (parent_session_id, created_at, id)` | One parent's children, ordered newest-created first. The single-column parent index serves the equality but not the order, so a page limit would apply after sorting the parent's whole child set. |
+| `idx_sessions_parent_scope_created (parent_session_id, tenant_id, org_id, created_at, id)` | The same listing for a caller bound to a tenant or org. |
 | `idx_requests_session_created (session_id, created_at, id)` | One session's most recent request. The `(session_id, status)` and `(session_id, tenant_id)` composites stop before the ordering column. |
 
 The ordering columns are declared ascending and scanned backwards, which Postgres does for an `ORDER BY` that reverses every key uniformly.
 
-**No third index is needed for the non-terminal existence check.** `idx_requests_session_status` already ships and is exactly that shape's two selective predicates.
+**No further index is needed for the non-terminal existence check.** `idx_requests_session_status` already ships and is exactly that shape's two selective predicates.
 
-**These two are built `CONCURRENTLY`.** They are the only indexes here that can land on an already-populated table. Everything else ships with its `CREATE TABLE`, so on an upgrade its `IF NOT EXISTS` is a no-op. A plain build holds a lock against writes for its whole duration, on exactly the large `requests` and `sessions` histories these reads exist to page through. The concurrent form trades that for two table passes and cannot run inside a transaction, so `initializeSchema` issues them one statement at a time, after the rest of the DDL.
+**These three are built `CONCURRENTLY`, as are the session-stream indexes below.** On an upgrade they build on an already-populated table, and a plain build would hold a lock against writes for its whole duration, on exactly the large `requests` and `sessions` histories these reads exist to page through. The concurrent form trades that for two table passes and cannot run inside a transaction, so `initializeSchema` issues them one statement at a time, after the rest of the DDL.
 
 An interrupted concurrent build leaves an *invalid* index that `IF NOT EXISTS` would then skip forever, so the schema step drops an invalid one by that name before rebuilding. On a healthy database that check is a no-op.
 
-Two more serve the session stream (`GET /api/flows/sessions/:sessionId/stream`), which re-reads the session it follows about once a second while a view has it open. Each read pages newest-updated first and stops at the first row older than the stream's floor. They are built `CONCURRENTLY` too, with the same invalid-index check.
+Four more serve the session stream (`GET /api/flows/sessions/:sessionId/stream`), which re-reads the session it follows about once a second while a view has it open. Each read pages newest-updated first and stops at the first row older than the point the stream has already covered: a few seconds before its previous read, or on a new connection, a few seconds before the client's `since` (one minute back without one). Each of its two reads has one index for a caller not bound to a tenant and one for a caller that is. All four are built `CONCURRENTLY` at startup, with the same invalid-index check.
 
 | Index | Serves |
 | --- | --- |
-| `idx_requests_session_updated (session_id, updated_at)` | One session's requests, newest-updated first. Without it the planner either sorts the session's history or walks the global `updated_at` index through every other session's newer rows. |
-| `idx_sessions_parent_updated (parent_session_id, updated_at)` | One parent's runs, newest-updated first, for the same reason. |
+| `idx_requests_session_updated (session_id, updated_at)` | One session's requests, newest-updated first, for a caller not bound to a tenant. |
+| `idx_requests_session_tenant_updated (session_id, tenant_id, updated_at)` | The same read for a caller bound to a tenant. |
+| `idx_sessions_parent_updated (parent_session_id, updated_at)` | One parent's runs, newest-updated first, for a caller not bound to a tenant. |
+| `idx_sessions_parent_scope_updated (parent_session_id, tenant_id, org_id, updated_at)` | The same read for a caller bound to a tenant. |
 
-A caller bound to a tenant walks the same order and filters, so it pays only for another tenant's rows under the same session id. The test beside them measures the unbound caller: a long history in the followed session, and a burst of newer rows elsewhere, add nothing to the rows either read examines or discards.
+The schema also creates `stat_requests_session_tenant`, a `dependencies` statistics object on `requests (session_id, tenant_id)`. It tells the planner that a session's requests share one tenant, so a bound caller's read picks its index instead of sorting the session's history. It changes estimates only, and takes effect once the table has been analyzed.
+
+Once the table has been analyzed, a read's cost doesn't grow with the followed session's history or with activity in other sessions, whether or not the caller is bound to a tenant: each read uses its index and sorts nothing.
 
 ### The tenant and org filters
 

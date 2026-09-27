@@ -241,7 +241,7 @@ const channel = useSession("engineering.standup", {
 const busy = channel.childSessions.filter((run) => run.status === "active");
 ```
 
-`busy` lists the agents woken by a post that haven't finished. Each row's `flowId` is the woken seat's address, so the page can say who is working.
+`busy` lists the runs posts have started that haven't finished. Each row's `flowId` is the seat's address, so the page can say who is working.
 
 ## What the transcript proves, and what it doesn't
 

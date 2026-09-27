@@ -86,6 +86,16 @@ createSSEClient({
 
 `bindStoreToCallbacks` is the shared reducer: it maps each SSE event to a store mutation and calls `onChange("item" | "content" | "status")` so you decide when to snapshot — synchronously, or batched on an animation frame for trace-heavy views. The store buffers content deltas, so call `store.flushDeltas()` before reading `getSorted()`. The same binder works with `createSSEClientFromResponse` when you already hold a streamed POST `Response`.
 
+The store holds each item under `item.id` by default, which is unique within one request. To hold items from several requests, where two can save items with the same id, pass `keyOf`:
+
+```ts
+const store = createRequestStreamStore({
+  keyOf: (item) => `${item.requestId}/${item.id}`,
+});
+```
+
+Every store method that takes an item id then takes that key instead, and an item's key must not change over its life. `bindStoreToCallbacks` addresses items by their id, so pair it only with the default key.
+
 If you're on React you don't need this — `useSession` and `useRequestStream` wrap the store for you.
 
 ## Session management
@@ -280,7 +290,7 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 - `createSSEClient(options)` — Request stream consumer
 - `createSessionSSEClient(options)` — Whole-session stream: finished items from every request, and run changes
 - `createUserSSEClient(options)` — User-level stream consumer
-- `createRequestStreamStore()` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
+- `createRequestStreamStore({ keyOf? })` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `createRecoveryClient(options)` — Sweep stale requests and retry interrupted/failed ones
 - `createResourceClient(options)` — Resource content fetch, CRUD, paginated state reads, and manifest

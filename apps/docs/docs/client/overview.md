@@ -78,7 +78,7 @@ The client handles reconnection, resume from cursor, and event assembly. Pass `L
 
 If you'd rather have those events folded into a ready-to-render item list than handle each callback yourself, pass `createRequestStreamStore()` through `bindStoreToCallbacks` — the same accumulator the React hooks use, available to any non-React consumer. See [Stream state store](../api/client.md#createrequeststreamstore-and-bindstoretocallbacksstore-options) in the API reference. On React you don't need it; `useSession` and `useRequestStream` wrap it for you.
 
-A request's stream carries one request. To follow everything that happens in a session, including requests another tab, person or agent sent, use [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions). It sends finished items rather than text as it streams.
+A request's stream carries one request. To follow everything that happens in a session, including requests another tab, person or agent sent, use [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions). It delivers each item once it's finished, not text as it's generated.
 
 ## Session management
 

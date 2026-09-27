@@ -100,7 +100,7 @@ const session = useSession(sessionId, {
 });
 ```
 
-`live: true` makes the view hear requests it didn't send, for a session with more than one writer (a channel where agents answer, the same conversation in two tabs). The hook opens one session stream after its first snapshot: each finished item from any request joins `items` about a second after the server keeps it, and `childSessions` is re-read whenever a run starts or finishes. Default `false`; a server without the stream leaves the view as it is, with no error.
+`live: true` makes the view hear requests it didn't send, for a session with more than one writer (a channel where agents answer, the same conversation in two tabs). The hook opens one session stream after its first snapshot: each finished item from any request joins `items` about a second after the server saves it, and `childSessions` is re-read whenever a run starts or finishes. Items are keyed by request and id together, so two requests that each save an item with the same id both appear in `items`. Default `false`; a server without the stream, or one that refuses it, leaves the view as it is, with no error.
 
 Returns:
 - `detail` — Session metadata
@@ -199,7 +199,7 @@ const session = useSession(sessionId, {
 
 The server caps that value and rejects a larger one with a 400, which the hook surfaces as `childSessionsStale` rather than rows. The cap defaults to 100 and is raised with `maxChildSessionListLimit` on the server — so asking for more than the deployment permits is a misconfiguration you hear about, not a silent truncation.
 
-Current as of the reader's last interaction: re-read on mount, at the start of each action, and on `refresh()`. With `live: true` it is also re-read whenever a run starts or finishes, so a view can show who is working without the user doing anything.
+Current as of the reader's last interaction: re-read on mount, at the start of each action, and on `refresh()`. With `live: true` it is also re-read whenever a run starts or finishes, and it lists every run that hasn't finished, even one older than the page.
 
 `status` is absent until the work has run something. `"active"` means only *not finished*: it does not separate working from queued from waiting on a person, and it reports the last state recorded rather than checking a worker is alive — so work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. Treat unrecognised values as displayable; the set grows.
 

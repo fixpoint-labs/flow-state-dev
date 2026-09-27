@@ -430,17 +430,46 @@ settlement on it. `key` and `taskId` are optional, so guard with `== null`.
 See [Dispatched work](https://flow-state.dev/docs/server/background-work) for
 the full contract.
 
-`GET /api/flows/sessions/:sessionId/stream` follows a whole session. It is
-authorized as the session snapshot is. About once a second the server reads,
-from the store, the session's unfinished requests and those updated since its
-last read, and sends each finished item that passes the snapshot's filter, with
-its request id. It also tracks the session's unfinished child runs and sends a
-notice naming them when that set changes. Each read costs what is running now,
-not the session's history. Every server reads the same store, so a line written
-on one instance reaches a view held by another. `since` (a server time the
-stream sent earlier) bounds the first read; without it the stream covers the
-last minute. The server closes the connection after at most 15 minutes, and the
-client reconnects. A store adapter shows it serves the stream with
+### Following a whole session
+
+`GET /api/flows/sessions/:sessionId/stream` is a server-sent-events stream of
+one session: each finished item from any request in it, including requests
+another tab, person or agent sent, and the session's unfinished runs. It is
+authorized and refused exactly as the session snapshot
+(`GET /api/flows/sessions/:sessionId/state`) is, before anything is streamed.
+An unknown session answers `404`, and one that needs migrating `409`
+(`migration-required`). `createSessionSSEClient` in `@flow-state-dev/client`
+reads it.
+
+Query parameters, both optional:
+
+- `since`: the `at` of the last event you heard. The stream starts a few
+  seconds before it, so nothing is missed. Without it, the stream starts one
+  minute back.
+- `item_types`: comma-separated item types, applied as on the snapshot route.
+
+Each SSE frame's `event` is the event's `type`, and its `data` is the whole
+event as JSON. Every event carries `stream: "session"`, `sessionId`, and `at`,
+a server time (epoch ms) to resume from. Reconnecting with any event's `at` as
+`since` misses nothing the connection hadn't already sent.
+
+- `session.item`: `{ requestId, item }`, one finished item from any request in
+  the session. An item the session snapshot hides is never sent, and neither is
+  one still being generated. Tell items apart by `requestId` and `item.id`
+  together: two requests can save items with the same id, and an item can
+  arrive twice across a reconnect.
+- `session.runs`: `{ runs }`, every run under the session that hasn't finished,
+  each `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate? }`.
+  Sent when the stream opens and again whenever that set changes.
+- `ping`: no other fields, sent when nothing else has gone out for 15 seconds.
+
+The server reads the store about once a second per open stream, and each read
+costs what is running or recently changed, not the session's history. Every
+server reads the same store, so a line written on one instance reaches a view
+held by another. The server closes the connection after at most 15 minutes;
+reconnect with `since` to carry on, as `createSessionSSEClient` does. That
+client stops for good, without an error, on a `401`, `403`, `404`, `409` or
+`501`. A store adapter shows it serves the stream with
 `createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
 
 ## Store list options

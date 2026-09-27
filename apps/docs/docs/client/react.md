@@ -112,15 +112,15 @@ const channel = useSession(sessionId, {
 });
 ```
 
-The hook then opens one stream for the session. Each finished item from any request in it joins `session.items` about a second after the server keeps it, in the order a reload would show. The stream carries whole items, not text as it is typed, so another writer's answer appears in one piece. Items from your own requests still arrive on their own stream, and each shows once.
+The hook then opens one stream for the session. Each finished item from any request in it joins `session.items` about a second after the server saves it, in the order a reload would show. The stream carries whole items, not text as it is typed, so another writer's answer appears in one piece. Your own requests' items arrive through their request stream, and none shows twice. Items are told apart by their request and their id together, so two requests that each save an item with the same id both appear in `session.items`.
 
-The background-work list stays current too: when a run starts or finishes, the hook re-reads `session.childSessions`. That is how you show who is busy right now:
+The background-work list stays current too: when a run starts or finishes, the hook re-reads `session.childSessions`. To list the runs that haven't finished:
 
 ```tsx
 const working = channel.childSessions.filter((run) => run.status === "active");
 ```
 
-A live view holds a connection open while it is mounted, and the server reads the session about once a second for it. Leave `live` off for a view only one person writes to; the request stream already carries everything there. If the server doesn't offer the stream, the view behaves as if you hadn't asked, with no error. A dropped connection reconnects on its own and fills in what it missed. The server also closes each connection after at most 15 minutes and the hook reopens it, which is when access is checked again.
+A live view holds a connection open while it is mounted, and the server reads the session about once a second for it. Leave `live` off for a view only one person writes to; the request stream already carries everything there. If the server doesn't offer the stream, or refuses it, the view behaves as if you hadn't asked, with no error. A dropped connection reconnects on its own and fills in what it missed. Access is checked when a connection opens, and the server closes each one after at most 15 minutes, so revoking someone's access to the session takes effect within 15 minutes.
 
 ### Background work
 
@@ -154,12 +154,12 @@ In a view with `live: true` the list also changes on its own, within about a sec
 
 `session.childSessionsStale` turns `true` for two different reasons, and they call for different responses. A re-read failed, and the next successful read clears the flag — a retry banner is the right treatment. Or you asked for a page the server won't serve, and nothing but a smaller `limit` clears it. Either way the rows already fetched stay on screen; the hook never empties the list. Mark the panel as possibly out of date rather than showing nothing.
 
-The list holds 100 rows by default, newest first. Ask for a different page size with `childSessions: { limit }`. The server caps that value and answers a larger one with a 400, which is the second cause above:
+The list holds 25 rows by default, newest first. Ask for a different page size with `childSessions: { limit }`. The server caps that value, at 100 unless the host raises it, and answers a larger one with a 400, which is the second cause above:
 
 ```tsx
 const session = useSession(sessionId, {
   flowKind: "assistant",
-  childSessions: { limit: 25 },
+  childSessions: { limit: 50 },
 });
 ```
 
@@ -167,7 +167,7 @@ const session = useSession(sessionId, {
 
 `status` is missing until the work has actually run something. Otherwise it is either how the work ended, or `"active"`.
 
-`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question. It also reports the last state recorded, not a check that the job is alive: work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. So in a list someone reads once, don't label it "running" or "working". In a live view, where the row clears the moment the work ends, "working" is a fair label for a person waiting on an answer, as long as a job paused for approval or a stopped worker reading the same is acceptable to you. [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value in full.
+`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question. It also reports the last state recorded, not a check that the job is alive: work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. So in a list someone reads once, don't label an `"active"` row "running" or "working". In a live view a row stops reading `"active"` within about a second of the work ending, so "working" is a usable label there, as long as you accept that a job paused for approval, or one whose worker died, shows the same way. [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value in full.
 
 New status values can appear over time. Render one you don't recognise instead of switching exhaustively over the set.
 
