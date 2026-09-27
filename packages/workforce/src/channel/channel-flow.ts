@@ -42,6 +42,7 @@ import {
   type ChannelTranscriptLine
 } from "./channel-post-line";
 import {
+  currentLedger,
   keepLine,
   postCaseSchema,
   RECENT_LINES,
@@ -256,6 +257,14 @@ type KeptPost = z.infer<typeof keptPostSchema>;
  * with its case. Under the post queue, so the ledger takes the channel's
  * lines in order. Every other channel appends exactly as `appendPost` does.
  *
+ * The ledger is kept only while the channel is routed. The lines posted while
+ * it is not (the file dropped `routing:`, or the kind was built without a
+ * route) never reach it, so a ledger without the newest line this request can
+ * see is from before them (`currentLedger`). The post then starts a new one,
+ * as the channel's first routed post does: from the lines in the request's
+ * history window, the same window `read` sees, and with no post to hold for.
+ * On a busy channel that window can hold fewer than 20 lines.
+ *
  * The ledger is written first so a post that could not keep it fails with
  * nothing posted. A line whose item then fails to keep is left in the ledger,
  * where the route reads it as one of the recent lines until 20 more push it
@@ -273,20 +282,16 @@ const appendRoutedPostFor = (routing: Readonly<Record<string, ChannelRouting>>) 
         await emitChannelPostLine(ctx, line);
         return { line };
       }
-      // A channel that gains `routing:` after it has lines starts its ledger
-      // from the lines this request can see, once.
-      const seed = ctx.session.state[ROUTE_LEDGER_STATE] ?? {
-        lines: withoutRepeats([
-          ...(boundChannel(ctx.session.state)?.transcript ?? []),
-          ...readChannelPostLines(ctx, channelTranscriptLineSchema)
-        ]).slice(-RECENT_LINES)
+      const inView = readChannelPostLines(ctx, channelTranscriptLineSchema);
+      const seed = {
+        lines: withoutRepeats([...(boundChannel(ctx.session.state)?.transcript ?? []), ...inView]).slice(-RECENT_LINES)
       };
       // The case comes back from the invocation that committed: `atomicState`
       // may run its mutator more than once.
       const postCase = await withOutcome(
         (mutator: (state: RouteLedgerState) => RouteLedgerState) => ctx.session.atomicState(mutator),
         (state: RouteLedgerState) => {
-          const kept = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
+          const kept = keepLine(currentLedger(state[ROUTE_LEDGER_STATE], inView.at(-1)) ?? seed, line);
           return { state: { [ROUTE_LEDGER_STATE]: kept.ledger }, result: kept.postCase };
         }
       );

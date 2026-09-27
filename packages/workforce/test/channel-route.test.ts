@@ -146,6 +146,8 @@ function host(
     resolver?: (route: MockEvaluationModel) => ModelResolver;
     stores?: ReturnType<typeof inMemoryStores>;
     channels?: ChannelManifest[];
+    /** Build the channel kind with no route at all, as a tree where no channel routes does. */
+    withoutRoute?: boolean;
   } = {}
 ) {
   const { heard, kinds } = listeningKinds(options.failOn);
@@ -155,7 +157,7 @@ function host(
     kinds: {
       channel: defineChannelFlow({
         notify: wakeMemberSeats(seats),
-        route: routeByPurpose(seats, { model: "typesafe-ai/jev" })
+        ...(options.withoutRoute ? {} : { route: routeByPurpose(seats, { model: "typesafe-ai/jev" }) })
       }) as never
     }
   });
@@ -687,4 +689,59 @@ describe("posts the route does not place", () => {
       await second.state.dispose();
     }
   });
+
+  // Posts made while routing is off never reach the route's ledger, so the
+  // ledger left from before must not decide the first routed post after.
+  it.each([
+    ["its file drops routing:, on a kind that still routes others", false],
+    ["its kind is built without a route", true]
+  ])(
+    "reads the lines posted while routing was off, and holds nothing from before, once routing is back: %s (BR-19, BR-24)",
+    async (_case, withoutRoute) => {
+      const stores = inMemoryStores();
+      const unrouted = manifests().map((m) => (m.id === HELP ? { ...m, declared: { members: MEMBERS } } : m));
+      const first = host({ stores });
+      try {
+        const runtime = await first.state.getRuntime();
+        await bind(runtime.stores, HELP, MEMBERS);
+        // Routed to devices, which never answers in the channel.
+        await post(runtime, first.channel, HELP, "[route:support.devices] my laptop won't join the wifi");
+        await settle(runtime, HELP, 1);
+      } finally {
+        await first.state.dispose();
+      }
+
+      const second = host({ stores, channels: unrouted, withoutRoute });
+      try {
+        const runtime = await second.state.getRuntime();
+        await post(runtime, second.channel, HELP, "[route:support.accounts] different thing: I was charged twice");
+        await settle(runtime, HELP, 2);
+        expect(who(second.heard, "charged twice")).toEqual(["support.accounts", "support.devices", "support.general"]);
+      } finally {
+        await second.state.dispose();
+      }
+
+      const third = host({ stores });
+      try {
+        const runtime = await third.state.getRuntime();
+        await post(runtime, third.channel, HELP, "[route:support.accounts] which card was it?");
+        await settle(runtime, HELP, 3);
+
+        // The person's last post was not routed, so nothing holds this one: it takes the call.
+        expect(callsFor(third.route, "which card")).toHaveLength(1);
+        expect(who(third.heard, "which card")).toEqual(["support.accounts"]);
+        expect(await recordFor(runtime.stores, "which card")).toMatchObject({ by: "evaluated", member: "support.accounts" });
+        // The call and the member both see the line posted while routing was off.
+        const lines = [
+          "[route:support.devices] my laptop won't join the wifi",
+          "[route:support.accounts] different thing: I was charged twice"
+        ];
+        expect(third.heard.find((h) => h.body.includes("which card"))?.recent).toEqual(lines);
+        const read = (callsFor(third.route, "which card")[0]!.state as { recent: Array<{ text: string }> }).recent;
+        expect(read.map((line) => line.text)).toEqual(lines);
+      } finally {
+        await third.state.dispose();
+      }
+    }
+  );
 });

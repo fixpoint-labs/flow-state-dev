@@ -124,6 +124,24 @@ export const routeLedgerStateSchema = z.object({ [ROUTE_LEDGER_STATE]: routeLedg
 export type RouteLedgerState = z.infer<typeof routeLedgerStateSchema>;
 
 /**
+ * The ledger, while it still holds every line the channel has kept. A line
+ * kept while the channel was not routed never reaches the ledger, so a ledger
+ * without the newest line the request can see is one left from before, and
+ * comes back `undefined` for the post to start a new one. With no line in view
+ * there is nothing to tell by, and the ledger stands.
+ *
+ * @param ledger The ledger in the channel's session state, if any.
+ * @param newest The newest line in the request's history window, if any.
+ */
+export function currentLedger(
+  ledger: RouteLedger | undefined,
+  newest: ChannelTranscriptLine | undefined
+): RouteLedger | undefined {
+  if (ledger === undefined || newest === undefined) return ledger;
+  return ledger.lines.some((line) => line.id === newest.id) ? ledger : undefined;
+}
+
+/**
  * Keep one line in the ledger. A person's post (no `author`) also comes back
  * with its case: the lines kept before it, and the member still on the
  * person's previous post. That member holds only when the previous post's
