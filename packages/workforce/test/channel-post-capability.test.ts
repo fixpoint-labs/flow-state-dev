@@ -25,12 +25,13 @@
  *   BR-19      behind an external dispatcher the call fails naming it.
  */
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, generator } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowDispatcher, FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
 import type { MockGeneratorInstance, MockGeneratorScriptStep } from "@flow-state-dev/testing";
 import { createMockModelResolver } from "@flow-state-dev/testing";
+import { z } from "zod";
 import {
   CHANNEL_KIND,
   POST_TO_CHANNEL_TOOL,
@@ -38,6 +39,7 @@ import {
   channelPostCapability,
   defineAgentWorkerFlow,
   hireWorkforce,
+  workerConfigSchema,
   type WorkerManifest,
 } from "../src/index";
 import { hiredSeatManifest, toHiredSeatRow } from "../src/roster/rows";
@@ -87,13 +89,16 @@ function seat(id: string, tools: string[] | undefined = [POST_TO_CHANNEL_TOOL]):
   return { id, declared: tools === undefined ? {} : { tools }, body: "You answer questions." };
 }
 
-function host(seats: FlowInstance[], options: { external?: boolean } = {}) {
+function host(seats: FlowInstance[], options: { external?: boolean; agent?: MockGeneratorInstance } = {}) {
   const flows: Record<string, FlowInstance> = { [CHANNEL_KIND]: channelFlow() };
   for (const s of seats) flows[s.id] = s;
   const state = createFlowState({
     flows,
     stores: { default: { primary: inMemoryStores() } },
-    modelResolver: createMockModelResolver({ generators: { "agent-answer": scriptedAgent() }, policy: "allow" }),
+    modelResolver: createMockModelResolver({
+      generators: { "agent-answer": options.agent ?? scriptedAgent() },
+      policy: "allow",
+    }),
     ...(options.external === true ? { dispatcher: externalDispatcher } : {}),
   });
   return state;
@@ -291,17 +296,39 @@ describe("post-to-channel", () => {
     }
   });
 
-  it("refuses a seat whose settings carry no seatId, and never posts as the principal (BR-17)", async () => {
+  it("refuses a seat whose settings carry no seatId by name, at the mint, so it never posts as the principal (BR-17)", () => {
     // Minted straight off the kind, not hired: the one way to a seat with no `seatId`.
-    const bare = agent({ id: "support.otto", config: { tools: [POST_TO_CHANNEL_TOOL] } });
-    const state = host([bare]);
+    expect(() => agent({ id: "support.otto", config: { tools: [POST_TO_CHANNEL_TOOL] } })).toThrow(/"seatId": Required/);
+  });
+
+  it("refuses the tool to any kind's seat with no seatId before the model is offered it (BR-17)", async () => {
+    // Not the agent kind, whose own landing needs `seatId` at the mint: this refusal is the tool's.
+    const scripted = scriptedAgent();
+    const poster = defineFlow({
+      kind: "poster",
+      cardinality: "collection",
+      configSchema: workerConfigSchema(),
+      actions: {
+        run: {
+          block: generator({
+            name: "agent-answer",
+            model: "test-model",
+            inputSchema: z.object({ message: z.string() }),
+            user: (input: { message: string }) => input.message,
+            uses: [channelPostCapability],
+          }),
+        },
+      },
+    } as never) as (options: { id: string; config: Record<string, unknown> }) => FlowInstance;
+    const bare = poster({ id: "support.otto", config: {} });
+    const state = host([bare], { agent: scripted });
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "support.desk", ["support.otto"]);
 
       const turn = await say(runtime, bare, postTurn({ channel: "support.desk", body: "who am I?" }));
-      expect(String(turn.error)).toContain("carry no `seatId`");
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(String(turn.error)).toMatch(/"post-to-channel-claim" cannot read: "seatId": Required/);
+      expect(scripted.calls).toEqual([]);
       expect(await runtime.stores.request.list({ sessionId: "support.desk" })).toEqual([]);
     } finally {
       await state.dispose();

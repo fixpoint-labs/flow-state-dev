@@ -23,6 +23,11 @@
  * fails the fan-out like any other. Every route is recorded as one
  * `channel-route` item on the channel's session, never as a line.
  *
+ * The lines and the member on the person's last post come from the channel's
+ * route ledger (`channel-route.ts`), read as the post was kept, and never from
+ * the session's items: those reach back only as far as the request's history
+ * window, which a busy channel's reads and fan-outs use up.
+ *
  * The evaluation's state is `{ recent, post }`: `recent` the lines before the
  * post, oldest first, and `post` the post, each as `{ from, text }` where
  * `from` is the line's `author`, else its `principal`. A scripted evaluation
@@ -30,17 +35,18 @@
  */
 
 import { choice, evaluator, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, EvaluationModel, FlowInstance } from "@flow-state-dev/core/types";
+import type { EvaluationModel, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { seatDescription } from "../seat-description";
 import { boundChannel } from "./channel-flow";
-import { emitChannelRouteRecord, readChannelHistory } from "./channel-items";
-import { channelTranscriptLineSchema, withoutRepeats, type ChannelTranscriptLine } from "./channel-post-line";
+import { emitChannelRouteRecord } from "./channel-items";
 import {
   CHANNEL_ROUTE_EVALUATOR,
-  RECENT_LINES,
+  recordRoute,
   ROUTE_BLOCK,
+  ROUTE_LEDGER_STATE,
   routeDecisionSchema,
+  routeLedgerStateSchema,
   routeRequestSchema,
   type ChannelRoute,
   type ChannelRouteRecord,
@@ -63,9 +69,8 @@ export interface RouteByPurposeOptions {
 const ROUTE_QUESTION =
   "Which specialist should answer the post? A post that answers a question a specialist just asked goes to that specialist.";
 
-/** Everything the decision is made from, read once from the channel. */
+/** Everything the decision is made from: the post's case, and who this caller can reach. */
 const routeCaseSchema = routeRequestSchema.extend({
-  recent: z.array(channelTranscriptLineSchema),
   /** The members this caller can route to: each has a seat that hears posts and the caller can reach. */
   reachable: z.array(z.string()),
   /** Member id → its description, for each reachable member that has one: the evaluator's choices. */
@@ -116,38 +121,27 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
   }
   const hearing = hearingSeatsById(seats);
 
-  /** The channel's lines and route records, the holder, and the options. */
+  /** The members this caller can route to, the options, and whether the post's holder is one of them. */
   const readCase = handler({
     name: "channel-route-case",
     inputSchema: routeRequestSchema,
     outputSchema: routeCaseSchema,
     execute: (request, ctx): RouteCase => {
-      const channel = boundChannel(ctx.session.state);
-      // One walk over the session's items for the lines and the records. The
-      // whole of `before` is kept, not just the window: the hold looks back
-      // to the person's last post, which can sit further back than it.
-      const history = readChannelHistory(ctx);
-      const lines = [...(channel?.transcript ?? []), ...history.lines];
-      const at = lines.findIndex((line) => line.id === request.post.postId);
-      const before = withoutRepeats(at === -1 ? lines : lines.slice(0, at));
-
       // Reachable members can be held and can be the fallback. Only those with
       // a description are the evaluator's options: it picks by purpose, and a
       // seat hired at runtime has none to pick by.
       const reachable: string[] = [];
       const options: Record<string, string> = {};
-      for (const member of channel?.members ?? []) {
+      for (const member of boundChannel(ctx.session.state)?.members ?? []) {
         const seat = reachableSeat(hearing.get(member) ?? [], ctx);
         if (seat === undefined) continue;
         reachable.push(member);
         const description = seatDescription(seat);
         if (description !== undefined) options[member] = description;
       }
-
-      const held = holder(before, history.records);
+      const held = request.holder;
       return {
         ...request,
-        recent: before.slice(-RECENT_LINES),
         reachable,
         options,
         ...(held !== undefined && reachable.includes(held) ? { held } : {})
@@ -171,12 +165,18 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
     execute: (error: unknown) => ({ failed: error instanceof Error ? error.message : String(error) })
   });
 
-  /** Place the post, from the case and what the call (if any) answered, and record it. */
+  /**
+   * Place the post, from the case and what the call (if any) answered, and
+   * record it: as the channel's `channel-route` item, then in the ledger the
+   * next post's case is read from. The item first, so a ledger that could not
+   * take the route fails the delivery with nobody left holding the next post.
+   */
   const settle = handler({
     name: "channel-route-settle",
     inputSchema: z.unknown(),
     outputSchema: routeDecisionSchema,
-    execute: async (answer: unknown, ctx: BlockContext): Promise<RouteDecision> => {
+    sessionStateSchema: routeLedgerStateSchema,
+    execute: async (answer: unknown, ctx): Promise<RouteDecision> => {
       const routeCase = routeCaseSchema.parse(ctx.parent?.input);
       const placed = place(routeCase, answer);
       const record: ChannelRouteRecord = {
@@ -186,6 +186,10 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
         ...(placed.reason === undefined ? {} : { reason: placed.reason })
       };
       await emitChannelRouteRecord(ctx, record);
+      await ctx.session.atomicState((state) => {
+        const ledger = recordRoute(state[ROUTE_LEDGER_STATE], record);
+        return ledger === undefined ? {} : { [ROUTE_LEDGER_STATE]: ledger };
+      });
       return {
         post: routeCase.post,
         by: placed.by,
@@ -211,29 +215,6 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
     .step(decide);
 
   return { members: [...hearing.keys()].sort(), [ROUTE_BLOCK]: resolve };
-}
-
-/**
- * The member still on the person's last post, read from the lines and the
- * route records alone: that post was routed by the evaluator or the fallback,
- * and the member has posted no line since. A channel's session takes posts
- * from its one owner, so the person's last post is the last line with no
- * `author`.
- */
-function holder(before: ChannelTranscriptLine[], records: ChannelRouteRecord[]): string | undefined {
-  let last = -1;
-  for (let i = before.length - 1; i >= 0; i -= 1) {
-    if (before[i]!.author === undefined) {
-      last = i;
-      break;
-    }
-  }
-  if (last === -1) return undefined;
-  const record = records.find((entry) => entry.postId === before[last]!.id);
-  if (record === undefined || record.member === undefined) return undefined;
-  if (record.by !== "evaluated" && record.by !== "fallback") return undefined;
-  const answered = before.slice(last + 1).some((line) => line.author === record.member);
-  return answered ? undefined : record.member;
 }
 
 /** Where the post goes, given the case and what the evaluator step left. */

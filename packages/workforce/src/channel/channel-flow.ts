@@ -24,6 +24,7 @@
  */
 
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -41,11 +42,17 @@ import {
   type ChannelTranscriptLine
 } from "./channel-post-line";
 import {
+  keepLine,
+  postCaseSchema,
+  RECENT_LINES,
   ROUTE_BLOCK,
+  ROUTE_LEDGER_STATE,
+  routeLedgerStateSchema,
   routeRequestSchema,
   type ChannelRoute,
   type ChannelRouting,
-  type RouteDecision
+  type RouteDecision,
+  type RouteLedgerState
 } from "./channel-route";
 import {
   defineChannelInventoryCollection,
@@ -182,52 +189,111 @@ export function boundChannel(
   return parsed.success ? parsed.data : undefined;
 }
 
+/**
+ * The line a post makes, or the channel's refusal. Writes nothing: each append
+ * keeps the line itself.
+ */
+function lineFor(input: ChannelPostInput, ctx: BlockContext): ChannelTranscriptLine {
+  const channel = boundChannel(ctx.session.state);
+  if (channel === undefined) {
+    throw new ChannelPostRefusedError(
+      "channel-not-bound",
+      `session "${ctx.session.identity.id}" is not an open channel. A channel's session is ` +
+        `opened by \`openChannels\`; naming an id nobody opened creates an empty session, not a channel.`
+    );
+  }
+
+  // A validity check against the declared roster, NOT authentication. The
+  // claim stays unverified either way; this only stops a line naming a seat
+  // the channel has never heard of.
+  if (input.author !== undefined && !channel.members.includes(input.author)) {
+    throw new ChannelPostRefusedError(
+      "author-not-a-member",
+      `"${input.author}" is not a member of channel "${ctx.session.identity.id}". ` +
+        `Members: ${channel.members.length > 0 ? channel.members.join(", ") : "(none)"}.`
+    );
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    at: Date.now(),
+    // The server's value. BP-031: never the caller's, and the input schema is
+    // closed so there is no caller value to take.
+    principal: ctx.session.identity.userId ?? ctx.session.identity.id,
+    ...(input.author === undefined ? {} : { author: input.author }),
+    authorVerified: false as const,
+    body: input.body
+  };
+}
+
 /** The append: the whole of what the post entry's queue hold covers. */
 const appendPost = handler({
   name: "channel-append-post",
   inputSchema: channelPostInputSchema,
   outputSchema: channelTranscriptLineSchema,
   execute: async (input: ChannelPostInput, ctx): Promise<ChannelTranscriptLine> => {
-    const channel = boundChannel(ctx.session.state);
-    if (channel === undefined) {
-      throw new ChannelPostRefusedError(
-        "channel-not-bound",
-        `session "${ctx.session.identity.id}" is not an open channel. A channel's session is ` +
-          `opened by \`openChannels\`; naming an id nobody opened creates an empty session, not a channel.`
-      );
-    }
-
-    // A validity check against the declared roster, NOT authentication. The
-    // claim stays unverified either way; this only stops a line naming a seat
-    // the channel has never heard of.
-    if (input.author !== undefined && !channel.members.includes(input.author)) {
-      throw new ChannelPostRefusedError(
-        "author-not-a-member",
-        `"${input.author}" is not a member of channel "${ctx.session.identity.id}". ` +
-          `Members: ${channel.members.length > 0 ? channel.members.join(", ") : "(none)"}.`
-      );
-    }
-
-    const line: ChannelTranscriptLine = {
-      id: crypto.randomUUID(),
-      at: Date.now(),
-      // The server's value. BP-031: never the caller's, and the input schema is
-      // closed so there is no caller value to take.
-      principal: ctx.session.identity.userId ?? ctx.session.identity.id,
-      ...(input.author === undefined ? {} : { author: input.author }),
-      authorVerified: false as const,
-      body: input.body
-    };
-
+    const line = lineFor(input, ctx);
     // The line is this request's own item, and that item is the record: a
     // client reads a channel by filtering its session's items to
     // `channel-post`, the way it reads any conversation. Nothing is copied into
     // state — a second record of the post could only disagree with the first.
-    //
+    // A routed channel is the one exception, and keeps only what its route
+    // reads (`appendRoutedPostFor`).
     await emitChannelPostLine(ctx, line);
     return line;
   }
 });
+
+/** What a routed kind's append hands on: the line, and for a person's post on a routed channel, its case. */
+const keptPostSchema = z.object({ line: channelTranscriptLineSchema, postCase: postCaseSchema.optional() });
+
+type KeptPost = z.infer<typeof keptPostSchema>;
+
+/**
+ * The append on a kind built with a route. On a channel that declares
+ * `routing:`, the line goes into the route's ledger (`channel-route.ts`)
+ * before it is kept as the channel's item, and a person's post comes out
+ * with its case. Under the post queue, so the ledger takes the channel's
+ * lines in order. Every other channel appends exactly as `appendPost` does.
+ *
+ * The ledger is written first so a post that could not keep it fails with
+ * nothing posted. A line whose item then fails to keep is left in the ledger,
+ * where the route reads it as one of the recent lines until 20 more push it
+ * out; the post itself fails.
+ */
+const appendRoutedPostFor = (routing: Readonly<Record<string, ChannelRouting>>) =>
+  handler({
+    name: "channel-append-routed-post",
+    inputSchema: channelPostInputSchema,
+    outputSchema: keptPostSchema,
+    sessionStateSchema: routeLedgerStateSchema,
+    execute: async (input: ChannelPostInput, ctx): Promise<KeptPost> => {
+      const line = lineFor(input, ctx);
+      if (routing[ctx.session.identity.id] === undefined) {
+        await emitChannelPostLine(ctx, line);
+        return { line };
+      }
+      // A channel that gains `routing:` after it has lines starts its ledger
+      // from the lines this request can see, once.
+      const seed = ctx.session.state[ROUTE_LEDGER_STATE] ?? {
+        lines: withoutRepeats([
+          ...(boundChannel(ctx.session.state)?.transcript ?? []),
+          ...readChannelPostLines(ctx, channelTranscriptLineSchema)
+        ]).slice(-RECENT_LINES)
+      };
+      // The case comes back from the invocation that committed: `atomicState`
+      // may run its mutator more than once.
+      const postCase = await withOutcome(
+        (mutator: (state: RouteLedgerState) => RouteLedgerState) => ctx.session.atomicState(mutator),
+        (state: RouteLedgerState) => {
+          const kept = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
+          return { state: { [ROUTE_LEDGER_STATE]: kept.ledger }, result: kept.postCase };
+        }
+      );
+      await emitChannelPostLine(ctx, line);
+      return { line, ...(postCase === undefined ? {} : { postCase }) };
+    }
+  });
 
 /**
  * The clean projection. Deliberately not `ctx.session.items.client()`.
@@ -517,12 +583,17 @@ const readBoardFor = (boardIds: readonly string[]) =>
     }
   });
 
-/** What the fan-out entry is handed: enough to say which post is being delivered. */
+/**
+ * What the fan-out entry is handed: enough to say which post is being
+ * delivered, and for a person's post on a routed channel, its case as the
+ * post kept it. Internal-only entry, so no caller writes the case.
+ */
 const channelFanOutInputSchema = z.object({
   postId: z.string(),
   body: z.string(),
   principal: z.string(),
-  author: z.string().optional()
+  author: z.string().optional(),
+  postCase: postCaseSchema.optional()
 });
 
 export type ChannelFanOutInput = z.infer<typeof channelFanOutInputSchema>;
@@ -1049,7 +1120,12 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
           fanOutHead
             .branch({
               routed: [
-                (post: ChannelFanOutInput, ctx: BlockContext) => ({ post, fallback: fallbackFor(post, ctx) }),
+                ({ postCase, ...post }: ChannelFanOutInput, ctx: BlockContext) => ({
+                  post,
+                  fallback: fallbackFor(post, ctx),
+                  recent: postCase?.recent ?? [],
+                  ...(postCase?.holder === undefined ? {} : { holder: postCase.holder })
+                }),
                 (request: { fallback?: string }) => request.fallback !== undefined,
                 sequencer({ name: "channel-routed-delivery", inputSchema: routeRequestSchema })
                   .step(routeBlock)
@@ -1084,27 +1160,33 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
           session: { id: (_input, ctx) => ctx.session.identity.id }
         }).rescue([{ block: noteHandOffRefusal }]);
 
+  const fanOutOf = (line: ChannelTranscriptLine): ChannelFanOutInput => ({
+    postId: line.id,
+    body: line.body,
+    principal: line.principal,
+    ...(line.author === undefined ? {} : { author: line.author })
+  });
+  const postHead = sequencer({
+    name: "channel-post",
+    inputSchema: channelPostInputSchema,
+    outputSchema: channelTranscriptLineSchema
+  });
+
+  // A tap: the post's own output stays the appended line, and the hand-off's
+  // refusal is rescued rather than rolled back. The post's `channel-post` item
+  // is the durable record; delivery is best-effort.
   const post =
     handOff === undefined
       ? appendPost
-      : sequencer({
-          name: "channel-post",
-          inputSchema: channelPostInputSchema,
-          outputSchema: channelTranscriptLineSchema
-        })
-          .step(appendPost)
-          // A tap: the post's own output stays the appended line, and the
-          // hand-off's refusal is rescued rather than rolled back. The post's
-          // `channel-post` item is the durable record; delivery is best-effort.
-          .tap(
-            (line: ChannelTranscriptLine): ChannelFanOutInput => ({
-              postId: line.id,
-              body: line.body,
-              principal: line.principal,
-              ...(line.author === undefined ? {} : { author: line.author })
-            }),
-            handOff
-          );
+      : routeBlock === undefined
+        ? postHead.step(appendPost).tap(fanOutOf, handOff)
+        : postHead
+            .step(appendRoutedPostFor(routing))
+            .tap(
+              ({ line, postCase }: KeptPost) => ({ ...fanOutOf(line), ...(postCase === undefined ? {} : { postCase }) }),
+              handOff
+            )
+            .map(({ line }: KeptPost) => line);
 
   const flow = defineFlow({
     kind: CHANNEL_KIND,
