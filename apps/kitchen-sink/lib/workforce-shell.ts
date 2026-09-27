@@ -8,8 +8,9 @@
  *
  * The hired roster's key is not here. It is the workforce package's own
  * `HIRED_ROSTER_RESOURCE`, because the rail's hire runs the package's sequence,
- * which reads the roster under that key; the flow, the panel and the rail
- * import it from the package, whose root is isomorphic.
+ * which reads the roster under that key; the flow imports it from the
+ * package root, and the panel and the rail from `@flow-state-dev/workforce/browser`,
+ * because the root is server code (`test/client-imports.test.ts`).
  *
  * The kind names and board ids are written down rather than derived, because
  * the only place that knows them at run time is the server-side tree under

@@ -8,8 +8,10 @@
  * reads it — and never runs it; draining stays on the seat's side, which is
  * what `channelBoard` and `channelBoardTaskTools` are for.
  *
- * Node-free, like the rest of this package's root — reading a `CHANNEL.md` off
- * disk is the `./loader` subpath's job.
+ * No `node:fs` here — reading a `CHANNEL.md` off disk is the `./loader`
+ * subpath's job. Not browser-safe, though: the boards reach the orchestration
+ * task board and `node:async_hooks`. What a page needs of a post lives in
+ * `./channel-post-line.ts`, re-exported from `../browser.ts`.
  */
 
 export {

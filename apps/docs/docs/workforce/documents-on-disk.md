@@ -149,7 +149,7 @@ A reference is served from `filePath`, so a record you build by hand has to set 
 
 Reading the tree builds nothing. No resource is defined, nothing is stored, and no flow is touched. Turning records into resources is a separate call.
 
-The subpath matters. `@flow-state-dev/workforce/loader` imports `node:fs`, so it only runs on Node. The package root, where `resourcesFromDocs` and `referencesFromDocs` live, stays isomorphic.
+The subpath matters. `@flow-state-dev/workforce/loader` imports `node:fs`, so it only runs on Node. The package root, where `resourcesFromDocs` and `referencesFromDocs` live, is server code too. It reaches Node built-ins through the packages it builds on, so it is server-only. A browser component takes the names it needs from `@flow-state-dev/workforce/browser`, the one entry that reaches no Node built-in.
 
 ### When a file is wrong
 
