@@ -384,7 +384,10 @@ Three things, and they are separate:
 
 1. **Skills** — the library plus per-generator binding (entry point pinned below).
 2. **Memory is a build-time composition seam, not a setting.** An instructions-only seat does
-   **not** remember out of the box. The default kind and the hire package's required graph stay
+   **not** remember out of the box. (Memory here means the memory system's stores. The kind's
+   answer does read the earlier turns of its own conversation through the generator's `history`
+   slot, bounded by the session's history window, which is 50 turns by default: FIX-1612. That
+   adds no resource and no import, so the checks below are unaffected.) The default kind and the hire package's required graph stay
    free of memory resources and static memory imports. **"Attached" means an app composed memory
    into its own kind at definition time** — spreading the capability's resource maps plus `uses`,
    or an equivalent helper that is still ordinary flow composition (the seam FIX-1364 designs).
