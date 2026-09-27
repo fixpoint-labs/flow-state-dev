@@ -1200,8 +1200,8 @@ Address `{ id }`, never `{ key }`: a key-derived session resolves to a different
 poster, so the channel never sees the post. Nothing detects that mistake.
 
 A flow-to-flow post needs in-process dispatch. On a deployment whose dispatcher hands work to an
-external queue, a delivery into an existing session refuses `external-dispatcher` by name. The public
-action route still works; the dispatch door does not.
+external queue, a post into an opened channel is refused with `external-dispatcher`. A post through the public action route is
+written, but its notify block never runs: no member is woken and a routed channel doesn't answer.
 
 A post into a session nobody opened refuses `channel-not-bound` and writes nothing. The shared
 instance answers for every session id and the action path creates what it does not find, so
@@ -1328,18 +1328,25 @@ defineChannelFlow({
 });
 ```
 
-`routeByPurpose(seats, { model })` places each post in this order: the member still on the
-person's last post, if it hasn't answered since; else one evaluator call (block name
-`channel-route`) choosing among the members whose seat hears posts, each described by its
-`WORKER.md` `description:`; else the `fallback:` member, when that call fails or answers outside
-the options. The model must be able to evaluate. Only the chosen member is notified, with
-`routed: true` and `recent` (the channel's last 20 lines) on its delivery, and each decision is kept
-as one `channel-route` item on the channel's session, never as a line. The two fallbacks differ:
-`routing: fallback:` names a member who takes a post the route can't place, while
-`wakeMemberSeats`'s `fallback` is a block run for members whose seat can't hear a post, and a
-routed post never reaches it. A channel without the line on a routed kind wakes every member as
-before. `channelInstances` refuses a `routing:` on a kind built without a route, and a fallback
-that isn't a member with a seat the route can reach.
+`routeByPurpose(seats, { model })` places each post in this order: the member the person's last
+post was routed to by the evaluator or the fallback, until it answers (a post held this way holds
+nothing, and neither does one whose route isn't recorded yet); else one evaluator call (block name
+`channel-route`) choosing among the members whose seat hears posts and has a description, each
+described by its `WORKER.md` `description:`; else the `fallback:` member, when that call fails or
+answers outside the options, or when no member has a description and there is no call. A seat hired
+at runtime has no description, since `hire` takes none, so it gets a post only as the fallback, or
+as the next post held for it after that. The model must be able to evaluate. Only the chosen member
+is notified, with `routed: true` and `recent` (the channel's last 20 lines) on its delivery, and
+each decision is kept as one `channel-route` item on the channel's session, never as a line. The
+two fallbacks differ: `routing: fallback:` names a member who takes a post the route can't place,
+while `wakeMemberSeats`'s `fallback` is a block run for members whose seat can't hear a post, and a
+routed post never reaches it. A channel without the line is not routed, even on a routed kind: its
+notify block runs for every member. `channelInstances` refuses a `routing:` on a kind built without
+a route, and a fallback that isn't a member with a seat the route can reach.
+
+Routing needs in-process dispatch. Behind a dispatcher that hands work to an external queue, such
+as BullMQ, a post is written but its notify block never runs, so no member is picked or woken and
+nothing answers.
 
 ### Registering your own kind
 
@@ -1613,11 +1620,12 @@ turn. A refusal at dispatch fails the call by name: `session-not-found` for an i
 a dispatcher that hands work to an external queue. The tool works only where dispatch runs in
 process.
 
-In a routed channel the routed member's reply is posted for it, as its line, whether or not it
-calls the tool: the notify input carries `routed: true` and `recent`, the channel's last lines, for
-that delivery. A seat that does post there during that turn has posted its answer, so the reply is
-not posted again, and a second call reports that nothing more was posted. An empty reply posts
-nothing and fails the run.
+In a routed channel, a routed member of the built-in `agent` kind has its reply posted for it, as
+its line, whether or not it calls the tool. A seat that does post there during that turn has posted
+its answer, so the reply is not posted again, and a second call reports that nothing more was
+posted. Each post gets at most one line from its member. An empty reply posts nothing and fails the
+run. A kind of your own receives `routed: true` and `recent` (the channel's last 20 lines) and has
+nothing posted for it.
 
 Also exported: `CHANNEL_POST_CAPABILITY` (`"channel-post"`), `POST_TO_CHANNEL_TOOL`
 (`"post-to-channel"`) and `postToChannelInputSchema`.
@@ -1912,7 +1920,7 @@ the root exports, and reaches no Node built-in.
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. |
 | `wakeMemberSeats(seats, options?)` | The notify block that wakes each member seat declaring `onChannelPost`, never on a post with an `author`. `options.fallback` runs for members whose seat can't hear a post. |
-| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each post from a person goes to one member: the one still on the person's last post, else one evaluator call's pick (block name `channel-route`), else the declared fallback. That member answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line. Throws without a `model`. |
+| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each post from a person goes to one member: the member the person's last post was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `channel-route`), else the declared fallback. A member of the built-in `agent` kind answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line, once per post. Needs in-process dispatch. Throws without a `model`. |
 | `channelRouteRecordSchema` / `ChannelRouteRecord` / `CHANNEL_ROUTE_COMPONENT` / `CHANNEL_ROUTE_EVALUATOR` | One route decision as it is kept on the channel's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"channel-route"`. |
 | `ChannelRoute` / `ChannelRouting` | What `routeByPurpose` returns, and a channel file's `routing:` as read (`{ fallback }`). |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
@@ -2001,7 +2009,7 @@ the root exports, and reaches no Node built-in.
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
-| `external-dispatcher` | A flow-to-flow post on a host whose dispatcher hands work to an external queue. The public action route is unaffected |
+| `external-dispatcher` | A flow-to-flow post into an opened channel on a host whose dispatcher hands work to an external queue. A post through the public action route is written, but its notify block never runs: no member is woken and a routed channel doesn't answer |
 | Inventory id is not one path segment | `membershipKey` and `membershipPrefix` throw, naming the offending argument: an empty id, one containing `/` or `\`, or `.` and `..` |
 | Unknown kind on `hire` | The tool, listing the hireable kinds. Writes nothing. |
 | Address already served | The `hire` tool, naming the address and the live kind. Writes nothing. |

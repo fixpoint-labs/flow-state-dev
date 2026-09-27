@@ -242,11 +242,9 @@ So: a channel transcript is evidence that the channel's own principal wrote a li
 
 ## Where posting from another flow works, and where it doesn't
 
-A post from one flow into a channel's session is a delivery into a session that already exists. That needs dispatch to run in the same process.
+Posting from another flow needs dispatch to run in the same process. On a deployment whose dispatcher hands work to an external queue, a post into an opened channel is refused with `external-dispatcher`.
 
-On a deployment whose dispatcher hands work to an external queue, such a delivery is refused by name, `external-dispatcher`, whether or not the session exists.
-
-Client posts through the ordinary action route still work on the same host. Only the flow-to-flow door closes.
+On that kind of deployment, a post from a client is written to the channel, but no member is [woken](#waking-members), and a [routed channel](#routing-a-channel) never picks a member or answers.
 
 ## Waking members
 
@@ -402,7 +400,7 @@ defineChannelFlow({
 The route picks a member with an evaluator: a block that asks a model a question with a fixed set
 of answers and gets one of them back. Not every model can do that; see
 [Evaluation models](/docs/fundamentals/models#evaluation-models). A channel without the
-`routing:` line keeps waking every agent member, even on a kind built with a route.
+`routing:` line is not routed, even on a kind built with a route: it wakes every agent member.
 
 The fallback has to be a member whose hired seat can hear a post, or the app refuses to start and
 names the channel. So does a `routing:` line on a kind built without a route. The line is read
@@ -413,13 +411,20 @@ channel from the next start, with its lines kept.
 
 For each post from a person, in this order:
 
-1. **The member already on it.** If the person's last post went to a member who hasn't answered
-   yet, this one goes there too. No model call.
+1. **The member already on it.** If the person's last post was routed to a member by the
+   evaluator or the fallback, and that member hasn't answered yet, this one goes there too, with no
+   model call. A post held this way holds nothing, so the one after it is routed by what it says.
+   A post whose route isn't recorded yet holds nothing either, so of two posts sent close together,
+   the second may be routed by what it says rather than held.
 2. **One evaluator call.** Otherwise the route asks one question: which member should answer?
-   The choices are the members whose seat can hear a post, each described by the `description:`
-   in its `WORKER.md`. The model also sees the channel's recent lines, which is how "it fails
-   right after the password" reaches the specialist who asked about the password.
-3. **The fallback.** If the call fails, or answers with something that isn't a member, the
+   The choices are the members whose seat can hear a post and has a description, each described
+   by the `description:` in its `WORKER.md`. The model also sees the channel's recent lines, which
+   is how "it fails right after the password" reaches the specialist who asked about the password.
+   A seat [hired while the app runs](./durable-hire.md) has no description, because `hire` takes
+   none, so it is never a choice. It can still take a post as the fallback, and step 1 then sends
+   it the person's next post. When no member has a description, there is no call and the fallback
+   takes the post.
+3. **The fallback.** If the call fails, or answers with anything outside the choices, the
    fallback member takes the post. A model that can't evaluate fails every call, so every post
    goes to the fallback. If the person posting can't reach any seat of the fallback's, nobody
    answers, and the route records why.
@@ -437,33 +442,66 @@ renderers skip it.
 
 ### The answer lands in the channel
 
-The routed member answers the way any woken seat does, in its own conversation. The difference is
-what happens to the reply: it is posted into the channel as that seat's line, every time. The
-model doesn't have to call `post-to-channel`. If it does post to that channel, its first post is
-the answer and nothing more is posted for that question. An empty reply posts nothing and ends
-that seat's run as failed.
+The routed member answers the way any woken seat does, in its own conversation. For a seat of the
+built-in `agent` kind, the reply is then posted into the channel as that seat's line. The model
+doesn't have to call [`post-to-channel`](#a-seat-answering-in-the-channel); if it does, its first
+post to that channel is the answer. Each post gets at most one line from its member. An empty reply
+posts nothing and ends that seat's run as failed.
+
+A [kind of your own](#making-a-kind-of-your-own-hear-posts) gets `routed: true` and the recent
+lines as `recent` on its delivery. Its reply is not posted for it.
 
 ### What the member sees when it answers
 
 The routed member's model sees the channel's last 20 lines along with the post, whoever wrote
 them and whoever they went to. That's how "where can I buy it?" finds its "it" when the laptop
-came up with another member. The lines are there for that one answer. They aren't kept in the
-member's conversation, so anything older than the last 20 lines is out of its view. A seat woken
-in an unrouted channel, or talked to directly, gets no lines.
+came up with another member. The lines are there for that one answer and aren't kept in the
+member's conversation. What the conversation keeps is every post routed to the member and its
+answers, as far back as its history window reaches. Any other line older than the last 20 is out of
+its view. A seat woken in an unrouted channel, or talked to directly, gets no lines.
 
 ### What routing can't do
 
-- A member sees only the last 20 lines when it answers. Something said earlier may have to be
-  said again.
-- A second question sent before the first is answered goes to the same member, whatever it's
-  about.
+- Apart from the posts routed to it and its own answers, a member sees only the channel's last 20
+  lines when it answers. Something said earlier may have to be said again.
+- A post sent before the member answers can go to that member, whatever it's about. The post after
+  it is routed by what it says.
 - A follow-up after an answer relies on the evaluator call. If that call fails, the follow-up goes
   to the fallback.
+- A member with no `description:`, such as a seat hired while the app runs, is never picked for
+  what a post is about. It gets a post only as the fallback, or as the next post held for it after
+  that.
 - One model per channel kind. Two channels on the same kind route with the same model.
 - A change to `routing:` waits for the next start.
+- It needs dispatch in the same process. Behind a dispatcher that hands work to an external queue,
+  such as BullMQ, a post is written but no member is picked or woken, and nothing answers. See
+  [Where posting from another flow works](#where-posting-from-another-flow-works-and-where-it-doesnt).
 
-In a test, script the route's evaluation by its block name, `channel-route`, with
-`createMockModelResolver` from `@flow-state-dev/testing`.
+### Testing a routed channel
+
+Script the route's evaluation by its block name, `channel-route`, with `createMockModelResolver`
+from `@flow-state-dev/testing`. The route asks one question, `member`, and a choice answers it:
+
+```ts
+import { createMockModelResolver, mockEvaluationModel } from "@flow-state-dev/testing";
+
+// Posts about a printer go to devices, everything else to accounts.
+const route = mockEvaluationModel({
+  answers: ({ state }) => {
+    const { post } = state as { post: { from: string; text: string } };
+    const member = post.text.includes("printer") ? "support.devices" : "support.accounts";
+    return { member: { type: "choice", choice: member } };
+  },
+});
+
+const modelResolver = createMockModelResolver({ evaluators: { "channel-route": route } });
+```
+
+Pass it as `modelResolver` to the `createFlowState` your test builds. Each call is handed
+`{ recent, post }`, the channel's lines before the post and the post itself, each line as
+`{ from, text }`, where `from` is the line's `author` or, when it has none, its `principal`. A
+choice outside the members offered, or an `answers` function that throws, sends the post to the
+fallback. `route.calls` records every call, so a held post shows up as no call at all.
 
 ## A seat answering in the channel
 
