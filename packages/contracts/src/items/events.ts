@@ -222,3 +222,72 @@ export type UserStreamEvent =
   | UserPingEvent;
 
 export type StreamEvent = RequestStreamEvent | UserStreamEvent;
+
+/**
+ * Fields every session-stream event carries.
+ *
+ * The session stream follows a whole session rather than one request, so its
+ * events have no per-request sequence number. `at` is the server time the read
+ * behind the event started; a client that reconnects hands the last `at` it
+ * heard back as `since`, and the server reads from a little before it.
+ */
+export type SessionEventBase = {
+  stream: "session";
+  sessionId: string;
+  /** Server time (epoch ms) the read that produced this event started. */
+  at: number;
+};
+
+/**
+ * A finished item a request in the session kept, from any request, including
+ * ones this client did not send. Filtered as the session snapshot filters its
+ * items, so an item a snapshot hides never arrives. Items are told apart by
+ * `requestId` and `item.id` together: two requests can keep items with the
+ * same id.
+ */
+export type SessionItemEvent = SessionEventBase & {
+  type: "session.item";
+  requestId: string;
+  item: OutputItem;
+};
+
+/**
+ * One unfinished run under the session, as a session-stream notice names it.
+ * The same fields a background-work listing row carries, less `status`: every
+ * run a notice names has not finished.
+ */
+export type SessionRun = {
+  /** The run's own session id. */
+  id: string;
+  /** The session the run hangs off: the one the stream follows. */
+  parentSessionId: string;
+  createdAt: number;
+  updatedAt: number;
+  /** The flow instance the run belongs to, when the run records one. */
+  flowId?: string;
+  /** The key the run was derived from, when the dispatch recorded one. */
+  topic?: string;
+  /** The entry the run was dispatched for, as `<type>:<target>`, when recorded. */
+  coordinate?: string;
+};
+
+/**
+ * The session's unfinished runs changed: one started, or one finished. Names
+ * every run still unfinished, including ones older than a background-work
+ * listing's first page. Sent once when the stream opens, then on each change.
+ */
+export type SessionRunsChangedEvent = SessionEventBase & {
+  type: "session.runs";
+  runs: SessionRun[];
+};
+
+/** A keep-alive carrying the server's time, sent while nothing else is. */
+export type SessionPingEvent = SessionEventBase & {
+  type: "ping";
+};
+
+/** Every event the session stream (`GET /sessions/:sessionId/stream`) sends. */
+export type SessionStreamEvent =
+  | SessionItemEvent
+  | SessionRunsChangedEvent
+  | SessionPingEvent;

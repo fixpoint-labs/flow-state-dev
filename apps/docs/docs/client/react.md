@@ -100,6 +100,28 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 
 `resumeLatestRequest` is a no-op when the latest request is `completed`, `aborted`, or `in_progress` — only `interrupted` and `failed` are retryable. The retry re-enters the flow instance that owns the request, read from the record itself, so it lands on the same copy of the flow that ran it even when the provider is bound to another.
 
+### Hearing requests you didn't send
+
+A view hears the requests it sends. Some sessions have more than one writer: a channel where agents answer, a board several people work, the same conversation open in two tabs. Their lines land in the session, but nothing tells a view that didn't send them. Ask the view to stay live:
+
+```tsx
+const channel = useSession(sessionId, {
+  flowKind: "channel",
+  items: true,
+  live: true,
+});
+```
+
+The hook then opens one stream for the session. Each finished item from any request in it joins `session.items` about a second after the server keeps it, in the order a reload would show. The stream carries whole items, not text as it is typed, so another writer's answer appears in one piece. Items from your own requests still arrive on their own stream, and each shows once.
+
+The background-work list stays current too: when a run starts or finishes, the hook re-reads `session.childSessions`. That is how you show who is busy right now:
+
+```tsx
+const working = channel.childSessions.filter((run) => run.status === "active");
+```
+
+A live view holds a connection open while it is mounted, and the server reads the session about once a second for it. Leave `live` off for a view only one person writes to; the request stream already carries everything there. If the server doesn't offer the stream, the view behaves as if you hadn't asked, with no error. A dropped connection reconnects on its own and fills in what it missed. The server also closes each connection after at most 15 minutes and the hook reopens it, which is when access is checked again.
+
 ### Background work
 
 Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on in a session of its own, called a *dispatch run*. `session.childSessions` is how you show those runs, one `ChildSessionSummary` per run.
@@ -126,7 +148,9 @@ This list sits beside the conversation rather than inside it. Nothing a run prod
 
 #### When the list changes
 
-The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. It does not update on its own while someone sits and watches, so work started in another tab shows up on their next action — or immediately, if you give them a refresh control.
+The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. By default it does not update on its own while someone sits and watches, so work started in another tab shows up on their next action — or immediately, if you give them a refresh control.
+
+In a view with `live: true` the list also changes on its own, within about a second of a run starting or finishing, from this tab or anywhere else. A run that hasn't finished stays in the list even when it is older than the page the hook reads.
 
 `session.childSessionsStale` turns `true` for two different reasons, and they call for different responses. A re-read failed, and the next successful read clears the flag — a retry banner is the right treatment. Or you asked for a page the server won't serve, and nothing but a smaller `limit` clears it. Either way the rows already fetched stay on screen; the hook never empties the list. Mark the panel as possibly out of date rather than showing nothing.
 
@@ -143,7 +167,7 @@ const session = useSession(sessionId, {
 
 `status` is missing until the work has actually run something. Otherwise it is either how the work ended, or `"active"`.
 
-`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question — so don't label it "running" or "working" in your UI. It also reports the last state that was recorded, not a check that the job is alive: work whose worker stopped unexpectedly keeps reading as unfinished until the system picks it back up. [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value in full.
+`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question. It also reports the last state recorded, not a check that the job is alive: work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. So in a list someone reads once, don't label it "running" or "working". In a live view, where the row clears the moment the work ends, "working" is a fair label for a person waiting on an answer, as long as a job paused for approval or a stopped worker reading the same is acceptable to you. [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value in full.
 
 New status values can appear over time. Render one you don't recognise instead of switching exhaustively over the set.
 

@@ -159,6 +159,15 @@ The ordering columns are declared ascending and scanned backwards, which Postgre
 
 An interrupted concurrent build leaves an *invalid* index that `IF NOT EXISTS` would then skip forever, so the schema step drops an invalid one by that name before rebuilding. On a healthy database that check is a no-op.
 
+Two more serve the session stream (`GET /api/flows/sessions/:sessionId/stream`), which re-reads the session it follows about once a second while a view has it open. Each read pages newest-updated first and stops at the first row older than the stream's floor. They are built `CONCURRENTLY` too, with the same invalid-index check.
+
+| Index | Serves |
+| --- | --- |
+| `idx_requests_session_updated (session_id, updated_at)` | One session's requests, newest-updated first. Without it the planner either sorts the session's history or walks the global `updated_at` index through every other session's newer rows. |
+| `idx_sessions_parent_updated (parent_session_id, updated_at)` | One parent's runs, newest-updated first, for the same reason. |
+
+A caller bound to a tenant walks the same order and filters, so it pays only for another tenant's rows under the same session id. The test beside them measures the unbound caller: a long history in the followed session, and a burst of newer rows elsewhere, add nothing to the rows either read examines or discards.
+
 ### The tenant and org filters
 
 `tenant_id` and `org_id` filter NULL-safely: an absent option key filters nothing, a present key (including an explicit `undefined`) exact-matches, and `undefined` matches only unbound rows.

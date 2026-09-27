@@ -151,6 +151,31 @@ const stream = createSSEClient({
 
 Supports resume via `Last-Event-ID` or `starting_after`.
 
+### `createSessionSSEClient(options)`
+
+Opens one stream for a whole session: `GET /api/flows/sessions/:sessionId/stream`. It delivers each finished item from any request in the session, with the id of the request that kept it, and a notice naming the session's unfinished background runs whenever that set changes. Items the session snapshot hides are never sent.
+
+```ts
+import { createSessionSSEClient } from "@flow-state-dev/client";
+
+const seen = new Set<string>();
+const stream = createSessionSSEClient({
+  sessionId,
+  onItem: ({ requestId, item }) => {
+    const key = `${requestId}:${item.id}`; // two requests can keep the same item id
+    if (seen.has(key)) return;
+    seen.add(key);
+    render(item);
+  },
+  onRuns: ({ runs }) => showWorking(runs), // every unfinished run, each time the set changes
+  onStop: ({ status }) => { /* refused, or the server has no session stream */ },
+});
+
+stream.close();
+```
+
+It reconnects with backoff, including when the server closes the connection after at most 15 minutes, and passes back the server time it last heard so the server resends what it might have missed. So after a reconnect an item can arrive twice: drop repeats by request id and item id together, since two requests can keep items with the same id. `useSession` does this for you with `live: true`. It stops, without retrying, when the server refuses the session or has no such route.
+
 ### `createRequestStreamStore()` and `bindStoreToCallbacks(store, options?)`
 
 Accumulate a request's SSE events into a sorted, canonical item view outside React. `createRequestStreamStore()` returns a `RequestStreamStore`; `bindStoreToCallbacks` adapts it to the `RequestSSECallbacks` shape so you can spread it into `createSSEClient` or `createSSEClientFromResponse`.

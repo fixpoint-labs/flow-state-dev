@@ -430,6 +430,19 @@ settlement on it. `key` and `taskId` are optional, so guard with `== null`.
 See [Dispatched work](https://flow-state.dev/docs/server/background-work) for
 the full contract.
 
+`GET /api/flows/sessions/:sessionId/stream` follows a whole session. It is
+authorized as the session snapshot is. About once a second the server reads,
+from the store, the session's unfinished requests and those updated since its
+last read, and sends each finished item that passes the snapshot's filter, with
+its request id. It also tracks the session's unfinished child runs and sends a
+notice naming them when that set changes. Each read costs what is running now,
+not the session's history. Every server reads the same store, so a line written
+on one instance reaches a view held by another. `since` (a server time the
+stream sent earlier) bounds the first read; without it the stream covers the
+last minute. The server closes the connection after at most 15 minutes, and the
+client reconnects. A store adapter shows it serves the stream with
+`createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
+
 ## Store list options
 
 `SessionListOptions` and `RequestListOptions` are part of the store contract.

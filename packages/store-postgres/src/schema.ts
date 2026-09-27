@@ -85,7 +85,7 @@ const REQUESTS_INDEXES = [
  * Ordering columns are declared ASC and scanned backwards, which Postgres does
  * for an `ORDER BY` that reverses every key uniformly.
  *
- * Paired with {@link DROP_INVALID_FIX_1010_INDEXES}: an interrupted concurrent
+ * Paired with {@link DROP_INVALID_CONCURRENT_INDEXES}: an interrupted concurrent
  * build leaves an *invalid* index that `IF NOT EXISTS` would then skip
  * forever, so the planner would never use it and nothing would say so.
  */
@@ -119,19 +119,30 @@ const CONCURRENT_INDEXES = [
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_scope_created ON sessions(parent_session_id, tenant_id, org_id, created_at, id)",
   // The most-recent-run read. The existence check that precedes it is already
   // served by `idx_requests_session_status` and needs nothing new.
-  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_created ON requests(session_id, created_at, id)"
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_created ON requests(session_id, created_at, id)",
+  // The session stream's two reads, repeated about once a second per open
+  // view: one session's requests and one parent's runs, newest-updated first,
+  // paged until a row is older than the floor. Without these the planner
+  // either sorts the session's whole history or walks the global
+  // `updated_at` index through every other session's newer rows; either way
+  // the read grows with something other than what changed. Built for the
+  // unbound caller (every single-tenant deployment); a bound caller walks the
+  // same order and filters, paying only for another tenant's rows under the
+  // same bare id.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_updated ON requests(session_id, updated_at)",
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_updated ON sessions(parent_session_id, updated_at)"
 ];
 
 /**
- * Drop a FIX-1010 index left `indisvalid = false` by an interrupted concurrent
+ * Drop a concurrently built index left `indisvalid = false` by an interrupted
  * build, so the `CREATE INDEX CONCURRENTLY IF NOT EXISTS` below rebuilds it
  * instead of skipping a dead one. A no-op on every healthy database.
  */
-const DROP_INVALID_FIX_1010_INDEXES = `DO $$
+const DROP_INVALID_CONCURRENT_INDEXES = `DO $$
 DECLARE
   n TEXT;
 BEGIN
-  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created']
+  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created', 'idx_requests_session_updated', 'idx_sessions_parent_updated']
   LOOP
     IF EXISTS (
       SELECT 1 FROM pg_class c
@@ -675,9 +686,9 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // every existing row as its person's own cell. See the migration's note.
   ADD_SCHEDULE_INDEX_CELL_MIGRATION,
 
-  // FIX-1010: clear an invalid index left by an interrupted concurrent build
+  // Clear an invalid index left by an interrupted concurrent build
   // so it is rebuilt below rather than skipped by `IF NOT EXISTS`.
-  DROP_INVALID_FIX_1010_INDEXES
+  DROP_INVALID_CONCURRENT_INDEXES
 ];
 
 /**

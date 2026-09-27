@@ -302,17 +302,21 @@ the child sessions running under this session as `ChildSessionSummary` rows from
 of its own; nothing is merged into `items`, and no transport shape is decided
 here.
 
-The axis is **interaction-scoped, not live**. It is read on mount, at the
+The axis is **interaction-scoped by default**. It is read on mount, at the
 **start** of every work-starting call on the returned view (`sendAction`,
 `resumeLatestRequest`, `resumeSuspension`, `continueRequest`), and by `refresh`
 — which now covers this axis as well as the snapshot. There is deliberately no
-polling and no stream-driven refresh: the launching turn's stream is
-request-scoped and closes when the turn ends, while the work outlives it, and
-there is no session-level channel to fall back on (`/users/:userId/stream`
-returns 501). The read is therefore anchored to a local fact — this hook
-dispatched the interaction — so no board option, dropped connection or
-`items: false` can remove it. The cost is one child-session read per turn,
-independent of task-board activity.
+polling: the launching turn's stream is request-scoped and closes when the turn
+ends, while the work outlives it. The read is therefore anchored to a local
+fact — this hook dispatched the interaction — so no board option, dropped
+connection or `items: false` can remove it. The cost is one child-session read
+per turn, independent of task-board activity.
+
+A view that sets `live: true` also re-reads it on the session stream's
+run-changed notice (`GET /sessions/:sessionId/stream`), through the same
+guarded read, so the generation and sequence guards below cover both. The
+notice names the unfinished runs, and the hook keeps any the page lacks, so an
+unfinished run older than the page still shows.
 
 Reads are guarded twice, because the two hazards are different. A **generation**
 advances whenever the read identity changes — the session id or the session

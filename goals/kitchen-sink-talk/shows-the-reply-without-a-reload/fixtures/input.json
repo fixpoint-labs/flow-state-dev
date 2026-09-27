@@ -1,0 +1,9 @@
+{
+  "port": 3041,
+  "channel": { "kind": "channel", "id": "support.desk" },
+  "replier": { "kind": "agent", "id": "support.otto" },
+  "marker": "[scenario:reply-after-a-hold]",
+  "lineMarker": "[reply:in-channel]",
+  "lineWithinMs": 15000,
+  "maxSnapshotReads": 2
+}

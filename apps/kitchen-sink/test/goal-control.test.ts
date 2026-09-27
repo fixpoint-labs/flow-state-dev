@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { goalControl } from "@/lib/goal-control";
+import { goalControl, pageGoalControl } from "@/lib/goal-control";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -28,5 +28,23 @@ describe("goalControl", () => {
     expect(goalControl()).toBe("no-author-filter");
     vi.stubEnv("GOAL_CONTROL", "");
     expect(goalControl()).toBeUndefined();
+  });
+});
+
+describe("pageGoalControl", () => {
+  const opened = (query: string) => new URLSearchParams(query);
+
+  it("ignores ?goalControl in a build not made for tests", () => {
+    vi.stubEnv("NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE", "");
+    expect(pageGoalControl(opened("goalControl=no-live"))).toBeUndefined();
+    vi.stubEnv("NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE", "0");
+    expect(pageGoalControl(opened("goalControl=no-live"))).toBeUndefined();
+  });
+
+  it("names the control a test build's page was opened with, and none when absent", () => {
+    vi.stubEnv("NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE", "1");
+    expect(pageGoalControl(opened("goalControl=no-live"))).toBe("no-live");
+    expect(pageGoalControl(opened("goalControl="))).toBeUndefined();
+    expect(pageGoalControl(opened(""))).toBeUndefined();
   });
 });

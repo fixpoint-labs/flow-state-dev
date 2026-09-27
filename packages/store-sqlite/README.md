@@ -139,6 +139,15 @@ The ordering columns are declared ascending and scanned backwards, which SQLite 
 
 **The cost guarantee is unverified on this adapter.** The property those indexes exist for, examined work bounded independently of the history it sits on, cannot be measured here: `better-sqlite3` exposes no per-node row counters.
 
+Two more serve the session stream (`GET /api/flows/sessions/:sessionId/stream`), which re-reads the session it follows about once a second while a view has it open. Each read pages newest-updated first and stops at the first row older than the stream's floor.
+
+| Index | Serves |
+| --- | --- |
+| `idx_requests_session_tenant_updated (session_id, tenant_id, updated_at)` | One session's requests, newest-updated first. |
+| `idx_sessions_parent_scope_updated (parent_session_id, tenant_id, org_id, updated_at)` | One parent's runs, newest-updated first. |
+
+SQLite treats the store's `tenant_id IS ?` as an equality, so each serves a caller bound to a tenant and one that is not. As above, what is checked is index selection: each read searches its index and sorts nothing.
+
 ## Individual Store Constructors
 
 For advanced use cases, individual store constructors are also exported:

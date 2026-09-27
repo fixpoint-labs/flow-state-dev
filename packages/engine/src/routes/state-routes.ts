@@ -3,7 +3,6 @@
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import { resolveOrgStorageKey, resolveUserStorageKey } from "../stores/scope-keys";
@@ -18,6 +17,7 @@ import {
   jsonResponse,
   loadTenantSession,
   parseClientDataFilter,
+  snapshotItemsOf,
   sortItems
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
@@ -96,25 +96,9 @@ export async function handleGetSessionState(
     });
     aggregatedItems = [];
     for (const req of requests) {
-      if (req.items !== undefined) {
-        // Collapse each request's physical log to its canonical view before
-        // aggregating (FIX-811): a resumed request's suspending block re-emits
-        // its pre-suspension items, and the superseded run-1 copies must not
-        // surface in session history. Per-request because logical ids are
-        // scoped by request id.
-        for (const item of collapseToCanonicalLog(req.items)) {
-          if (itemTypeFilter !== undefined && !itemTypeFilter.has(item.type)) {
-            continue;
-          }
-          if (
-            itemTypeFilter === undefined &&
-            !resolveItemVisibility(item).client
-          ) {
-            continue;
-          }
-          aggregatedItems.push(item);
-        }
-      }
+      // The same per-request filter the session stream sends through, so a
+      // live view and a reload show the same set.
+      aggregatedItems.push(...snapshotItemsOf(req.items, itemTypeFilter));
     }
 
     aggregatedItems = sortItems(aggregatedItems);

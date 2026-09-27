@@ -42,6 +42,7 @@ import {
 } from "./session-routes";
 import { handleListSessionChildren } from "./child-session-routes";
 import { handleGetSessionState } from "./state-routes";
+import { handleSessionStream } from "./session-stream-routes";
 import {
   handleGetResourceContent,
   handleGetCollectionItemContent,
@@ -472,6 +473,14 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "get_session_state") {
         return await handleGetSessionState(request, route, {
+          registry: options.registry,
+          stores,
+          tenantId
+        });
+      }
+
+      if (route.kind === "session_stream") {
+        return await handleSessionStream(request, route, {
           registry: options.registry,
           stores,
           tenantId

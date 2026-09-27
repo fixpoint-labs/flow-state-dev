@@ -123,6 +123,9 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     // loaded as a record and so never ownership- or tenant-checked.
     case "list_session_children":
     case "get_session_state":
+    // Authorized exactly as the snapshot above: the stream sends what a
+    // snapshot read would show, so it answers to the same owner check.
+    case "session_stream":
     case "get_resource_content":
     case "get_collection_item_content":
     case "create_collection_item":

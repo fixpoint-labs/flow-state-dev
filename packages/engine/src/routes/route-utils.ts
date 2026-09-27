@@ -21,7 +21,7 @@ import {
 } from "@flow-state-dev/core/types";
 import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
-import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
+import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -569,6 +569,33 @@ export async function buildResourceSnapshot(options: {
   }
 
   return hasAny ? out : undefined;
+}
+
+/**
+ * The items a session snapshot shows from one request's item log.
+ *
+ * The request's physical log is collapsed to its canonical view first
+ * (FIX-811): a resumed request's suspending block re-emits its pre-suspension
+ * items, and the superseded copies must not surface. Per request, because
+ * logical ids are scoped by request id. Then either the caller's type filter
+ * or, without one, client visibility decides what stays.
+ *
+ * The one filter behind both the session snapshot (`GET /sessions/:id/state`)
+ * and the session stream (`GET /sessions/:id/stream`), so a live view and a
+ * reload show the same set.
+ *
+ * @param items One request record's `items`, as the store returned them.
+ * @param itemTypes The snapshot's `item_types` filter, when the caller passed one.
+ * @returns The items a snapshot would show from that request, in log order.
+ */
+export function snapshotItemsOf(
+  items: readonly OutputItem[] | undefined,
+  itemTypes?: ReadonlySet<string>
+): OutputItem[] {
+  if (items === undefined) return [];
+  return collapseToCanonicalLog(items).filter((item) =>
+    itemTypes !== undefined ? itemTypes.has(item.type) : resolveItemVisibility(item).client
+  );
 }
 
 export function sortItems(items: OutputItem[] | undefined): OutputItem[] {

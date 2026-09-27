@@ -278,6 +278,7 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 - `createTypedClient(options)` — Flow-bound typed client
 - `createSessionClient(options)` — Session CRUD and state snapshots
 - `createSSEClient(options)` — Request stream consumer
+- `createSessionSSEClient(options)` — Whole-session stream: finished items from every request, and run changes
 - `createUserSSEClient(options)` — User-level stream consumer
 - `createRequestStreamStore()` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)

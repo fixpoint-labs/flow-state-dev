@@ -26,9 +26,11 @@ export { sessionQueryFor } from "./session-client/session-query";
 export {
   createSSEClient,
   createSSEClientFromResponse,
+  createSessionSSEClient,
   createUserSSEClient,
   type CreateSSEClientOptions,
   type CreateSSEClientFromResponseOptions,
+  type CreateSessionSSEClientOptions,
   type CreateUserSSEClientOptions
 } from "./stream-client/createSSEClient";
 
@@ -104,6 +106,8 @@ export type {
   SendActionOptions,
   SessionDetail,
   SessionRequestSummary,
+  SessionSSECallbacks,
+  SessionStreamHandle,
   SessionStateSnapshotResponse,
   SessionSummary,
   TypedActionMethods,

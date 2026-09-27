@@ -27,6 +27,10 @@ export {
   type ScopeStoreUnderTest
 } from "./stores/testing/scope-store-conformance";
 export {
+  createSessionStreamConformanceTests,
+  type CreateSessionStreamConformanceTestsOptions
+} from "./stores/testing/session-stream-conformance";
+export {
   gateNextStateRead,
   StateReadGateTimeoutError,
   type StateReadGate
