@@ -42,7 +42,6 @@ import {
   type ChannelTranscriptLine
 } from "./channel-post-line";
 import {
-  currentLedger,
   keepLine,
   postCaseSchema,
   RECENT_LINES,
@@ -232,14 +231,22 @@ const appendPost = handler({
   name: "channel-append-post",
   inputSchema: channelPostInputSchema,
   outputSchema: channelTranscriptLineSchema,
+  sessionStateSchema: routeLedgerStateSchema,
   execute: async (input: ChannelPostInput, ctx): Promise<ChannelTranscriptLine> => {
     const line = lineFor(input, ctx);
+    // A route ledger left by a kind built with a route would miss this line,
+    // and every line after it, so it goes before the line is kept. Once: the
+    // next post finds none, and posts on a channel that never had one write
+    // nothing.
+    if (ctx.session.state[ROUTE_LEDGER_STATE] !== undefined) {
+      await ctx.session.atomicState(() => ({ [ROUTE_LEDGER_STATE]: undefined }));
+    }
     // The line is this request's own item, and that item is the record: a
     // client reads a channel by filtering its session's items to
     // `channel-post`, the way it reads any conversation. Nothing is copied into
     // state — a second record of the post could only disagree with the first.
-    // A routed channel is the one exception, and keeps only what its route
-    // reads (`appendRoutedPostFor`).
+    // A kind built with a route is the one exception, and keeps only what its
+    // route reads (`appendRoutedPostFor`).
     await emitChannelPostLine(ctx, line);
     return line;
   }
@@ -251,19 +258,21 @@ const keptPostSchema = z.object({ line: channelTranscriptLineSchema, postCase: p
 type KeptPost = z.infer<typeof keptPostSchema>;
 
 /**
- * The append on a kind built with a route. On a channel that declares
- * `routing:`, the line goes into the route's ledger (`channel-route.ts`)
- * before it is kept as the channel's item, and a person's post comes out
- * with its case. Under the post queue, so the ledger takes the channel's
- * lines in order. Every other channel appends exactly as `appendPost` does.
+ * The append on a kind built with a route. Every line, on every channel of the
+ * kind, goes into the route's ledger (`channel-route.ts`) before it is kept as
+ * the channel's item. Under the post queue, so the ledger takes the channel's
+ * lines in order. On a channel that declares `routing:`, a person's post comes
+ * out with its case.
  *
- * The ledger is kept only while the channel is routed. The lines posted while
- * it is not (the file dropped `routing:`, or the kind was built without a
- * route) never reach it, so a ledger without the newest line this request can
- * see is from before them (`currentLedger`). The post then starts a new one,
- * as the channel's first routed post does: from the lines in the request's
- * history window, the same window `read` sees, and with no post to hold for.
- * On a busy channel that window can hold fewer than 20 lines.
+ * Kept whether or not the channel is routed, so a channel whose file drops
+ * `routing:` and later restores it has every line in the ledger. A person's
+ * post while it is not routed becomes the last post with no route, so it holds
+ * nothing. A kind built without a route keeps no ledger, and drops one left
+ * from before (`appendPost`).
+ *
+ * A channel's first line with no ledger starts one from the lines in the
+ * request's history window, the same window `read` sees, with no post to hold
+ * for. On a busy channel that window can hold fewer than 20 lines.
  *
  * The ledger is written first so a post that could not keep it fails with
  * nothing posted. A line whose item then fails to keep is left in the ledger,
@@ -278,25 +287,23 @@ const appendRoutedPostFor = (routing: Readonly<Record<string, ChannelRouting>>) 
     sessionStateSchema: routeLedgerStateSchema,
     execute: async (input: ChannelPostInput, ctx): Promise<KeptPost> => {
       const line = lineFor(input, ctx);
-      if (routing[ctx.session.identity.id] === undefined) {
-        await emitChannelPostLine(ctx, line);
-        return { line };
-      }
-      const inView = readChannelPostLines(ctx, channelTranscriptLineSchema);
-      const seed = {
-        lines: withoutRepeats([...(boundChannel(ctx.session.state)?.transcript ?? []), ...inView]).slice(-RECENT_LINES)
+      const seed = ctx.session.state[ROUTE_LEDGER_STATE] ?? {
+        lines: withoutRepeats([
+          ...(boundChannel(ctx.session.state)?.transcript ?? []),
+          ...readChannelPostLines(ctx, channelTranscriptLineSchema)
+        ]).slice(-RECENT_LINES)
       };
       // The case comes back from the invocation that committed: `atomicState`
       // may run its mutator more than once.
       const postCase = await withOutcome(
         (mutator: (state: RouteLedgerState) => RouteLedgerState) => ctx.session.atomicState(mutator),
         (state: RouteLedgerState) => {
-          const kept = keepLine(currentLedger(state[ROUTE_LEDGER_STATE], inView.at(-1)) ?? seed, line);
+          const kept = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
           return { state: { [ROUTE_LEDGER_STATE]: kept.ledger }, result: kept.postCase };
         }
       );
       await emitChannelPostLine(ctx, line);
-      return { line, ...(postCase === undefined ? {} : { postCase }) };
+      return postCase === undefined || routing[ctx.session.identity.id] === undefined ? { line } : { line, postCase };
     }
   });
 
