@@ -1344,6 +1344,11 @@ routed post never reaches it. A channel without the line is not routed, even on 
 notify block runs for every member. `channelInstances` refuses a `routing:` on a kind built without
 a route, and a fallback that isn't a member with a seat the route can reach.
 
+A routed channel also keeps a small record in its session state, under `channelRouteLedger`: its
+last 20 lines and the person's last post with where it went. Neither the 20 lines a routed member
+sees nor the hold is limited by the session's history window. A channel without `routing:` keeps
+no such record.
+
 Routing needs in-process dispatch. Behind a dispatcher that hands work to an external queue, such
 as BullMQ, a post is written but its notify block never runs, so no member is picked or woken and
 nothing answers.
@@ -1610,8 +1615,11 @@ model is refused.
 
 The line is posted through the built-in channel kind's `post`, with the seat's `seatId` (its
 record id, as `members:` lists it) as `author`, so the channel's member check applies and the
-fan-out can see a seat wrote it. A seat whose settings carry no `seatId` is refused by name and
-posts nothing.
+fan-out can see a seat wrote it. `hireWorkforce` writes `seatId` on every seat it mints. A seat
+minted without one is refused, and the error names `seatId`. Every seat of the built-in `agent`
+kind is refused when its flow is built, whether or not it names the tool. A seat of any other kind
+carrying the capability is refused when a turn would offer the tool, before the model is called.
+Either way it posts nothing.
 
 The tool returns once the post is handed to the channel, as `{ handedTo, note }`. A refusal by the
 channel, such as an author who is not a member, lands on the channel's request, not in the seat's
@@ -1936,7 +1944,7 @@ the root exports, and reaches no Node built-in.
 | `channelFileTaskInputSchema` / `channelFileTaskOutputSchema` / `channelReadBoardInputSchema` / `channelReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
-| `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. |
+| `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. A routed channel's state also carries `channelRouteLedger`, which this schema does not describe. |
 | `CHANNEL_POST_COMPONENT` / `emitChannelPostLine(ctx, line)` / `readChannelPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a channel kind of your own. |
 | `defineHiredRosterCollection()` | The hired roster's browser collection: one org-scoped row per org-visible seat, at `workforce/roster/<seatId>`. One segment, so a user-owned row is not listed. Takes no options. Write org-visible rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
 | `defineHiredRosterPrivateCollection()` | The server-side writer for a user-owned row, at `workforce/roster/~<escaped user>/<seatId>`. No browser read. It is an owner-private collection (`ownerPrivate: { param: "owner" }`): a row is served only to the member it belongs to, and any other collection whose pattern can reach those rows is refused at startup. Declare `workforce/roster/*` for the org roster. |

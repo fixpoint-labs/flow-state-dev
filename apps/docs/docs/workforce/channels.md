@@ -440,6 +440,11 @@ whether it came from the member already on it, the evaluator, or the fallback, w
 when the fallback took it or nobody could. It never shows as a line in the channel, and the chat
 renderers skip it.
 
+A routed channel also keeps a small record in its session state, under `channelRouteLedger`: its
+last 20 lines and the person's last post with where it went. Neither the 20 lines a routed member
+sees nor the hold in step 1 is limited by the session's history window. A channel without
+`routing:` keeps no such record.
+
 ### The answer lands in the channel
 
 The routed member answers the way any woken seat does, in its own conversation. For a seat of the
