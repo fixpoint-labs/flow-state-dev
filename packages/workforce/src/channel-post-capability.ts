@@ -41,6 +41,13 @@
  * the post's id in the seat's session, which the kind's own landing reads
  * too, so a turn that posted through the tool lands nothing more. Any other
  * turn, and any other channel, posts as before.
+ *
+ * The claim is taken before the hand-off, so two posts racing for one line
+ * see one winner, and given back when the hand-off is not accepted: a refusal
+ * the dispatch returns leaves the post unanswered, so the tool's next call,
+ * the landing, or the post delivered again can still answer it. A hand-off the
+ * channel accepted and then refused on its own request keeps the claim, as it
+ * is not reported back.
  */
 
 import { defineCapability, dispatcher, handler, sequencer } from "@flow-state-dev/core";
@@ -112,7 +119,9 @@ export function answeredAlready(ctx: BlockContext, postId: string): boolean {
 
 /**
  * Claim the one line for a routed post, in the seat's session. Atomic, so two
- * claims racing for one post see one winner.
+ * claims racing for one post see one winner. The winner posts through
+ * {@link postRoutedAnswer}, which gives the claim back if the hand-off is not
+ * accepted.
  *
  * @param ctx A block's context in the seat's channel session.
  * @param postId The routed post's line id.
@@ -144,9 +153,10 @@ type PostAsSeatInput = z.infer<typeof postAsSeatInputSchema>;
  * One dispatch into the named channel's own `post`, as the seat. The author is
  * the seat's `seatId`, read by the block before it, which declares it.
  * `{ id }`: a channel is an existing session. The tool and the agent kind's
- * landing both post through it, so a line has one way in.
+ * landing both post through it (a routed answer through
+ * {@link postRoutedAnswer}, which wraps it), so a line has one way in.
  */
-export const postAsSeat = dispatcher({
+const postAsSeat = dispatcher({
   name: "post-to-channel-dispatch",
   flowKind: CHANNEL_KIND,
   action: "post",
@@ -156,24 +166,58 @@ export const postAsSeat = dispatcher({
 });
 
 /**
+ * Give the routed post's claim back, then rethrow: the hand-off it was taken
+ * for failed before the channel accepted it, so the post has no line. Only the
+ * claim's holder reaches this, and nobody else can take a held claim, so the
+ * entry it removes is its own. The failure stays the turn's.
+ */
+const giveBackClaim = handler({
+  name: "post-to-channel-give-back-claim",
+  inputSchema: z.unknown(),
+  outputSchema: z.never(),
+  requestStateSchema: routedTurnStateSchema,
+  execute: async (error: unknown, ctx): Promise<never> => {
+    // Reached only after a claim on a routed turn, which is marked.
+    await ctx.session.deleteStateRecord(ANSWERED_POSTS_STATE, ctx.request.state.channelRoutedPost!.postId);
+    throw error;
+  },
+});
+
+/**
+ * {@link postAsSeat} for the holder of a routed post's claim: the dispatch
+ * refuses only when it did not hand the post over, and then the claim is given
+ * back. Never used without the claim, or a failed dispatch into another
+ * channel would give back a line that already landed.
+ */
+export const postRoutedAnswer = postAsSeat.rescue([{ block: giveBackClaim }]);
+
+/**
+ * How the tool's call stands against the turn's routed post: it `claimed` the
+ * post's line, it is `unrouted` (not a routed turn, or another channel), or
+ * the seat has its line already (`answered`).
+ */
+type ToolClaim = PostAsSeatInput & { claim: "claimed" | "unrouted" | "answered" };
+
+/**
  * On a routed turn, and only into that post's channel: claim the post's one
  * line. Claimed before the dispatch, so two calls in one step cannot both post.
  */
 const claimToolLine = handler({
   name: "post-to-channel-claim",
   inputSchema: postToChannelInputSchema,
-  outputSchema: postAsSeatInputSchema.extend({ answeredAlready: z.boolean() }),
+  outputSchema: postAsSeatInputSchema.extend({ claim: z.enum(["claimed", "unrouted", "answered"]) }),
   requestStateSchema: routedTurnStateSchema,
   flowConfigSchema: seatIdConfigSchema,
-  execute: async (input: PostToChannelInput, ctx) => {
+  execute: async (input: PostToChannelInput, ctx): Promise<ToolClaim> => {
     const post = { ...input, author: ctx.flow.config.seatId };
     const routed = ctx.request.state.channelRoutedPost;
-    if (routed === undefined || routed.channelId !== input.channel) {
-      return { ...post, answeredAlready: false };
-    }
-    return { ...post, answeredAlready: !(await claimRoutedAnswer(ctx, routed.postId)) };
+    if (routed === undefined || routed.channelId !== input.channel) return { ...post, claim: "unrouted" };
+    return { ...post, claim: (await claimRoutedAnswer(ctx, routed.postId)) ? "claimed" : "answered" };
   },
 });
+
+/** The claim's post, as {@link postAsSeat} takes it. */
+const toPost = (claim: ToolClaim): PostAsSeatInput => ({ channel: claim.channel, body: claim.body, author: claim.author });
 
 /**
  * The tool: one dispatch into the named channel's own `post`, then "handed
@@ -189,9 +233,10 @@ const postToChannel = sequencer({
   outputSchema: postToChannelResultSchema,
 })
   .step(claimToolLine)
+  .stepIf((claim: ToolClaim) => claim.claim === "claimed", toPost, postRoutedAnswer)
   .stepIf(
-    (claim: { answeredAlready: boolean }) => !claim.answeredAlready,
-    (claim: PostAsSeatInput) => ({ channel: claim.channel, body: claim.body, author: claim.author }),
+    (value: ToolClaim | { sessionId: string }) => "claim" in value && value.claim === "unrouted",
+    toPost,
     postAsSeat,
   )
   .map((value: { sessionId: string } | { channel: string }) =>

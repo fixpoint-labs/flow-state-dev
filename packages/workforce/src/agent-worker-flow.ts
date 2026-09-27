@@ -99,7 +99,7 @@ import {
   ROUTED_TURN_STATE,
   answeredAlready,
   claimRoutedAnswer,
-  postAsSeat,
+  postRoutedAnswer,
   routedTurnStateSchema,
   seatIdConfigSchema
 } from "./channel-post-capability";
@@ -1125,7 +1125,9 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
    * The routed reply's line: the reply, to the post's channel, unless the
    * seat already has its line for this post (the tool posted it, or the post
    * was delivered before). An empty reply is a failed answer: the run fails
-   * and nothing is posted, never a stock line.
+   * and nothing is posted, never a stock line. A hand-off the channel refuses
+   * gives the claim back and fails the run, so the post delivered again is
+   * answered.
    */
   const claimRoutedLine = handler({
     name: "agent-claim-routed-line",
@@ -1153,7 +1155,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
 
   const landRoutedReply = sequencer({ name: "agent-land-routed-reply", inputSchema: z.unknown() })
     .step(claimRoutedLine)
-    .stepIf((claim) => !("answeredAlready" in claim), postAsSeat);
+    .stepIf((claim) => !("answeredAlready" in claim), postRoutedAnswer);
 
   /**
    * A channel post as this seat hears it. Every delivery runs `run` on the
