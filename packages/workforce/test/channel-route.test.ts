@@ -744,4 +744,62 @@ describe("posts the route does not place", () => {
       }
     }
   );
+
+  // The same, with the post made while routing was off pushed out of the
+  // history window by reads before routing is back: nothing in that window
+  // can tell the route what happened while it was off.
+  it.each([
+    // A kind that still routes other channels keeps every line, so the route
+    // sees the off post however far back it is.
+    ["its file drops routing:, on a kind that still routes others", false, [
+      "[route:support.devices] my laptop won't join the wifi",
+      "[route:support.accounts] different thing: I was charged twice"
+    ]],
+    // A kind without a route keeps nothing, so the next routed post starts
+    // from the lines still in the window, which the reads have filled.
+    ["its kind is built without a route", true, []]
+  ])(
+    "holds nothing from before routing was off, after more requests than the history window holds: %s (BR-1, BR-19, BR-24)",
+    async (_case, withoutRoute, recent) => {
+      const stores = inMemoryStores();
+      const unrouted = manifests().map((m) => (m.id === HELP ? { ...m, declared: { members: MEMBERS } } : m));
+      const first = host({ stores });
+      try {
+        const runtime = await first.state.getRuntime();
+        await bind(runtime.stores, HELP, MEMBERS);
+        // Routed to devices, which never answers in the channel.
+        await post(runtime, first.channel, HELP, "[route:support.devices] my laptop won't join the wifi");
+        await settle(runtime, HELP, 1);
+      } finally {
+        await first.state.dispose();
+      }
+
+      const second = host({ stores, channels: unrouted, withoutRoute });
+      try {
+        const runtime = await second.state.getRuntime();
+        await post(runtime, second.channel, HELP, "[route:support.accounts] different thing: I was charged twice");
+        await settle(runtime, HELP, 2);
+        for (let i = 0; i < 60; i += 1) await readChannel(runtime, second.channel, HELP);
+      } finally {
+        await second.state.dispose();
+      }
+
+      const third = host({ stores });
+      try {
+        const runtime = await third.state.getRuntime();
+        await post(runtime, third.channel, HELP, "[route:support.accounts] which card was it?");
+        await settle(runtime, HELP, 3);
+
+        // The person's last post was not routed, so nothing holds this one: it takes the call.
+        expect(callsFor(third.route, "which card")).toHaveLength(1);
+        expect(who(third.heard, "which card")).toEqual(["support.accounts"]);
+        expect(await recordFor(runtime.stores, "which card")).toMatchObject({ by: "evaluated", member: "support.accounts" });
+        expect(third.heard.find((h) => h.body.includes("which card"))?.recent).toEqual(recent);
+        const read = (callsFor(third.route, "which card")[0]!.state as { recent: Array<{ text: string }> }).recent;
+        expect(read.map((line) => line.text)).toEqual(recent);
+      } finally {
+        await third.state.dispose();
+      }
+    }
+  );
 });

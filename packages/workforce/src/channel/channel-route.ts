@@ -86,14 +86,16 @@ export const routeRequestSchema = postCaseSchema.extend({
 });
 
 /**
- * The session-state key a routed channel keeps its route ledger under. Written
- * only on a channel that declares `routing:`, on a kind built with a route.
+ * The session-state key a channel keeps its route ledger under. Written on
+ * every channel of a kind built with a route, whether or not the channel
+ * declares `routing:`; removed by the first post on a kind built without one.
  */
 export const ROUTE_LEDGER_STATE = "channelRouteLedger";
 
 /**
- * The route's own record of a routed channel, in the channel session's state:
- * what the route needs of the channel, kept as each line is kept.
+ * The route's own record of a channel, in the channel session's state: what
+ * the route needs of the channel, kept as each line is kept. Kept while the
+ * channel is not routed too, so the route has every line when it is again.
  *
  * The route reads a post's case from here, never from the session's items: a
  * request sees those only as far back as its history window (the last 50
@@ -124,29 +126,12 @@ export const routeLedgerStateSchema = z.object({ [ROUTE_LEDGER_STATE]: routeLedg
 export type RouteLedgerState = z.infer<typeof routeLedgerStateSchema>;
 
 /**
- * The ledger, while it still holds every line the channel has kept. A line
- * kept while the channel was not routed never reaches the ledger, so a ledger
- * without the newest line the request can see is one left from before, and
- * comes back `undefined` for the post to start a new one. With no line in view
- * there is nothing to tell by, and the ledger stands.
- *
- * @param ledger The ledger in the channel's session state, if any.
- * @param newest The newest line in the request's history window, if any.
- */
-export function currentLedger(
-  ledger: RouteLedger | undefined,
-  newest: ChannelTranscriptLine | undefined
-): RouteLedger | undefined {
-  if (ledger === undefined || newest === undefined) return ledger;
-  return ledger.lines.some((line) => line.id === newest.id) ? ledger : undefined;
-}
-
-/**
  * Keep one line in the ledger. A person's post (no `author`) also comes back
  * with its case: the lines kept before it, and the member still on the
  * person's previous post. That member holds only when the previous post's
  * route is recorded, was the evaluator's or the fallback's, and the member has
- * kept no line since. A post that was itself held holds nothing.
+ * kept no line since. A post that was itself held holds nothing, and neither
+ * does one on a channel that was not routed, which never gets a route.
  */
 export function keepLine(ledger: RouteLedger, line: ChannelTranscriptLine): { ledger: RouteLedger; postCase?: PostCase } {
   const lines = [...ledger.lines, line].slice(-RECENT_LINES);
