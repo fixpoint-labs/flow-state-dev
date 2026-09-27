@@ -101,7 +101,7 @@ function listeningKinds(failOn?: string) {
   return { heard, kinds: { listener, note } as never };
 }
 
-function workers(pinGeneralTo?: string): WorkerManifest[] {
+function workers(pinGeneralTo?: string, undescribed?: string): WorkerManifest[] {
   return [
     ...Object.entries(DESCRIPTIONS).map(([id, description]) => ({
       id,
@@ -109,7 +109,9 @@ function workers(pinGeneralTo?: string): WorkerManifest[] {
       body: "",
       ...(id === "support.general" && pinGeneralTo !== undefined ? { ownerPin: { orgId: pinGeneralTo } } : {})
     })),
-    { id: "support.notes", declared: { flow: "note", description: "Takes notes." }, body: "" }
+    { id: "support.notes", declared: { flow: "note", description: "Takes notes." }, body: "" },
+    // A seat that hears posts and has no description, as a runtime hire reloads.
+    ...(undescribed === undefined ? [] : [{ id: undescribed, declared: { flow: "listener" }, body: "" }])
   ];
 }
 
@@ -140,13 +142,14 @@ function host(
   options: {
     failOn?: string;
     pinGeneralTo?: string;
+    undescribed?: string;
     resolver?: (route: MockEvaluationModel) => ModelResolver;
     stores?: ReturnType<typeof inMemoryStores>;
     channels?: ChannelManifest[];
   } = {}
 ) {
   const { heard, kinds } = listeningKinds(options.failOn);
-  const seats = hireWorkforce(workers(options.pinGeneralTo), { kinds });
+  const seats = hireWorkforce(workers(options.pinGeneralTo, options.undescribed), { kinds });
   const route = scriptedRoute();
   const [channel] = channelInstances(options.channels ?? manifests(), {
     kinds: {
@@ -266,6 +269,40 @@ describe("a person's post to a routed channel", () => {
       const question = (calls[0]!.questions as { member: { criteria: Record<string, string | null> } }).member;
       expect(question.criteria).toEqual(DESCRIPTIONS);
       expect(await recordFor(runtime.stores, "laptop")).toMatchObject({ by: "evaluated", member: "support.devices" });
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("offers the evaluator only members it can describe; one with no description still takes the fallback and holds (BR-2)", async () => {
+    const members = [...MEMBERS, "support.untold"];
+    const { channel, state, heard, route } = host({
+      undescribed: "support.untold",
+      channels: [{ id: HELP, declared: { members, routing: { fallback: "support.untold" } }, body: "Ask support." }]
+    });
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP, members);
+      await post(runtime, channel, HELP, "[route:support.devices] my laptop won't join the wifi");
+      await settle(runtime, HELP, 1);
+      // A purpose is what the evaluator picks by: a seat with none is not a choice.
+      const question = (callsFor(route, "laptop")[0]!.questions as { member: { criteria: Record<string, string | null> } })
+        .member;
+      expect(question.criteria).toEqual(DESCRIPTIONS);
+
+      await post(runtime, channel, HELP, "Try forgetting the network.", "support.devices");
+      await settle(runtime, HELP, 2);
+      await post(runtime, channel, HELP, "who do I ask about a parking pass?");
+      await settle(runtime, HELP, 3);
+      expect(who(heard, "parking pass")).toEqual(["support.untold"]);
+      expect(await recordFor(runtime.stores, "parking pass")).toMatchObject({ by: "fallback", member: "support.untold" });
+
+      // Still on that post, with no line since: the next one is held for it.
+      await post(runtime, channel, HELP, "and the gym?");
+      await settle(runtime, HELP, 4);
+      expect(who(heard, "the gym")).toEqual(["support.untold"]);
+      expect(callsFor(route, "the gym")).toHaveLength(0);
+      expect(await recordFor(runtime.stores, "the gym")).toMatchObject({ by: "held", member: "support.untold" });
     } finally {
       await state.dispose();
     }

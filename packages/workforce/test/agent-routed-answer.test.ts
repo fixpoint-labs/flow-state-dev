@@ -341,6 +341,45 @@ describe("a routed agent's answer lands in the channel", () => {
     }
   });
 
+  it("lands no second line for a post delivered again after the seat has answered many others (BR-10)", async () => {
+    const { state, redeliver } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      const deliver = async (n: number) => {
+        const result = await runAction({
+          orgId: DEFAULT_ORG_ID,
+          flow: redeliver,
+          actionName: "deliver",
+          input: {
+            channelId: HELP,
+            member: "support.devices",
+            postId: `p_${n}`,
+            body: `[answer:text] question ${n}`,
+            principal: USER_ID,
+            routed: true,
+            recent: []
+          },
+          userId: USER_ID,
+          sessionId: "redeliver-session",
+          stores: runtime.stores,
+          runtimeConfig: { ...runtime.runtimeConfig }
+        });
+        expect(result.error).toBeUndefined();
+        await quiet(runtime);
+      };
+      // More answers than any fixed window would keep, one at a time, then the first post again.
+      for (let n = 0; n <= 60; n += 1) await deliver(n);
+      await deliver(0);
+
+      const answered = await lines(runtime, HELP);
+      expect(answered).toHaveLength(61);
+      expect(answered.filter((line) => line.body === "Re: question 0")).toHaveLength(1);
+    } finally {
+      await state.dispose();
+    }
+  }, 60_000);
+
   it("lands nothing on an empty reply and fails the run, recorded in the seat's conversation (BR-11)", async () => {
     const { channel, state, seat } = host();
     try {

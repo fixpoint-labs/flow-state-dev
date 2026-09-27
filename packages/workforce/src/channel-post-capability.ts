@@ -76,14 +76,18 @@ const postToChannelResultSchema = z.object({ handedTo: z.string(), note: z.strin
 export const ROUTED_TURN_STATE = "channelRoutedPost";
 
 /**
- * The seat-session field listing the routed posts the seat has answered in
- * that channel, by post id, newest last. Kept to the last
- * {@link ANSWERED_POSTS_KEPT}: a post is delivered again soon or never.
+ * The seat-session field recording the routed posts the seat has answered in
+ * that channel: a map from post id to `true`. Never trimmed, so a post
+ * delivered again however late lands no second line. It grows by one id per
+ * routed answer, beside a conversation that already keeps every turn.
  */
 export const ANSWERED_POSTS_STATE = "channelAnsweredPosts";
 
-/** How many answered post ids a seat's channel session keeps. */
-const ANSWERED_POSTS_KEPT = 50;
+/** The answered map, or an empty one when the session has none yet. */
+function answeredPosts(state: Readonly<Record<string, unknown>> | undefined): Record<string, true> {
+  const held = state?.[ANSWERED_POSTS_STATE];
+  return typeof held === "object" && held !== null && !Array.isArray(held) ? (held as Record<string, true>) : {};
+}
 
 /** A routed turn's mark: the channel and the post it answers. */
 export const routedTurnSchema = z.object({ channelId: z.string(), postId: z.string() });
@@ -108,8 +112,7 @@ export function routedTurnOf(ctx: BlockContext): RoutedTurn | undefined {
  * @param postId The routed post's line id.
  */
 export function answeredAlready(ctx: BlockContext, postId: string): boolean {
-  const held = (ctx.session.state as Record<string, unknown> | undefined)?.[ANSWERED_POSTS_STATE];
-  return Array.isArray(held) && held.includes(postId);
+  return Object.hasOwn(answeredPosts(ctx.session.state as Record<string, unknown> | undefined), postId);
 }
 
 /**
@@ -122,10 +125,9 @@ export function answeredAlready(ctx: BlockContext, postId: string): boolean {
  */
 export async function claimRoutedAnswer(ctx: BlockContext, postId: string): Promise<boolean> {
   return ctx.session.atomicState((state: Readonly<Record<string, unknown>>) => {
-    const held = state[ANSWERED_POSTS_STATE];
-    const answered = Array.isArray(held) ? (held as string[]) : [];
-    if (answered.includes(postId)) return {};
-    return { [ANSWERED_POSTS_STATE]: [...answered, postId].slice(-ANSWERED_POSTS_KEPT) };
+    const answered = answeredPosts(state);
+    if (Object.hasOwn(answered, postId)) return {};
+    return { [ANSWERED_POSTS_STATE]: { ...answered, [postId]: true } };
   });
 }
 

@@ -89,6 +89,13 @@ export interface ChannelRouting {
 }
 
 /**
+ * The key a route carries its resolving block under. Not re-exported from the
+ * package root, so only `routeByPurpose` can set it, and a value without it is
+ * refused by `defineChannelFlow`.
+ */
+export const ROUTE_BLOCK: unique symbol = Symbol("channel-route-block");
+
+/**
  * A channel kind's route: what `routeByPurpose` returns and
  * `defineChannelFlow({ route })` takes. Only `routeByPurpose` makes one, so the
  * order a post is placed in, the one-call cap and the record hold for every
@@ -101,27 +108,6 @@ export interface ChannelRoute {
    * posts. A channel's fallback must be one of them.
    */
   readonly members: readonly string[];
-}
-
-/** Each route's resolving block, by the route value `routeByPurpose` returned. */
-const routeBlocks = new WeakMap<ChannelRoute, BlockDefinition<any, any>>();
-
-/**
- * Record the block a route resolves posts with. `routeByPurpose`'s alone.
- *
- * @param route The value handed back to the app.
- * @param block The block the channel's fan-out runs for a routed post.
- * @returns `route`, now one the channel flow accepts.
- */
-export function registerChannelRoute(route: ChannelRoute, block: BlockDefinition<any, any>): ChannelRoute {
-  routeBlocks.set(route, block);
-  return route;
-}
-
-/**
- * The block a route resolves posts with, or `undefined` for a value no
- * `routeByPurpose` call made.
- */
-export function channelRouteBlock(route: ChannelRoute): BlockDefinition<any, any> | undefined {
-  return routeBlocks.get(route);
+  /** The block the channel's fan-out runs for a routed post, from `routeRequestSchema` to `routeDecisionSchema`. */
+  readonly [ROUTE_BLOCK]: BlockDefinition<any, any>;
 }

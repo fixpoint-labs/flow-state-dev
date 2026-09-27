@@ -33,17 +33,17 @@ import {
   channelBoardNamesFor,
   resolveChannelBoard
 } from "./channel-board";
+import { emitChannelPostLine, readChannelPostLines } from "./channel-items";
 import {
   CHANNEL_POST_COMPONENT,
   channelTranscriptLineSchema,
+  withoutRepeats,
   type ChannelTranscriptLine
 } from "./channel-post-line";
 import {
-  CHANNEL_ROUTE_COMPONENT,
-  channelRouteBlock,
-  channelRouteRecordSchema,
+  ROUTE_BLOCK,
+  routeRequestSchema,
   type ChannelRoute,
-  type ChannelRouteRecord,
   type ChannelRouting,
   type RouteDecision
 } from "./channel-route";
@@ -230,74 +230,6 @@ const appendPost = handler({
 });
 
 /**
- * Keep a post's line as its `channel-post` item, and resolve only once the
- * item is stored.
- *
- * The item is the only copy of the line, so this uses the awaited emitter and
- * rejects when the write does. `ctx.emit.component` drops its write's outcome,
- * which would let a post hand back a line no read will ever show. A context
- * without the awaited emitter cannot confirm the line was kept, so that is a
- * failure too, never a fall back to the fire-and-forget emitter.
- *
- * @param ctx The post's block context.
- * @param line The line, exactly as `read` and a page should see it.
- */
-export async function emitChannelPostLine(ctx: BlockContext, line: Record<string, unknown>): Promise<void> {
-  const emit = ctx._emitComponentAwaited;
-  if (emit === undefined) {
-    throw new Error("channel post: this context cannot confirm a line was kept, so it posts nothing");
-  }
-  await emit.call(ctx, CHANNEL_POST_COMPONENT, line);
-}
-
-/**
- * Keep a route's record on the channel's session, resolving once it is stored,
- * by {@link emitChannelPostLine}'s rule: the next post's route reads it back,
- * so a record nobody can confirm was kept is a failure. Not re-exported from
- * the package root.
- */
-export async function emitChannelRouteRecord(ctx: BlockContext, record: ChannelRouteRecord): Promise<void> {
-  const emit = ctx._emitComponentAwaited;
-  if (emit === undefined) {
-    throw new Error("channel route: this context cannot confirm the route was recorded, so it routes nobody");
-  }
-  await emit.call(ctx, CHANNEL_ROUTE_COMPONENT, record);
-}
-
-/**
- * The posted lines inside this request's history window, oldest first.
- *
- * Inside a block every item arrives wrapped, so the component name and its
- * data sit under `payload`. A malformed `channel-post` item is skipped rather
- * than failing the read: the transcript is what parses as a line.
- *
- * @param ctx The reading block's context.
- * @param schema The line schema of the kind reading them.
- * @returns Each `channel-post` item's data that parses under `schema`.
- */
-export function readChannelPostLines<T>(ctx: BlockContext, schema: z.ZodType<T>): T[] {
-  return readChannelComponents(ctx, CHANNEL_POST_COMPONENT, schema);
-}
-
-/**
- * The route records inside this request's history window, oldest first, read
- * as {@link readChannelPostLines} reads lines. Not re-exported from the root.
- */
-export function readChannelRouteRecords(ctx: BlockContext): ChannelRouteRecord[] {
-  return readChannelComponents(ctx, CHANNEL_ROUTE_COMPONENT, channelRouteRecordSchema);
-}
-
-/** One component's items on the session, each data that parses under `schema`. */
-function readChannelComponents<T>(ctx: BlockContext, component: string, schema: z.ZodType<T>): T[] {
-  return ctx.session.items.all({ itemTypes: ["component"] }).flatMap((item) => {
-    const payload = item.payload as { component?: unknown; data?: unknown } | undefined;
-    if (payload?.component !== component) return [];
-    const parsed = schema.safeParse(payload.data);
-    return parsed.success ? [parsed.data] : [];
-  });
-}
-
-/**
  * The clean projection. Deliberately not `ctx.session.items.client()`.
  *
  * A factory because the declared board names come from the roster the KIND was
@@ -339,16 +271,6 @@ const readChannelFor = (boardIds: readonly string[]) =>
       };
     }
   });
-
-/** The lines in order, keeping the first line with each id. */
-function withoutRepeats(lines: ChannelTranscriptLine[]): ChannelTranscriptLine[] {
-  const seen = new Set<string>();
-  return lines.filter((line) => {
-    if (seen.has(line.id)) return false;
-    seen.add(line.id);
-    return true;
-  });
-}
 
 /** The ledger shape the two board actions use: the substrate's ref. */
 type ChannelTaskLedger = Exclude<Awaited<ReturnType<typeof resolveChannelBoard>>, undefined>;
@@ -1003,8 +925,8 @@ export function holdsBoards(kind: unknown): kind is ChannelFlowFactory {
   );
 }
 
-/** Each kind {@link defineChannelFlow} built with a route, and that route. */
-const kindRoutes = new WeakMap<object, ChannelRoute>();
+/** The key a kind {@link defineChannelFlow} built with a route carries that route under. */
+const KIND_ROUTE = Symbol("channel-kind-route");
 
 /**
  * The route a channel kind was built with, or `undefined` for a kind built
@@ -1012,7 +934,7 @@ const kindRoutes = new WeakMap<object, ChannelRoute>();
  * it to check a `routing:` line. Not re-exported from the package root.
  */
 export function routeOf(kind: unknown): ChannelRoute | undefined {
-  return typeof kind === "function" ? kindRoutes.get(kind) : undefined;
+  return typeof kind === "function" ? (kind as { [KIND_ROUTE]?: ChannelRoute })[KIND_ROUTE] : undefined;
 }
 
 /**
@@ -1032,8 +954,9 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   const boardIds = [...(options.boards ?? [])].sort();
 
   // Only `routeByPurpose` makes a route, so the order a post is placed in, the
-  // one-call cap and the record hold on every routed channel.
-  const routeBlock = options.route === undefined ? undefined : channelRouteBlock(options.route);
+  // one-call cap and the record hold on every routed channel. The route
+  // carries its block under a key only this package holds.
+  const routeBlock = options.route?.[ROUTE_BLOCK];
   if (options.route !== undefined && routeBlock === undefined) {
     throw new Error("defineChannelFlow: `route` must be what routeByPurpose(seats, { model }) returned.");
   }
@@ -1068,71 +991,82 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     options.inventory === true ? inventoryWriterActions(CHANNEL_KIND) : undefined;
 
   /**
-   * This channel's `routing:`, when the route places this post: a person's
-   * post (no `author`) to a channel that declares the line, on a kind built
-   * with a route. A seat's post is never routed; it fans out as unrouted.
+   * This channel's `routing:` fallback, when the route places this post: a
+   * person's post (no `author`) to a channel that declares the line, on a kind
+   * built with a route. A seat's post is never routed; it fans out as unrouted.
    */
-  const routingFor = (post: ChannelFanOutInput, ctx: BlockContext): ChannelRouting | undefined =>
+  const fallbackFor = (post: ChannelFanOutInput, ctx: BlockContext): string | undefined =>
     routeBlock === undefined || post.author !== undefined
       ? undefined
-      : routing[ctx.session.identity.id];
+      : routing[ctx.session.identity.id]?.fallback;
+
+  // Iterated from the session's own declared roster, read here rather than
+  // carried in the payload: the roster is the channel's, and a caller-supplied
+  // copy would be caller-controllable input on a delivery path (BP-031).
+  const rosterDeliveries = (post: ChannelFanOutInput, ctx: BlockContext): ChannelNotifyInput[] =>
+    (boundChannel(ctx.session.state)?.members ?? []).map((member) => ({
+      channelId: ctx.session.identity.id,
+      member,
+      postId: post.postId,
+      body: post.body,
+      principal: post.principal,
+      ...(post.author === undefined ? {} : { author: post.author })
+    }));
+
+  /** A routed post's delivery: the one member the route picked, or none when it placed the post with nobody. */
+  const routedDeliveries = ({ post, member, recent }: RouteDecision, ctx: BlockContext): ChannelNotifyInput[] =>
+    member === undefined
+      ? []
+      : [
+          {
+            channelId: ctx.session.identity.id,
+            member,
+            postId: post.postId,
+            body: post.body,
+            principal: post.principal,
+            routed: true,
+            recent
+          }
+        ];
+
+  // One member's failure is absorbed and the rest are still attempted;
+  // membership is never changed by a delivery.
+  const deliver = notify?.rescue([{ block: noteDeliveryRefusal }]);
 
   // Declared ONLY when a slot was supplied. With no slot there is nothing to
   // deliver, so there is no entry to declare and no dispatch to make — rather
   // than a declared entry that exists to do nothing.
   const fanOutHead = sequencer({ name: "channel-fan-out", inputSchema: channelFanOutInputSchema });
   const fanOut =
-    notify === undefined
+    deliver === undefined
       ? undefined
-      : // The route runs once per post, before the per-member delivery, and
-        // only on a post it places: the one evaluator call is never repeated
-        // per member, and an unrouted post pays nothing for it.
-        (routeBlock === undefined
-          ? fanOutHead
-          : fanOutHead.stepIf(
-              (post: ChannelFanOutInput, ctx) => routingFor(post, ctx) !== undefined,
-              (post: ChannelFanOutInput, ctx) => ({ post, fallback: routingFor(post, ctx)!.fallback }),
-              routeBlock
-            )
-        )
-          // Iterated from the session's own declared roster, read here rather
-          // than carried in the payload: the roster is the channel's, and a
-          // caller-supplied copy would be caller-controllable input on a
-          // delivery path (BP-031). A routed post goes to the route's one
-          // member instead, or to nobody when the route failed.
-          .forEach(
-            (value: ChannelFanOutInput | RouteDecision, ctx): ChannelNotifyInput[] => {
-              const channelId = ctx.session.identity.id;
-              if ("by" in value) {
-                const { post, member, recent } = value;
-                return member === undefined
-                  ? []
-                  : [
-                      {
-                        channelId,
-                        member,
-                        postId: post.postId,
-                        body: post.body,
-                        principal: post.principal,
-                        routed: true,
-                        recent
-                      }
-                    ];
-              }
-              const channel = boundChannel(ctx.session.state);
-              return (channel?.members ?? []).map((member) => ({
-                channelId,
-                member,
-                postId: value.postId,
-                body: value.body,
-                principal: value.principal,
-                ...(value.author === undefined ? {} : { author: value.author })
-              }));
-            },
-            // One member's failure is absorbed and the rest are still
-            // attempted; membership is never changed by a delivery.
-            notify.rescue([{ block: noteDeliveryRefusal }])
-          );
+      : routeBlock === undefined
+        ? fanOutHead.forEach(rosterDeliveries, deliver)
+        : // Two arms, exhaustive by one test. A post the route places runs it
+          // once, so its one evaluator call is never repeated per member, and
+          // goes to that one member. Any other post fans out to the roster
+          // and pays nothing for the route.
+          fanOutHead
+            .branch({
+              routed: [
+                (post: ChannelFanOutInput, ctx: BlockContext) => ({ post, fallback: fallbackFor(post, ctx) }),
+                (request: { fallback?: string }) => request.fallback !== undefined,
+                sequencer({ name: "channel-routed-delivery", inputSchema: routeRequestSchema })
+                  .step(routeBlock)
+                  .map((decision: RouteDecision, ctx) => routedDeliveries(decision, ctx as BlockContext))
+              ],
+              roster: [
+                (post: ChannelFanOutInput) => post,
+                (post: ChannelFanOutInput, ctx: BlockContext) => fallbackFor(post, ctx) === undefined,
+                handler({
+                  name: "channel-roster-delivery",
+                  inputSchema: channelFanOutInputSchema,
+                  outputSchema: z.array(channelNotifyInputSchema),
+                  execute: rosterDeliveries
+                })
+              ]
+            })
+            .forEach((deliveries: ChannelNotifyInput[]) => deliveries, deliver);
 
   // Hands the append off to a SEPARATE request so the queue hold covers the
   // append only. Fan-out latency must not count against the next poster's
@@ -1282,7 +1216,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     withRouting: (routing: Readonly<Record<string, ChannelRouting>>) =>
       defineChannelFlow({ ...options, routing })
   }) as ChannelFlowFactory;
-  if (options.route !== undefined) kindRoutes.set(factory, options.route);
+  if (options.route !== undefined) Object.assign(factory, { [KIND_ROUTE]: options.route });
   return factory;
 }
 

@@ -13,9 +13,11 @@
  *    answer? It reads the channel's last lines and the post, and chooses among
  *    the channel's members whose seat hears posts and this caller can reach
  *    (the wake's own test), each described by its `WORKER.md` `description:`.
+ *    A seat with no description (a runtime hire has none) is not a choice; it
+ *    can still be the fallback, and be held.
  * 3. **The fallback.** The call failed, or answered with something that is not
  *    an option: the channel's `routing: fallback:` member takes the post. If the
- *    fallback is not an option either, nobody does.
+ *    caller cannot reach the fallback's seat either, nobody does.
  *
  * Only the evaluator call's own failure reaches the fallback; any other error
  * fails the fan-out like any other. Every route is recorded as one
@@ -31,12 +33,13 @@ import { choice, evaluator, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, EvaluationModel, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { seatDescription } from "../seat-description";
-import { boundChannel, emitChannelRouteRecord, readChannelPostLines, readChannelRouteRecords } from "./channel-flow";
-import { channelTranscriptLineSchema, type ChannelTranscriptLine } from "./channel-post-line";
+import { boundChannel } from "./channel-flow";
+import { emitChannelRouteRecord, readChannelHistory } from "./channel-items";
+import { channelTranscriptLineSchema, withoutRepeats, type ChannelTranscriptLine } from "./channel-post-line";
 import {
   CHANNEL_ROUTE_EVALUATOR,
   RECENT_LINES,
-  registerChannelRoute,
+  ROUTE_BLOCK,
   routeDecisionSchema,
   routeRequestSchema,
   type ChannelRoute,
@@ -63,8 +66,10 @@ const ROUTE_QUESTION =
 /** Everything the decision is made from, read once from the channel. */
 const routeCaseSchema = routeRequestSchema.extend({
   recent: z.array(channelTranscriptLineSchema),
-  /** Member id → its description, for each member this caller can route to. */
-  options: z.record(z.string().nullable()),
+  /** The members this caller can route to: each has a seat that hears posts and the caller can reach. */
+  reachable: z.array(z.string()),
+  /** Member id → its description, for each reachable member that has one: the evaluator's choices. */
+  options: z.record(z.string()),
   /** The member already on the person's last post, when there is one to hold. */
   held: z.string().optional()
 });
@@ -73,6 +78,20 @@ type RouteCase = z.infer<typeof routeCaseSchema>;
 
 /** What a failed evaluator call leaves: the reason, as a value. */
 const failedEvaluationSchema = z.object({ failed: z.string() });
+
+/** What an answered call leaves, as far as the route reads it: the `member` question's choice. */
+const answeredEvaluationSchema = z.object({ answers: z.object({ member: z.object({ choice: z.unknown() }) }) });
+
+/**
+ * What the evaluator step left, read one way: the call's own failure, or what
+ * it chose for `member` (anything; `place` checks it against the options).
+ */
+function evaluationOutcome(answer: unknown): { failed: string } | { choice: unknown } {
+  const failed = failedEvaluationSchema.safeParse(answer);
+  if (failed.success) return failed.data;
+  const answered = answeredEvaluationSchema.safeParse(answer);
+  return { choice: answered.success ? answered.data.answers.member.choice : undefined };
+}
 
 /** A line as the evaluator reads it. */
 function said(line: { author?: string; principal: string; body: string }) {
@@ -104,25 +123,34 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
     outputSchema: routeCaseSchema,
     execute: (request, ctx): RouteCase => {
       const channel = boundChannel(ctx.session.state);
-      const lines = [
-        ...(channel?.transcript ?? []),
-        ...readChannelPostLines(ctx, channelTranscriptLineSchema)
-      ];
+      // One walk over the session's items for the lines and the records. The
+      // whole of `before` is kept, not just the window: the hold looks back
+      // to the person's last post, which can sit further back than it.
+      const history = readChannelHistory(ctx);
+      const lines = [...(channel?.transcript ?? []), ...history.lines];
       const at = lines.findIndex((line) => line.id === request.post.postId);
-      const before = uniqueById(at === -1 ? lines : lines.slice(0, at));
+      const before = withoutRepeats(at === -1 ? lines : lines.slice(0, at));
 
-      const options: Record<string, string | null> = {};
+      // Reachable members can be held and can be the fallback. Only those with
+      // a description are the evaluator's options: it picks by purpose, and a
+      // seat hired at runtime has none to pick by.
+      const reachable: string[] = [];
+      const options: Record<string, string> = {};
       for (const member of channel?.members ?? []) {
         const seat = reachableSeat(hearing.get(member) ?? [], ctx);
-        if (seat !== undefined) options[member] = seatDescription(seat) ?? null;
+        if (seat === undefined) continue;
+        reachable.push(member);
+        const description = seatDescription(seat);
+        if (description !== undefined) options[member] = description;
       }
 
-      const held = holder(before, readChannelRouteRecords(ctx));
+      const held = holder(before, history.records);
       return {
         ...request,
         recent: before.slice(-RECENT_LINES),
+        reachable,
         options,
-        ...(held !== undefined && Object.hasOwn(options, held) ? { held } : {})
+        ...(held !== undefined && reachable.includes(held) ? { held } : {})
       };
     }
   });
@@ -182,17 +210,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
     .step(readCase)
     .step(decide);
 
-  return registerChannelRoute({ members: [...hearing.keys()].sort() }, resolve);
-}
-
-/** Lines in order, keeping the first line with each id. */
-function uniqueById(lines: ChannelTranscriptLine[]): ChannelTranscriptLine[] {
-  const seen = new Set<string>();
-  return lines.filter((line) => {
-    if (seen.has(line.id)) return false;
-    seen.add(line.id);
-    return true;
-  });
+  return { members: [...hearing.keys()].sort(), [ROUTE_BLOCK]: resolve };
 }
 
 /**
@@ -225,20 +243,21 @@ function place(
 ): { by: ChannelRouteRecord["by"]; member?: string; reason?: string } {
   if (routeCase.held !== undefined) return { by: "held", member: routeCase.held };
 
-  const failed = failedEvaluationSchema.safeParse(answer);
-  const choice = (answer as { answers?: { member?: { choice?: unknown } } } | undefined)?.answers?.member?.choice;
+  const outcome = evaluationOutcome(answer);
   let reason: string;
-  if (Object.keys(routeCase.options).length === 0) {
+  if (routeCase.reachable.length === 0) {
     reason = "no member of the channel has a seat this caller can reach that hears posts";
-  } else if (failed.success) {
-    reason = `the evaluation failed: ${failed.data.failed}`;
-  } else if (typeof choice === "string" && Object.hasOwn(routeCase.options, choice)) {
-    return { by: "evaluated", member: choice };
+  } else if (Object.keys(routeCase.options).length === 0) {
+    reason = "no member this caller can reach has a description to route by";
+  } else if ("failed" in outcome) {
+    reason = `the evaluation failed: ${outcome.failed}`;
+  } else if (typeof outcome.choice === "string" && Object.hasOwn(routeCase.options, outcome.choice)) {
+    return { by: "evaluated", member: outcome.choice };
   } else {
-    reason = `the evaluation answered ${JSON.stringify(choice)}, which is not one of the options`;
+    reason = `the evaluation answered ${JSON.stringify(outcome.choice)}, which is not one of the options`;
   }
 
-  if (Object.hasOwn(routeCase.options, routeCase.fallback)) {
+  if (routeCase.reachable.includes(routeCase.fallback)) {
     return { by: "fallback", member: routeCase.fallback, reason };
   }
   return {
