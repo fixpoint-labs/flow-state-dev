@@ -2,77 +2,91 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-This plan sets the order the work runs in and what each piece involves. How to build a piece is
-that issue's own plan. IDs cross-reference [DECISIONS.md](DECISIONS.md) (D-n) and
+The order the remaining work runs in and what each piece entails. How to build a piece is that
+issue's own plan. IDs cross-reference [DECISIONS.md](DECISIONS.md) (D-n) and
 [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
 
 ## The path
 
-![The path as of 26 September 2026, in steps because the epic is unscheduled. FIX-1459 is done; FIX-1598's fix is in review and gates the closure run. FIX-1585 and FIX-1589 have merged. Now: FIX-1590's build in review, FIX-1602's spec being written. Then FIX-1594, then FIX-1602's build, which moves kitchen-sink onto stock seat-wake routing, then FIX-1601's run; a clean run opens the closure PR, whose merge releases wrap. FIX-1591 is held, on no chain. The critical path runs FIX-1590, FIX-1594, FIX-1602, FIX-1601's closure PR, wrap.](figures/path.svg)
+![The path as of 27 September 2026, in steps because the epic is unscheduled. One lane for the seven shipped children, done. Now: this amendment in review, and no child starts until it merges. Step 1, in parallel: FIX-1609 the live channel view, FIX-1610 the routed channel whose answer always lands, FIX-1605 and FIX-1606 with their PRs open, and FIX-1601's QA-plan amendment. Step 2: FIX-1611 the support desk rebuild, after FIX-1609 and FIX-1610. Step 3: FIX-1601's run on one main commit, then its closure PR, whose merge releases wrap. FIX-1591 sits below as held. The critical path runs from whichever of FIX-1609 and FIX-1610 lands second, through FIX-1611 and FIX-1601's run, to wrap.](figures/path.svg)
 
-A straight chain: 1585 → 1589 → 1590 → 1594 → 1602 → 1601, whose closure PR, once merged,
-releases wrap. FIX-1585, FIX-1589 and FIX-1459 have merged; FIX-1590's build is in review.
-Each implementation waits for the one before it to merge (ER-14); specs may start early.
-FIX-1602 moves path two's wake into Workforce as stock seat-wake routing and kitchen-sink onto
-it, so the closure run grades the stock path. FIX-1598, the durable-hire goal check, gates the closure run.
-FIX-1591 is held and off the chain. The dependency graph is in
-[the spec](SPEC.md#how-the-issues-flow-into-each-other); this adds order.
+Three steps. FIX-1609 and FIX-1610 build side by side once this merges; FIX-1611 waits for both;
+the closure run waits for everything. Whichever of the first two lands second starts the
+critical path.
 
 ## What each issue entails
 
 | Issue | Route | Blocked by | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|---|
-| **FIX-1585** talk from the page | spec → impl PR | FIX-1459, for its agent-kind line | The shipped channel and seat flows | Two composers, the transcript as posts (its D1), the D3 map (ER-6), the kept message (ER-1), the agent-kind mock entry (ER-7), browser checks | FIX-1589 · FIX-1590 | Medium |
-| **FIX-1589** the clerk answers | spec → impl PR | FIX-1585 | The D3 map (`desk-clerk` → `answer`) · the scripted model · the channel's `fileTask` | A model-backed `answer`, the answer-or-file decision, its clerk mock entry, a browser check (ER-20) | FIX-1590 | Small–medium |
-| **FIX-1590** a post reaches its agents | spec → impl PR | FIX-1589 · FIX-1585 · FIX-1459 | The D3 map · the notify slot · the scripted model | The agent kind's internal receiver; the wake of member agent seats (ER-2); the no-ping-pong filter (ER-3) | FIX-1594 · FIX-1602 | Medium |
-| **FIX-1594** an agent replies in the channel | spec → impl PR | FIX-1590 | A woken seat · the wake rule · FIX-1585's transcript | A seat's way to post to its channel, authored as itself (ER-4, ER-5); the README (ER-19) | FIX-1602 | Medium |
-| **FIX-1602** stock seat-wake routing · required | spec (`spec/FIX-1602`) → impl PR | FIX-1590 · FIX-1594 | FIX-1590's host glue as it ships · ER-2, ER-3 unchanged | Stock seat-wake routing in Workforce: the dispatchers and the author filter on the existing `channel-fan-out` loop, not a second fan-out layer. Kitchen-sink thinned onto it, its test controls and kind map left in the app (ER-10); the README's fan-out wording (ER-19) | FIX-1601 | Medium |
-| **FIX-1601** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit · FIX-1598 green | The four checks and each child's goal check | The QA report, a bug child per failure | Wrap | Medium |
+| **FIX-1609** live channel view | spec → impl PR | this amendment | The session's requests and running child runs | A session-wide live stream the open view hears; "working" in the channel view; a no-reload browser check red on today's `main` (ER-23) | FIX-1611 · FIX-1601 | Large |
+| **FIX-1610** routed channel, the answer lands | spec with a routing POC → impl PR | this amendment | The fan-out, the stock wake, members' `description:` · ER-3 · ER-4 | Workforce's opt-in route step composing core `evaluator`, with a fallback, and the `CHANNEL.md` line; the answer that lands every time, still a generator (D6); its scripted-model entries; the channels guide section (ER-21, ER-22) | FIX-1611 · FIX-1601 | Medium |
+| **FIX-1611** support desk rebuild | spec → impl PR | FIX-1609 · FIX-1610 | The route line · the answer rule · the live view · D8's cut list | The roster (ER-26), escalation filing (ER-25), every check and e2e re-pointed (ER-27), the README (ER-19) | FIX-1601 | Large |
+| **FIX-1605** dev page 500 · **FIX-1606** README key | bug → impl PR ([#2306](https://github.com/fixpoint-labs/flow-state-dev/pull/2306), [#2305](https://github.com/fixpoint-labs/flow-state-dev/pull/2305)) | — | — | The page renders under `next dev`; the README names the gateway key | FIX-1601 | Small |
+| **FIX-1601** closure · required | [plan amendment](#fix-1601s-plan-amendment) → runs until one is clean → PR | every other child, on one `main` commit | ER-17's legs and the smoke | The report, a bug child per failure | Wrap | Medium |
 
-**Linear.** FIX-1585 blocks FIX-1589 and FIX-1590; FIX-1589 blocks FIX-1590 and FIX-1594;
-FIX-1590 blocks FIX-1594. FIX-1590 and FIX-1594 block FIX-1602. FIX-1594 blocks FIX-1602 because
-both change the same kitchen-sink files: FIX-1594 edits `apps/kitchen-sink/workforce/hire.ts` and
-`apps/kitchen-sink/lib/channel-wake-control.ts`, which FIX-1602 thins onto the stock helper, so
-running them in order avoids a conflict and a second proof. All five block FIX-1601, the
-closure issue. All six are sub-issues of FIX-1592. FIX-1598 also blocks FIX-1601: FIX-1589's
-contract needs durable hire green.
-FIX-1459 blocks FIX-1585 and FIX-1590; it stays another thread's issue, not a child. FIX-1589
-also blocks FIX-1591, which is held and not a child.
+**Linear, as filed.** FIX-1609 and FIX-1610 block FIX-1611; FIX-1609, FIX-1610, FIX-1611,
+FIX-1605 and FIX-1606 block FIX-1601. All are parented under FIX-1592. The done children and
+their relations stay.
+
+## Notes for the child specs
+
+- **FIX-1610, before it is built:** D5's one-call premise is untested. Its spec runs a small
+  spec-poc first that proves one `evaluator` choice over a fixed member set on a real model: a
+  fixed transcript, three intents.
+  - Who hears is one `evaluator` block with a `choice` question over the members, its options
+    built from each member's id and `WORKER.md` `description:`. `utility.cascadingRouter` is
+    the altitude reference (typed choices, fail-closed), not a tree to build unless the spec
+    proves a multi-level need. Not `intentRouter` or `intentClassifier`: both pick through a generator.
+  - Narrow the members in the channel flow before the fan-out's forEach. Capped at one evaluator
+    call per post; the specialist's own generator run is separate.
+  - Unlike `cascadingRouter`, where a failed evaluation propagates, a failed call here goes to
+    the fallback (ER-21). The keyless run needs a scripted evaluation answer in the one script
+    file (ER-7).
+- **FIX-1609:** prefer session-visible item and post events, with "working" from child-run
+  summaries, over multiplexing every child request's full delta stream. Word-by-word streaming
+  is out of scope.
 
 ## Where it is
 
-[The set table](SPEC.md#the-set--as-of-2026-09-26) is the review-time snapshot. Follow its
-links for live state.
+[The set table](SPEC.md#the-set--as-of-2026-09-27) is the snapshot; follow its links for live
+state. Nothing new starts until this amendment is approved and merged. FIX-1601's run is paused
+until then; its QA plan ([#2288](https://github.com/fixpoint-labs/flow-state-dev/pull/2288),
+amended by [#2300](https://github.com/fixpoint-labs/flow-state-dev/pull/2300)) is out of date
+the moment this merges.
+
+## FIX-1601's plan amendment
+
+Before its next run, FIX-1601's QA plan is amended in a follow-up PR to its retained spec, from
+`main`: today it grades after a reload, on the old roster. The amendment carries ER-17's legs a
+to c read before any reload, the real-model smoke and every named control; names from
+[D7](DECISIONS.md#d7)'s roster; and the goal checks as FIX-1611 re-points them (ER-27). Verdicts
+already recorded stand.
 
 ## What unblocks what, from here
 
-1. **FIX-1590 merges** → FIX-1594 is built.
-2. **FIX-1594 merges** → FIX-1602 is built, and kitchen-sink moves onto stock seat-wake routing.
-3. **Wrap**, when all of these hold:
-   - **ER-17:** FIX-1601's closure PR has merged, closing FIX-1601. A clean run on one `main`
-     commit, with FIX-1598 green, is what opens it.
-   - **ER-18:** each child's PR was already green before the closure run started.
-   - **ER-19:** the README says the three paths, its fan-out wording last touched by FIX-1602.
+1. **This amendment merges** → FIX-1609 and FIX-1610 start, specs first, FIX-1610's with its
+   routing POC. FIX-1601's plan amendment is written.
+2. **FIX-1609 and FIX-1610 merge** → FIX-1611 builds.
+3. **FIX-1611, FIX-1605 and FIX-1606 merge** → FIX-1601 runs on one `main` commit.
+4. **Wrap**, when ER-17 to ER-19 hold and FIX-1601's closure PR has merged.
 
 ## Coordination seams to watch
 
 | Seam | Between | Rule |
 |---|---|---|
-| `agent-worker-flow.ts` | FIX-1585, FIX-1590, FIX-1459 | One child edits it at a time, after FIX-1459. The kept message lands first; the receiver builds on it. FIX-1589 stays off it |
-| The clerk and the notify stub | FIX-1589 and FIX-1590 | FIX-1589 changes what `answer` does and keeps its input, `{ note }`, so the D3 map holds. FIX-1590 changes who a post runs and keeps clerks on the name-only line. Neither edits the other's file |
-| The notify slot | FIX-1590, FIX-1594, FIX-1602 | FIX-1590 owns the wake and its filter (D2). FIX-1594 only posts; it never wakes anyone itself. FIX-1602 moves the wake into Workforce after both merge, rule unchanged |
-| The scripted model | FIX-1585, FIX-1589, FIX-1590, FIX-1594; FIX-1602 adds no scenario | One resolver, one script file, one marker per scenario (ER-7). Nobody adds a second test resolver |
-| The boards | FIX-1589 and FIX-1591 (held) | FIX-1589 files rows through `fileTask` and stops there. Drain, board UI and the boot warning wait for FIX-1591 (ER-13) |
-| The channel panel | FIX-1585 and FIX-1594 | FIX-1585 renders `channel-post` items with their author. FIX-1594 adds lines, not a second renderer |
+| The channel panel and the kitchen-sink e2e | FIX-1609, FIX-1611 | FIX-1609 owns the live wiring and "working". FIX-1611 builds on them and owns names and re-pointing; it waits for FIX-1609 for this reason |
+| The scripted model | FIX-1610, FIX-1611 | One resolver, one script file (ER-7). No second test resolver |
+| The kitchen-sink README | FIX-1606, FIX-1611 | FIX-1606's key fix lands first; FIX-1611 keeps it |
+| Goal checks that read kitchen-sink | FIX-1611, FIX-1601 | FIX-1611 re-points them (ER-27); FIX-1601 re-runs them (ER-18) |
 
 ## Not children, deliberately
 
-FIX-1591 (the boards, held for the owner's `escalations` call) · FIX-1459 (PACKAGE.md, the file
-fence) · FIX-1415 (channel admin) · FIX-1493 (verified identity) · FIX-1476 (the channel
-convention this set runs on, Done). Linked, never re-parented.
+FIX-1591 (the boards, held for the owner's `escalations` call) · FIX-1415 (channel admin, which
+brings page hiring back) · FIX-1493 (verified identity) · FIX-1476 (the channel convention,
+Done) · FIX-1598 (durable hire, Done, another epic's). Linked, never re-parented.
 
 ## Wrap
 
-When ER-17 to ER-19 hold: run the lessons pass, dispatch docs polish over the kitchen-sink README
-and the channel docs, and report the outcome in Linear from the browser evidence. Meaningful
-design amendments go in a follow-up PR from `main`, not a final status commit.
+When ER-17 to ER-19 hold: run the lessons pass, with the reload-graded checks as its first case;
+dispatch docs polish over the kitchen-sink README and the channels guide; report the outcome in
+Linear from the browser evidence and the smoke. Design changes go in a follow-up PR from `main`.

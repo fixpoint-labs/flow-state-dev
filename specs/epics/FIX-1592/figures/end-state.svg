@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 430" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, three ways of talking: talk to a seat, where an agent seat keeps your message and its reply, and the desk clerk answers with a model or files your note onto a board (FIX-1585, FIX-1589); a post to a channel with no seat author runs each member agent seat once, through Workforce's stock seat-wake routing (FIX-1590, FIX-1602); an agent seat replies into a channel it belongs to, under its own name (FIX-1594). The fence: Workforce changes where a path needs them; no Workforce word in core, engine, client or react; no kitchen-sink-only messaging API; one kind-to-action map; the clerk files only through the channel's fileTask; a post a seat wrote wakes no seat. Composed in by the app: the model, scripted in the browser checks; the one kind-to-action map; which members are agent seats. Replaced in one line: the model, and the no-ping-pong rule. Not built: the boards' drain and the escalations call (FIX-1591, held), Assistant tools that post or ask, channel admin, verified identity, Layer 1 substrate, live updates of others' posts.">
+     aria-label="What's in the box. In the box, one support conversation: a post to a routed channel runs one specialist, picked by purpose, or the fallback, and the answer lands as the specialist's own line every time, whether or not the model called the post tool (both FIX-1610); the open view shows the line and who is working, with no reload (FIX-1609); a specialist talked to directly keeps both sides and only its own cases (FIX-1585, shipped). The fence: no Workforce word in core, engine, client or react; no kitchen-sink poll or private API; routing is one channel's opt-in and an unrouted channel wakes every agent member as today; one evaluator call per post to route; a seat's post wakes no seat, so an answer is never routed again; the answer is the seat's own post and the route never speaks. Composed in by the app: four specialists by purpose, the fallback member, the escalations board, the model. Replaced in one line: the model, the route line, the fallback member. Not built: hired specialists in the channel, escalations served, a care specialist, word-by-word streaming into the channel, verified identity, specialists consulting each other.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -26,58 +26,71 @@
 
   <g id="in-the-box">
     <rect class="box" x="16" y="16" width="580" height="270" rx="6"/>
-    <text class="t-lbl" x="32" y="38">IN THE BOX &#183; THREE WAYS OF TALKING</text>
-    <rect class="door" x="32" y="50" width="176" height="100" rx="4"/>
-    <text class="t-b" x="44" y="70">talk to a seat</text>
-    <text class="t-s" x="44" y="88">an agent keeps both sides;</text>
-    <text class="t-s" x="44" y="102">the clerk answers with a</text>
-    <text class="t-s" x="44" y="116">model, or files the note</text>
-    <text class="t-ok" x="44" y="138">FIX-1585 &#183; FIX-1589</text>
-    <rect class="door" x="218" y="50" width="176" height="100" rx="4"/>
-    <text class="t-b" x="230" y="70">posts reach agents</text>
-    <text class="t-s" x="230" y="88">each member agent seat</text>
-    <text class="t-s" x="230" y="102">runs once on the post</text>
-    <text class="t-ok" x="230" y="138">FIX-1590 &#183; FIX-1602</text>
-    <rect class="door" x="404" y="50" width="176" height="100" rx="4"/>
-    <text class="t-b" x="416" y="70">an agent replies in it</text>
-    <text class="t-s" x="416" y="88">a post into its channel,</text>
-    <text class="t-s" x="416" y="102">under the seat's own name</text>
-    <text class="t-ok" x="416" y="138">FIX-1594</text>
-    <path class="fence" d="M32 166 L580 166"/>
-    <text class="t-ok" x="32" y="186">THE FENCE</text>
-    <text class="t-s" x="32" y="204">Workforce changes where a path needs them; no Workforce word in core,</text>
-    <text class="t-s" x="32" y="218">engine, client or react</text>
-    <text class="t-s" x="32" y="236">no kitchen-sink-only messaging API &#183; one kind-to-action map</text>
-    <text class="t-s" x="32" y="254">the clerk files only through the channel's own fileTask</text>
-    <text class="t-s" x="32" y="272">a post a seat wrote wakes no seat, so two agents never loop</text>
+    <text class="t-lbl" x="32" y="38">IN THE BOX &#183; ONE SUPPORT CONVERSATION</text>
+    <rect class="door" x="32" y="50" width="128" height="104" rx="4"/>
+    <text class="t-b" x="42" y="70">routed to one</text>
+    <text class="t-s" x="42" y="88">a post runs one</text>
+    <text class="t-s" x="42" y="101">specialist, picked</text>
+    <text class="t-s" x="42" y="114">by purpose; else</text>
+    <text class="t-s" x="42" y="127">the fallback</text>
+    <text class="t-ok" x="42" y="146">FIX-1610</text>
+    <rect class="door" x="172" y="50" width="128" height="104" rx="4"/>
+    <text class="t-b" x="182" y="70">answer lands</text>
+    <text class="t-s" x="182" y="88">the specialist's</text>
+    <text class="t-s" x="182" y="101">own line, every</text>
+    <text class="t-s" x="182" y="114">time, tool call</text>
+    <text class="t-s" x="182" y="127">or not</text>
+    <text class="t-ok" x="182" y="146">FIX-1610</text>
+    <rect class="door" x="312" y="50" width="128" height="104" rx="4"/>
+    <text class="t-b" x="322" y="70">live view</text>
+    <text class="t-s" x="322" y="88">shows the line</text>
+    <text class="t-s" x="322" y="101">and who is</text>
+    <text class="t-s" x="322" y="114">working, with</text>
+    <text class="t-s" x="322" y="127">no reload</text>
+    <text class="t-ok" x="322" y="146">FIX-1609</text>
+    <rect class="door" x="452" y="50" width="128" height="104" rx="4"/>
+    <text class="t-b" x="462" y="70">talk directly</text>
+    <text class="t-s" x="462" y="88">a specialist</text>
+    <text class="t-s" x="462" y="101">keeps both sides</text>
+    <text class="t-s" x="462" y="114">and only its</text>
+    <text class="t-s" x="462" y="127">own cases</text>
+    <text class="t-ok" x="462" y="146">FIX-1585 &#183; shipped</text>
+    <path class="fence" d="M32 170 L580 170"/>
+    <text class="t-ok" x="32" y="190">THE FENCE</text>
+    <text class="t-s" x="32" y="208">no Workforce word in core, engine, client or react &#183; no kitchen-sink poll or private API</text>
+    <text class="t-s" x="32" y="226">routing is one channel's opt-in; an unrouted channel wakes every agent member</text>
+    <text class="t-s" x="32" y="244">one evaluator call per post to route &#183; a seat's post wakes no seat, so no answer re-routes</text>
+    <text class="t-s" x="32" y="262">the answer is the seat's own post; the route never speaks</text>
   </g>
 
   <g id="composed-in">
     <rect class="app" x="612" y="16" width="312" height="270" rx="6"/>
     <text class="t-lbl" x="628" y="38">COMPOSED IN BY THE APP</text>
-    <text class="t-d" x="628" y="66">the model</text>
-    <text class="t-s" x="628" y="82">scripted in the browser checks,</text>
-    <text class="t-s" x="628" y="96">one entry for the agent kind,</text>
-    <text class="t-s" x="628" y="110">one for the clerk</text>
-    <text class="t-d" x="628" y="140">one kind-to-action map</text>
-    <text class="t-s" x="628" y="156">desk-clerk: answer &#183; agent: run</text>
-    <text class="t-s" x="628" y="170">followup-runner: none</text>
-    <text class="t-d" x="628" y="200">which members are agent seats</text>
-    <text class="t-s" x="628" y="216">a WORKER.md with no flow line;</text>
-    <text class="t-s" x="628" y="230">a post runs no clerk or runner</text>
+    <text class="t-d" x="628" y="66">four specialists by purpose</text>
+    <text class="t-s" x="628" y="82">devices &#183; accounts &#183; fsd &#183; general;</text>
+    <text class="t-s" x="628" y="96">each WORKER.md description is its job</text>
+    <text class="t-d" x="628" y="126">the fallback member</text>
+    <text class="t-s" x="628" y="142">support.general</text>
+    <text class="t-d" x="628" y="172">the escalations board</text>
+    <text class="t-s" x="628" y="188">a specialist files what a person</text>
+    <text class="t-s" x="628" y="202">must take; nobody drains it here</text>
+    <text class="t-d" x="628" y="232">the model</text>
+    <text class="t-s" x="628" y="248">scripted in the gated checks,</text>
+    <text class="t-s" x="628" y="262">real in one smoke</text>
   </g>
 
   <g id="replaced">
     <rect class="app" x="16" y="300" width="908" height="50" rx="6"/>
     <text class="t-lbl" x="32" y="320">REPLACED IN ONE LINE</text>
     <text class="t-d" x="32" y="340">the model: one string</text>
-    <text class="t-d" x="400" y="340">the no-ping-pong rule, if agents should hear each other</text>
+    <text class="t-d" x="220" y="340">the route line: take it out and every specialist hears every post</text>
+    <text class="t-d" x="720" y="340">the fallback member</text>
   </g>
 
   <g id="not-built">
     <rect class="out" x="16" y="364" width="908" height="54" rx="6"/>
     <text class="t-lbl" x="32" y="384">NOT BUILT</text>
-    <text class="t-go" x="32" y="400">the boards' drain and the escalations call (FIX-1591, held) &#183; Assistant tools that post or ask &#183; channel admin (FIX-1415)</text>
-    <text class="t-go" x="32" y="413">verified identity (FIX-1493) &#183; Layer 1 channel / notify / dispatch &#183; live updates of others' posts</text>
+    <text class="t-go" x="32" y="400">hired specialists in the channel (FIX-1415) &#183; escalations served (FIX-1591, held) &#183; a care specialist</text>
+    <text class="t-go" x="32" y="413">word-by-word streaming into the channel &#183; verified identity (FIX-1493) &#183; specialists consulting each other</text>
   </g>
 </svg>
