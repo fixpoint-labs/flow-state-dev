@@ -1344,10 +1344,12 @@ routed post never reaches it. A channel without the line is not routed, even on 
 notify block runs for every member. `channelInstances` refuses a `routing:` on a kind built without
 a route, and a fallback that isn't a member with a seat the route can reach.
 
-A routed channel also keeps a small record in its session state, under `channelRouteLedger`: its
-last 20 lines and the person's last post with where it went. Neither the 20 lines a routed member
-sees nor the hold is limited by the session's history window. A channel without `routing:` keeps
-no such record.
+A routed channel keeps its last 20 lines, and the person's last post with where it went, in its
+session state under `channelRouteLedger`. So neither the lines a routed member sees nor the hold
+is limited by the session's history window. The exception is the first routed post on a
+channel, and the first after lines were posted with `routing:` removed. That post is never held,
+and its member sees only the earlier lines still inside the history window, which can be fewer
+than 20. A channel without `routing:` keeps no such record.
 
 Routing needs in-process dispatch. Behind a dispatcher that hands work to an external queue, such
 as BullMQ, a post is written but its notify block never runs, so no member is picked or woken and
