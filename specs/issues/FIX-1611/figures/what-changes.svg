@@ -1,0 +1,84 @@
+<svg viewBox="0 0 940 390" role="img" aria-label="Today kitchen-sink shows three channels, six named seats on three kinds and a Hire another button, all removed. After, it shows one routed channel, support.help, sending each post to one of four specialists named for what they handle, with support.general as the fallback, and an escalations board a specialist files onto that nobody drains. The operator's HTTP hire stays, off the page."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .chan  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .spec  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .board { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .strike { stroke:var(--gone); stroke-width:1.2; }
+    .arrow { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-x   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="390"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="440" height="358" rx="6"/>
+    <text class="t-lbl" x="32" y="40">TODAY · WHAT THE RAIL SHOWS</text>
+    <text class="t-lbl" x="32" y="66">CHANNELS</text>
+    <rect class="gone" x="32" y="74" width="408" height="26" rx="4"/>
+    <text class="t-g" x="44" y="91">support.desk · five members · followups, escalations</text>
+    <rect class="gone" x="32" y="106" width="408" height="26" rx="4"/>
+    <text class="t-g" x="44" y="123">support.ada-wren · a two-seat direct message</text>
+    <rect class="gone" x="32" y="138" width="408" height="26" rx="4"/>
+    <text class="t-g" x="44" y="155">support.noticeboard · its own digest kind</text>
+    <text class="t-lbl" x="32" y="190">SEATS · THREE KINDS</text>
+    <rect class="gone" x="32" y="198" width="408" height="26" rx="4"/>
+    <text class="t-g" x="44" y="215">ada, grace · desk-clerk</text>
+    <rect class="gone" x="32" y="230" width="408" height="26" rx="4"/>
+    <text class="t-g" x="44" y="247">iris, otto, mara · agent · mara hires and fires</text>
+    <rect class="gone" x="32" y="262" width="408" height="26" rx="4"/>
+    <text class="t-g" x="44" y="279">wren · followup-runner, drains followups</text>
+    <rect class="gone" x="32" y="302" width="130" height="28" rx="14"/>
+    <text class="t-g" x="54" y="320">Hire another</text>
+    <text class="t-x" x="32" y="356">EVERY AGENT HEARS EVERY POST · ALL OF THIS LEAVES</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="484" y="16" width="440" height="358" rx="6"/>
+    <text class="t-lbl" x="500" y="40">AFTER</text>
+    <rect class="chan" x="500" y="54" width="408" height="46" rx="5"/>
+    <text class="t-b" x="514" y="74">support.help</text>
+    <text class="t-s" x="514" y="91">routing · fallback support.general · board escalations</text>
+    <path class="arrow" d="M704 100 V120"/>
+    <path class="arrow" d="M699 114 L704 121 L709 114"/>
+    <text class="t-s" x="714" y="116">one per post, by description</text>
+  </g>
+
+  <g id="specialists">
+    <rect class="spec" x="500" y="126" width="200" height="50" rx="5"/>
+    <text class="t-b" x="512" y="146">support.devices</text>
+    <text class="t-s" x="512" y="164">printers, laptops, wifi</text>
+    <rect class="spec" x="708" y="126" width="200" height="50" rx="5"/>
+    <text class="t-b" x="720" y="146">support.accounts</text>
+    <text class="t-s" x="720" y="164">sign-in, billing, refunds</text>
+    <rect class="spec" x="500" y="184" width="200" height="50" rx="5"/>
+    <text class="t-b" x="512" y="204">support.fsd</text>
+    <text class="t-s" x="512" y="222">building with flow-state-dev</text>
+    <rect class="spec" x="708" y="184" width="200" height="50" rx="5"/>
+    <text class="t-b" x="720" y="204">support.general</text>
+    <text class="t-s" x="720" y="222">anything else · the fallback</text>
+  </g>
+
+  <g id="escalations">
+    <path class="arrow" d="M704 234 V262"/>
+    <path class="arrow" d="M699 256 L704 263 L709 256"/>
+    <text class="t-s" x="714" y="254">needs a person · file it, say so</text>
+    <rect class="board" x="500" y="268" width="408" height="46" rx="5"/>
+    <text class="t-b" x="514" y="288">escalations</text>
+    <text class="t-s" x="514" y="305">filed through the channel's own fileTask · nobody drains it</text>
+    <text class="t-lbl" x="500" y="356">OFF THE PAGE, KEPT · THE OPERATOR'S HTTP HIRE</text>
+  </g>
+</svg>

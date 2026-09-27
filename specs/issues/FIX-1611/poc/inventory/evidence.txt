@@ -1,0 +1,68 @@
+# FIX-1611 · poc/inventory evidence
+# tree: 16eee383e (origin/main 0efb98483) plus this spec's working copy
+# run from the repository root
+
+## 1. check.mjs, the table as written: must PASS (exit 0)
+goal hits: 14 · e2e test hits: 10 · rows: 25
+  goal  goals/cli-principal/runs-in-the-apps-organization/
+  goal  goals/hire-plane/discover-survives-an-unaddressable-row/
+  goal  goals/hire-plane/reload-survives-an-unaddressable-row/
+  goal  goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/
+  goal  goals/kitchen-sink-talk/agent-replies-in-the-channel/
+  goal  goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+  goal  goals/kitchen-sink-talk/keeps-both-sides-across-a-reload/
+  goal  goals/workforce-channels/a-fresh-host-wakes-its-member-agents/
+  goal  goals/workforce-conventions/a-channel-holds-the-work-a-seat-drains/
+  goal  goals/workforce-conventions/capabilities-come-from-files-alone/
+  goal  goals/workforce-conventions/code-comes-from-files-alone/
+  goal  goals/workforce-conventions/durable-hire-survives-redeploy/
+  goal  goals/workforce-packages/a-held-package-reaches-one-worker/
+  goal  goals/workforce-seats/a-non-agent-seat-receives-its-skills/
+  e2e   e2e/talk-from-page.spec.ts › a line posted to support.desk shows as devuser, and is still there aft
+  e2e   e2e/talk-from-page.spec.ts › a new support.otto conversation keeps the message and the reply across
+  e2e   e2e/talk-from-page.spec.ts › a failed New conversation shows in the seat's row, opens nothing, and 
+  e2e   e2e/talk-from-page.spec.ts › a note to support.ada gets a reply a model wrote, under its desk, and 
+  e2e   e2e/talk-from-page.spec.ts › a note the clerk files shows as a row on escalations in the team panel
+  e2e   e2e/talk-from-page.spec.ts › a post to support.desk runs each agent seat once, in its own conversat
+  e2e   e2e/talk-from-page.spec.ts › a woken support.otto answers in support.desk under its own name, and i
+  e2e   e2e/workforce-shell.spec.ts › the rail opens a channel kind into conversations and a seat kind into 
+  e2e   e2e/workforce-shell.spec.ts › the rail, fully expanded in both hosts, draws each action on its row, 
+  e2e   e2e/workforce-shell.spec.ts › VG · open a declared seat, hire another of its kind, and open the hire
+
+PASS · the inventory is total and every row has a disposition and a control
+exit 0
+
+## 2. Negative control: drop the durable-hire row (--drop 8): must FAIL naming it
+FAIL · 1 problem(s)
+  MISSING  goal goals/workforce-conventions/durable-hire-survives-redeploy/
+exit 1
+
+## 3. Negative control: drop an e2e row (--drop 18): must FAIL naming that test
+FAIL · 1 problem(s)
+  MISSING  e2e/talk-from-page.spec.ts › "a note to support.ada gets a reply a model wrote, under its desk, and both are kept across a reload"
+exit 1
+
+## 4. Negative control: plant a check added later (--plant): must FAIL naming it
+FAIL · 1 problem(s)
+  MISSING  goal goals/kitchen-sink-talk/a-check-added-later/
+exit 1
+
+## 5. citations.mjs: save the baseline, then check against it: must PASS (exit 0)
+wrote 69 unresolved citation(s) to <baseline>
+exit 0
+unresolved: 69 now · 69 at baseline · 0 new
+
+PASS · every citation that resolved at baseline still resolves
+exit 0
+
+## 6. Negative control: hide a cited goal folder (--hide): must FAIL naming each citation of it
+unresolved: 75 now · 69 at baseline · 6 new
+
+FAIL · a citation that resolved before no longer does
+  specs/issues/FIX-1589/PLAN.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+  specs/issues/FIX-1589/PLAN.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/run.mts
+  specs/issues/FIX-1589/SPEC.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+  specs/issues/FIX-1611/EVOLUTION.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+  specs/issues/FIX-1611/PLAN.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+  specs/issues/FIX-1611/SPEC.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+exit 1
