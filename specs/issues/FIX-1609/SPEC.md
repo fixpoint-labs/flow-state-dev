@@ -52,7 +52,7 @@ the page stays silent.
 | **Model** | n/a: the scripted model ([epic D3](../../epics/FIX-1592/DECISIONS.md#d3)), keyless. One seat holds its answer about three seconds, so "working" can be seen |
 | **Signal** | Per post. **working**: `support.otto is working` before otto's line. **line**: within 15 s of Send, one line with the token under `support.otto`; "working" gone once the run ends. **once**: after the final reload, each line once. **no-poll**: at most two snapshot reads between Send and the line |
 | **Input** | `support.desk`, two posts with fresh tokens, the second while otto works. Another channel or seat must pass too |
-| **Anti-game** | No reload before the last leg. Nothing asserted on the wire, a hook's return, a package test or a CLI |
+| **Anti-game** | No reload before the last leg. Nothing asserted on the wire, a hook's return, a package test or a CLI. **no-poll** counts the page's own reads; the server's reads behind the stream are D2's |
 | **Control that must fail** | Today's `main`, and `GOAL_CONTROL=no-live` (the panel doesn't ask to be live). Both FAIL at **working** and **line** only, before the PASS counts |
 
 ## What changes
@@ -92,8 +92,8 @@ flowchart LR
   R -->|"lines · who is working"| K["kitchen-sink channel panel"]
 ```
 
-The engine reads the store for each open view and sends what is new. No writer knows anyone is
-watching, so one server or several behave alike.
+For each open view the engine reads what is running now and sends what is new. No writer knows
+anyone is watching, so one server or several behave alike.
 
 ## What stays as it is
 
@@ -111,8 +111,9 @@ own poll.
 
 1. **[D1](DECISIONS.md#d1) · A view hears its whole session only when it asks, with `live: true`.**
    If wrong: shared views must know to ask. Flipping the default later changes every app.
-2. **[D2](DECISIONS.md#d2) · The stream reads the store about once a second per open view, with
-   no new store capability.** If wrong: many open views pay for reads that mostly find nothing.
+2. **[D2](DECISIONS.md#d2) · About once a second per open view, the stream reads what is running
+   now in the session, with filters the store already has.** If wrong: sessions with much running
+   at once, or thousands of past runs to scan on open, cost more than a push path would.
 3. **[D3](DECISIONS.md#d3) · "Working" is a run that hasn't finished.** If wrong: a run waiting on
    an approval, or one that died and hasn't been swept, reads as working.
 

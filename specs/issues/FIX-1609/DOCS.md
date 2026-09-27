@@ -38,12 +38,14 @@ A live view holds a connection open while it is mounted, and the server reads th
 once a second for it. Leave `live` off for a view only one person writes to; the request stream
 already carries everything there. If the server doesn't offer the stream, the view behaves as if
 you hadn't asked, with no error. A dropped connection reconnects on its own and fills in what it
-missed.
+missed. The server also closes each connection after at most 15 minutes and the hook reopens it,
+which is when access is checked again.
 
 ## UPDATE · same page · "When the list changes" · append
 
 In a view with `live: true` the list also changes on its own, within about a second of a run
-starting or finishing, from this tab or anywhere else.
+starting or finishing, from this tab or anywhere else. A run that hasn't finished stays in the
+list even when it is older than the page the hook reads.
 
 ## UPDATE · same page · "What a row's status tells you" · replace the second paragraph
 
@@ -71,11 +73,14 @@ finishes.
 ### `createSessionSSEClient(options)`
 
 Opens one stream for a whole session: `GET /api/flows/sessions/:sessionId/stream`. It delivers
-each finished item from any request in the session, once, with the id of the request that kept
-it, and a notice when the session's background runs change. Items the session snapshot hides are
-never sent. It reconnects with backoff and passes back the server time it last heard, so the
-server resends what it might have missed; drop duplicates by item id. It stops, without retrying,
-when the server refuses the session or has no such route. `useSession` wraps it for `live: true`.
+each finished item from any request in the session, with the id of the request that kept it, and
+a notice naming the session's unfinished background runs whenever that set changes. Items the
+session snapshot hides are never sent. It reconnects with backoff, including when the server
+closes the connection after at most 15 minutes, and passes back the server time it last heard so
+the server resends what it might have missed. So after a reconnect an item can arrive twice: drop
+repeats by request id and item id together, since two requests can keep items with the same id.
+`useSession` does this for you with `live: true`. It stops, without retrying, when the server
+refuses the session or has no such route.
 
 ## UPDATE · `apps/docs/docs/client/overview.md` · "Stream connection", closing paragraph
 
@@ -103,11 +108,14 @@ seat's address, so the page can say who is working.
 ## UPDATE · `packages/engine/README.md` · after the `/children` paragraphs
 
 `GET /api/flows/sessions/:sessionId/stream` follows a whole session. It is authorized as the
-session snapshot is. While the connection is open, the server reads the session about once a
-second from the store and sends each finished item that passes the snapshot's filter, with its
-request id, plus a notice when the session's child runs change. Every server reads the same store,
-so a line written on one instance reaches a view held by another. `since` (a server time the
-stream sent earlier) bounds the first read; without it the stream covers the last minute.
+session snapshot is. About once a second the server reads, from the store, the session's
+unfinished requests and those updated since its last read, and sends each finished item that
+passes the snapshot's filter, with its request id. It also tracks the session's unfinished child
+runs and sends a notice naming them when that set changes. Each read costs what is running now,
+not the session's history. Every server reads the same store, so a line written on one instance
+reaches a view held by another. `since` (a server time the stream sent earlier) bounds the first
+read; without it the stream covers the last minute. The server closes the connection after at
+most 15 minutes, and the client reconnects.
 
 ## UPDATE · `packages/react/README.md` · `SessionView.childSessions` · replace "Current as of the reader's last interaction…"
 
@@ -124,7 +132,8 @@ show who is working without the user doing anything.
 Replace its first sentence and the clause about no session-level channel: The axis is
 interaction-scoped by default. A view that sets `live: true` also re-reads it on the session
 stream's run-changed notice, through the same guarded read, so the generation and sequence guards
-below cover both. The stream carries a notice, never rows.
+below cover both. The notice names the unfinished runs, and the hook keeps any the page lacks, so
+an unfinished run older than the page still shows.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · the **Channels** bullet, last sentence
 

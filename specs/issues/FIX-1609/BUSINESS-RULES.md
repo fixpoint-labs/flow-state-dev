@@ -11,10 +11,11 @@ asked for `live: true`; "a run" is background work under that session.
 |---|---|---|---|
 | BR-1 | A request the view didn't send keeps an item in the session: a seat's line, a post from another tab | It shows in the view, whole, within about a second of being kept. No reload. After a reload it shows once, in the same place | Goal check (line, once) · V1 · V3 |
 | BR-2 | The item is one a snapshot would hide: a transient, a trace, anything not meant for the client | Never sent. A live view and a reload show the same set | V2 |
-| BR-3 | A request the view sent | Its items come on its own stream, as today. The live copy is dropped by item id. Each shows once | Goal check (once) · V3 |
+| BR-3 | A request the view sent | Its items come on its own stream, as today. The live copy is dropped, matched by request and item id. Each shows once | Goal check (once) · V3 |
 | BR-4 | The same session is open live in two tabs, or by two people | Each shows every line, from either tab or any seat | V1 · V3 |
 | BR-5 | Two requests keep items at about the same time | The view orders them as a reload would | V3 |
 | BR-6 | An item changes after it was sent | Not resent. It shows at the view's next snapshot read: a reload, or the end of a request the view sent | V3 |
+| BR-22 | Two requests each keep a keyed item with the same key, so the same item id | Each shows as a reload shows it. Items are told apart by request and item id, never item id alone | V1 · V3 |
 
 ## Who is working
 
@@ -25,15 +26,17 @@ asked for `live: true`; "a run" is background work under that session.
 | BR-9 | The run stops for an approval, or its worker dies | It reads as working until it finishes or is swept ([D3](DECISIONS.md#d3)) | V4 |
 | BR-10 | Two seats work on one post | Two rows, each clearing on its own | V4 |
 | BR-11 | A run has no recorded flow | Shown as background work, not a seat | V4 |
+| BR-23 | An unfinished run is older than the run list's first page | Still shown as working. It stays in the list until it finishes | V1 · V3 |
 
 ## The connection
 
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-12 | A view mounts while a line is being kept | Nothing is lost between the snapshot and the stream: the stream's first read covers the gap | V1 · V3 |
-| BR-13 | The connection drops: the network, a serverless time limit, a restart | The client reconnects with backoff, re-reads, and the view shows only what it didn't hold. Nothing twice | V1 · V3 |
+| BR-13 | The connection drops: the network, a serverless time limit, a restart, the 15-minute close | The client reconnects with backoff and the server re-reads a few seconds back. The view shows only what it didn't hold. Nothing twice | V1 · V3 |
 | BR-14 | The view unmounts or the page closes | The server's reads for it stop with the connection | V1 |
 | BR-15 | The caller may not read the session, or it doesn't exist | Refused exactly as the snapshot refuses. Nothing streamed | V1 |
+| BR-24 | A stream has been open 15 minutes | The server closes it and the client reconnects (BR-13), so access is checked again. A caller who lost access stops hearing the session within that time | V1 · V3 |
 | BR-16 | The server has no session stream (an older version) | The view behaves as today, with no error shown, and doesn't retry in a loop | V3 |
 | BR-17 | The seat's reply is written on a different server from the one holding the view | It arrives the same way: every server reads the shared store | V1, two engines on one store |
 | BR-18 | A view without `live` | Opens no stream and makes no new reads | V3 · VG under `no-live` |
@@ -42,14 +45,14 @@ asked for `live: true`; "a run" is background work under that session.
 flowchart LR
   M["view mounts, asks to be live"] --> O["stream opens · first read covers the gap"]
   O --> L["new items and run nudges, about once a second"]
-  L -->|"connection drops"| B["reconnect with backoff"]
+  L -->|"connection drops, or 15 minutes pass"| B["reconnect with backoff"]
   B --> O
   O -->|"refused, or no such route"| T["today's behaviour · no error"]
   L -->|"view unmounts"| X["server stops reading"]
 ```
 
 One loop per open view, and every way out of it is quiet. A refusal leaves the view as if it
-never asked.
+never asked; a reconnect is checked for access like the first open.
 
 ## What doesn't move
 
