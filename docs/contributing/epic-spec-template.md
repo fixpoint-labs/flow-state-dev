@@ -127,8 +127,10 @@ proves it and the control that must fail. **What's in the box**, pinned, with it
 **The set** in one line each, with as-of counts and links to live Linear/PR state. **The
 path**, pinned, with a sentence — this is what a reader arriving mid-epic wants first. **Who owns
 what**, pinned, with a sentence. Then **Sign off**: the objective and the one or two cross-cutting
-calls that pass the filters, compact form. Then **Reviewers · look here** at epic altitude. Then
-the links line and the collapsed contract.
+calls that pass the filters, compact form — each a subheading, its trade-off figure pinned
+([`spec-figures.md`](spec-figures.md) → "The trade-off"), and one line naming the row it came
+down to and *If wrong:*. Then **Reviewers · look here** at epic altitude. Then the links line and
+the collapsed contract.
 
 > ```md
 > # spec(epic): a dropped connection is a non-event (FIX-770)
@@ -179,12 +181,23 @@ the links line and the collapsed contract.
 >
 > ## Sign off
 >
-> 1. **A dropped connection is worth three issues and a closure run, now.** If wrong: a cycle on
->    resilience nobody notices, which the closure run exists to make impossible to miss.
-> 2. **Nothing in this epic adds a public config option.** If wrong: the first app that needs a
->    knob comments up, and the set stalls on a cross-cutting question.
+> ### A dropped connection is worth three issues and a closure run, now · D1
 >
-> **What would change my mind on 1:** evidence that reconnects are rare enough that apps don't
+> <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/d1-worth-it.svg" width="940" alt="Three issues and a closure run now, chosen, beside two issues without the backoff default, and beside waiting until an app asks. Decides it: a silently dead connection, which only heartbeats catch. Price: an epic slot for a mostly serial set" />
+>
+> It comes down to a connection that dies silently: without heartbeats, resume never fires.
+> **If wrong:** a cycle on resilience nobody notices, which the closure run exists to make
+> impossible to miss.
+>
+> ### Nothing in this epic adds a public config option · D3
+>
+> <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/d3-no-knobs.svg" width="940" alt="No public config option, chosen, beside a knob wherever an issue finds it convenient. Decides it: who settles a cross-cutting question, the epic or one child. Price: a child that needs a knob stops and comments up" />
+>
+> It comes down to who decides: a knob per issue lets one child settle a question for all four.
+> **If wrong:** the first app that needs a knob comments up, and the set stalls on a
+> cross-cutting question.
+>
+> **What would change my mind on D1:** evidence that reconnects are rare enough that apps don't
 > notice them. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The rules every child
 > obeys: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 >
@@ -386,8 +399,10 @@ two issues both touch. Same shape as an issue's decisions ([`spec-template.md`](
 cross-cutting decision.** Sections, in order:
 
 1. **The tree.**
-2. **One card per decision**, anchored, with *Instead of · Because · Locks in*, and **what would
-   change my mind** on the objective.
+2. **One card per decision**, anchored, with *Instead of · Because · Locks in*, **what would
+   change my mind** on the objective, and its **trade-off figure**, `figures/dN-<slug>.svg`, with
+   the sentence naming the row it came down to ([`spec-figures.md`](spec-figures.md) → "The
+   trade-off"). The PR body pins the same file under the decision's sign-off line.
 3. **Who owns what** — the ownership matrix figure: rule × issue, each rule with exactly one
    *decides* or *builds* cell and any number of *consumes* cells. Read a row to see where a
    decision is made, where it's built, and where it's only consumed; a *consumes* cell is a
@@ -431,6 +446,10 @@ cross-cutting decision.** Sections, in order:
 > **What would change my mind:** evidence that reconnects are rare enough that apps don't notice
 > them. Then this is polish, and the epic should not finish.
 >
+> ![Is resilience worth an epic now: three issues and a closure run, chosen, beside two issues and beside waiting. Decides it: a silently dead connection, which only heartbeats catch. Price: an epic slot. Flips if reconnects are rare enough that apps don't notice](figures/d1-worth-it.svg)
+>
+> It comes down to a connection that dies silently: without heartbeats, resume never fires.
+>
 > <a name="d2"></a>
 > ## D2 · The client is the only reconnect actor; the server holds no per-client state and never initiates
 >
@@ -440,6 +459,10 @@ cross-cutting decision.** Sections, in order:
 > | **Because** | A buffer turns a stream into a store, and "how long do we keep it" has no good answer at framework level. Per-client state is something that has to expire |
 > | **Locks in** | Resume needs no retention rules. Two issues depend on this silently; if it falls, the epic's *scope* changes rather than one issue's design |
 >
+> ![Who reconnects: the client alone, chosen, beside a server-side replay buffer. Decides it: how long the server keeps anything, which has no framework-level answer. Price: no server-initiated recovery](figures/d2-client-only.svg)
+>
+> It comes down to retention: a buffer needs a rule for how long, and there isn't a good one.
+>
 > <a name="d3"></a>
 > ## D3 · Nothing in this epic adds a public config option
 >
@@ -448,6 +471,10 @@ cross-cutting decision.** Sections, in order:
 > | **Instead of** | A knob where each issue finds it convenient |
 > | **Because** | Resilience is a property of the transport, not something an app opts into. An issue that finds it needs a knob has hit a cross-cutting question |
 > | **Locks in** | A child that needs one comments up on this PR rather than deciding locally. FIX-777 ships a default with no options |
+>
+> ![Config options: none in the set, chosen, beside a knob per issue. Decides it: who settles a cross-cutting question, the epic or one child. Price: a child that needs a knob stops and comments up](figures/d3-no-knobs.svg)
+>
+> It comes down to who decides: a knob per issue lets one child settle a question for all four.
 >
 > ## Who owns what
 >
