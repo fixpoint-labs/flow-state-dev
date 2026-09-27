@@ -14,12 +14,12 @@
  * written by another server reaches a view held by this one:
  *
  * - **Items.** The session's unfinished requests (their items can change
- *   without moving the request's update time on most adapters), plus its
- *   requests newest-updated first, read until one is older than the floor.
- *   A request's finishing write follows its items and moves its update time,
- *   so the two reads miss nothing. The floor trails each read's start by a few
- *   seconds, which covers other servers' clocks, write latency and rows that
- *   move while paging; a repeat costs one set lookup.
+ *   without moving the request's update time on most adapters), plus every
+ *   request updated since the floor, in one read from the newest. A request's
+ *   finishing write follows its items and moves its update time, so the two
+ *   reads miss nothing. The floor trails each read's start by a few seconds,
+ *   which covers other servers' clocks and write latency; a repeat costs one
+ *   set lookup.
  * - **Runs.** Every run under the session is read once when the stream opens.
  *   After that, only runs whose update time moved since the floor (a run moves
  *   when it starts) and runs already known to be unfinished are checked.
@@ -85,8 +85,8 @@ export const SESSION_STREAM_TIMINGS = {
 /** Requests whose items may change without their update time moving. */
 const UNFINISHED_REQUEST_STATUSES: readonly RequestStatus[] = ["in_progress", "suspended"];
 
-/** Rows per page when reading requests or runs newest-updated first. */
-const RECENT_PAGE_SIZE = 20;
+/** Rows the first read of requests or runs updated since the floor asks for. */
+const RECENT_READ_LIMIT = 20;
 
 /** Rows per page when reading every run once, at open. */
 const OPEN_PAGE_SIZE = 100;
@@ -260,7 +260,7 @@ async function readFinishedItems(
 
   await forEachUpdatedSince(
     floor,
-    (page) => stores.request.list({ sessionId, tenantId, orderBy: "updatedAt", ...page }),
+    (limit) => stores.request.list({ sessionId, tenantId, orderBy: "updatedAt", limit }),
     async (record) => {
       if (records.has(record.id)) return;
       // Adapters that keep items apart from the record leave them off a list
@@ -322,11 +322,11 @@ class RunTracker {
 
     await forEachUpdatedSince(
       floor,
-      (page) =>
+      (limit) =>
         stores.session.list({
           parentage: { parentOf: sessionId },
           orderBy: "updatedAt",
-          ...page,
+          limit,
           ...identity
         }),
       async (child) => {
@@ -369,20 +369,31 @@ function toSessionRun(child: SessionRecord, id: string, parentSessionId: string)
 }
 
 /**
- * Visit rows newest-updated first, a page at a time, until one is older than
- * `floor` or a page comes back short. `readPage` reads the page it is given.
+ * Visit every row updated since `floor`, newest first.
+ *
+ * The rows come from one read that starts at the newest, never from pages at
+ * an offset. An update time changes while a scan runs: a write moves a row up,
+ * a server whose clock runs behind can move one down, a delete removes one.
+ * Between two pages, a row moving down past the boundary or leaving shifts the
+ * row after it onto the page already read, and a row left unchanged is never
+ * visited. `read` asks for the newest `limit` rows. When every row it returns
+ * is newer than `floor`, the window may hold more, so it reads again from the
+ * newest with twice the limit. The cost follows what changed since the floor,
+ * never the history.
  */
 async function forEachUpdatedSince<T extends { updatedAt: number }>(
   floor: number,
-  readPage: (page: { limit: number; offset: number }) => Promise<T[]>,
+  read: (limit: number) => Promise<T[]>,
   visit: (row: T) => Promise<void>
 ): Promise<void> {
-  for (let offset = 0; ; offset += RECENT_PAGE_SIZE) {
-    const page = await readPage({ limit: RECENT_PAGE_SIZE, offset });
-    for (const row of page) {
+  for (let limit = RECENT_READ_LIMIT; ; limit *= 2) {
+    const rows = await read(limit);
+    const oldest = rows[rows.length - 1];
+    if (rows.length === limit && oldest !== undefined && oldest.updatedAt >= floor) continue;
+    for (const row of rows) {
       if (row.updatedAt < floor) return;
       await visit(row);
     }
-    if (page.length < RECENT_PAGE_SIZE) return;
+    return;
   }
 }

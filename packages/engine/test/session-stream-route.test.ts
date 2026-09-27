@@ -352,6 +352,54 @@ describe("the snapshot hands over to the stream", () => {
   });
 });
 
+describe("a scan that rows move during", () => {
+  const shipped = { ...SESSION_STREAM_TIMINGS };
+  let router: Router | undefined;
+
+  beforeEach(() => {
+    SESSION_STREAM_TIMINGS.intervalMs = 25;
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    Object.assign(SESSION_STREAM_TIMINGS, shipped);
+    if (router !== undefined) await disposeFlowApiRouter(router);
+    router = undefined;
+  });
+
+  // More requests changed since the floor than one read of them returns, so
+  // the scan reads twice. Between the two reads, a server whose clock runs a
+  // few milliseconds behind rewrites the newest request, which moves it down
+  // the order. A second page at an offset would then start one row late, and
+  // the request it skips is older than every later read's floor, so its line
+  // would never be sent.
+  it("sends every line when a write moves a row between two reads of one scan", async () => {
+    const built = buildRouter();
+    router = built.router;
+    await seedSession(built.stores, Date.now() - 600_000);
+    const base = Date.now() - 30_000;
+    const ids = Array.from({ length: 25 }, (_, i) => `r${String(i + 1).padStart(2, "0")}`);
+    for (const [i, id] of ids.entries()) {
+      await keepRequest(built.stores, id, [reply(id)], base + i + 1);
+    }
+
+    const list = built.stores.request.list.bind(built.stores.request);
+    let ordered = 0;
+    vi.spyOn(built.stores.request, "list").mockImplementation(async (options) => {
+      if (options?.orderBy === "updatedAt" && ++ordered === 2) {
+        const newest = await built.stores.request.get("r25");
+        // Now just older than r04: it drops from first to 22nd.
+        await built.stores.request.set("r25", { ...newest!, updatedAt: base + 3.5 }, "any");
+      }
+      return list(options);
+    });
+
+    const pairs = await streamedPairs(router);
+    expect(ordered).toBeGreaterThanOrEqual(2);
+    expect(ids.filter((id) => !pairs.includes(`${id}/${id}_m`))).toEqual([]);
+  });
+});
+
 describe("a connection that ends", () => {
   const shipped = { ...SESSION_STREAM_TIMINGS };
   let router: Router | undefined;
