@@ -202,6 +202,22 @@ async function post(runtime: FlowStateRuntime, channel: FlowInstance, sessionId:
   expect(result.error).toBeUndefined();
 }
 
+/** One `read` of the channel: ordinary traffic, one request on its session. */
+async function readChannel(runtime: FlowStateRuntime, channel: FlowInstance, sessionId: string) {
+  const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
+    flow: channel,
+    actionName: "read",
+    input: {},
+    userId: USER_ID,
+    sessionId,
+    stores: runtime.stores,
+    runtimeConfig: { ...runtime.runtimeConfig }
+  });
+  expect(result.error).toBeUndefined();
+  return result.output as { transcript: Array<{ body: string }> };
+}
+
 /** Wait until `posts` fan-outs on the channel have settled, and every woken run with them. */
 async function settle(runtime: FlowStateRuntime, sessionId: string, posts: number): Promise<void> {
   await until(async () => {
@@ -378,6 +394,50 @@ describe("a person's post to a routed channel", () => {
       ]);
       const read = (callsFor(route, "buy it")[0]!.state as { recent: Array<{ text: string }> }).recent;
       expect(read.map((line) => line.text)).toEqual(delivered.recent);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  // A channel's session loads only its last 50 requests' items, and every read,
+  // post and fan-out is one of them. The route reads what it needs past that.
+  it("holds the person's next post after more reads of the channel than its history window holds (BR-1)", async () => {
+    const { channel, state, heard, route } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP, MEMBERS);
+      await post(runtime, channel, HELP, "[route:support.devices] my laptop won't join the wifi");
+      await settle(runtime, HELP, 1);
+      for (let i = 0; i < 60; i += 1) await readChannel(runtime, channel, HELP);
+      await post(runtime, channel, HELP, "[route:support.accounts] and it says wrong password");
+      await settle(runtime, HELP, 2);
+
+      expect(who(heard, "wrong password")).toEqual(["support.devices"]);
+      expect(callsFor(route, "wrong password")).toHaveLength(0);
+      expect(await recordFor(runtime.stores, "wrong password")).toMatchObject({ by: "held", member: "support.devices" });
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("hands the member and the call the 20 lines before the post, however many requests came between (BR-24)", async () => {
+    const { channel, state, heard, route } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP, MEMBERS);
+      const notes = Array.from({ length: 21 }, (_, i) => `note ${i + 1}`);
+      for (const [i, note] of notes.entries()) {
+        await post(runtime, channel, HELP, note, "support.notes");
+        await settle(runtime, HELP, i + 1);
+      }
+      for (let i = 0; i < 60; i += 1) await readChannel(runtime, channel, HELP);
+      await post(runtime, channel, HELP, "[route:support.devices] my laptop won't join the wifi");
+      await settle(runtime, HELP, notes.length + 1);
+
+      const delivered = heard.find((h) => h.body.includes("laptop"))!;
+      expect(delivered.recent).toEqual(notes.slice(-20));
+      const read = (callsFor(route, "laptop")[0]!.state as { recent: Array<{ text: string }> }).recent;
+      expect(read.map((line) => line.text)).toEqual(notes.slice(-20));
     } finally {
       await state.dispose();
     }
@@ -611,8 +671,18 @@ describe("posts the route does not place", () => {
         "[route:support.devices] after routing"
       ]);
       // Never written into the channel's session: the routing is the kind's, from the file.
+      // The session keeps the route's ledger of lines, which names no fallback.
       const record = await runtime.stores.session.get(HELP);
-      expect(Object.keys(record?.state ?? {}).sort()).toEqual(["instructions", "members", "transcript"]);
+      expect(Object.keys(record?.state ?? {}).sort()).toEqual([
+        "channelRouteLedger",
+        "instructions",
+        "members",
+        "transcript"
+      ]);
+      expect(Object.keys((record?.state as { channelRouteLedger: object }).channelRouteLedger).sort()).toEqual([
+        "lastPost",
+        "lines"
+      ]);
     } finally {
       await second.state.dispose();
     }

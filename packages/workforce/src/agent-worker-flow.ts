@@ -100,7 +100,8 @@ import {
   answeredAlready,
   claimRoutedAnswer,
   postAsSeat,
-  routedTurnOf
+  routedTurnStateSchema,
+  seatIdConfigSchema
 } from "./channel-post-capability";
 import { SEAT_PACKAGES_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
@@ -1113,6 +1114,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     name: "agent-mark-routed-turn",
     inputSchema: channelNotifyInputSchema,
     outputSchema: z.object({}),
+    requestStateSchema: routedTurnStateSchema,
     execute: async (post: ChannelNotifyInput, ctx) => {
       await ctx.request.patchState({ [ROUTED_TURN_STATE]: { channelId: post.channelId, postId: post.postId } });
       return {};
@@ -1129,11 +1131,14 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     name: "agent-claim-routed-line",
     inputSchema: z.unknown(),
     outputSchema: z.union([
-      z.object({ channel: z.string(), body: z.string() }),
+      z.object({ channel: z.string(), body: z.string(), author: z.string() }),
       z.object({ answeredAlready: z.literal(true) })
     ]),
+    requestStateSchema: routedTurnStateSchema,
+    flowConfigSchema: seatIdConfigSchema,
     execute: async (reply: unknown, ctx) => {
-      const routed = routedTurnOf(ctx)!;
+      // Run only on a routed turn (the `tapIf` below), which is marked.
+      const routed = ctx.request.state.channelRoutedPost!;
       if (answeredAlready(ctx, routed.postId)) return { answeredAlready: true as const };
       if (typeof reply !== "string" || reply.trim().length === 0) {
         throw new Error(
@@ -1142,7 +1147,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
         );
       }
       if (!(await claimRoutedAnswer(ctx, routed.postId))) return { answeredAlready: true as const };
-      return { channel: routed.channelId, body: reply };
+      return { channel: routed.channelId, body: reply, author: ctx.flow.config.seatId };
     }
   });
 
@@ -1167,7 +1172,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       }),
       run
     )
-    .tapIf((_reply, ctx) => routedTurnOf(ctx as BlockContext) !== undefined, landRoutedReply);
+    .tapIf((_reply, ctx) => ctx.request.state[ROUTED_TURN_STATE] !== undefined, landRoutedReply);
 
   const flow = defineFlow({
     kind: AGENT_KIND,

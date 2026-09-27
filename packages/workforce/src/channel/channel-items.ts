@@ -8,14 +8,15 @@
  * write does: a line, or a record, that nothing can confirm was kept is a
  * failure, never a fall back to the fire-and-forget emitter.
  *
- * The reads see the request's history window only (50 requests by default),
- * so on a busy channel they return the recent items.
+ * The read sees the request's history window only (50 requests by default),
+ * so on a busy channel it returns the recent lines. The route reads its own
+ * ledger instead (`channel-route.ts`).
  */
 
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { z } from "zod";
-import { CHANNEL_POST_COMPONENT, channelTranscriptLineSchema, type ChannelTranscriptLine } from "./channel-post-line";
-import { CHANNEL_ROUTE_COMPONENT, channelRouteRecordSchema, type ChannelRouteRecord } from "./channel-route";
+import { CHANNEL_POST_COMPONENT } from "./channel-post-line";
+import { CHANNEL_ROUTE_COMPONENT, type ChannelRouteRecord } from "./channel-route";
 
 /**
  * Keep a post's line as its `channel-post` item, and resolve only once the
@@ -64,45 +65,11 @@ export async function emitChannelRouteRecord(ctx: BlockContext, record: ChannelR
  * @returns Each `channel-post` item's data that parses under `schema`.
  */
 export function readChannelPostLines<T>(ctx: BlockContext, schema: z.ZodType<T>): T[] {
-  const lines: T[] = [];
-  for (const { component, data } of channelComponents(ctx)) {
-    if (component !== CHANNEL_POST_COMPONENT) continue;
-    const parsed = schema.safeParse(data);
-    if (parsed.success) lines.push(parsed.data);
-  }
-  return lines;
-}
-
-/**
- * The posted lines and the route records inside this request's history window,
- * each oldest first, from one walk over the session's items. A malformed item
- * of either kind is skipped, as {@link readChannelPostLines} skips a line. Not
- * re-exported from the package root.
- *
- * @param ctx The route's block context, on the channel's session.
- */
-export function readChannelHistory(ctx: BlockContext): {
-  lines: ChannelTranscriptLine[];
-  records: ChannelRouteRecord[];
-} {
-  const lines: ChannelTranscriptLine[] = [];
-  const records: ChannelRouteRecord[] = [];
-  for (const { component, data } of channelComponents(ctx)) {
-    if (component === CHANNEL_POST_COMPONENT) {
-      const line = channelTranscriptLineSchema.safeParse(data);
-      if (line.success) lines.push(line.data);
-    } else if (component === CHANNEL_ROUTE_COMPONENT) {
-      const record = channelRouteRecordSchema.safeParse(data);
-      if (record.success) records.push(record.data);
-    }
-  }
-  return { lines, records };
-}
-
-/** Each component item on the session, unwrapped to its name and data, oldest first. */
-function channelComponents(ctx: BlockContext): Array<{ component: unknown; data: unknown }> {
-  return ctx.session.items.all({ itemTypes: ["component"] }).map((item) => {
+  return ctx.session.items.all({ itemTypes: ["component"] }).flatMap((item) => {
     const payload = item.payload as { component?: unknown; data?: unknown } | undefined;
-    return { component: payload?.component, data: payload?.data };
+    if (payload?.component !== CHANNEL_POST_COMPONENT) return [];
+    const line = schema.safeParse(payload.data);
+    return line.success ? [line.data] : [];
   });
 }
+

@@ -1,7 +1,8 @@
 /**
  * What a routed channel is made of, apart from the resolution itself: the
  * route value a channel kind is built with, the per-channel `routing:` setting,
- * and the record every route leaves on the channel's session.
+ * the record every route leaves on the channel's session, and the ledger the
+ * route reads a post's case from.
  *
  * A leaf, so the channel flow and `routeByPurpose` can both read it without
  * importing each other. `routeByPurpose` is canonical for how a post finds its
@@ -11,7 +12,7 @@
 
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { channelTranscriptLineSchema } from "./channel-post-line";
+import { channelTranscriptLineSchema, type ChannelTranscriptLine } from "./channel-post-line";
 
 /**
  * The component name each route's record is emitted under, on the channel's
@@ -64,11 +65,103 @@ const routedPostSchema = z.object({
   author: z.string().optional()
 });
 
-/** What a route's block is handed: the post, and the channel's declared fallback. */
-export const routeRequestSchema = z.object({
+/**
+ * What the route is handed of a person's post, read off the channel's route
+ * ledger as the post was kept: the lines before it, and the member still on
+ * the person's last post, if any.
+ */
+export const postCaseSchema = z.object({
+  /** The channel's last lines before the post (up to {@link RECENT_LINES}), oldest first. */
+  recent: z.array(channelTranscriptLineSchema),
+  /** The member the person's last post went to (by the evaluator or the fallback), with no line from it since. */
+  holder: z.string().optional()
+});
+
+export type PostCase = z.infer<typeof postCaseSchema>;
+
+/** What a route's block is handed: the post, the channel's declared fallback, and the post's case. */
+export const routeRequestSchema = postCaseSchema.extend({
   post: routedPostSchema,
   fallback: z.string()
 });
+
+/**
+ * The session-state key a routed channel keeps its route ledger under. Written
+ * only on a channel that declares `routing:`, on a kind built with a route.
+ */
+export const ROUTE_LEDGER_STATE = "channelRouteLedger";
+
+/**
+ * The route's own record of a routed channel, in the channel session's state:
+ * what the route needs of the channel, kept as each line is kept.
+ *
+ * The route reads a post's case from here, never from the session's items: a
+ * request sees those only as far back as its history window (the last 50
+ * requests by default), and every read, post and fan-out on the channel is
+ * one of them. The `channel-post` items stay the channel's lines; this keeps
+ * a copy of the last {@link RECENT_LINES} and nothing older.
+ */
+const routeLedgerSchema = z.object({
+  /** The channel's last lines, oldest first, at most {@link RECENT_LINES}. */
+  lines: z.array(channelTranscriptLineSchema),
+  /** The person's last post: who has posted a line since, and its route once recorded. */
+  lastPost: z
+    .object({
+      postId: z.string(),
+      /** The authors of the lines kept since the post. */
+      spoke: z.array(z.string()),
+      by: channelRouteRecordSchema.shape.by.optional(),
+      member: z.string().optional()
+    })
+    .optional()
+});
+
+export type RouteLedger = z.infer<typeof routeLedgerSchema>;
+
+/** The channel session state the route's blocks read and write, as far as the ledger goes. */
+export const routeLedgerStateSchema = z.object({ [ROUTE_LEDGER_STATE]: routeLedgerSchema.optional() });
+
+/**
+ * Keep one line in the ledger. A person's post (no `author`) also comes back
+ * with its case: the lines kept before it, and the member still on the
+ * person's previous post. That member holds only when the previous post's
+ * route is recorded, was the evaluator's or the fallback's, and the member has
+ * kept no line since. A post that was itself held holds nothing.
+ */
+export function keepLine(ledger: RouteLedger, line: ChannelTranscriptLine): { ledger: RouteLedger; postCase?: PostCase } {
+  const lines = [...ledger.lines, line].slice(-RECENT_LINES);
+  const last = ledger.lastPost;
+  if (line.author !== undefined) {
+    if (last === undefined) return { ledger: { lines } };
+    const spoke = last.spoke.includes(line.author) ? last.spoke : [...last.spoke, line.author];
+    return { ledger: { lines, lastPost: { ...last, spoke } } };
+  }
+  const holder =
+    last?.member !== undefined && (last.by === "evaluated" || last.by === "fallback") && !last.spoke.includes(last.member)
+      ? last.member
+      : undefined;
+  return {
+    ledger: { lines, lastPost: { postId: line.id, spoke: [] } },
+    postCase: { recent: ledger.lines, ...(holder === undefined ? {} : { holder }) }
+  };
+}
+
+/**
+ * Note a route in the ledger, while its post is still the person's last one.
+ * `undefined` when there is nothing to note: a later post has been kept since,
+ * and its own case was read without this route, so it holds nothing.
+ */
+export function recordRoute(ledger: RouteLedger | undefined, record: ChannelRouteRecord): RouteLedger | undefined {
+  if (ledger?.lastPost?.postId !== record.postId) return undefined;
+  return {
+    ...ledger,
+    lastPost: {
+      ...ledger.lastPost,
+      by: record.by,
+      ...(record.member === undefined ? {} : { member: record.member })
+    }
+  };
+}
 
 /** What a route's block hands back to the fan-out. */
 export const routeDecisionSchema = z.object({

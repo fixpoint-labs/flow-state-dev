@@ -13,9 +13,10 @@
  * The model chooses the channel and the words, and nothing else: the input is
  * closed, so an `author` from the model is refused. The author is the seat's
  * `seatId`, which the hire step writes into every seat's settings: the seat's
- * record id, the name a channel's `members:` lists. A seat whose settings
- * carry none is refused by name, never posted as the request's principal,
- * because a post with no author skips the channel's member check and wakes
+ * record id, the name a channel's `members:` lists. The tool declares it as
+ * the flow config it requires, so a seat whose settings carry none is refused
+ * by name before the model is offered the tool, never posted as the request's
+ * principal: a post with no author skips the channel's member check and wakes
  * every member.
  *
  * ## One gate
@@ -92,18 +93,12 @@ function answeredPosts(state: Readonly<Record<string, unknown>> | undefined): Re
 /** A routed turn's mark: the channel and the post it answers. */
 export const routedTurnSchema = z.object({ channelId: z.string(), postId: z.string() });
 
-export type RoutedTurn = z.infer<typeof routedTurnSchema>;
-
 /**
- * The routed post this turn answers, or `undefined` on any other turn.
- *
- * @param ctx Any block's context in the turn's request.
+ * The request state a block reads the mark from, for its `requestStateSchema`.
+ * Absent on every turn but a routed one; nothing else writes the field, so a
+ * block reads it as declared.
  */
-export function routedTurnOf(ctx: BlockContext): RoutedTurn | undefined {
-  const marked = (ctx.request.state as Record<string, unknown> | undefined)?.[ROUTED_TURN_STATE];
-  const parsed = routedTurnSchema.safeParse(marked);
-  return parsed.success ? parsed.data : undefined;
-}
+export const routedTurnStateSchema = z.object({ [ROUTED_TURN_STATE]: routedTurnSchema.optional() });
 
 /**
  * Whether the seat already has its line for this post, in this session.
@@ -132,9 +127,22 @@ export async function claimRoutedAnswer(ctx: BlockContext, postId: string): Prom
 }
 
 /**
+ * What a block that posts as the seat requires of the seat's settings: its
+ * `seatId`, which the hire step writes on every seat it mints. Declared as the
+ * block's `flowConfigSchema`, so a seat without one is refused before it can
+ * post: at the mint when the block is reachable from the kind, and when a
+ * generator resolves the tool.
+ */
+export const seatIdConfigSchema = z.object({ [SEAT_ID_KEY]: z.string().min(1) });
+
+/** What {@link postAsSeat} is handed: the tool's input, and the seat's name to post under. */
+const postAsSeatInputSchema = z.object({ channel: z.string(), body: z.string(), author: z.string() });
+
+type PostAsSeatInput = z.infer<typeof postAsSeatInputSchema>;
+
+/**
  * One dispatch into the named channel's own `post`, as the seat. The author is
- * the seat's `seatId`, read from the settings the hire wrote and stamped in
- * the payload, so a seat without one throws before anything is dispatched.
+ * the seat's `seatId`, read by the block before it, which declares it.
  * `{ id }`: a channel is an existing session. The tool and the agent kind's
  * landing both post through it, so a line has one way in.
  */
@@ -142,18 +150,9 @@ export const postAsSeat = dispatcher({
   name: "post-to-channel-dispatch",
   flowKind: CHANNEL_KIND,
   action: "post",
-  inputSchema: postToChannelInputSchema,
-  session: { id: (input: PostToChannelInput) => input.channel },
-  payload: (input: PostToChannelInput, ctx) => {
-    const seatId = (ctx.flow.config as Record<string, unknown>)[SEAT_ID_KEY];
-    if (typeof seatId !== "string" || seatId.length === 0) {
-      throw new Error(
-        `${POST_TO_CHANNEL_TOOL}: this seat's settings carry no \`${SEAT_ID_KEY}\`, so there is no ` +
-          `name to post under. The hire step writes it on every seat it mints. Nothing was posted.`,
-      );
-    }
-    return { body: input.body, author: seatId };
-  },
+  inputSchema: postAsSeatInputSchema,
+  session: { id: (input: PostAsSeatInput) => input.channel },
+  payload: (input: PostAsSeatInput) => ({ body: input.body, author: input.author }),
 });
 
 /**
@@ -163,13 +162,16 @@ export const postAsSeat = dispatcher({
 const claimToolLine = handler({
   name: "post-to-channel-claim",
   inputSchema: postToChannelInputSchema,
-  outputSchema: z.object({ channel: z.string(), body: z.string(), answeredAlready: z.boolean() }),
+  outputSchema: postAsSeatInputSchema.extend({ answeredAlready: z.boolean() }),
+  requestStateSchema: routedTurnStateSchema,
+  flowConfigSchema: seatIdConfigSchema,
   execute: async (input: PostToChannelInput, ctx) => {
-    const routed = routedTurnOf(ctx);
+    const post = { ...input, author: ctx.flow.config.seatId };
+    const routed = ctx.request.state.channelRoutedPost;
     if (routed === undefined || routed.channelId !== input.channel) {
-      return { ...input, answeredAlready: false };
+      return { ...post, answeredAlready: false };
     }
-    return { ...input, answeredAlready: !(await claimRoutedAnswer(ctx, routed.postId)) };
+    return { ...post, answeredAlready: !(await claimRoutedAnswer(ctx, routed.postId)) };
   },
 });
 
@@ -189,7 +191,7 @@ const postToChannel = sequencer({
   .step(claimToolLine)
   .stepIf(
     (claim: { answeredAlready: boolean }) => !claim.answeredAlready,
-    (claim: PostToChannelInput) => ({ channel: claim.channel, body: claim.body }),
+    (claim: PostAsSeatInput) => ({ channel: claim.channel, body: claim.body, author: claim.author }),
     postAsSeat,
   )
   .map((value: { sessionId: string } | { channel: string }) =>
