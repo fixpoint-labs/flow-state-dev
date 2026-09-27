@@ -111,7 +111,7 @@ await sessions.updateSessionMetadata("sess_1", {
 });
 ```
 
-Fields are merged — only the fields you include are changed. Omitting `title` leaves the existing title untouched.
+Fields are merged — only the fields you include are changed. Omitting `title` leaves the existing title untouched, even one another writer sets while your edit is in flight. If the session keeps changing too fast for your edit to land, the call throws `ClientHttpError` with `status` 409 and changes nothing, and you can send the same edit again. A 409 whose `body` is `{ error: "migration-required" }` is different: the session needs migrating, and retrying won't clear it. See [Who owns a record](/docs/persistence/overview#who-owns-a-record).
 
 **Fetching session state:**
 
