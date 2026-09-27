@@ -3,7 +3,8 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The calls above any one issue. Amended 2026-09-27 after the owner's real-model test: D1 and D3
-rewritten, D2 stands, D4 to D7 new, O1 open. What the old cards said: [EVOLUTION.md](EVOLUTION.md).
+rewritten, D2 stands, D4 to D8 new. D1 and D8 are the owner's own calls. What the old cards said:
+[EVOLUTION.md](EVOLUTION.md).
 
 ## The tree
 
@@ -18,17 +19,20 @@ flowchart TD
   D5 -.->|"rejected"| X5["a triage seat that re-posts"]
   E --> D6["D6 · the routed answer lands every time"]
   E --> D7["D7 · four specialists by purpose, no care"]
-  E --> O1["O1 · open: only the support story, or every feature"]
+  E --> D8["D8 · only the support story on the page"]
+  D8 -.->|"rejected"| X8["hiring and custom kinds kept beside the desk"]
 ```
 
 <a name="d1"></a>
-## D1 · Rebuild the support example inside this epic, as one routed conversation · assumed; the owner's decision card is pending
+## D1 · Rebuild the support example inside this epic, as one routed conversation · the owner's decision, 2026-09-27
 
 | | |
 |---|---|
 | **Instead of** | Fix FIX-1609 and FIX-1610 and keep the roster · or a new epic for the rebuild |
 | **Because** | The owner's first real use failed this epic's own goal, so the two bugs are this epic's. Fixing them on the old roster proves a desk nobody would ship. A new epic would run the same closure over the same pages twice |
 | **Locks in** | The three ways of talking stay the spine: talk to a specialist, a post reaches the right agent ([D5](#d5)), the agent answers in the channel ([D6](#d6)), live ([D4](#d4)). The routed channel and the rebuild join; FIX-1609 and FIX-1610 become children; FIX-1601's plan is amended (ER-28). The shipped chain is not reopened |
+
+Jake picked "Rebuild here" on the decision card, 2026-09-27 00:24 UTC.
 
 **What would change my mind on the objective:** the owner deciding support is the wrong example.
 D4 to D6 would still stand; the rebuild would move to another example.
@@ -89,24 +93,19 @@ customer may repeat it. Passing lines with the post is a later, one-rule change.
 |---|---|
 | **Instead of** | The named roster with routing on top · a fifth `care` specialist for upset customers |
 | **Because** | Jake: *"whats the point of having agents with names instead of clear roles or purposes."* Upset is a tone, not a topic: an upset customer with a broken printer still needs `devices` |
-| **Locks in** | `support.devices`, `support.accounts`, `support.fsd` and `support.general` (the fallback) on the built-in agent kind; one routed channel holding `escalations`. Cut: ada, grace, iris, otto, wren, mara; `desk-clerk`, its `desk` setting and `desk-note`; the `ada-wren` DM; `noticeboard` and `digest`; `desk`; the rail's "Hire another". `followups` and its runner go too if O1 goes as recommended. The rebuild's spec confirms ids |
+| **Locks in** | `support.devices`, `support.accounts`, `support.fsd` and `support.general` (the fallback) on the built-in agent kind; one routed channel holding `escalations`. Cut: ada, grace, iris, otto, wren; `desk-clerk`, its `desk` setting and `desk-note`; the `ada-wren` DM; `desk`. What else leaves the page is [D8](#d8). The rebuild's spec confirms ids |
 
-<a name="o1"></a>
-## Open · O1 · Kitchen-sink: show only the support story, or keep showing the features it has no job for?
+<a name="d8"></a>
+## D8 · Kitchen-sink shows only the support story: page hiring, the hiring seat and the custom kinds leave · the owner's call, from his own words
 
-- **Plain terms.** Kitchen-sink is also where a reader sees hiring from the page, a seat that
-  hires others, a custom worker kind draining a board, and a custom channel kind. Most of the
-  contrived roster exists to host those. A support desk has no job for them until a hired
-  specialist can join the channel (FIX-1415).
-- **The trade-off.** Cut them: the desk reads as one real product, their proofs move to test
-  fixtures a reader doesn't browse, and hiring from a browser has no demo until FIX-1415. Keep
-  them: they need a clearly separate home in the app, or the contrivance comes back.
-- **My recommendation.** Cut them from the page and the roster. Keep the operator's HTTP hire:
-  no UI, and it keeps the durable-hire check on the real app. Move the other checks to fixture
-  hosts (ER-27). Bring page hiring back with FIX-1415.
-- **What would change my mind.** Design partners or docs readers being sent to kitchen-sink to
-  see hiring or custom kinds working.
-- **If wrong:** cheap. Re-adding a demo is a small issue; every check stays green either way.
+| | |
+|---|---|
+| **Instead of** | Keeping page hiring, mara, the custom kinds, `followups` and its runner in a separate corner of the app |
+| **Because** | Jake, 2026-09-26: *"Why do I have desk clerks and agents, 5 agents stock altogether and I can hire more - but why - whats the point"*. A desk has no job for a hired specialist until one can join the channel (FIX-1415), and these features are most of why the roster read as contrived |
+| **Locks in** | Cut from the page and the roster: the rail's "Hire another", mara, the `followup-runner` kind with `followups`, the `digest` channel kind with `noticeboard`. Kept: the operator's HTTP hire, so the durable-hire check stays on the real app. The other checks these features back move to fixture hosts, re-pointed, not deleted (ER-27). Page hiring returns with FIX-1415 |
+
+**The cost, accepted:** hiring from a browser has no demo until FIX-1415. Re-adding one is a
+small issue.
 
 ## Who owns what
 
@@ -148,7 +147,8 @@ smoke settles it; the routed channel's spec may build a premise POC first.
   (#2269).
 - **Sep 26:** closure issue FIX-1601 (#2289); FIX-1602 added (#2294). The owner's real-model
   test finds a reload-only channel, a missing answer, no status, a contrived roster.
-- **Sep 27, this amendment:** rebuild as a routed desk. D1 and D3 rewritten; D4 to D7 and O1
-  added; the Kill line and ER-2's promise amended.
+- **Sep 27, this amendment:** rebuild as a routed desk. D1 and D3 rewritten; D4 to D8 added;
+  the Kill line and ER-2's promise amended. The owner picked "Rebuild here" (D1, 00:24 UTC);
+  the open question on the other features closed as D8, from his own message.
 
-**Open: O1.** D1 also rests on the owner's pending card.
+**Open: none.** Approving this direction is merging it.

@@ -52,7 +52,7 @@ until the rebuild's spec confirms them.
 
 ## REMOVE · `apps/kitchen-sink/README.md` · "A seat that hires", the rail's "Hire another", `ada-wren`, `noticeboard`, `desk-clerk` and `followup-runner` passages
 
-Only if [O1](DECISIONS.md#o1) goes as recommended. "Hiring while the app runs" shrinks to the
+Per [D8](DECISIONS.md#d8). "Hiring while the app runs" shrinks to the
 operator's HTTP hire, with a line that page hiring returns once a hired specialist can join the
 channel.
 
@@ -61,14 +61,14 @@ channel.
 > Canonical reference app (Next.js): a support desk on Workforce, and the other subsystems it
 > hosts. Features with no job in it are proven by fixture hosts under `goals/`.
 
-Only if O1 goes as recommended.
+Per D8.
 
 ## Ownership
 
 | Material | Publisher | Specific draft |
 |---|---|---|
 | The support-team section and the two bullets above | The rebuild, once every sentence is true on `main` (ER-19) | This document |
-| The removals, the `CLAUDE.md` row, `docs/atlas` lines naming `desk-clerk` | The rebuild, per O1 | This document |
+| The removals, the `CLAUDE.md` row, `docs/atlas` lines naming `desk-clerk` | The rebuild, per D8 | This document |
 | Routing a channel, in `apps/docs/docs/workforce/channels.md` | Routed channel | Its `DOCS.md` |
 | A routed seat's answer always lands, in the same guide | FIX-1610 | Its `DOCS.md` |
 | An open session view hears every request in its session, in the react and client docs | FIX-1609 | Its `DOCS.md` |

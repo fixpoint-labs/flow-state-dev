@@ -125,8 +125,8 @@ rebuild share the channel panel and e2e, so they are a seam, not a chain
 - **An unrouted channel still wakes every agent member** (FIX-1590, FIX-1602).
 - **A seat's post wakes no seat** ([D2](DECISIONS.md#d2)).
 - **`escalations` stays unattended**, boot warning included (FIX-1476).
-- **The operator's HTTP hire** and the durable-hire check on the real app, if
-  [O1](DECISIONS.md#o1) goes as recommended.
+- **The operator's HTTP hire** and the durable-hire check on the real app
+  ([D8](DECISIONS.md#d8)).
 - **The assistant**, its composer and tools.
 - **Related, not children:** FIX-1591, FIX-1415, FIX-1493, FIX-1476, FIX-1598.
 
@@ -137,16 +137,14 @@ routed by purpose, live, specialists keeping their own cases, proven in a browse
 reload and once on a real model. If wrong: we close on a desk that still needs a reload, or
 rebuild a demo nobody asked for.
 
-1. **[D1](DECISIONS.md#d1) · Rebuild the support example inside this epic, as a routed desk.**
-   Your decision card is pending; this draft assumes yes. If wrong: the epic closes on a roster
-   you called contrived, or a new epic re-runs the same closure.
-2. **[D4](DECISIONS.md#d4) · Live replies are fixed in the framework, not the demo.** Engine,
+1. **[D4](DECISIONS.md#d4) · Live replies are fixed in the framework, not the demo.** Engine,
    client and react gain a session-wide live stream, which the old Kill line forbade. If wrong:
    every app with a channel keeps the reload bug, or we carry a framework change a poll would
    have hidden.
-3. **Live fork: [O1](DECISIONS.md#o1) · Kitchen-sink shows only the support story, or keeps
-   the features it has no job for?** Recommended: only the story. Full ask in
-   [DECISIONS.md](DECISIONS.md#o1).
 
-**Open: O1.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). Rules:
-[BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
+**Already yours, recorded:** [D1](DECISIONS.md#d1), rebuild here, from your decision card;
+[D8](DECISIONS.md#d8), only the support story on the page, from your own message.
+
+**Nothing open.** Approve this direction by merging. Reasoning and what lost:
+[DECISIONS.md](DECISIONS.md). Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Order:
+[PLAN.md](PLAN.md).

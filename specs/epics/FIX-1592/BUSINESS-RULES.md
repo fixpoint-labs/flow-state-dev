@@ -15,7 +15,7 @@ what it retires.
 | ER-23 | An open channel view shows a line another request posted, with no reload, and which seats are working ([D4](DECISIONS.md#d4)) | FIX-1609 | Its no-reload check, red on today's `main` · FIX-1601 leg a |
 | ER-24 | A specialist hears only posts routed to it, in its own conversation for that channel. The route reads recent lines, so a follow-up stays with its specialist | Routed channel decides · FIX-1610 consumes | Routed channel's check · FIX-1601 leg b |
 | ER-25 | A case that needs a person becomes an `escalations` row, filed by the specialist through the channel's own `fileTask`, and the specialist says so. Nobody drains it; the boot warning stays | Rebuild | Its browser check · FIX-1601 |
-| ER-26 | The support team is [D7](DECISIONS.md#d7)'s roster; what else leaves the page follows [O1](DECISIONS.md#o1) | Rebuild | Its spec review |
+| ER-26 | The support team is [D7](DECISIONS.md#d7)'s roster; what else leaves the page is [D8](DECISIONS.md#d8) | Rebuild | Its spec review |
 | ER-1 | A message to a seat, and its reply, survive a reload in that seat's conversation | FIX-1585, shipped | FIX-1601 leg c |
 | ER-2 | A post with no seat author to an **unrouted** channel runs each member agent once. A routed channel follows ER-21 | FIX-1590, FIX-1602, shipped | `a-fresh-host-wakes-its-member-agents` |
 | ER-3 | A post authored by a seat wakes no seat ([D2](DECISIONS.md#d2)) | FIX-1602, shipped · routed channel, FIX-1610 consume | Their spec reviews |
