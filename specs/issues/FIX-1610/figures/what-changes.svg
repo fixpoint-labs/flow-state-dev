@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 424" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels. Before: a person's post reaches a channel with no routing line, the fan-out wakes all four agent specialists, and the channel shows a line only where a model chose to call the post tool. After: the channel declares routing with general as the fallback; the route step checks the specialist still on the last post, else makes one evaluator call, else takes the fallback, and wakes devices alone; its reply is posted into the channel as one line authored by the seat.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .copy  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .pkg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .host  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .arrow { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .maybe { stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; fill:none; }
+    .head  { fill:var(--accent); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-d   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="424"/>
+  <line x1="470" y1="12" x2="470" y2="412" stroke="var(--rule)" stroke-width="1"/>
+
+  <g id="before">
+    <text class="t-lbl" x="24" y="26">BEFORE · EVERY AGENT MEMBER WAKES</text>
+    <rect class="n-box" x="24" y="38" width="432" height="34" rx="5"/>
+    <text class="t-s" x="36" y="59">a person: "My phone stopped charging, brand new cable."</text>
+    <path class="arrow" d="M240,72 L240,93"/>
+    <path class="head" d="M240,100 L236,92 L244,92 z"/>
+    <rect class="n-box" x="24" y="100" width="432" height="52" rx="5"/>
+    <text class="t-b" x="36" y="121">support.help</text>
+    <text class="t-s" x="36" y="140">no routing line · the fan-out reaches every agent member</text>
+    <path class="arrow" d="M72,152 L72,177 M184,152 L184,177 M296,152 L296,177 M408,152 L408,177"/>
+    <path class="head" d="M72,184 L68,176 L76,176 z M184,184 L180,176 L188,176 z M296,184 L292,176 L300,176 z M408,184 L404,176 L412,176 z"/>
+    <rect class="host" x="24" y="184" width="96" height="60" rx="5"/>
+    <rect class="host" x="136" y="184" width="96" height="60" rx="5"/>
+    <rect class="host" x="248" y="184" width="96" height="60" rx="5"/>
+    <rect class="host" x="360" y="184" width="96" height="60" rx="5"/>
+    <text class="t-b" x="34" y="208">devices</text>
+    <text class="t-b" x="146" y="208">accounts</text>
+    <text class="t-b" x="258" y="208">fsd</text>
+    <text class="t-b" x="370" y="208">general</text>
+    <text class="t-s" x="34" y="230">runs</text>
+    <text class="t-s" x="146" y="230">runs</text>
+    <text class="t-s" x="258" y="230">runs</text>
+    <text class="t-s" x="370" y="230">runs</text>
+    <path class="maybe" d="M72,244 L72,284 M184,244 L184,284 M296,244 L296,284 M408,244 L408,284"/>
+    <rect class="copy" x="24" y="284" width="432" height="124" rx="5"/>
+    <text class="t-lbl" x="36" y="304">WHAT THE CHANNEL SHOWS</text>
+    <text class="t-g" x="36" y="328">a line only where a model chose to call post-to-channel</text>
+    <text class="t-g" x="36" y="348">real models: 4 answers in 6 on one, 0 in 2 on another</text>
+    <text class="t-g" x="36" y="368">four specialists run on one question</text>
+    <text class="t-g" x="36" y="388">a follow-up wakes all four again</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="492" y="26">AFTER · THIS ISSUE</text>
+    <rect class="n-box" x="492" y="38" width="424" height="34" rx="5"/>
+    <text class="t-s" x="504" y="59">a person: "My phone stopped charging, brand new cable."</text>
+    <path class="arrow" d="M704,72 L704,93"/>
+    <path class="head" d="M704,100 L700,92 L708,92 z"/>
+    <rect class="pkg" x="492" y="100" width="424" height="52" rx="5"/>
+    <text class="t-b" x="504" y="121">support.help · routing: fallback general</text>
+    <text class="t-s" x="504" y="140">1 still on the last post · 2 one evaluator call · 3 fallback</text>
+    <path class="arrow" d="M539,152 L539,177"/>
+    <path class="head" d="M539,184 L535,176 L543,176 z"/>
+    <rect class="host" x="492" y="184" width="94" height="60" rx="5"/>
+    <rect class="n-box" x="602" y="184" width="94" height="60" rx="5"/>
+    <rect class="n-box" x="712" y="184" width="94" height="60" rx="5"/>
+    <rect class="n-box" x="822" y="184" width="94" height="60" rx="5"/>
+    <text class="t-b" x="502" y="208">devices</text>
+    <text class="t-b" x="612" y="208">accounts</text>
+    <text class="t-b" x="722" y="208">fsd</text>
+    <text class="t-b" x="832" y="208">general</text>
+    <text class="t-s" x="502" y="230">runs, alone</text>
+    <text class="t-d" x="612" y="230">not told</text>
+    <text class="t-d" x="722" y="230">not told</text>
+    <text class="t-d" x="832" y="230">not told</text>
+    <path class="arrow" d="M539,244 L539,277"/>
+    <path class="head" d="M539,284 L535,276 L543,276 z"/>
+    <rect class="pkg" x="492" y="284" width="424" height="124" rx="5"/>
+    <text class="t-lbl" x="504" y="304">WHAT THE CHANNEL SHOWS</text>
+    <text class="t-s" x="504" y="328">support.devices: "Try another charger first..."</text>
+    <text class="t-s" x="504" y="348">one line, authored by the seat, every time</text>
+    <text class="t-s" x="504" y="368">posted for it when the model didn't call the tool</text>
+    <text class="t-s" x="504" y="388">a line a seat wrote wakes nobody and takes no route</text>
+  </g>
+</svg>

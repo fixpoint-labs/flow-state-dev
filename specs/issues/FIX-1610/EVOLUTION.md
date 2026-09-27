@@ -1,0 +1,16 @@
+# FIX-1610 · Evolution
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · **Evolution**
+
+Only lineage this issue changes. The epic set the direction; this issue narrows one of its
+sentences, and amends FIX-1594's answer rule for routed posts only.
+
+| Prior intent and precise source | Treatment | Reason / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| Epic D5, *"So a failed call never pulls a follow-up away from its specialist"*, with ER-21's "the specialist already holding the case, read from recent lines with no model call". Source: [`../../epics/FIX-1592/DECISIONS.md#d5`](../../epics/FIX-1592/DECISIONS.md#d5), [ER-21](../../epics/FIX-1592/BUSINESS-RULES.md) | **Amended, narrowed.** ER-21's order is kept word for word; the sentence holds only for a follow-up sent before the answer | A rule over the lines can't tell a follow-up from a new question. Read as "the last to answer", it routes epic leg b's account question to `devices`. The [POC](poc/route-choice/README.md) shows the evaluator keeps the follow-up when handed the lines | [D1](DECISIONS.md#d1) · BR-1, BR-4, BR-5 | Nothing shipped reads it. The coordinator decides whether the epic's text is amended to match |
+| FIX-1594 D1: an agent replies in a channel by choosing to call `post-to-channel`, because copying every answer leaves an agent no way to stay quiet. Source: [`../FIX-1594/DECISIONS.md#d1`](../FIX-1594/DECISIONS.md#d1) | **Amended** for the routed member; **retained** for unrouted channels and direct talk | Epic D6. FIX-1594's own *what would change my mind* named this: auto-posting beside the tool, not instead of it | [D2](DECISIONS.md#d2) · BR-9 to BR-14 | The tool, its gate and its refusals are unchanged. A routed seat that calls it posts once |
+| FIX-1590 D1: the heard turn is `<writer> in <channel>: <body>`, pinned. Source: [`../FIX-1590/DECISIONS.md#d1`](../FIX-1590/DECISIONS.md#d1), its BR-8 | **Retained**; a routed post's turn adds one sentence | The model is told its reply goes to the channel | BR-13 | An unrouted turn is byte for byte the same |
+| The closed list of five `CHANNEL.md` keys. Source: `DECLARABLE_KEYS` in [`channel-binder.ts`](../../../packages/workforce/src/channel/channel-binder.ts) and the channels guide, "Declaring a channel" | **Amended**: a sixth, `routing:` | Epic D5: a `CHANNEL.md` line opts in | [D3](DECISIONS.md#d3) · BR-15 to BR-19 | Every existing file binds as before; the list stays closed |
+| FIX-1602: `wakeMemberSeats` wakes every member seat that hears posts, once per post. Source: [`../FIX-1602/DECISIONS.md#d1`](../FIX-1602/DECISIONS.md#d1) | **Retained** | A routed channel narrows the members before the wake; the wake is unchanged but for passing the mark through | BR-6, BR-18 | Its goal check stays green |
+
+Compare each source with `main` before implementing: FIX-1609 builds beside this issue.
