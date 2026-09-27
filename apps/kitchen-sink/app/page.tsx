@@ -58,7 +58,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
-import { CHANNEL_KINDS, isChannelKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
+import { railSessions } from "@/lib/rail-sessions";
+import { CHANNEL_KINDS, defaultConversation, isChannelKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
@@ -167,13 +168,14 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   // only one selected: the hook neither picks the latest nor creates another.
   const flow = useFlow({
     autoCreateSession: e2eSessionId === null,
-    // Chosen below instead, so a test's own session is never replaced.
+    // Chosen below instead, so a test's own session is never replaced, and an
+    // earlier page's hire session is never the one opened.
     autoSelectSession: false,
   });
   const { selectSession, createSession } = flow;
   // The conversation the stream opens on: the test's own when one is named;
-  // otherwise the most recent, and a new one when there is none. An empty list
-  // is `useFlow`'s to fill.
+  // otherwise the most recent that is not an earlier page's hire session, and a
+  // new one when there is none. An empty list is `useFlow`'s to fill.
   const isCreatingSession = useRef(false);
   useEffect(() => {
     if (e2eSessionId !== null) {
@@ -181,7 +183,7 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
       return;
     }
     if (flow.activeSessionId !== undefined || flow.sessions.length === 0 || isCreatingSession.current) return;
-    const latest = flow.sessions[0];
+    const latest = defaultConversation(flow.sessions);
     if (latest !== undefined) {
       selectSession(latest.id);
       return;
@@ -262,6 +264,10 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
 
   // Starts a seat's new conversation from the rail.
   const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
+  // What the rail lists: a channel kind's declared channels, never one a kept
+  // store holds from an earlier roster. Stable, so the navigator's reads stay
+  // fenced on it.
+  const railSessionSource = useMemo(() => railSessions(sessionClient), [sessionClient]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
@@ -602,6 +608,7 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
       >
         <Rail
           slots={railSlots}
+          sessionSource={railSessionSource}
           selectedSessionId={picked?.sessionId ?? flow.activeSessionId}
           onSelectSession={handleSelectSession}
         />
@@ -756,6 +763,7 @@ function AssistantLeafToolbar({
 /** The rail: one navigator over every section, and the app's links underneath it. */
 function Rail({
   slots,
+  sessionSource,
   selectedSessionId,
   onSelectSession,
 }: {
@@ -763,6 +771,7 @@ function Rail({
     leafToolbar: (leaf: FlowNavigatorLeafState) => React.ReactNode;
     leafDetail: (leaf: FlowNavigatorLeafState) => React.ReactNode;
   };
+  sessionSource: ReturnType<typeof railSessions>;
   selectedSessionId: string | undefined;
   onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
 }) {
@@ -773,6 +782,7 @@ function Rail({
             channel started, and is listed only when they are included. */}
         <FlowNavigator
           sections={RAIL_SECTIONS}
+          sessionClient={sessionSource}
           includeDispatchRuns
           selectedSessionId={selectedSessionId}
           onSelectSession={onSelectSession}

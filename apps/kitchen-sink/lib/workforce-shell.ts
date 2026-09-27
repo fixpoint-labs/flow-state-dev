@@ -34,6 +34,14 @@ export function isChannelKind(kind: string): boolean {
 }
 
 /**
+ * The channels the tree declares, each with the kind its `CHANNEL.md` selects:
+ * what the rail lists under that kind. A store kept across an upgrade can still
+ * hold the sessions of channels the tree no longer declares, so the rail reads
+ * these by id rather than listing the kind (`lib/rail-sessions.ts`).
+ */
+export const SHELL_CHANNELS = [{ id: "support.help", kind: "channel" }] as const;
+
+/**
  * The seat kinds: the built-in `agent`, plus every kind under
  * `workforce/flows/workers/`, of which this app has none.
  */
@@ -73,6 +81,27 @@ export const SEAT_ASKS = {
 /** A seat kind's answer, or `undefined` for a kind the shell does not know. */
 export function seatAskFor(kind: string): SeatAsk | undefined {
   return (SEAT_ASKS as Record<string, SeatAsk | undefined>)[kind];
+}
+
+/**
+ * The tag an earlier version of this page put on the assistant session its
+ * "Hire another" ran on. The button is gone, but a store kept across the
+ * upgrade still holds that session, and it must never be the conversation the
+ * page opens by default (BP-030).
+ */
+export const LEGACY_SEAT_HIRES_TAG = "seat-hires";
+
+/**
+ * The conversation the page opens on: the most recent of the assistant's
+ * sessions, passing over one an earlier page's hire ran on. `undefined` when
+ * there is none, and the page starts a new one.
+ *
+ * @param sessions The assistant's sessions, newest first.
+ */
+export function defaultConversation<T extends { readonly tags?: readonly string[] }>(
+  sessions: readonly T[],
+): T | undefined {
+  return sessions.find((session) => !(session.tags?.includes(LEGACY_SEAT_HIRES_TAG) ?? false));
 }
 
 /** The key the shell's flow declares the boot's skipped-seat report under. */

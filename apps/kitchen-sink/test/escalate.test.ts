@@ -17,8 +17,10 @@
  *   BR-11 past a host that hands work to an external queue, the tool says
  *         filing is unavailable, the reply says nothing was filed, and no row
  *         lands.
- *   The channel's own author rule still holds: a seat that is not a member of
- *   `support.help` is refused, and files nothing.
+ *   A seat that is not a member of `support.help`, which the channel would
+ *   refuse, files nothing, sends nothing, and its reply says nothing was
+ *   filed. The members the tool files for are the ones the channel's file
+ *   declares: drop one from `ESCALATION_MEMBERS` and that case fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FlowState } from "@flow-state-dev/engine";
@@ -162,7 +164,7 @@ describe("V3 · a specialist files what needs a person", () => {
     ]);
   });
 
-  it("files nothing for a seat that is not a member of support.help", async () => {
+  it("files nothing for a seat that is not a member of support.help, and says so", async () => {
     const app = await bootApp();
     const { kitchenSinkKinds } = await import("@/workforce/hire");
     const { hireWorkforce } = await import("@flow-state-dev/workforce");
@@ -172,12 +174,26 @@ describe("V3 · a specialist files what needs a person", () => {
     );
     app.flowstate.register(outsider as FlowInstance);
     const mark = token();
-    await ask(app, "support.bo", `[scenario:needs-a-person] ${mark} escalate me`);
+    const ran = await ask(app, "support.bo", `[scenario:needs-a-person] ${mark} escalate me`);
 
-    const requests = await fileRequestsWith(app, mark);
-    expect(requests.map((r) => r.status)).toEqual(["failed"]);
-    expect(JSON.stringify(requests)).toContain("author-not-a-member");
+    // What the person sees: a reply that says nothing was filed, never one
+    // that claims it was. The channel would refuse the seat, so nothing is
+    // sent to it.
+    expect(ran.replies).toEqual([expect.stringContaining("[reply:unfiled]")]);
+    expect(ran.replies.join("\n")).not.toContain("[reply:escalated]");
+    expect(await fileRequestsWith(app, mark)).toEqual([]);
     expect(await rowsWith(app, mark, false)).toEqual([]);
+  });
+
+  it("files for the members support.help's CHANNEL.md declares, and no one else", async () => {
+    const { readChannelsDirectory } = await import("@flow-state-dev/workforce/loader");
+    const { workforceRoot } = await import("@/workforce/hire");
+    const { ESCALATION_CHANNEL, ESCALATION_MEMBERS } = await import("@/workforce/blocks/escalate");
+    const { channels, errors } = await readChannelsDirectory(workforceRoot);
+    expect(errors).toEqual([]);
+    const declared = channels.find((channel) => channel.id === ESCALATION_CHANNEL)?.declared.members;
+    expect(declared).toBeDefined();
+    expect([...ESCALATION_MEMBERS].sort()).toEqual([...(declared as string[])].sort());
   });
 
   it("says filing is unavailable past an external dispatcher, and files nothing (BR-11)", async () => {

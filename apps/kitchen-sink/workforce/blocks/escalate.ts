@@ -10,12 +10,14 @@
  * The model writes only the case. The channel and the board are named here,
  * and the author is the seat's own `seatId`, which the hire writes into every
  * seat's settings, so no model can file as another seat or onto another board.
- * The channel's own author rule still applies: a seat that is not a member of
- * `support.help` is refused there, and files nothing.
  *
  * The dispatch is fire-and-forget: the row is written when the channel runs
- * `fileTask`, a moment after the tool returns. Nothing drains `escalations` in
- * this app, and the boot says so.
+ * `fileTask`, a moment after the tool returns, so the tool never sees the
+ * channel's answer. The one refusal it could predict, it checks first: the
+ * channel files only its members' cases, so a seat that is not one (an
+ * operator can hire any seat with this tool) gets `filed: false` and sends
+ * nothing, rather than a `filed: true` the channel would then refuse. Nothing
+ * drains `escalations` in this app, and the boot says so.
  */
 import { DispatchRefusedError, dispatcher, handler, sequencer, type BlockContext } from "@flow-state-dev/core";
 import { CHANNEL_KIND } from "@flow-state-dev/workforce";
@@ -26,6 +28,19 @@ export const ESCALATION_CHANNEL = "support.help";
 
 /** The board on that channel a case is filed onto. */
 export const ESCALATION_BOARD = "escalations";
+
+/**
+ * The seats the channel files for: its `members:`, as `support.help`'s
+ * `CHANNEL.md` declares them. Written down because the channel's own list lives
+ * in its session, which a seat's tool cannot read; `test/escalate.test.ts`
+ * holds this to the file.
+ */
+export const ESCALATION_MEMBERS: readonly string[] = [
+  "support.devices",
+  "support.accounts",
+  "support.fsd",
+  "support.general",
+];
 
 /** The tool's input: the case, and only the case. */
 export const escalateInput = z.object({
@@ -85,11 +100,36 @@ const fileIntoChannel = dispatcher({
   }),
 });
 
+/** The calling seat's id, which the hire writes into every seat's settings. */
+const seatIdOf = (ctx: BlockContext): string | undefined => (ctx.flow.config as { seatId?: string }).seatId;
+
+/** Whether the calling seat is one the channel files for. */
+const isMember = (ctx: BlockContext): boolean => ESCALATION_MEMBERS.includes(seatIdOf(ctx) ?? "");
+
+/** A member's case: into the channel's `fileTask`. */
+const fileAsMember = sequencer({ name: "escalate-member", inputSchema: escalateInput })
+  .step(fileIntoChannel)
+  .map(() => ({ filed: true as const }))
+  .rescue([{ block: filingUnavailable }]);
+
+/** Any other seat's: nothing is sent, and the model is told why. */
+const notAMember = handler({
+  name: "escalate-not-a-member",
+  inputSchema: escalateInput,
+  outputSchema: z.object({ filed: z.literal(false), reason: z.string() }),
+  execute: () => ({
+    filed: false as const,
+    reason:
+      `Only the members of ${ESCALATION_CHANNEL} can file on its ${ESCALATION_BOARD} board, and this ` +
+      "seat is not one. Nothing was filed; tell the person so.",
+  }),
+});
+
 export default sequencer({
   name: "escalate",
   description: ESCALATE_DESCRIPTION,
   inputSchema: escalateInput,
-})
-  .step(fileIntoChannel)
-  .map(() => ({ filed: true as const }))
-  .rescue([{ block: filingUnavailable }]);
+}).branch({
+  member: [(input: z.infer<typeof escalateInput>) => input, (_input, ctx) => isMember(ctx as BlockContext), fileAsMember],
+  outsider: [(input: z.infer<typeof escalateInput>) => input, (_input, ctx) => !isMember(ctx as BlockContext), notAMember],
+});

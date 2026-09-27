@@ -54,6 +54,8 @@ The support team is one channel and four specialists, declared in files rather t
 
 Open `support.help` in the rail and ask a question. The channel sends each post to the one specialist whose job fits it: `support.devices` for printers, laptops, phones and wifi, `support.accounts` for sign-in and billing, `support.fsd` for questions about building with flow-state-dev, and `support.general` for anything else. The specialist answers in the channel, under its own name, and its answer shows up the next time the channel is read.
 
+The rail lists the channels the files declare. A store kept from an earlier version of the app can still hold other channels' sessions; they stay in the store and don't show in the rail.
+
 Each specialist is a `WORKER.md` under `workforce/teams/support/workers/`. Its `description:` is its job, and it is what the channel reads to decide who answers:
 
 ```md
@@ -88,6 +90,8 @@ Take the `routing:` lines out and every specialist hears every post, which is wh
 #### When a case needs a person
 
 A specialist that decides a case needs a person calls `escalate`, a tool in `workforce/blocks/escalate.ts`. It files one row onto the channel's `escalations` board through the channel's own `fileTask` action, signed with the specialist's own id, and the specialist says so in its answer. The model chooses only what the row says. The rows show in the team panel's `escalations` column.
+
+Only the channel's members can file there. Any other seat given the tool is told nothing was filed, and nothing is sent to the channel.
 
 Nobody works `escalations` in this app, and the boot says so:
 

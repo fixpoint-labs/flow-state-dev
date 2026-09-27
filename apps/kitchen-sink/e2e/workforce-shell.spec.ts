@@ -7,7 +7,9 @@
  * These open the app as `devuser`, not a per-test user, because that is who
  * the boot opens the channels for: a fresh user would see no channel
  * conversations at all. Nothing here writes to a channel, so sharing the user
- * across parallel tests is safe.
+ * across parallel tests is safe. The first test does store a session for a
+ * channel the tree no longer declares, as a store kept across an upgrade
+ * would; the rail never draws it, and no scenario posts to it.
  *
  * The network half of the first test is what makes it more than a picture.
  * Fetch sessions for every row up front and every DOM assertion still passes;
@@ -22,12 +24,19 @@ import type { Browser, Locator, Page, Request } from "@playwright/test";
 import { test, expect, openKitchenSink } from "./fixtures";
 
 const SEAT = "support.devices";
+/** A channel the old roster declared and this one does not. */
+const RETIRED_CHANNEL = "support.desk";
 
 /** Session-list requests, recorded from the moment this is called. */
 function sessionListRequests(page: Page): { take: () => string[] } {
+  return requestsMatching(page, /\/api\/flows\/sessions\?/);
+}
+
+/** Requests whose URL matches `pattern`, recorded from the moment this is called. */
+function requestsMatching(page: Page, pattern: RegExp): { take: () => string[] } {
   let seen: string[] = [];
   page.on("request", (request: Request) => {
-    if (/\/api\/flows\/sessions\?/.test(request.url())) seen.push(request.url());
+    if (pattern.test(request.url())) seen.push(request.url());
   });
   return {
     take: () => {
@@ -36,6 +45,18 @@ function sessionListRequests(page: Page): { take: () => string[] } {
       return out;
     },
   };
+}
+
+/**
+ * What a store kept across an upgrade still holds from the old roster: a
+ * session of the channel kind for a channel the tree no longer declares.
+ */
+async function seedRetiredChannel(page: Page): Promise<void> {
+  const response = await page.request.post(`/api/flows/channel/sessions`, {
+    data: { userId: "devuser", sessionId: RETIRED_CHANNEL },
+  });
+  // Already there from an earlier scenario on this server is as good.
+  expect([200, 201, 409], await response.text()).toContain(response.status());
 }
 
 /** Give the seat one conversation, so it has something to open into. */
@@ -61,6 +82,7 @@ test("the rail opens a channel kind into conversations and a seat kind into seat
   consoleErrors: _consoleErrors,
 }) => {
   const seatSessionId = await seedSeatSession(page);
+  await seedRetiredChannel(page);
   const requests = sessionListRequests(page);
   await openShell(page);
   await expect(rail(page).getByRole("list", { name: "Channels" })).toBeVisible();
@@ -70,11 +92,16 @@ test("the rail opens a channel kind into conversations and a seat kind into seat
   await page.waitForLoadState("networkidle");
   expect(requests.take().filter((url) => !url.includes("flowKind=chat-agent"))).toEqual([]);
 
-  // A channel kind is a singleton: its row is the leaf, so opening it is ONE
-  // read and lands straight on the channel conversations.
+  // A channel kind is a singleton: its row is the leaf, so opening it lands
+  // straight on the channel conversations. It is ONE read, of the channel the
+  // tree declares, by id: the kind is never listed, so a channel the store
+  // still holds from the old roster is never drawn.
+  const channelReads = requestsMatching(page, /\/api\/flows\/sessions\/support\.help$/);
   await row(page, "channel").click();
   await expect(row(page, "support.help")).toBeVisible();
-  expect(requests.take()).toHaveLength(1);
+  await expect(row(page, RETIRED_CHANNEL)).toHaveCount(0);
+  expect(channelReads.take()).toHaveLength(1);
+  expect(requests.take()).toEqual([]);
 
   // A seat kind is a collection: opening it lists the seats and reads nothing.
   await row(page, "agent").click();

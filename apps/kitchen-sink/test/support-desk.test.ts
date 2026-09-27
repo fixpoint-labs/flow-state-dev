@@ -10,10 +10,15 @@
  *   - it opens one channel, `support.help`, on the built-in channel kind;
  *   - it warns once that a board is unattended, and names `escalations`
  *     (BR-12);
- *   - the generated map holds `escalate` and no kind of the app's own.
+ *   - the generated map holds `escalate` and no kind of the app's own;
+ *   - the rail lists `support.help` alone under the channel kind, though a
+ *     store kept across the upgrade still holds a channel the old roster
+ *     declared (BR-1). Red: the rail reading the kind's listing, which draws
+ *     `support.desk` beside it.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FlowState } from "@flow-state-dev/engine";
+import { createSessionClient } from "@flow-state-dev/client";
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -40,7 +45,20 @@ async function boot() {
     expect(res.status).toBe(200);
     return (await res.json()) as unknown;
   };
-  return { get };
+  // The page's session client, over the app's own router.
+  const sessions = createSessionClient({
+    fetcher: async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://localhost");
+      const path = url.pathname
+        .replace(/^\/api\/flows\/?/, "")
+        .split("/")
+        .filter((segment) => segment.length > 0)
+        .map(decodeURIComponent);
+      const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
+      return await router[method](new Request(url, init), { params: { path } });
+    },
+  });
+  return { get, sessions };
 }
 
 describe("V1 · the boot serves one routed channel and four specialists", () => {
@@ -69,6 +87,35 @@ describe("V1 · the boot serves one routed channel and four specialists", () => 
     ]);
     const { sessions } = (await get(["sessions"], "?flowId=channel&limit=100")) as { sessions: Array<{ id: string }> };
     expect(sessions.map((session) => session.id)).toEqual(["support.help"]);
+  });
+
+  it("lists support.help alone in the rail, though a kept store still holds a retired channel", async () => {
+    const { sessions } = await boot();
+    const { railSessions } = await import("@/lib/rail-sessions");
+    // What an earlier roster leaves in a store kept across the upgrade: a
+    // session of the same channel kind, for a channel the tree no longer declares.
+    await sessions.createSession({ flowKind: "channel", userId: "devuser", sessionId: "support.desk" });
+    // Not vacuous: the store holds it, and a listing by kind returns it.
+    const stored = await sessions.listSessions({ flowKind: "channel", userId: "devuser" });
+    expect(stored.map((session) => session.id).sort()).toEqual(["support.desk", "support.help"]);
+
+    // The navigator's own query for a singleton kind's leaf.
+    const listed = await railSessions(sessions).listSessions({
+      flowKind: "channel",
+      userId: "devuser",
+      include: "dispatch-runs",
+    });
+    expect(listed.map((session) => session.id)).toEqual(["support.help"]);
+  });
+
+  it("lists every other kind in the rail as the store has it", async () => {
+    const { sessions } = await boot();
+    const { railSessions } = await import("@/lib/rail-sessions");
+    const created = await sessions.createSession({ flowKind: "chat-agent", userId: "devuser" });
+    const query = { flowKind: "chat-agent", userId: "devuser" } as const;
+    const listed = await railSessions(sessions).listSessions(query);
+    expect(listed.map((session) => session.id)).toContain(created.id);
+    expect(listed).toEqual(await sessions.listSessions(query));
   });
 
   it("warns once that a board is unattended, and names support.help's escalations", async () => {
