@@ -20,9 +20,10 @@
  *    caller cannot reach the fallback's seat either, nobody does.
  *
  * Only the evaluator call's own failure reaches the fallback; any other error
- * fails the fan-out like any other, and so does a cancel, which records and
- * wakes nothing. Every route is recorded as one `channel-route` item on the
- * channel's session, never as a line.
+ * fails the fan-out like any other, and so does a cancel. A cancel makes no
+ * write the route had not started and wakes nobody: one that lands before the
+ * route records anything leaves no trace. Every route is recorded as one
+ * `channel-route` item on the channel's session, never as a line.
  *
  * The lines and the member on the person's last post come from the channel's
  * route ledger (`channel-route.ts`), read as the post was kept, and never from
@@ -178,6 +179,10 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
    * record it: as the channel's `channel-route` item, then in the ledger the
    * next post's case is read from. The item first, so a ledger that could not
    * take the route fails the delivery with nobody left holding the next post.
+   *
+   * A cancel is read before each write and before the decision goes back to
+   * the fan-out, so a cancelled fan-out makes no write it had not started and
+   * wakes nobody. A write already under way when the cancel lands is kept.
    */
   const settle = handler({
     name: "channel-route-settle",
@@ -193,11 +198,14 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
         ...(placed.member === undefined ? {} : { member: placed.member }),
         ...(placed.reason === undefined ? {} : { reason: placed.reason })
       };
+      ctx.signal.throwIfAborted();
       await emitChannelRouteRecord(ctx, record);
+      ctx.signal.throwIfAborted();
       await ctx.session.atomicState((state) => {
         const ledger = recordRoute(state[ROUTE_LEDGER_STATE], record);
         return ledger === undefined ? {} : { [ROUTE_LEDGER_STATE]: ledger };
       });
+      ctx.signal.throwIfAborted();
       return {
         post: routeCase.post,
         by: placed.by,

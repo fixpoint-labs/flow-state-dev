@@ -19,6 +19,8 @@
  *         post's route is not recorded yet;
  *   BR-5  a follow-up after the member's line takes the call, with that line in it;
  *   BR-3  a failed call, or a pick outside the options, runs the fallback alone;
+ *         a cancelled fan-out runs nobody and makes no write the route had not
+ *         started;
  *   BR-6  a fallback the caller cannot reach, or that is not a member of the open
  *         channel, runs nobody, recorded as failed;
  *   BR-7  nobody else receives a routed post;
@@ -245,6 +247,70 @@ async function until(predicate: () => Promise<boolean>, label: string): Promise<
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`timed out waiting for ${label}`);
+}
+
+/** Cancel the channel's fan-out through the abort route, as a person stopping it would. */
+async function cancelFanOut(state: ReturnType<typeof host>["state"], runtime: FlowStateRuntime, channel: FlowInstance) {
+  const [fanOut] = (await runtime.stores.request.list({ sessionId: HELP })).filter(
+    (r) => r.actionName === "onPosted" && r.status === "in_progress"
+  );
+  const router = await state.getRouter();
+  const cancel = await router.POST(
+    new Request(`http://localhost/api/flows/${channel.id}/requests/${fanOut!.id}/abort`, { method: "POST" }),
+    { params: { path: [channel.id, "requests", fanOut!.id, "abort"] } }
+  );
+  expect(cancel.status).toBe(204);
+}
+
+/** `model`, answering only once `before` settles and whatever its abort signal says: an answer already on its way. */
+function answeringAfter(model: MockEvaluationModel, before: () => Promise<void>): MockEvaluationModel {
+  const evaluate = model.doEvaluate.bind(model);
+  return {
+    ...model,
+    doEvaluate: async (...args: Parameters<typeof evaluate>) => {
+      await before();
+      return evaluate(...args);
+    }
+  };
+}
+
+/**
+ * Run `before` once, while a write is under way on the host's stores: a
+ * fan-out's start (`start`), the first `channel-route` record's event
+ * (`record`), or the first ledger write that notes a route (`ledger`).
+ */
+function holdWrite(stores: StoreRegistry, at: "start" | "record" | "ledger", before: () => Promise<void>) {
+  let armed = true;
+  if (at !== "ledger") {
+    const persistEvents = stores.request.persistEvents.bind(stores.request);
+    const flushEvents = stores.request.flushEvents.bind(stores.request);
+    const writing = new Set<string>();
+    stores.request.persistEvents = (requestId, events) => {
+      const isHeld = (event: (typeof events)[number]) =>
+        at === "start"
+          ? event.type === "request.in_progress"
+          : event.type === "item.added" && (event.item as { component?: string }).component === "channel-route";
+      if (events.some(isHeld)) writing.add(requestId);
+      persistEvents(requestId, events);
+    };
+    stores.request.flushEvents = async (requestId) => {
+      if (armed && writing.delete(requestId) && (await stores.request.get(requestId))?.actionName === "onPosted") {
+        armed = false;
+        await before();
+      }
+      return flushEvents(requestId);
+    };
+    return;
+  }
+  const set = stores.session.set.bind(stores.session);
+  stores.session.set = async (...args: Parameters<typeof set>) => {
+    const ledger = (args[1].state as { channelRouteLedger?: { lastPost?: { by?: string } } } | undefined)?.channelRouteLedger;
+    if (armed && ledger?.lastPost?.by !== undefined) {
+      armed = false;
+      await before();
+    }
+    return set(...args);
+  };
 }
 
 /** Every `channel-route` record on the channel, oldest first. */
@@ -547,6 +613,78 @@ describe("a person's post to a routed channel", () => {
       const session = await runtime.stores.session.get(HELP);
       expect((session?.state as { channelRouteLedger: { lastPost: unknown } }).channelRouteLedger.lastPost).toEqual({
         postId: line!.id,
+        spoke: []
+      });
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  // A cancel that lands after the call answered is still a cancel: the route
+  // makes none of the writes it had not started, and wakes nobody. A write
+  // already under way when the cancel lands is kept.
+  it.each([
+    { at: "answer", when: "as the call answers", records: 0, noted: false },
+    { at: "record", when: "while the route's record is written", records: 1, noted: false },
+    { at: "ledger", when: "while the ledger takes the route", records: 1, noted: true }
+  ] as const)(
+    "wakes nobody when the fan-out is cancelled $when, and makes no later write (BR-3)",
+    async ({ at, records, noted }) => {
+      let cancel = async (): Promise<void> => {};
+      const { channel, state, heard } = host(
+        at === "answer"
+          ? {
+              resolver: (route) =>
+                createMockModelResolver({ evaluators: { "channel-route": answeringAfter(route, () => cancel()) } })
+            }
+          : {}
+      );
+      try {
+        const runtime = await state.getRuntime();
+        cancel = () => cancelFanOut(state, runtime, channel);
+        if (at !== "answer") holdWrite(runtime.stores, at, () => cancel());
+        await bind(runtime.stores, HELP, MEMBERS);
+        await post(runtime, channel, HELP, "[route:support.devices] my laptop won't join the wifi");
+        await settle(runtime, HELP, 1);
+
+        const [fanOut] = (await runtime.stores.request.list({ sessionId: HELP })).filter((r) => r.actionName === "onPosted");
+        expect(fanOut!.status).toBe("aborted");
+        expect(heard).toEqual([]);
+        expect(await routeRecords(runtime.stores, HELP)).toHaveLength(records);
+        const [line] = await postedLines(runtime.stores, HELP);
+        const session = await runtime.stores.session.get(HELP);
+        expect((session?.state as { channelRouteLedger: { lastPost: unknown } }).channelRouteLedger.lastPost).toEqual({
+          postId: line!.id,
+          spoke: [],
+          ...(noted ? { by: "evaluated", member: "support.devices" } : {})
+        });
+      } finally {
+        await state.dispose();
+      }
+    }
+  );
+
+  it("records nothing and wakes nobody for a held post whose fan-out was cancelled before it routed (BR-1, BR-3)", async () => {
+    const { channel, state, heard } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP, MEMBERS);
+      await post(runtime, channel, HELP, "[route:support.devices] my laptop won't join the wifi");
+      await settle(runtime, HELP, 1);
+      // The next post is held for support.devices, with no call: the route
+      // goes straight to its record. The cancel lands as its fan-out starts.
+      holdWrite(runtime.stores, "start", () => cancelFanOut(state, runtime, channel));
+      await post(runtime, channel, HELP, "it still drops the connection");
+      await settle(runtime, HELP, 2);
+
+      const fanOuts = (await runtime.stores.request.list({ sessionId: HELP })).filter((r) => r.actionName === "onPosted");
+      expect(fanOuts.map((r) => r.status).sort()).toEqual(["aborted", "completed"]);
+      expect(who(heard, "drops")).toEqual([]);
+      expect(await recordFor(runtime.stores, "drops")).toBeUndefined();
+      const lines = await postedLines(runtime.stores, HELP);
+      const session = await runtime.stores.session.get(HELP);
+      expect((session?.state as { channelRouteLedger: { lastPost: unknown } }).channelRouteLedger.lastPost).toEqual({
+        postId: lines[1]!.id,
         spoke: []
       });
     } finally {
