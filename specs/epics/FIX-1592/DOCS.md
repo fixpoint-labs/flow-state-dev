@@ -5,7 +5,7 @@
 One story changes: kitchen-sink's support team goes from six named seats to one conversation
 and four specialists. This draft is that shared text. Each child's `DOCS.md` owns the specifics:
 the route line in the channels guide, the answer rule, the live stream. Ids are working names
-until the rebuild's spec confirms them.
+until FIX-1611's spec confirms them.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · "The support team (`workforce/`)", replaced whole
 
@@ -38,9 +38,10 @@ until the rebuild's spec confirms them.
 > You help with devices. Answer in a sentence or two, and say plainly when you don't know.
 > ```
 >
-> The channel picks among those descriptions with one model call per post, and sends a post
-> that fits none of them to `support.general`. Take the routing line out and every specialist
-> hears every post, which is what a channel does by default.
+> A follow-up goes back to the specialist already on the case. Any other post gets one model
+> call that picks among those descriptions, and a post that fits none of them goes to
+> `support.general`. Take the routing line out and every specialist hears every post, which is
+> what a channel does by default.
 
 ## UPDATE · `apps/kitchen-sink/README.md` · Web application, the Channels and Seats bullets
 
@@ -67,10 +68,9 @@ Per D8.
 
 | Material | Publisher | Specific draft |
 |---|---|---|
-| The support-team section and the two bullets above | The rebuild, once every sentence is true on `main` (ER-19) | This document |
-| The removals, the `CLAUDE.md` row, `docs/atlas` lines naming `desk-clerk` | The rebuild, per D8 | This document |
-| Routing a channel, in `apps/docs/docs/workforce/channels.md` | Routed channel | Its `DOCS.md` |
-| A routed seat's answer always lands, in the same guide | FIX-1610 | Its `DOCS.md` |
+| The support-team section and the two bullets above | FIX-1611, once every sentence is true on `main` (ER-19) | This document |
+| The removals, the `CLAUDE.md` row, `docs/atlas` lines naming `desk-clerk` | FIX-1611, per D8 | This document |
+| Routing a channel, and a routed seat's answer always landing, in `apps/docs/docs/workforce/channels.md` | FIX-1610 | Its `DOCS.md` |
 | An open session view hears every request in its session, in the react and client docs | FIX-1609 | Its `DOCS.md` |
 | The gateway key in Setup | FIX-1606 | [#2305](https://github.com/fixpoint-labs/flow-state-dev/pull/2305) |
 

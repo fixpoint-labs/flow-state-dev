@@ -30,7 +30,7 @@ flowchart TD
 |---|---|
 | **Instead of** | Fix FIX-1609 and FIX-1610 and keep the roster · or a new epic for the rebuild |
 | **Because** | The owner's first real use failed this epic's own goal, so the two bugs are this epic's. Fixing them on the old roster proves a desk nobody would ship. A new epic would run the same closure over the same pages twice |
-| **Locks in** | The three ways of talking stay the spine: talk to a specialist, a post reaches the right agent ([D5](#d5)), the agent answers in the channel ([D6](#d6)), live ([D4](#d4)). The routed channel and the rebuild join; FIX-1609 and FIX-1610 become children; FIX-1601's plan is amended (ER-28). The shipped chain is not reopened |
+| **Locks in** | The three ways of talking stay the spine: talk to a specialist, a post reaches the right agent ([D5](#d5)), the agent answers in the channel ([D6](#d6)), live ([D4](#d4)). FIX-1609 and FIX-1610 become children, FIX-1610 owning the routing too; FIX-1611 is the rebuild; FIX-1601's plan is [amended](PLAN.md#fix-1601s-plan-amendment). The shipped chain is not reopened |
 
 Jake picked "Rebuild here" on the decision card, 2026-09-27 00:24 UTC.
 
@@ -44,7 +44,7 @@ D4 to D6 would still stand; the rebuild would move to another example.
 |---|---|
 | **Instead of** | Every post wakes every other member, with a hop limit |
 | **Because** | Two agents in one channel would answer each other forever. The wake already reads `author` |
-| **Locks in** | It also keeps a specialist's answer, a seat-authored post, from being routed again. The routed channel and FIX-1610 consume it. `author` is unverified until FIX-1493 |
+| **Locks in** | It also keeps a specialist's answer, a seat-authored post, from being routed again. FIX-1610 consumes it. `author` is unverified until FIX-1493 |
 
 <a name="d3"></a>
 ## D3 · The gate is keyless and reads the open page before any reload; one real-model smoke joins the closure
@@ -65,13 +65,13 @@ D4 to D6 would still stand; the rebuild would move to another example.
 | **Locks in** | Engine, client and react may change in their own words (session, request, child run), never Workforce's (ER-8). "Working" reads the session's running child runs. The old Kill line's "no change in core or engine" is lifted |
 
 <a name="d5"></a>
-## D5 · Routing is an opt-in route step in Workforce: a channel that declares it sends each post to one member, picked by the members' stated purpose
+## D5 · Routing is an opt-in route step in Workforce: a channel that declares it sends each post to one member, picked by the members' stated purpose · FIX-1610
 
 | | |
 |---|---|
 | **Instead of** | A router in kitchen-sink's notify slot · a triage seat that re-posts every post · a custom channel kind |
 | **Because** | The fan-out already sees every post, so narrowing its members there leaves the stock wake and D2 alone. An app-side router is what every host would copy, and a goal check forbids one in kitchen-sink. A triage seat adds a hop, a bot line and the old contrivance. A custom kind can't hold `escalations` |
-| **Locks in** | One model call per post over the members' `WORKER.md` `description:`, with a fallback member when none fits or the call fails. A `CHANNEL.md` line opts in; without it a channel wakes every agent member, as today. Kitchen-sink writes no routing code. The route reads recent lines, so a follow-up stays with its specialist |
+| **Locks in** | The route runs once per post in the channel flow, before the fan-out, never inside per-member notify. Order (ER-21): the specialist already holding the case, from recent lines, no model call; else one classifier call over the members' `WORKER.md` `description:`; else the fallback member. So a failed call never pulls a follow-up away from its specialist. A `CHANNEL.md` line opts in; without it a channel wakes every agent member, as today. Kitchen-sink writes no routing code |
 
 **The trade-off, decided.** A specialist hears only the post routed to it, so its history holds
 only its cases. A post leaning on something told to another specialist arrives without it; the
@@ -84,7 +84,7 @@ customer may repeat it. Passing lines with the post is a later, one-rule change.
 |---|---|
 | **Instead of** | A firmer prompt · a channel-side responder writing the answer itself |
 | **Because** | On real models the seat posted its answer 4 times in 6 on one and 0 in 2 on another; the script always did. A prompt makes it likelier, not certain. A channel-side responder writes words no seat wrote |
-| **Locks in** | FIX-1610 owns "every time" and defines "meant to answer", never as "every woken member of an unrouted channel posts". The line is authored as the seat (ER-4), so D2 keeps it from waking anyone |
+| **Locks in** | "Meant to answer" is the routed member, so FIX-1610 defines it with the route ([D5](#d5)), never as "every woken member of an unrouted channel posts". The line is authored as the seat (ER-4), so D2 keeps it from waking anyone |
 
 <a name="d7"></a>
 ## D7 · The support team is four specialists by purpose and one routed channel
@@ -93,7 +93,7 @@ customer may repeat it. Passing lines with the post is a later, one-rule change.
 |---|---|
 | **Instead of** | The named roster with routing on top · a fifth `care` specialist for upset customers |
 | **Because** | Jake: *"whats the point of having agents with names instead of clear roles or purposes."* Upset is a tone, not a topic: an upset customer with a broken printer still needs `devices` |
-| **Locks in** | `support.devices`, `support.accounts`, `support.fsd` and `support.general` (the fallback) on the built-in agent kind; one routed channel holding `escalations`. Cut: ada, grace, iris, otto, wren; `desk-clerk`, its `desk` setting and `desk-note`; the `ada-wren` DM; `desk`. What else leaves the page is [D8](#d8). The rebuild's spec confirms ids |
+| **Locks in** | `support.devices`, `support.accounts`, `support.fsd` and `support.general` (the fallback) on the built-in agent kind; one routed channel holding `escalations`. Cut: ada, grace, iris, otto, wren; `desk-clerk`, its `desk` setting and `desk-note`; the `ada-wren` DM; `desk`. What else leaves the page is [D8](#d8). FIX-1611's spec confirms ids |
 
 <a name="d8"></a>
 ## D8 · Kitchen-sink shows only the support story: page hiring, the hiring seat and the custom kinds leave · the owner's call, from his own words
@@ -109,10 +109,10 @@ small issue.
 
 ## Who owns what
 
-![Who owns what: nine rules by five issues. The routed channel builds the one-member route and decides what a specialist hears; FIX-1610 builds the always-landing answer; FIX-1609 builds the live view; the rebuild builds the roster, escalation filing and the re-pointed checks; FIX-1601 builds the proof. The shipped rule that a seat's post wakes no seat is consumed by the routed channel and FIX-1610.](figures/ownership.svg)
+![Who owns what: eight rules by four issues. FIX-1610 builds the one-member route and the answer that always lands; FIX-1609 builds the live view; FIX-1611 builds the roster, escalation filing and the re-pointed checks; FIX-1601 builds the proof. The shipped rule that a seat's post wakes no seat is consumed by FIX-1610.](figures/ownership.svg)
 
-Each rule has one owner. The routed channel is the new hinge: it decides what a specialist
-hears, and FIX-1610 must not re-decide it.
+Each rule has one owner. FIX-1610 holds both halves of a routed post, who hears it and that its
+answer lands, so no seam is left between them.
 
 <a name="decided-before-this-spec"></a>
 ## Decided before this spec, recorded so no child reopens them
@@ -132,14 +132,19 @@ The FIX-1459 fence on `agent-worker-flow.ts` is lifted: FIX-1459 merged.
 ## Decided in review, recorded so no child reopens them
 
 - **FIX-1609 and FIX-1610 block FIX-1601**; the owner chose the framework fix for the live view.
+- **The routed channel folds into FIX-1610**, since who hears a post and whether its answer
+  lands are one mechanism. The rebuild is FIX-1611, after FIX-1609 and FIX-1610 (#2310 review).
+- **Routing order:** the specialist holding the case, then the classifier, then the fallback
+  (ER-21), so a failed call can't split a case (#2310 review).
 - **FIX-1591 held**, pending the owner's `escalations` call.
 - **A channel's transcript is its posts** (FIX-1585 D1); the live view reads the same items.
 - Earlier rounds' calls (the internal receiver, FIX-1589 first, FIX-1602 required) all shipped.
 
 ## What the end-state POC showed
 
-None built. The untested premise is D5: one classifier call routing well on a real model. The
-smoke settles it; the routed channel's spec may build a premise POC first.
+None built. The untested premise is D5: one classifier call routing well on a real model.
+FIX-1610's spec builds a small routing POC before it is built
+([PLAN.md](PLAN.md#notes-for-the-child-specs)); the smoke confirms it.
 
 ## How it got here
 
@@ -149,6 +154,7 @@ smoke settles it; the routed channel's spec may build a premise POC first.
   test finds a reload-only channel, a missing answer, no status, a contrived roster.
 - **Sep 27, this amendment:** rebuild as a routed desk. D1 and D3 rewritten; D4 to D8 added;
   the Kill line and ER-2's promise amended. The owner picked "Rebuild here" (D1, 00:24 UTC);
-  the open question on the other features closed as D8, from his own message.
+  the open question on the other features closed as D8, from his own message. Review folded
+  the routed channel into FIX-1610 and filed FIX-1611.
 
 **Open: none.** Approving this direction is merging it.

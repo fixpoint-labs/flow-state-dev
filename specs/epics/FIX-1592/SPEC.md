@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 14 children, 2 still to file · Workforce: Layer 2 Abstraction · Goal 1, validate through
+Epic · 13 children · Workforce: Layer 2 Abstraction · Goal 1, validate through
 real usage ([`docs/objectives.md`](../../../docs/objectives.md)) ·
 [FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592) · amended 2026-09-27; earlier
 versions: [EVOLUTION.md](EVOLUTION.md)
@@ -59,7 +59,7 @@ today's `main` fails it.
 
 | How we verify | |
 |---|---|
-| **Goal check** | FIX-1601's QA plan, amended to these legs ([ER-28](BUSINESS-RULES.md#how-the-set-is-run)), on one `main` commit ([ER-17](BUSINESS-RULES.md#the-proof)) |
+| **Goal check** | FIX-1601's QA plan, amended to these legs ([PLAN.md](PLAN.md#fix-1601s-plan-amendment)), on one `main` commit ([ER-17](BUSINESS-RULES.md#the-proof)) |
 | **Model** | Scripted and keyless for every gated leg, then one real-model smoke with a key ([D3](DECISIONS.md#d3)) |
 | **Signal** | **a:** with no reload, the view shows the routed specialist working, then its answer under its name; still there after a reload. This leg's script never calls the post tool. **b:** a device, an account and an unclear question run `devices`, `accounts` and `general` once each, no one else; each specialist's channel conversation holds only its own post. **c:** a message to `support.devices` and its reply survive a reload and never show in the channel. **Smoke:** five or more real-model posts each get exactly one answer line, no reload; a clearly worded question sent to the wrong specialist is a finding |
 | **Input** | Text each child picks, with a scenario marker; a different text must pass too |
@@ -70,11 +70,11 @@ today's `main` fails it.
 |---|---|
 | **Lead measure** | A clean FIX-1601 run on one `main` commit, no-reload leg and smoke included. **None today** |
 | **Not doing** | Hired specialists in the channel (FIX-1415) · draining `escalations` (FIX-1591) · a `care` specialist ([D7](DECISIONS.md#d7)) · word-by-word streaming · verified identity (FIX-1493) |
-| **Kill line** | A gated leg can't pass keyless · the live view or routing needs a Workforce word in core, engine, client or react · routing needs more than one model call per post |
+| **Kill line** | A gated leg can't pass keyless · the live view or routing needs a Workforce word in core, engine, client or react · routing a post takes more than one model call. The chosen specialist's own run is separate, and the classifier never runs inside per-member notify |
 
 ## What's in the box
 
-![What's in the box: one support conversation, routed to one specialist by purpose (routed channel), whose answer always lands (FIX-1610) in a live view (FIX-1609), plus direct talk (FIX-1585). Fenced: no Workforce word below Workforce, routing opt-in, one model call per post. The app composes four specialists, the fallback, escalations and the model. Not built: hired specialists in the channel, escalations served, a care specialist.](figures/end-state.svg)
+![What's in the box: one support conversation, routed to one specialist by purpose, whose answer always lands (both FIX-1610), in a live view (FIX-1609), plus direct talk (FIX-1585). Fenced: no Workforce word below Workforce, routing opt-in, one model call per post. The app composes four specialists, the fallback, escalations and the model. Not built: hired specialists in the channel, escalations served, a care specialist.](figures/end-state.svg)
 
 Inside the box is what any Workforce app gets; kitchen-sink composes the roster. The fence keeps
 the live fix in the framework's own words.
@@ -88,37 +88,32 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | [FIX-1585](https://linear.app/fixpoint-labs/issue/FIX-1585), [1589](https://linear.app/fixpoint-labs/issue/FIX-1589), [1590](https://linear.app/fixpoint-labs/issue/FIX-1590), [1594](https://linear.app/fixpoint-labs/issue/FIX-1594), [1602](https://linear.app/fixpoint-labs/issue/FIX-1602) · the three ways of talking | Talk to a seat; a post wakes member agents; a seat posts as itself; the stock wake | The spine. FIX-1589's clerk is cut ([D7](DECISIONS.md#d7)); FIX-1590's every-member wake stays the default for unrouted channels | Done · [#2282](https://github.com/fixpoint-labs/flow-state-dev/pull/2282), [#2283](https://github.com/fixpoint-labs/flow-state-dev/pull/2283), [#2290](https://github.com/fixpoint-labs/flow-state-dev/pull/2290), [#2293](https://github.com/fixpoint-labs/flow-state-dev/pull/2293), [#2297](https://github.com/fixpoint-labs/flow-state-dev/pull/2297) |
 | [FIX-1603](https://linear.app/fixpoint-labs/issue/FIX-1603), [FIX-1604](https://linear.app/fixpoint-labs/issue/FIX-1604) · closure-prep bugs | A goal leg and a plan check follow FIX-1602 | Found before the run | Done · [#2301](https://github.com/fixpoint-labs/flow-state-dev/pull/2301), [#2300](https://github.com/fixpoint-labs/flow-state-dev/pull/2300) |
 | [FIX-1605](https://linear.app/fixpoint-labs/issue/FIX-1605) · dev page 500 · [FIX-1606](https://linear.app/fixpoint-labs/issue/FIX-1606) · wrong README key | The page renders under `next dev`; the README names the gateway key | Closure findings | Backlog · [#2306](https://github.com/fixpoint-labs/flow-state-dev/pull/2306), [#2305](https://github.com/fixpoint-labs/flow-state-dev/pull/2305) open |
-| [FIX-1609](https://linear.app/fixpoint-labs/issue/FIX-1609) · live channel view | A session-wide live stream; "working" in the channel view | Leg a ([D4](DECISIONS.md#d4)) | Backlog · not yet a sub-issue |
-| [FIX-1610](https://linear.app/fixpoint-labs/issue/FIX-1610) · the answer lands every time | The routed answer, whatever the tool choice | Leg a, the smoke ([D6](DECISIONS.md#d6)) | Backlog |
-| FIX-XXX · routed channel (Workforce) | The opt-in route step, a purpose router, the `CHANNEL.md` line | Leg b ([D5](DECISIONS.md#d5)) | To file |
-| FIX-XXX · support desk rebuild (kitchen-sink) | The roster, escalation filing, every check and doc re-pointed | The page a person uses ([D7](DECISIONS.md#d7)) | To file |
+| [FIX-1609](https://linear.app/fixpoint-labs/issue/FIX-1609) · live channel view | A session-wide live stream; "working" in the channel view | Leg a ([D4](DECISIONS.md#d4)) | Backlog |
+| [FIX-1610](https://linear.app/fixpoint-labs/issue/FIX-1610) · routed channel (Workforce) | The opt-in route step, a purpose router with a fallback, the `CHANNEL.md` line; the routed answer, whatever the tool choice | Legs a and b, the smoke ([D5](DECISIONS.md#d5), [D6](DECISIONS.md#d6)) | Backlog |
+| [FIX-1611](https://linear.app/fixpoint-labs/issue/FIX-1611) · support desk rebuild (kitchen-sink) | The roster, escalation filing, every check and doc re-pointed | The page a person uses ([D7](DECISIONS.md#d7), [D8](DECISIONS.md#d8)) | Backlog |
 | [FIX-1601](https://linear.app/fixpoint-labs/issue/FIX-1601) · closure · required | The amended QA plan, run on one `main` commit | Proves the whole ([ER-17](BUSINESS-RULES.md#the-proof)) | In Development · plan [#2288](https://github.com/fixpoint-labs/flow-state-dev/pull/2288) to amend |
 
-**7 done · 4 filed, open · 2 to file · the closure.** Could it be smaller? The routed channel
-could fold into the rebuild; it doesn't, because any app reuses it and it needs its own proof.
+**7 done · 5 open · the closure.** Could it be smaller? It got smaller in review: the routed
+channel folded into FIX-1610, because who hears a post and whether its answer lands are one
+mechanism. It stays apart from the rebuild because any app reuses it and it needs its own proof.
 The rebuild stays one issue: a half-renamed roster leaves `main` red.
 
 ## How the issues flow into each other
 
 ```mermaid
 flowchart LR
-  S["shipped · FIX-1585, 1589, 1590, 1594, 1602"] -->|"the stock wake, the seat's post"| R["FIX-XXX · routed channel"]
-  S -->|"a woken seat, its post"| T["FIX-1610 · the answer lands every time"]
-  R -->|"a route line, one member per post"| K["FIX-XXX · support desk rebuild"]
-  T -->|"an answer that needs no tool call"| K
-  L["FIX-1609 · live channel view"] -->|"the open view is live"| Z["FIX-1601 · closure · required"]
-  K -->|"the new roster, re-pointed checks"| Z
+  S["shipped · FIX-1585, 1589, 1590, 1594, 1602"] -->|"the stock wake, the seat's post"| T["FIX-1610 · routed channel, the answer lands"]
+  T -->|"a route line, an answer with no tool call"| K["FIX-1611 · support desk rebuild"]
+  L["FIX-1609 · live channel view"] -->|"the open view is live"| K
+  K -->|"the new roster, re-pointed checks"| Z["FIX-1601 · closure · required"]
   B["FIX-1605, FIX-1606 · closure findings"] --> Z
   classDef done stroke-width:2px
-  classDef proposed stroke-dasharray:4 3
   class S done
-  class R,K proposed
 ```
 
-Solid edges are blocked-by on implementation; specs may start early
-([ER-14](BUSINESS-RULES.md#how-the-set-is-run)). Dashed nodes aren't filed. FIX-1609 and the
-rebuild share the channel panel and e2e, so they are a seam, not a chain
-([PLAN.md](PLAN.md#coordination-seams-to-watch)).
+Edges are blocked-by on implementation; specs may start early
+([ER-14](BUSINESS-RULES.md#how-the-set-is-run)). FIX-1611 waits for FIX-1609 too: both touch
+the channel panel and the kitchen-sink e2e ([PLAN.md](PLAN.md#coordination-seams-to-watch)).
 
 ## What stays as it is
 
