@@ -517,6 +517,43 @@ describe("a person's post to a routed channel", () => {
     }
   });
 
+  // A cancel is not a failed call: the fallback is for a call that failed, and
+  // a cancelled fan-out places the post with nobody and records nothing.
+  it("places nothing when the fan-out is cancelled during the call: no record, no ledger entry, no fallback, ended aborted (BR-3)", async () => {
+    const pending = mockEvaluationModel({ hold: true });
+    const { channel, state, heard } = host({
+      resolver: () => createMockModelResolver({ evaluators: { "channel-route": pending } })
+    });
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP, MEMBERS);
+      await post(runtime, channel, HELP, "[route:support.devices] my laptop won't join the wifi");
+      await until(async () => pending.calls.length === 1, "the route's call");
+      const [fanOut] = (await runtime.stores.request.list({ sessionId: HELP })).filter((r) => r.actionName === "onPosted");
+      const router = await state.getRouter();
+      const cancel = await router.POST(
+        new Request(`http://localhost/api/flows/${channel.id}/requests/${fanOut!.id}/abort`, { method: "POST" }),
+        { params: { path: [channel.id, "requests", fanOut!.id, "abort"] } }
+      );
+      expect(cancel.status).toBe(204);
+      await settle(runtime, HELP, 1);
+
+      expect(pending.calls[0]!.abortSignal?.aborted).toBe(true);
+      expect((await runtime.stores.request.get(fanOut!.id))?.status).toBe("aborted");
+      expect(await routeRecords(runtime.stores, HELP)).toEqual([]);
+      expect(heard).toEqual([]);
+      // The ledger still has the post as kept, with no route noted against it.
+      const [line] = await postedLines(runtime.stores, HELP);
+      const session = await runtime.stores.session.get(HELP);
+      expect((session?.state as { channelRouteLedger: { lastPost: unknown } }).channelRouteLedger.lastPost).toEqual({
+        postId: line!.id,
+        spoke: []
+      });
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("runs nobody when the caller cannot reach the fallback's seat, recorded as failed (BR-6)", async () => {
     const { channel, state, heard } = host({ pinGeneralTo: "globex" });
     try {

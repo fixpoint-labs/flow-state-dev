@@ -20,8 +20,9 @@
  *    caller cannot reach the fallback's seat either, nobody does.
  *
  * Only the evaluator call's own failure reaches the fallback; any other error
- * fails the fan-out like any other. Every route is recorded as one
- * `channel-route` item on the channel's session, never as a line.
+ * fails the fan-out like any other, and so does a cancel, which records and
+ * wakes nothing. Every route is recorded as one `channel-route` item on the
+ * channel's session, never as a line.
  *
  * The lines and the member on the person's last post come from the channel's
  * route ledger (`channel-route.ts`), read as the post was kept, and never from
@@ -157,12 +158,19 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
     questions: (routeCase: RouteCase) => ({ member: choice(ROUTE_QUESTION, routeCase.options) })
   });
 
-  /** The call's own failure, as a value the decision reads. Nothing else is caught. */
+  /**
+   * The call's own failure, as a value the decision reads. Nothing else is
+   * caught. A cancelled request is not a failed call: its error goes on up, so
+   * nothing is placed, recorded, noted in the ledger or woken.
+   */
   const evaluationFailed = handler({
     name: "channel-route-evaluation-failed",
     inputSchema: z.unknown(),
     outputSchema: failedEvaluationSchema,
-    execute: (error: unknown) => ({ failed: error instanceof Error ? error.message : String(error) })
+    execute: (error: unknown, ctx) => {
+      if (ctx.signal.aborted) throw error;
+      return { failed: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   /**
