@@ -398,7 +398,84 @@ describe("a scan that rows move during", () => {
     expect(ordered).toBeGreaterThanOrEqual(2);
     expect(ids.filter((id) => !pairs.includes(`${id}/${id}_m`))).toEqual([]);
   });
+
+  // Every run under the session is read once, when the stream opens, to find
+  // the unfinished ones. An old run still working has an old update time, so
+  // no later read finds it. A run deleted while that read goes on shifts the
+  // runs after it, and one read at an offset would then skip the run that
+  // moved onto a page already read.
+  it("names an older unfinished run when another run is deleted during the first read of runs", async () => {
+    const built = buildRouter();
+    router = built.router;
+    const { stores } = built;
+    const longAgo = Date.now() - 3_600_000;
+    await seedSession(stores, Date.now() - 600_000);
+    // The oldest run is still working. A hundred finished runs are newer.
+    await keepRun(stores, "run_old", longAgo, "suspended");
+    for (let i = 0; i < 100; i += 1) {
+      await keepRun(stores, `run_${String(i).padStart(3, "0")}`, longAgo + 1 + i, "completed");
+    }
+
+    const list = stores.session.list.bind(stores.session);
+    let opening = 0;
+    vi.spyOn(stores.session, "list").mockImplementation(async (options) => {
+      const rows = await list(options);
+      if (options?.orderBy === "createdAt" && ++opening === 1) {
+        // Deleted once the first rows of the read are back.
+        await stores.session.delete("run_050");
+      }
+      return rows;
+    });
+
+    const notices = (await streamedEvents(router)).filter((event) => event.type === "session.runs");
+    expect(opening).toBeGreaterThanOrEqual(1);
+    expect(notices[0]?.type === "session.runs" && notices[0].runs.map((run) => run.id)).toEqual(["run_old"]);
+  });
 });
+
+/** Keep run `id` under `s1`, created and last updated at `at`, with one request of `status`. */
+async function keepRun(
+  stores: StoreRegistry,
+  id: string,
+  at: number,
+  status: RequestRecord["status"]
+): Promise<void> {
+  await stores.session.set(
+    id,
+    {
+      orgId: DEFAULT_ORG_ID,
+      id,
+      flowKind: "chat",
+      userId: "alice",
+      parentSessionId: "s1",
+      state: {},
+      version: 0,
+      createdAt: at,
+      updatedAt: at,
+      journal: []
+    },
+    "any"
+  );
+  await stores.request.set(
+    `req_${id}`,
+    {
+      id: `req_${id}`,
+      sessionId: id,
+      flowKind: "chat",
+      actionName: "say",
+      userId: "alice",
+      orgId: DEFAULT_ORG_ID,
+      source: "http",
+      status,
+      startedAtMs: at,
+      state: {},
+      version: 0,
+      createdAt: at,
+      updatedAt: at
+    } as RequestRecord,
+    "any"
+  );
+}
 
 describe("a connection that ends", () => {
   const shipped = { ...SESSION_STREAM_TIMINGS };

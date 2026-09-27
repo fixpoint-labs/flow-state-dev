@@ -1155,14 +1155,15 @@ export async function runActionInternal<
         tenantMatches(session.tenantId, options.tenantId) &&
         session.userId === options.userId
       ) {
-        // Set only over the version just loaded, and keep it: a write that got
-        // in first has moved the update time already, and this must not put
-        // back a copy of the child older than that write. A conflict is
-        // therefore not an error, and keeping the version costs no other
-        // writer a retry.
+        // Written only over the version just loaded, and one past it, so a
+        // writer still holding the loaded copy conflicts rather than putting it
+        // back over this one. A write that got in first (a metadata edit, say)
+        // has moved the update time already, and this must not put back a copy
+        // of the child older than that write. A conflict is therefore not an
+        // error.
         await options.stores.session.set(
           sessionKey,
-          { ...session, updatedAt: Date.now() },
+          { ...session, updatedAt: Date.now(), version: session.version + 1 },
           session.version
         );
       }

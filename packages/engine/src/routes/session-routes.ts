@@ -7,6 +7,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionParentage, SessionRecord, StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
+import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import { purgeStaleResourceState } from "../context/ensure-session-record";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
@@ -460,24 +461,46 @@ export async function handlePatchSessionMetadata(
   if (unattributed !== undefined) return unattributed;
 
   const body = await parseJsonBody(request);
-  const now = Date.now();
 
-  const updated: SessionRecord = {
-    ...session,
-    ...(body.title !== undefined ? { title: getString(body.title) } : {}),
-    ...(body.description !== undefined ? { description: getString(body.description) } : {}),
-    ...(body.tags !== undefined ? { tags: asStringArray(body.tags) } : {}),
-    ...(body.metadata !== undefined
-      ? { metadata: { ...session.metadata, ...asObject(body.metadata) } }
-      : {}),
-    updatedAt: now
-  };
+  // Written only over the version just read, and one past it. A write that
+  // lands in between (a run starting on the session, another edit) is kept:
+  // the edit is read again and applied over it. And a writer still holding
+  // the older copy conflicts rather than putting it back over the edit.
+  let current = session;
+  const maxAttempts = 1 + casMaxRetries();
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (attempt > 0) {
+      await waitForCASRetry(attempt);
+      const reread = await loadTenantSession(ctx.stores.session, route.sessionId, ctx.tenantId);
+      if (reread === undefined) {
+        return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+      }
+      current = reread;
+    }
 
-  await ctx.stores.session.set(updated.id, updated, "any");
+    const updated: SessionRecord = {
+      ...current,
+      ...(body.title !== undefined ? { title: getString(body.title) } : {}),
+      ...(body.description !== undefined ? { description: getString(body.description) } : {}),
+      ...(body.tags !== undefined ? { tags: asStringArray(body.tags) } : {}),
+      ...(body.metadata !== undefined
+        ? { metadata: { ...current.metadata, ...asObject(body.metadata) } }
+        : {}),
+      version: current.version + 1,
+      updatedAt: Date.now()
+    };
 
-  return jsonResponse(200, {
-    // Surface the bare session id, not the namespaced storage key (FIX-682).
-    session: { ...updated, id: route.sessionId }
+    const written = await ctx.stores.session.set(updated.id, updated, current.version);
+    if (written.ok) {
+      return jsonResponse(200, {
+        // Surface the bare session id, not the namespaced storage key (FIX-682).
+        session: { ...updated, id: route.sessionId }
+      });
+    }
+  }
+
+  return jsonResponse(409, {
+    error: `Session "${route.sessionId}" kept changing while its metadata was written; try again`
   });
 }
 

@@ -1,16 +1,18 @@
 /**
  * Tests for mutable session metadata: title, description, tags, and setMetadata.
  */
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { isDeepStrictEqual } from "node:util";
+import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
   parseFlowRoute
 } from "../src";
+import type { SessionRecord, StoreRegistry } from "../src";
 
 function makeFlow(kind: string): FlowInstance {
   return defineFlow({
@@ -358,5 +360,167 @@ describe("ctx.session.setMetadata during execution", () => {
     expect(record?.description).toBe("Full Description");
     expect(record?.tags).toEqual(["tag1", "tag2"]);
     expect(record?.metadata).toEqual({ custom: "value" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// An edit and another write to the same session record, at once
+// ---------------------------------------------------------------------------
+
+/** A flow that delivers a run into an existing session by its id. */
+function deliveryFlow(kind: string): FlowInstance {
+  return defineFlow({
+    kind,
+    actions: {
+      deliver: {
+        block: dispatcher({
+          name: `${kind}-deliver`,
+          action: "work",
+          inputSchema: z.object({ to: z.string() }),
+          session: { id: (input: { to: string }) => input.to },
+          payload: () => ({})
+        })
+      }
+    },
+    internal: { actions: { work: { block: handler({ name: `${kind}-work`, execute: () => ({}) }) } } }
+  })({ id: kind });
+}
+
+async function keepSession(stores: StoreRegistry, id: string, fields: Partial<SessionRecord> = {}): Promise<void> {
+  const now = Date.now();
+  await stores.session.set(
+    id,
+    {
+      orgId: DEFAULT_ORG_ID,
+      id,
+      flowKind: "relay",
+      userId: "alice",
+      state: {},
+      version: 0,
+      createdAt: now,
+      updatedAt: now,
+      journal: [],
+      ...fields
+    },
+    "any"
+  );
+}
+
+function patchMetadata(router: ReturnType<typeof createFlowApiRouter>, id: string, body: Record<string, unknown>) {
+  return router.PATCH(
+    new Request(`http://localhost/api/flows/sessions/${id}/metadata`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    }),
+    { params: { path: ["sessions", id, "metadata"] } }
+  );
+}
+
+async function until(condition: () => boolean | Promise<boolean>, what: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!(await condition())) {
+    if (Date.now() > deadline) throw new Error(`never: ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+describe("an edit and another write to one session at once", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // A run delivered into an existing child moves the child's update time, so
+  // a live view of the parent sees it start. That write must not put back a
+  // title the child was given after the run read it.
+  it("keeps a title edited while a run delivered into the child starts", async () => {
+    const registry = createFlowRegistry();
+    registry.register(deliveryFlow("relay"));
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    await keepSession(stores, "parent");
+    await keepSession(stores, "seat", { parentSessionId: "parent", title: "Seat" });
+
+    const set = stores.session.set.bind(stores.session);
+    const get = stores.session.get.bind(stores.session);
+    let renamed = false;
+    vi.spyOn(stores.session, "set").mockImplementation(async (id, value, expected) => {
+      const stored = renamed || id !== "seat" ? undefined : await get(id);
+      // The write that moves only the child's update time.
+      const touch = { ...value, updatedAt: 0, version: 0 };
+      if (stored !== undefined && isDeepStrictEqual(touch, { ...stored, updatedAt: 0, version: 0 })) {
+        renamed = true;
+        expect((await patchMetadata(router, "seat", { title: "Renamed" })).status).toBe(200);
+      }
+      return set(id, value, expected);
+    });
+
+    const res = await router.POST(
+      new Request("http://localhost/api/flows/relay/parent/actions/deliver", {
+        method: "POST",
+        body: JSON.stringify({ userId: "alice", input: { to: "seat" } })
+      }),
+      { params: { path: ["relay", "parent", "actions", "deliver"] } }
+    );
+    expect(res.status).toBe(202);
+    await until(() => renamed, "the run moved the child's update time");
+    await until(
+      async () => (await stores.request.list({ sessionId: "seat" })).every((r) => r.status !== "in_progress"),
+      "the delivered run finished"
+    );
+
+    expect((await get("seat"))?.title).toBe("Renamed");
+  });
+
+  // A write of a session record names the version it writes. One that kept
+  // the version it read would let a writer holding that older copy put it back.
+  it("advances the child's version when a delivered run moves its update time", async () => {
+    const registry = createFlowRegistry();
+    registry.register(deliveryFlow("relay"));
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    await keepSession(stores, "parent");
+    await keepSession(stores, "seat", { parentSessionId: "parent", updatedAt: Date.now() - 60_000 });
+    const before = (await stores.session.get("seat"))!;
+
+    const res = await router.POST(
+      new Request("http://localhost/api/flows/relay/parent/actions/deliver", {
+        method: "POST",
+        body: JSON.stringify({ userId: "alice", input: { to: "seat" } })
+      }),
+      { params: { path: ["relay", "parent", "actions", "deliver"] } }
+    );
+    expect(res.status).toBe(202);
+    await until(async () => (await stores.session.get("seat"))!.updatedAt > before.updatedAt, "the child moved");
+    await until(
+      async () => (await stores.request.list({ sessionId: "seat" })).every((r) => r.status !== "in_progress"),
+      "the delivered run finished"
+    );
+
+    expect((await stores.session.get("seat"))!.version).toBeGreaterThan(before.version);
+  });
+
+  it("keeps a change another write made while the edit was being applied", async () => {
+    const { router, stores } = createRouter();
+    await keepSession(stores, "sess_race", { flowKind: "demo" });
+
+    const set = stores.session.set.bind(stores.session);
+    const get = stores.session.get.bind(stores.session);
+    let raced = false;
+    vi.spyOn(stores.session, "set").mockImplementation(async (id, value, expected) => {
+      if (!raced && id === "sess_race" && value.title === "Mine") {
+        raced = true;
+        const stored = (await get(id))!;
+        const theirs = { ...stored, tags: ["theirs"], version: stored.version + 1, updatedAt: Date.now() };
+        await set(id, theirs, stored.version);
+      }
+      return set(id, value, expected);
+    });
+
+    expect((await patchMetadata(router, "sess_race", { title: "Mine" })).status).toBe(200);
+    expect(raced).toBe(true);
+    const record = await get("sess_race");
+    expect(record?.title).toBe("Mine");
+    expect(record?.tags).toEqual(["theirs"]);
   });
 });

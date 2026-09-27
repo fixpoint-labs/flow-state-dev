@@ -60,14 +60,12 @@ const DEFAULT_STATE_PAGE_LIMIT = 100;
 const IN_PROGRESS_LOOKUP_LIMIT = 10;
 
 /**
- * How long a live item is re-applied over snapshots that do not hold it yet.
- *
- * A snapshot read can start before a live item arrives and land after it, and
- * loading that snapshot would drop the item. Re-applying it covers that. Past
- * this age every snapshot read began after the item was kept, so one that
- * still lacks it hides it on purpose (a later resume superseded it).
+ * The id of the user message the view shows for a request while it is sent,
+ * until the server's own copy replaces it.
  */
-const UNCONFIRMED_LIVE_ITEM_TTL_MS = 60_000;
+function optimisticIdOf(requestId: string): string {
+  return `item_msg_optimistic_${requestId}`;
+}
 
 /**
  * The key the view holds an item under: request and item id together, since
@@ -495,8 +493,11 @@ export function useSession(
   // The session whose first snapshot has been applied: the live stream opens
   // only after it, so its first read covers the gap the snapshot left.
   const [snapshotAppliedFor, setSnapshotAppliedFor] = useState<string | undefined>(undefined);
-  // Live items no snapshot has held yet, re-applied over one that lands later.
-  const unconfirmedLiveItemsRef = useRef(new Map<string, { item: OutputItem; at: number }>());
+  // Every live copy the view took, by key, with its place in arrival order,
+  // until a snapshot whose read began after it arrived settles it. The count
+  // is how many copies have arrived so far.
+  const liveItemsRef = useRef(new Map<string, number>());
+  const liveArrivalsRef = useRef(0);
   // The server time the applied snapshot's read began. The live stream starts
   // from it, so nothing kept after that read is missed however long the
   // snapshot took to arrive.
@@ -577,8 +578,6 @@ export function useSession(
    */
   const pendingResourceChangesRef = useRef<ResourceChangeItem[]>([]);
   const flushHandleRef = useRef<number | null>(null);
-  /** The store key of the optimistic user message, until the server's own replaces it. */
-  const optimisticKeyRef = useRef<string | null>(null);
   /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
   const resourceChangedDuringStreamRef = useRef(false);
   /**
@@ -737,8 +736,50 @@ export function useSession(
     }, 0) as unknown as number;
   }, [flushContentDeltas]);
 
+  /**
+   * Take one copy of an item from a live source: the view's own request
+   * stream (`own`) or the session stream (`session`). Every live copy comes
+   * through here, so each rule of the join holds whichever source it came
+   * from:
+   *
+   * - The server's user message for a request replaces the one the view
+   *   showed while that request was sent.
+   * - A finished copy stands: no unfinished copy replaces it. Nor does a
+   *   session copy replace one the view already holds finished; that is a
+   *   repeat, or the view's own copy, which can be newer than the session's
+   *   read.
+   * - A finished copy holds every text delta, so any still queued for the
+   *   item are older than it.
+   * - The copy is remembered in arrival order, so a snapshot whose read began
+   *   before it arrived doesn't take it away (see `applySnapshot`).
+   *
+   * Returns whether the view changed.
+   */
+  const takeLiveItem = useCallback((item: OutputItem, from: "own" | "session"): boolean => {
+    const store = storeRef.current;
+    const replacedOptimistic =
+      item.type === "message" &&
+      (item as MessageItem).role === "user" &&
+      store.deleteById(itemKey(item.requestId, optimisticIdOf(item.requestId)));
+
+    const key = keyOfItem(item);
+    const held = store.getById(key);
+    if (!mayReplace(held, item) || (from === "session" && isFinished(held))) return replacedOptimistic;
+
+    if (isFinished(item)) store.discardDeltas(key);
+    liveArrivalsRef.current += 1;
+    liveItemsRef.current.set(key, liveArrivalsRef.current);
+    store.upsert(item);
+    return true;
+  }, []);
+
+  /**
+   * Load a snapshot over the view. `arrivalsBefore` is how many live copies
+   * had arrived when its read was requested: it settles those, and none that
+   * came after.
+   */
   const applySnapshot = useCallback(
-    (nextSnapshot: SessionStateSnapshotResponse) => {
+    (nextSnapshot: SessionStateSnapshotResponse, arrivalsBefore: number) => {
       snapshotAtRef.current = nextSnapshot.at;
       // Drain any state_changes that arrived while snapshot was null. The
       // snapshot represents server state at fetch time; replaying queued
@@ -782,27 +823,27 @@ export function useSession(
         )
         .sort(compareItemOrder);
 
-      // A read taken while an item was still being written holds it
-      // unfinished; a finished copy the view already holds stays.
-      const finishedHeld = new Map<string, OutputItem>();
-      for (const item of storeRef.current.getRaw()) {
-        if (isFinished(item)) finishedHeld.set(keyOfItem(item), item);
-      }
+      // Put back what the snapshot must not take from the view. A live copy
+      // that arrived after the read was requested can be newer than what the
+      // read saw, or missing from it, however long the read took; it stays
+      // until a later snapshot settles it. A copy that arrived before is
+      // settled here. What the session stream sends is already kept, so the
+      // read holds it or shows it is gone. (The view's own stream can run a
+      // moment ahead of what is kept; its request's closing snapshot settles
+      // those.) And a read taken while an item was still being written holds
+      // it unfinished, where the view may already hold it finished.
+      const held = storeRef.current.getRaw();
       storeRef.current.loadSnapshot(filtered);
-      for (const item of filtered) {
-        const kept = finishedHeld.get(keyOfItem(item));
-        if (kept !== undefined && !mayReplace(kept, item)) storeRef.current.upsert(kept);
-      }
-      const unconfirmed = unconfirmedLiveItemsRef.current;
-      if (unconfirmed.size > 0) {
-        const held = new Set(filtered.map((item) => itemKey(item.requestId, item.id)));
-        const now = Date.now();
-        for (const [key, entry] of unconfirmed) {
-          if (held.has(key) || now - entry.at > UNCONFIRMED_LIVE_ITEM_TTL_MS) {
-            unconfirmed.delete(key);
-          } else {
-            storeRef.current.upsert(entry.item);
-          }
+      const live = liveItemsRef.current;
+      for (const kept of held) {
+        const key = keyOfItem(kept);
+        const loaded = storeRef.current.getById(key);
+        const arrival = live.get(key);
+        if (arrival !== undefined && arrival > arrivalsBefore) {
+          if (mayReplace(loaded, kept)) storeRef.current.upsert(kept);
+        } else {
+          live.delete(key);
+          if (loaded !== undefined && !mayReplace(kept, loaded)) storeRef.current.upsert(kept);
         }
       }
       setItems(storeRef.current.getSorted());
@@ -871,6 +912,7 @@ export function useSession(
     }
 
     try {
+      const arrivalsBefore = liveArrivalsRef.current;
       const [nextDetail, nextSnapshot] = await Promise.all([
         sessionClient.getSession(sessionId),
         fetchSessionSnapshot()
@@ -878,7 +920,7 @@ export function useSession(
 
       setDetail(nextDetail);
       if (nextSnapshot !== null) {
-        applySnapshot(nextSnapshot);
+        applySnapshot(nextSnapshot, arrivalsBefore);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error(String(cause)));
@@ -1017,22 +1059,7 @@ export function useSession(
             return;
           }
 
-          // When the real server user message arrives, remove the optimistic
-          // placeholder so we don't show duplicates.
-          const serverItem = event.item as OutputItem & { role?: string };
-          if (
-            serverItem.type === "message" &&
-            serverItem.role === "user" &&
-            optimisticKeyRef.current !== null
-          ) {
-            storeRef.current.deleteById(optimisticKeyRef.current);
-            optimisticKeyRef.current = null;
-          }
-
-          // The session stream may already have delivered this item finished.
-          if (!mayReplace(storeRef.current.getById(keyOfItem(event.item)), event.item)) return;
-          storeRef.current.upsert(event.item);
-          setItems(storeRef.current.getSorted());
+          if (takeLiveItem(event.item, "own")) setItems(storeRef.current.getSorted());
         },
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {
@@ -1041,9 +1068,7 @@ export function useSession(
             return;
           }
 
-          if (!mayReplace(storeRef.current.getById(keyOfItem(event.item)), event.item)) return;
-          storeRef.current.upsert(event.item);
-          setItems(storeRef.current.getSorted());
+          if (takeLiveItem(event.item, "own")) setItems(storeRef.current.getSorted());
         },
         onContentAdded: (event) => {
           const key = itemKey(event.requestId, event.itemId);
@@ -1177,7 +1202,8 @@ export function useSession(
       refreshSnapshot,
       refreshLatestRequest,
       scheduleContentFlush,
-      flushContentDeltas
+      flushContentDeltas,
+      takeLiveItem
     ]
   );
 
@@ -1204,6 +1230,7 @@ export function useSession(
       resourceChangedDuringStreamRef.current = false;
       resourceChangeSeqRef.current = 0;
       storeRef.current.clear();
+      liveItemsRef.current.clear();
       pendingStateChangesRef.current = [];
       pendingResourceChangesRef.current = [];
       cancelScheduledFlush();
@@ -1239,6 +1266,7 @@ export function useSession(
           return;
         }
 
+        const arrivalsBefore = liveArrivalsRef.current;
         const [nextDetail, nextSnapshot] = await Promise.all([
           sessionClient.getSession(sessionId),
           fetchSessionSnapshot(),
@@ -1253,7 +1281,7 @@ export function useSession(
 
         setDetail(nextDetail);
         if (nextSnapshot !== null) {
-          applySnapshot(nextSnapshot);
+          applySnapshot(nextSnapshot, arrivalsBefore);
           setSnapshotAppliedFor(sessionId);
         }
 
@@ -1306,12 +1334,13 @@ export function useSession(
             // Ordered before the attach below: `applySnapshot` loads the
             // snapshot over the item store, so running it after a stream had
             // opened would drop whatever that stream had already delivered.
+            const catchUpArrivalsBefore = liveArrivalsRef.current;
             const catchUpSnapshot = await fetchSessionSnapshot();
 
             if (cancelled) return;
 
             if (catchUpSnapshot !== null) {
-              applySnapshot(catchUpSnapshot);
+              applySnapshot(catchUpSnapshot, catchUpArrivalsBefore);
             }
 
             // The summary has to agree with the items we just caught up on.
@@ -1380,24 +1409,15 @@ export function useSession(
       includeTransient: itemConfig.includeTransient,
       itemTypes: itemConfig.itemTypes
     };
-    const acceptItem = ({ requestId, item }: SessionItemEvent): void => {
+    // Held finished already: a request this view sent (its own stream
+    // delivered it), or a repeat across a reconnect. Held unfinished: a
+    // partial copy, because this view's own stream dropped partway through
+    // the item or is still behind, and the finished copy replaces it. A same
+    // id from another request is a different item, held under its own key, as
+    // a reload holds it.
+    const acceptItem = ({ item }: SessionItemEvent): void => {
       if (!itemConfig.enabled || !passesItemFilter(item, filter)) return;
-      // Already held finished: a request this view sent (its own stream
-      // delivered it), or a repeat across a reconnect. Held unfinished: a
-      // partial copy, because this view's own stream dropped partway through
-      // the item or is still behind. The finished copy replaces it. A same id
-      // from another request is a different item, held under its own key, as
-      // a reload holds it.
-      const key = itemKey(requestId, item.id);
-      if (isFinished(storeRef.current.getById(key))) return;
-      // Text still queued for this item is already in the finished copy.
-      storeRef.current.discardDeltas(key);
-      unconfirmedLiveItemsRef.current.set(key, {
-        item,
-        at: Date.now()
-      });
-      storeRef.current.upsert(item);
-      setItems(storeRef.current.getSorted());
+      if (takeLiveItem(item, "session")) setItems(storeRef.current.getSorted());
     };
 
     const handle = createSessionSSEClient({
@@ -1412,17 +1432,16 @@ export function useSession(
       }
     });
 
-    const unconfirmed = unconfirmedLiveItemsRef.current;
     return () => {
       handle.close();
       setLiveRuns(null);
-      unconfirmed.clear();
     };
   }, [
     live,
     sessionId,
     snapshotAppliedFor,
     baseUrl,
+    takeLiveItem,
     itemConfig.enabled,
     itemConfig.includeTransient,
     itemConfig.itemTypes
@@ -1588,12 +1607,12 @@ export function useSession(
       activeRequestIdRef.current = requestId;
 
       // Optimistic user message: inject immediately so the user sees their own
-      // message without waiting for the server round-trip. The server will emit
-      // the real user message item via SSE, which replaces this optimistic one.
+      // message without waiting for the server round-trip. The server's own
+      // user message for this request replaces it, from whichever stream
+      // delivers it first (`takeLiveItem`).
       if (actionOptions?.userMessage !== undefined && itemConfig.enabled) {
-        const optimisticId = `item_msg_optimistic_${requestId}`;
         const optimisticItem: OutputItem = {
-          id: optimisticId,
+          id: optimisticIdOf(requestId),
           type: "message",
           role: "user",
           status: "completed",
@@ -1610,12 +1629,6 @@ export function useSession(
       }
 
       try {
-        if (itemConfig.enabled) {
-          optimisticKeyRef.current = actionOptions?.userMessage !== undefined
-            ? itemKey(requestId, `item_msg_optimistic_${requestId}`)
-            : null;
-        }
-
         // Use sendActionStream to POST with Accept: text/event-stream.
         // On serverless (Vercel), this returns the SSE stream directly from
         // the POST response — keeping action execution and event delivery

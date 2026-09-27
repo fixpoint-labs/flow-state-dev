@@ -20,7 +20,7 @@
  *   reads miss nothing. The floor trails each read's start by a few seconds,
  *   which covers other servers' clocks and write latency; a repeat costs one
  *   set lookup.
- * - **Runs.** Every run under the session is read once when the stream opens.
+ * - **Runs.** When the stream opens, one read takes every run under the session.
  *   After that, only runs whose update time moved since the floor (a run moves
  *   when it starts) and runs already known to be unfinished are checked.
  *
@@ -87,9 +87,6 @@ const UNFINISHED_REQUEST_STATUSES: readonly RequestStatus[] = ["in_progress", "s
 
 /** Rows the first read of requests or runs updated since the floor asks for. */
 const RECENT_READ_LIMIT = 20;
-
-/** Rows per page when reading every run once, at open. */
-const OPEN_PAGE_SIZE = 100;
 
 type SessionStreamRouteContext = {
   registry: FlowRegistry;
@@ -295,20 +292,22 @@ class RunTracker {
     return [...this.open.values()].sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  /** Read every run under the session once, and keep the unfinished ones. */
+  /**
+   * Read every run under the session once, and keep the unfinished ones.
+   *
+   * One read, never pages at an offset. A run deleted between two pages shifts
+   * the run after it onto the page already read, and an unfinished run skipped
+   * that way is found by no later read: its update time is old, and it is not
+   * yet known to be unfinished.
+   */
   async readAll(): Promise<void> {
     const { stores, sessionId, identity } = this.options;
-    for (let offset = 0; ; offset += OPEN_PAGE_SIZE) {
-      const page = await stores.session.list({
-        parentage: { parentOf: sessionId },
-        orderBy: "createdAt",
-        limit: OPEN_PAGE_SIZE,
-        offset,
-        ...identity
-      });
-      for (const child of page) await this.check(child);
-      if (page.length < OPEN_PAGE_SIZE) break;
-    }
+    const children = await stores.session.list({
+      parentage: { parentOf: sessionId },
+      orderBy: "createdAt",
+      ...identity
+    });
+    for (const child of children) await this.check(child);
   }
 
   /**

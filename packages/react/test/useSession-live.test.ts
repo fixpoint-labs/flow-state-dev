@@ -10,8 +10,8 @@
  * Reads are counted where the view would look the same either way: a hook
  * that polls, or opens a stream nobody asked for, renders identically.
  *
- * A request stream the hook attaches to is captured too, so a case can drop
- * the view's own stream partway through an item.
+ * A request stream the hook attaches to, or reads from a send's response, is
+ * captured too, so a case can drop the view's own stream partway through.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act, cleanup } from "@testing-library/react";
@@ -58,7 +58,10 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
       requestStreams.push(options);
       return noopSSE();
     },
-    createSSEClientFromResponse: noopSSE,
+    createSSEClientFromResponse: (options: CreateSSEClientOptions) => {
+      requestStreams.push(options);
+      return noopSSE();
+    },
     createRecoveryClient: () => recoveryClientMock,
     createSessionClient: () => ({ ...sessionClientMock }),
     createClient: () => clientMock,
@@ -321,6 +324,106 @@ describe("useSession live", () => {
     expect(texts(result.current.items)).toEqual(["arrived mid-read"]);
   });
 
+  // Whether a snapshot may drop a live item is a question of order, whether
+  // its read began before the item arrived, and never of how long it took.
+  it("keeps a live item a snapshot lacks whose read began first, however late the read lands", async () => {
+    const { result } = await mountLive();
+
+    let release: (value: unknown) => void = () => {};
+    sessionClientMock.getSessionState.mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve))
+    );
+    let refreshing: Promise<void> = Promise.resolve();
+    act(() => {
+      refreshing = result.current.refresh();
+    });
+    deliver(item("req_seat", message("req_seat", "m1", "arrived mid-read", 2)));
+
+    // The tab sleeps for two minutes before the read lands.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 120_000);
+    try {
+      await act(async () => {
+        release(snapshot());
+        await refreshing;
+      });
+    } finally {
+      clock.mockRestore();
+    }
+    expect(texts(result.current.items)).toEqual(["arrived mid-read"]);
+  });
+
+  // The session stream sends only what the server has kept, so a read that
+  // began after a line arrived holds it, or shows it is gone.
+  it("drops a live item a snapshot lacks whose read began after it arrived", async () => {
+    const { result } = await mountLive();
+    deliver(item("req_seat", message("req_seat", "m1", "since removed", 2)));
+    expect(texts(result.current.items)).toEqual(["since removed"]);
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.items).toEqual([]);
+  });
+
+  // The view shows the user's message the moment it is sent, until the
+  // server's copy replaces it. That copy can come from either stream.
+  describe("the message the view shows while it sends", () => {
+    function userMessage(requestId: string, id: string, text: string): OutputItem {
+      return { ...message(requestId, id, text, 3), role: "user" } as OutputItem;
+    }
+
+    /** Send `text` as the user's message; the request's id, and the stream its response opened. */
+    async function send(result: { current: ReturnType<typeof useSession> }, text: string) {
+      clientMock.sendActionStream.mockResolvedValue(
+        new Response("", { headers: { "content-type": "text/event-stream" } })
+      );
+      await act(async () => {
+        await result.current.sendAction("say", { text }, { userMessage: text });
+      });
+      const options = clientMock.sendActionStream.mock.calls.at(-1)?.[2] as { requestId: string };
+      return { requestId: options.requestId, own: requestStreams.at(-1)! };
+    }
+
+    it("gives way to the server's copy from its own stream", async () => {
+      const { result } = await mountLive();
+      const { requestId, own } = await send(result, "hi there");
+
+      act(() => {
+        own.onItemAdded?.({
+          stream: "request",
+          requestId,
+          sequence_number: 1,
+          ts: 3,
+          type: "item.added",
+          item: userMessage(requestId, "u1", "hi there")
+        } as never);
+      });
+      expect(texts(result.current.items)).toEqual(["hi there"]);
+      expect(result.current.items[0]?.id).toBe("u1");
+    });
+
+    it("gives way to the server's copy from the session stream when its own stream dropped first", async () => {
+      const { result } = await mountLive();
+      const { requestId, own } = await send(result, "hi there");
+      expect(texts(result.current.items)).toEqual(["hi there"]);
+
+      act(() => {
+        own.onError?.(new Error("connection dropped"));
+      });
+      deliver(item(requestId, userMessage(requestId, "u1", "hi there")));
+      expect(texts(result.current.items)).toEqual(["hi there"]);
+      expect(result.current.items[0]?.id).toBe("u1");
+    });
+
+    it("stays when another request's message arrives", async () => {
+      const { result } = await mountLive();
+      await send(result, "mine");
+
+      deliver(item("req_other", userMessage("req_other", "u9", "theirs")));
+      expect(texts(result.current.items)).toEqual(["theirs", "mine"]);
+    });
+  });
+
   // The session stream sends only finished items, so a held copy that is
   // still unfinished can only be a partial one.
   describe("a finished copy over a partial one (BR-3)", () => {
@@ -441,6 +544,30 @@ describe("useSession live", () => {
       await act(async () => {
         // Read while the line was still being written.
         release(snapshot([partial("Hel")]));
+        await refreshing;
+      });
+      expect(texts(result.current.items)).toEqual(["Hello there"]);
+    });
+
+    it("keeps an item its own stream delivered after a slower snapshot read began", async () => {
+      const { result, own } = await mountAttached();
+
+      let release: (value: unknown) => void = () => {};
+      sessionClientMock.getSessionState.mockImplementationOnce(
+        () => new Promise((resolve) => (release = resolve))
+      );
+      let refreshing: Promise<void> = Promise.resolve();
+      act(() => {
+        refreshing = result.current.refresh();
+      });
+      act(() => {
+        own.onItemAdded?.(requestEvent("item.added", { item: partial("") }));
+        own.onItemDone?.(requestEvent("item.done", { item: message("req_mine", "m1", "Hello there", 2) }));
+      });
+
+      await act(async () => {
+        // Read before the item was kept.
+        release(snapshot());
         await refreshing;
       });
       expect(texts(result.current.items)).toEqual(["Hello there"]);

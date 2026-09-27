@@ -6,4 +6,6 @@ Add `GET /api/flows/sessions/:sessionId/stream`, which follows a whole session: 
 
 A run delivered into an existing child session by its id now moves that child's `updatedAt`, as a run that derives its child from a key already did, so a live view of the parent sees it start.
 
+`PATCH /api/flows/sessions/:sessionId/metadata` now writes at the version it read and advances it, as `ctx.session.setMetadata` does. An edit no longer puts back fields another write changed meanwhile; it reads the session again and retries. A session that keeps changing through every retry answers 409.
+
 `GET /api/flows/sessions/:sessionId/state` returns `at`, the server time its read began. Hand it to the session stream as `since` to start where the snapshot's read did. The snapshot's items are sorted with `compareItemOrder`, so two requests' items that share a time and an index are ordered by request id, not by which request was updated last.
