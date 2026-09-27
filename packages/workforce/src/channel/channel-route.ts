@@ -121,6 +121,8 @@ export type RouteLedger = z.infer<typeof routeLedgerSchema>;
 /** The channel session state the route's blocks read and write, as far as the ledger goes. */
 export const routeLedgerStateSchema = z.object({ [ROUTE_LEDGER_STATE]: routeLedgerSchema.optional() });
 
+export type RouteLedgerState = z.infer<typeof routeLedgerStateSchema>;
+
 /**
  * Keep one line in the ledger. A person's post (no `author`) also comes back
  * with its case: the lines kept before it, and the member still on the

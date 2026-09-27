@@ -24,6 +24,7 @@
  */
 
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -50,8 +51,8 @@ import {
   routeRequestSchema,
   type ChannelRoute,
   type ChannelRouting,
-  type PostCase,
-  type RouteDecision
+  type RouteDecision,
+  type RouteLedgerState
 } from "./channel-route";
 import {
   defineChannelInventoryCollection,
@@ -280,12 +281,15 @@ const appendRoutedPostFor = (routing: Readonly<Record<string, ChannelRouting>>) 
           ...readChannelPostLines(ctx, channelTranscriptLineSchema)
         ]).slice(-RECENT_LINES)
       };
-      let postCase: PostCase | undefined;
-      await ctx.session.atomicState((state) => {
-        const kept = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
-        postCase = kept.postCase;
-        return { [ROUTE_LEDGER_STATE]: kept.ledger };
-      });
+      // The case comes back from the invocation that committed: `atomicState`
+      // may run its mutator more than once.
+      const postCase = await withOutcome(
+        (mutator: (state: RouteLedgerState) => RouteLedgerState) => ctx.session.atomicState(mutator),
+        (state: RouteLedgerState) => {
+          const kept = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
+          return { state: { [ROUTE_LEDGER_STATE]: kept.ledger }, result: kept.postCase };
+        }
+      );
       await emitChannelPostLine(ctx, line);
       return { line, ...(postCase === undefined ? {} : { postCase }) };
     }
