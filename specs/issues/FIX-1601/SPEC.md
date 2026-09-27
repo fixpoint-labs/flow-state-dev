@@ -44,8 +44,7 @@ flowchart LR
   R -.->|"under each control"| F["must FAIL · names its own leg"]
 ```
 
-Each leg reads the open page first and reloads only at its end. Under a control, the legs it
-names must fail and the rest must hold.
+Each leg reads the open page first and reloads only at its end.
 
 | How we verify | |
 |---|---|
@@ -54,7 +53,7 @@ names must fail and the rest must hold.
 | **Signal** | Before any reload, then after one at the leg's end: [PLAN.md → Checks](PLAN.md#checks) |
 | **Input** | A fresh token per post; names are inputs, so others must pass too |
 | **Anti-game** | No reload before an assertion. Leg a's script never calls the post tool. Nothing graded on wording, a return value or a CLI run |
-| **Control that must fail** | Today's `main`, `no-live` and `no-route` each fail a and b. `no-landing` fails a alone. `drop-user-message` fails c. What each leaves green: [PLAN.md → Controls](PLAN.md#controls) |
+| **Control that must fail** | Today's `main` and each child's named control fail the legs [PLAN.md → Controls](PLAN.md#controls) names, and leave the rest green |
 
 Part 2 walks the person who needs a human; part 3 re-runs every child's check; part 4 sweeps
 what the rest miss. All on the same commit.
@@ -63,8 +62,8 @@ what the rest miss. All on the same commit.
 
 ![Today: each child's check on its own commit, read after a reload. After: one commit carrying four parts: legs a to c on the open page and the smoke, the escalation, every child's check, the gap sweep. A finding sends the stack round again.](figures/what-changes.svg)
 
-Read the commit line. Today each check sits on its own commit and reads after a reload. After,
-all sit on one, read the open page first, and a finding sends the whole stack round again.
+Read the commit line: today each check sits on its own commit; after, all sit on one, and a
+finding sends the whole stack round again.
 
 ## What stays as it is
 

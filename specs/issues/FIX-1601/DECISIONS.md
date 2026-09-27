@@ -57,10 +57,8 @@ each.
 
 - **The run starts only when FIX-1609, FIX-1610, FIX-1611, FIX-1612 and this amendment are
   merged and CI is green**, on one commit.
-- **Each control must fail its legs and leave the rest green** ([PLAN.md → Controls](PLAN.md#controls)).
-  Leg b's answers come through the post tool, so `no-landing` reddens leg a alone.
-- **Today's `main` is a control**, built from the last commit before FIX-1609 and FIX-1610 with
-  the old names passed in. It counts only when a leg fails at its own signal, not at setup.
+- **Each control, today's `main` among them, fails the legs [PLAN.md → Controls](PLAN.md#controls)
+  names** at their own signal, not at setup, and leaves the rest green.
 - **Everything is graded on the page.** No leg or sweep row reads the CLI.
 - **Docs get a smoke-follow** along legs a to c and the smoke. A gap blocks only when it breaks
   those flows; corpus-wide compliance is `polish-docs`' at wrap.
@@ -89,3 +87,5 @@ each.
   ([#2310](https://github.com/fixpoint-labs/flow-state-dev/pull/2310)): legs a to c on the open
   page, the real-model smoke, D7's names, the escalation as part 2, and FIX-1612 blocking. The
   otto, clerk, followups and digest legs retired; D1 rewritten, D2 and D3 re-pointed.
+- **Amendment review round 1** — one run order; the control map only in PLAN; the layer fence
+  allows a session-wide stream; a clear smoke post fails only when it is misrouted.
