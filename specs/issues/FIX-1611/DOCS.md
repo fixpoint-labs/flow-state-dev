@@ -125,13 +125,14 @@ Headings are as they publish.
 ## UPDATE · `apps/kitchen-sink/README.md` · "Hiring while the app runs"
 
 First paragraph: "`support.ada` and the rest are declared in files" becomes "The four specialists
-are declared in files". The hire example becomes:
+are declared in files", and the hired seat's example id `support.bo` becomes `support.new-hire`
+throughout, so it can't be read as a fifth specialist. The hire example becomes:
 
 > ```bash
 > curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
 >   -H 'content-type: application/json' \
 >   -H "authorization: Bearer dev-token" \
->   -d '{"userId":"you","input":{"seatId":"support.bo","flow":"agent","instructions":"You take refund questions."}}'
+>   -d '{"userId":"you","input":{"seatId":"support.new-hire","flow":"agent","instructions":"You take refund questions."}}'
 > ```
 
 Delete "The rail's **Hire another** and mara's `hire` tool don't need a token." The `fire`
@@ -141,7 +142,7 @@ paragraph becomes:
 > seat doesn't show in the rail and doesn't join `support.help`: a channel's members are the ones
 > its file names. Hiring from the page comes back once a hired specialist can join the channel.
 
-The call example posts to `…support.bo/actions/run` with `{"message":"Where is my order?"}`.
+The call example posts to `…support.new-hire/actions/run` with `{"message":"Where is my order?"}`.
 
 ## REMOVE · `apps/kitchen-sink/README.md`
 

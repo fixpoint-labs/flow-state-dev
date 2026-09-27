@@ -41,8 +41,8 @@ the cheap model. Test mode scripts `channel-route`, as FIX-1610 BR-23 has it.
 | | |
 |---|---|
 | **Instead of** | A Workforce "file onto a board" tool mirroring `post-to-channel`, offered to every app |
-| **Because** | The epic scopes filing to the app ("the app composes … escalations"). Who works `escalations` is the owner's held call (FIX-1591), and a public tool would promise a filing surface before it. The desk clerk filed this way, reviewed (FIX-1589); this moves that tool onto the built-in kind. Moving it into Workforce later is additive |
-| **Locks in** | Kitchen-sink holds one `dispatcher`, in `escalate`. FIX-1601's part-4 sweep says the app "builds no router, evaluator, dispatcher or seat loop"; its row is ER-18, whose scope is the route and the notify, and the app's `post-without-author` control already builds one today |
+| **Because** | The epic scopes filing to the app ("the app composes … escalations"). Who works `escalations` is the owner's held call (FIX-1591), and a public tool would promise a filing surface before it. The desk clerk filed this way, reviewed (FIX-1589); this moves that tool onto the built-in kind. It stays a bare tool, not a capability: it does one thing, and it is a like-for-like port of that reviewed shape. Moving it into Workforce later is additive |
+| **Locks in** | Kitchen-sink holds one `dispatcher`, in `escalate`. This PR amends FIX-1601's sweep row to match: no dispatcher for routing or notify (ER-18), `escalate` and the test-mode controls allowed ([FIX-1601 PLAN](../FIX-1601/PLAN.md#part-4--gap-sweep)) |
 
 **What would change my mind:** FIX-1591 deciding that seats filing onto boards is a framework
 promise. Then the tool moves into Workforce, and this file shrinks to a `uses:` line.
@@ -53,7 +53,7 @@ promise. Then the tool moves into Workforce, and this file shrinks to a `uses:` 
 | | |
 |---|---|
 | **Instead of** | Deleting checks whose subject left, or building a fixture page to keep the hire check |
-| **Because** | ER-27. Retained specs cite these paths, so they stay. A check whose feature D8 cut moves those legs to a fixture host inside its own goal folder. The page-hire half reads a hired seat back in the rail; after D8 nothing hired while the app runs shows there, so its only fixture would be a copy of the cut page |
+| **Because** | ER-27. Retained specs cite these paths, so they stay. A check whose feature D8 cut moves those legs to a fixture host, reusing one that already proves the shape. The page-hire half reads a hired seat back in the rail; after D8 nothing hired while the app runs shows there, so its only fixture would be a copy of the cut page |
 | **Locks in** | Hiring from a browser is unchecked until FIX-1415 restores both, as D8 already leaves it undemoed. Each verdict log gains a "re-pointed" row, and each re-pointed control is seen to fail again |
 
 The [inventory](PLAN.md#inventory) is derived from the tree, not listed from memory: a checker
@@ -66,10 +66,6 @@ row.
   needs a person, file it with `escalate` and say so.
 - **`escalate` names `support.help` and `escalations` in code.** The model writes only the case;
   the author is the seat's own id, so no model files as another seat (FIX-1589).
-- **On a queue-backed host `escalate` files nothing and says filing is unavailable** (FIX-1589's
-  rescue, carried over).
-- **Cut with their seats:** `desk-note`, `research`, iris's `desk-summary`, and the `hire`, `fire`
-  and `discover` tools, which no specialist names.
 - **The notify drops its name-only fallback:** every member is an agent. The stand-in moves into
   the `name-only-notify` control.
 - **`echo` retires with the clerk's `answer`.** It reverted a behaviour the agent kind never
@@ -78,11 +74,11 @@ row.
   own resolver. The epic's EVOLUTION note had it moving.
 - **FIX-1590's check follows the routed member**; the every-member rule stays proven by FIX-1602's
   fixture host.
-- **The panel takes FIX-1609's live view as merged**; its row keeps `<seat> is working`.
-- **The no-history control strips earlier turns where the scripted model reads them.**
 - **Stored rows naming a cut kind are skipped by name at boot** (FIX-1475's degrade), not
   migrated.
 - **This issue's goal check is FIX-1589's, re-pointed**: its legs already are answer and file.
+- **Mechanics are the plan's:** what leaves with each seat (S1 to S3), the panel as FIX-1609
+  merges it (S6), where `no-history` acts (S8), the queue-host rescue (BR-11).
 
 ## Considered and dropped
 
@@ -97,7 +93,7 @@ row.
 
 ## Settled
 
-- **The inventory is total** — **CONFIRMED**: 14 goal folders and 11 e2e tests name a cut piece
+- **The inventory is total** — **CONFIRMED**: 14 goal folders and 10 e2e tests name a cut piece
   or read the roster's source; every one has a row. Dropping a row or planting a hit fails the
   checker ([evidence](poc/inventory/evidence.txt)).
 
@@ -105,5 +101,8 @@ row.
 
 - **Draft** — ids, route model, the tool's home and every re-point, on FIX-1601's amended plan
   and FIX-1612 merged.
+- **Review round 1** (#2318) — the build starts after FIX-1610 and merges after both; FIX-1601's
+  sweep row is amended for `escalate`; V5 gates the inventory; FIX-1476's cut legs reuse
+  channel-boards' fixture.
 
 **Open: none.**

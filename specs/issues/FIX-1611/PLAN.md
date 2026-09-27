@@ -2,22 +2,24 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-For the implementing agent. IDs cite [BUSINESS-RULES.md](BUSINESS-RULES.md) (BR-n) and
-[DECISIONS.md](DECISIONS.md) (D-n). `tdd`. One PR, from `main` after FIX-1609 and FIX-1610 have
-merged (ER-14); FIX-1612 already has. All paths under `apps/kitchen-sink/` unless rooted.
+For the implementing agent; BR-n and D-n cite [Rules](BUSINESS-RULES.md) and
+[Decisions](DECISIONS.md). `tdd`, one PR. It merges after FIX-1609 and FIX-1610, as the
+[epic PLAN](../../epics/FIX-1592/PLAN.md) has it. The build starts once FIX-1610 merges; S6 and
+the `shows-the-reply-without-a-reload` row rebase onto FIX-1609's live view when it lands. Paths
+are under `apps/kitchen-sink/` unless rooted.
 
 ## Surfaces
 
 | ID | Where | Change | Rules |
 |---|---|---|---|
 | S1 | `workforce/teams/support/` | **Remove** workers `ada`, `grace`, `iris` (with `blocks/desk-summary.ts`), `mara`, `otto`, `wren`; channels `desk`, `ada-wren`, `noticeboard`; `resources/research.ts`. **Add** workers `devices`, `accounts`, `fsd`, `general` and channel `help` (D1) | BR-1 |
-| S2 | `workforce/flows/`, `workforce/blocks/` | **Remove** `desk-clerk.ts`, `followup-runner.ts`, `channels/digest.ts`, `desk-note.ts`. **Add** `blocks/escalate.ts`: a sequencer around a core `dispatcher` into `support.help`'s `fileTask` on `escalations`, author the seat's `seatId`, the external-dispatcher refusal rescued as "unavailable" (D2). Regenerate `workforce.gen.ts` | BR-8, BR-10, BR-11 |
+| S2 | `workforce/flows/`, `workforce/blocks/` | **Remove** `desk-clerk.ts`, `followup-runner.ts`, `channels/digest.ts`, `desk-note.ts`. **Add** `blocks/escalate.ts`, as [sketched](#sketch--illustrative) (D2). Regenerate `workforce.gen.ts` | BR-8, BR-10, BR-11 |
 | S3 | `workforce/hire.ts`, `lib/models.ts` | The agent kind `uses` only `channelPost` (and the catalog). **Remove** `seatHire`, `discover`, `kitchenSinkSeatHireOptions`. The channel kind gains `route: routeByPurpose(seats, { model: ROUTE_MODEL })`, `ROUTE_MODEL` the gateway's evaluation model | BR-4, BR-5 |
 | S4 | `workforce/channel-notify.ts`, `lib/channel-wake-control.ts` | `wakeMemberSeats(seats)` with no name-only fallback; that stand-in moves into the `name-only-notify` control | BR-4 |
 | S5 | `lib/workforce-shell.ts`, `app/page.tsx`, `components/`, `flows/chat-agent/` | `SEAT_KINDS` `["agent"]`, `CHANNEL_KINDS` `["channel"]`, `SEAT_ASKS` one row (ER-6), `SHELL_BOARDS` `support.help`'s `escalations`. **Remove** page hiring: `HireForm`, the `hireSeat` action, `SEAT_HIRES_TAG` | BR-1 to BR-3, BR-15 |
-| S6 | The panel | FIX-1609's live view and working row as merged; only names change | BR-4 |
-| S7 | `lib/e2e-mock-script.ts`, `test/mock-flowstate.ts` | `[scenario:recall]`, `[scenario:needs-a-person]`; scenario steps receive the whole message list. `[route:<member>]` is FIX-1610's; add it only if absent | BR-19 to BR-21 |
-| S8 | Controls, all via `goalControl()` | `no-route` strips `routing` from the manifests before bind. `no-landing` mirrors FIX-1610's. `no-history` strips everything between the system message and the latest user turn at the scripted model. `no-filing` swaps `escalate` for a stand-in that says it filed. **Remove** `echo` and `lib/desk-clerk-echo-control.ts` | BR-22, BR-23 |
+| S6 | The panel | FIX-1609's live view and working row as merged; only names change. Done after rebasing onto FIX-1609 | BR-4 |
+| S7 | `lib/e2e-mock-script.ts`, `test/mock-flowstate.ts` | `[scenario:recall]`, `[scenario:needs-a-person]`; scenario steps receive the whole message list. FIX-1610's spec defines only `[route:<member>]` and `[scenario:wake]`: grep the script first, reuse what landed, add a tag only if absent | BR-19 to BR-21 |
+| S8 | Controls, all via `goalControl()` | `no-route` strips `routing` from the manifests before bind. `no-landing` mirrors FIX-1610's. `no-history` keeps only the system message and the latest user turn, at the scripted model. `no-filing` swaps `escalate` for a stand-in that says it filed. **Remove** `echo` and `lib/desk-clerk-echo-control.ts` | BR-22, BR-23 |
 | S9 | `goals/`, `e2e/` | Every [inventory](#inventory) row | BR-24 to BR-27 |
 | S10 | `test/` | Unit tests of cut code leave with it; the rest name the new roster | — |
 | S11 | Docs | [DOCS.md](DOCS.md) | ER-19 |
@@ -31,6 +33,7 @@ flowchart TD
   S3 --> S4["S4 · notify"]
   S3 --> S5["S5 · shell names, page hire out"]
   S5 --> S6["S6 · panel names"]
+  L["FIX-1609 merged · rebase onto it"] --> S6
   S7["S7 · scenarios"] --> S8["S8 · controls"]
   S3 --> S8
   S6 --> S9["S9 · re-point every check"]
@@ -45,18 +48,19 @@ flowchart TD
 |---|---|---|
 | V1 | S3 | The boot hires four seats and opens one channel; one unattended warning, naming `escalations`; the generated map holds `escalate` and no custom kind |
 | V2 | S4 | `goals/workforce-channels/a-fresh-host-wakes-its-member-agents/` passes: the notify builds no router or dispatcher (ER-18) |
-| V3 | S7 | Script and tool units: BR-10, BR-11, BR-14, BR-19 to BR-21. Recall names no token from the latest turn; under `no-history` it names none from earlier turns |
+| V3 | S7 | Script and tool units: BR-10, BR-11, BR-14, BR-19 to BR-21, and `no-history` on recall (BR-23) |
 | V4 | S8 | BR-22 by source scan and by running each control without test mode |
-| V5 | S9 | Every inventory row: its control FAILS its own leg, then it PASSES on this roster; a "re-pointed" row in its verdict log |
-| V6 | S9 | `node specs/issues/FIX-1611/poc/inventory/check.mjs` passes on the final tree |
+| V5 | S9 | The inventory's ship gate. A goal-check row: its control FAILS its own leg, then it PASSES, and its verdict log gains a "re-pointed" row. An e2e row: red before the fix, green after, both in the PR body |
+| V6 | — | Evidence, not a gate: `poc/inventory/check.mjs` passes on the starting tree. It matches the old titles, so never on the final one |
 | VG | S9 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): FAILS under `no-landing` (answer) and `no-filing` (file, at the row), and on today's `main` (roster); then PASSES. `GOAL_LIVE=1` once, with a key |
 | V7 | S11 | `pnpm --filter @flow-state-dev/kitchen-sink test:e2e --workers=1` and `fsdev gen --check` pass |
+| V8 | S9 | BR-27: `poc/inventory/citations.mjs --against` the list its `--write` saved on the starting tree: no citation under `specs/` stopped resolving |
 
-One check per decision: D1 is VG's roster leg; D2 is VG's file leg with `no-filing`; D3 is V5 and V6.
+One check per decision: D1 is VG's roster leg; D2 is VG's file leg with `no-filing`; D3 is V5.
 
 ## Inventory
 
-Every goal check and e2e test that reads the old roster, derived by [`poc/inventory/`](poc/inventory/README.md). Paths kept; retained specs untouched.
+Every goal check and e2e test that reads the old roster, derived by [`poc/inventory/`](poc/inventory/README.md). Paths kept; the build edits no retained spec.
 
 | Check | Reads today | Re-pointed at | Control that must fail |
 |---|---|---|---|
@@ -66,7 +70,7 @@ Every goal check and e2e test that reads the old roster, derived by [`poc/invent
 | `goals/kitchen-sink-talk/keeps-both-sides-across-a-reload/` | FIX-1585: desk, otto, wren | **real app** · `support.help`, `support.devices`; wren's leg on an unmapped-kind seat injected at the network | `no-post-item` · `drop-user-message` |
 | `goals/kitchen-sink-talk/shows-the-reply-without-a-reload/` | FIX-1609: `support.desk`, `support.otto` | **on arrival** · `support.help`, a routed specialist | `no-live` · today's `main` |
 | `goals/workforce-channels/a-fresh-host-wakes-its-member-agents/` | FIX-1602: `channel-notify.ts`, `SEAT_ASKS` | **unchanged** · both stay | its own |
-| `goals/workforce-conventions/a-channel-holds-the-work-a-seat-drains/` | FIX-1476: three channels, a custom kind, a drain | **real app + fixture host** · app: V2, V5, V6, V9's warning, V10 to V13, V14's writer half. Fixture tree in the folder: V1, V3, V4, V7, V8, V9's attended half, V14's non-hearing half | each leg's recorded red state |
+| `goals/workforce-conventions/a-channel-holds-the-work-a-seat-drains/` | FIX-1476: three channels, a custom kind, a drain | **real app + fixture host** · app: V2, V5, V6, V9's warning, V10 to V13, V14's writer half. On `goals/channel-boards/it-runs-a-row-a-file-declared-board-holds/`'s fixture, plus a board, a silent member and a custom-kind channel, its own check still green: V1, V3, V4, V7 (as its legs c to e), V8, V9's attended half, V14's non-hearing half | each leg's recorded red state |
 | `goals/workforce-conventions/code-comes-from-files-alone/` | FIX-1357: `desk-clerk`, `desk-note` | **real app + fixture host** · app, Next-built: `escalate` and the source scan. Fixture: two seats on one custom kind, differing by a setting | the planted registration |
 | `goals/workforce-conventions/durable-hire-survives-redeploy/` | FIX-1475: a `desk-clerk` hire, token in `desk` | **real app** · kind `agent`, token in `instructions`, read back by `[scenario:recall]`; control seat `support.general` | its recorded mutations |
 | `goals/cli-principal/runs-in-the-apps-organization/` | FIX-1551: `support.mara` hires | **real app** · `support.general` runs; its conversation is stored under `kitchen-sink` | the placeholder ask |
@@ -85,11 +89,9 @@ Every goal check and e2e test that reads the old roster, derived by [`poc/invent
 | `e2e/workforce-shell.spec.ts` › "the rail opens a channel kind" | `support.desk`, `desk-clerk` | **real app** · `support.help`, `agent` | red on unfixed code |
 | `e2e/workforce-shell.spec.ts` › "the rail, fully expanded" | ada, grace, `desk-clerk`; an injected clerk | **real app** · specialists; an injected `agent` seat | red on unfixed code |
 | `e2e/workforce-shell.spec.ts` › "VG · open a declared seat" | FIX-1500: `support.iris`, then a page hire | **retires** its hire half (D3); the declared half on `support.devices` | red on unfixed code |
-| `e2e/workforce-shell.spec.ts` › "at ${width}px" | Layout only | **unchanged** | its own |
 
 Beside them, a new e2e case: a post routed to `support.accounts` with `[scenario:recall]` names
-a token from `support.devices`' earlier line (BR-7). FIX-1609's no-reload case is renamed on
-arrival.
+a token from `support.devices`' earlier line (BR-7).
 
 ## Pinned names
 
@@ -126,15 +128,15 @@ escalate(case):
 no-history, at the scripted model: messages ← [system…, latest user turn]
 ```
 
-**POC:** [`poc/inventory/`](poc/inventory/README.md): 14 goal folders and 11 e2e tests name the
-old roster (nine folders read it as their subject, five only as their own fixture data); each
-has a row, and dropping or planting one fails. The premise held.
+**POC:** [`poc/inventory/`](poc/inventory/README.md): 14 goal folders and 10 e2e tests name the
+old roster; each has a row, and dropping or planting one fails. The premise held.
 
 ## At implement time
 
-- Read FIX-1609's and FIX-1610's merged code: the panel, `no-landing`'s seam, and whether
-  `[route:<member>]` shipped. Re-derive which legs each FIX-1594 control reddens under landing.
-- Re-run the inventory checker before re-pointing; a check added since is a row to add.
+- Read FIX-1610's merged code before starting, and FIX-1609's after rebasing onto it: the panel
+  and `no-landing`'s seam. Re-derive which legs each FIX-1594 control reddens under landing.
+- Before S1, re-run the inventory checker (a check added since is a row to add) and save V8's
+  citations baseline.
 - Compare [Evolution](EVOLUTION.md) with the current goal files.
 
 ## Follow-ups

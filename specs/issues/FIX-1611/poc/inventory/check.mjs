@@ -88,9 +88,41 @@ const e2eHits = [];
 for (const name of readdirSync(E2E).filter((n) => n.endsWith(".spec.ts"))) {
   const text = readFileSync(join(E2E, name), "utf8");
   if (!CUT.test(text)) continue;
-  for (const m of text.matchAll(/^\s*test\(\s*(["'`])((?:\\.|(?!\1).)*)\1/gm)) {
-    e2eHits.push({ file: `e2e/${name}`, title: m[2] });
+  for (const t of testsReadingCut(text)) e2eHits.push({ file: `e2e/${name}`, title: t });
+}
+
+/**
+ * The tests in one spec file that read a cut piece: the test's own text names one, or it uses
+ * a top-level helper or constant that does, directly or through another helper. A file-level
+ * match would also count tests that share nothing with the cut roster.
+ */
+function testsReadingCut(text) {
+  // A top-level statement or comment starts at column 0; an indented `test(` starts a test.
+  const starts = [...text.matchAll(/^(?:(?:export )?(?:const|let|function|async function|for|test|type|interface)\b|\/\*\*|\s+test\()/gm)]
+    .map((m) => m.index);
+  const segments = starts.map((s, i) => text.slice(s, starts[i + 1] ?? text.length));
+  const decls = new Map();
+  for (const seg of segments) {
+    const m = /^(?:export )?(?:const|let|function|async function)\s+(\w+)/.exec(seg);
+    if (m) decls.set(m[1], seg);
   }
+  const tainted = new Set();
+  const reads = (seg) => CUT.test(seg) || [...tainted].some((id) => new RegExp(`\\b${id}\\b`).test(seg));
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [id, seg] of decls) {
+      if (!tainted.has(id) && reads(seg)) {
+        tainted.add(id);
+        grew = true;
+      }
+    }
+  }
+  const titles = [];
+  for (const seg of segments) {
+    const m = /^\s*test\(\s*(["'`])((?:\\.|(?!\1).)*)\1/.exec(seg);
+    if (m && reads(seg)) titles.push(m[2]);
+  }
+  return titles;
 }
 
 // --- rows ---------------------------------------------------------------

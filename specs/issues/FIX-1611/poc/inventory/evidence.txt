@@ -1,9 +1,9 @@
 # FIX-1611 · poc/inventory evidence
-# tree: 0efb98483 (origin/main 0efb98483) plus this spec's PLAN.md
-# run from the repository root with: node specs/issues/FIX-1611/poc/inventory/check.mjs
+# tree: 16eee383e (origin/main 0efb98483) plus this spec's working copy
+# run from the repository root
 
-## 1. The table as written: must PASS (exit 0)
-goal hits: 14 · e2e test hits: 11 · rows: 26
+## 1. check.mjs, the table as written: must PASS (exit 0)
+goal hits: 14 · e2e test hits: 10 · rows: 25
   goal  goals/cli-principal/runs-in-the-apps-organization/
   goal  goals/hire-plane/discover-survives-an-unaddressable-row/
   goal  goals/hire-plane/reload-survives-an-unaddressable-row/
@@ -28,7 +28,6 @@ goal hits: 14 · e2e test hits: 11 · rows: 26
   e2e   e2e/workforce-shell.spec.ts › the rail opens a channel kind into conversations and a seat kind into 
   e2e   e2e/workforce-shell.spec.ts › the rail, fully expanded in both hosts, draws each action on its row, 
   e2e   e2e/workforce-shell.spec.ts › VG · open a declared seat, hire another of its kind, and open the hire
-  e2e   e2e/workforce-shell.spec.ts › at ${width}px the panel yields first, the rail second, the stream neve
 
 PASS · the inventory is total and every row has a disposition and a control
 exit 0
@@ -46,4 +45,24 @@ exit 1
 ## 4. Negative control: plant a check added later (--plant): must FAIL naming it
 FAIL · 1 problem(s)
   MISSING  goal goals/kitchen-sink-talk/a-check-added-later/
+exit 1
+
+## 5. citations.mjs: save the baseline, then check against it: must PASS (exit 0)
+wrote 69 unresolved citation(s) to <baseline>
+exit 0
+unresolved: 69 now · 69 at baseline · 0 new
+
+PASS · every citation that resolved at baseline still resolves
+exit 0
+
+## 6. Negative control: hide a cited goal folder (--hide): must FAIL naming each citation of it
+unresolved: 75 now · 69 at baseline · 6 new
+
+FAIL · a citation that resolved before no longer does
+  specs/issues/FIX-1589/PLAN.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+  specs/issues/FIX-1589/PLAN.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/run.mts
+  specs/issues/FIX-1589/SPEC.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+  specs/issues/FIX-1611/EVOLUTION.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+  specs/issues/FIX-1611/PLAN.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
+  specs/issues/FIX-1611/SPEC.md -> path goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/
 exit 1

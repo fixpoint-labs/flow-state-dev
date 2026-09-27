@@ -77,7 +77,7 @@ Only what P1 to P3 don't grade:
 
 | Check | Passes when |
 |---|---|
-| **Stock routing (ER-18)** | Read off the source: `apps/kitchen-sink` builds no router, evaluator, dispatcher or seat loop; its route is `routeByPurpose`, its notify `wakeMemberSeats`, thinly wrapped at most |
+| **Stock routing (ER-18)** | Read off the source: `apps/kitchen-sink` builds no router, evaluator, dispatcher or seat loop for routing or notify; its route is `routeByPurpose`, its notify `wakeMemberSeats`, thinly wrapped at most. Allowed: FIX-1611's one `escalate` filing tool ([D2](../FIX-1611/DECISIONS.md#d2)) and the app's test-mode controls |
 | **Layer fence (ER-8)** | The set's changes to `core`, `engine`, `client` and `react` name no seat, channel, post, notify or member routing. A session-wide stream, as FIX-1609's `GET /api/flows/sessions/:sessionId/stream`, is allowed |
 | **No poll (ER-9)** | The channel panel sets no timer, interval or remount |
 | **One script file (ER-7)** | Every scripted evaluation and scenario the legs use is in kitchen-sink's one script file |
@@ -93,7 +93,8 @@ A doc gap follows [QR-14a](BUSINESS-RULES.md#what-happens-to-a-finding).
 |---|---|
 | Goal check | `goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-channel-and-back/` |
 | Legs | `a`, `b`, `c` with `c1` and `c2`, the smoke, the escalation |
-| Roster ([epic D7](../../epics/FIX-1592/DECISIONS.md#d7)) | `support`, `support.devices`, `support.accounts`, `support.fsd`, `support.general`, `escalations` |
+| Roster ([epic D7](../../epics/FIX-1592/DECISIONS.md#d7)) | `support.help` (the legs' `support`), `support.devices`, `support.accounts`, `support.fsd`, `support.general`, `escalations` |
+| Tokens | Minted per run, shaped `/[a-z]+-token-[a-z0-9]+/`: what the recall scenario names ([FIX-1611](../FIX-1611/PLAN.md#pinned-names)) |
 | The smoke's switch | `GOAL_LIVE=1`, FIX-1610's live-leg switch (its PLAN S9, #2314). `goals/README.md` has none yet |
 
 ## Guardrails

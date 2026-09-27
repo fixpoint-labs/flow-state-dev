@@ -63,10 +63,10 @@ shows them, and covers what this issue adds.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-24 | A goal check or e2e test reads the old roster | It is re-pointed, never deleted: path kept, anti-game kept, a control that fails, a "re-pointed" row in its verdict log | V5 · V6 |
-| BR-25 | A leg's feature was cut (a custom kind, a drain, a DM) | That leg moves to a fixture tree and host inside its own goal folder | V5 |
+| BR-24 | A goal check or e2e test reads the old roster | Re-pointed, never deleted: path and anti-game kept. A goal check keeps a failing control and gains a "re-pointed" verdict-log row; an e2e test is seen red before the fix | V5 |
+| BR-25 | A leg's feature was cut (a custom kind, a drain, a DM) | That leg moves to a fixture host, preferably an existing one that proves the same shape | V5 |
 | BR-26 | The page-hire test's hire half | Removed with the button; FIX-1415 restores it ([D3](DECISIONS.md#d3)) | V5 |
-| BR-27 | A retained spec cites a check | Its citation still resolves; retained specs are not edited | V6 |
+| BR-27 | A retained spec cites a check | Its citation still resolves; the build edits no retained spec | V8 |
 
 ## Failure taxonomy
 
@@ -77,5 +77,5 @@ at setup, or reddens another leg, is itself a failure of this issue.
 ## Acceptance criteria this issue owns
 
 [The goal](SPEC.md#the-goal-and-how-well-know-its-met) with both its controls seen to fail, and
-every [inventory](PLAN.md#inventory) row passing on this roster with its control seen to fail
-first. Epic ER-6, ER-7, ER-18, ER-19 and ER-25 to ER-27.
+every [inventory](PLAN.md#inventory) row passing on this roster, seen to fail first (a goal
+check under its control, an e2e test before the fix). Epic ER-6, ER-7, ER-18, ER-19 and ER-25 to ER-27.

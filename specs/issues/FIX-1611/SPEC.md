@@ -3,8 +3,8 @@
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Feature · `apps/kitchen-sink` + `goals/` · large · 1 PR · epic
-[FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592) · builds after FIX-1609 and FIX-1610 ·
-blocks FIX-1601
+[FIX-1592](https://linear.app/fixpoint-labs/issue/FIX-1592) · merges after FIX-1609 and FIX-1610;
+the build starts once FIX-1610 merges · blocks FIX-1601
 
 ## Six people, before and after
 
@@ -15,7 +15,7 @@ blocks FIX-1601
 | **has a case that needs a person** | Asks the clerk `support.ada` directly | The specialist files it onto `escalations` and says so in the channel. Nobody drains it yet |
 | **talks to a specialist directly** | "New conversation" on `support.otto` | The same, on any specialist. That conversation remembers only its own turns |
 | **copies kitchen-sink into their app** | Custom kinds, a clerk and a hiring seat to untangle first | Four `WORKER.md` files, one `CHANNEL.md`, one small tool and a route in one line |
-| **relies on the checks** | Nine goal checks and eleven e2e tests read the old roster | Each re-pointed at this roster or a fixture host, keeping its anti-game and a control that fails |
+| **relies on the checks** | Nine goal checks and ten e2e tests read the old roster | Each re-pointed at this roster or a fixture host, keeping its anti-game and a control that fails |
 
 ## The goal, and how we'll know it's met
 
@@ -108,10 +108,11 @@ If wrong: a demo that reads well while `main` checks less than it did.
    `fileTask`, not a new Workforce tool.** If wrong: an app wanting filing copies about forty
    lines until Workforce offers one.
 3. **[D3](DECISIONS.md#d3) · Every check keeps its path and a control that fails; a cut
-   feature's legs move to a fixture host in their own goal folder. The page-hire browser check
-   keeps its declared-seat half; its hire half leaves with the button, for FIX-1415 to restore.**
+   feature's legs move to a fixture host. The page-hire browser check keeps its declared-seat
+   half; its hire half leaves with the button, for FIX-1415 to restore.**
    If wrong: hiring from a browser goes unchecked until FIX-1415, as D8 already has it undemoed.
 
-**Open: none.** Number 3 is the one to weigh: it narrows the epic's "nothing is deleted" (ER-27)
-for half of one test. D2 asks FIX-1601 to read its sweep's "no dispatcher" as the route and the
-notify. Reasoning: [DECISIONS.md](DECISIONS.md). Cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+**Open: none.** Number 3 is the one to weigh. It narrows the epic's ER-27 ("re-pointed, never
+deleted") for the hire half of one e2e test, and merging this PR accepts that. D2 brings a
+one-row amendment to FIX-1601's gap sweep, in this PR, so the closure run doesn't flag
+`escalate`. Reasoning: [DECISIONS.md](DECISIONS.md). Cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
