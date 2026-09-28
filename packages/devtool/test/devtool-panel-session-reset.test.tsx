@@ -190,6 +190,17 @@ vi.mock("../src/react/components/workspace/stream-view", () => ({
   ),
 }));
 
+// The Tasks tab, reduced to the row-action seam the panel hands it: each click
+// dispatches through `rowActions.run`, as an expanded row's form does.
+const rowAnswers: Array<Promise<unknown>> = [];
+vi.mock("../src/react/components/workspace/task-collections-view", () => ({
+  TaskCollectionsView: ({
+    rowActions,
+  }: {
+    rowActions: { run: (action: string, input: unknown) => Promise<unknown> };
+  }) => <button onClick={() => rowAnswers.push(rowActions.run("cancelTask_work", { taskId: "t1" }))}>row-stub</button>,
+}));
+
 import { DevToolPanel } from "../src/react/DevToolPanel";
 
 /** What the panel most recently told `useLiveMode`. */
@@ -203,6 +214,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     requestsState.refresh = vi.fn();
     liveModeCalls.length = 0;
     sendAnswers.length = 0;
+    rowAnswers.length = 0;
     devToolState.activeSessionId = "sess_1";
     devToolState.workspaceToken = 0;
     sendAction.mockReset().mockResolvedValue(null);
@@ -416,6 +428,54 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
 
     expect(await sendAnswers[0]).toEqual({ requestId: "req_first" });
     expect(await sendAnswers[1]).toEqual({ requestId: "req_second" });
+  });
+
+  it("keeps reading the session's requests until every row's request has finished", async () => {
+    // Only one request is ever streamed. With Live off, a row whose request is
+    // not the streamed one (an earlier, slower row) is never told it finished
+    // unless the panel reads the list again, and would say "Running…" forever.
+    sendAction
+      .mockResolvedValueOnce({ request: { id: "req_slow" } })
+      .mockResolvedValueOnce({ request: { id: "req_fast" } });
+    // Only the interval is faked, so the renders and dispatches settle as usual.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const view = await act(async () => render(<DevToolPanel userId="u1" />));
+      await act(async () => {
+        fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText("row-stub"));
+        fireEvent.click(screen.getByText("row-stub"));
+        await Promise.all(rowAnswers);
+      });
+
+      // The fast one has finished and been listed; the slow one is still running.
+      requestsState.requests = [
+        { id: "req_slow", status: "in_progress" },
+        { id: "req_fast", status: "completed" },
+      ];
+      view.rerender(<DevToolPanel userId="u1" />);
+      requestsState.refresh.mockClear();
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(requestsState.refresh).toHaveBeenCalled();
+
+      // Once both have finished, the panel stops asking.
+      requestsState.requests = [
+        { id: "req_slow", status: "completed" },
+        { id: "req_fast", status: "completed" },
+      ];
+      view.rerender(<DevToolPanel userId="u1" />);
+      requestsState.refresh.mockClear();
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(requestsState.refresh).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("clears dispatchedRequestId when the session changes, so live mode can follow the new one", async () => {

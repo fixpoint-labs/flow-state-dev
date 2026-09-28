@@ -61,6 +61,8 @@ const DETAIL_DEFAULT_WIDTH = 500;
 const DETAIL_MIN_WIDTH = 280;
 const DETAIL_MAX_WIDTH = 520;
 const MAIN_MIN_WIDTH = 560;
+/** How often the list is re-read while a Tasks-tab row's request runs; matches live mode's poll. */
+const ROW_REQUEST_POLL_MS = 2000;
 
 export type DevToolPanelProps = {
   /** Identity used for all DevTool client traffic. The host owns it. */
@@ -185,6 +187,11 @@ function PanelContent({ className }: { className?: string }) {
   // Raw (uncollapsed) counterpart of `liveItems`, populated only by the
   // per-row Continue action (FIX-865) — see `handleContinueItems` below.
   const [liveRawItems, setLiveRawItems] = useState<Map<string, OutputItem[]>>(new Map());
+  // The requests Tasks-tab rows dispatched in this workspace (FIX-1629). Only
+  // one request is streamed at a time, so a row whose request is not the
+  // streamed one learns it finished only from a re-read of the list; see the
+  // poll below.
+  const [rowRequestIds, setRowRequestIds] = useState<ReadonlySet<string>>(new Set());
 
   const { replayState, isReplaying, replayFull, replayFromCursor, simulateReconnect, clearReplay } = useReplay();
 
@@ -225,6 +232,7 @@ function PanelContent({ className }: { className?: string }) {
     setDispatchedRequestId(null);
     setLiveItems(new Map());
     setLiveRawItems(new Map());
+    setRowRequestIds(new Set());
     clearReplay();
   }
 
@@ -546,15 +554,49 @@ function PanelContent({ className }: { className?: string }) {
   // The Tasks tab changes a task only through the viewed flow's own actions,
   // on this same dispatch path, and reads each outcome from the session's
   // requests (FIX-1629).
+  const runRowAction = useCallback(
+    async (action: string, input: unknown): Promise<RowDispatch> => {
+      const answer = await handleSendAction(action, input);
+      if (answer !== undefined && "requestId" in answer) {
+        const { requestId } = answer;
+        setRowRequestIds((prev) => new Set(prev).add(requestId));
+      }
+      return answer;
+    },
+    [handleSendAction],
+  );
   const rowActions = useMemo<RowActions>(
     () => ({
       names: activeFlow?.actions ?? [],
       schemas: activeFlow?.actionSchemas,
-      run: handleSendAction,
+      run: runRowAction,
       requests: requestGroups,
     }),
-    [activeFlow?.actions, activeFlow?.actionSchemas, handleSendAction, requestGroups],
+    [activeFlow?.actions, activeFlow?.actionSchemas, runRowAction, requestGroups],
   );
+
+  // Re-read the list while any row's request is still running (or not listed
+  // yet). Two rows can each have a request in flight, and only the later one
+  // is streamed: with Live off, nothing else would tell the earlier row its
+  // request finished. The request being streamed is left out while its stream
+  // is open, since the stream's own end re-reads the list. Stops once every
+  // one has left `in_progress`.
+  const rowRequestRunning = useMemo(
+    () =>
+      [...rowRequestIds].some((id) => {
+        if (id === streamRequestId && (streamStatus === "streaming" || streamStatus === "connecting")) {
+          return false;
+        }
+        const request = requests.find((candidate) => candidate.id === id);
+        return request === undefined || request.status === "in_progress";
+      }),
+    [rowRequestIds, requests, streamRequestId, streamStatus],
+  );
+  useEffect(() => {
+    if (!rowRequestRunning) return;
+    const timer = window.setInterval(() => void refreshRequests(), ROW_REQUEST_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [rowRequestRunning, refreshRequests]);
 
   // After a suspension is resolved, re-attach the live stream to the continued
   // (same-id) request. The request stream follows the continuation through the

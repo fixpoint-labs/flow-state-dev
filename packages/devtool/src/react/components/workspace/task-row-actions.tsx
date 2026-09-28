@@ -9,8 +9,12 @@
  *
  * The answer is read from the request the row dispatched, on its root trace
  * (`outcomeOf`). A refusal is shown as a refusal, in the tool's own words.
+ *
+ * There is no client-side lock: a second submit while the first is in flight
+ * is sent, and each gets its own answer, newest first. Two submits on one task
+ * may race, and the server says which one lost.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ActionInputSchema } from "@flow-state-dev/client";
 import { Button } from "../ui/button";
 import { SchemaForm } from "./schema-form";
@@ -40,15 +44,18 @@ type Props = {
   requests: readonly RequestOutcomeSource[];
 };
 
-type Sent =
-  | { action: string; requestId: string }
-  | { action: string; error: string };
+/** One submit from this row: in flight, or what its dispatch answered. */
+type Submission = {
+  key: number;
+  action: string;
+  sent: "sending" | { requestId: string } | { error: string };
+};
 
 export function TaskRowActions({ taskId, actions, schemas, run, requests }: Props) {
   const [picked, setPicked] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState<Sent | null>(null);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const nextKey = useRef(0);
 
   if (actions.length === 0) {
     return (
@@ -72,34 +79,31 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   const pick = (action: string) => {
     setPicked((was) => (was === action ? null : action));
     setValues(getDefaults(schemas?.[action]));
-    setSent(null);
   };
 
   const submit = async () => {
-    if (picked === null || schema === undefined || sending) return;
+    if (picked === null || schema === undefined) return;
+    const action = picked;
     const input = { ...(buildInputFromForm(schema, values) as Record<string, unknown>), taskId };
-    // The previous run's answer is not this one's: clear it before sending.
-    setSent(null);
-    setSending(true);
+    const key = nextKey.current++;
+    setSubmissions((prev) => [{ key, action, sent: "sending" }, ...prev]);
+    let sent: Submission["sent"] | undefined;
     try {
-      const dispatched = await run(picked, input);
-      if (dispatched === undefined) return;
-      setSent(
-        "requestId" in dispatched
-          ? { action: picked, requestId: dispatched.requestId }
-          : { action: picked, error: dispatched.error }
-      );
+      sent = await run(action, input);
     } catch (err) {
-      setSent({ action: picked, error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setSending(false);
+      sent = { error: err instanceof Error ? err.message : String(err) };
     }
+    const settled = sent;
+    setSubmissions((prev) =>
+      settled === undefined
+        ? prev.filter((submission) => submission.key !== key)
+        : prev.map((submission) => (submission.key === key ? { ...submission, sent: settled } : submission))
+    );
   };
 
-  const outcome: RowActionOutcome | null = sending
-    ? { state: "pending" }
-    : sent === null
-      ? null
+  const outcomeOfSubmission = ({ sent }: Submission): RowActionOutcome =>
+    sent === "sending"
+      ? { state: "pending" }
       : "error" in sent
         ? { state: "failed", message: sent.error }
         : outcomeOf(requests, sent.requestId);
@@ -131,22 +135,24 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
             values={values}
             onChange={setValues}
             onSubmit={() => void submit()}
-            disabled={sending}
             locked={locked}
           />
           <div className="mt-2 flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-3 text-xs"
-              onClick={() => void submit()}
-              disabled={sending}
-            >
+            <Button size="sm" variant="outline" className="h-7 px-3 text-xs" onClick={() => void submit()}>
               Run
             </Button>
-            {outcome !== null && (sending || sent?.action === picked) && <Outcome outcome={outcome} />}
           </div>
         </div>
+      )}
+      {submissions.length > 0 && (
+        <ul className="min-w-0 space-y-1">
+          {submissions.map((submission) => (
+            <li key={submission.key} data-submission={submission.action} className="flex min-w-0 items-baseline gap-2">
+              <span className="shrink-0 font-mono text-[10px] text-slate-500">{submission.action}</span>
+              <Outcome outcome={outcomeOfSubmission(submission)} />
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

@@ -1,10 +1,10 @@
 /**
  * The open half of a Tasks-tab row: everything the task carries, in place.
  *
- * A field list for the fields a reader looks for, and the raw record folded
- * at the bottom as the complete backstop — a field the list does not know
- * about is still one click away, unchanged. A field the task does not carry
- * is left out rather than shown as an empty slot.
+ * A field list for the fields a reader looks for, then every other field the
+ * task carries under its own name, and the raw record folded at the bottom,
+ * complete and unchanged. A field the task does not carry is left out rather
+ * than shown as an empty slot.
  *
  * Every value wraps or scrolls inside the row. A stack trace or one unbroken
  * token must never widen the pane, which is what made the old floating
@@ -21,6 +21,36 @@ type Props = {
   /** Rendered after the field list; the row's actions live here. */
   children?: ReactNode;
 };
+
+/** The task fields the list above shows under a label of its own. */
+const LISTED_FIELDS = new Set([
+  "id",
+  "goal",
+  "title",
+  "context",
+  "status",
+  "attempts",
+  "maxAttempts",
+  "assignee",
+  "priority",
+  "labels",
+  "deps",
+  "feedback",
+  "error",
+  "input",
+  "output",
+  "metadata",
+  "revision",
+  "createdAt",
+  "updatedAt",
+  "startedAt",
+  "completedAt",
+  "leaseUntil",
+]);
+
+function isScalar(value: unknown): value is string | number | boolean {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
 
 /** Wrap anywhere: a value may be one unbroken token. */
 const WRAP = "whitespace-pre-wrap [overflow-wrap:anywhere]";
@@ -58,6 +88,12 @@ export function TaskRowBody({ entry, id, children }: Props) {
   add("Started", formatTime(task.startedAt), task.startedAt !== undefined);
   add("Completed", formatTime(task.completedAt), task.completedAt !== undefined);
   add("Lease until", formatTime(task.leaseUntil), task.leaseUntil !== undefined);
+  // Every other field the task carries, under its own name: retry and
+  // write-provenance fields, and whatever a later substrate adds.
+  for (const [key, value] of Object.entries(task)) {
+    if (LISTED_FIELDS.has(key) || value === undefined) continue;
+    add(key, isScalar(value) ? String(value) : <JsonBlock value={value} />, true);
+  }
   add(
     "Latest change",
     [

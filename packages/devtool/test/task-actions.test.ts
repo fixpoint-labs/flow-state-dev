@@ -125,4 +125,39 @@ describe("outcomeOf", () => {
     const failed = [root("in_progress"), { ...root("failed"), error: { message: "boom" } }];
     expect(outcomeOf(request(failed), "r1")).toEqual({ state: "failed", message: "boom" });
   });
+
+  it("resolves a root output held by reference before reading it", () => {
+    // A sequencer-backed action re-emits its last step's output as a `ref` to
+    // that step's trace, or a `structure` of refs. The refusal lives behind
+    // the reference, and must not read as success.
+    const child = {
+      id: "t-child",
+      type: "block_trace",
+      status: "completed",
+      provenance: { parentBlockInstanceId: "root" },
+      output: { kind: "inline", value: { ok: false, error: "task is terminal" } },
+    };
+    const refRoot = { type: "block_trace", status: "completed", provenance: {}, output: { kind: "ref", sourceItemId: "t-child" } };
+    expect(outcomeOf(request([child, refRoot]), "r1")).toEqual({ state: "refused", message: "task is terminal" });
+
+    const structureRoot = {
+      type: "block_trace",
+      status: "completed",
+      provenance: {},
+      output: {
+        kind: "structure",
+        shape: {
+          container: "object",
+          entries: { ok: { kind: "inline", value: false }, error: { kind: "ref", sourceItemId: "t-msg" } },
+        },
+      },
+    };
+    const message = { id: "t-msg", type: "message", content: [{ type: "output_text", text: "no such task" }] };
+    expect(outcomeOf(request([message, structureRoot]), "r1")).toEqual({ state: "refused", message: "no such task" });
+  });
+
+  it("says the outcome isn't visible when a referenced output was not retained", () => {
+    const refRoot = { type: "block_trace", status: "completed", provenance: {}, output: { kind: "ref", sourceItemId: "gone" } };
+    expect(outcomeOf(request([refRoot]), "r1")).toEqual({ state: "unknown" });
+  });
 });

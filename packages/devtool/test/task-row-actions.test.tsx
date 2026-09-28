@@ -209,6 +209,43 @@ describe("running one", () => {
     await screen.findByText(/Refused: terminal_task_write_declined/);
   });
 
+  it("BR-16 · sends a second submit while the first is in flight, and gives each its own answer", async () => {
+    // Two submits on one task may race; the server says which one lost. The
+    // row holds no lock of its own, and neither answer hides the other.
+    const releases: Array<(value: { requestId: string }) => void> = [];
+    const run = vi.fn<RowActions["run"]>(() => new Promise((resolve) => releases.push(resolve)));
+    const { rerender } = render(<Harness run={run} />);
+    await open();
+    await userEvent.click(within(row()).getByRole("button", { name: "cancelTask_issues" }));
+    await userEvent.click(within(row()).getByRole("button", { name: /^run$/i }));
+    await userEvent.click(within(row()).getByRole("button", { name: "answer" }));
+    await userEvent.type(row().querySelector<HTMLInputElement>('[data-field="answer"] input')!, "yes");
+    await userEvent.click(within(row()).getByRole("button", { name: /^run$/i }));
+    expect(run).toHaveBeenCalledTimes(2);
+
+    // The later one comes back first; the earlier one is still owed its answer.
+    releases[1]!({ requestId: "req_2" });
+    releases[0]!({ requestId: "req_1" });
+    rerender(
+      <Harness
+        run={run}
+        requests={[
+          request("req_1", "completed", [rootTrace("req_1", { ok: true })]),
+          request("req_2", "completed", [rootTrace("req_2", { ok: false, error: "task is cancelled" })]),
+        ]}
+      />
+    );
+    await screen.findByText(/Refused: task is cancelled/);
+    const outcomes = [...row().querySelectorAll<HTMLElement>("[data-submission]")].map((line) => [
+      line.getAttribute("data-submission"),
+      line.querySelector("[data-outcome]")?.getAttribute("data-outcome"),
+    ]);
+    expect(outcomes).toEqual([
+      ["answer", "refused"],
+      ["cancelTask_issues", "ok"],
+    ]);
+  });
+
   it("reads only the request it sent, not an older one on the same session", async () => {
     const outcome = await submitted([
       request("req_old", "completed", [rootTrace("req_old", { ok: true })]),

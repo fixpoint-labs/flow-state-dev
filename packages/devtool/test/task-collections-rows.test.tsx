@@ -181,6 +181,37 @@ describe("opening a row", () => {
     expect(field("Latest change").textContent).toContain("review_requested");
   });
 
+  it("BR-4 · shows a carried field the list has no label for, under its own name", async () => {
+    // The ledger carries more than the named list (retry and write-provenance
+    // fields, and whatever a later substrate adds). Every one is shown, not
+    // only in the folded raw record.
+    const carried = {
+      ...full,
+      id: "task-extra",
+      retryLedger: [{ attempt: 1, error: "timed out" }],
+      abandonments: 2,
+      leaseDurationMs: 30_000,
+      writeLog: [{ id: "w1", revision: 4 }],
+      writeLogTruncated: false,
+      incarnationId: "inc-7f3",
+    } as Task;
+    render(view([taskItem(carried)]));
+    await userEvent.click(toggleOf("task-extra"));
+
+    const body = within(rowOf("task-extra"));
+    const field = (label: string) =>
+      body.getByText(label, { selector: "dt" }).nextElementSibling as HTMLElement;
+    expect(field("retryLedger").textContent).toContain("timed out");
+    expect(field("abandonments").textContent).toBe("2");
+    expect(field("leaseDurationMs").textContent).toBe("30000");
+    expect(field("writeLog").textContent).toContain("w1");
+    expect(field("writeLogTruncated").textContent).toBe("false");
+    expect(field("incarnationId").textContent).toBe("inc-7f3");
+    // A field the list already names is not shown twice under its raw key.
+    expect(body.queryByText("goal", { selector: "dt" })).toBeNull();
+    expect(body.queryByText("feedback", { selector: "dt" })).toBeNull();
+  });
+
   it("BR-4 · omits a field the task does not carry, rather than faking it", async () => {
     render(view([taskItem({ id: "task-bare", goal: "bare", status: "pending" })]));
     await userEvent.click(toggleOf("task-bare"));

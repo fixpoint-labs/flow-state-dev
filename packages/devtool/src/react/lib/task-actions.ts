@@ -14,6 +14,9 @@
  * wire shapes it reads (see `task-collection-state`).
  */
 import type { ActionInputSchema } from "@flow-state-dev/client";
+import { buildItemLookup } from "@flow-state-dev/core/items";
+import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 
 /**
  * A board's qualifier in an action name: every character outside
@@ -108,7 +111,7 @@ type TraceLike = {
   type?: string;
   status?: string;
   provenance?: { parentBlockInstanceId?: string };
-  output?: { kind?: string; value?: unknown };
+  output?: BlockValueInternal<unknown>;
   error?: { message?: string };
 };
 
@@ -117,8 +120,9 @@ type TraceLike = {
  *
  * The dispatch response carries a request id and no output, and a refused
  * verb emits no change item, so the root trace is the one place the tool's
- * `{ ok, error }` can be read. Only an inline output is read: a task tool's
- * result is a plain value, never a ref.
+ * `{ ok, error }` can be read. An output held by reference (a `ref` to a
+ * step's trace, or a `structure` of them) is resolved against the request's
+ * own items first; one whose target was not retained reads as `unknown`.
  */
 export function outcomeOf(
   requests: readonly RequestOutcomeSource[],
@@ -137,7 +141,11 @@ export function outcomeOf(
     return { state: "failed", message: root.error?.message ?? "The action failed." };
   }
   if (root?.status === "completed") {
-    const value = root.output?.kind === "inline" ? root.output.value : undefined;
+    const items = (request.rawItems ?? []) as readonly { id: string; type: string }[];
+    const value = resolveBlockValueInternal(root.output, buildItemLookup(items));
+    if (value === undefined && root.output !== undefined && root.output.kind !== "inline") {
+      return { state: "unknown" };
+    }
     if (isRefusal(value)) return { state: "refused", message: value.error };
     if (isDeclined(value)) {
       return { state: "refused", message: `Declined (${value.reason}): the task is ${value.status}.` };
