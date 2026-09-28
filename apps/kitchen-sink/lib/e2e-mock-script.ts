@@ -121,6 +121,16 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
     steps: replyInChannel,
   },
   {
+    // The wake's text answer, held about three seconds first. It never calls
+    // the post tool, so on a routed post its line lands only as the kind's own
+    // landing, and the hold outlasts the person's own post request: a page is
+    // seen showing the seat as working before that line, and a page that does
+    // not follow the channel live never sees the line without a reload.
+    match: (turn) => turn.includes("[scenario:wake-after-a-hold]"),
+    holdMs: 3_000,
+    steps: [{ text: "[reply:wake] Heard it in the channel." }],
+  },
+  {
     // What the seat can see from before this turn (FIX-1611 BR-19): every
     // token in the system messages (where a routed post's recent lines land)
     // and in the earlier turns of this conversation, and none from the turn

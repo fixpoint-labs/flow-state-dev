@@ -29,7 +29,7 @@
  * Held-out: GOAL_SEAT=<another specialist>
  */
 import { randomUUID } from "node:crypto";
-import type { Page, Route } from "playwright";
+import type { Page } from "playwright";
 import { loadFixture, runGoal } from "../../lib/index.mts";
 import {
   buildKitchenSink,
@@ -72,53 +72,77 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 // The controls: what the page is served, with one kept side taken out
 // ---------------------------------------------------------------------------
 
-type Item = { id?: string; type?: string; component?: string; role?: string };
-
-/** Whether an item survives the active control. */
-function kept(item: Item): boolean {
-  if (CONTROL === "no-post-item") return !(item.type === "component" && item.component === "channel-post");
-  if (CONTROL === "drop-user-message") return !(item.type === "message" && item.role === "user");
-  return true;
-}
-
 /**
- * Under a control, every session read and every action stream reaches the
- * page without the one kind of item the control names, before and after the
- * reload alike — which is what the page sees when the server keeps none. With
- * no control nothing is routed.
+ * Runs in the page before its own scripts, under a control. Every session read,
+ * every action stream and every live session stream reaches the page without
+ * the one kind of item the control names, before and after the reload alike:
+ * what the page sees when the server keeps none.
+ *
+ * At the page's `fetch`, not with Playwright's routing: the live session
+ * stream (`GET /api/flows/sessions/:id/stream`) never ends, and a routed
+ * response is read whole before the page gets any of it. So each stream is
+ * filtered frame by frame as it arrives, and an item's later frames go with it.
+ *
+ * Plain JavaScript in a string: a function handed to Playwright is compiled by
+ * tsx first, which adds helpers the page does not have.
  */
+const STRIP_ITEMS = `(() => {
+  const control = ${JSON.stringify(CONTROL)};
+  const stripped = (item) =>
+    item != null &&
+    (control === "no-post-item"
+      ? item.type === "component" && item.component === "channel-post"
+      : item.type === "message" && item.role === "user");
+  const original = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.href);
+    const method = String((init && init.method) || (input instanceof Request ? input.method : "GET")).toUpperCase();
+    const flows = url.pathname.startsWith("/api/flows/");
+    const read = method === "GET" && /\\/sessions\\/[^/]+\\/(state|stream)$/.test(url.pathname);
+    const action = method === "POST" && /\\/actions\\/[^/]+$/.test(url.pathname);
+    const response = await original(input, init);
+    if (!flows || (!read && !action)) return response;
+    const type = response.headers.get("content-type") || "";
+    if (type.includes("application/json")) {
+      const json = await response.json();
+      if (json && Array.isArray(json.items)) json.items = json.items.filter((item) => !stripped(item));
+      return new Response(JSON.stringify(json), { status: response.status, statusText: response.statusText, headers: response.headers });
+    }
+    if (!type.includes("text/event-stream") || response.body === null) return response;
+    const dropped = new Set();
+    const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
+    let buffer = "";
+    const keep = (frame) => {
+      const data = frame.split("\\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\\n");
+      if (data === "") return true;
+      let parsed;
+      try { parsed = JSON.parse(data); } catch { return true; }
+      if (parsed && stripped(parsed.item)) {
+        if (typeof parsed.item.id === "string") dropped.add(parsed.item.id);
+        return false;
+      }
+      return !(parsed && typeof parsed.itemId === "string" && dropped.has(parsed.itemId));
+    };
+    const filtered = response.body.pipeThrough(new TransformStream({
+      transform(chunk, controller) {
+        buffer += decoder.decode(chunk, { stream: true });
+        for (let at = buffer.indexOf("\\n\\n"); at !== -1; at = buffer.indexOf("\\n\\n")) {
+          const frame = buffer.slice(0, at);
+          buffer = buffer.slice(at + 2);
+          if (keep(frame)) controller.enqueue(encoder.encode(frame + "\\n\\n"));
+        }
+      },
+      flush(controller) { if (buffer !== "" && keep(buffer)) controller.enqueue(encoder.encode(buffer)); },
+    }));
+    return new Response(filtered, { status: response.status, statusText: response.statusText, headers: response.headers });
+  };
+})();`;
+
+/** Under a control, filter what the page is served (`STRIP_ITEMS`). With no control nothing is added. */
 async function applyControl(page: Page): Promise<void> {
   if (CONTROL === "") return;
-  await page.route("**/api/flows/**", async (route: Route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    const isState = request.method() === "GET" && /\/sessions\/[^/]+\/state$/.test(path);
-    const isAction = request.method() === "POST" && /\/actions\/[^/]+$/.test(path);
-    if (!isState && !isAction) return route.fallback();
-    const response = await route.fetch();
-    const body = await response.text();
-    const type = response.headers()["content-type"] ?? "";
-    if (type.includes("application/json")) {
-      const json = JSON.parse(body) as { items?: Item[] };
-      if (Array.isArray(json.items)) json.items = json.items.filter(kept);
-      return route.fulfill({ response, json });
-    }
-    if (type.includes("text/event-stream")) {
-      const dropped = new Set<string>();
-      const events = body.split("\n\n").filter((event) => {
-        const data = event.split("\n").find((line) => line.startsWith("data:"));
-        if (data === undefined) return true;
-        const parsed = JSON.parse(data.slice(5).trim()) as { item?: Item; itemId?: string };
-        if (parsed.item !== undefined && !kept(parsed.item)) {
-          if (parsed.item.id !== undefined) dropped.add(parsed.item.id);
-          return false;
-        }
-        return parsed.itemId === undefined || !dropped.has(parsed.itemId);
-      });
-      return route.fulfill({ response, body: events.join("\n\n") });
-    }
-    return route.fulfill({ response, body });
-  });
+  await page.addInitScript({ content: STRIP_ITEMS });
 }
 
 // ---------------------------------------------------------------------------

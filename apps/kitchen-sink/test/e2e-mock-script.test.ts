@@ -25,6 +25,10 @@
  * A held scenario (`[scenario:reply-after-a-hold]`) gives a page time to show
  * a seat as working before its line lands. Its line must wait out the hold,
  * and nothing else may hold: every other check's timing depends on that.
+ * `[scenario:wake-after-a-hold]` holds the same way before a text answer, which
+ * lands by the kind's own landing rather than the post tool. Without the hold
+ * that answer lands before a page can show the seat working, and before the
+ * person's own post request ends and the page reads the channel again anyway.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { agentSeatMock, channelRouteMock, holdBeforeAnswer } from "@/lib/e2e-mock-script";
@@ -211,6 +215,45 @@ describe("a seat that holds before answering", () => {
       tools: [{ name: "post-to-channel", execute: async (args) => void posted.push(args) }],
     } as Parameters<typeof model.generate>[0]);
     expect(posted).toHaveLength(1);
+  });
+});
+
+describe("a seat that holds, then answers in text", () => {
+  const heard = (marker: string) => [user(`devuser in support.help: ${marker} ask-token-abc123 is anyone there?`)];
+  const held = () => heard("[scenario:wake-after-a-hold]");
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("holds the agent seat about three seconds, and the plain wake not at all", () => {
+    expect(holdBeforeAnswer("agent-answer", held())).toBe(3_000);
+    expect(holdBeforeAnswer("agent-answer-with-activate-tool", held())).toBe(3_000);
+    expect(holdBeforeAnswer("agent-answer", heard("[scenario:wake]"))).toBe(0);
+  });
+
+  it("answers as the wake does, in text, and never calls the post tool", () => {
+    agentSeatMock.reset();
+    const step = agentSeatMock.next(held());
+    expect(step?.toolCalls).toBeUndefined();
+    expect(step).toEqual(agentSeatMock.next(heard("[scenario:wake]")));
+  });
+
+  it("keeps the text answer back until the hold ends", async () => {
+    vi.useFakeTimers();
+    agentSeatMock.reset();
+    const model = createKitchenSinkTestModelResolver()("test-model", "agent-answer");
+    let answered: string | undefined;
+    const answer = model
+      .generate({ messages: held() } as Parameters<typeof model.generate>[0])
+      .then((result) => (answered = result.text));
+
+    await vi.advanceTimersByTimeAsync(2_900);
+    expect(answered).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(200);
+    await answer;
+    expect(answered).toContain("[reply:wake]");
   });
 });
 
