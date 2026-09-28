@@ -513,7 +513,8 @@ Publish canonical content in the repository; Linear carries status and links, no
    it (BP-039). The goal section follows it. *How it got here* is the change story and sits at the bottom of
    `DECISIONS.md`; it never leads.
 
-2. **Draw, render and check the figures** before the commit — the *what changes* figure and,
+2. **Draw, render and check the figures** before the commit — the *what changes* figure, a
+   **trade-off figure per decision on `SPEC.md`'s sign-off** and per live fork (none for a card the filters sent to the engineering block), and,
    unless the spec states that no goal check applies, the *how we'll know it's met* fence at least, the rest where position carries the meaning
    ([`spec-figures.md`](../../../docs/contributing/spec-figures.md)). Run its verify block
    over the directory and open every rendered SVG in both themes. A figure nobody looked at
@@ -536,7 +537,7 @@ Publish canonical content in the repository; Linear carries status and links, no
      follows it: its sentence, the *how we'll know* mermaid fence with its sentence, and one
      line naming the goal check and the control that must fail (or, when no goal check
      applies, the one line saying what proves the goal instead). **The *what changes* figure** goes under it as a raw-content image pinned to the commit that holds it, with its one sentence ([`spec-figures.md`](../../../docs/contributing/spec-figures.md) → "In the PR body"); then one line on **how**. Read the stored body back ([`spec-figures.md`](../../../docs/contributing/spec-figures.md) → "In the PR body"). A `src` with no backtick renders, and a later edit keeps it. If the `src` comes back with a backtick in it, leave a link to `SPEC.md`'s blob view in its place and hand the person the clean `<img>` line — the line you sent, not the stored one — and never rewrite a body a person has pasted into.
-   - **`## Sign off`** ← the decisions in `DECISIONS.md`, **sorted and shaped per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → §3** in its compact form — a numbered bold line and *If wrong:* each, hardest first, the one to weigh named, a link to `DECISIONS.md`. Two things are spec-specific: every decision the filters drop goes one bullet each in the collapsed **engineering calls** block, so the sign-off surface stays complete and nothing is approved unseen; and **every open question in `DECISIONS.md → Open` is a live fork** and gets the full six-part ask per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), above the ratified lines.
+   - **`## Sign off`** ← the decisions in `DECISIONS.md`, **sorted and shaped per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → §3** in its compact form — per decision a subheading stating it, its **trade-off figure** pinned like the *what changes* figure, and one line naming the row it came down to and *If wrong:*; hardest first, the one to weigh named, a link to `DECISIONS.md`. Read each stored `src` back the same way. Two things are spec-specific: every decision the filters drop goes one bullet each in the collapsed **engineering calls** block, so the sign-off surface stays complete and nothing is approved unseen; and **every open question in `DECISIONS.md → Open` is a live fork** and gets the full six-part ask per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), above the ratified lines.
    - **Count decisions and open questions together against the ceiling of three.** The goal's
      sign-off line is not a decision and does not count: it is what approval already certifies
      ([`orchestration.md`](../../../docs/contributing/orchestration.md) → the bar), stated so the
@@ -544,7 +545,7 @@ Publish canonical content in the repository; Linear carries status and links, no
    - **`## Reviewers · look here`** — one to three items, each naming the document and the question, plus what is deliberately not here.
    - **The links line** — the required documents, applicable evolution, Linear, the epic, predecessors, and the spec merge contract.
    - **The collapsed contract** — `## How to review this` from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted **verbatim**. Smoothing it weakens the only instruction an external bot ever receives, and no spec PR ships without it. A second collapsed block, **engineering calls**, only when the filters dropped a decision.
-   - **Budget:** the spec-PR row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets. **The figure is the diagram that row's budget anticipates** — a second one has to earn it.
+   - **Budget:** the spec-PR row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets. **The figures that row's budget anticipates are *how we'll know*, *what changes*, and one trade-off per sign-off decision** — any other has to earn it.
    - **If a Step 4 POC was built**, add a collapsed POC block: one runnable command per artifact, the question it answers, and that it's throwaway.
 
    Review the set through the committed diff rather than duplicating it in the PR body. The spec PR is separate from implementation and needs no changeset. Fuller examples belong in owned `assets/` or isolated `poc/<experiment>/`, linked from the prose.
@@ -593,7 +594,8 @@ Two instincts to override, because both run the wrong way:
 #### 6.5.2 Re-draft, don't append — the anti-addenda rule
 
 **The figures are surfaces a re-draft reconciles.** A folded finding that moves the approach
-moves whichever figure drew it — the decision tree, the *what changes* figure, a rule's fence
+moves whichever figure drew it — the decision tree, the *what changes* figure, a decision's
+trade-off, a rule's fence
 — and a figure still showing the superseded shape is the defect this rule exists to prevent:
 worse than stale prose, because a figure is what the gate actually looks at. Feedback that
 changes only wording moves no figure: below the bar is below the bar. Re-render and re-run the

@@ -85,7 +85,7 @@ const REQUESTS_INDEXES = [
  * Ordering columns are declared ASC and scanned backwards, which Postgres does
  * for an `ORDER BY` that reverses every key uniformly.
  *
- * Paired with {@link DROP_INVALID_FIX_1010_INDEXES}: an interrupted concurrent
+ * Paired with {@link DROP_INVALID_CONCURRENT_INDEXES}: an interrupted concurrent
  * build leaves an *invalid* index that `IF NOT EXISTS` would then skip
  * forever, so the planner would never use it and nothing would say so.
  */
@@ -119,19 +119,44 @@ const CONCURRENT_INDEXES = [
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_scope_created ON sessions(parent_session_id, tenant_id, org_id, created_at, id)",
   // The most-recent-run read. The existence check that precedes it is already
   // served by `idx_requests_session_status` and needs nothing new.
-  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_created ON requests(session_id, created_at, id)"
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_created ON requests(session_id, created_at, id)",
+  // The session stream's two reads, repeated about once a second per open
+  // view: one session's requests and one parent's runs, newest-updated first,
+  // paged until a row is older than the floor. Each names the session's
+  // owner and org as well as its id, and the index names them too, ahead of
+  // the ordering column. Without them the planner either sorts the session's
+  // whole history, or walks the global `updated_at` index through every other
+  // session's newer rows, or walks rows under the same id that another owner
+  // keeps (a session id can be used again, and a request its owner never made
+  // is refused but kept), and the read grows with something other than what
+  // changed.
+  //
+  // A pair for each read, as for the child listing above and for the same
+  // reason: the pair without `tenant_id` serves the unbound caller (every
+  // single-tenant deployment), and the pair with it the caller bound to a
+  // tenant. The tenant pair alone fails the unbound caller, which loses the
+  // ordering to `IS NULL`: measured before owner and org joined the key, the
+  // planner walked the global `updated_at` index and discarded 100,508 rows
+  // after a burst elsewhere. `session-stream-indexes.test.ts` measures both
+  // callers, on the options the stream sends, against a long history, a burst
+  // elsewhere, another tenant, and another owner's and another org's newer
+  // rows under the same ids.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_owner_updated ON requests(session_id, user_id, org_id, updated_at)",
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_owner_updated ON sessions(parent_session_id, user_id, org_id, updated_at)",
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_tenant_owner_updated ON requests(session_id, tenant_id, user_id, org_id, updated_at)",
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_tenant_owner_updated ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at)"
 ];
 
 /**
- * Drop a FIX-1010 index left `indisvalid = false` by an interrupted concurrent
+ * Drop a concurrently built index left `indisvalid = false` by an interrupted
  * build, so the `CREATE INDEX CONCURRENTLY IF NOT EXISTS` below rebuilds it
  * instead of skipping a dead one. A no-op on every healthy database.
  */
-const DROP_INVALID_FIX_1010_INDEXES = `DO $$
+const DROP_INVALID_CONCURRENT_INDEXES = `DO $$
 DECLARE
   n TEXT;
 BEGIN
-  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created']
+  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created', 'idx_requests_session_owner_updated', 'idx_sessions_parent_owner_updated', 'idx_requests_session_tenant_owner_updated', 'idx_sessions_parent_tenant_owner_updated']
   LOOP
     IF EXISTS (
       SELECT 1 FROM pg_class c
@@ -675,9 +700,9 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // every existing row as its person's own cell. See the migration's note.
   ADD_SCHEDULE_INDEX_CELL_MIGRATION,
 
-  // FIX-1010: clear an invalid index left by an interrupted concurrent build
+  // Clear an invalid index left by an interrupted concurrent build
   // so it is rebuilt below rather than skipped by `IF NOT EXISTS`.
-  DROP_INVALID_FIX_1010_INDEXES
+  DROP_INVALID_CONCURRENT_INDEXES
 ];
 
 /**

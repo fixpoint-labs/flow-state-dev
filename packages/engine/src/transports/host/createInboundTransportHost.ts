@@ -12,7 +12,7 @@
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../../registry/flow-registry";
-import type { StoreRegistry } from "../../stores/types";
+import type { SessionRecord, StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
 import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
@@ -21,7 +21,7 @@ import {
   continueRequest as continueRequestImpl,
   type ContinueRequestResult
 } from "../../execution/request-continuation";
-import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
+import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { FlowInstanceBindingMismatchError } from "../../context/binding-errors";
@@ -557,13 +557,17 @@ export function createInboundTransportHost(
    * A request record is fenced atomically below (create-if-absent), so this
    * pre-read is the session half plus the fast refusal; the CAS is what closes
    * two concurrent admissions of one caller-supplied id.
+   *
+   * Resolves the session it read and admitted, if any, so a later write to
+   * the session goes only to that one.
    */
   const admitOwnership = async (
     flow: FlowInstance,
     dispatchEnvelope: DispatchEnvelope
-  ): Promise<void> => {
+  ): Promise<SessionRecord | undefined> => {
+    let session: SessionRecord | undefined;
     if (dispatchEnvelope.sessionId !== undefined) {
-      const session = await stores.session.get(
+      session = await stores.session.get(
         resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
       );
       // A tenant-key collision is refused later by the tenant binding; only a
@@ -597,20 +601,26 @@ export function createInboundTransportHost(
         refusal.reason
       );
     }
+    return session;
   };
 
   /**
    * Materialize the enqueue-time `in_progress` stub and the `activeRequests`
-   * entry, owner-fenced. The record is written create-if-absent: a lost race
-   * against a foreign owner refuses rather than overwriting, and a lost race
-   * against this same owner (a retry reusing its id) keeps the existing record
-   * and re-stamps it, which is the last-write-wins hand-off it always was.
+   * entry, owner-fenced, and move a child session's update time so a view of
+   * its parent sees the run while it waits. The record is written
+   * create-if-absent: a lost race against a foreign owner refuses rather than
+   * overwriting, and a lost race against this same owner (a retry reusing its
+   * id) keeps the existing record and re-stamps it, which is the
+   * last-write-wins hand-off it always was.
    * Resolves `true` once the entry is this dispatch's to keep warm and to
    * remove on exit.
+   *
+   * @param admitted The session `admitOwnership` read and admitted, if any.
    */
   const materializeOwned = async (
     flow: FlowInstance,
     dispatchEnvelope: DispatchEnvelope,
+    admitted: SessionRecord | undefined,
     entry: Omit<Parameters<typeof stores.activeRequests.register>[0], "flowKind" | "flowId">
   ): Promise<void> => {
     const record = createInitialRequestRecord(
@@ -633,6 +643,49 @@ export function createInboundTransportHost(
         );
       }
       await stores.request.set(record.id, record, "any");
+    }
+    // A request under a child session moves the child's update time here,
+    // where the request is first recorded as working, and not when its run
+    // starts: the run can wait behind a concurrency key, or in an external
+    // queue, for a long time before that. A live view of the parent finds runs
+    // by that time (`routes/session-stream-routes.ts`), and a child whose last
+    // run finished long ago is found no other way. After the request record,
+    // so a read that finds the moved child finds the request too. Before the
+    // entry, so a failure here leaves no entry behind.
+    //
+    // Only a child the request will be let run in: its tenant, its owner and
+    // its organization, each as `createExecutionContext` checks it later. A
+    // request that check refuses must not have moved the child first. And only
+    // the child admission read and checked as this flow instance's: one
+    // deleted and created again under the id since, by anyone and under any
+    // flow, is another session this request was never admitted to. A child
+    // created since admission found none is new, so a view of its parent finds
+    // it by its update time already.
+    if (dispatchEnvelope.sessionId !== undefined && admitted !== undefined) {
+      const sessionKey = resolveSessionStorageKey(
+        dispatchEnvelope.sessionId,
+        dispatchEnvelope.tenantId
+      );
+      const session = await stores.session.get(sessionKey);
+      if (
+        session !== undefined &&
+        isSameSession(admitted, session) &&
+        session.parentSessionId != null &&
+        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
+        session.userId === dispatchEnvelope.userId &&
+        isValidOrgId(session.orgId) &&
+        session.orgId === dispatchEnvelope.orgId
+      ) {
+        // Written only over the version just read, and one past it, so a
+        // writer still holding the older copy conflicts rather than putting it
+        // back over this one. A write that got in first has moved the update
+        // time already, so a conflict is not an error.
+        await stores.session.set(
+          sessionKey,
+          { ...session, updatedAt: Date.now(), version: session.version + 1 },
+          session.version
+        );
+      }
     }
     await stores.activeRequests.register({ ...entry, flowKind: flow.kind, flowId: flow.id });
   };
@@ -862,8 +915,8 @@ export function createInboundTransportHost(
         // phantom `in_progress` the client can never resolve.
         const ts = Date.now();
         const materialized = admitOwnership(flow, dispatchEnvelope)
-          .then(() =>
-            materializeOwned(flow, dispatchEnvelope, {
+          .then((admitted) =>
+            materializeOwned(flow, dispatchEnvelope, admitted, {
               requestId,
               actionName: dispatchEnvelope.actionName,
               sessionId: dispatchEnvelope.sessionId,
@@ -1041,8 +1094,8 @@ export function createInboundTransportHost(
       // dispatch is unarbitrated in v1 (FIX-830).
       const ts = Date.now();
       const acceptance = admitOwnership(flow, dispatchEnvelope)
-        .then(() =>
-          materializeOwned(flow, dispatchEnvelope, {
+        .then((admitted) =>
+          materializeOwned(flow, dispatchEnvelope, admitted, {
             requestId,
             actionName: dispatchEnvelope.actionName,
             sessionId: dispatchEnvelope.sessionId,

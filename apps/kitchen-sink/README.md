@@ -52,7 +52,7 @@ Exported as `richTextComponentFlow` (`kind: "rich-text-component"`). Consumed by
 
 The support team is one channel and four specialists, declared in files rather than wired in code.
 
-Open `support.help` in the rail and ask a question. The channel sends each post to the one specialist whose job fits it: `support.devices` for printers, laptops, phones and wifi, `support.accounts` for sign-in and billing, `support.fsd` for questions about building with flow-state-dev, and `support.general` for anything else. The specialist answers in the channel, under its own name, and its answer shows up the next time the channel is read.
+Open `support.help` in the rail and ask a question. The channel sends each post to the one specialist whose job fits it: `support.devices` for printers, laptops, phones and wifi, `support.accounts` for sign-in and billing, `support.fsd` for questions about building with flow-state-dev, and `support.general` for anything else. You see which specialist is working on it, then its answer as a line under its name, without reloading.
 
 The rail lists the channels the files declare. A store kept from an earlier version of the app can still hold other channels' sessions; they stay in the store and don't show in the rail.
 
@@ -169,7 +169,7 @@ Restart the app and ask the seat something. The reload runs at startup, before t
 - **Client data bar**: Live display of mode status, request count, user preferences
 - **Mode selector**: Chat / Plan / Review tabs that feed into `sendAction`
 - **Session management**: Create and switch between the assistant's sessions from its row in the rail. A seat's row has **New conversation** too
-- **Channels**: Open `support.help` in the rail to read it and post. Your post calls the channel's own `post` action, the same one `fsdev run` calls, and appears as `devuser`, the one user this app runs as. Lines a specialist posts show up the next time the channel is read
+- **Channels**: Open `support.help` in the rail to read it and post. Your post calls the channel's own `post` action, the same one `fsdev run` calls, and appears as `devuser`, the one user this app runs as. Lines other requests post appear while the view is open, and the view shows which specialist is working
 - **Seats**: Open a specialist's conversation to talk to it directly. Your message and its reply stay in that conversation
 - **Tool call visualization**: Inline display of tool invocations with args + output via AI Elements Tool component
 - **Streaming indicators**: PromptInputSubmit status, Shimmer for status items, skeleton cards for in-progress blocks

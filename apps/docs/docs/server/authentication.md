@@ -456,6 +456,8 @@ request can route data through it under a different identity — whether
 the mismatch came from a buggy client, a routing mistake, or a stale
 cookie that drifted between users.
 
+A request the check refuses leaves the session as it was. It never shows in the session's snapshot or live stream, it doesn't become the session record's `latestRequestId`, and when the session is a dispatch run, the run's `updatedAt` doesn't move.
+
 To "move" a session to a different user or org, create a new session.
 
 ## Cross-flow schema compatibility

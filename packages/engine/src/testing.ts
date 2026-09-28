@@ -27,6 +27,13 @@ export {
   type ScopeStoreUnderTest
 } from "./stores/testing/scope-store-conformance";
 export {
+  createSessionStreamConformanceTests,
+  type CreateSessionStreamConformanceTestsOptions
+} from "./stores/testing/session-stream-conformance";
+// The session stream's two repeated reads, as it sends them: what an adapter's
+// index tests measure.
+export { sessionStreamReads } from "./routes/session-stream-routes";
+export {
   gateNextStateRead,
   StateReadGateTimeoutError,
   type StateReadGate

@@ -17,6 +17,12 @@
  * Only what the server kept is drawn. There is no optimistic copy of the
  * person's line or message, so what shows after a reload is what showed
  * before it.
+ *
+ * Both panels show a `<flow> is working` row for each run under the session
+ * that hasn't finished. With the session followed live (`useSession`'s
+ * `live`), a seat's line lands and its row clears without a reload; the panel
+ * keeps no timer or poll of its own for either. When the list could not be
+ * read again, the rows it still has say `was working at the last check`.
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { useSession } from "@flow-state-dev/react";
@@ -73,6 +79,7 @@ export function PickedSessionPanel({
     return (
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
         <ChannelTranscript session={session} />
+        <WorkingRows session={session} />
         <Composer
           key={composerKey}
           session={session}
@@ -89,6 +96,7 @@ export function PickedSessionPanel({
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
       {conversation}
+      <WorkingRows session={session} />
       {ask === undefined || "none" in ask ? (
         <p className="border-t px-4 py-3 text-xs text-muted-foreground" data-testid="picked-read-only">
           {ask?.none ?? `This ${kind} seat takes no messages from this page.`}
@@ -128,6 +136,32 @@ function ChannelTranscript({ session }: { session: Session }) {
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing has been posted here yet.</p>
       )}
     </div>
+  );
+}
+
+/**
+ * One row per run under the session that hasn't finished, named by the run's
+ * flow; a run with no recorded flow is background work, not a seat. A run
+ * waiting on an approval reads as working until it ends.
+ *
+ * While the list is stale (`childSessionsStale`: the last re-read failed, and
+ * the rows are the last list the hook had), a row says the run was working at
+ * the last check, since it may have finished since.
+ */
+function WorkingRows({ session }: { session: Session }) {
+  const working = session.childSessions.filter((run) => run.status === "active");
+  if (working.length === 0) return null;
+  const stale = session.childSessionsStale;
+  return (
+    <ul className="mx-auto flex w-full max-w-3xl flex-col gap-1 px-3 pb-2 sm:px-4" data-testid="working-rows">
+      {working.map((run) => (
+        <li key={run.id} className="text-xs italic text-muted-foreground" data-testid="working-row">
+          {run.flowId === undefined
+            ? `Background work ${stale ? "was running at the last check" : "is running"}`
+            : `${run.flowId} ${stale ? "was working at the last check" : "is working"}`}
+        </li>
+      ))}
+    </ul>
   );
 }
 

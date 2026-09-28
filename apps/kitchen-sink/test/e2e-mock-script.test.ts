@@ -21,9 +21,13 @@
  * system message (BR-23); BR-20 `[scenario:needs-a-person]` calls `escalate`
  * once with the post's token, then says it filed, or that it did not; BR-21
  * `[route:<member>]` routes, below.
+ *
+ * A held scenario (`[scenario:reply-after-a-hold]`) gives a page time to show
+ * a seat as working before its line lands. Its line must wait out the hold,
+ * and nothing else may hold: every other check's timing depends on that.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentSeatMock, channelRouteMock } from "@/lib/e2e-mock-script";
+import { agentSeatMock, channelRouteMock, holdBeforeAnswer } from "@/lib/e2e-mock-script";
 import { createKitchenSinkTestModelResolver } from "./mock-flowstate";
 
 const system = (content: string) => ({ role: "system", content });
@@ -134,6 +138,79 @@ describe("the recall scenario (BR-19)", () => {
     vi.stubEnv("GOAL_CONTROL", "no-history");
     agentSeatMock.reset();
     expect(agentSeatMock.next(conversation)?.text).toContain("case-token-bbb");
+  });
+});
+
+describe("a seat that holds before answering", () => {
+  // How a seat hears a post: `<writer> in <channel>: <body>`.
+  const heard = (marker: string) => [
+    user(`visitor-1 in support.help: ${marker} reply-token-abc123 when do refunds post?`),
+  ];
+  const held = () => heard("[scenario:reply-after-a-hold]");
+  const plain = () => heard("[scenario:reply-in-channel]");
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("holds the agent seat about three seconds for the held scenario, and nothing else", () => {
+    expect(holdBeforeAnswer("agent-answer", held())).toBe(3_000);
+    expect(holdBeforeAnswer("agent-answer-with-activate-tool", held())).toBe(3_000);
+    // The same post without the hold marker, and other generators, answer at once.
+    expect(holdBeforeAnswer("agent-answer", plain())).toBe(0);
+    expect(holdBeforeAnswer("assistant-generator", held())).toBe(0);
+  });
+
+  it("answers exactly as reply-in-channel does once the hold ends", () => {
+    agentSeatMock.reset();
+    const heldTurn = held();
+    const plainTurn = plain();
+    const heldSteps = [agentSeatMock.next(heldTurn), agentSeatMock.next(heldTurn)];
+    const plainSteps = [agentSeatMock.next(plainTurn), agentSeatMock.next(plainTurn)];
+    expect(heldSteps).toEqual(plainSteps);
+    expect(heldSteps[0]?.toolCalls?.[0]).toMatchObject({
+      toolName: "post-to-channel",
+      args: { channel: "support.help" },
+    });
+  });
+
+  it("keeps the seat's line back until the hold ends", async () => {
+    vi.useFakeTimers();
+    agentSeatMock.reset();
+    const posted: unknown[] = [];
+    const model = createKitchenSinkTestModelResolver()("test-model", "agent-answer");
+    const answer = model.generate({
+      messages: held(),
+      tools: [
+        {
+          name: "post-to-channel",
+          execute: async (args) => {
+            posted.push(args);
+            return { ok: true };
+          },
+        },
+      ],
+    } as Parameters<typeof model.generate>[0]);
+
+    await vi.advanceTimersByTimeAsync(2_900);
+    expect(posted).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(200);
+    const result = await answer;
+    expect(posted).toHaveLength(1);
+    expect(result.text).toContain("[reply:in-channel]");
+  });
+
+  it("does not hold a post that names no hold", async () => {
+    vi.useFakeTimers();
+    agentSeatMock.reset();
+    const posted: unknown[] = [];
+    const model = createKitchenSinkTestModelResolver()("test-model", "agent-answer");
+    await model.generate({
+      messages: plain(),
+      tools: [{ name: "post-to-channel", execute: async (args) => void posted.push(args) }],
+    } as Parameters<typeof model.generate>[0]);
+    expect(posted).toHaveLength(1);
   });
 });
 

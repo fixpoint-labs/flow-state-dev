@@ -78,6 +78,8 @@ The client handles reconnection, resume from cursor, and event assembly. Pass `L
 
 If you'd rather have those events folded into a ready-to-render item list than handle each callback yourself, pass `createRequestStreamStore()` through `bindStoreToCallbacks` — the same accumulator the React hooks use, available to any non-React consumer. See [Stream state store](../api/client.md#createrequeststreamstore-and-bindstoretocallbacksstore-options) in the API reference. On React you don't need it; `useSession` and `useRequestStream` wrap it for you.
 
+A request's stream carries one request. To follow everything that happens in a session, including requests another tab, person or agent sent, use [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions). It delivers each item once it's finished, not text as it's generated.
+
 ## Session management
 
 ```ts
@@ -109,7 +111,7 @@ await sessions.updateSessionMetadata("sess_1", {
 });
 ```
 
-Fields are merged — only the fields you include are changed. Omitting `title` leaves the existing title untouched.
+Fields are merged — only the fields you include are changed. Omitting `title` leaves the existing title untouched, even one another writer sets while your edit is in flight. If the session keeps changing too fast for your edit to land, the call throws `ClientHttpError` with `status` 409 and changes nothing, and you can send the same edit again. A 409 whose `body` is `{ error: "migration-required" }` is different: the session needs migrating, and retrying won't clear it. See [Who owns a record](/docs/persistence/overview#who-owns-a-record). If the session is deleted, or replaced by a new session under the same id, while your edit is being applied, the call throws `ClientHttpError` with `status` 404 and changes nothing.
 
 **Fetching session state:**
 
@@ -121,6 +123,14 @@ const snapshot = await sessions.getSessionState("sess_1", {
 ```
 
 `getSessionState` returns state snapshots with clientData. Use `includeItems` to get the session item log. Specify which clientData keys you need.
+
+**Deleting a session:**
+
+```ts
+await sessions.deleteSession("sess_1");
+```
+
+If the same user, in the same organization, later creates a session under that id, the new session treats the deleted session's requests and background runs as its own: they show in its snapshot, its live stream and its background-work list. Give a new session a new id.
 
 **Listing sessions:**
 
@@ -192,7 +202,7 @@ if (run) {
 
 **What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a run whose worker died, until the server records otherwise. The [server reference](/docs/server/background-work#what-status-tells-you) covers each terminal value and what a task board does to it.
 
-A run that has never executed anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
+A row whose session has had no run dispatched into it carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims a run is pending when none has been dispatched.
 
 `topic` and `coordinate` are optional too. `topic` is the key the run's session was derived from, `coordinate` the entry it was dispatched to. Both are display labels — nothing identifies or authorizes from them. Whether `topic` reads well depends on what the flow keyed on: a document id or an issue key is legible, a task-board seat's composed key is not. The session id is the one field always there, so fall back to it rather than to a made-up name:
 

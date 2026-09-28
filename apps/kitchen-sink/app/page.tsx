@@ -61,6 +61,7 @@ import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
 import { CHANNEL_KINDS, defaultConversation, isChannelKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
+import { pageGoalControl } from "@/lib/goal-control";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
@@ -154,14 +155,17 @@ function PageInner() {
     process.env.NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE === "1"
       ? searchParams.get("e2eSession")
       : null;
+  // The goal control `no-live` opens the rail's panels without following their
+  // session, so a goal check can be seen to fail without it.
+  const pickedLive = pageGoalControl(searchParams) !== "no-live";
   return (
     <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAgentRenderers}>
-      <KitchenSinkApp e2eSessionId={e2eSessionId} />
+      <KitchenSinkApp e2eSessionId={e2eSessionId} pickedLive={pickedLive} />
     </FlowProvider>
   );
 }
 
-function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
+function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | null; pickedLive: boolean }) {
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
   // page, never one per row. A test's own session, when one is named, is the
@@ -235,13 +239,15 @@ function KitchenSinkApp({ e2eSessionId }: { e2eSessionId: string | null }) {
   // A channel's or a seat's session, when one is picked in the rail. Its panel
   // has a composer of its own, which calls the picked flow's own action on
   // this session; the assistant's composer stays wired to the assistant.
-  // This session and the assistant's (`session`, above) are both live
-  // subscriptions while a rail session is open — deliberate, not an oversight:
-  // the rail panel needs its own stream to update live.
+  // It follows the whole session (`live`), because others write here too: a
+  // seat answering a post, a person in another tab. The assistant's session
+  // (`session`, above) is not live: only this person writes there, and their
+  // own requests already stream.
   const pickedSession = useSession(picked?.sessionId, {
     flowKind: picked?.address,
     items: true,
     autoResume: true,
+    live: pickedLive,
   });
   // A composer settles a send on that request's own status, read from the
   // picked flow, rather than on the session's stream closing.

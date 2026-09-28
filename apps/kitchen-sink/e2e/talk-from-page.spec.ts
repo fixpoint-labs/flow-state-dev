@@ -33,6 +33,14 @@
  * messages) is checked on the panel itself, in `test/picked-session-panel`:
  * the rail lists only the kinds the shell names, so a seat of any other kind
  * never reaches the page.
+ *
+ * And by `specs/issues/FIX-1609/BUSINESS-RULES.md`, re-pointed at this
+ * roster: BR-1, BR-7 and BR-8 (with the channel open, the routed specialist
+ * shows as working, then its line lands and the row clears, with no
+ * reload), BR-20 and BR-21 (the panel is the only view that follows its
+ * session: one session stream, for `support.help`, and none for the
+ * assistant). That one is read before any reload, on purpose: what it
+ * checks is the page keeping up by itself.
  */
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -374,4 +382,36 @@ test("a post routed to one specialist names a token from the line another specia
   expect(answers.map((l) => l.label)).toEqual(["support.accounts"]);
   expect(answers[0]!.text).toContain("[reply:recall]");
   expect(answers[0]!.text).toContain(mark);
+});
+
+test("with support.help open, the routed specialist shows as working and then its line lands, with no reload", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  // Every session stream the page opens, by the session it follows.
+  const followed: string[] = [];
+  page.on("request", (request) => {
+    const match = /^\/api\/flows\/sessions\/([^/]+)\/stream$/.exec(new URL(request.url()).pathname);
+    if (match !== null) followed.push(decodeURIComponent(match[1]!));
+  });
+
+  const mark = `reply-token-${token()}`;
+  const line = `[route:support.devices] [scenario:reply-after-a-hold] ${mark} when do refunds post?`;
+  const channel = await openChannel(page);
+  await post(channel, line);
+
+  // The routed specialist holds its answer about three seconds: long enough to
+  // be seen working. It is the only one working on the post.
+  const working = channel.getByTestId("working-row");
+  await expect(working).toHaveText(["support.devices is working"]);
+  const reply = channel.getByTestId("channel-line").filter({ hasText: `[reply:in-channel] ${mark}` });
+  await expect(reply).toHaveCount(0);
+
+  // Then its line lands in the open panel, under its name, and the row clears.
+  await expect(reply).toHaveCount(1, { timeout: 15_000 });
+  await expect(reply.getByTestId("channel-line-label")).toHaveText("support.devices");
+  await expect(working).toHaveCount(0);
+
+  // Only the channel's panel follows its session; the assistant does not.
+  expect([...new Set(followed)]).toEqual([CHANNEL]);
 });

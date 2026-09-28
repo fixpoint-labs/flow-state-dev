@@ -3,9 +3,8 @@
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { StoreRegistry } from "../stores/types";
+import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveOrgStorageKey, resolveUserStorageKey } from "../stores/scope-keys";
 import {
   resolveOwnerFlow,
@@ -15,9 +14,12 @@ import {
   getBooleanFlag,
   getPositiveInteger,
   getString,
+  isCheckedSession,
   jsonResponse,
   loadTenantSession,
   parseClientDataFilter,
+  sessionRequestScope,
+  snapshotItemsOf,
   sortItems
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
@@ -33,6 +35,12 @@ type StateRouteContext = {
   stores: StoreRegistry;
   /** Tenant id from the request header (FIX-682); namespaces the session key. */
   tenantId?: string;
+  /**
+   * The session the owner check read and admitted the caller to
+   * (`RouteAuthResult.session`): `null` when it read none, absent when it read
+   * nothing (nothing in the app authenticates).
+   */
+  checkedSession?: SessionRecord | null;
 };
 
 export async function handleGetSessionState(
@@ -40,12 +48,19 @@ export async function handleGetSessionState(
   route: Extract<ParsedFlowRoute, { kind: "get_session_state" }>,
   ctx: StateRouteContext
 ): Promise<Response> {
+  // Taken before anything is read, so everything kept before it is in this
+  // snapshot. A client that then follows the session hands it to the session
+  // stream as `since`, which starts reading from here.
+  const at = Date.now();
   const session = await loadTenantSession(
     ctx.stores.session,
     route.sessionId,
     ctx.tenantId
   );
-  if (session === undefined) {
+  // The owner check read the session too. Everything below is read under this
+  // copy, so it must be the session the caller was admitted to, not one that
+  // took its id since (or arrived after the check found none).
+  if (session === undefined || !isCheckedSession(ctx.checkedSession, session)) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
     });
@@ -89,32 +104,17 @@ export async function handleGetSessionState(
     const requests = await ctx.stores.request.list({
       // Request records key on the BARE session id; isolate by the tenant
       // filter (FIX-682). `session.id` here is the namespaced storage key, so
-      // it must not be used as the request filter.
-      sessionId: route.sessionId,
-      tenantId: ctx.tenantId,
+      // it must not be used as the request filter. The session's owner and
+      // organization too, as the session stream reads them: a request under
+      // the id made by anyone else is not this session's.
+      ...sessionRequestScope(route.sessionId, session, ctx.tenantId),
       withItems: true
     });
     aggregatedItems = [];
     for (const req of requests) {
-      if (req.items !== undefined) {
-        // Collapse each request's physical log to its canonical view before
-        // aggregating (FIX-811): a resumed request's suspending block re-emits
-        // its pre-suspension items, and the superseded run-1 copies must not
-        // surface in session history. Per-request because logical ids are
-        // scoped by request id.
-        for (const item of collapseToCanonicalLog(req.items)) {
-          if (itemTypeFilter !== undefined && !itemTypeFilter.has(item.type)) {
-            continue;
-          }
-          if (
-            itemTypeFilter === undefined &&
-            !resolveItemVisibility(item).client
-          ) {
-            continue;
-          }
-          aggregatedItems.push(item);
-        }
-      }
+      // The same per-request filter the session stream sends through, so a
+      // live view and a reload show the same set.
+      aggregatedItems.push(...snapshotItemsOf(req.items, itemTypeFilter));
     }
 
     aggregatedItems = sortItems(aggregatedItems);
@@ -239,6 +239,11 @@ export async function handleGetSessionState(
     // Bare session id — `session.id` is the namespaced storage key (FIX-682).
     sessionId: route.sessionId,
     flowKind: session.flowKind,
+    at,
+    // Which session under the id this read: one deleted and created again
+    // later is another. A client following the session hands it to the
+    // session stream, which then follows this one only.
+    sessionCreatedAt: session.createdAt,
     clientData: {
       session:
         Object.keys(sessionClientData).length > 0

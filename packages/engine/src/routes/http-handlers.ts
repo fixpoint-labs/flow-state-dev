@@ -42,6 +42,7 @@ import {
 } from "./session-routes";
 import { handleListSessionChildren } from "./child-session-routes";
 import { handleGetSessionState } from "./state-routes";
+import { handleSessionStream } from "./session-stream-routes";
 import {
   handleGetResourceContent,
   handleGetCollectionItemContent,
@@ -474,7 +475,17 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetSessionState(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
+        });
+      }
+
+      if (route.kind === "session_stream") {
+        return await handleSessionStream(request, route, {
+          registry: options.registry,
+          stores,
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -499,7 +510,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handlePatchSessionMetadata(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 

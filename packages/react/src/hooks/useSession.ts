@@ -8,6 +8,7 @@ import {
   createRecoveryClient,
   createRequestStreamStore,
   createSessionClient,
+  createSessionSSEClient,
   createSSEClient,
   createSSEClientFromResponse,
   type ExecuteActionResponse,
@@ -21,9 +22,13 @@ import {
 import type {
   ContentAudioDeltaEvent,
   ItemVisibility,
+  MessageItem,
   OutputItem,
+  ReasoningItem,
   ResourceChangeItem,
+  SessionItemEvent,
   SessionMetadataChangedEvent,
+  SessionRun,
   StateChangeItem
 } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
@@ -43,6 +48,19 @@ import {
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
 /**
+ * How many times a paged snapshot read starts over because the session's
+ * history moved under it, before it fails rather than show part of the
+ * history as all of it.
+ */
+const SNAPSHOT_READ_ATTEMPTS = 5;
+
+/**
+ * Where one snapshot read stands, taken when it is requested: how many live
+ * copies had arrived by then, and its place among the reads requested.
+ */
+type SnapshotRead = { arrivalsBefore: number; sequence: number };
+
+/**
  * Rows the mount's in-progress lookup reads.
  *
  * Above one so the lookup can report on a request that is no longer the
@@ -53,6 +71,56 @@ const DEFAULT_STATE_PAGE_LIMIT = 100;
  * finished and earns one spare snapshot read, never a missed one.
  */
 const IN_PROGRESS_LOOKUP_LIMIT = 10;
+
+/**
+ * The id of the user message the view shows for a request while it is sent,
+ * until the server's own copy replaces it.
+ */
+function optimisticIdOf(requestId: string): string {
+  return `item_msg_optimistic_${requestId}`;
+}
+
+/**
+ * The key the view holds an item under: request and item id together, since
+ * two requests can keep the same id (a keyed item's id comes from its key).
+ */
+function itemKey(requestId: string, itemId: string): string {
+  return `${requestId}\u0000${itemId}`;
+}
+
+/** {@link itemKey} of an item. */
+function keyOfItem(item: OutputItem): string {
+  return itemKey(item.requestId, item.id);
+}
+
+/**
+ * Whether a copy of an item is finished. The view joins three sources that can
+ * deliver one item in any order: its own request stream, the session stream,
+ * and snapshots. Once the view holds a finished copy, an unfinished copy of
+ * that item is older than it, whichever source it came from.
+ */
+function isFinished(item: OutputItem | undefined): boolean {
+  return item !== undefined && item.status !== "in_progress";
+}
+
+/**
+ * Whether `next` may replace `held`, two copies of one item. Never an
+ * unfinished copy over a finished one, and never a finished copy over one the
+ * server stamped later. A keyed item is sent again, finished, each time it is
+ * emitted, with a later time and index (`compareItemOrder`), and its copies can
+ * arrive in any order.
+ */
+function mayReplace(held: OutputItem | undefined, next: OutputItem): boolean {
+  if (held === undefined || !isFinished(held)) return true;
+  return isFinished(next) && compareItemOrder(next, held) >= 0;
+}
+
+/** How many content parts a message or reasoning item holds. */
+function partCount(item: OutputItem): number {
+  if (item.type === "message") return (item as MessageItem).content?.length ?? 0;
+  if (item.type === "reasoning") return (item as ReasoningItem).summary?.length ?? 0;
+  return 0;
+}
 
 /**
  * The background-work read asks for one page, never for the whole history.
@@ -119,6 +187,24 @@ export type UseSessionHookOptions = {
    * Default: false.
    */
   autoResume?: boolean;
+  /**
+   * When true, the view also hears requests it didn't send: another tab,
+   * another person, an agent answering in the same session. The hook opens one
+   * stream for the session after its first snapshot, and each finished item
+   * any request keeps joins `items` about a second later, in the order a
+   * reload shows. `childSessions` is re-read whenever a run under the session
+   * starts or finishes, and keeps an unfinished run the page lacks.
+   *
+   * The stream holds a connection open while the view is mounted, and the
+   * server reads the session about once a second for it. Leave it off for a
+   * view only one person writes to: the request stream already carries
+   * everything there. A server without the stream, or one that refuses it,
+   * leaves the view as it is without `live`, with no error. Once the stream
+   * has named the runs, losing it (a reconnect that fails, a refusal, the
+   * session gone) keeps the rows and raises `childSessionsStale`.
+   * Default: false.
+   */
+  live?: boolean;
   /**
    * Threshold in milliseconds before the in-flight request is treated as
    * stuck. The watchdog tracks the most recent SSE event or heartbeat and
@@ -201,9 +287,10 @@ export type SessionView = {
    * conversation, and nothing here is folded into the transcript. An app that
    * wants "here's what came back" to appear in the chat writes that itself.
    *
-   * Current as of the last thing the user did — reading this does not start
-   * anything that keeps it up to date on its own. It is re-read on mount, at
-   * the start of every action, and whenever the app calls `refresh()`.
+   * Current as of the last thing the user did: re-read on mount, at the start
+   * of every action, and whenever the app calls `refresh()`. With `live: true`
+   * it is also re-read whenever a run starts or finishes, and an unfinished
+   * run older than the page stays listed until it finishes.
    *
    * One page of the most recent entries, newest first, sized by the server
    * unless the app names a page with `childSessions: { limit }`. This is
@@ -212,8 +299,11 @@ export type SessionView = {
    * finished work falls off the end and is not reachable from here.
    *
    * A row's `status` is absent until its work has run anything, and `"active"`
-   * means only *not finished* — never render it as "running", "working" or
-   * "thinking", and never treat it as proof a worker is alive.
+   * means only *not finished*. Without `live`, the list may be stale: never
+   * render `"active"` as "running", "working" or "thinking", and never treat
+   * it as proof a worker is alive. With `live: true` the list is re-read as
+   * runs start and finish, so `"active"` may read as "working", which clears
+   * when the run ends; a paused or stopped run reads the same.
    */
   readonly childSessions: ReadonlyArray<ChildSessionSummary>;
   /**
@@ -222,6 +312,11 @@ export type SessionView = {
    * between "this is the current list" and "this is the last list we could
    * get" — without it a job that has since failed renders as still running.
    * Cleared by the next successful read.
+   *
+   * With `live: true`, also true while the session stream, having named the
+   * runs, is not following the session: once a reconnect has failed, until a
+   * connection names the runs again, and for good once the stream is refused
+   * or the session is gone. The rows are kept either way.
    */
   readonly childSessionsStale: boolean;
   /** Returns items owned by a container scope (items where `ownedBy === blockInstanceId`). */
@@ -373,6 +468,7 @@ export function useSession(
   const userId = options?.userId ?? context.userId ?? "devuser";
   const baseUrl = options?.baseUrl ?? context.baseUrl;
   const autoResume = options?.autoResume === true;
+  const live = options?.live === true;
   const stuckThresholdMs = options?.stuckThresholdMs ?? 30_000;
 
   // Decompose the items option into stable primitives so that an inline object
@@ -418,6 +514,37 @@ export function useSession(
   // session, not a message.
   const [childSessions, setChildSessions] = useState<ChildSessionSummary[]>([]);
   const [childSessionsStale, setChildSessionsStale] = useState(false);
+  // `live: true` only. The unfinished runs the session stream last named, kept
+  // past the page `childSessions` reads; null until a stream has named any.
+  const [liveRuns, setLiveRuns] = useState<SessionRun[] | null>(null);
+  // `live: true` only. The stream had named the runs and has stopped following
+  // the session: a reconnect failed, or it was refused for good. The rows stay,
+  // the last the view heard, and read as stale until a connection names the
+  // runs again.
+  const [liveLapsed, setLiveLapsed] = useState(false);
+  // The session whose first snapshot has been applied: the live stream opens
+  // only after it, so its first read covers the gap the snapshot left.
+  const [snapshotAppliedFor, setSnapshotAppliedFor] = useState<string | undefined>(undefined);
+  // Every live copy the view took, by key, with its place in arrival order,
+  // until a snapshot whose read began after it arrived settles it. The count
+  // is how many copies have arrived so far.
+  const liveItemsRef = useRef(new Map<string, number>());
+  const liveArrivalsRef = useRef(0);
+  // The server time the applied snapshot's read began. The live stream starts
+  // from it, so nothing kept after that read is missed however long the
+  // snapshot took to arrive.
+  const snapshotAtRef = useRef<number | undefined>(undefined);
+  // Snapshot reads overlap: the mount read and its catch-up, a request's
+  // closing read, `refresh()`. Each takes a place in order when it is
+  // requested, and one lands only if no read requested after it has landed:
+  // an older read can lack an item a newer one settled, and no stream sends
+  // that item again.
+  const snapshotSequenceRef = useRef(0);
+  const snapshotAppliedSequenceRef = useRef(0);
+  // The error a snapshot read that failed left, with that read's place in
+  // order. A read requested after it that lands takes it away; an older one
+  // landing late does not, and no read takes away an error from anywhere else.
+  const snapshotFailureRef = useRef<{ error: Error; sequence: number } | null>(null);
   // Two guards, and they answer different questions. The generation asks
   // "is this response still about the thing we are reading?" and advances
   // whenever the read identity changes (session id, or the client itself,
@@ -469,7 +596,7 @@ export function useSession(
    * request lifecycle transitions.
    */
   const latestRequestRef = useRef<SessionRequestSummary | null>(null);
-  const storeRef = useRef(createRequestStreamStore());
+  const storeRef = useRef(createRequestStreamStore({ keyOf: keyOfItem }));
   // Item ids the filter rejected this stream. The shared store keeps deltas for
   // not-yet-present items buffered (so early deltas survive), so a filtered item
   // — which never enters the store — would otherwise buffer deltas forever.
@@ -494,7 +621,6 @@ export function useSession(
    */
   const pendingResourceChangesRef = useRef<ResourceChangeItem[]>([]);
   const flushHandleRef = useRef<number | null>(null);
-  const optimisticIdRef = useRef<string | null>(null);
   /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
   const resourceChangedDuringStreamRef = useRef(false);
   /**
@@ -580,10 +706,10 @@ export function useSession(
    * Re-read this session's background work.
    *
    * One read per call — there is no digest and no coalescing, because the
-   * panel is current as of the caller's last interaction and nothing else
-   * triggers this. A failed read keeps the rows already on screen and raises
-   * `childSessionsStale`; it never clears the list, because showing nothing
-   * would claim the work went away.
+   * panel is current as of the caller's last interaction, or with `live`, the
+   * last run that started or finished. A failed read keeps the rows already
+   * on screen and raises `childSessionsStale`; it never clears the list,
+   * because showing nothing would claim the work went away.
    */
   const refreshChildSessions = useCallback(async () => {
     if (sessionId === undefined) {
@@ -653,8 +779,72 @@ export function useSession(
     }, 0) as unknown as number;
   }, [flushContentDeltas]);
 
+  /**
+   * Take one copy of an item from a live source: the view's own request
+   * stream (`own`) or the session stream (`session`). Every live copy comes
+   * through here, so each rule of the join holds whichever source it came
+   * from:
+   *
+   * - The server's user message for a request replaces the one the view
+   *   showed while that request was sent.
+   * - A finished copy stands: no unfinished copy replaces it, and no finished
+   *   copy the server stamped earlier (a keyed item's earlier emission). Nor
+   *   does a session copy replace a finished one stamped the same; that is a
+   *   repeat, or the view's own copy, which can hold a part added since the
+   *   session's read.
+   * - A finished copy holds every text delta, so any still queued for the
+   *   item are older than it.
+   * - The copy is remembered in arrival order, so a snapshot whose read began
+   *   before it arrived doesn't take it away (see `applySnapshot`).
+   *
+   * Returns whether the view changed.
+   */
+  const takeLiveItem = useCallback((item: OutputItem, from: "own" | "session"): boolean => {
+    const store = storeRef.current;
+    const replacedOptimistic =
+      item.type === "message" &&
+      (item as MessageItem).role === "user" &&
+      store.deleteById(itemKey(item.requestId, optimisticIdOf(item.requestId)));
+
+    const key = keyOfItem(item);
+    const held = store.getById(key);
+    const repeat = held !== undefined && isFinished(held) && compareItemOrder(item, held) === 0;
+    if (!mayReplace(held, item) || (from === "session" && repeat)) return replacedOptimistic;
+
+    if (isFinished(item)) store.discardDeltas(key);
+    liveArrivalsRef.current += 1;
+    liveItemsRef.current.set(key, liveArrivalsRef.current);
+    store.upsert(item);
+    return true;
+  }, []);
+
+  /** Take a snapshot read's place in order, as it is requested. */
+  const beginSnapshotRead = useCallback(
+    (): SnapshotRead => ({
+      arrivalsBefore: liveArrivalsRef.current,
+      sequence: ++snapshotSequenceRef.current
+    }),
+    []
+  );
+
+  /**
+   * Load a snapshot over the view, unless a read requested after this one has
+   * already landed; returns whether it did. It settles the live copies that
+   * had arrived when its read was requested, and none that came after.
+   */
   const applySnapshot = useCallback(
-    (nextSnapshot: SessionStateSnapshotResponse) => {
+    (nextSnapshot: SessionStateSnapshotResponse, read: SnapshotRead): boolean => {
+      if (read.sequence <= snapshotAppliedSequenceRef.current) return false;
+      snapshotAppliedSequenceRef.current = read.sequence;
+      // A read requested after the one that failed has landed: the view is
+      // current again, so that failure no longer describes it.
+      const failure = snapshotFailureRef.current;
+      if (failure !== null && read.sequence > failure.sequence) {
+        snapshotFailureRef.current = null;
+        setError((current) => (current === failure.error ? null : current));
+      }
+      const { arrivalsBefore } = read;
+      snapshotAtRef.current = nextSnapshot.at;
       // Drain any state_changes that arrived while snapshot was null. The
       // snapshot represents server state at fetch time; replaying queued
       // events on top brings the local view up to whatever state the
@@ -685,7 +875,7 @@ export function useSession(
       if (!itemConfig.enabled) {
         storeRef.current.clear();
         setItems([]);
-        return;
+        return true;
       }
 
       const filtered = [...(nextSnapshot.items ?? [])]
@@ -697,11 +887,46 @@ export function useSession(
         )
         .sort(compareItemOrder);
 
+      // Put back what the snapshot must not take from the view. A live copy
+      // that arrived after the read was requested can be newer than what the
+      // read saw, or missing from it, however long the read took; it stays
+      // until a later snapshot settles it. A copy that arrived before is
+      // settled here. What the session stream sends is already kept, so the
+      // read holds it or shows it is gone. (The view's own stream can run a
+      // moment ahead of what is kept; its request's closing snapshot settles
+      // those.) And a read taken while an item was still being written holds
+      // it unfinished, where the view may already hold it finished, or holds
+      // an earlier copy of a keyed item the view already holds a later one of.
+      const held = storeRef.current.getRaw();
       storeRef.current.loadSnapshot(filtered);
+      const live = liveItemsRef.current;
+      for (const kept of held) {
+        const key = keyOfItem(kept);
+        const loaded = storeRef.current.getById(key);
+        const arrival = live.get(key);
+        if (arrival !== undefined && arrival > arrivalsBefore) {
+          if (mayReplace(loaded, kept)) storeRef.current.upsert(kept);
+        } else {
+          live.delete(key);
+          if (loaded !== undefined && !mayReplace(kept, loaded)) storeRef.current.upsert(kept);
+        }
+      }
       setItems(storeRef.current.getSorted());
+      return true;
     },
     [itemConfig.enabled, itemConfig.includeTransient, itemConfig.itemTypes]
   );
+
+  /**
+   * Show the error a snapshot read met, unless a read requested after it has
+   * already landed: the view is current then, whatever this one met.
+   */
+  const failSnapshotRead = useCallback((read: SnapshotRead, cause: unknown): void => {
+    if (read.sequence <= snapshotAppliedSequenceRef.current) return;
+    const error = cause instanceof Error ? cause : new Error(String(cause));
+    snapshotFailureRef.current = { error, sequence: read.sequence };
+    setError(error);
+  }, []);
 
   const fetchSessionSnapshot = useCallback(async (): Promise<SessionStateSnapshotResponse | null> => {
     if (sessionId === undefined) {
@@ -714,48 +939,67 @@ export function useSession(
       });
     }
 
-    let offset = 0;
-    let merged: SessionStateSnapshotResponse | null = null;
-    const mergedItems: OutputItem[] = [];
+    // Pages are cut by offset from the history as it stands at each request.
+    // A request removed from a page already read, or a keyed item emitted
+    // again, shifts the later pages, and an item that never changed would be
+    // skipped by a read that still passes for whole: the stream follows it
+    // from the first page's `at`, and never sends an item kept before that.
+    // So each later page starts one item early, on the last item the read
+    // holds. If that is not the item there, the history moved, and the read
+    // starts over. So does a page read from another session that took the id
+    // since the first page. Each page stays one bounded request, and any
+    // server that pages by offset answers it.
+    const readPages = async (): Promise<SessionStateSnapshotResponse | null> => {
+      let offset = 0;
+      let first: SessionStateSnapshotResponse | null = null;
+      const mergedItems: OutputItem[] = [];
 
-    while (true) {
-      const page = await sessionClient.getSessionState(sessionId, {
-        includeItems: true,
-        itemTypes: itemConfig.itemTypes,
-        offset,
-        limit: DEFAULT_STATE_PAGE_LIMIT
-      });
+      while (true) {
+        const page = await sessionClient.getSessionState(sessionId, {
+          includeItems: true,
+          itemTypes: itemConfig.itemTypes,
+          offset,
+          limit: DEFAULT_STATE_PAGE_LIMIT
+        });
+        let pageItems = page.items ?? [];
 
-      if (merged === null) {
-        merged = page;
+        if (first === null) {
+          first = page;
+        } else {
+          if (page.sessionCreatedAt !== first.sessionCreatedAt) return null;
+          const last = mergedItems[mergedItems.length - 1];
+          const overlap = pageItems[0];
+          if (last === undefined || overlap === undefined || compareItemOrder(overlap, last) !== 0) {
+            return null;
+          }
+          pageItems = pageItems.slice(1);
+        }
+        mergedItems.push(...pageItems);
+
+        if (page.pagination?.hasMore !== true) break;
+        offset = page.pagination.nextOffset - 1;
       }
 
-      if (Array.isArray(page.items) && page.items.length > 0) {
-        mergedItems.push(...page.items);
-      }
-
-      if (page.pagination?.hasMore !== true) {
-        break;
-      }
-
-      offset = page.pagination.nextOffset;
-    }
-
-    if (merged === null) {
-      return null;
-    }
-
-    return {
-      ...merged,
-      items: mergedItems,
-      pagination: {
-        offset: 0,
-        limit: mergedItems.length,
-        total: mergedItems.length,
-        hasMore: false,
-        nextOffset: mergedItems.length
-      }
+      return {
+        ...first,
+        items: mergedItems,
+        pagination: {
+          offset: 0,
+          limit: mergedItems.length,
+          total: mergedItems.length,
+          hasMore: false,
+          nextOffset: mergedItems.length
+        }
+      };
     };
+
+    for (let attempt = 1; attempt <= SNAPSHOT_READ_ATTEMPTS; attempt += 1) {
+      const whole = await readPages();
+      if (whole !== null) return whole;
+    }
+    throw new Error(
+      `Session ${sessionId} changed during each of ${SNAPSHOT_READ_ATTEMPTS} reads of its history; try again.`
+    );
   }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes]);
 
   const refreshSnapshot = useCallback(async () => {
@@ -763,20 +1007,21 @@ export function useSession(
       return;
     }
 
+    const read = beginSnapshotRead();
     try {
       const [nextDetail, nextSnapshot] = await Promise.all([
         sessionClient.getSession(sessionId),
         fetchSessionSnapshot()
       ]);
 
-      setDetail(nextDetail);
-      if (nextSnapshot !== null) {
-        applySnapshot(nextSnapshot);
+      // The detail was read with the snapshot, so it is as old as it is.
+      if (nextSnapshot !== null && applySnapshot(nextSnapshot, read)) {
+        setDetail(nextDetail);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause : new Error(String(cause)));
+      failSnapshotRead(read, cause);
     }
-  }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes, applySnapshot]);
+  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead]);
 
   /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
@@ -906,37 +1151,28 @@ export function useSession(
             // Never enters the store — drop any deltas it streams (buffered ones
             // now, future ones via the rejected set) so they don't accumulate.
             rejectedItemIdsRef.current.add(event.item.id);
-            storeRef.current.discardDeltas(event.item.id);
+            storeRef.current.discardDeltas(keyOfItem(event.item));
             return;
           }
 
-          // When the real server user message arrives, remove the optimistic
-          // placeholder so we don't show duplicates.
-          const serverItem = event.item as OutputItem & { role?: string };
-          if (
-            serverItem.type === "message" &&
-            serverItem.role === "user" &&
-            optimisticIdRef.current !== null
-          ) {
-            storeRef.current.deleteById(optimisticIdRef.current);
-            optimisticIdRef.current = null;
-          }
-
-          storeRef.current.upsert(event.item);
-          setItems(storeRef.current.getSorted());
+          if (takeLiveItem(event.item, "own")) setItems(storeRef.current.getSorted());
         },
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {
             rejectedItemIdsRef.current.add(event.item.id);
-            storeRef.current.discardDeltas(event.item.id);
+            storeRef.current.discardDeltas(keyOfItem(event.item));
             return;
           }
 
-          storeRef.current.upsert(event.item);
-          setItems(storeRef.current.getSorted());
+          if (takeLiveItem(event.item, "own")) setItems(storeRef.current.getSorted());
         },
         onContentAdded: (event) => {
-          if (storeRef.current.applyContentAdded(event.itemId, event.contentIndex, event.content)) {
+          const key = itemKey(event.requestId, event.itemId);
+          // On a finished copy, a part it already has is older than it. A part
+          // added after the item finished (synthesized audio, say) is new.
+          const held = storeRef.current.getById(key);
+          if (held !== undefined && isFinished(held) && event.contentIndex < partCount(held)) return;
+          if (storeRef.current.applyContentAdded(key, event.contentIndex, event.content)) {
             setItems(storeRef.current.getSorted());
           }
         },
@@ -944,7 +1180,10 @@ export function useSession(
           // Skip deltas for items the filter already rejected — they will never
           // enter the store, so buffering them just grows the queue.
           if (rejectedItemIdsRef.current.has(event.itemId)) return;
-          storeRef.current.accumulateDelta(event.itemId, event.contentIndex, event.delta);
+          const key = itemKey(event.requestId, event.itemId);
+          // Every text delta comes before its item finishes.
+          if (isFinished(storeRef.current.getById(key))) return;
+          storeRef.current.accumulateDelta(key, event.contentIndex, event.delta);
 
           scheduleContentFlush();
         },
@@ -952,7 +1191,8 @@ export function useSession(
           // Settle the slot to its authoritative final content (drops any
           // queued delta for it). Inherited from the shared store — the prior
           // hand-rolled callbacks had no content.done handler.
-          if (storeRef.current.applyContentDone(event.itemId, event.contentIndex, event.content)) {
+          const key = itemKey(event.requestId, event.itemId);
+          if (storeRef.current.applyContentDone(key, event.contentIndex, event.content)) {
             setItems(storeRef.current.getSorted());
           }
         },
@@ -1058,7 +1298,8 @@ export function useSession(
       refreshSnapshot,
       refreshLatestRequest,
       scheduleContentFlush,
-      flushContentDeltas
+      flushContentDeltas,
+      takeLiveItem
     ]
   );
 
@@ -1073,18 +1314,23 @@ export function useSession(
     setChildSessionsStale(false);
   }, [sessionId, sessionClient]);
 
-  // The mount read. This is the only read that is not tied to a user
-  // interaction: it covers arriving at a conversation that already has
-  // background work running.
+  // The mount read. Besides a `live` view's run notices, this is the only
+  // read that is not tied to a user interaction: it covers arriving at a
+  // conversation that already has background work running.
   useEffect(() => {
     void refreshChildSessions();
   }, [refreshChildSessions]);
 
   useEffect(() => {
+    // Every read in flight was requested for what the view showed before: a
+    // previous session, or another item filter. None may land now.
+    snapshotAppliedSequenceRef.current = snapshotSequenceRef.current;
+
     if (sessionId === undefined) {
       resourceChangedDuringStreamRef.current = false;
       resourceChangeSeqRef.current = 0;
       storeRef.current.clear();
+      liveItemsRef.current.clear();
       pendingStateChangesRef.current = [];
       pendingResourceChangesRef.current = [];
       cancelScheduledFlush();
@@ -1100,8 +1346,12 @@ export function useSession(
     let cancelled = false;
     setIsLoading(true);
     setError(null);
+    setSnapshotAppliedFor(undefined);
 
     void (async () => {
+      // The snapshot read in flight, if any: a failure while one is out is
+      // that read's, and a later read that lands takes it away.
+      let reading: SnapshotRead | undefined;
       try {
         // The catch-up below has to know the latest request was still running
         // BEFORE the snapshot was read, and a status read that RACES the
@@ -1119,6 +1369,8 @@ export function useSession(
           return;
         }
 
+        const read = beginSnapshotRead();
+        reading = read;
         const [nextDetail, nextSnapshot] = await Promise.all([
           sessionClient.getSession(sessionId),
           fetchSessionSnapshot(),
@@ -1126,14 +1378,16 @@ export function useSession(
             ? Promise.resolve(latestBeforeSnapshot)
             : refreshLatestRequest()
         ]);
+        reading = undefined;
 
         if (cancelled) {
           return;
         }
 
-        setDetail(nextDetail);
         if (nextSnapshot !== null) {
-          applySnapshot(nextSnapshot);
+          // Not landing means a read of this session requested since has.
+          if (applySnapshot(nextSnapshot, read)) setDetail(nextDetail);
+          setSnapshotAppliedFor(sessionId);
         }
 
         // Auto-resume: if enabled, check if latest request is in-progress and attach.
@@ -1185,12 +1439,15 @@ export function useSession(
             // Ordered before the attach below: `applySnapshot` loads the
             // snapshot over the item store, so running it after a stream had
             // opened would drop whatever that stream had already delivered.
+            const catchUpRead = beginSnapshotRead();
+            reading = catchUpRead;
             const catchUpSnapshot = await fetchSessionSnapshot();
+            reading = undefined;
 
             if (cancelled) return;
 
             if (catchUpSnapshot !== null) {
-              applySnapshot(catchUpSnapshot);
+              applySnapshot(catchUpSnapshot, catchUpRead);
             }
 
             // The summary has to agree with the items we just caught up on.
@@ -1211,7 +1468,8 @@ export function useSession(
         }
       } catch (cause) {
         if (!cancelled) {
-          setError(cause instanceof Error ? cause : new Error(String(cause)));
+          if (reading !== undefined) failSnapshotRead(reading, cause);
+          else setError(cause instanceof Error ? cause : new Error(String(cause)));
         }
       } finally {
         if (!cancelled) {
@@ -1223,7 +1481,7 @@ export function useSession(
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
+  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
 
   // Clean up when sessionId changes — close old stream and reset request state
   // so the new session isn't blocked by the previous session's in-flight request.
@@ -1246,6 +1504,92 @@ export function useSession(
       cancelScheduledFlush();
     };
   }, [sessionId, cancelScheduledFlush]);
+
+  // `live: true`: follow the whole session. The latest refresher is read
+  // through a ref so a new identity doesn't reopen the connection.
+  const refreshChildSessionsRef = useRef(refreshChildSessions);
+  refreshChildSessionsRef.current = refreshChildSessions;
+  // The session the applied snapshot read, as the stream is told to follow
+  // it. A snapshot that lands from another session under the id (deleted and
+  // created again) opens the stream again, on that one.
+  const followedSessionCreatedAt = snapshot?.sessionCreatedAt;
+
+  useEffect(() => {
+    if (!live || sessionId === undefined || snapshotAppliedFor !== sessionId) return;
+
+    const filter = {
+      includeTransient: itemConfig.includeTransient,
+      itemTypes: itemConfig.itemTypes
+    };
+    // Held finished already: a request this view sent (its own stream
+    // delivered it), or a repeat across a reconnect. Held unfinished: a
+    // partial copy, because this view's own stream dropped partway through
+    // the item or is still behind, and the finished copy replaces it. A same
+    // id from another request is a different item, held under its own key, as
+    // a reload holds it.
+    const acceptItem = ({ item }: SessionItemEvent): void => {
+      if (!itemConfig.enabled || !passesItemFilter(item, filter)) return;
+      if (takeLiveItem(item, "session")) setItems(storeRef.current.getSorted());
+    };
+
+    // Every connection names the runs first. Until one has, the stream has
+    // vouched for nothing, so a stream refused or dropped before then leaves
+    // the view as it would be without `live` (BR-16).
+    let following = false;
+
+    const handle = createSessionSSEClient({
+      sessionId,
+      baseUrl,
+      since: snapshotAtRef.current,
+      sessionCreatedAt: followedSessionCreatedAt,
+      itemTypes: itemConfig.itemTypes,
+      onItem: acceptItem,
+      onRuns: (event) => {
+        following = true;
+        setLiveRuns(event.runs);
+        setLiveLapsed(false);
+        void refreshChildSessionsRef.current();
+      },
+      // The first try after a drop takes about a second, the stream's own
+      // pace; once one has failed, the rows are no longer current.
+      onReconnecting: ({ attempt }) => {
+        if (following && attempt >= 2) setLiveLapsed(true);
+      },
+      // Refused for good, or the session is gone. Nothing will say when the
+      // runs finish, so none of the rows may read as working again.
+      onStop: () => {
+        if (following) setLiveLapsed(true);
+      }
+    });
+
+    return () => {
+      handle.close();
+      setLiveRuns(null);
+      setLiveLapsed(false);
+    };
+  }, [
+    live,
+    sessionId,
+    snapshotAppliedFor,
+    followedSessionCreatedAt,
+    baseUrl,
+    takeLiveItem,
+    itemConfig.enabled,
+    itemConfig.includeTransient,
+    itemConfig.itemTypes
+  ]);
+
+  // What `childSessions` shows: the page, plus any unfinished run the stream
+  // named that the page lacks (older than the page, or started since it was
+  // read). Those are unfinished by construction.
+  const visibleChildSessions = useMemo((): ChildSessionSummary[] => {
+    if (liveRuns === null) return childSessions;
+    const listed = new Set(childSessions.map((row) => row.id));
+    const missing = liveRuns
+      .filter((run) => !listed.has(run.id))
+      .map((run): ChildSessionSummary => ({ ...run, status: "active" }));
+    return missing.length === 0 ? childSessions : [...childSessions, ...missing];
+  }, [childSessions, liveRuns]);
 
   // Stuck-request watchdog. Polls a clock against `lastEventAtRef`; if the
   // SSE stream has produced no event or heartbeat in `stuckThresholdMs`
@@ -1395,12 +1739,12 @@ export function useSession(
       activeRequestIdRef.current = requestId;
 
       // Optimistic user message: inject immediately so the user sees their own
-      // message without waiting for the server round-trip. The server will emit
-      // the real user message item via SSE, which replaces this optimistic one.
+      // message without waiting for the server round-trip. The server's own
+      // user message for this request replaces it, from whichever stream
+      // delivers it first (`takeLiveItem`).
       if (actionOptions?.userMessage !== undefined && itemConfig.enabled) {
-        const optimisticId = `item_msg_optimistic_${requestId}`;
         const optimisticItem: OutputItem = {
-          id: optimisticId,
+          id: optimisticIdOf(requestId),
           type: "message",
           role: "user",
           status: "completed",
@@ -1417,13 +1761,6 @@ export function useSession(
       }
 
       try {
-        if (itemConfig.enabled) {
-          const optimisticId = actionOptions?.userMessage !== undefined
-            ? `item_msg_optimistic_${requestId}`
-            : undefined;
-          optimisticIdRef.current = optimisticId ?? null;
-        }
-
         // Use sendActionStream to POST with Accept: text/event-stream.
         // On serverless (Vercel), this returns the SSE stream directly from
         // the POST response — keeping action execution and event delivery
@@ -1721,8 +2058,8 @@ export function useSession(
     latestRequest,
     items,
     resourceChanges,
-    childSessions,
-    childSessionsStale,
+    childSessions: visibleChildSessions,
+    childSessionsStale: childSessionsStale || liveLapsed,
     getOwnedItems,
     getItemsByAgent,
     getItemsByVisibility,

@@ -19,7 +19,7 @@ import { handler } from "@flow-state-dev/core";
 import type { ChannelManifest } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
-import { goalControl } from "@/lib/goal-control";
+import { goalControl, pageGoalControl } from "@/lib/goal-control";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -97,5 +97,23 @@ describe("V4 · every control is read through the gate, and only in this app (BR
     expect(await apply()).toEqual({ swapped: false });
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     expect(await apply()).toEqual({ swapped: true });
+  });
+});
+
+describe("pageGoalControl", () => {
+  const opened = (query: string) => new URLSearchParams(query);
+
+  it("ignores ?goalControl in a build not made for tests", () => {
+    vi.stubEnv("NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE", "");
+    expect(pageGoalControl(opened("goalControl=no-live"))).toBeUndefined();
+    vi.stubEnv("NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE", "0");
+    expect(pageGoalControl(opened("goalControl=no-live"))).toBeUndefined();
+  });
+
+  it("names the control a test build's page was opened with, and none when absent", () => {
+    vi.stubEnv("NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE", "1");
+    expect(pageGoalControl(opened("goalControl=no-live"))).toBe("no-live");
+    expect(pageGoalControl(opened("goalControl="))).toBeUndefined();
+    expect(pageGoalControl(opened(""))).toBeUndefined();
   });
 });

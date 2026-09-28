@@ -100,6 +100,30 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 
 `resumeLatestRequest` is a no-op when the latest request is `completed`, `aborted`, or `in_progress` — only `interrupted` and `failed` are retryable. The retry re-enters the flow instance that owns the request, read from the record itself, so it lands on the same copy of the flow that ran it even when the provider is bound to another.
 
+### Hearing requests you didn't send
+
+A view hears the requests it sends. Some sessions have more than one writer: a channel where agents answer, a board several people work, the same conversation open in two tabs. Their lines land in the session, but nothing tells a view that didn't send them. Ask the view to stay live:
+
+```tsx
+const channel = useSession(sessionId, {
+  flowKind: "channel",
+  items: true,
+  live: true,
+});
+```
+
+The hook then opens one stream for the session. Each finished item from any request in it joins `session.items` about a second after the server saves it, in the order a reload would show. The stream carries whole items, not text as it is typed, so another writer's answer appears in one piece. Your own requests' items arrive through their request stream, and none shows twice. Items are told apart by their request and their id together, so two requests that each save an item with the same id both appear in `session.items`. An item one request emits more than once under the same id, such as a keyed component, shows its latest copy, whatever order the copies arrive in.
+
+The background-work list stays current too. The hook re-reads `session.childSessions` when a run is handed off, even one still waiting its turn, and again when the run finishes. To list the runs that haven't finished:
+
+```tsx
+const working = channel.childSessions.filter((run) => run.status === "active");
+```
+
+A live view holds a connection open while it is mounted, and the server reads the session about once a second for it. Leave `live` off for a view only one person writes to; the request stream already carries everything there. If the server doesn't offer the stream, or refuses it when the view first connects, the view behaves as if you hadn't asked, with no error. A dropped connection reconnects on its own and fills in what it missed. Access is checked when a connection opens, and the server closes each one after at most 15 minutes, so revoking someone's access to the session takes effect within 15 minutes.
+
+Once the stream is open, a drop the first reconnect recovers from, such as the server's routine close, shows no change. If that reconnect fails, `session.childSessionsStale` turns `true`, and `session.items` stays as it is, with no error, missing what others write. A connection that gets through clears the flag and fills in what was missed. A reconnect is refused when the session is deleted while the view is open, when the reader's access is revoked, or when a new session takes its id. The flag then stays `true` and the view stops hearing other writers. If a new session has taken the id and the reader can open it, the next snapshot the view reads, from `refresh()` for example, moves the view onto that session and clears the flag. Otherwise `refresh()` sets `error` and the flag stays.
+
 ### Background work
 
 Some flows hand a long job off to run on its own. The conversation returns straight away and the job carries on in a session of its own, called a *dispatch run*. `session.childSessions` is how you show those runs, one `ChildSessionSummary` per run.
@@ -126,24 +150,26 @@ This list sits beside the conversation rather than inside it. Nothing a run prod
 
 #### When the list changes
 
-The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. It does not update on its own while someone sits and watches, so work started in another tab shows up on their next action — or immediately, if you give them a refresh control.
+The list is current as of the last thing the reader did. It is re-read when the component mounts, at the start of each action you send, and whenever you call `session.refresh()`. By default it does not update on its own while someone sits and watches, so work started in another tab shows up on their next action — or immediately, if you give them a refresh control.
 
-`session.childSessionsStale` turns `true` for two different reasons, and they call for different responses. A re-read failed, and the next successful read clears the flag — a retry banner is the right treatment. Or you asked for a page the server won't serve, and nothing but a smaller `limit` clears it. Either way the rows already fetched stay on screen; the hook never empties the list. Mark the panel as possibly out of date rather than showing nothing.
+In a view with `live: true` the list also changes on its own, within about a second of a run being handed off (even one waiting its turn) or finishing, from this tab or anywhere else. A run that hasn't finished stays in the list even when it is older than the page the hook reads.
 
-The list holds 100 rows by default, newest first. Ask for a different page size with `childSessions: { limit }`. The server caps that value and answers a larger one with a 400, which is the second cause above:
+`session.childSessionsStale` turns `true` for different reasons. A re-read failed, and the next successful read clears the flag. Or you asked for a page the server won't serve, and nothing but a smaller `limit` clears it. In a live view it also turns `true` when the stream stops following the session, as [above](#hearing-requests-you-didnt-send), and after a refused reconnect a retry clears it only when a new session the reader can open has taken the id. In every case the rows already fetched stay on screen; the hook never empties the list. The hook doesn't say which reason applies, so mark the panel as possibly out of date rather than showing nothing, and if you offer a retry, don't promise it clears the flag.
+
+The list holds 25 rows by default, newest first. Ask for a different page size with `childSessions: { limit }`. The server caps that value, at 100 unless the host raises it, and answers a larger one with a 400, which is the second cause above:
 
 ```tsx
 const session = useSession(sessionId, {
   flowKind: "assistant",
-  childSessions: { limit: 25 },
+  childSessions: { limit: 50 },
 });
 ```
 
 #### What a row's status tells you
 
-`status` is missing until the work has actually run something. Otherwise it is either how the work ended, or `"active"`.
+`status` is missing until a run has been handed off into the row's session. From then on it reads `"active"` until the work ends, even while the run waits its turn, and after that it says how the work ended.
 
-`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question — so don't label it "running" or "working" in your UI. It also reports the last state that was recorded, not a check that the job is alive: work whose worker stopped unexpectedly keeps reading as unfinished until the system picks it back up. [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value in full.
+`"active"` means *not finished* and nothing else. It does not tell you whether the job is thinking, queued, or stopped waiting for someone to answer a question. It also reports the last state recorded, not a check that the job is alive: work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. So in a list someone reads once, don't label an `"active"` row "running" or "working". In a live view a row stops reading `"active"` within about a second of the work ending, so "working" is a usable label there, as long as you accept that a job paused for approval, or one whose worker died, shows the same way. [What `status` tells you](/docs/server/background-work#what-status-tells-you) has each value in full.
 
 New status values can appear over time. Render one you don't recognise instead of switching exhaustively over the set.
 

@@ -430,6 +430,84 @@ settlement on it. `key` and `taskId` are optional, so guard with `== null`.
 See [Dispatched work](https://flow-state.dev/docs/server/background-work) for
 the full contract.
 
+### Following a whole session
+
+`GET /api/flows/sessions/:sessionId/stream` is a server-sent-events stream of
+one session: each finished item from any request in it, including requests
+another tab, person or agent sent, and the session's unfinished runs. Like the
+snapshot, it shows only requests made under the session's owner and
+organization, so a request the server refused because its user or organization
+didn't match the session's never appears. It is authorized and refused exactly
+as the session snapshot (`GET /api/flows/sessions/:sessionId/state`) is, before
+anything is streamed. An unknown session answers `404`, and one that needs
+migrating `409` (`migration-required`). In an app that authenticates, both
+routes can also answer `404` when the session is replaced by a new one under
+the same id while the request is being answered. `createSessionSSEClient` in
+`@flow-state-dev/client` reads it.
+
+Query parameters, all optional:
+
+- `since`: a server time (epoch ms) to start from, either the `at` of the last
+  event you heard or, when the stream follows a snapshot, the snapshot's `at`.
+  A snapshot's `at` is the time its read began, and everything saved before it
+  is in the snapshot; when you read its items over several pages, use the
+  first page's `at`. Pages are cut from the history as it stands at each
+  request, so an item can fall between two pages if the history shifts during
+  the read: start each later page one item early and read again if that item
+  is not the one you last held, or if the page's `sessionCreatedAt` differs
+  from the first page's. The stream starts a few seconds before `since`, so
+  nothing is missed. Without it, the stream starts one minute back.
+- `session_created_at`: the snapshot's `sessionCreatedAt`, the time the
+  session it read was created. The stream then follows that session only: once
+  the id holds a session created at any other time, a connection answers `404`,
+  or `403` if the app authenticates and another user or organization holds it.
+- `item_types`: comma-separated item types, applied as on the snapshot route.
+
+Each SSE frame's `event` is the event's `type`, and its `data` is the whole
+event as JSON. Every event carries `stream: "session"`, `sessionId`, and `at`,
+a server time (epoch ms) to resume from. Reconnecting with any event's `at` as
+`since` misses nothing the connection hadn't already sent.
+
+- `session.item`: `{ requestId, item }`, one finished item from any request in
+  the session. An item the session snapshot hides is never sent, and neither is
+  one still being generated. Hold items by `requestId` and `item.id` together:
+  two requests can save items with the same id. One request can also emit the
+  same id more than once (a keyed component, say). Each emission is saved with
+  its own `ts` and `itemIndex` and sent as its own `session.item`, even on a
+  connection that sent an earlier copy, so keep the copy that sorts later. An
+  exact repeat, with the same `ts` and `itemIndex`, can arrive twice, across a
+  reconnect or because the stream starts a few seconds before `since`. Items
+  from different requests arrive in no set order. `compareItemOrder` (from
+  `@flow-state-dev/client` or `@flow-state-dev/core/items`) is the order the
+  snapshot uses, `ts`, then `itemIndex`, then `requestId`, then `id`: sort
+  merged items with it, and use it to tell which of two copies is later.
+- `session.runs`: `{ runs }`, every run under the session that hasn't finished,
+  each `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate? }`.
+  Sent when the stream opens and again whenever that set changes.
+- `ping`: no other fields, sent when nothing else has gone out for 15 seconds.
+
+The server reads the store about once a second per open stream, and each read
+costs what is running or recently changed, not the session's history. Every
+server reads the same store, so a line written on one instance reaches a view
+held by another. The server closes the connection after at most 15 minutes;
+reconnect with `since` to carry on, as `createSessionSSEClient` does. It also
+closes the connection when the session is deleted or replaced by a new session
+under the same id. The
+reconnect then answers `404` if the session is gone, or `403` if the app
+authenticates and another user or organization now holds the id. If the same
+owner created the session again, or the app doesn't authenticate, the
+reconnect answers `404` when it names `session_created_at`, and otherwise
+follows the new session. `createSessionSSEClient` stops for good,
+without an error, on a `401`, `403`, `404`, `409` or `501`.
+
+A session deleted and created again under the same id, by the same owner in
+the same organization, treats the earlier session's requests and dispatch runs
+as its own: they show in its snapshot, its stream and its list of runs. Give a
+new session a new id.
+
+A store adapter shows it serves the stream with
+`createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
+
 ## Store list options
 
 `SessionListOptions` and `RequestListOptions` are part of the store contract.

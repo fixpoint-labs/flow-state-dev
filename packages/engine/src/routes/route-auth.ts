@@ -12,7 +12,7 @@
  * editing this file are noted inline below.
  */
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { StoreRegistry } from "../stores/types";
+import type { SessionRecord, StoreRegistry } from "../stores/types";
 import type {
   InboundTransportHost,
   PrincipalResolver,
@@ -70,6 +70,14 @@ export type RouteAuthResult = {
    * scoped it already).
    */
   anonymousFlowIds?: Set<string>;
+  /**
+   * For a session-addressed route, the session the guard read and checked the
+   * caller against: `null` when it read none. Absent when the guard read
+   * nothing (nothing in the app authenticates, or the route addresses no
+   * session). A handler that reads the session again compares the two, so it
+   * never serves a session that took the id after the check.
+   */
+  session?: SessionRecord | null;
 };
 
 const ALLOWED: RouteAuthResult = {};
@@ -123,6 +131,9 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     // loaded as a record and so never ownership- or tenant-checked.
     case "list_session_children":
     case "get_session_state":
+    // Authorized exactly as the snapshot above: the stream sends what a
+    // snapshot read would show, so it answers to the same owner check.
+    case "session_stream":
     case "get_resource_content":
     case "get_collection_item_content":
     case "create_collection_item":
@@ -296,6 +307,8 @@ export async function authorizeManagementRoute(
   // listing) — there is nothing to compare against yet.
   let ownerOrgId: string | undefined;
   let sessionId: string | undefined;
+  /** The session a session-addressed route was checked against; see `RouteAuthResult.session`. */
+  let checked: { session: SessionRecord } | undefined;
   /**
    * A refusal this record has already earned, HELD until the caller has been
    * authenticated.
@@ -316,13 +329,14 @@ export async function authorizeManagementRoute(
         subject.sessionId,
         ctx.tenantId
       );
-      if (session === undefined) return ALLOWED;
+      if (session === undefined) return { session: null };
       const resolved = ownerFlowOf(ctx, session);
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
       owner = session.userId;
       ownerOrgId = session.orgId;
       sessionId = subject.sessionId;
+      checked = { session };
       break;
     }
     case "request": {
@@ -396,7 +410,7 @@ export async function authorizeManagementRoute(
 
     // No authentication governs this route. For a flow-scoped route that means
     // the flow is genuinely open in this app, so leave it alone.
-    if (subject.kind !== "host" && subject.kind !== "user") return ALLOWED;
+    if (subject.kind !== "host" && subject.kind !== "user") return { ...checked };
 
     // A user-addressed route (`/users/:userId/...`) takes its userId from the
     // path, so an anonymous caller can name anyone. That is harmless while every
@@ -478,5 +492,5 @@ export async function authorizeManagementRoute(
     };
   }
 
-  return { principal };
+  return { principal, ...checked };
 }
