@@ -126,11 +126,12 @@ interface RowOnScreen {
 }
 
 /**
- * Read one row of the Tasks tab by column heading, or `undefined` if it never
- * appeared in the state `until` asks for.
+ * Read one row of the Tasks tab, found by its task id and read slot by slot
+ * (status, goal, reason, assignee), or `undefined` if it never appeared in the
+ * state `until` asks for.
  *
  * Reads the DOM as it stands, so it is only a fair reading when nothing has
- * been clicked open. The count of open expanders is taken in the same read and
+ * been clicked open. The count of open rows is taken in the same read and
  * graded, rather than assumed.
  */
 async function readTaskRow(
@@ -149,67 +150,69 @@ async function readTaskRow(
     const read = await page.evaluate((id) => {
       const panel = document.querySelector("main [role='tabpanel'][data-state='active']");
       if (panel === null) return undefined;
-      for (const table of panel.querySelectorAll("table")) {
-        const headers = [...table.querySelectorAll("thead th")].map((th) => (th.textContent ?? "").trim());
-        for (const tr of table.querySelectorAll("tbody tr")) {
-          const tds = [...tr.querySelectorAll("td")];
-          if ((tds[0]?.textContent ?? "").trim() !== id) continue;
-          const cells: Record<string, string> = {};
-          headers.forEach((head, i) => (cells[head] = (tds[i]?.textContent ?? "").trim()));
-          const reasonCell = tds[headers.indexOf("Reason")];
-          // What a reader can see of the cell: its box, cut on BOTH axes by
-          // every ancestor that clips overflow, and by the window. A row
-          // scrolled above or below the pane is as unseen as one pushed off
-          // its right edge.
-          let visiblePx = 0;
-          let visibleHeightPx = 0;
-          let heightPx = 0;
-          let cutByPane = false;
-          let paneScrolls = true;
-          if (reasonCell !== undefined) {
-            const box = reasonCell.getBoundingClientRect();
-            heightPx = box.height;
-            let left = Math.max(box.left, 0);
-            let right = Math.min(box.right, window.innerWidth);
-            let top = Math.max(box.top, 0);
-            let bottom = Math.min(box.bottom, window.innerHeight);
-            for (let el = reasonCell.parentElement; el !== null; el = el.parentElement) {
-              const style = getComputedStyle(el);
-              const clipsX = style.overflowX !== "visible";
-              const clipsY = style.overflowY !== "visible";
-              if (!clipsX && !clipsY) continue;
-              const clip = el.getBoundingClientRect();
-              if (clipsX) {
-                if (clip.right < box.right) {
-                  cutByPane = true;
-                  if (style.overflowX !== "auto" && style.overflowX !== "scroll") paneScrolls = false;
-                }
-                left = Math.max(left, clip.left);
-                right = Math.min(right, clip.right);
-              }
-              if (clipsY) {
-                top = Math.max(top, clip.top);
-                bottom = Math.min(bottom, clip.bottom);
-              }
-            }
-            visiblePx = Math.max(0, right - left);
-            visibleHeightPx = Math.max(0, bottom - top);
-            // No visible height means no visible width either: nothing of the
-            // cell is on screen.
-            if (visibleHeightPx === 0) visiblePx = 0;
-          }
-          return {
-            headers,
-            cells,
-            reasonTitle: reasonCell?.getAttribute("title") ?? null,
-            openExpanders: panel.querySelectorAll("details[open]").length,
-            reasonVisiblePx: visiblePx,
-            reasonVisibleHeightPx: visibleHeightPx,
-            reasonHeightPx: heightPx,
-            reasonCutByPane: cutByPane,
-            paneScrolls,
-          };
+      for (const row of panel.querySelectorAll("[data-task-id]")) {
+        if (row.getAttribute("data-task-id") !== id) continue;
+        const headers: string[] = [];
+        const cells: Record<string, string> = {};
+        for (const [head, name] of [["Status", "status"], ["Goal", "goal"], ["Reason", "reason"], ["Assignee", "assignee"]]) {
+          const el = row.querySelector(`[data-slot="${name}"]`);
+          if (el === null) continue;
+          headers.push(head!);
+          cells[head!] = (el.textContent ?? "").trim();
         }
+        const reasonCell = row.querySelector<HTMLElement>('[data-slot="reason"]') ?? undefined;
+        // What a reader can see of the cell: its box, cut on BOTH axes by
+        // every ancestor that clips overflow, and by the window. A row
+        // scrolled above or below the pane is as unseen as one pushed off
+        // its right edge.
+        let visiblePx = 0;
+        let visibleHeightPx = 0;
+        let heightPx = 0;
+        let cutByPane = false;
+        let paneScrolls = true;
+        if (reasonCell !== undefined) {
+          const box = reasonCell.getBoundingClientRect();
+          heightPx = box.height;
+          let left = Math.max(box.left, 0);
+          let right = Math.min(box.right, window.innerWidth);
+          let top = Math.max(box.top, 0);
+          let bottom = Math.min(box.bottom, window.innerHeight);
+          for (let el = reasonCell.parentElement; el !== null; el = el.parentElement) {
+            const style = getComputedStyle(el);
+            const clipsX = style.overflowX !== "visible";
+            const clipsY = style.overflowY !== "visible";
+            if (!clipsX && !clipsY) continue;
+            const clip = el.getBoundingClientRect();
+            if (clipsX) {
+              if (clip.right < box.right) {
+                cutByPane = true;
+                if (style.overflowX !== "auto" && style.overflowX !== "scroll") paneScrolls = false;
+              }
+              left = Math.max(left, clip.left);
+              right = Math.min(right, clip.right);
+            }
+            if (clipsY) {
+              top = Math.max(top, clip.top);
+              bottom = Math.min(bottom, clip.bottom);
+            }
+          }
+          visiblePx = Math.max(0, right - left);
+          visibleHeightPx = Math.max(0, bottom - top);
+          // No visible height means no visible width either: nothing of the
+          // cell is on screen.
+          if (visibleHeightPx === 0) visiblePx = 0;
+        }
+        return {
+          headers,
+          cells,
+          reasonTitle: reasonCell?.getAttribute("title") ?? null,
+          openExpanders: panel.querySelectorAll("[data-task-id] button[aria-expanded='true']").length,
+          reasonVisiblePx: visiblePx,
+          reasonVisibleHeightPx: visibleHeightPx,
+          reasonHeightPx: heightPx,
+          reasonCutByPane: cutByPane,
+          paneScrolls,
+        };
       }
       return undefined;
     }, taskId);
@@ -219,11 +222,11 @@ async function readTaskRow(
   return undefined;
 }
 
-/** Open the row's own expander and return the JSON it shows. */
+/** Open the row in place and return what its open half shows. */
 async function expanderText(page: Page, taskId: string): Promise<string> {
-  const row = page.locator("main [role='tabpanel'][data-state='active'] tbody tr", { hasText: taskId });
-  await row.locator("summary").click();
-  return await row.locator("details").innerText();
+  const row = page.locator(`main [role='tabpanel'][data-state='active'] [data-task-id="${taskId}"]`).first();
+  await row.locator("button[aria-expanded]").first().click();
+  return await row.innerText();
 }
 
 // ---------------------------------------------------------------------------
@@ -295,7 +298,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
         fail("row 4", `the run ${parkLine.session} never showed row ${parked.id} as parked in its Tasks tab`);
       } else {
         if (onScreen.openExpanders !== 0) {
-          fail("row 4", `${onScreen.openExpanders} expander(s) were open when the row was read; the reason has to be legible without one`);
+          fail("row 4", `${onScreen.openExpanders} row(s) were open when the row was read; the reason has to be legible without opening one`);
         }
         // Waiting on a person is parked plus a reason, never a status of its own.
         const statuses: readonly string[] = taskStatusSchema.options;
@@ -304,52 +307,52 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
         }
         const shown = onScreen.cells.Reason;
         if (shown === undefined) {
-          // Tell "only in the expander" apart from "nowhere", so the red state
+          // Tell "only in the opened row" apart from "nowhere", so the red state
           // names what a reader would actually have to do.
           const inExpander = (await expanderText(page, parked.id)).includes(reason);
           fail(
             "row 4",
-            `the parked row has no Reason column (columns: ${onScreen.headers.join(", ")}); ` +
+            `the parked row has no reason slot (slots: ${onScreen.headers.join(", ")}); ` +
               (inExpander
-                ? "the reason is only inside the row's expander"
-                : "the reason is not on screen at all, not even in the expander"),
+                ? "the reason is only inside the opened row"
+                : "the reason is not on screen at all, not even in the opened row"),
           );
         } else if (shown !== reason) {
-          fail("row 4", `the Reason cell reads ${JSON.stringify(shown)}; the row holds ${JSON.stringify(reason)}`);
+          fail("row 4", `the reason slot reads ${JSON.stringify(shown)}; the row holds ${JSON.stringify(reason)}`);
         } else if (
           onScreen.reasonVisibleHeightPx < Math.min(MIN_VISIBLE_HEIGHT, onScreen.reasonHeightPx)
         ) {
           fail(
             "row 4",
-            `the Reason cell is on the row but out of view vertically: ${Math.round(onScreen.reasonVisibleHeightPx)}px ` +
+            `the reason slot is on the row but out of view vertically: ${Math.round(onScreen.reasonVisibleHeightPx)}px ` +
               `of its ${Math.round(onScreen.reasonHeightPx)}px height can be seen (the row sits above or below what the pane shows)`,
           );
         } else if (onScreen.reasonVisiblePx < MIN_VISIBLE_WIDTH) {
-          fail("row 4", `the Reason cell is on the row but only ${Math.round(onScreen.reasonVisiblePx)}px of its width can be seen`);
+          fail("row 4", `the reason slot is on the row but only ${Math.round(onScreen.reasonVisiblePx)}px of its width can be seen`);
         } else if (onScreen.reasonTitle !== reason) {
-          fail("row 4", `the Reason cell is clamped and its title reads ${JSON.stringify(onScreen.reasonTitle)}, so the whole reason is nowhere a reader can see it`);
+          fail("row 4", `the reason slot is clamped and its title reads ${JSON.stringify(onScreen.reasonTitle)}, so the whole reason is nowhere a reader can see it`);
         } else {
           if (onScreen.reasonCutByPane) {
             notes.push(
-              `the Reason cell starts on screen but runs past the edge of the workspace pane at a 1600px window ` +
+              `the reason slot starts on screen but runs past the edge of the workspace pane at a 1600px window ` +
                 `(${Math.round(onScreen.reasonVisiblePx)}px visible); the whole reason is on its title`,
             );
           }
           row4Evidence =
             `row 4 read on the multi-seat-collab hire: ${owner} parked row ${parked.id} on its own, and its run ` +
-            `${parkLine.session}, opened from the navigator, showed it \`parked\` with "${reason}" in the Reason column, ` +
+            `${parkLine.session}, opened from the navigator, showed it \`parked\` with "${reason}" in the row's reason slot, ` +
             `nothing expanded`;
         }
       }
       // Narrower windows, measured and noted rather than graded. Only when the
-      // row has a Reason cell to measure.
+      // row has a reason slot to measure.
       for (const width of onScreen?.cells.Reason === undefined ? [] : [1440, 1280]) {
         await page.setViewportSize({ width, height: 900 });
         await page.waitForTimeout(300);
         const narrow = await readTaskRow(page, parked.id, (cells) => cells.Status === "parked");
         await page.screenshot({ path: join(SHOTS, `row4-parked-${width}.png`) });
         notes.push(
-          `at a ${width}px window ${Math.round(narrow?.reasonVisiblePx ?? 0)}px of the Reason cell is visible` +
+          `at a ${width}px window ${Math.round(narrow?.reasonVisiblePx ?? 0)}px of the reason slot is visible` +
             (narrow?.reasonCutByPane === true
               ? narrow.paneScrolls
                 ? "; the rest is a horizontal scroll away, not behind an expander"

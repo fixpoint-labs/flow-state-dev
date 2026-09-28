@@ -18,11 +18,11 @@ Row 5 means **registered in this organization**, not **working now** ([FIX-1502 
 
 **Signal:** Chromium on the shipped DevTool bundle, rebuilt at the start of the run.
 
-- **Row 4.** First the positive record: the ledger holds the row `parked`, with a non-empty reason, parked by the seat whose own file answers for the fixture's desk, in a known run. Then, on screen, that run is opened from the navigator (kind, then seat, then the seat's session, then the run it spawned), and its Tasks tab is read with **no expander open**. That no expander is open is counted in the same read, not assumed. Passes when:
-  - the row's Status cell reads a `TaskStatus` value, namely `parked`;
-  - a Reason cell exists and reads exactly the ledger's reason;
-  - the cell is actually in view **on both axes**: after every clipping ancestor and the window are applied, at least 40px of its width and at least one line of its height (10px, or the whole cell if it is shorter) can be seen. A row scrolled above or below the pane fails with its own message;
-  - when the text is clamped, the cell's title carries the whole reason.
+- **Row 4.** First the positive record: the ledger holds the row `parked`, with a non-empty reason, parked by the seat whose own file answers for the fixture's desk, in a known run. Then, on screen, that run is opened from the navigator (kind, then seat, then the seat's session, then the run it spawned), and its Tasks tab is read with **no row open**. That no row is open is counted in the same read, not assumed. Passes when:
+  - the row's status slot reads a `TaskStatus` value, namely `parked`;
+  - a reason slot exists and reads exactly the ledger's reason;
+  - the slot is actually in view **on both axes**: after every clipping ancestor and the window are applied, at least 40px of its width and at least one line of its height (10px, or the whole cell if it is shorter) can be seen. A row scrolled above or below the pane fails with its own message;
+  - when the text is clamped, the slot's title carries the whole reason.
 
   Graded at a 1600×1000 window, the same one `multi-seat-collab`'s own check uses for this screen. Widths of 1440px and 1280px are measured and noted, not graded (see Findings).
 - **Row 5**, in six steps (`row5.mts`). Every failure line names its step.
@@ -36,12 +36,12 @@ Row 5 means **registered in this organization**, not **working now** ([FIX-1502 
 **Anti-game:** The hollow passes:
 
 - Reading the reason off the store.
-- Reading it with the expander open.
+- Reading it with the row open.
 - Finding the reason's text *somewhere* on the page.
 - Passing on a row that never carried a reason.
 - For row 5: an empty tab graded as "nothing wrong" — step 3 grades the store against the tree first, and a zero fails there. Text found somewhere on the page — step 4 reads cells on the row with that id. Rows read off the debug panel — steps 2 and 6. A view that reads every organization — step 1's rows are stored and must be absent. A grade against the fixture rather than the store — step 3 grades the store against the tree, step 4 the screen against the store. Rows present but scrolled away — step 5. A reader that drops the bearer token is **not** caught here: the lab configures no principal resolver, so FIX-1502's V3a owns it.
 
-So the row-4 check reads the cell under the `Reason` heading, in the active Tasks panel, on the row with this id. It counts open expanders in the same read. It grades the reason against the ledger's value only after asserting that value exists. When the column is missing, it opens the expander and says whether the reason is there, so "only in the expander" is named apart from "nowhere". A reason that is in the DOM but scrolled or clipped out of sight, horizontally or vertically, fails the visible-area bound. The Tasks panel is read only after the Tasks tab reports `aria-selected`.
+So the row-4 check reads the collapsed row's reason slot (`[data-slot="reason"]`), in the active Tasks panel, on the row whose `data-task-id` is this id. It counts open rows in the same read. It grades the reason against the ledger's value only after asserting that value exists. When the slot is missing, it opens the row and says whether the reason is there, so "only in the opened row" is named apart from "nowhere". (Until FIX-1629 the Tasks tab was a table and this read the cell under the `Reason` heading; the claim is unchanged.) A reason that is in the DOM but scrolled or clipped out of sight, horizontally or vertically, fails the visible-area bound. The Tasks panel is read only after the Tasks tab reports `aria-selected`.
 
 **Model:** n/a. The seat bodies are deterministic.
 
