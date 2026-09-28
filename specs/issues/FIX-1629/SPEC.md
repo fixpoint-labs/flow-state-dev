@@ -12,7 +12,7 @@ no epic · absorbs [FIX-1523](https://linear.app/fixpoint-labs/issue/FIX-1523)
 | **opens a task in the Tasks tab** | A raw JSON block floats over the table, clipped at the pane edge. The whole record is readable only in the Resources panel | The row opens in place: every field readable, raw JSON folded underneath |
 | **reads why a row is parked, on a laptop** (FIX-1523) | Reason off screen below ~1500px; Status too at 1280 | Status and reason lead the row, in view at 1280 |
 | **wants to cancel, re-prioritize, fail or answer a task while debugging** | Can't from the tab. Writes a curl or a throwaway action | Picks an action on the row, task id filled in, result shown on the row |
-| **builds a flow with a board** | Nothing in the DevTool changes task state | Any action on the flow that takes a `taskId` shows on the row. The ready-made set is the framework's eight task tools, as actions |
+| **builds a flow with a board** | Nothing in the DevTool changes task state | Any action on the flow that takes a `taskId` shows on the row. The ready-made set is the framework's eight task tools, as actions, for a board whose tasks outlive a request; the six that name a task appear on rows |
 | **runs a Workforce channel in production** | Callers can `fileTask` and `readBoard` | Unchanged unless the channel opts in to its board's task actions ([open fork](#sign-off)) |
 
 ## The goal, and how we'll know it's met
@@ -85,11 +85,14 @@ flowchart LR
   X --> F["flow action"]
   F --> H["task tool handler"]
   H -->|"guarded verb"| G["task ledger"]
+  H -->|"result in the request's root trace"| T
   G -->|"task-change item"| T
 ```
 
 No new route, no new verb. The tab calls actions the way the action bar already does; the tools
-call the same guarded verbs a worker's model calls.
+call the same guarded verbs a worker's model calls. The dispatch answers with a request id and
+no output, and a refused verb writes nothing, so the row reads the tool's own `{ ok, error }`
+from the root trace of the request it dispatched ([BR-15](BUSINESS-RULES.md)).
 
 ## What stays as it is
 

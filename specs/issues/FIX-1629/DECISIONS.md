@@ -37,7 +37,8 @@ It comes down to the task guards: an editor writes a row the verbs would have re
 **Plain terms.** Workforce channels gain an opt-in that exposes their boards' eight task
 tools as actions, off by default. Turning it on for `support.help` makes the screen you sent
 manageable. It also means anyone who can reach that channel can cancel, complete or reassign an
-escalation, and FIX-1591 ("who attends escalations") is parked waiting on you.
+escalation, including one a seat is working on right now; that seat's own result is then refused
+and dropped. FIX-1591 ("who attends escalations") is parked waiting on you.
 
 **Trade-off.** On now: your screenshot works end to end, and the demo shows the feature on its
 headline board. Off until FIX-1591: nothing pre-empts that hold, but the reference app's only
@@ -53,7 +54,7 @@ the point of the unattended-board warning, off is right.
 **If wrong:** on, and you wanted the hold: revert one line, nothing else moves. Off, and you
 wanted it: the tab stays read-only on the board you use most until a follow-up.
 
-![Open fork. Should support.help expose its escalation actions now? Recommended: on now. Instead of: off until FIX-1591 decides. It comes down to your screenshot: on, the escalations rows are manageable from the tab; off, they stay read-only. The price of on: any caller who can reach the channel can change an escalation, on a demo with no production users. FIX-1591 hold: on does not decide it, nothing drains the board. Locks in: a one-line setting in the reference app. Flips if: the demo is meant to show an unattended board](figures/open-support-help-actions.svg)
+![Open fork. Should support.help expose its escalation actions now? Recommended: on now. Instead of: off until FIX-1591 decides. It comes down to your screenshot: on, the escalations rows are manageable from the tab; off, they stay read-only. The price of on: any caller who can reach the channel can change an escalation, even one a seat is working on, on a demo with no production users. FIX-1591 hold: on does not decide it, nothing drains the board. Locks in: a one-line setting in the reference app. Flips if: the demo is meant to show an unattended board](figures/open-support-help-actions.svg)
 
 It comes down to your screenshot: off, the board you asked about stays read-only.
 
@@ -62,11 +63,24 @@ It comes down to your screenshot: off, the board you asked about stays read-only
 - **FIX-1523 is absorbed and closes when this ships.** The collapsed row leads with status, then
   the goal and the reason sharing the remaining width; nothing scrolls sideways at 1280.
 - **Which actions a row offers:** every public action on the viewed flow whose input has a
-  required string `taskId`. One whose name ends with a board's suffix (`_support_help_escalations`)
-  shows only on that board. Generic, so an app's own `answer` action shows too.
+  required string `taskId`. One whose name ends with the suffix of any board the tab lists
+  (`_support_help_escalations`) shows only on that board's rows; the rest show on every board.
+  Generic, so an app's own `answer` action shows too. Of the eight task tools, `addTask` and
+  `listTasks` take no `taskId`, so a row offers six.
 - **`taskId` is filled in and locked;** other fields use the action bar's existing form.
-- **The result shows on the row:** a thrown error, a tool's `{ ok: false, error }`, or success.
-  A soft refusal is never shown as success.
+- **The row reads the result from the request's root trace.** The dispatch returns only a
+  request id and a refusal writes nothing, so the tool's `{ ok, error }` lives only in the root
+  `block_trace` of the request the row sent. With traces off, the row says the outcome isn't
+  visible. A refusal never shows as success.
+- **An action's settlement overrides a worker's claim.** An action has no claim ticket, so it
+  settles as a coordinator does today: legal transitions only, no ownership check. The holding
+  seat's later result is refused (`lost-claim`). Clearing a stuck row is the debugging job, and
+  refusing would need a new substrate guard. It is why channel exposure stays opt-in.
+- **Durable boards only.** A request- or sequencer-backed ledger is gone before the row's action
+  runs, so `taskToolActions` refuses those backings by name, as `unparkAndDrain` does.
+- **A channel's actions work only in its own session.** Channels share one flow, so each action
+  runs the session check `fileTask` and `readBoard` already make.
+- **One PR, not two.** You asked for both halves together; Cursor's review agreed.
 - **The row reads the item stream, as today.** It updates from the change item the action's
   own request emits. Changes made by another session stay FIX-1506's.
 - **One orchestration export, `taskToolActions`,** so a non-Workforce board gets the set without
@@ -90,3 +104,6 @@ It comes down to your screenshot: off, the board you asked about stays read-only
 - **Draft** — Framed as read-in-place plus change-through-actions; chose the eight task tools as
   flow actions over a record editor, a Workforce opt-in with one open fork on `support.help`,
   one PR.
+- **Review, round 2** — The refusal path moved to the request's root trace, because the dispatch
+  response and the change items carry no refused result. Added the claim-override, durable-board
+  and channel-session rules the second look and Codex found missing. D1 and the fork stand.

@@ -31,7 +31,8 @@ Quoted text is the proposed prose.
 > action bar would, in the session you are looking at. The row updates when the task changes.
 >
 > If the task can't move that way, say you cancel a task that already finished, the action
-> refuses and the row shows why. Nothing is written.
+> refuses and the row shows why. Nothing is written. The row reads that answer from the
+> request's trace, so with trace observability off it tells you the outcome isn't visible.
 >
 > The DevTool changes tasks only through your flow's actions. There is no way to edit a
 > task's record directly, which keeps every change going through the same checks a worker's
@@ -65,7 +66,12 @@ Quoted text is the proposed prose.
 > `failTask_todos`, `blockTask_todos`, `cancelTask_todos`, `updateTask_todos` and
 > `listTasks_todos`. Each runs the same checked transition a worker's would, so a move the task
 > can't make comes back as `{ ok: false, error }` rather than a write. None of them claims or
-> drains the board.
+> drains the board. Settling a task a worker is still running is allowed, as it is for a
+> coordinator: your write lands and the worker's own result is refused when it arrives.
+>
+> The board needs a collection that outlives a request (`defineTaskCollection`). A board on
+> the default request-scoped ledger is refused, because a later action could never find its
+> tasks.
 >
 > They are public actions. Anyone who can call your flow can call them, so add them only to a
 > flow whose callers you trust with the board. The DevTool's Tasks tab offers them on each row.
@@ -86,8 +92,9 @@ Quoted text is the proposed prose.
 >
 > Each board gains `cancelTask_support_help_escalations` and its seven siblings beside
 > `fileTask` and `readBoard`. It is off by default because anyone who can reach the channel can
-> then settle or reassign its rows, and `author` checks on filing don't apply to these. Turn it
-> on for boards people are meant to work from outside, and for development.
+> then settle or reassign its rows, including one a seat is working on, and `author` checks on
+> filing don't apply to these. Each action works only in its own channel's session. Turn it on
+> for boards people are meant to work from outside, and for development.
 
 And in "What the file is checked for": *"the closed list of six keys"* → *"seven"*.
 

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 440" role="img" aria-label="Two panels. Left, today: a task table whose Details expander floats a clipped JSON block over the rows. Right, after: the same row opened in place, fields listed with the full goal wrapped, the raw JSON folded underneath, and an Actions strip offering cancelTask, updateTask and answer with the task id already filled. Below, the path an action takes: the row, the flow's action, the task tool, the ledger, and the change item that updates the row."
+<svg viewBox="0 0 940 464" role="img" aria-label="Two panels. Left, today: a task table whose Details expander floats a clipped JSON block over the rows. Right, after: the same row opened in place, fields listed with the full goal wrapped, the raw JSON folded underneath, and an Actions strip offering cancelTask, updateTask and answer with the task id already filled. Below, the path an action takes: the row, the flow's action, the task tool, the ledger. Two things come back to the row: the tool's own result, read from the request's root trace, so a refusal shows as a refusal; and the change item, which shows the new state."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -22,7 +22,7 @@
     .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
     .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="440"/>
+  <rect class="bg" x="0" y="0" width="940" height="464"/>
 
   <g id="today">
     <text class="t-lbl" x="16" y="24">TODAY</text>
@@ -78,7 +78,9 @@
     <rect class="node" x="776" y="346" width="148" height="40" rx="4"/>
     <text class="t-b" x="788" y="371">task ledger</text>
     <path class="arrow" d="M166 366 H206 M356 366 H396 M546 366 H586 M736 366 H776"/>
-    <path class="arrow" d="M850 386 V414 H91 V386"/>
-    <text class="t-s" x="380" y="428">task-change item updates the row</text>
+    <path class="arrow" d="M661 386 V402 H111 V386"/>
+    <text class="t-s" x="170" y="420">tool result { ok, error } from the request's root trace · a refusal shows as a refusal</text>
+    <path class="arrow" d="M850 386 V434 H61 V386"/>
+    <text class="t-s" x="300" y="454">task-change item · the row shows the new state</text>
   </g>
 </svg>

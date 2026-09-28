@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Open fork. Should support.help expose its escalation actions now? Recommended: on now. Instead of: off until FIX-1591 decides. It comes down to your screenshot: on, the escalations rows are manageable from the tab; off, they stay read-only. The price of on: any caller who can reach the channel can change an escalation, on a demo with no production users. FIX-1591 hold: on does not decide it, nothing drains the board. Locks in: a one-line setting in the reference app. Flips if: the demo is meant to show an unattended board."
+<svg viewBox="0 0 940 420" role="img" aria-label="Open fork. Should support.help expose its escalation actions now? Recommended: on now. Instead of: off until FIX-1591 decides. It comes down to your screenshot: on, the escalations rows are manageable from the tab; off, they stay read-only. The price of on: any caller who can reach the channel can change an escalation, even one a seat is working on, on a demo with no production users. FIX-1591 hold: on does not decide it, nothing drains the board. Locks in: a one-line setting in the reference app. Flips if: the demo is meant to show an unattended board."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -64,7 +64,7 @@
     <text class="t-lbl" x="32" y="237">CHANGE A CASE</text>
     <text class="mark minus" x="228" y="227">−</text>
     <text class="t-b" x="248" y="226">Any caller of the channel</text>
-    <text class="t-s" x="248" y="244">a demo with no production users</text>
+    <text class="t-s" x="248" y="244">even a case a seat is working · demo, no users</text>
     <text class="mark plus" x="592" y="227">+</text>
     <text class="t-b" x="612" y="226">Nobody from outside</text>
     <text class="t-s" x="612" y="244">as today</text>

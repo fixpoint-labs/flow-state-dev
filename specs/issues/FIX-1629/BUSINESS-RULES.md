@@ -21,22 +21,24 @@ When → then → proved by. CI = unit test in the owning package. VG = the goal
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-9 | The viewed flow has public actions whose input requires a string `taskId` | The expanded row lists them | CI · VG answer |
-| BR-10 | Such an action's name ends with `_<board suffix>` | It is listed only on that board's rows | CI |
+| BR-9 | The viewed flow has public actions whose input requires a string `taskId` | The expanded row lists them. Of the eight task tools that is six: `addTask` and `listTasks` take no `taskId` | CI · VG answer |
+| BR-10 | Such an action's name ends with `_<suffix>` of any board the tab lists for the flow | It is listed only on that board's rows. One that matches no listed board's suffix is listed on every board | CI |
 | BR-11 | No action qualifies | The row says so in one line and links the docs on exposing task actions | CI |
 | BR-12 | An action is picked | Its form opens in the row with `taskId` filled and locked; other fields as the action bar draws them | CI |
 | BR-13 | The action is submitted | It runs through the panel's existing action dispatch against the viewed flow and session; nothing else is called | CI · VG answer |
 | BR-14 | It succeeds | The row shows the new state from the change item, without a reload | VG answer · VG tool |
-| BR-15 | A tool returns `{ ok: false, error }`, or the request fails | The row shows the refusal or error, in words. Never shown as success | CI · VG refuse |
+| BR-15 | A tool returns `{ ok: false, error }`, or the request fails | The row shows the refusal or error, in words, read from the root `block_trace` output of the request the row dispatched (matched by that request id), or from the failed request. With no trace for it (observability off), the row says the outcome isn't visible. Never shown as success | CI · VG refuse |
 | BR-16 | Two submits race on one task | Each gets its own verb's answer; the second may be refused. No client-side lock | CI (tool level, existing) |
 
 ## The ready-made actions
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-17 | A flow spreads `taskToolActions(board)` into `actions` | It gains the eight task tools as actions, named `<tool>_<board suffix>`, each running the same guarded verb a model's tool does | CI |
+| BR-17 | A flow spreads `taskToolActions(board)` into `actions` | It gains the eight task tools as actions, named `<tool>_<board suffix>`, each running the same guarded verb a model's tool does. A request- or sequencer-backed board is refused when `taskToolActions` is called, naming its backing: its tasks don't outlive the request, so a later action could never find them | CI |
 | BR-18 | One of them targets a settled task, or an illegal move | Refused by the verb, returned as a value | CI |
+| BR-25 | `completeTask`, `failTask`, `blockTask` or `cancelTask` runs as an action on a row a live worker holds | It runs with no claim, as a coordinator's call does today, and lands if the transition is legal. The worker's own later result is refused `lost-claim` and dropped | CI |
 | BR-19 | A channel declares `boardActions: true` | Each of its boards gets the eight actions. Without it, the channel's public actions are exactly today's | CI |
+| BR-26 | A channel board's action is invoked while addressing any session but that channel's | Refused by name before the ledger is read, the same check `fileTask` and `readBoard` make. Channels share one flow, so the action map alone does not fence them | CI |
 | BR-20 | `boardActions` is anything but `true`, `false` or absent | Refused at bind, by name, like any other bad value in the closed key list (which grows from six keys to seven) | CI |
 | BR-21 | The reference app's `support.help` | Per the open fork | CI · hand check on Jake's screen |
 
