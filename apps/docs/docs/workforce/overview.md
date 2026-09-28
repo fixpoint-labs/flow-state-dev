@@ -22,10 +22,12 @@ Reach for [Orchestration](../orchestration/overview) when you want to coordinate
 A Workforce app is a roster, the channels that roster talks in, and the boards its work sits on. A board is a list of tasks, each one something somebody takes and finishes. You describe the roster in files, hire it, and open sessions against the seats you get back.
 
 - **The roster outlives the process.** A team you hire while the app is running is still there after a restart or a redeploy, because the hire is written to the store your app uses. See [Hiring while the app runs](./durable-hire).
-- **A channel is what a reader opens.** A channel is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. See [Channels](./channels).
-- **The screens are importable.** One navigator browses the whole workforce, and the roster and board columns ship beside it, as components from `@flow-state-dev/react`. See [Workforce components](./ui).
+- **A channel is what a reader opens.** A channel is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. A routed channel sends each post to the one member whose job fits it. See [Channels](./channels).
+- **The screens are importable.** One navigator browses the whole workforce, and the roster and a board, as columns or as a live list, ship beside it as components from `@flow-state-dev/react`. See [Workforce components](./ui).
 
 Files are the authoring path. A `WORKER.md` under `teams/` and a `CHANNEL.md` beside it are how a roster is written down. Hiring at runtime adds to that roster; it doesn't replace the tree.
+
+For a working example, the kitchen-sink reference app in the repository (`apps/kitchen-sink`) is a support desk built this way: four specialists and one routed channel, declared under its `workforce/` folder, with a board for cases that need a person.
 
 ## Hire a roster
 
@@ -101,7 +103,7 @@ Workforce does not staff a task board. It does not replace flows, sessions, or r
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
 - [The built-in worker](./built-in-worker) — the `agent` kind a record with no `flow:` runs on: its settings, tools, skills, and memory.
-- [Channels](./channels) — several agents on one topic, with one durable transcript and nobody owning a row.
+- [Channels](./channels) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.
 - [Inventory](./inventory) — a record of every seat and channel registered in an organization, readable by a block.
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
 - [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.

@@ -56,14 +56,18 @@ import { createSessionClient } from "@flow-state-dev/client";
 
 const sessions = createSessionClient();
 
-const list = await sessions.list();
-const detail = await sessions.get(sessionId);
-const snapshot = await sessions.getSessionState(sessionId, {
+const created = await sessions.createSession({ flowKind: "my-app", userId: "devuser", title: "Sprint planning" });
+const list = await sessions.listSessions({ flowKind: "my-app" });
+const detail = await sessions.getSession(created.id);
+const snapshot = await sessions.getSessionState(created.id, {
   includeItems: true,
   clientData: ["session.activePlan"],
 });
-await sessions.delete(sessionId);
+await sessions.updateSessionMetadata(created.id, { tags: ["planning"] });
+await sessions.deleteSession(created.id);
 ```
+
+`updateSessionMetadata` changes only the fields you pass. `title`, `description` and `tags` are each replaced whole, so the call above leaves the session with the one tag `planning`. `metadata` is merged key by key: the keys you send are written over the stored ones, and the rest stay. [Session management](/docs/client/overview#session-management) covers the errors it throws.
 
 ### `sessions.listSessions(options?)`
 
@@ -196,6 +200,7 @@ stream.close();
 | `sessionCreatedAt` | The snapshot's `sessionCreatedAt`. Every connection, reconnects included, then follows that session only. Once its id holds another session, the reconnect is refused and the client stops: 404, or 403 if the app authenticates and another user or organization holds the id. Omitted, a reconnect follows whatever session holds the id, if the caller may read it. |
 | `itemTypes` | Item types to send. Give it the same list as the snapshot's `itemTypes` so the stream sends what the snapshot shows. |
 | `onReconnecting` | Called with `{ attempt }` each time the connection has dropped and the client is about to try again. `attempt` counts the tries since the stream last delivered an event. `1` is the first try after a drop, such as the server's own close. `2` or more means a try has failed, and what the stream last told you, such as which runs are unfinished, may be out of date until it delivers again. |
+| `retry` | `{ initialDelayMs, maxDelayMs }`, the wait before each reconnect. The first wait is `initialDelayMs` (default `1000`), and each failed try doubles it, up to `maxDelayMs` (default `30000`). Once the stream delivers an event, the next drop starts again from `initialDelayMs`. |
 
 The snapshot's items come in `compareItemOrder` order: `ts`, then `itemIndex`, then `requestId`, then `id`. The stream sends different requests' items in no set order, so sort anything you merge with the same comparator and a live view shows what a reload shows.
 

@@ -487,6 +487,8 @@ A board with no rows renders an empty state rather than a spinner.
 
 A card is labelled with the task's `title`, falling back to its `goal`, then to its `id`. It carries the `assignee` beside that label when the row has one. Its status is the column it sits in.
 
+`BoardColumns` renders the `<li>` around every card and puts the task's id on it, so a `card` slot returns the body that goes inside one rather than a list item of its own.
+
 ### BoardList
 
 `BoardList` draws one task board as a single list, newest first, with each task's status word.
@@ -502,6 +504,8 @@ It reads the same rows `BoardColumns` does, through the same `sessionId`, `board
 `live` re-reads the board whenever the session named by `sessionId` records a change to it. Pass the id of the session whose runs write to the board. A change made in a different session shows after the list remounts, or the next time this session changes the board. With `live` off, the default, it reads on mount like the other panels. If the server doesn't offer the session stream, or refuses it, the list reads once and shows no error.
 
 Each live list opens its own connection to its session's stream while mounted, so a page that also calls `useSession(..., { live: true })` on that session holds two.
+
+A host that passes its own `resourceClient` and wants `live` also passes `fetcher`, the `fetch` that client was built with. The stream is sent with it, so it carries the same credential as the reads. With `fetcher` alone, `live` works and the reads use it too. With neither, reads and stream go through the `FlowProvider`'s `baseUrl` with the plain `fetch`. If your `resourceClient` reads a different origin, pass that origin as the `baseUrl` prop on `BoardList` as well, so the stream goes to the same server as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`.
 
 The list renders the `<li>` for every row and puts the task's id on it (`data-task-id`), so a `row` slot returns the body that goes inside one.
 
@@ -535,11 +539,7 @@ Each panel reads through a resource client. Pass your own through `resourceClien
 
 A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 
-A host that passes its own `resourceClient` and wants `live` also passes `fetcher`, the `fetch` that client was built with. The stream is sent with it, so it carries the same credential as the reads. With `fetcher` alone, `live` works and the reads use it too. With neither, reads and stream go through the `FlowProvider`'s `baseUrl` with the plain `fetch`. If your `resourceClient` reads a different origin, pass that origin as the `baseUrl` prop on `BoardList` as well, so the stream goes to the same server as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`.
-
 Style them by setting the `--fsd-panel-*` CSS custom properties on any ancestor. Fill in your own affordances through `slots`: `rowTrailing` and `empty` on `Roster`; `card`, `columnHeader` and `empty` on `BoardColumns`; `row` and `empty` on `BoardList`. `SeatDetail` has no slots.
-
-`BoardColumns` renders the `<li>` around every card and puts the task's id on it, so a `card` slot returns the body that goes inside one rather than a list item of its own.
 
 ### Presentational components moved to `@flow-state-dev/ui`
 

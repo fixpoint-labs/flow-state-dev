@@ -16,7 +16,7 @@ If you haven't set up a Next.js project with the framework yet, start with the [
 - A Next.js 14+ project with flow-state-dev integrated ([setup guide](/guides/nextjs-setup))
 - A [Vercel account](https://vercel.com)
 - The [Vercel CLI](https://vercel.com/docs/cli) (`npm i -g vercel`) — optional but useful for testing
-- At least one LLM provider API key (e.g., `OPENAI_API_KEY`)
+- A model key: a Vercel AI Gateway key (`AI_GATEWAY_API_KEY`), or a provider key such as `OPENAI_API_KEY`
 
 ---
 
@@ -170,10 +170,12 @@ FSD_ENV=prod
 
 Or whichever provider keys and connection strings your flows need.
 
-For local testing with `vercel dev`, use `.env.local`:
+For local testing with `vercel dev`, put the same model key in `.env.local`:
 
 ```bash title=".env.local"
-OPENAI_API_KEY=sk-...
+AI_GATEWAY_API_KEY=...
+# or, for models addressed as openai/..., a provider key:
+# OPENAI_API_KEY=sk-...
 ```
 
 ---

@@ -9,6 +9,8 @@ description: "A channel is a named session on a flow kind the framework ships: s
 
 Several agents working one topic. Each of them reads what the others said. Posting hands nobody the work, and the conversation needs somewhere to live that outlasts whoever spoke last. When the talk does produce work somebody has to take and finish, the channel can hold a board for it.
 
+A channel can also be [routed](#routing-a-channel). Each post from a person then goes to the one member whose job fits it, and that member answers in the channel. A support desk works that way: the printer question goes to the devices specialist, and nobody else hears it.
+
 That is a channel. The framework ships one kind that runs them, and a channel is a named session on it.
 
 ## What a channel is
@@ -190,6 +192,16 @@ const postToStandup = dispatcher({
 
 The flow you address is the **kind**; the channel is the **session id**. Address `{ id }`, never `{ key }`: a key-derived session is a child of whoever dispatched it, so the same key lands somewhere different for every poster and the channel never sees the post. Nothing detects that mistake.
 
+Over HTTP the address is the same: the kind where the flow goes in the URL, and the channel's id where the session goes.
+
+```bash
+curl -X POST https://your-app.example/api/flows/channel/engineering.standup/actions/post \
+  -H 'content-type: application/json' \
+  -d '{"userId":"u_42","input":{"body":"shipped the reader"}}'
+```
+
+The call answers `202` with the request it started. The action's return value isn't part of that answer, so read the posted lines from the session's items, as [Showing a channel on screen](#showing-a-channel-on-screen) does.
+
 `read` gives back the channel: its description, its members, and the transcript.
 
 ```ts
@@ -247,15 +259,9 @@ const busy = channel.childSessions.filter((run) => run.status === "active");
 
 A session belongs to one user. That means **every line of a given channel carries the same `principal`**, the server-derived identity the post ran under. It is a real value and the framework sets it, but it does not tell you which participant wrote a line, because it is the same for all of them.
 
-The `author` field is what distinguishes participants, and the framework cannot verify it. The poster supplies it, and it is stored beside `authorVerified: false` to say so out loud. A post claiming an `author` who is not in the channel's members is refused, but that is a check against the declared roster, not proof of who is calling.
+The `author` field is what distinguishes participants, and the framework cannot verify it. The poster supplies it, and it is stored beside `authorVerified: false` to say so. A post claiming an `author` who is not in the channel's members is refused, but that is a check against the declared roster, not proof of who is calling.
 
 So: a channel transcript is evidence that the channel's own principal wrote a line. It is close to no evidence about which member did. If you are building an audit trail or an approval flow, this gives you a much weaker guarantee than the field names suggest. Naming the posting member needs something the framework does not expose yet.
-
-## Where posting from another flow works, and where it doesn't
-
-Posting from another flow needs dispatch to run in the same process. On a deployment whose dispatcher hands work to an external queue, a post into an opened channel is refused with `external-dispatcher`.
-
-On that kind of deployment, a post from a client is written to the channel, but no member is [woken](#waking-members), and a [routed channel](#routing-a-channel) never picks a member or answers.
 
 ## Waking members
 
@@ -336,6 +342,9 @@ guaranteed order. The conversation is a child of the channel's session, so an or
 listing does not show it. List with dispatch runs included (`include: "dispatch-runs"`, or
 `includeDispatchRuns` on `FlowNavigator`) to find it.
 
+A busy channel keeps growing each seat's conversation, and a seat remembers only as far back as
+its history window reaches. Nothing summarizes older posts for it.
+
 Members whose seat can't hear a post get nothing, the same as a channel with no notify slot. To
 send them something else, pass a `fallback` block. It runs for those members on every post, and
 never for a member the wake would have run. It receives the same input a notify block does:
@@ -374,10 +383,7 @@ export const triager = defineFlow({
 A post's `author` is the poster's own claim, and the channel does not verify it. Someone who can
 post can name a member as the author and so stop that one post from waking anyone. They can't make
 a seat run, make your fallback reach anyone it wouldn't reach anyway, or reach anyone outside the
-channel. Authorship is not verified.
-
-A busy channel keeps growing each seat's conversation, and a seat remembers only as far back as
-its history window reaches. Nothing summarizes older posts for it.
+channel.
 
 ## Routing a channel
 
@@ -451,15 +457,22 @@ whether it came from the member already on it, the evaluator, or the fallback, w
 when the fallback took it or nobody could. It never shows as a line in the channel, and the chat
 renderers skip it.
 
-Every channel on a kind built with a route (`defineChannelFlow({ route })`) keeps its last 20 lines,
-and the person's last post with where it went, in its session state under `channelRouteLedger`,
-whether or not its `CHANNEL.md` declares `routing:`. Each post updates it. So neither the lines a
-routed member sees nor the hold in step 1 is limited by the session's [history
-window](#posting-and-reading). The exception is the first post after a channel's kind gains a route: its first post on a kind built with one, or its first after the channel was posted to while the app ran its kind without a route. That post is
-never held, and its member sees only the earlier lines still inside the history window, which can be
-fewer than 20. Removing `routing:` from a channel's file and restoring it loses no lines. A person's
-post made while it was removed holds nothing, so the next routed post after it is placed by the
-evaluator or the fallback. A channel on a kind built without a route keeps no record.
+### What the route remembers
+
+Every channel on a kind built with a route (`defineChannelFlow({ route })`) keeps a record in its
+session state under `channelRouteLedger`: its last 20 lines, and the person's last post with where
+it went. Each post updates it, whether or not the channel's `CHANNEL.md` declares `routing:`.
+Because of that record, neither the lines a routed member sees nor the hold in step 1 is limited by
+the session's [history window](#posting-and-reading).
+
+One post is the exception: the first after a channel's kind gains a route. That is the channel's
+first post on a kind built with one, or its first after the channel was posted to while the app ran
+its kind without a route. That post is never held, and its member sees only the earlier lines still
+inside the history window, which can be fewer than 20.
+
+Removing `routing:` from a channel's file and restoring it loses no lines. A person's post made
+while it was removed holds nothing, so the next routed post after it is placed by the evaluator or
+the fallback. A channel on a kind built without a route keeps no record.
 
 ### The answer lands in the channel
 
@@ -764,6 +777,12 @@ The factory the framework ships builds only the built-in kind, so a kind of your
 A kind of your own shows on a page the same way when its `post` keeps the line as a `channel-post` item: `await emitChannelPostLine(ctx, line)`. It resolves once the item is stored and throws if the write fails, so a post never hands back a line nothing kept. Its `read` gets the posted lines back with `readChannelPostLines(ctx, yourLineSchema)`.
 
 Different members, a different charter and a different set of boards are not a diverging workflow; they are all one kind. A different `read` is.
+
+## Where posting from another flow works, and where it doesn't
+
+Posting from another flow needs dispatch to run in the same process. On a deployment whose dispatcher hands work to an external queue, a post into an opened channel is refused with `external-dispatcher`.
+
+On that kind of deployment, a post from a client is written to the channel, but no member is [woken](#waking-members), and a [routed channel](#routing-a-channel) never picks a member or answers.
 
 ## What channels do not do yet
 
