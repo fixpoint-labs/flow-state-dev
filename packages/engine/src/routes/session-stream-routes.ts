@@ -161,7 +161,7 @@ export async function handleSessionStream(
     itemTypes,
     since,
     handle,
-    signal: request.signal
+    request
   });
 
   return new Response(handle.readable, { status: 200, headers: SSE_HEADERS });
@@ -184,7 +184,14 @@ type FollowOptions = {
   itemTypes: ReadonlySet<string> | undefined;
   since: number | undefined;
   handle: SSEStreamHandle;
-  signal: AbortSignal;
+  /**
+   * The caller's request, held until the loop ends. Its signal is how a host
+   * says the caller left, and on Node that signal hears the abort of the one
+   * the request was built with only while the request itself is alive: the
+   * link between them is a weak reference. Holding the signal alone, the
+   * loop could read the store until its maximum age after the caller left.
+   */
+  request: Request;
 };
 
 /** Thrown at a store read made after the connection ended; ends the loop quietly. */
@@ -214,8 +221,8 @@ function whileOpen<T extends object>(store: T, isOpen: () => boolean): T {
 
 /** The loop behind one connection. Resolves when the connection ends. */
 async function followSession(opened: FollowOptions): Promise<void> {
-  const { handle, signal, sessionId } = opened;
-  const isOpen = (): boolean => !handle.closed && !signal.aborted;
+  const { handle, request, sessionId } = opened;
+  const isOpen = (): boolean => !handle.closed && !request.signal.aborted;
   const options: FollowOptions = {
     ...opened,
     stores: {
@@ -278,7 +285,7 @@ async function followSession(opened: FollowOptions): Promise<void> {
       }
 
       floor = start - timings.marginMs;
-      await abortableSleep(Math.max(0, start + timings.intervalMs - Date.now()), signal);
+      await abortableSleep(Math.max(0, start + timings.intervalMs - Date.now()), request.signal);
     }
   } catch (error) {
     // A failed read ends the connection; the client reconnects with backoff

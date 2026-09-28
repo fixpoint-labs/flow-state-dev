@@ -4,6 +4,8 @@
  * behaviour (what is read, when, and when it stops) is the conformance suite's,
  * run per adapter.
  */
+import v8 from "node:v8";
+import vm from "node:vm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { buildBlockInstanceId, DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -539,6 +541,55 @@ describe("a connection that ends", () => {
     }
     const logged = warn.mock.calls.filter((call) => call[1] instanceof StoreDown);
     expect(logged).toHaveLength(1);
+  });
+
+  // A host can say the caller left only by aborting the signal it built the
+  // request with. On Node, a request's own signal hears that abort only while
+  // the request itself is alive, so the route has to hold the request for as
+  // long as the stream is open, not just its signal.
+  it("stops reading when its caller aborts, though nothing else holds the request", async () => {
+    const built = buildRouter();
+    router = built.router;
+    await seedSession(built.stores);
+    const reads = vi.spyOn(built.stores.request, "list");
+    v8.setFlagsFromString("--expose-gc");
+    const gc = vm.runInNewContext("gc") as () => void;
+    const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    const controller = new AbortController();
+    // Built in a scope of its own, so once the route returns only it can hold the request.
+    const res = await (() =>
+      built.router.GET(new Request("http://localhost/api/flows/sessions/s1/stream", { signal: controller.signal }), {
+        params: { path: ["sessions", "s1", "stream"] }
+      }))();
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    let ended = false;
+    const drained = (async () => {
+      try {
+        while (!(await reader.read()).done);
+      } catch {
+        // Cancelled below.
+      }
+      ended = true;
+    })();
+
+    try {
+      await until(() => reads.mock.calls.length > 0, "the stream to read");
+      await pause(0);
+      gc();
+      await pause(0);
+      gc();
+
+      controller.abort();
+      await Promise.race([drained, pause(SESSION_STREAM_TIMINGS.intervalMs * 40)]);
+      expect(ended).toBe(true);
+      const readsAtEnd = reads.mock.calls.length;
+      await pause(SESSION_STREAM_TIMINGS.intervalMs * 6);
+      expect(reads.mock.calls.length).toBe(readsAtEnd);
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
   });
 });
 
