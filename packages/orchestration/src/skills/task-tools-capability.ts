@@ -456,7 +456,7 @@ function buildTaskTools(
    */
   uses?: readonly DefinedCapability[],
 ) {
-  const withUses = uses === undefined ? {} : { uses: [...uses] };
+  const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
    * The eight names, optionally board-qualified.
    *
@@ -552,7 +552,7 @@ function buildTaskTools(
     return { ok: true as const };
   }
 
-  const addTask = handler({
+  const addTask = defineTool({
     name: named("addTask"),
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
@@ -580,7 +580,6 @@ function buildTaskTools(
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
     parentStateSchema,
-    ...withUses,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
@@ -617,7 +616,7 @@ function buildTaskTools(
     },
   });
 
-  const assignTask = handler({
+  const assignTask = defineTool({
     name: named("assignTask"),
     description:
       "Reassign an existing task to a different worker. A task that has already " +
@@ -625,7 +624,6 @@ function buildTaskTools(
     inputSchema: z.object({ taskId: z.string(), assignee: z.string() }),
     outputSchema: okOrError,
     parentStateSchema,
-    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c) => c.setAssignee(input.taskId, input.assignee), {
         assignee: input.assignee,
@@ -633,46 +631,43 @@ function buildTaskTools(
       }),
   });
 
-  const completeTask = handler({
+  const completeTask = defineTool({
     name: named("completeTask"),
     description: "Mark a task complete with its output.",
     inputSchema: z.object({ taskId: z.string(), output: z.unknown() }),
     outputSchema: okOrError,
     parentStateSchema,
-    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.complete(input.taskId, input.output, claimGuard(claim)),
       ),
   });
 
-  const failTask = handler({
+  const failTask = defineTool({
     name: named("failTask"),
     description: "Mark a task failed with an error message.",
     inputSchema: z.object({ taskId: z.string(), error: z.string() }),
     outputSchema: okOrError,
     parentStateSchema,
-    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.fail(input.taskId, input.error, claimGuard(claim)),
       ),
   });
 
-  const blockTask = handler({
+  const blockTask = defineTool({
     name: named("blockTask"),
     description: "Block a task pending an external condition.",
     inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
     outputSchema: okOrError,
     parentStateSchema,
-    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.block(input.taskId, input.reason, claimGuard(claim)),
       ),
   });
 
-  const cancelTask = handler({
+  const cancelTask = defineTool({
     name: named("cancelTask"),
     description:
       "Cancel a task (terminal). Use when the work is no longer needed. A task that " +
@@ -681,14 +676,13 @@ function buildTaskTools(
     inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
     outputSchema: okOrError,
     parentStateSchema,
-    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.cancel(input.taskId, input.reason, claimGuard(claim)),
       ),
   });
 
-  const updateTask = handler({
+  const updateTask = defineTool({
     name: named("updateTask"),
     description:
       "Patch a task's mutable fields (priority, metadata, assignee, labels). All patch fields are optional.",
@@ -704,7 +698,6 @@ function buildTaskTools(
     }),
     outputSchema: okOrError,
     parentStateSchema,
-    ...withUses,
     execute: (input, ctx) =>
       withTask(
         ctx,
@@ -743,7 +736,7 @@ function buildTaskTools(
       ),
   });
 
-  const listTasks = handler({
+  const listTasks = defineTool({
     name: named("listTasks"),
     description:
       "List tasks on your delegation board, optionally filtered by status or assignee.",
@@ -769,7 +762,6 @@ function buildTaskTools(
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
     parentStateSchema,
-    ...withUses,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;

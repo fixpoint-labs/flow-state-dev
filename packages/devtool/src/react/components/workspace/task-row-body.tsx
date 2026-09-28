@@ -18,8 +18,6 @@ type Props = {
   entry: ResolvedTask;
   /** The id the row's toggle names in `aria-controls`. */
   id: string;
-  /** The dispatch-run cell, drawn by the row so both halves agree on it. */
-  dispatchRun?: ReactNode;
   /** Rendered after the field list; the row's actions live here. */
   children?: ReactNode;
 };
@@ -27,7 +25,7 @@ type Props = {
 /** Wrap anywhere: a value may be one unbroken token. */
 const WRAP = "whitespace-pre-wrap [overflow-wrap:anywhere]";
 
-export function TaskRowBody({ entry, id, dispatchRun, children }: Props) {
+export function TaskRowBody({ entry, id, children }: Props) {
   const { task } = entry;
   const fields: Array<[string, ReactNode]> = [];
   const add = (label: string, value: ReactNode | undefined, present: boolean) => {
@@ -60,7 +58,6 @@ export function TaskRowBody({ entry, id, dispatchRun, children }: Props) {
   add("Started", formatTime(task.startedAt), task.startedAt !== undefined);
   add("Completed", formatTime(task.completedAt), task.completedAt !== undefined);
   add("Lease until", formatTime(task.leaseUntil), task.leaseUntil !== undefined);
-  add("Dispatch run", dispatchRun, dispatchRun !== undefined);
   add(
     "Latest change",
     [
