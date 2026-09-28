@@ -27,8 +27,9 @@
  *
  * Each read costs what is running now, never the session's whole history.
  * Items go through the session snapshot's own filter (`snapshotItemsOf`), and
- * each is sent once per connection, keyed by request id and item id together:
- * a keyed item repeats its id across requests.
+ * each copy is sent once per connection, keyed by request id and item id
+ * together (a keyed item repeats its id across requests) and by the copy's
+ * time and index (a keyed item emitted again is a later copy of one item).
  *
  * ## How it ends
  *
@@ -190,7 +191,9 @@ async function followSession(options: FollowOptions): Promise<void> {
       if (start - openedAt >= timings.maxAgeMs) break;
 
       for (const { requestId, item } of await readFinishedItems(options, floor)) {
-        const key = `${requestId}\u0000${item.id}`;
+        // One copy of an item, not the item: a keyed item emitted again keeps
+        // its id and takes a later time and index, and is sent again.
+        const key = `${requestId}\u0000${item.id}\u0000${item.ts}\u0000${item.itemIndex}`;
         if (sent.has(key)) continue;
         sent.add(key);
         send({ stream: "session", sessionId, type: "session.item", at: resumeAt, requestId, item });

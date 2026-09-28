@@ -542,6 +542,63 @@ describe("a connection that ends", () => {
   });
 });
 
+describe("a keyed item emitted again", () => {
+  const shipped = { ...SESSION_STREAM_TIMINGS };
+  let router: Router | undefined;
+
+  beforeEach(() => {
+    SESSION_STREAM_TIMINGS.intervalMs = 25;
+  });
+
+  afterEach(async () => {
+    Object.assign(SESSION_STREAM_TIMINGS, shipped);
+    if (router !== undefined) await disposeFlowApiRouter(router);
+    router = undefined;
+  });
+
+  // A keyed item keeps one id through every emission; each emission replaces
+  // it, finished, with a later time and index. A view that heard the first
+  // copy has to hear the later one too, or it shows the first until a reload.
+  it("sends the later copy of a keyed item already sent on this connection", async () => {
+    const built = buildRouter();
+    router = built.router;
+    await seedSession(built.stores, Date.now() - 600_000);
+    const owner = buildBlockInstanceId("req_k", "root", 0);
+    const plan = (step: number, ts: number, itemIndex: number) =>
+      item("req_k", "item_component_keyed:plan", "component", itemIndex, owner, {
+        ts,
+        component: "plan-view",
+        data: { step },
+        key: "plan"
+      });
+    const first = Date.now();
+    await keepRequest(built.stores, "req_k", [plan(1, first, 1)], first);
+
+    const controller = new AbortController();
+    const res = await router.GET(
+      new Request("http://localhost/api/flows/sessions/s1/stream", { signal: controller.signal }),
+      { params: { path: ["sessions", "s1", "stream"] } }
+    );
+    const events = collectEvents(res);
+    const steps = (): number[] =>
+      events.flatMap((event) =>
+        event.type === "session.item" && event.item.id === "item_component_keyed:plan"
+          ? [(event.item as unknown as { data: { step: number } }).data.step]
+          : []
+      );
+    try {
+      await until(() => steps().length > 0, "the first copy");
+      await keepRequest(built.stores, "req_k", [plan(2, first + 1, 3)], Date.now());
+      // Well past the few reads it takes to see a request that moved, and
+      // enough more that a copy sent twice would show.
+      await new Promise((resolve) => setTimeout(resolve, SESSION_STREAM_TIMINGS.intervalMs * 8));
+      expect(steps()).toEqual([1, 2]);
+    } finally {
+      controller.abort();
+    }
+  });
+});
+
 describe("a run waiting to start", () => {
   const shipped = { ...SESSION_STREAM_TIMINGS };
   let router: Router | undefined;

@@ -90,9 +90,16 @@ function isFinished(item: OutputItem | undefined): boolean {
   return item !== undefined && item.status !== "in_progress";
 }
 
-/** Whether `next` may replace `held`: never an unfinished copy over a finished one. */
+/**
+ * Whether `next` may replace `held`, two copies of one item. Never an
+ * unfinished copy over a finished one, and never a finished copy over one the
+ * server stamped later. A keyed item is sent again, finished, each time it is
+ * emitted, with a later time and index (`compareItemOrder`), and its copies can
+ * arrive in any order.
+ */
 function mayReplace(held: OutputItem | undefined, next: OutputItem): boolean {
-  return !isFinished(held) || isFinished(next);
+  if (held === undefined || !isFinished(held)) return true;
+  return isFinished(next) && compareItemOrder(next, held) >= 0;
 }
 
 /** How many content parts a message or reasoning item holds. */
@@ -744,10 +751,11 @@ export function useSession(
    *
    * - The server's user message for a request replaces the one the view
    *   showed while that request was sent.
-   * - A finished copy stands: no unfinished copy replaces it. Nor does a
-   *   session copy replace one the view already holds finished; that is a
-   *   repeat, or the view's own copy, which can be newer than the session's
-   *   read.
+   * - A finished copy stands: no unfinished copy replaces it, and no finished
+   *   copy the server stamped earlier (a keyed item's earlier emission). Nor
+   *   does a session copy replace a finished one stamped the same; that is a
+   *   repeat, or the view's own copy, which can hold a part added since the
+   *   session's read.
    * - A finished copy holds every text delta, so any still queued for the
    *   item are older than it.
    * - The copy is remembered in arrival order, so a snapshot whose read began
@@ -764,7 +772,8 @@ export function useSession(
 
     const key = keyOfItem(item);
     const held = store.getById(key);
-    if (!mayReplace(held, item) || (from === "session" && isFinished(held))) return replacedOptimistic;
+    const repeat = held !== undefined && isFinished(held) && compareItemOrder(item, held) === 0;
+    if (!mayReplace(held, item) || (from === "session" && repeat)) return replacedOptimistic;
 
     if (isFinished(item)) store.discardDeltas(key);
     liveArrivalsRef.current += 1;
@@ -831,7 +840,8 @@ export function useSession(
       // read holds it or shows it is gone. (The view's own stream can run a
       // moment ahead of what is kept; its request's closing snapshot settles
       // those.) And a read taken while an item was still being written holds
-      // it unfinished, where the view may already hold it finished.
+      // it unfinished, where the view may already hold it finished, or holds
+      // an earlier copy of a keyed item the view already holds a later one of.
       const held = storeRef.current.getRaw();
       storeRef.current.loadSnapshot(filtered);
       const live = liveItemsRef.current;

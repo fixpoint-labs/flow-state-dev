@@ -528,6 +528,23 @@ describe("useSession live", () => {
       expect(texts(result.current.items)).toEqual(["Hello there"]);
     });
 
+    // The session stream sends each copy once, so a part another request's
+    // item gains after it finished reaches the view in a later snapshot: the
+    // same copy, read later, settles the one the view holds.
+    it("takes a later snapshot's copy of a finished item that has gained a part since", async () => {
+      const { result } = await mountLive();
+      deliver(item("req_seat", message("req_seat", "m1", "Hello there", 2)));
+
+      const voiced = message("req_seat", "m1", "Hello there", 2) as unknown as { content: unknown[] };
+      voiced.content.push({ type: "output_audio", audio: "AAAA", mediaType: "audio/mpeg" });
+      sessionClientMock.getSessionState.mockResolvedValueOnce(snapshot([voiced as unknown as OutputItem]));
+      await act(async () => {
+        await result.current.refresh();
+      });
+      const parts = (result.current.items[0] as unknown as { content: Array<{ type: string }> }).content;
+      expect(parts.map((part) => part.type)).toEqual(["output_text", "output_audio"]);
+    });
+
     it("keeps a live finished item over a slower snapshot read that holds it partial", async () => {
       const { result } = await mountLive();
 
@@ -571,6 +588,77 @@ describe("useSession live", () => {
         await refreshing;
       });
       expect(texts(result.current.items)).toEqual(["Hello there"]);
+    });
+
+    // A keyed item is sent again, finished, each time it is emitted: one id,
+    // a later time and index, the whole data replaced. Two such copies can
+    // arrive in either order, from either stream or a snapshot, and the view
+    // keeps the one emitted last.
+    describe("two finished copies of one keyed item", () => {
+      function plan(step: number, ts: number, itemIndex: number): OutputItem {
+        return {
+          id: "item_component_keyed:plan",
+          type: "component",
+          status: "completed",
+          requestId: "req_mine",
+          itemIndex,
+          ts,
+          provenance: { blockName: "b", blockInstanceId: "b_1", phase: "main" },
+          component: "plan-view",
+          data: { step },
+          key: "plan"
+        } as unknown as OutputItem;
+      }
+      const steps = (items: readonly OutputItem[]) =>
+        items.map((shown) => (shown as unknown as { data: { step: number } }).data.step);
+
+      it("keeps the later copy when the session stream brings it before the view's own stream brings the earlier", async () => {
+        const { result, own } = await mountAttached();
+        deliver(item("req_mine", plan(2, 5, 3)));
+
+        act(() => {
+          own.onItemAdded?.(requestEvent("item.added", { item: plan(1, 4, 1) }));
+          own.onItemDone?.(requestEvent("item.done", { item: plan(1, 4, 1) }));
+        });
+        expect(steps(result.current.items)).toEqual([2]);
+      });
+
+      it("takes the later copy from the session stream over the earlier one its own stream brought", async () => {
+        const { result, own } = await mountAttached();
+        act(() => {
+          own.onItemAdded?.(requestEvent("item.added", { item: plan(1, 4, 1) }));
+          own.onItemDone?.(requestEvent("item.done", { item: plan(1, 4, 1) }));
+          own.onError?.(new Error("connection dropped"));
+        });
+        expect(steps(result.current.items)).toEqual([1]);
+
+        deliver(item("req_mine", plan(2, 5, 3)));
+        expect(steps(result.current.items)).toEqual([2]);
+      });
+
+      it("keeps the later copy over a snapshot that holds the earlier one", async () => {
+        const { result, own } = await mountAttached();
+        act(() => {
+          own.onItemDone?.(requestEvent("item.done", { item: plan(2, 5, 3) }));
+        });
+
+        // Read after the later copy arrived, but before it was kept.
+        sessionClientMock.getSessionState.mockResolvedValueOnce(snapshot([plan(1, 4, 1)]));
+        await act(async () => {
+          await result.current.refresh();
+        });
+        expect(steps(result.current.items)).toEqual([2]);
+      });
+
+      // Copies emitted in one millisecond share a time; the index still orders them.
+      it("orders two copies that share a time by their index", async () => {
+        const { result, own } = await mountAttached();
+        deliver(item("req_mine", plan(2, 5, 3)));
+        act(() => {
+          own.onItemDone?.(requestEvent("item.done", { item: plan(1, 5, 1) }));
+        });
+        expect(steps(result.current.items)).toEqual([2]);
+      });
     });
   });
 

@@ -39,6 +39,7 @@ function session(
     sessionId?: string;
     items?: Item[];
     childSessions?: Run[];
+    childSessionsStale?: boolean;
     isStreaming?: boolean;
     isStuck?: boolean;
     sendAction?: ReturnType<typeof vi.fn>;
@@ -53,6 +54,7 @@ function session(
       updatedAt: 1,
       ...run,
     })),
+    childSessionsStale: over.childSessionsStale ?? false,
     isStreaming: over.isStreaming ?? false,
     isStuck: over.isStuck ?? false,
     isFinishing: false,
@@ -323,6 +325,23 @@ describe("who is working", () => {
   it("shows a run with no recorded flow as background work, not a seat", () => {
     panel("channel", session({ childSessions: [{ id: "run-1", status: "active" }] }));
     expect(rows()).toEqual(["Background work is running"]);
+  });
+
+  // A failed re-read keeps the last rows it had, and a run it names may have
+  // finished since. The row says when it was true, not that it is true now.
+  it("says a row was true at the last check while the list could not be read again", () => {
+    const working = [
+      { id: "run-1", flowId: "support.otto", status: "active" },
+      { id: "run-2", status: "active" },
+    ];
+    const view = panel("channel", session({ childSessions: working, childSessionsStale: true }));
+    expect(rows()).toEqual([
+      "support.otto was working at the last check",
+      "Background work was running at the last check",
+    ]);
+
+    rerender(view, "channel", session({ childSessions: working }));
+    expect(rows()).toEqual(["support.otto is working", "Background work is running"]);
   });
 
   it("keeps no timer of its own, and keeps the draft, as lines land and runs end", async () => {

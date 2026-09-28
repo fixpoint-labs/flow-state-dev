@@ -21,7 +21,8 @@
  * Both panels show a `<flow> is working` row for each run under the session
  * that hasn't finished. With the session followed live (`useSession`'s
  * `live`), a seat's line lands and its row clears without a reload; the panel
- * keeps no timer or poll of its own for either.
+ * keeps no timer or poll of its own for either. When the list could not be
+ * read again, the rows it still has say `was working at the last check`.
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { useSession } from "@flow-state-dev/react";
@@ -142,15 +143,22 @@ function ChannelTranscript({ session }: { session: Session }) {
  * One row per run under the session that hasn't finished, named by the run's
  * flow; a run with no recorded flow is background work, not a seat. A run
  * waiting on an approval reads as working until it ends.
+ *
+ * While the list is stale (`childSessionsStale`: the last re-read failed, and
+ * the rows are the last list the hook had), a row says the run was working at
+ * the last check, since it may have finished since.
  */
 function WorkingRows({ session }: { session: Session }) {
   const working = session.childSessions.filter((run) => run.status === "active");
   if (working.length === 0) return null;
+  const stale = session.childSessionsStale;
   return (
     <ul className="mx-auto flex w-full max-w-3xl flex-col gap-1 px-3 pb-2 sm:px-4" data-testid="working-rows">
       {working.map((run) => (
         <li key={run.id} className="text-xs italic text-muted-foreground" data-testid="working-row">
-          {run.flowId === undefined ? "Background work is running" : `${run.flowId} is working`}
+          {run.flowId === undefined
+            ? `Background work ${stale ? "was running at the last check" : "is running"}`
+            : `${run.flowId} ${stale ? "was working at the last check" : "is working"}`}
         </li>
       ))}
     </ul>
