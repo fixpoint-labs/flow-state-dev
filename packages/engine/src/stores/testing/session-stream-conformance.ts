@@ -604,6 +604,49 @@ export function createSessionStreamConformanceTests(
       expect(reads).toBe(atClose);
     });
 
+    // One read can be long: the first read of runs checks every run under the
+    // session, two store reads each. A connection that ends midway through it
+    // makes no further store read for nobody.
+    it("stops reading the store when the connection ends midway through a read (BR-14)", async () => {
+      const stores = await createStores();
+      const runs = 20;
+      const readMs = 20;
+      let reads = 0;
+      const slowed: StoreRegistry = {
+        ...stores,
+        request: new Proxy(stores.request, {
+          get(target, key) {
+            const value = Reflect.get(target, key, target) as unknown;
+            if (key === "list") {
+              return async (...args: Parameters<typeof target.list>) => {
+                reads += 1;
+                await delay(readMs);
+                return target.list(...args);
+              };
+            }
+            return typeof value === "function" ? value.bind(target) : value;
+          }
+        })
+      };
+      const r = router(slowed);
+      await seedSession(stores, "s1");
+      for (let i = 0; i < runs; i += 1) {
+        await seedSession(stores, `run_${i}`, { parentSessionId: "s1" });
+        await seedRequest(stores, { id: `req_${i}`, sessionId: `run_${i}`, status: "completed" });
+      }
+
+      const live = await stream(r, "s1");
+      // Midway through the first read of runs: a few checked, most not.
+      const deadline = Date.now() + 5_000;
+      while (reads < 4 && Date.now() < deadline) await delay(5);
+      expect(live.events).toEqual([]);
+      const atClose = reads;
+      await live.close();
+      // Long enough for every remaining run to have been checked.
+      await delay(runs * 2 * readMs);
+      expect(reads).toBe(atClose);
+    });
+
     it("closes the connection itself once it reaches its age limit (BR-24)", async () => {
       SESSION_STREAM_TIMINGS.maxAgeMs = 300;
       const stores = await createStores();
@@ -666,6 +709,110 @@ export function createSessionStreamConformanceTests(
 
       const owner = await stream(r, "owned", { headers: { "x-verified-user": "alice" } });
       expect(owner.response.status).toBe(200);
+    });
+
+    // A session's id can be deleted and used again, by anyone. The connection
+    // was opened for one session, so what its reads find after that session
+    // is gone is not sent: the connection ends, and a reopen is answered as
+    // any open is.
+    it.each([
+      ["deleted", undefined, 404],
+      ["deleted and created again by its owner", "alice", 200],
+      ["deleted and created again by someone else", "mallory", 403]
+    ] as const)(
+      "ends when its session is %s, sending nothing kept after",
+      async (_what, recreatedBy, reopened) => {
+        const stores = await createStores();
+        const r = router(stores);
+        const alice = { "x-verified-user": "alice" };
+        await seedSession(stores, "owned", {
+          flowKind: "secure",
+          orgId: "org_test",
+          createdAt: Date.now() - 60_000
+        });
+        const live = await stream(r, "owned", { headers: alice });
+        await live.waitFor((e) => e.type === "session.runs");
+
+        await stores.session.delete("owned");
+        const owner = recreatedBy ?? "alice";
+        if (recreatedBy !== undefined) {
+          await seedSession(stores, "owned", { flowKind: "secure", orgId: "org_test", userId: owner });
+        }
+        await seedRequest(stores, {
+          id: "req_after",
+          sessionId: "owned",
+          flowKind: "secure",
+          status: "completed",
+          userId: owner,
+          orgId: "org_test",
+          items: [message("m_after", "kept after")]
+        });
+
+        const deadline = Date.now() + 2_000;
+        while (!live.ended && Date.now() < deadline) await delay(20);
+        expect(live.ended).toBe(true);
+        expect(live.events.some(isItemWithText("kept after"))).toBe(false);
+        const again = await stream(r, "owned", { headers: alice });
+        expect(again.response.status).toBe(reopened);
+      }
+    );
+
+    // Every request that runs in a session is made under its owner and
+    // organization; the engine refuses any other. A request record under the
+    // id with another owner or organization is one that was refused, or one
+    // left by an earlier session under the same id, and neither view shows it.
+    it("shows no request made under the session id by another owner or organization, live or on a reload", async () => {
+      const stores = await createStores();
+      const r = router(stores);
+      const now = Date.now();
+      await seedSession(stores, "s1", { createdAt: now - 60_000 });
+      await seedRequest(stores, {
+        id: "req_mine",
+        sessionId: "s1",
+        status: "completed",
+        items: [message("m_mine", "mine")]
+      });
+      await seedRequest(stores, {
+        id: "req_user",
+        sessionId: "s1",
+        status: "completed",
+        userId: "mallory",
+        items: [message("m_user", "another user's")]
+      });
+      await seedRequest(stores, {
+        id: "req_org",
+        sessionId: "s1",
+        status: "completed",
+        orgId: "org_other",
+        items: [message("m_org", "another organization's")]
+      });
+      // Unfinished and old: found by the read of unfinished requests alone.
+      await seedRequest(stores, {
+        id: "req_waiting",
+        sessionId: "s1",
+        status: "suspended",
+        userId: "mallory",
+        startedAtMs: now - 3_600_000,
+        createdAt: now - 3_600_000,
+        updatedAt: now - 3_600_000,
+        items: [message("m_waiting", "another user's, waiting")]
+      });
+
+      const live = await stream(r, "s1");
+      await live.waitFor(isItemWithText("mine"));
+      await delay(FAST_TIMINGS.intervalMs * 4);
+      const streamed = live.events.flatMap((event) =>
+        event.type === "session.item" ? [textOf(event.item)] : []
+      );
+      expect(streamed).toEqual(["mine"]);
+
+      const snapshot = await r.GET(
+        new Request("http://localhost/api/flows/sessions/s1/state?include_items=true"),
+        { params: { path: ["sessions", "s1", "state"] } }
+      );
+      expect(snapshot.status).toBe(200);
+      const { items } = (await snapshot.json()) as { items: OutputItem[] };
+      expect(items.map(textOf)).toEqual(["mine"]);
     });
 
     it("writes nothing: the session and its latest request stay as they were (BR-19)", async () => {

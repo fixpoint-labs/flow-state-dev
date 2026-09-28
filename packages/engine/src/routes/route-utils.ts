@@ -28,7 +28,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
-import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import { resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -105,6 +105,65 @@ export async function loadTenantSession(
   if (record === undefined) return undefined;
   if (!tenantMatches(record.tenantId, tenantId)) return undefined;
   return record;
+}
+
+/**
+ * Whether `current`, read by the same id and tenant, is still the session
+ * `authorized` was: the same owner and organization, born at the same moment.
+ *
+ * A session id can be deleted and used again, by anyone. The record created
+ * in its place is another session, though its version starts over: it has its
+ * own `createdAt` and lineage, and both are written once, when a record is
+ * born. A route that read a session, and reads it again to go on, uses this so
+ * the second read never stands in for the first.
+ */
+export function isSameSession(authorized: SessionRecord, current: SessionRecord): boolean {
+  return (
+    current.userId === authorized.userId &&
+    (current.orgId ?? undefined) === (authorized.orgId ?? undefined) &&
+    current.createdAt === authorized.createdAt &&
+    resolveLineageId(current) === resolveLineageId(authorized)
+  );
+}
+
+/**
+ * Whether `session`, a handler's own read of the session its route addresses,
+ * is the session the owner check admitted the caller to
+ * (`RouteAuthResult.session`). The check found none (`null`): then no session
+ * is, since one that arrived after it was never checked. The check read
+ * nothing (`undefined`, nothing in the app authenticates): then there is
+ * nothing to compare, and any is.
+ */
+export function isCheckedSession(
+  checked: SessionRecord | null | undefined,
+  session: SessionRecord
+): boolean {
+  if (checked === undefined) return true;
+  return checked !== null && isSameSession(checked, session);
+}
+
+/**
+ * The request filter for what a session shows, in its snapshot and its
+ * stream: requests made in it (by bare id) under its tenant, its owner and its
+ * organization.
+ *
+ * Every request that runs in a session carries its owner and organization;
+ * `createExecutionContext` refuses any other. A request record under the id
+ * with another owner or organization is one that was refused there, or one an
+ * earlier session under the same id left behind, and it is not this session's
+ * to show. Every key is present, so an `undefined` tenant or organization
+ * exact-matches unbound records rather than lifting the filter.
+ *
+ * @param sessionId The bare session id, as request records carry it.
+ * @param session The session's own record, already read for the caller's tenant.
+ * @param tenantId The caller's tenant.
+ */
+export function sessionRequestScope(
+  sessionId: string,
+  session: SessionRecord,
+  tenantId: string | undefined
+): { sessionId: string; tenantId: string | undefined; userId: string; orgId: string | undefined } {
+  return { sessionId, tenantId, userId: session.userId, orgId: session.orgId ?? undefined };
 }
 
 // `extractBareTopic` now lives in core alongside `getPatternPrefix` /

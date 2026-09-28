@@ -24,7 +24,9 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import {
   createExecutionContext,
   createInMemoryStores,
+  createResponseEmitter,
   OrgBindingMismatchError,
+  runAction,
   UserBindingMismatchError
 } from "../src";
 
@@ -272,5 +274,47 @@ describe("createExecutionContext binding immutability", () => {
         stores
       })
     ).rejects.toBeInstanceOf(UserBindingMismatchError);
+  });
+});
+
+describe("a refused request and the session's latest request", () => {
+  // `runAction` records the newest request on the session (the pointer a
+  // client uses to resume a stream) before `createExecutionContext` checks the
+  // caller. A request the check then refuses must not have moved that pointer,
+  // or its owner would resume onto a run that was never theirs to see.
+  async function send(
+    stores: ReturnType<typeof createInMemoryStores>,
+    requestId: string,
+    who: { userId: string; orgId: string }
+  ): Promise<void> {
+    await runAction({
+      ...who,
+      flow: createTestFlow(),
+      actionName: "run",
+      input: { value: "x" },
+      sessionId: "sess_latest",
+      requestId,
+      stores,
+      responseEmitter: createResponseEmitter({ requestId }),
+      runtimeConfig: {}
+    });
+  }
+
+  it.each([
+    ["another user", { userId: "bob", orgId: "org_a" }, UserBindingMismatchError],
+    ["its owner acting for another organization", { userId: "alice", orgId: "org_b" }, OrgBindingMismatchError]
+  ])("keeps it when the request comes from %s", async (_label, who, refusal) => {
+    const stores = createInMemoryStores();
+    // The first request creates the session; the pointer is set from the second.
+    await send(stores, "req_first", { userId: "alice", orgId: "org_a" });
+    await send(stores, "req_owner", { userId: "alice", orgId: "org_a" });
+    const before = await stores.session.get("sess_latest");
+    expect(before?.latestRequestId).toBe("req_owner");
+
+    await expect(send(stores, "req_refused", who)).rejects.toBeInstanceOf(refusal);
+
+    const after = await stores.session.get("sess_latest");
+    expect(after?.latestRequestId).toBe("req_owner");
+    expect(after?.updatedAt).toBe(before?.updatedAt);
   });
 });

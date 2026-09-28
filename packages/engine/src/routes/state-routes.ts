@@ -4,7 +4,7 @@
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { StoreRegistry } from "../stores/types";
+import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveOrgStorageKey, resolveUserStorageKey } from "../stores/scope-keys";
 import {
   resolveOwnerFlow,
@@ -14,9 +14,11 @@ import {
   getBooleanFlag,
   getPositiveInteger,
   getString,
+  isCheckedSession,
   jsonResponse,
   loadTenantSession,
   parseClientDataFilter,
+  sessionRequestScope,
   snapshotItemsOf,
   sortItems
 } from "./route-utils";
@@ -33,6 +35,12 @@ type StateRouteContext = {
   stores: StoreRegistry;
   /** Tenant id from the request header (FIX-682); namespaces the session key. */
   tenantId?: string;
+  /**
+   * The session the owner check read and admitted the caller to
+   * (`RouteAuthResult.session`): `null` when it read none, absent when it read
+   * nothing (nothing in the app authenticates).
+   */
+  checkedSession?: SessionRecord | null;
 };
 
 export async function handleGetSessionState(
@@ -49,7 +57,10 @@ export async function handleGetSessionState(
     route.sessionId,
     ctx.tenantId
   );
-  if (session === undefined) {
+  // The owner check read the session too. Everything below is read under this
+  // copy, so it must be the session the caller was admitted to, not one that
+  // took its id since (or arrived after the check found none).
+  if (session === undefined || !isCheckedSession(ctx.checkedSession, session)) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
     });
@@ -93,9 +104,10 @@ export async function handleGetSessionState(
     const requests = await ctx.stores.request.list({
       // Request records key on the BARE session id; isolate by the tenant
       // filter (FIX-682). `session.id` here is the namespaced storage key, so
-      // it must not be used as the request filter.
-      sessionId: route.sessionId,
-      tenantId: ctx.tenantId,
+      // it must not be used as the request filter. The session's owner and
+      // organization too, as the session stream reads them: a request under
+      // the id made by anyone else is not this session's.
+      ...sessionRequestScope(route.sessionId, session, ctx.tenantId),
       withItems: true
     });
     aggregatedItems = [];

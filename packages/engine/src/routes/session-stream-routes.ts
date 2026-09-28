@@ -31,15 +31,28 @@
  * together (a keyed item repeats its id across requests) and by the copy's
  * time and index (a keyed item emitted again is a later copy of one item).
  *
+ * ## Whose session it reads
+ *
+ * The session the caller was checked against when the stream opened, and
+ * nothing else, however long the connection lasts. Requests are read under
+ * that session's tenant, owner and organization (`sessionRequestScope`, as the
+ * snapshot reads them), and runs under its tenant, owner and organization too.
+ * After each read, before anything it found is sent, the session is read again:
+ * if it is gone, or its id now holds another session (`isSameSession`), the
+ * connection ends and nothing from that read is sent.
+ *
  * ## How it ends
  *
- * Every way out is quiet. The loop stops with its connection. A failed read
- * ends the connection, and the client reconnects with backoff. The server
- * closes the connection after at most 15 minutes, so access is checked again at
- * least that often; the client reconnects with the last `at` it heard as
- * `since`, and the server reads from a little before it. An event's `at` moves
- * to a read's start only once that read's items are all sent, so a connection
- * that drops midway through a read misses nothing on the next one.
+ * Every way out is quiet. The loop stops with its connection, at the next
+ * store read, even midway through a read. A failed read ends the connection,
+ * and the client reconnects with backoff. So does a session that is gone: the
+ * client's reconnect is then answered as any open is, a 404 or a 403, and
+ * those stop the client for good. The server closes the connection after at
+ * most 15 minutes, so access is checked again at least that often; the client
+ * reconnects with the last `at` it heard as `since`, and the server reads from
+ * a little before it. An event's `at` moves to a read's start only once that
+ * read's items are all sent, so a connection that drops midway through a read
+ * misses nothing on the next one.
  */
 import type {
   OutputItem,
@@ -53,9 +66,12 @@ import { abortableSleep } from "../stores/subscribe-helpers";
 import { serializeSSEFrame } from "../streaming/sse";
 import { createSSEStream, type SSEStreamHandle } from "../streaming/sse-stream";
 import {
+  isCheckedSession,
+  isSameSession,
   jsonResponse,
   loadTenantSession,
   refuseUnattributedRecord,
+  sessionRequestScope,
   snapshotItemsOf,
   SSE_HEADERS
 } from "./route-utils";
@@ -95,6 +111,12 @@ type SessionStreamRouteContext = {
   stores: StoreRegistry;
   /** Tenant id from the request header; namespaces the session key. */
   tenantId?: string;
+  /**
+   * The session the owner check read and admitted the caller to: `null` when
+   * it read none, absent when it read nothing (nothing in the app
+   * authenticates).
+   */
+  checkedSession?: SessionRecord | null;
 };
 
 /**
@@ -112,7 +134,11 @@ export async function handleSessionStream(
   ctx: SessionStreamRouteContext
 ): Promise<Response> {
   const session = await loadTenantSession(ctx.stores.session, route.sessionId, ctx.tenantId);
-  if (session === undefined) {
+  // The owner check read the session too. Every read the stream makes for as
+  // long as it lasts is scoped by this copy, so this copy must be the session
+  // that check admitted the caller to, not one that took its id since (or
+  // arrived after the check found none).
+  if (session === undefined || !isCheckedSession(ctx.checkedSession, session)) {
     return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
   }
   const unattributed = refuseUnattributedRecord(ctx.registry, session);
@@ -130,6 +156,7 @@ export async function handleSessionStream(
     stores: ctx.stores,
     sessionId: route.sessionId,
     tenantId: ctx.tenantId,
+    session,
     identity: parentIdentity(session, ctx.tenantId),
     itemTypes,
     since,
@@ -151,6 +178,8 @@ type FollowOptions = {
   stores: StoreRegistry;
   sessionId: string;
   tenantId: string | undefined;
+  /** The session as the stream opened on it: what every read is scoped by. */
+  session: SessionRecord;
   identity: ParentIdentity;
   itemTypes: ReadonlySet<string> | undefined;
   since: number | undefined;
@@ -158,9 +187,43 @@ type FollowOptions = {
   signal: AbortSignal;
 };
 
+/** Thrown at a store read made after the connection ended; ends the loop quietly. */
+class ConnectionEnded extends Error {
+  override name = "ConnectionEnded";
+}
+
+/**
+ * `store` as one connection reads it: each call first checks that the
+ * connection is still open, and throws {@link ConnectionEnded} once it is not.
+ * One read can be long (the first read of runs checks every run under the
+ * session, two store reads each), and a connection that ended midway through
+ * it makes no further store read.
+ */
+function whileOpen<T extends object>(store: T, isOpen: () => boolean): T {
+  return new Proxy(store, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target) as unknown;
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        if (!isOpen()) throw new ConnectionEnded();
+        return (value as (...params: unknown[]) => unknown).apply(target, args);
+      };
+    }
+  });
+}
+
 /** The loop behind one connection. Resolves when the connection ends. */
-async function followSession(options: FollowOptions): Promise<void> {
-  const { handle, signal, sessionId } = options;
+async function followSession(opened: FollowOptions): Promise<void> {
+  const { handle, signal, sessionId } = opened;
+  const isOpen = (): boolean => !handle.closed && !signal.aborted;
+  const options: FollowOptions = {
+    ...opened,
+    stores: {
+      ...opened.stores,
+      request: whileOpen(opened.stores.request, isOpen),
+      session: whileOpen(opened.stores.session, isOpen)
+    }
+  };
   const timings = SESSION_STREAM_TIMINGS;
   const openedAt = Date.now();
   let floor =
@@ -184,13 +247,21 @@ async function followSession(options: FollowOptions): Promise<void> {
 
   try {
     await runs.readAll();
+    if (!(await stillTheSession(options))) return;
     send({ stream: "session", sessionId, type: "session.runs", at: resumeAt, runs: runs.list() });
 
-    while (!handle.closed && !signal.aborted) {
+    while (isOpen()) {
       const start = Date.now();
       if (start - openedAt >= timings.maxAgeMs) break;
 
-      for (const { requestId, item } of await readFinishedItems(options, floor)) {
+      const found = await readFinishedItems(options, floor);
+      const runsChanged = await runs.refresh(floor);
+      // After the reads and before anything they found is sent: what they
+      // found under the id is only this stream's while the id still holds the
+      // session it opened on.
+      if (!(await stillTheSession(options))) return;
+
+      for (const { requestId, item } of found) {
         // One copy of an item, not the item: a keyed item emitted again keeps
         // its id and takes a later time and index, and is sent again.
         const key = `${requestId}\u0000${item.id}\u0000${item.ts}\u0000${item.itemIndex}`;
@@ -200,7 +271,7 @@ async function followSession(options: FollowOptions): Promise<void> {
       }
       resumeAt = start;
 
-      if (await runs.refresh(floor)) {
+      if (runsChanged) {
         send({ stream: "session", sessionId, type: "session.runs", at: resumeAt, runs: runs.list() });
       } else if (Date.now() - lastSentAt >= timings.pingMs) {
         send({ stream: "session", sessionId, type: "ping", at: resumeAt });
@@ -213,10 +284,20 @@ async function followSession(options: FollowOptions): Promise<void> {
     // A failed read ends the connection; the client reconnects with backoff
     // and hands back the last `at` it heard, so nothing is lost. A read cut
     // short by the connection ending is not a failure worth a line.
-    if (!handle.closed && !signal.aborted) warnOnce(error);
+    if (isOpen() && !(error instanceof ConnectionEnded)) warnOnce(error);
   } finally {
     handle.close();
   }
+}
+
+/**
+ * Whether the id still holds the session the stream opened on. Gone, or
+ * deleted and created again (by anyone), it is another session, and the
+ * connection ends: the client's reconnect is answered as any open is.
+ */
+async function stillTheSession(options: FollowOptions): Promise<boolean> {
+  const current = await loadTenantSession(options.stores.session, options.sessionId, options.tenantId);
+  return current !== undefined && isSameSession(options.session, current);
 }
 
 /** Failure kinds already logged, so a store outage costs one line, not one per read. */
@@ -248,11 +329,12 @@ async function readFinishedItems(
 ): Promise<Array<{ requestId: string; item: OutputItem }>> {
   const { stores, sessionId, tenantId } = options;
   const records = new Map<string, RequestRecord>();
+  // The snapshot's own filter: the bare session id, and the session's tenant,
+  // owner and organization, every key present.
+  const scope = sessionRequestScope(sessionId, options.session, tenantId);
 
-  // Snapshot's filters: the bare session id and the tenant key, always present.
   const unfinished = await stores.request.list({
-    sessionId,
-    tenantId,
+    ...scope,
     status: UNFINISHED_REQUEST_STATUSES,
     orderBy: "none",
     withItems: true
@@ -261,7 +343,7 @@ async function readFinishedItems(
 
   await forEachUpdatedSince(
     floor,
-    (limit) => stores.request.list({ sessionId, tenantId, orderBy: "updatedAt", limit }),
+    (limit) => stores.request.list({ ...scope, orderBy: "updatedAt", limit }),
     async (record) => {
       if (records.has(record.id)) return;
       // Adapters that keep items apart from the record leave them off a list

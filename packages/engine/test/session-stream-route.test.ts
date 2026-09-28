@@ -762,6 +762,164 @@ describe("a run waiting to start", () => {
       updatedAt: before.updatedAt
     });
   });
+
+  // The same person acting for another organization is refused too, later,
+  // and must not have moved a child outside that organization first.
+  it("leaves a child as it was when its owner's request for it under another organization is accepted", async () => {
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "chat",
+        actions: {
+          ping: {
+            concurrency: { policy: "queue", key: "session" },
+            block: handler({ name: "ping", execute: () => ({}) })
+          }
+        },
+        authentication: {
+          resolvePrincipal: (context: { request?: Request }) => ({
+            userId: "alice",
+            orgId: context.request?.headers.get("x-org") ?? DEFAULT_ORG_ID
+          })
+        }
+      })
+    );
+    const stores = createInMemoryStores();
+    router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    await seedSession(stores, Date.now() - 600_000);
+    await keepRun(stores, "seat", Date.now() - 3_600_000, "completed");
+    const before = (await stores.session.get("seat"))!;
+
+    await router.POST(
+      new Request("http://localhost/api/flows/chat/seat/actions/ping", {
+        method: "POST",
+        headers: { "x-org": "org_other" },
+        body: JSON.stringify({ userId: "alice", input: {} })
+      }),
+      { params: { path: ["chat", "seat", "actions", "ping"] } }
+    );
+    await until(
+      async () => (await stores.request.list({ sessionId: "seat" })).every((r) => r.status !== "in_progress"),
+      "the request was settled"
+    );
+
+    const after = (await stores.session.get("seat"))!;
+    expect({ version: after.version, updatedAt: after.updatedAt }).toEqual({
+      version: before.version,
+      updatedAt: before.updatedAt
+    });
+  });
+});
+
+describe("the session a stream or a snapshot opens on", () => {
+  let router: Router | undefined;
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    if (router !== undefined) await disposeFlowApiRouter(router);
+    router = undefined;
+  });
+
+  /** A request of mallory's under `s1`, finished, with one reply. */
+  function mallorysRequest(): RequestRecord {
+    return {
+      id: "req_mallory",
+      sessionId: "s1",
+      flowKind: "chat",
+      actionName: "say",
+      userId: "mallory",
+      orgId: "org_test",
+      source: "http",
+      status: "completed",
+      startedAtMs: Date.now(),
+      state: {},
+      version: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      items: [reply("req_mallory")]
+    } as RequestRecord;
+  }
+
+  /**
+   * Open `s1`'s stream or snapshot as `caller`, in an app that authenticates,
+   * running `between` once the owner check has read the session and before
+   * the route reads it. Returns the response status.
+   */
+  async function openAcrossTheCheck(
+    route: "stream" | "state",
+    caller: string,
+    seeded: boolean,
+    between: (stores: StoreRegistry, checked: SessionRecord | undefined) => Promise<void>
+  ): Promise<{ status: number; ran: boolean }> {
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "chat",
+        actions: { say: { block: handler({ name: "say", execute: () => ({}) }) } },
+        authentication: {
+          resolvePrincipal: (context: { request?: Request }) => {
+            const user = context.request?.headers.get("x-user");
+            return user == null ? null : { userId: user, orgId: "org_test" };
+          }
+        }
+      })
+    );
+    const stores = createInMemoryStores();
+    router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    if (seeded) {
+      await seedSession(stores, Date.now() - 600_000);
+      await stores.session.set("s1", { ...(await stores.session.get("s1"))!, orgId: "org_test" }, "any");
+    }
+
+    const get = stores.session.get.bind(stores.session);
+    let ran = false;
+    vi.spyOn(stores.session, "get").mockImplementation(async (id) => {
+      const found = await get(id);
+      if (!ran && id === "s1") {
+        ran = true;
+        await between(stores, found);
+      }
+      return found;
+    });
+
+    const controller = new AbortController();
+    const res = await router.GET(
+      new Request(`http://localhost/api/flows/sessions/s1/${route}`, {
+        headers: { "x-user": caller },
+        signal: controller.signal
+      }),
+      { params: { path: ["sessions", "s1", route] } }
+    );
+    controller.abort();
+    return { status: res.status, ran };
+  }
+
+  // The owner check and the stream each read the session. If the id changes
+  // hands between the two reads, the stream would follow a session nobody
+  // checked, for as long as the connection lasts.
+  it.each(["stream", "state"] as const)(
+    "opens the %s only on the session its caller was checked against, though the id changes hands between the two reads",
+    async (route) => {
+      const opened = await openAcrossTheCheck(route, "alice", true, async (stores, checked) => {
+        // Alice's session goes, and mallory's takes its id, with a request of her own.
+        await stores.session.delete("s1");
+        await stores.session.set("s1", { ...checked!, userId: "mallory", createdAt: Date.now() }, "any");
+        await stores.request.set("req_mallory", mallorysRequest(), "any");
+      });
+      expect(opened).toEqual({ status: 404, ran: true });
+    }
+  );
+
+  it.each(["stream", "state"] as const)("opens the %s on no session that arrived after the check found none", async (route) => {
+    // Mallory asks for an id nobody holds, and the check lets the route answer
+    // its own 404. Before it does, someone else's session takes the id.
+    const opened = await openAcrossTheCheck(route, "mallory", false, async (stores, checked) => {
+      expect(checked).toBeUndefined();
+      await seedSession(stores);
+      await stores.session.set("s1", { ...(await stores.session.get("s1"))!, orgId: "org_test" }, "any");
+    });
+    expect(opened).toEqual({ status: 404, ran: true });
+  });
 });
 
 /** Post `action` to `s1` as alice. */

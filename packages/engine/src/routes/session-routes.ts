@@ -19,6 +19,8 @@ import {
   getBooleanFlag,
   getPositiveInteger,
   getString,
+  isCheckedSession,
+  isSameSession,
   jsonResponse,
   loadTenantSession,
   parseJsonBody,
@@ -57,6 +59,11 @@ type SessionRouteContext = {
    * unrestricted. See `route-auth.ts`.
    */
   anonymousFlowIds?: Set<string>;
+  /**
+   * The session the owner check read and admitted the caller to, for a route
+   * that writes over its own read of it (`RouteAuthResult.session`).
+   */
+  checkedSession?: SessionRecord | null;
 };
 
 /**
@@ -452,7 +459,9 @@ export async function handlePatchSessionMetadata(
     route.sessionId,
     ctx.tenantId
   );
-  if (session === undefined) {
+  // The owner check read the session too, and the edit is written over this
+  // copy, so this copy must be the session the caller was admitted to.
+  if (session === undefined || !isCheckedSession(ctx.checkedSession, session)) {
     return jsonResponse(404, {
       error: `Unknown session "${route.sessionId}"`
     });
@@ -472,7 +481,10 @@ export async function handlePatchSessionMetadata(
     if (attempt > 0) {
       await waitForCASRetry(attempt);
       const reread = await loadTenantSession(ctx.stores.session, route.sessionId, ctx.tenantId);
-      if (reread === undefined) {
+      // The edit was checked against the session read first. One deleted and
+      // created again under the id since is another session, maybe another
+      // person's, and the edit is not its to receive.
+      if (reread === undefined || !isSameSession(session, reread)) {
         return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
       }
       current = reread;

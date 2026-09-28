@@ -523,4 +523,92 @@ describe("an edit and another write to one session at once", () => {
     expect(record?.title).toBe("Mine");
     expect(record?.tags).toEqual(["theirs"]);
   });
+
+  // The edit was checked against one session. One deleted and created again
+  // under its id while the edit retried is another session, perhaps another
+  // person's, and the edit is not theirs to receive.
+  it("does not apply an edit to a session created again under its id while the edit retried", async () => {
+    const { router, stores } = createRouter();
+    await keepSession(stores, "sess_gone", { flowKind: "demo", version: 3, createdAt: Date.now() - 60_000 });
+
+    const set = stores.session.set.bind(stores.session);
+    const get = stores.session.get.bind(stores.session);
+    let replaced = false;
+    vi.spyOn(stores.session, "set").mockImplementation(async (id, value, expected) => {
+      if (!replaced && id === "sess_gone" && value.title === "Mine") {
+        replaced = true;
+        await stores.session.delete(id);
+        await set(
+          id,
+          {
+            orgId: DEFAULT_ORG_ID,
+            id,
+            flowKind: "demo",
+            userId: "mallory",
+            state: {},
+            version: 0,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            journal: []
+          },
+          "absent"
+        );
+      }
+      return set(id, value, expected);
+    });
+
+    expect((await patchMetadata(router, "sess_gone", { title: "Mine" })).status).toBe(404);
+    expect(replaced).toBe(true);
+    const record = await get("sess_gone");
+    expect({ userId: record?.userId, title: record?.title }).toEqual({ userId: "mallory", title: undefined });
+  });
+
+  // The owner check read the session, then the edit reads it again to write
+  // over. If the id changes hands between the two reads, the edit would land
+  // on a session nobody checked it against, even at the same version.
+  it("does not apply an edit to a session that took its id after the owner check", async () => {
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "guarded",
+        actions: { run: { block: handler({ name: "guarded-run", execute: () => ({}) }) } },
+        authentication: {
+          resolvePrincipal: (context: { request?: Request }) => {
+            const user = context.request?.headers.get("x-user");
+            return user == null ? null : { userId: user, orgId: "org_test" };
+          }
+        }
+      })()
+    );
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    await keepSession(stores, "sess_taken", { flowKind: "guarded", orgId: "org_test" });
+
+    const get = stores.session.get.bind(stores.session);
+    let taken = false;
+    vi.spyOn(stores.session, "get").mockImplementation(async (id) => {
+      const found = await get(id);
+      if (!taken && id === "sess_taken" && found !== undefined) {
+        taken = true;
+        // Once the owner check has read alice's session: it goes, and
+        // mallory's takes its id, at the same version.
+        await stores.session.delete(id);
+        await stores.session.set(id, { ...found, userId: "mallory", createdAt: Date.now() + 1 }, "absent");
+      }
+      return found;
+    });
+
+    const res = await router.PATCH(
+      new Request("http://localhost/api/flows/sessions/sess_taken/metadata", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", "x-user": "alice" },
+        body: JSON.stringify({ title: "Mine" })
+      }),
+      { params: { path: ["sessions", "sess_taken", "metadata"] } }
+    );
+    expect(res.status).toBe(404);
+    expect(taken).toBe(true);
+    const record = await get("sess_taken");
+    expect({ userId: record?.userId, title: record?.title }).toEqual({ userId: "mallory", title: undefined });
+  });
 });

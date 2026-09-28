@@ -644,6 +644,10 @@ export function createInboundTransportHost(
     // run finished long ago is found no other way. After the request record,
     // so a read that finds the moved child finds the request too. Before the
     // entry, so a failure here leaves no entry behind.
+    //
+    // Only a child the request will be let run in: its tenant, its owner and
+    // its organization, each as `createExecutionContext` checks it later. A
+    // request that check refuses must not have moved the child first.
     if (dispatchEnvelope.sessionId !== undefined) {
       const sessionKey = resolveSessionStorageKey(
         dispatchEnvelope.sessionId,
@@ -654,7 +658,9 @@ export function createInboundTransportHost(
         session !== undefined &&
         session.parentSessionId != null &&
         tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
-        session.userId === dispatchEnvelope.userId
+        session.userId === dispatchEnvelope.userId &&
+        isValidOrgId(session.orgId) &&
+        session.orgId === dispatchEnvelope.orgId
       ) {
         // Written only over the version just read, and one past it, so a
         // writer still holding the older copy conflicts rather than putting it
