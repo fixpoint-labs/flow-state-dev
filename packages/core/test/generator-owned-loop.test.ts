@@ -1249,6 +1249,90 @@ describe("generator owned step loop — streaming", () => {
     });
   });
 
+  // A model that says something, calls a tool, then says more writes two
+  // separate thoughts. They reach the reader as one message and one output, so
+  // each step's text must read as its own paragraph there, never as one
+  // sentence run together at the step boundary ("…the tool.I've filed…").
+  describe("text from more than one step", () => {
+    const note = handler({
+      name: "note",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: () => ({ ok: true }),
+    });
+
+    const callStep = (id: string, text?: string): GeneratorModelStreamChunk[] => [
+      ...(text === undefined ? [] : [{ type: "text_delta" as const, textDelta: text }]),
+      { type: "tool_call_delta", toolCallDelta: { toolCallId: id, toolName: "note", argsDelta: "{}" } },
+      {
+        type: "finish",
+        finishReason: "tool-calls",
+        fullResult: {
+          text: text ?? "",
+          toolCalls: [{ toolCallId: id, toolName: "note", args: {} }],
+          finishReason: "tool-calls",
+        },
+      },
+    ];
+    const textStep = (text: string): GeneratorModelStreamChunk[] => [
+      { type: "text_delta", textDelta: text },
+      { type: "finish", finishReason: "stop", fullResult: { text, finishReason: "stop" } },
+    ];
+
+    async function run(script: StreamScript) {
+      const emitted: Array<{ type: string; item?: Record<string, unknown>; delta?: string }> = [];
+      const ctx = createMockContext({
+        response: {
+          emit: (event: unknown) => {
+            emitted.push(event as never);
+          },
+          getItems: () => emitted.filter((e) => e.item).map((e) => e.item),
+        } as never,
+      } as never);
+      const block = generator({
+        name: "multi-text-gen",
+        model: streamStepModel(script).model,
+        prompt: "p",
+        tools: [note],
+        itemVisibility: { client: true, history: true },
+      });
+      const output = await runForTest(block, {}, ctx);
+      const done = emitted.filter((e) => e.type === "item.done" && e.item?.type === "message");
+      expect(done).toHaveLength(1);
+      return {
+        output,
+        message: (done[0]!.item!.content as Array<{ text: string }>)[0]!.text,
+        streamed: emitted.filter((e) => e.type === "content.delta").map((e) => e.delta).join(""),
+      };
+    }
+
+    it("separates text written before a tool call from text written after it", async () => {
+      const result = await run([
+        callStep("n1", "That is outside what I know."),
+        textStep("I've filed this with our team."),
+      ]);
+
+      const expected = "That is outside what I know.\n\nI've filed this with our team.";
+      expect(result.output).toBe(expected);
+      // The client builds the message from the deltas, so the break is streamed
+      // too, not only added to the finished item.
+      expect(result.message).toBe(expected);
+      expect(result.streamed).toBe(expected);
+    });
+
+    it("puts one break between two texts however many tool-only steps sit between them", async () => {
+      const result = await run([
+        callStep("n1", "First."),
+        callStep("n2"),
+        textStep("Second."),
+      ]);
+
+      expect(result.output).toBe("First.\n\nSecond.");
+      expect(result.message).toBe("First.\n\nSecond.");
+      expect(result.streamed).toBe("First.\n\nSecond.");
+    });
+  });
+
   it("uses the legacy stream path when the model lacks streamStep", async () => {
     const tool = handler({
       name: "noop",
