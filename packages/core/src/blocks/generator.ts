@@ -2512,7 +2512,10 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
     // Reset so this step's `finish` chunk is what we read below, not a
     // previous step's.
     s.finalResult = undefined;
-    for await (const chunk of prep.stepModel.streamStep!({
+    // A step that writes text after earlier text opens with a paragraph
+    // break. A tool-only step never consumes this, so it adds no break.
+    let paragraphBreak = s.accumulated.length > 0;
+    for await (const raw of prep.stepModel.streamStep!({
       messages,
       tools: activeStepTools(toolset, activeToolNames),
       providerTools: providerTools.length > 0 ? providerTools : undefined,
@@ -2521,7 +2524,12 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
       providerOptions: resolvedProviderOpts,
       caching: resolvedCaching,
     })) {
-      await handleGeneratorStreamChunk(remapChunkToolNames(chunk, toolset), s, ctx);
+      let chunk = remapChunkToolNames(raw, toolset);
+      if (paragraphBreak && chunk.type === "text_delta" && chunk.textDelta) {
+        paragraphBreak = false;
+        chunk = { ...chunk, textDelta: `\n\n${chunk.textDelta}` };
+      }
+      await handleGeneratorStreamChunk(chunk, s, ctx);
     }
 
     // Widened read: the handler mutates `s.finalResult` inside the loop, so
