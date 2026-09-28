@@ -66,6 +66,9 @@ export const chatAssistantRenderers: RendererRegistry = {
     // registry does not name falls through to the raw-JSON dev fallback —
     // `itemVisibility` cannot suppress it, since structural items ignore it.
     "task-board-recorder-failure": false,
+    // A routed channel's record of who each post went to. The channel's lines
+    // are `channel-post` items; the record is bookkeeping, never a line.
+    "channel-route": false,
     // Debate's per-round, per-decision, and verdict items are collected
     // and rendered by the <Debate /> container renderer above.
     "debate-turn": false,

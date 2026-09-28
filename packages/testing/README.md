@@ -252,7 +252,15 @@ const result = await testBlock(triage, { input: "I was charged twice" });
 
 A scripted `confidence` is reported the way Jev reports it, so leave it out to model a provider that reports none. `error` makes every call reject, and `hold: true` keeps each call pending until its abort signal fires. To model a malformed result, script answers that don't match the questions; the evaluator fails with the AI SDK's validation error.
 
-`createMockModelResolver` has no `resolveEvaluationModel`, so an evaluator with a model **string** refuses to run on it. Use an evaluation model instance in tests.
+`createMockModelResolver` takes `evaluators`, keyed by block name like `generators`, so an evaluator with a model **string** resolves to the scripted one. An evaluator with no entry is refused, naming its block. Without `evaluators` the resolver has no `resolveEvaluationModel`, so an evaluator with a model string refuses to run on it.
+
+```ts
+const resolver = createMockModelResolver({
+  evaluators: { triage: mockEvaluationModel({ answers: { team: { type: "choice", choice: "billing" } } }) },
+});
+```
+
+`answers` can also be a function of the state each call is handed, so one scripted evaluation answers each case its own way: `answers: ({ state }) => ({ team: { type: "choice", choice: pickFrom(state) } })`. Throwing from it rejects that call.
 
 ### Tool-call observability
 

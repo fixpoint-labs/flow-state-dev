@@ -58,4 +58,11 @@ describe("the shipped chat registry names every substrate component type", () =>
     // somebody reads it in a chat thread.
     expect(source).toMatch(/"task-board-recorder-failure":\s*false/);
   });
+
+  it("suppresses a routed channel's route record: it is bookkeeping, never a line", () => {
+    // Every route a channel takes leaves one `channel-route` item on the
+    // channel's session. The lines are `channel-post` items; the record says
+    // who a post went to and why, and has no place in a thread.
+    expect(source).toMatch(/"channel-route":\s*false/);
+  });
 });

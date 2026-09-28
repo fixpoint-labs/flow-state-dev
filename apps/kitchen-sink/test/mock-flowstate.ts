@@ -23,6 +23,7 @@ import {
   sideChainBriefMock,
   agentSeatMock,
   deskClerkMock,
+  channelRouteMock,
 } from "@/lib/e2e-mock-script";
 
 /** Build the mocked model resolver used in `KITCHEN_SINK_TEST_MODE`. */
@@ -39,6 +40,8 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
       // A `desk-clerk` seat's answer.
       "desk-clerk-answer": deskClerkMock,
     },
+    // A routed channel's one evaluation, by its evaluator's block name.
+    evaluators: { "channel-route": channelRouteMock },
     policy: "allow",
   });
   const held = ((modelId, blockName, options) => {
@@ -65,5 +68,7 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
     };
   }) as ModelResolver;
   held.resolveId = scripted.resolveId;
+  // Evaluators resolve through the same resolver: a routed channel's route.
+  held.resolveEvaluationModel = scripted.resolveEvaluationModel;
   return held;
 }

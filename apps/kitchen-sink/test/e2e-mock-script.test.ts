@@ -20,8 +20,8 @@
  * and nothing else may hold: every other check's timing depends on that.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentSeatMock, deskClerkMock, holdBeforeAnswer } from "@/lib/e2e-mock-script";
-import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
+import { agentSeatMock, channelRouteMock, deskClerkMock, holdBeforeAnswer } from "@/lib/e2e-mock-script";
+import { createKitchenSinkTestModelResolver } from "./mock-flowstate";
 
 const user = (content: string) => ({ role: "user", content });
 const assistant = (content: string) => ({ role: "assistant", content });
@@ -130,5 +130,49 @@ describe("a seat that holds before answering", () => {
       tools: [{ name: "post-to-channel", execute: async (args) => void posted.push(args) }],
     } as Parameters<typeof model.generate>[0]);
     expect(posted).toHaveLength(1);
+  });
+});
+
+/**
+ * A routed channel's one evaluation, scripted. A post picks its member with
+ * `[route:<member>]`; a post that names none fails the call, which is what
+ * sends it to the channel's fallback. The script reads the post from the state
+ * the route hands it, `{ recent, post: { from, text } }`.
+ */
+describe("the scripted channel route", () => {
+  const route = async (text: string) =>
+    (await channelRouteMock.doEvaluate({
+      state: { recent: [], post: { from: "devuser", text } },
+      questions: {}
+    } as never)) as { answers: Record<string, unknown> };
+
+  it("picks the member a post names with [route:<member>]", async () => {
+    const result = await route("[route:support.devices] my laptop won't join the wifi");
+    expect(result.answers).toEqual({ member: { type: "choice", choice: "support.devices" } });
+  });
+
+  it("fails the call for a post that names no member, so the channel's fallback takes it", async () => {
+    await expect(route("who do I ask about a parking pass?")).rejects.toThrow(/\[route:<member>\]/);
+  });
+
+  it("is what the test-mode resolver hands the route's evaluator, by its block name", () => {
+    const resolver = createKitchenSinkTestModelResolver();
+    expect(resolver.resolveEvaluationModel).toBeTypeOf("function");
+    const resolved = resolver.resolveEvaluationModel!("any/model", "channel-route");
+    expect(resolved).toBeDefined();
+    expect(resolved).toBe(channelRouteMock);
+  });
+});
+
+describe("the wake scenario", () => {
+  it("answers in text and never calls the post tool, on a routed post or not", () => {
+    agentSeatMock.reset();
+    const heard = "devuser in support.help: [scenario:wake] is anyone there?";
+    const routed = `${heard}\n\nYou were picked to answer this post, and your reply is posted to support.help as you.`;
+    for (const turn of [heard, routed]) {
+      const step = agentSeatMock.next([user(turn)]);
+      expect(step?.toolCalls).toBeUndefined();
+      expect(step?.text).toContain("[reply:wake]");
+    }
   });
 });
