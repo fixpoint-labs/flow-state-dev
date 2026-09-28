@@ -885,7 +885,7 @@ export function createSessionStreamConformanceTests(
 
       await seedSession(stores, "run_1", {
         parentSessionId: "s1",
-        flowId: "support.otto",
+        flowId: "child.flow",
         topic: "topic-1"
       });
       await seedRequest(stores, { id: "req_run_1", sessionId: "run_1", status: "in_progress" });
@@ -893,7 +893,7 @@ export function createSessionStreamConformanceTests(
       expect(started.type === "session.runs" && started.runs[0]).toMatchObject({
         id: "run_1",
         parentSessionId: "s1",
-        flowId: "support.otto",
+        flowId: "child.flow",
         topic: "topic-1"
       });
 
