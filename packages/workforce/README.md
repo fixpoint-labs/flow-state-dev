@@ -1353,6 +1353,12 @@ channel's file and restoring it loses no lines. A person's post made while it wa
 nothing, so the next routed post after it is placed by the evaluator or the fallback. A channel on a
 kind built without a route keeps no record.
 
+Cancelling a routed post's fan-out (the request that picks the member and wakes it) may not stop the
+answer. If it is cancelled before the route is recorded in `channelRouteLedger`, nobody is woken, the
+`fallback:` member included. If the route was already recorded there, the chosen member is woken and
+answers, though the fan-out ends `aborted`. After a cancel, a `channel-route` item can name a member
+who was never woken.
+
 Routing needs in-process dispatch. Behind a dispatcher that hands work to an external queue, such
 as BullMQ, a post is written but its notify block never runs, so no member is picked or woken and
 nothing answers.
@@ -1617,13 +1623,13 @@ with `defineAgentWorkerFlow({ uses: [channelPostCapability] })`, and a seat name
 `tools:` to use it. Its input is `{ channel, body }` and nothing else, so an `author` from the
 model is refused.
 
-The line is posted through the built-in channel kind's `post`, with the seat's `seatId` (its
-record id, as `members:` lists it) as `author`, so the channel's member check applies and the
-fan-out can see a seat wrote it. `hireWorkforce` writes `seatId` on every seat it mints. A seat
-minted without one is refused, and the error names `seatId`. Every seat of the built-in `agent`
-kind is refused when its flow is built, whether or not it names the tool. A seat of any other kind
-carrying the capability is refused when a turn would offer the tool, before the model is called.
-Either way it posts nothing.
+Outside a routed turn (below), the line is posted through the built-in channel kind's `post`, with
+the seat's `seatId` (its record id, as `members:` lists it) as `author`, so the channel's member
+check applies and the fan-out can see a seat wrote it. `hireWorkforce` writes `seatId` on every
+seat it mints. A seat minted without one is refused, and the error names `seatId`. Every seat of
+the built-in `agent` kind is refused when its flow is built, whether or not it names the tool. A
+seat of any other kind carrying the capability is refused when a turn would offer the tool, before
+the model is called. Either way it posts nothing.
 
 The tool returns once the post is handed to the channel, as `{ handedTo, note }`. A refusal by the
 channel, such as an author who is not a member, lands on the channel's request, not in the seat's
@@ -1632,12 +1638,21 @@ turn. A refusal at dispatch fails the call by name: `session-not-found` for an i
 a dispatcher that hands work to an external queue. The tool works only where dispatch runs in
 process.
 
-In a routed channel, a routed member of the built-in `agent` kind has its reply posted for it, as
-its line, whether or not it calls the tool. A seat that does post there during that turn has posted
-its answer, so the reply is not posted again, and a second call reports that nothing more was
-posted. Each post gets at most one line from its member. An empty reply posts nothing and fails the
-run. A kind of your own receives `routed: true` and `recent` (the channel's last 20 lines) and has
-nothing posted for it.
+In a routed channel, a routed member of the built-in `agent` kind has a non-empty reply handed to
+the channel as its answer, whether or not it calls the tool. A tool call into that channel during
+the turn is handed over as the answer first, and the reply lands only if the tool's answer didn't,
+for instance because the channel failed to write it. A second tool call there posts nothing and
+tells the model its answer was already handed to the channel. A call into any other channel during
+that turn goes through `post`. An empty reply posts nothing, and fails the run unless the tool
+handed an answer over in that turn.
+
+The reply and the tool's answer both land through an internal entry of the channel kind, one only a
+dispatch can reach, never a client. It applies `post`'s member check and the same `seatId` author.
+Each post gets at most one answer line. Once one lands, any other answer to that post lands
+nothing, even one sent at the same moment. An answer the channel refuses writes nothing and doesn't
+use up the post's one answer line; the refusal is a failed request on the channel's session. A kind
+of your own receives `routed: true` and `recent` (the channel's last 20 lines) and has nothing
+posted for it.
 
 Also exported: `CHANNEL_POST_CAPABILITY` (`"channel-post"`), `POST_TO_CHANNEL_TOOL`
 (`"post-to-channel"`) and `postToChannelInputSchema`.

@@ -454,9 +454,23 @@ evaluator or the fallback. A channel on a kind built without a route keeps no re
 
 The routed member answers the way any woken seat does, in its own conversation. For a seat of the
 built-in `agent` kind, the reply is then posted into the channel as that seat's line. The model
-doesn't have to call [`post-to-channel`](#a-seat-answering-in-the-channel); if it does, its first
-post to that channel is the answer. Each post gets at most one line from its member. An empty reply
-posts nothing and ends that seat's run as failed.
+doesn't have to call [`post-to-channel`](#a-seat-answering-in-the-channel). If it does, its first
+call into that channel is handed over as the answer, and the reply is handed over after it. The
+reply lands only if the tool's answer didn't, for instance because the channel failed to write it.
+An empty reply posts nothing. It ends the seat's run as failed, unless the tool already handed an
+answer over in that turn.
+
+Whether it comes from the tool or the reply, the answer lands through an
+[internal entry](#making-a-kind-of-your-own-hear-posts) of the channel, not through its `post`. An
+internal entry is one only a dispatch can reach, never a client, so no client can answer for a
+member. The entry checks the line the way `post` does: the
+`author` is the seat's `seatId`, which the model can't set, and an author who isn't a member is
+refused.
+
+Each post gets at most one answer line. Once one lands, any other answer to that post lands
+nothing, even one sent at the same moment. An answer the channel refuses writes nothing and doesn't
+use up the post's one answer line. The refusal shows up as a failed request on the channel's
+session, and the seat isn't told.
 
 A [kind of your own](#making-a-kind-of-your-own-hear-posts) gets `routed: true` and the recent
 lines as `recent` on its delivery. Its reply is not posted for it.
@@ -481,6 +495,11 @@ its view. A seat woken in an unrouted channel, or talked to directly, gets no li
 - A member with no `description:`, such as a seat hired while the app runs, is never picked for
   what a post is about. It gets a post only as the fallback, or as the next post held for it after
   that.
+- Cancelling a post's fan-out, the request that picks its member and wakes it, may not stop the
+  answer. If the fan-out is cancelled before the route is recorded in `channelRouteLedger`, nobody
+  is woken, the fallback included. If the route was already recorded there, the chosen member is
+  woken and answers, though the fan-out ends `aborted`. After a cancel, a `channel-route` item can
+  name a member who was never woken.
 - One model per channel kind. Two channels on the same kind route with the same model.
 - A change to `routing:` waits for the next start.
 - It needs dispatch in the same process. Behind a dispatcher that hands work to an external queue,
@@ -537,11 +556,18 @@ its reply is posted for it. The tool is for everything else, such as a seat you 
 that wants to say something in a channel.
 
 The model calls `post-to-channel` with the channel's id and what to say. A woken seat reads the id
-off the post it heard, from the turn described in [Waking agent seats](#waking-agent-seats). The tool posts through that channel's own
-`post`, and the line's `author` is the seat's `seatId`: its record id, the name the channel's
-`members:` lists. The model cannot set it. The tool's input is `{ channel, body }` and nothing
+off the post it heard, from the turn described in [Waking agent seats](#waking-agent-seats). The
+tool posts through that channel's own `post`, except for a routed member's answer (below). Either
+way the line's `author` is the seat's `seatId`: its record id, the name the channel's `members:`
+lists. The model cannot set it. The tool's input is `{ channel, body }` and nothing
 else, so a call that adds an `author` is refused. A seat that doesn't name the tool is never
 offered it.
+
+On a turn answering a routed post, the first call into that post's channel is the post's answer. It lands
+the way [a routed answer](#the-answer-lands-in-the-channel) does: at most one line per post, under
+the same author, and the turn's reply lands only if the tool's answer didn't. A later call there in
+that turn posts nothing and tells the model its answer was already handed to the channel. A call
+into any other channel goes through `post`.
 
 A seat's post always carries an `author`, and `wakeMemberSeats` wakes nobody on a post with an
 `author` (see [Waking agent seats](#waking-agent-seats)), so seats won't wake each other.
@@ -551,9 +577,8 @@ What it won't do:
 - The seat must be a member. The channel refuses any other author and writes nothing, and the
   seat is not told: the tool reports that it handed the post over, not that it landed. The
   refusal shows up as a failed request on the channel's session.
-- Only the built-in channel kind takes these posts. A kind of your own would need a `post` that
-  another flow can call. A channel id nobody opened, or one on another kind, fails the call by
-  name.
+- Only the built-in channel kind takes these posts. A channel id nobody opened, or one on another
+  kind, fails the call by name.
 - It needs dispatch to run in process. Behind a host that hands dispatch to an external queue,
   the tool call fails with `external-dispatcher`.
 - The channel can't verify the name. The server sets it, and the line is stored with
