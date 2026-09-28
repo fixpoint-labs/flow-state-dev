@@ -27,7 +27,7 @@ A Workforce app is a roster, the channels that roster talks in, and the boards i
 
 Files are the authoring path. A `WORKER.md` under `teams/` and a `CHANNEL.md` beside it are how a roster is written down. Hiring at runtime adds to that roster; it doesn't replace the tree.
 
-For a working example, the kitchen-sink reference app in the repository (`apps/kitchen-sink`) is a support desk built this way: four specialists and one routed channel, declared under its `workforce/` folder, with a board for cases that need a person.
+For a working example, the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev/tree/main/apps/kitchen-sink) is a support desk built this way: four specialists and one routed channel, declared under its `workforce/` folder, with a board for cases that need a person.
 
 ## Hire a roster
 

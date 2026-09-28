@@ -10,13 +10,15 @@ If you're a developer (or a coding agent) iterating on a flow, this is your loop
 ## The loop
 
 1. **Edit.** Change a block, sequencer, router, capability, or flow definition.
-2. **Run.** `pnpm fsdev run <flow> <action> -i '<json>'` from the repo root. Pass `--session <id>` for multi-turn behavior, `--model <id>` to swap the model, `--seed-session <json|path>` to start from specific state.
+2. **Run.** `pnpm fsdev run <flow> <action> -i '<json>'` from the app's directory. Pass `--session <id>` for multi-turn behavior, `--model <id>` to swap the model, `--seed-session <json|path>` to start from specific state.
 3. **Read.** Stderr shows `[flow-state] *` runtime logs — the shape of execution. Stdout streams NDJSON events — `item_added`, `content_delta`, `state_change`, `flow_complete`, `error`. Pipe to `jq` for anything you want to inspect.
 4. **Repeat.** Tighten the loop with `--capture <path>` if you want a single file to diff between runs.
 
-A worked example, "I'm adding a new tool to chat-agent":
+A worked example, "I'm adding a new tool to chat-agent". `chat-agent` lives in the kitchen-sink reference app, so the example runs from `apps/kitchen-sink`:
 
 ```bash
+cd apps/kitchen-sink
+
 # 1. Edit flows/chat-agent/shared/capabilities/my-new-tool.ts and wire it into the pipeline.
 # 2. Smoke it.
 pnpm fsdev run chat-agent run \

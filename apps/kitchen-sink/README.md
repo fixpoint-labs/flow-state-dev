@@ -99,7 +99,7 @@ Nobody works `escalations` in this app, and the boot says so:
 
 Filed cases stay `pending` for a person to read. In an app of your own, that warning is how you find out a board has nobody draining it.
 
-Filing needs the in-process dispatcher. Run the app with `FSD_BULLMQ_DISPATCH=1` and a specialist still answers, but says it couldn't file.
+Filing needs the in-process dispatcher. With `FSD_BULLMQ_DISPATCH=1`, a post to `support.help` is written but no specialist answers, and a specialist you talk to directly still answers but says it couldn't file.
 
 ### Talking to one specialist
 
