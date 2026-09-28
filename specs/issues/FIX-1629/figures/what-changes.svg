@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 464" role="img" aria-label="Two panels. Left, today: a task table whose Details expander floats a clipped JSON block over the rows. Right, after: the same row opened in place, fields listed with the full goal wrapped, the raw JSON folded underneath, and an Actions strip offering cancelTask, updateTask and answer with the task id already filled. Below, the path an action takes: the row, the flow's action, the task tool, the ledger. Two things come back to the row: the tool's own result, read from the request's root trace, so a refusal shows as a refusal; and the change item, which shows the new state."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pane  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .row   { fill:var(--surface-2); }
+    .open  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .float { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .act   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .node  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="464"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY</text>
+    <rect class="pane" x="16" y="34" width="440" height="270" rx="5"/>
+    <text class="t-s" x="28" y="54">ID · GOAL · STATUS · ASSIGNEE · RUN · KIND · DETAILS</text>
+    <rect class="row" x="24" y="64" width="424" height="22" rx="3"/>
+    <text class="t-s" x="30" y="79">task_…c5775d  devuser is asking to speak wi…  pending</text>
+    <rect class="float" x="262" y="92" width="190" height="130" rx="4"/>
+    <text class="t-s" x="272" y="112">{ "revisio</text>
+    <text class="t-s" x="272" y="126">  "goal": "d</text>
+    <text class="t-s" x="272" y="140">  "status"</text>
+    <text class="t-s" x="272" y="154">  "metadat</text>
+    <text class="t-gone" x="272" y="194">floats over rows,</text>
+    <text class="t-gone" x="272" y="209">clipped at the pane</text>
+    <rect class="row" x="24" y="232" width="424" height="22" rx="3"/>
+    <text class="t-s" x="30" y="247">task_…1e94d4  devuser is requesting a new M…  pending</text>
+    <text class="t-gone" x="28" y="290">no way to change a task · reason off screen at 1280</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="484" y="24">AFTER</text>
+    <rect class="pane" x="484" y="34" width="440" height="270" rx="5"/>
+    <rect class="open" x="492" y="44" width="424" height="22" rx="3"/>
+    <text class="t-s" x="498" y="59">▾ pending  devuser is asking to speak with a…</text>
+    <text class="t-s" x="504" y="84">id  task_mulhacg2_1_c5775d · attempts 0 · revision 1</text>
+    <text class="t-s" x="504" y="100">goal  devuser is asking to speak with a real person</text>
+    <text class="t-s" x="504" y="114">      regarding their laptop issue …  (wrapped, whole)</text>
+    <text class="t-s" x="504" y="130">metadata  author support.general · verified false</text>
+    <text class="t-s" x="504" y="146">updated  2026-09-28 20:51 · created 20:51</text>
+    <text class="t-s" x="504" y="166">▸ raw JSON</text>
+    <text class="t-lbl" x="504" y="190">ACTIONS · taskId FILLED</text>
+    <rect class="act" x="504" y="198" width="116" height="22" rx="3"/>
+    <text class="t-acc" x="512" y="213">cancelTask_…</text>
+    <rect class="act" x="628" y="198" width="116" height="22" rx="3"/>
+    <text class="t-acc" x="636" y="213">updateTask_…</text>
+    <rect class="act" x="752" y="198" width="80" height="22" rx="3"/>
+    <text class="t-acc" x="760" y="213">answer</text>
+    <rect class="row" x="492" y="240" width="424" height="22" rx="3"/>
+    <text class="t-s" x="498" y="255">▸ pending  devuser is requesting a new MacBo…</text>
+    <text class="t-s" x="496" y="290">status first · reason in view at 1280 · no sideways scroll</text>
+  </g>
+
+  <g id="path">
+    <text class="t-lbl" x="16" y="334">HOW A ROW ACTION REACHES THE LEDGER · NO NEW ROUTE, NO NEW VERB</text>
+    <rect class="node" x="16" y="346" width="150" height="40" rx="4"/>
+    <text class="t-b" x="28" y="371">Tasks tab row</text>
+    <rect class="node" x="206" y="346" width="150" height="40" rx="4"/>
+    <text class="t-b" x="218" y="371">existing dispatch</text>
+    <rect class="node" x="396" y="346" width="150" height="40" rx="4"/>
+    <text class="t-b" x="408" y="371">flow action</text>
+    <rect class="node" x="586" y="346" width="150" height="40" rx="4"/>
+    <text class="t-b" x="598" y="371">task tool · verb</text>
+    <rect class="node" x="776" y="346" width="148" height="40" rx="4"/>
+    <text class="t-b" x="788" y="371">task ledger</text>
+    <path class="arrow" d="M166 366 H206 M356 366 H396 M546 366 H586 M736 366 H776"/>
+    <path class="arrow" d="M661 386 V402 H111 V386"/>
+    <text class="t-s" x="170" y="420">tool result { ok, error } from the request's root trace · a refusal shows as a refusal</text>
+    <path class="arrow" d="M850 386 V434 H61 V386"/>
+    <text class="t-s" x="300" y="454">task-change item · the row shows the new state</text>
+  </g>
+</svg>
