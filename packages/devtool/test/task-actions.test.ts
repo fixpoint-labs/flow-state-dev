@@ -126,6 +126,64 @@ describe("outcomeOf", () => {
     expect(outcomeOf(request(failed), "r1")).toEqual({ state: "failed", message: "boom" });
   });
 
+  describe("with request lifecycle hooks", () => {
+    // `runAction` runs the flow's and the action's lifecycle hooks (onStarted,
+    // onCompleted, onErrored, onFinished) as root blocks of the same request,
+    // before and after the action itself, and every one of them receives
+    // `{ requestId, actionName }`. The action's own trace has to be picked out
+    // of them: a hook's result is not the action's answer.
+    let seq = 0;
+    const trace = (status: string, input: unknown, output?: unknown, error?: string, id = `t${seq++}`) => ({
+      id,
+      type: "block_trace",
+      status,
+      provenance: {},
+      input: { source: { kind: "inline", value: input } },
+      ...(output === undefined ? {} : { output: { kind: "inline", value: output } }),
+      ...(error === undefined ? {} : { error: { message: error } }),
+    });
+    const hookInput = { requestId: "r1", actionName: "cancelTask_issues" };
+    const actionInput = { taskId: "task-a" };
+    const withStatus = (status: string, rawItems: unknown[]) => [{ requestId: "r1", status, rawItems }];
+
+    it("reads a refusal from the action, not from an onCompleted hook that ran after it", () => {
+      const items = [
+        trace("completed", hookInput), // onStarted
+        trace("completed", actionInput, { ok: false, error: "task is terminal" }),
+        trace("completed", { ...hookInput, output: { ok: false } }), // onCompleted
+        trace("completed", { ...hookInput, status: "completed" }), // onFinished
+      ];
+      expect(outcomeOf(request(items), "r1")).toEqual({ state: "refused", message: "task is terminal" });
+    });
+
+    it("reads a failed action as failed, not from the onErrored hook that ran after it", () => {
+      const items = [
+        trace("failed", actionInput, undefined, "no such task"),
+        trace("completed", hookInput, "logged"), // onErrored
+        trace("completed", hookInput), // onFinished
+      ];
+      expect(outcomeOf(withStatus("failed", items), "r1")).toEqual({ state: "failed", message: "no such task" });
+    });
+
+    it("tells a hook apart by its final entry, when its first entry carries no input yet", () => {
+      const hookStart = { id: "hook", type: "block_trace", status: "in_progress", provenance: {} };
+      const items = [
+        trace("completed", actionInput, { ok: false, error: "task is terminal" }),
+        hookStart,
+        { ...trace("completed", hookInput), id: "hook" },
+      ];
+      expect(outcomeOf(request(items), "r1")).toEqual({ state: "refused", message: "task is terminal" });
+    });
+
+    it("reads a request that failed in a hook after the action answered ok as failed, never as success", () => {
+      const items = [
+        trace("completed", actionInput, { ok: true }),
+        trace("failed", hookInput, undefined, "onCompleted threw"),
+      ];
+      expect(outcomeOf(withStatus("failed", items), "r1")).toEqual({ state: "failed", message: "onCompleted threw" });
+    });
+  });
+
   it("resolves a root output held by reference before reading it", () => {
     // A sequencer-backed action re-emits its last step's output as a `ref` to
     // that step's trace, or a `structure` of refs. The refusal lives behind

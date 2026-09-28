@@ -32,7 +32,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Locator, Page } from "playwright";
-import { taskToolSuffix } from "@flow-state-dev/orchestration";
+import { SERVER_ONLY_TASK_FIELDS, taskToolSuffix } from "@flow-state-dev/orchestration";
 import { CHANNEL_KIND } from "@flow-state-dev/workforce";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -68,8 +68,7 @@ const SETTLE_MS = 15_000;
 
 /**
  * Ledger field -> the label the open row gives it. A ledger field outside this
- * map is one the row has no place for; it is noted, and the raw record is
- * where a reader finds it.
+ * map is shown under its own raw key (see {@link labelOf}).
  */
 const FIELD_LABELS: Record<string, string> = {
   id: "Id",
@@ -94,6 +93,14 @@ const FIELD_LABELS: Record<string, string> = {
   completedAt: "Completed",
   leaseUntil: "Lease until",
 };
+
+/** The label the open row gives a ledger field: its own, or its raw key. */
+function labelOf(key: string): string {
+  return FIELD_LABELS[key] ?? key;
+}
+
+/** Fields the ledger keeps and never sends to a client, so no screen can show them. */
+const SERVER_ONLY = new Set<string>(SERVER_ONLY_TASK_FIELDS);
 
 const failures: string[] = [];
 const notes: string[] = [];
@@ -260,10 +267,14 @@ async function readOpen(
 
 /** How one ledger value should read on the open row. */
 function expectedText(key: string, value: unknown): string {
+  if (!(key in FIELD_LABELS)) {
+    // Shown under its raw key: a scalar as text, anything else as JSON.
+    return typeof value === "object" && value !== null ? JSON.stringify(value) : String(value);
+  }
   if (key.endsWith("At") || key === "leaseUntil") {
     return typeof value === "number" ? new Date(value).toISOString() : String(value);
   }
-  if (Array.isArray(value)) return value.join(", ");
+  if (Array.isArray(value)) return value.length === 0 ? "none" : value.join(", ");
   if (typeof value === "object" && value !== null) return JSON.stringify(value);
   return String(value);
 }
@@ -271,9 +282,10 @@ function expectedText(key: string, value: unknown): string {
 /** Whether the open row's text for one field shows the ledger's value. */
 function shows(key: string, shown: string, value: unknown): boolean {
   if (key === "attempts") return shown.split("/")[0]!.trim() === String(value);
-  // The caller skips null, so an "object" here is a record or an array.
-  if (typeof value === "object" && !Array.isArray(value)) {
-    // Structured values are pretty-printed: compare without whitespace.
+  // The caller skips null, so an "object" here is a record or an array. A
+  // labelled list reads joined; every other structured value is
+  // pretty-printed JSON, so compare it without whitespace.
+  if (typeof value === "object" && (!Array.isArray(value) || !(key in FIELD_LABELS))) {
     return shown.replace(/\s+/g, "") === JSON.stringify(value).replace(/\s+/g, "");
   }
   return shown === expectedText(key, value);
@@ -436,14 +448,18 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       await page.screenshot({ path: join(SHOTS, "read-open.png") });
       const missing: string[] = [];
       const wrong: string[] = [];
-      const unplaced: string[] = [];
+      const serverOnly: string[] = [];
+      let checked = 0;
       for (const [key, value] of Object.entries(ledgerNow)) {
-        if (value === undefined || value === null || (Array.isArray(value) && value.length === 0)) continue;
-        const label = FIELD_LABELS[key];
-        if (label === undefined) {
-          unplaced.push(key);
+        if (value === undefined || value === null) continue;
+        if (SERVER_ONLY.has(key)) {
+          serverOnly.push(key);
           continue;
         }
+        // Every field the ledger carries is on the open row (BR-4): a listed
+        // one under its label, any other under its raw key.
+        const label = labelOf(key);
+        checked += 1;
         const shown = open.fields[label];
         if (shown === undefined) missing.push(`${key} (${label})`);
         else if (!shows(key, shown, value)) wrong.push(`${label} reads ${JSON.stringify(shown.slice(0, 80))}, the ledger ${JSON.stringify(expectedText(key, value).slice(0, 80))}`);
@@ -451,9 +467,9 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       if (missing.length > 0) fail("read", `the open row does not show ${missing.join(", ")}, which the ledger holds`);
       if (wrong.length > 0) fail("read", `the open row disagrees with the ledger: ${wrong.join("; ")}`);
       if (open.overflow.length > 0) fail("read", `the open row overflows the pane: ${open.overflow.join("; ")}`);
-      if (unplaced.length > 0) notes.push(`ledger fields with no place of their own on the row (raw JSON only): ${unplaced.join(", ")}`);
+      if (serverOnly.length > 0) notes.push(`server-only ledger fields no client is sent, so not graded on screen: ${serverOnly.join(", ")}`);
       if (missing.length === 0 && wrong.length === 0 && open.overflow.length === 0) {
-        evidence.push(`read: open, ${Object.keys(ledgerNow).length - unplaced.length} ledger fields shown and matching, nothing past the pane`);
+        evidence.push(`read: open, all ${checked} ledger fields a client is sent shown and matching, nothing past the pane`);
       }
     }
 

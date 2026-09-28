@@ -96,23 +96,38 @@ export type RowActionOutcome =
   | { state: "unknown"; reason: "no-trace" | "not-retained" };
 
 type TraceLike = {
+  id?: string;
   type?: string;
   status?: string;
   provenance?: { parentBlockInstanceId?: string };
+  input?: { source?: BlockValueInternal<unknown> };
   output?: BlockValueInternal<unknown>;
   error?: { message?: string };
 };
 
 /**
- * Read a dispatched request's outcome off its root `block_trace`.
+ * Read a dispatched request's outcome off the action's own root `block_trace`.
  *
  * The dispatch response carries a request id and no output, and a refused
- * verb emits no change item, so the root trace is the one place the tool's
- * `{ ok, error }` can be read. An output held by reference (a `ref` to a
- * step's trace, or a `structure` of them) is resolved against the request's
- * own items first. If any reference in it, at any depth, has no target, the
- * resolved value has a hole where the refusal may have been, so it reads as
- * `unknown` rather than being classified.
+ * verb emits no change item, so the action's root trace is the one place the
+ * tool's `{ ok, error }` can be read.
+ *
+ * It is not simply the last root trace. `runAction` runs the flow's and the
+ * action's lifecycle hooks (`onStarted`, `onCompleted`, `onErrored`,
+ * `onFinished`) as root blocks of the same request, before and after the
+ * action, all under the same block instance id. Each hook receives
+ * `{ requestId, actionName }` for this request, which the action's own input
+ * cannot carry (the id is minted when the request starts), so a root whose
+ * input is that is a hook. The action's trace is the last root that is not.
+ * The raw log keeps several entries per trace (`in_progress`, then the one
+ * with the result), so entries are merged by item id before they are read.
+ *
+ * An output held by reference (a `ref` to a step's trace, or a `structure` of
+ * them) is resolved against the request's own items first. If any reference
+ * in it, at any depth, has no target, the resolved value has a hole where the
+ * refusal may have been, so it reads as `unknown` rather than being
+ * classified. A request that failed after the action answered (a hook threw)
+ * reads as failed, never as success.
  */
 export function outcomeOf(
   requests: readonly RequestOutcomeSource[],
@@ -120,30 +135,60 @@ export function outcomeOf(
 ): RowActionOutcome {
   const request = requests.find((candidate) => candidate.requestId === requestId);
   if (request === undefined) return { state: "pending" };
-  // The last root trace: the raw log keeps the root's `in_progress` entry
-  // ahead of the one that carries its result.
-  const root = [...(request.rawItems ?? [])].reverse().find((item): item is TraceLike => {
-    const trace = item as TraceLike;
-    return trace.type === "block_trace" && trace.provenance?.parentBlockInstanceId === undefined;
-  });
+  const lookup = buildItemLookup((request.rawItems ?? []) as readonly { id: string; type: string }[]);
+  const roots = mergedRootTraces(request.rawItems ?? []);
+  const isHook = (trace: TraceLike) => isHookInput(resolveInput(trace, lookup), requestId);
+  const root = [...roots].reverse().find((trace) => !isHook(trace));
+  const requestEnded = request.status !== "completed" && request.status !== "in_progress" && request.status !== "suspended";
 
   if (root?.status === "failed") {
     return { state: "failed", message: root.error?.message ?? "The action failed." };
   }
   if (root?.status === "completed") {
-    const lookup = buildItemLookup((request.rawItems ?? []) as readonly { id: string; type: string }[]);
     if (root.output !== undefined && hasUnresolvedRef(root.output, lookup, 0)) {
       return { state: "unknown", reason: "not-retained" };
     }
     const value = resolveBlockValueInternal(root.output, lookup);
     if (isRefusal(value)) return { state: "refused", message: refusalMessage(value.error) };
     if (isDeclined(value)) return { state: "refused", message: declinedMessage(value) };
+    if (requestEnded) {
+      // The action answered, then something after it (a hook) failed the request.
+      const failedHook = [...roots].reverse().find((trace) => trace.status === "failed");
+      return { state: "failed", message: failedHook?.error?.message ?? `The request ended ${request.status}.` };
+    }
     return { state: "ok", output: value };
   }
   if (request.status === "completed") return { state: "unknown", reason: "no-trace" };
-  if (request.status === "in_progress" || request.status === "suspended") return { state: "pending" };
+  if (!requestEnded) return { state: "pending" };
   // failed, aborted, interrupted, incomplete: it ended without a result.
   return { state: "failed", message: `The request ended ${request.status}.` };
+}
+
+/** Every root `block_trace`, one per item id with its entries merged in log order. */
+function mergedRootTraces(rawItems: readonly unknown[]): TraceLike[] {
+  const byId = new Map<string | number, TraceLike>();
+  rawItems.forEach((item, index) => {
+    const trace = item as TraceLike;
+    if (trace.type !== "block_trace") return;
+    const key = trace.id ?? index;
+    byId.set(key, { ...byId.get(key), ...trace });
+  });
+  return [...byId.values()].filter((trace) => trace.provenance?.parentBlockInstanceId === undefined);
+}
+
+function resolveInput(trace: TraceLike, lookup: ItemLookup): unknown {
+  const source = trace.input?.source;
+  return source === undefined ? undefined : resolveBlockValueInternal(source, lookup);
+}
+
+/** A request lifecycle hook's input: `{ requestId, actionName, … }` for this request. */
+function isHookInput(input: unknown, requestId: string): boolean {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    (input as { requestId?: unknown }).requestId === requestId &&
+    typeof (input as { actionName?: unknown }).actionName === "string"
+  );
 }
 
 /**
