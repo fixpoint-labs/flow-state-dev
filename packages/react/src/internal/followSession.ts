@@ -16,13 +16,12 @@ export type FollowSessionOptions = {
   readonly sessionCreatedAt?: number;
   readonly itemTypes?: string[];
   /**
-   * A finished item the session kept. `history` is true for an item the
-   * stream's very first read found, as far back as that read reaches: the
-   * server makes that read after it names the runs. An item a reconnect
-   * delivers again is not history; telling a repeat apart is the caller's
-   * (`requestId` and `item.id`, ordered by `compareItemOrder`).
+   * A finished item the session kept, including those the stream's opening
+   * read reaches back to. A reconnect can deliver an item again; telling a
+   * repeat apart is the caller's (`requestId` and `item.id`, ordered by
+   * `compareItemOrder`).
    */
-  readonly onItem: (event: SessionItemEvent, meta: { readonly history: boolean }) => void;
+  readonly onItem: (event: SessionItemEvent) => void;
   /** The session's unfinished runs: named first on every connection, then on each change. */
   readonly onRuns?: (event: SessionRunsChangedEvent) => void;
   /**
@@ -34,18 +33,9 @@ export type FollowSessionOptions = {
   readonly onLapsed?: () => void;
 };
 
-/**
- * Open the session's stream. Returns what closes it.
- *
- * Every connection names the runs first, and an item's `at` stays the point
- * the connection's first read reached back to until that read's items are all
- * sent. So an item whose `at` is the one the opening notice carried was found
- * by that connection's first read.
- */
+/** Open the session's stream. Returns what closes it. */
 export function followSession(options: FollowSessionOptions): () => void {
   let following = false;
-  let connection = 0;
-  let openingAt: number | undefined;
 
   const handle = createSessionSSEClient({
     sessionId: options.sessionId,
@@ -54,21 +44,14 @@ export function followSession(options: FollowSessionOptions): () => void {
     since: options.since,
     sessionCreatedAt: options.sessionCreatedAt,
     itemTypes: options.itemTypes,
-    onItem: (event) => {
-      options.onItem(event, { history: connection === 1 && event.at === openingAt });
-    },
+    onItem: options.onItem,
     onRuns: (event) => {
-      if (openingAt === undefined) {
-        connection += 1;
-        openingAt = event.at;
-      }
       following = true;
       options.onRuns?.(event);
     },
     // The first try after a drop takes about a second, the stream's own pace;
     // once one has failed, what it last said may no longer be current.
     onReconnecting: ({ attempt }) => {
-      openingAt = undefined;
       if (following && attempt >= 2) options.onLapsed?.();
     },
     // Refused for good, or the session is gone.

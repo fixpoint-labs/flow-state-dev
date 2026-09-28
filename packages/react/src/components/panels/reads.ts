@@ -155,46 +155,38 @@ function namesBoard(item: OutputItem, boardRef: string): boolean {
 /**
  * Read a board, and read it again whenever the session keeps a change to it.
  *
- * The board is read on mount, and once more when the stream first connects.
- * The server names the session's runs before its first read of the session's
- * items, so that second read reaches the store a round trip after the
- * stream's first read has begun. A change that first read finds (history)
- * wakes nothing: the second read holds it. Only a change kept after the
- * second read and still found by the first would wait for the next change,
- * and that needs the server's first read to outlast the round trip. Nothing
- * here compares a server's clock with this page's.
+ * The stream opens before the board is read on mount, and its opening scan
+ * reaches back a minute on the server's own clock. So a change kept around
+ * the mount read, before it, during it or after it, is heard, and every change
+ * to this board heard for the first time reads it again, whichever scan finds
+ * it. A board with no change in the last minute costs one read on mount; a
+ * change the opening scan finds adds a read, coalesced with any others as
+ * below. Nothing here compares a server's clock with this page's.
  *
- * After that, every change kept to this board reads it again, a reconnect
- * included. Reads are coalesced: one in flight, and one queued for any number
- * of changes that arrive meanwhile. A copy the stream delivers again (the
- * same request id and item id, stamped no later than one already heard) wakes
- * nothing. What the item carries is never drawn: it says when to read, never
- * what. A stream refused, missing or stopped leaves the rows as they are, with
- * no error.
+ * Reads are coalesced: one in flight, and one queued for any number of
+ * changes that arrive meanwhile. A copy the stream delivers again (the same
+ * request id and item id, stamped no later than one already heard), as a
+ * reconnect does, wakes nothing. What the item carries is never drawn: it says
+ * when to read, never what. A stream refused, missing or stopped leaves the
+ * rows as they are, with no error.
  */
 function liveBoardDriver(sessionId: string, boardRef: string, live: PanelLive): ReadDriver {
   return (read) => {
     const heard = new Map<string, OutputItem>();
     const reads = coalescedReads(read);
-    let connected = false;
 
     const close = followSession({
       sessionId,
       baseUrl: live.baseUrl,
       fetcher: live.fetcher,
       itemTypes: ["component"],
-      onRuns: () => {
-        if (connected) return;
-        connected = true;
-        reads.request();
-      },
-      onItem: ({ requestId, item }, { history }) => {
+      onItem: ({ requestId, item }) => {
         if (!namesBoard(item, boardRef)) return;
         const key = `${requestId}\u0000${item.id}`;
         const held = heard.get(key);
         if (held !== undefined && compareItemOrder(item, held) <= 0) return;
         heard.set(key, item);
-        if (!history) reads.request();
+        reads.request();
       }
     });
     reads.request();

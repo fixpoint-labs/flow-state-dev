@@ -298,18 +298,17 @@ describe("BoardList · live (V2)", () => {
   }
 
   /**
-   * Mount a live list, connect its stream, and let both of its first reads
-   * land: the one on mount and the one on connecting. Hands back the source
-   * at two reads.
+   * Mount a live list, connect its stream with an opening scan that finds
+   * nothing for this board, and let the mount read land. Hands back the
+   * source at one read.
    */
   async function mountLive(rows: Row[] = [card("t-1", "pending")]) {
     const source = heldSource(rows);
     const view = renderLive(source);
     deliver(opening(100));
     await source.release();
-    await source.release();
     await waitFor(() => expect(rowIds()).toHaveLength(rows.length));
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
     return { source, view };
   }
 
@@ -336,21 +335,52 @@ describe("BoardList · live (V2)", () => {
     expect(streams[0]!.options.since).toBeUndefined();
   });
 
-  it("reads on mount and once more when its stream first connects, and not for a later runs notice", async () => {
+  it("reads once, on mount, when the opening scan finds nothing for this board", async () => {
     const source = heldSource([card("t-1", "pending")]);
     renderLive(source);
-    expect(source.pending()).toBe(1);
-    // Connecting while the mount read is open queues the second read behind it.
     deliver(opening(100));
-    expect(source.pending()).toBe(1);
-    await source.release();
-    expect(source.pending()).toBe(1);
+    // The scan finds another board's change, and a component on this board
+    // that is not a task change.
+    deliver(itemEvent(100, "req_a", taskChange("req_a", "eng.feature.backlog", "t-9", Date.now())));
+    deliver(itemEvent(100, "req_a", component("req_a", "cp_1", "note", { body: "hello", collectionId: BOARD }, Date.now())));
     await source.release();
     // A later notice on the same connection says the runs changed, not the board.
     deliver(opening(1_100));
     await settle();
     expect(source.pending()).toBe(0);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads once more when the opening scan finds changes to this board, however many", async () => {
+    const source = heldSource([card("t-1", "pending"), card("t-2", "pending")]);
+    renderLive(source);
+    deliver(opening(100));
+    // Changes from 30 s ago and from just now, heard while the mount read is open.
+    deliver(itemEvent(100, "req_a", taskChange("req_a", BOARD, "t-1", Date.now() - 30_000)));
+    deliver(itemEvent(100, "req_b", taskChange("req_b", BOARD, "t-2", Date.now())));
+    expect(source.pending()).toBe(1);
+    await source.release();
+    expect(source.pending()).toBe(1);
+    await source.release();
+    await settle();
+    expect(source.pending()).toBe(0);
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a change kept after the mount read that the stream delivers only in its opening scan", async () => {
+    const source = heldSource([]);
+    renderLive(source);
+    deliver(opening(100));
+    // Every read the list has asked for so far lands before the change is kept.
+    while (source.pending() > 0) await source.release();
+    source.setRows([card("t-new", "pending")]);
+    // The server named the runs, then began its first scan, which finds the
+    // change: it arrives as part of that opening scan and nowhere else.
+    deliver(itemEvent(100, "req_file", taskChange("req_file", BOARD, "t-new", Date.now())));
+    await settle();
+    expect(source.pending()).toBe(1);
+    await source.release();
+    await waitFor(() => expect(rowIds()).toEqual(["t-new"]));
   });
 
   it("shows a change kept during its mount read with the page's clock 10 s ahead of the server's", async () => {
@@ -372,29 +402,24 @@ describe("BoardList · live (V2)", () => {
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
   });
 
-  it("reads nothing for the history its first connection replays, however recent, nor for its replay after a reconnect (BR-12)", async () => {
-    const { source } = await mountLive([card("t-1", "pending"), card("t-2", "pending")]);
-    // The first connection's first read reaches back a minute, and here lands
-    // after the read on connecting has settled: a change from 30 s ago and one
-    // from just now. That read holds both.
-    const history = [
-      itemEvent(100, "req_a", taskChange("req_a", BOARD, "t-1", Date.now() - 30_000)),
-      itemEvent(100, "req_b", taskChange("req_b", BOARD, "t-2", Date.now()))
-    ];
-    for (const event of history) deliver(event);
+  it("reads nothing when a reconnect replays what the opening scan found (BR-12)", async () => {
+    const source = heldSource([card("t-1", "pending")]);
+    renderLive(source);
+    deliver(opening(100));
+    const found = itemEvent(100, "req_a", taskChange("req_a", BOARD, "t-1", Date.now()));
+    deliver(found);
+    await source.release();
+    await source.release();
     await settle();
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
 
-    // A reconnect delivers the same changes again, as its own first read.
+    // The connection drops; the next one's opening scan delivers the same change.
     act(() => openStream().onReconnecting?.({ attempt: 1 }));
     deliver(opening(1_100));
-    for (const event of history) deliver({ ...event, at: 1_100 });
+    deliver({ ...found, at: 1_100 });
     await settle();
+    expect(source.pending()).toBe(0);
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
-
-    // A change heard after the first read did its reaching back still wakes it.
-    deliver(itemEvent(2_100, "req_c", taskChange("req_c", BOARD, "t-3", Date.now())));
-    expect(source.pending()).toBe(1);
   });
 
   it("reads the board again on a change to it, and draws the read, never the change (BR-8, BR-9)", async () => {
@@ -404,7 +429,7 @@ describe("BoardList · live (V2)", () => {
     expect(source.pending()).toBe(1);
     await source.release();
 
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
     expect(document.querySelector('li[data-task-id="t-1"] [data-task-status]')?.textContent).toBe("pending");
     expect(document.body.textContent).not.toContain("completed");
     expect(document.body.textContent).not.toContain("author");
@@ -421,7 +446,7 @@ describe("BoardList · live (V2)", () => {
       } as unknown as OutputItem)
     );
     await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
   });
 
   it("reads at most once more for a burst, with one read in flight and one queued (BR-11)", async () => {
@@ -436,22 +461,23 @@ describe("BoardList · live (V2)", () => {
     await source.release();
     await settle();
     expect(source.pending()).toBe(0);
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(4);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
   });
 
-  it("reads a change that lands while the mount read pages in the one read queued behind it", async () => {
+  it("reads a change that lands while the mount read pages in exactly one read after it", async () => {
     const source = heldSource([]);
     renderLive(source);
     deliver(opening(100));
-    // Kept while the mount read is still open, and heard after the stream's first read.
+    // Kept while the mount read is still open: that read may or may not hold it.
     deliver(itemEvent(1_200, "req_file", taskChange("req_file", BOARD, "t-new", Date.now())));
-    source.setRows([card("t-new", "pending")]);
+    deliver(itemEvent(1_200, "req_more", taskChange("req_more", BOARD, "t-more", Date.now())));
+    source.setRows([card("t-new", "pending"), card("t-more", "pending")]);
     expect(source.pending()).toBe(1);
     await source.release();
-    // Exactly one more, after it: the read on connecting, which the change joined.
+    // Exactly one more, after it, for both.
     expect(source.pending()).toBe(1);
     await source.release();
-    await waitFor(() => expect(rowIds()).toEqual(["t-new"]));
+    await waitFor(() => expect(rowIds()).toHaveLength(2));
     await settle();
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
   });
@@ -461,7 +487,7 @@ describe("BoardList · live (V2)", () => {
     const filed = taskChange("req_1", BOARD, "t-1", Date.now());
     deliver(itemEvent(1_100, "req_1", filed));
     await source.release();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
 
     // The connection drops; the next one resumes a little before where it
     // left off, and its notice reads nothing.
@@ -469,13 +495,13 @@ describe("BoardList · live (V2)", () => {
     deliver(opening(1_100));
     deliver(itemEvent(1_100, "req_1", filed));
     await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
 
     // Kept while the stream was down: new to the list, so it reads.
     deliver(itemEvent(1_100, "req_2", taskChange("req_2", BOARD, "t-2", Date.now() - 20_000)));
     expect(source.pending()).toBe(1);
     await source.release();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(4);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
   });
 
   it("reads for a later copy of the same keyed change, stamped after the one it heard", async () => {
