@@ -8,7 +8,8 @@
  * row) alike.
  *
  * A board's task tools carry the board in their name, `<tool>_<suffix>`, and
- * are offered only on that board's rows. The suffix rule mirrors
+ * are offered only on that board's rows; so is any action whose name ends with
+ * a listed board's suffix. The suffix rule mirrors
  * `taskToolSuffix` in `@flow-state-dev/orchestration` rather than importing it:
  * the DevTool depends on client, core and react only, as it mirrors the other
  * wire shapes it reads (see `task-collection-state`).
@@ -26,18 +27,6 @@ export function taskToolSuffix(collectionId: string): string {
   return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-/** The eight task tools, whose suffixed names always belong to one board. */
-const TASK_TOOLS = [
-  "addTask",
-  "assignTask",
-  "completeTask",
-  "failTask",
-  "blockTask",
-  "cancelTask",
-  "updateTask",
-  "listTasks",
-];
-
 function takesTaskId(schema: ActionInputSchema | undefined): boolean {
   if (schema === undefined || schema.type !== "object") return false;
   const field = schema.fields.taskId;
@@ -45,18 +34,19 @@ function takesTaskId(schema: ActionInputSchema | undefined): boolean {
 }
 
 /**
- * The actions a row on `collectionId` offers, in the flow's order.
+ * The actions a row on `collectionId` offers, in the flow's order (BR-9,
+ * BR-10).
  *
- * A task tool (`<tool>_<suffix>`) is this board's only when its suffix IS this
- * board's, compared whole: `cancelTask_feature_work` also ends with `_work`,
- * and is not the `work` board's. Any other action is generic unless its name
- * ends with a listed board's suffix; then it belongs to the board whose suffix
- * is the longest match.
+ * An action whose name ends with `_<suffix>` of a listed board belongs to that
+ * board alone; when several listed suffixes match (`cancelTask_feature_work`
+ * ends with `_work` too), the longest wins. One whose name ends with no listed
+ * board's suffix is generic and offered on every board, whatever its name
+ * starts with: an app may name its own action `cancelTask_now`.
  *
  * @param actions The flow's public action names.
  * @param schemas Their input schemas, as the flow list reports them.
  * @param collectionId The board the row is on.
- * @param boardIds Every board the tab lists for this flow, so an app action
+ * @param boardIds Every board the tab lists for this flow, so an action
  *   suffixed for another board is told apart from a generic one.
  */
 export function taskActionsFor(
@@ -69,10 +59,6 @@ export function taskActionsFor(
   const suffixes = [...new Set([collectionId, ...boardIds].map(taskToolSuffix))];
   return actions.filter((name) => {
     if (!takesTaskId(schemas?.[name])) return false;
-    // A task tool names its board whole, listed or not (a board with no tasks
-    // yet is not listed, and its tools are still never generic).
-    const tool = TASK_TOOLS.find((candidate) => name.startsWith(`${candidate}_`));
-    if (tool !== undefined) return name.slice(tool.length + 1) === own;
     const owner = suffixes
       .filter((suffix) => name.endsWith(`_${suffix}`))
       .reduce<string | undefined>((best, suffix) => (best === undefined || suffix.length > best.length ? suffix : best), undefined);

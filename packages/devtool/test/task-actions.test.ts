@@ -47,24 +47,24 @@ describe("taskActionsFor", () => {
     expect(taskActionsFor(Object.keys(schemas), schemas, "b.two", ["a.one", "b.two"])).toEqual(["answer"]);
   });
 
-  it("keeps a task tool for a board the tab does not list off every other board", () => {
-    // A board with no tasks yet is not listed, so its tools match no listed
-    // suffix. They are still a board's tools, not generic actions.
-    const schemas = { cancelTask_quiet_board: takesTaskId, answer: takesTaskId };
-    expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer"]);
+  it("BR-10 · offers an action matching no listed board's suffix on every board, task-tool name or not", () => {
+    // `cancelTask_now` is an app's own action that happens to share a task
+    // tool's verb. Its ending names no board the tab lists, so it is generic.
+    const schemas = { cancelTask_now: takesTaskId, answer: takesTaskId };
+    const names = Object.keys(schemas);
+    expect(taskActionsFor(names, schemas, "issues", ["issues", "bugs"])).toEqual(["cancelTask_now", "answer"]);
+    expect(taskActionsFor(names, schemas, "bugs", ["issues", "bugs"])).toEqual(["cancelTask_now", "answer"]);
   });
 
-  it("matches a task tool to its board exactly, not by a shared ending", () => {
-    // `cancelTask_feature_work` ends with `_work` too. Offered on the `work`
-    // rows, it would send a `work` task's id to the other board's ledger.
+  it("BR-10 · gives a task tool to the listed board with the longest matching suffix", () => {
+    // `cancelTask_feature_work` ends with `_work` too. With both boards
+    // listed it belongs to `feature.work` alone, not to `work`.
     const schemas = { cancelTask_work: takesTaskId, cancelTask_feature_work: takesTaskId };
     const names = Object.keys(schemas);
     expect(taskActionsFor(names, schemas, "work", ["work", "feature.work"])).toEqual(["cancelTask_work"]);
     expect(taskActionsFor(names, schemas, "feature.work", ["work", "feature.work"])).toEqual([
       "cancelTask_feature_work",
     ]);
-    // The same when the longer board has no tasks yet, so the tab does not list it.
-    expect(taskActionsFor(names, schemas, "work", ["work"])).toEqual(["cancelTask_work"]);
   });
 
   it("gives an app's suffixed action to the board with the longest matching suffix", () => {

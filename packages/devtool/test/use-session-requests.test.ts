@@ -363,3 +363,57 @@ describe("useSessionRequests — single-flight refresh", () => {
     expect(result.current.requests).toEqual([{ id: "req_a", status: "completed" }]);
   });
 });
+
+/**
+ * A read that never settles (FIX-1629).
+ *
+ * The transport has no timeout, so one hung list request would otherwise hold
+ * the single flight forever: every later refresh would join it, and a poller
+ * awaiting its refresh would never tick again. A flight is let go after a
+ * stall bound; the next refresh starts a fresh read whose fence retires the
+ * hung one, so its answer is discarded if it ever arrives.
+ */
+describe("useSessionRequests — a stalled read", () => {
+  beforeEach(() => {
+    sessionClientMock.listSessionRequests.mockReset();
+    recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
+    devToolState.config = { userId: "devuser" };
+    devToolState.autoRecoverInterrupted = false;
+    devToolState.sessionClient = sessionClientMock;
+  });
+
+  it("lets go of a read that never settles, and a later refresh reads again", async () => {
+    let resolveHung!: (rows: unknown[]) => void;
+    sessionClientMock.listSessionRequests.mockReturnValueOnce(
+      new Promise((resolve) => (resolveHung = resolve as (rows: unknown[]) => void))
+    );
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { result } = renderHook(() => useSessionRequests("sess_1"));
+      await act(async () => {});
+      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(1);
+
+      // A caller that joined the hung read is released once the bound passes,
+      // so a poller awaiting it ticks again.
+      let joinedSettled = false;
+      act(() => {
+        void result.current.refresh().then(() => (joinedSettled = true));
+      });
+      sessionClientMock.listSessionRequests.mockResolvedValue([{ id: "req_fresh", status: "completed" }]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(joinedSettled).toBe(true);
+      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(2);
+      expect(result.current.requests).toEqual([{ id: "req_fresh", status: "completed" }]);
+
+      // The hung read's answer, arriving late, does not overwrite the fresh one.
+      await act(async () => {
+        resolveHung([{ id: "req_hung", status: "in_progress" }]);
+      });
+      expect(result.current.requests).toEqual([{ id: "req_fresh", status: "completed" }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

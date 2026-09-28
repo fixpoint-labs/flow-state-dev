@@ -4,6 +4,9 @@ import { useDevTool } from "../context/devtool-context";
 import { describeReadError } from "../lib/instance-ownership";
 import { useWorkspaceFence } from "./use-workspace-fence";
 
+/** How long a list read may run before a refresh stops waiting on it. */
+const READ_STALL_MS = 15_000;
+
 /** A read in flight, and the one follow-up read callers who joined it asked for. */
 type Flight = {
   identity: readonly unknown[];
@@ -111,7 +114,16 @@ export function useSessionRequests(sessionId: string | null) {
     }
     const entry: Flight = { identity: fence.identity, done: Promise.resolve(), next: null };
     flightRef.current = entry;
-    entry.done = read().finally(() => {
+    // Bounded: the transport has no timeout, and a read that never settles
+    // would hold every joined caller (and a poller awaiting one) forever. Past
+    // the bound the flight is let go, so the next refresh begins a fresh read
+    // whose fence retires the hung one.
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<void>((resolve) => {
+      stallTimer = setTimeout(resolve, READ_STALL_MS);
+    });
+    entry.done = Promise.race([read(), stalled]).finally(() => {
+      clearTimeout(stallTimer);
       if (flightRef.current === entry) flightRef.current = null;
     });
     return entry.done;
