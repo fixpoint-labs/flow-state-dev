@@ -88,6 +88,17 @@ None; the shape extends an existing table and form. No POC: the goal check rende
 - Confirm the lab's `answer` action input requires `taskId` (BR-9 depends on it).
 - Confirm the change item from an action's request reaches the viewed session's items (FIX-1622's POC shows this for `fileTask` on the channel).
 
+## Notes from review
+
+- "If devtool truly cannot depend on `@flow-state-dev/orchestration`, say that explicitly and point C3 at shared test vectors; otherwise export a tiny `matchesBoardSuffix(actionName, collectionId)` from orchestration (or core) and delete the mirror." (It can't today: `apps/devtool` depends on client, core, devtool and react only.) — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2346#discussion_r4127074959))
+- "Is there an internal caller for suffixed task tools? If not, **public-only spread** is a smaller catalog and simpler C2 without changing DevTool behavior. If the mirror is required, one sentence naming the caller (or \"consistency with fileTask\") would close the loop." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2346#discussion_r4127074964))
+- "BR-4's field enumeration will require spec edits whenever the task record grows. BR-5 already requires byte-complete folded JSON. Consider narrowing BR-4 to structured display of known fields with BR-5 as the completeness backstop." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2346#discussion_r4127074977))
+- "Memoize `taskActionsFor` once per `(flow, collectionId)`, not per row; lazy-mount `JsonViewer` on expand/stream ticks." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2346#pullrequestreview-5344706056))
+
+These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
+discarding one. A note that turns out to reveal a design problem is a spec blind spot:
+surface it and fold it back.
+
 ## Follow-ups
 
 - Close FIX-1523 on merge.
