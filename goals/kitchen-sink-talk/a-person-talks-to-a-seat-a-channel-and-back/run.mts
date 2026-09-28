@@ -17,22 +17,24 @@
  *        within 15 s, and the row clears. Nobody else works or answers.
  *   b    three posts, each after the previous answer: B1 to devices, B2 to
  *        accounts, B3 unmarked for the fallback, each answered through the post
- *        tool: one line each, by the right seat; nobody else works. Each seat's
- *        conversation in the channel holds only its own posts.
- *   c1   "New conversation" on devices, token C1: the person's turn, a reply
- *        under it.
- *   c2   there, the recall scenario, token C2: the person's turn, and a reply
- *        naming C1 and no token from a or b. The channel shows none of it.
+ *        tool: the right seat works, then one line each, by it; nobody else
+ *        works. Each seat's conversation in the channel holds only its own posts.
+ *   c1   "New conversation" on devices, token C1: the person's turn
+ *        (`c1:turn`), a reply under it (`c1:reply`).
+ *   c2   there, the recall scenario, token C2: the person's turn (`c2:turn`),
+ *        and a reply naming C1 and no token from a or b (`c2:recall`). The
+ *        channel shows none of it (`c2:channel`).
  *   seg  (part 4) devices' conversation in the channel holds nothing of C1.
  *   e    (part 2) a needs-a-person post, token E: the specialist's line says
  *        it filed (`e:line`); the team panel's escalations list shows one
- *        row carrying E on the open page (`e:row-open`) and after the reload
- *        (`e:row`); the boot still warns that nothing drains escalations
- *        (`e:warning`).
+ *        row carrying E on the open page within 15 s of that line
+ *        (`e:row-open`) and after the reload (`e:row`); the boot still warns
+ *        that nothing drains escalations (`e:warning`).
  *
  * With no GOAL_CONTROL the run takes the plain journey, then each control on a
  * fresh server and a fresh browser context, all on the one build. Each control
- * must redden the legs its row names and leave the ones it lists green.
+ * must redden every assertion its row names, its own signal, and leave the
+ * legs it lists wholly green.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-channel-and-back/run.mts
  * One:      GOAL_CONTROL=<name> on the same command runs that control alone
@@ -116,21 +118,32 @@ const CHANNEL = fixture.channel.id;
 const route = (role: Role) => M.route.replace("{seat}", SEATS[role].id);
 
 /**
- * The controls, as PLAN → Controls has them: the legs each must redden, and
- * the legs each must leave green. A leg in neither list is reported, not
- * graded. `how` is where the control acts: the server (`GOAL_CONTROL` on
- * `next start`, honoured only in test mode), the page (`?goalControl=`), the
- * page's network (this run), or a separate checkout.
+ * The controls, as PLAN → Controls has them. `fail` names the assertions that
+ * are each control's own signal, every one of which it must redden; `green`
+ * names the legs it must leave wholly green. Any other red assertion in a leg
+ * `fail` touches is reported, not counted, and so is a leg in neither list.
+ * `how` is where the control acts: the server (`GOAL_CONTROL` on `next start`,
+ * honoured only in test mode), the page (`?goalControl=`), the page's network
+ * (this run), or a separate checkout.
  */
 const CONTROLS: Record<string, { how: "server" | "page" | "network" | "checkout"; fail: string[]; green: string[] }> = {
-  main: { how: "checkout", fail: ["a", "b"], green: ["c1"] },
-  "no-live": { how: "page", fail: ["a", "b", "e"], green: ["c1", "c2", "seg"] },
-  "no-landing": { how: "server", fail: ["a", "e"], green: ["b", "c1", "c2", "seg"] },
-  "no-route": { how: "server", fail: ["a", "b", "e"], green: ["c1", "c2", "seg"] },
-  "drop-user-message": { how: "network", fail: ["c1", "c2"], green: ["a", "b", "seg", "e"] },
-  "no-history": { how: "server", fail: ["c2"], green: ["a", "b", "c1", "seg", "e"] },
-  "no-filing": { how: "server", fail: ["e"], green: ["a", "b", "c1", "c2", "seg"] },
+  // The live view and the route: nobody shows as working, a's answer never shows unreloaded, B2 and B3 reach the wrong seat.
+  main: { how: "checkout", fail: ["a:working", "a:line", "b:line"], green: ["c1"] },
+  // No live view: no working row, no answer and no filed row until a reload.
+  "no-live": { how: "page", fail: ["a:working", "a:line", "b:working", "b:line", "e:row-open"], green: ["c1", "c2", "seg"] },
+  // A text answer never lands without a post-tool call.
+  "no-landing": { how: "server", fail: ["a:line", "e:line"], green: ["b", "c1", "c2", "seg"] },
+  // Every member wakes: others work, and the one-line answers and the one filed row multiply or never land.
+  "no-route": { how: "server", fail: ["a:line", "a:alone", "b:line", "b:alone", "e:line", "e:row-open"], green: ["c1", "c2", "seg"] },
+  // The page never gets the person's turns.
+  "drop-user-message": { how: "network", fail: ["c1:turn", "c2:turn"], green: ["a", "b", "seg", "e"] },
+  // The seat is sent no earlier turn, so the recall cannot name C1.
+  "no-history": { how: "server", fail: ["c2:recall"], green: ["a", "b", "c1", "seg", "e"] },
+  // Nothing is filed, so no row, open or after the reload.
+  "no-filing": { how: "server", fail: ["e:row-open", "e:row"], green: ["a", "b", "c1", "c2", "seg"] },
 };
+/** Every leg a control's lists can name. */
+const LEGS = ["a", "b", "c1", "c2", "seg", "e"];
 if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(CONTROLS).join(", ")}`);
 }
@@ -477,11 +490,18 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
     const text = `${post.marked ? `${route(post.role)} ` : ""}${M.toolAnswer} ${post.token} ${post.ask}`;
     const sentAt = await postLine(page, text);
     const f = await follow(page, sentAt, (r) => repliesOf(r.lines, post.token).length > 0, fixture.lineWithinMs);
+    // As in leg a: the seat shows working in a reading before the one that first shows its line.
+    const workingAt = f.readings.find(
+      (r) => (f.lineAt === undefined || r.at < f.lineAt) && r.working.includes(`${seat} is working`),
+    )?.at;
     const replies = repliesOf(f.readings.at(-1)!.lines, post.token);
     const most = Math.max(0, ...f.readings.map((r) => repliesOf(r.lines, post.token).length));
     const others = othersWorking(f.readings, before, seat);
     const name = `${post.token} (${post.marked ? route(post.role) : "unmarked, the fallback"})`;
     const ok0 = failuresSoFar.length;
+    if (workingAt === undefined) {
+      fail("b:working", `${name}: the panel never showed "${seat} is working" before its line (line ${secs(sentAt, f.lineAt)}; ${f.readings.length} readings, rows seen: ${JSON.stringify([...new Set(f.readings.flatMap((r) => r.working))])})`);
+    }
     if (f.lineAt === undefined) {
       fail("b:line", `${name}: no line carrying it within ${fixture.lineWithinMs / 1000}s of Send, with no reload`);
     } else if (replies.length !== 1 || most > 1 || replies[0]!.label !== seat || !replies[0]!.body.includes(M.toolReply)) {
@@ -489,7 +509,7 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
     }
     if (others.length > 0) fail("b:alone", `${name}: the panel showed ${others.join(", ")} working on it (want ${seat} alone)`);
     if (failuresSoFar.length === ok0) {
-      evidence.push(`b: ${name}: line ${secs(sentAt, f.lineAt)} by ${seat}, working ${secs(sentAt, f.readings.find((r) => r.working.includes(`${seat} is working`))?.at)}, nobody else seen working`);
+      evidence.push(`b: ${name}: line ${secs(sentAt, f.lineAt)} by ${seat}, working ${secs(sentAt, workingAt)}, nobody else seen working`);
     }
   }
 
@@ -575,7 +595,7 @@ async function legC(page: Page, t: Tokens, dropUser: boolean, fail: Fail, eviden
   );
   const sessionId = current[0];
   if (sessionId === undefined) {
-    fail("c1", `"New conversation" on ${seat.id} opened no conversation in the rail`);
+    fail("c1:setup", `"New conversation" on ${seat.id} opened no conversation in the rail`);
     return;
   }
   if (dropUser) {
@@ -646,9 +666,9 @@ function gradeC1(messages: Message[], most: number, t: Tokens, when: string, fai
   const turns = messages.filter((m) => m.role === "user" && m.text.includes(t.c1)).length;
   const reply = replyTo(messages, t.c1);
   if (turns !== 1 || most > 1) {
-    fail("c1", `${when}: ${t.c1} is the person's turn ${turns} times, at most ${most} in one reading (want once); roles drawn: ${messages.map((m) => m.role).join(", ") || "none"}`);
+    fail("c1:turn", `${when}: ${t.c1} is the person's turn ${turns} times, at most ${most} in one reading (want once); roles drawn: ${messages.map((m) => m.role).join(", ") || "none"}`);
   } else if (reply === undefined || !reply.text.includes(M.talkReply)) {
-    fail("c1", `${when}: no ${M.talkReply} reply under ${t.c1}; under it: ${JSON.stringify(reply?.text ?? null)}`);
+    fail("c1:reply", `${when}: no ${M.talkReply} reply under ${t.c1}; under it: ${JSON.stringify(reply?.text ?? null)}`);
   } else {
     evidence.push(`c1: ${when}, ${t.c1} is the person's turn${timing === "" ? "" : ` (${timing})`}, ${JSON.stringify(reply.text)} under it`);
   }
@@ -659,13 +679,13 @@ function gradeC2(messages: Message[], most: number, t: Tokens, when: string, fai
   const reply = replyTo(messages, t.c2);
   const earlier = [t.a, ...t.b].filter((token) => reply?.text.includes(token) === true);
   if (turns !== 1 || most > 1) {
-    fail("c2", `${when}: ${t.c2} is the person's turn ${turns} times, at most ${most} in one reading (want once); roles drawn: ${messages.map((m) => m.role).join(", ") || "none"}`);
+    fail("c2:turn", `${when}: ${t.c2} is the person's turn ${turns} times, at most ${most} in one reading (want once); roles drawn: ${messages.map((m) => m.role).join(", ") || "none"}`);
   } else if (reply === undefined || !reply.text.includes(M.recallReply)) {
-    fail("c2", `${when}: no ${M.recallReply} reply under ${t.c2}; under it: ${JSON.stringify(reply?.text ?? null)}`);
+    fail("c2:recall", `${when}: no ${M.recallReply} reply under ${t.c2}; under it: ${JSON.stringify(reply?.text ?? null)}`);
   } else if (!reply.text.includes(t.c1)) {
-    fail("c2", `${when}: the recall reply ${JSON.stringify(reply.text)} does not name ${t.c1}, the conversation's earlier turn`);
+    fail("c2:recall", `${when}: the recall reply ${JSON.stringify(reply.text)} does not name ${t.c1}, the conversation's earlier turn`);
   } else if (earlier.length > 0) {
-    fail("c2", `${when}: the recall reply names ${earlier.join(", ")}, from the channel: ${JSON.stringify(reply.text)}`);
+    fail("c2:recall", `${when}: the recall reply names ${earlier.join(", ")}, from the channel: ${JSON.stringify(reply.text)}`);
   } else {
     evidence.push(`c2: ${when}, ${t.c2} is the person's turn${timing === "" ? "" : ` (${timing})`}, ${JSON.stringify(reply.text)} under it`);
   }
@@ -702,13 +722,26 @@ async function partTwo(page: Page, origin: string, t: Tokens, fail: Fail, eviden
   } else {
     evidence.push(`e: open page, ${seat}'s line ${secs(sentAt, f.lineAt)}: ${JSON.stringify(answers[0]!.body)}`);
   }
-  // The row, on the open page: the list shows it without a reload.
-  const openRows = await readUntil(() => boardRows(page), (rs) => rs.some((r) => r.includes(t.e)), fixture.lineWithinMs);
-  const openMine = openRows.filter((r) => r.includes(t.e));
+  // The row, on the open page: the list shows it without a reload, within 15 s
+  // of the line, counted from the reading that first showed the line (or from
+  // when the line was due, if none did), not from when `follow` stopped.
+  const rowFrom = f.lineAt ?? sentAt + fixture.lineWithinMs;
+  let openRows: string[] = [];
+  let rowAt: number | undefined;
+  while (Date.now() <= rowFrom + fixture.lineWithinMs) {
+    const at = Date.now();
+    openRows = await boardRows(page);
+    if (openRows.some((r) => r.includes(t.e))) {
+      rowAt = at;
+      break;
+    }
+    await sleep(250);
+  }
+  const openMine = rowAt === undefined ? [] : openRows.filter((r) => r.includes(t.e));
   if (openMine.length !== 1) {
     fail("e:row-open", `open page: the team panel's ${board} list holds ${openMine.length} rows carrying ${t.e} within ${fixture.lineWithinMs / 1000}s of its line, with no reload (want 1); it shows ${openRows.length} rows, ${rowsBefore} when the leg began`);
   } else {
-    evidence.push(`e: open page, the ${board} list shows ${JSON.stringify(openMine[0])}`);
+    evidence.push(`e: open page, the ${board} list shows ${JSON.stringify(openMine[0])} ${secs(rowFrom, rowAt)} after its line`);
   }
   // The row is written by the channel's own request, a moment after the
   // dispatch. Let it land before the reload; nothing here is graded.
@@ -800,7 +833,7 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
     ["a", () => legA(page, t, fail, evidence)],
     ["b", () => legB(page, t, fail, evidence)],
     ["c1", () => legC(page, t, spec?.how === "network", fail, evidence)],
-    ["e:line", () => partTwo(page, server.origin, t, fail, evidence)],
+    ["e", () => partTwo(page, server.origin, t, fail, evidence)],
   ];
   try {
     await page.goto(`${server.origin}/${spec?.how === "page" ? `?goalControl=${control}` : ""}`);
@@ -809,8 +842,8 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
       try {
         await walk();
       } catch (error) {
-        // A leg that cannot be walked is red, and says it failed at setup, not at its signal.
-        fail(leg, `could not be walked (setup): ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+        // A leg that cannot be walked is red at `<leg>:setup`, never at one of its signals.
+        fail(`${leg}:setup`, `could not be walked: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
         await page.goto(`${server.origin}/${spec?.how === "page" ? `?goalControl=${control}` : ""}`).catch(() => {});
         await ready(page).catch(() => {});
       }
@@ -827,10 +860,15 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
   } else {
     evidence.push(`e: the boot still warns that ${CHANNEL}.${fixture.channel.board} is unattended, and no other board`);
   }
+  // A leg that could not be walked is a finding only with its cause, and the server's output is the one place it shows.
+  if (failures.some((f) => assertionOf(f).endsWith(":setup"))) {
+    const tail = server.log().trimEnd().split("\n").slice(-40).map((line) => `    ${line}`).join("\n");
+    console.log(`\n  (${control === "" ? "plain" : control}: a leg could not be walked; the server's last output follows)\n${tail}`);
+  }
   return { name: control === "" ? "plain" : control, failures, evidence };
 }
 
-/** The leg a failure names: `c1`, `b`, `e` for `e:row`. */
+/** The leg a failure names: `c2` for `c2:recall`, `b`, `e` for `e:row`. */
 const legOf = (failure: string) => (/^\[([^\]:]+)/.exec(failure)?.[1] ?? "");
 
 /** Print a journey's verdict per leg, as it ran. */
@@ -840,36 +878,47 @@ function report(j: Journey): void {
   for (const line of j.failures) console.log(`  FAIL  ${line}`);
 }
 
-/** The assertion a failure names: `a:working`, `c1`, `e:row`. */
+/** The assertion a failure names: `a:working`, `c2:recall`, `e:row`, `b:setup`. */
 const assertionOf = (failure: string) => (/^\[([^\]]+)\]/.exec(failure)?.[1] ?? "");
 
 /**
- * A control's verdict: it reddens each leg it names and none it keeps green.
+ * A control's verdict: it reddens every assertion it names, its own signal,
+ * fails no leg at setup, and leaves each leg it keeps green wholly green. Any
+ * other red assertion in a leg its signal sits in is reported, not counted.
  *
- * A control reddens a leg only at an assertion the plain journey passed, on
+ * A control reddens an assertion only where the plain journey passed it, on
  * the same build. An assertion red in both is the build's, not the control's,
- * and is reported as inherited. Run alone (`GOAL_CONTROL=<name>`) there is no
- * plain journey, so every red assertion counts.
+ * and is reported as inherited: a named one then cannot show the control, and
+ * the control fails. Run alone (`GOAL_CONTROL=<name>`) there is no plain
+ * journey, so every red assertion counts.
  */
 function gradeControl(j: Journey, plain: Journey | undefined, failures: string[], evidence: string[]): void {
   const spec = CONTROLS[j.name]!;
   const inherited = new Set((plain?.failures ?? []).map(assertionOf));
-  const red = new Map<string, string>();
-  for (const f of j.failures) {
-    if (inherited.has(assertionOf(f)) || red.has(legOf(f))) continue;
-    red.set(legOf(f), f);
+  const own = j.failures.filter((f) => !inherited.has(assertionOf(f)));
+  const red = new Set(own.map(assertionOf));
+  for (const signal of spec.fail) {
+    if (inherited.has(signal)) failures.push(`[control ${j.name}] ${signal} was already red in the plain journey, so it cannot show this control`);
+    else if (!red.has(signal)) failures.push(`[control ${j.name}] left ${signal} green, so it does not fail at its own signal`);
   }
-  for (const leg of spec.fail) {
-    if (!red.has(leg)) failures.push(`[control ${j.name}] left ${leg} green, so that leg cannot fail under it`);
-    else if (red.get(leg)!.includes("could not be walked")) failures.push(`[control ${j.name}] failed ${leg} at setup, not at its signal: ${red.get(leg)}`);
+  for (const f of own.filter((f) => assertionOf(f).endsWith(":setup"))) {
+    failures.push(`[control ${j.name}] failed at setup, not at a signal: ${f}`);
   }
   for (const leg of spec.green) {
-    if (red.has(leg)) failures.push(`[control ${j.name}] also reddened ${leg}: ${red.get(leg)}`);
+    const leaks = own.filter((f) => legOf(f) === leg && !assertionOf(f).endsWith(":setup"));
+    if (leaks.length > 0) failures.push(`[control ${j.name}] also reddened ${leg}: ${leaks[0]}`);
   }
-  const loose = ["a", "b", "c1", "c2", "seg", "e"].filter((l) => !spec.fail.includes(l) && !spec.green.includes(l));
+  const signalLegs = new Set(spec.fail.map((s) => s.split(":")[0]!));
+  const alsoRed = [...red].filter((a) => !spec.fail.includes(a) && signalLegs.has(a.split(":")[0]!) && !a.endsWith(":setup"));
+  const loose = LEGS.filter((l) => !signalLegs.has(l) && !spec.green.includes(l));
+  const legRed = (leg: string) => own.some((f) => legOf(f) === leg);
   const carried = [...new Set(j.failures.map(assertionOf).filter((a) => inherited.has(a)))];
   evidence.push(
-    `${j.name}: FAIL at ${spec.fail.filter((l) => red.has(l)).map((l) => assertionOf(red.get(l)!)).join(", ") || "nothing"}; ${spec.green.filter((l) => !red.has(l)).join(", ")} green; not graded: ${loose.map((l) => `${l} ${red.has(l) ? "red" : "green"}`).join(", ")}${carried.length > 0 ? `; inherited from the plain journey: ${carried.join(", ")}` : ""}`,
+    `${j.name}: FAIL at ${spec.fail.filter((s) => red.has(s)).join(", ") || "nothing"}` +
+      `${alsoRed.length > 0 ? `; also red in those legs, not counted: ${alsoRed.join(", ")}` : ""}` +
+      `; ${spec.green.filter((l) => !legRed(l)).join(", ") || "nothing"} green` +
+      `${loose.length > 0 ? `; not graded: ${loose.map((l) => `${l} ${legRed(l) ? "red" : "green"}`).join(", ")}` : ""}` +
+      `${carried.length > 0 ? `; inherited from the plain journey: ${carried.join(", ")}` : ""}`,
   );
 }
 

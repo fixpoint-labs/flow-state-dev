@@ -66,7 +66,7 @@ reddens another leg, or is missing from the commit is a finding.
 
 `no-live` and `no-route` each break a and b on their own: without the live view, a's answer never
 shows unreloaded and b waits on each answer; without the route, every member wakes (ER-2),
-failing a's "nobody else works" and b's one per post. Three also break part 2: without the live view the list shows the filed row only after a reload; without landing, the filed-case answer, which calls no post tool, never lands; without the route, every member answers it.
+failing a's "nobody else works" and b's one per post. Three also break part 2: without the live view the list shows the filed row only after a reload; without landing, the filed-case answer, which calls no post tool, never lands; without the route, every member files it, and its answer, which calls no post tool, lands for nobody.
 
 `no-landing` and `no-route` act in FIX-1610's fixture host. FIX-1611 brings them, the no-history and
 filing controls, and the recall and needs-a-person scenarios to kitchen-sink (ER-7).
