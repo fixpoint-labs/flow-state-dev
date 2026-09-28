@@ -183,9 +183,13 @@ const stream = createSessionSSEClient({
   sessionId,
   since: snapshot.at, // the first page's `at`
   onItem: ({ requestId, item }) => {
-    // A streamed item is finished, so it replaces any in-progress copy from the snapshot.
-    items.set(`${requestId}:${item.id}`, item);
-    render([...items.values()].sort(compareItemOrder));
+    const key = `${requestId}:${item.id}`;
+    const held = items.get(key);
+    // A streamed item is finished. It replaces an in-progress copy, or a copy that sorts earlier.
+    if (held === undefined || held.status === "in_progress" || compareItemOrder(item, held) >= 0) {
+      items.set(key, item);
+      render([...items.values()].sort(compareItemOrder));
+    }
   },
   onRuns: ({ runs }) => showWorking(runs), // every unfinished run, each time the set changes
   onStop: ({ status }) => { /* refused, or the server has no session stream */ },
@@ -201,7 +205,7 @@ stream.close();
 
 The snapshot's items come in `compareItemOrder` order: `ts`, then `itemIndex`, then `requestId`, then `id`. The stream sends different requests' items in no set order, so sort anything you merge with the same comparator and a live view shows what a reload shows.
 
-It reconnects with backoff, including when the server closes the connection after at most 15 minutes, and passes back the server time it last heard so the server resends what it might have missed. So an item can arrive more than once, after a reconnect or when it was saved just before the snapshot's `at`. Holding items by request id and item id, as above, absorbs the repeats. It stops, without retrying, when the server refuses the session or has no such route.
+It reconnects with backoff, including when the server closes the connection after at most 15 minutes, and passes back the server time it last heard so the server resends what it might have missed. So the same copy of an item can arrive more than once, after a reconnect or when it was saved just before the snapshot's `at`. An item one request emits more than once under the same id, such as a keyed component, also arrives once per emission, each copy with its own `ts` and `itemIndex`. Holding items by request id and item id, keeping the copy that sorts later and letting a finished copy replace an in-progress one, as above, handles both. It stops, without retrying, when the server refuses the session or has no such route.
 
 ### `createRequestStreamStore()` and `bindStoreToCallbacks(store, options?)`
 

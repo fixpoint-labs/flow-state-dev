@@ -377,9 +377,12 @@ const SESSION_STREAM_STOP_STATUSES: ReadonlySet<number> = new Set([401, 403, 404
  * The connection is expected to drop: the network, a host's time limit, the
  * server's own close after at most 15 minutes. Each time, the client
  * reconnects with backoff and hands back the last server time it heard, so
- * nothing kept in between is missed. The server re-reads a few seconds back to
- * cover clock skew, so an item can arrive twice across a reconnect; tell items
- * apart by `requestId` and `item.id` and keep the first.
+ * nothing kept in between is missed. The stream starts a few seconds before
+ * `since`, so an item can arrive again: across a reconnect, or when the
+ * snapshot that gave `since` already held it. An item a request emits more
+ * than once under one id arrives once per emission. Tell items apart by
+ * `requestId` and `item.id` and keep the copy that sorts later by
+ * `compareItemOrder`.
  *
  * A 401, 403, 404, 409 or 501 stops the client for good, quietly: `onStop`
  * fires, `onError` does not, and nothing is retried.

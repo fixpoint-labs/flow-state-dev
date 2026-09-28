@@ -112,7 +112,7 @@ const channel = useSession(sessionId, {
 });
 ```
 
-The hook then opens one stream for the session. Each finished item from any request in it joins `session.items` about a second after the server saves it, in the order a reload would show. The stream carries whole items, not text as it is typed, so another writer's answer appears in one piece. Your own requests' items arrive through their request stream, and none shows twice. Items are told apart by their request and their id together, so two requests that each save an item with the same id both appear in `session.items`.
+The hook then opens one stream for the session. Each finished item from any request in it joins `session.items` about a second after the server saves it, in the order a reload would show. The stream carries whole items, not text as it is typed, so another writer's answer appears in one piece. Your own requests' items arrive through their request stream, and none shows twice. Items are told apart by their request and their id together, so two requests that each save an item with the same id both appear in `session.items`. An item one request emits more than once under the same id, such as a keyed component, shows its latest copy, whatever order the copies arrive in.
 
 The background-work list stays current too. The hook re-reads `session.childSessions` when a run is handed off, even one still waiting its turn, and again when the run finishes. To list the runs that haven't finished:
 

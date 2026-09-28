@@ -458,13 +458,17 @@ a server time (epoch ms) to resume from. Reconnecting with any event's `at` as
 
 - `session.item`: `{ requestId, item }`, one finished item from any request in
   the session. An item the session snapshot hides is never sent, and neither is
-  one still being generated. Tell items apart by `requestId` and `item.id`
-  together: two requests can save items with the same id, and an item can
-  arrive twice, across a reconnect or because the stream starts a few seconds
-  before `since`. Items from different requests arrive in no set order. Sort
-  merged items with `compareItemOrder` (from `@flow-state-dev/client` or
-  `@flow-state-dev/core/items`), the order the snapshot uses: `ts`, then
-  `itemIndex`, then `requestId`, then `id`.
+  one still being generated. Hold items by `requestId` and `item.id` together:
+  two requests can save items with the same id. One request can also emit the
+  same id more than once (a keyed component, say). Each emission is saved with
+  its own `ts` and `itemIndex` and sent as its own `session.item`, even on a
+  connection that sent an earlier copy, so keep the copy that sorts later. An
+  exact repeat, with the same `ts` and `itemIndex`, can arrive twice, across a
+  reconnect or because the stream starts a few seconds before `since`. Items
+  from different requests arrive in no set order. `compareItemOrder` (from
+  `@flow-state-dev/client` or `@flow-state-dev/core/items`) is the order the
+  snapshot uses, `ts`, then `itemIndex`, then `requestId`, then `id`: sort
+  merged items with it, and use it to tell which of two copies is later.
 - `session.runs`: `{ runs }`, every run under the session that hasn't finished,
   each `{ id, parentSessionId, createdAt, updatedAt, flowId?, topic?, coordinate? }`.
   Sent when the stream opens and again whenever that set changes.

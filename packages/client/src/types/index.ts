@@ -696,9 +696,12 @@ export interface SessionStreamHandle {
 /**
  * Callback set for session-stream events.
  *
- * A reconnect re-reads a few seconds back, so `onItem` can fire again for an
- * item it already delivered. Tell items apart by `requestId` and `item.id`
- * together and keep the first.
+ * The stream starts a few seconds before `since`, so `onItem` can fire for an
+ * item it already delivered, or one the snapshot that gave `since` already
+ * held, and an item a request emits more than once under one id (a keyed
+ * component) fires once per emission. Tell items apart by `requestId` and
+ * `item.id` together and keep the copy that sorts later by
+ * `compareItemOrder`.
  */
 export type SessionSSECallbacks = {
   /** A finished item a request in the session kept, from any request. */
