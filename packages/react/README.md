@@ -494,12 +494,12 @@ A card is labelled with the task's `title`, falling back to its `goal`, then to 
 ```tsx
 import { BoardList } from "@flow-state-dev/react";
 
-<BoardList sessionId="support.help" boardRef="support.help.escalations" live />
+<BoardList sessionId={sessionId} boardRef="eng.feature.triage" live />
 ```
 
 It reads the same rows `BoardColumns` does, through the same `sessionId`, `boardRef`, `resourceClient` and `limit`, and labels a row the same way, with the assignee beside it when there is one. Nothing is hidden: a finished or cancelled task stays in the list, and a status the component does not recognise shows as its own word. A row without a `createdAt` follows the dated ones, in read order.
 
-`live` re-reads the board whenever the session named by `sessionId` records a change to it. A channel's `fileTask` records in the channel's session, so pass the channel's id to hear every filing. A change recorded in another session, for example a worker draining the board, does not show until something else makes the list read again: a remount, or a change in the session it follows. With `live` off, the default, it reads on mount like the other panels. If the server doesn't offer the session stream, or refuses it, the list reads once and shows no error.
+`live` re-reads the board whenever the session named by `sessionId` records a change to it. Pass the id of the session whose runs write to the board. A change made in a different session shows after the list remounts, or the next time this session changes the board. With `live` off, the default, it reads on mount like the other panels. If the server doesn't offer the session stream, or refuses it, the list reads once and shows no error.
 
 Each live list opens its own connection to its session's stream while mounted, so a page that also calls `useSession(..., { live: true })` on that session holds two.
 
