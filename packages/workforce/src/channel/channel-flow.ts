@@ -119,7 +119,7 @@ export const CHANNEL_ANSWER_ACTION = "answer";
  * Closed, and never caller-addressed: a caller who could name a post could
  * take its one answer.
  */
-const channelAnswerInputSchema = z
+export const channelAnswerInputSchema = z
   .object({ postId: z.string().min(1), body: z.string().min(1), author: z.string().min(1) })
   .strict();
 
@@ -318,13 +318,14 @@ type KeptPost = z.infer<typeof keptPostSchema>;
  * request's history window, the same window `read` sees, with no post to hold
  * for. On a busy channel that window can hold fewer than 20 lines.
  *
+ * @param answerPostId For an answer, the id of the post it answers.
  * @returns What was kept, with a person's post's case; `undefined` when the
- *   post `answers` names has its answer already, and nothing was written.
+ *   post `answerPostId` names has its answer already, and nothing was written.
  */
 async function keepRoutedLine(
   ctx: BlockContext<Record<string, unknown>, RoutedChannelState>,
   line: ChannelTranscriptLine,
-  answers?: string
+  answerPostId?: string
 ): Promise<{ postCase?: PostCase } | undefined> {
   const seed = ctx.session.state[ROUTE_LEDGER_STATE] ?? {
     lines: withoutRepeats([
@@ -338,12 +339,12 @@ async function keepRoutedLine(
     (mutator: (state: RoutedChannelState) => RoutedChannelState) => ctx.session.atomicState(mutator),
     (state: RoutedChannelState) => {
       const answered = state[ANSWERED_POSTS_STATE] ?? {};
-      if (answers !== undefined && Object.hasOwn(answered, answers)) return { state: {}, result: undefined };
+      if (answerPostId !== undefined && Object.hasOwn(answered, answerPostId)) return { state: {}, result: undefined };
       const next = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
       return {
         state: {
           [ROUTE_LEDGER_STATE]: next.ledger,
-          ...(answers === undefined ? {} : { [ANSWERED_POSTS_STATE]: { ...answered, [answers]: line.id } })
+          ...(answerPostId === undefined ? {} : { [ANSWERED_POSTS_STATE]: { ...answered, [answerPostId]: line.id } })
         },
         result: next.postCase === undefined ? {} : { postCase: next.postCase }
       };

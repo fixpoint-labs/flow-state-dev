@@ -1120,13 +1120,17 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   });
 
   /**
-   * The routed reply's answer: the reply, to the post's channel, unless the
-   * turn has handed the post's answer over already (the tool posted it). The
-   * channel lands it unless the post has its answer, so a post delivered again
-   * lands no second line. An empty reply is a failed answer: the run fails and
-   * nothing is posted, never a stock line. A hand-off the dispatch refuses
-   * fails the run and leaves the post unanswered, so the post delivered again
-   * is answered.
+   * The routed reply's answer: the reply, to the post's channel. The channel
+   * lands it unless the post has its answer, and takes a post's answers in the
+   * order they were handed over, so after the tool's answer, or on a post
+   * delivered again, it lands no second line. It goes in even when the tool
+   * handed an answer over (`handed`), because that means the channel took the
+   * hand-off, not that it kept the line: a dispatch returns before the channel
+   * writes, so a channel that then cannot keep the tool's answer lands this
+   * reply instead. An empty reply is a failed answer: the run fails and nothing
+   * is posted, never a stock line, unless the tool handed an answer over. A
+   * hand-off the dispatch refuses fails the run and leaves the post
+   * unanswered, so the post delivered again is answered.
    */
   const routedAnswer = handler({
     name: "agent-routed-answer",
@@ -1140,14 +1144,14 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     execute: async (reply: unknown, ctx) => {
       // Run only on a routed turn (the `tapIf` below), which is marked.
       const routed = ctx.request.state.channelRoutedPost!;
-      if (routed.handed === true) return { answeredAlready: true as const };
-      if (typeof reply !== "string" || reply.trim().length === 0) {
-        throw new Error(
-          `This seat was routed a post in ${routed.channelId} and its turn ended with an empty reply, ` +
-            "so nothing was posted to the channel."
-        );
+      if (typeof reply === "string" && reply.trim().length > 0) {
+        return { channel: routed.channelId, postId: routed.postId, body: reply, author: ctx.flow.config.seatId };
       }
-      return { channel: routed.channelId, postId: routed.postId, body: reply, author: ctx.flow.config.seatId };
+      if (routed.handed === true) return { answeredAlready: true as const };
+      throw new Error(
+        `This seat was routed a post in ${routed.channelId} and its turn ended with an empty reply, ` +
+          "so nothing was posted to the channel."
+      );
     }
   });
 

@@ -41,11 +41,14 @@
  * channel's `answer`. The channel keeps one answer per post, the first whose
  * line it keeps, so every hand-off can simply try: a second, from this turn or
  * from the post delivered again, lands nothing. Once the turn has handed its
- * answer over, a later call posts nothing and says the answer is in, and the
- * kind's own landing posts nothing more. Nothing is claimed on the seat's
- * side, so a hand-off the dispatch refuses writes nothing anywhere: the tool's
- * next call, the landing, or the post delivered again can still answer it.
- * Any other turn, and any other channel, posts as before.
+ * answer over, a later call posts nothing and says so. Handed over means the
+ * channel took the hand-off, not that it kept the line: the dispatch returns
+ * before the channel writes. So the kind's own landing still hands the turn's
+ * reply over, which lands only when the tool's answer did not. Nothing is
+ * claimed on the seat's side, so a hand-off the dispatch refuses writes
+ * nothing anywhere: the tool's next call, the landing, or the post delivered
+ * again can still answer it. Any other turn, and any other channel, posts as
+ * before.
  */
 
 import { defineCapability, dispatcher, handler, sequencer } from "@flow-state-dev/core";
@@ -82,7 +85,8 @@ export const ROUTED_TURN_STATE = "channelRoutedPost";
 
 /**
  * A routed turn's mark: the channel and the post it answers, and `handed` once
- * the turn has handed the post's answer to the channel.
+ * the channel has taken a hand-off of the post's answer from this turn, which
+ * does not say it kept the line.
  */
 export const routedTurnSchema = z.object({
   channelId: z.string(),
@@ -144,8 +148,10 @@ const answerAsSeat = dispatcher({
 });
 
 /**
- * Mark the routed turn `handed`, once the channel has accepted its answer.
- * Nothing is marked for a hand-off the dispatch refused, which throws first.
+ * Mark the routed turn `handed`, once the channel has taken the hand-off of
+ * its answer. Taken, not kept: the dispatch starts the channel's request and
+ * returns, so the channel can still refuse the line after this. Nothing is
+ * marked for a hand-off the dispatch refused, which throws first.
  */
 const markHanded = handler({
   name: "answer-in-channel-mark",
@@ -201,7 +207,8 @@ const toAnswer = (line: ToolLine): AnswerAsSeatInput => ({ ...toPost(line), post
 
 /**
  * The tool: one dispatch into the named channel, then "handed over"; or, for
- * a routed post the turn has answered already, nothing and a note saying so.
+ * a routed post whose answer the turn has handed over already, nothing and a
+ * note saying so.
  */
 const postToChannel = sequencer({
   name: POST_TO_CHANNEL_TOOL,
@@ -224,7 +231,7 @@ const postToChannel = sequencer({
         }
       : {
           handedTo: value.channel,
-          note: "Your answer to this post is already in the channel, so nothing more was posted.",
+          note: "Your answer to this post was already handed to the channel, so nothing more was posted.",
         },
   );
 

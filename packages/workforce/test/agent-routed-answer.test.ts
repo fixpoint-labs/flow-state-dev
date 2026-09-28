@@ -15,11 +15,13 @@
  * Checks, by the spec's ids (`specs/issues/FIX-1610/BUSINESS-RULES.md`, V3):
  *   BR-9  a text reply lands as the seat: one line, `author` its seat id;
  *   BR-10 the tool's first post for the post is the line; a second posts
- *         nothing and says the answer is in; the channel keeps one answer per
- *         post, so a second delivery lands no second line, two at once land
- *         one, and one whose first hand-off was refused while another
- *         answered lands one; a hand-off refused before or by the channel
- *         leaves the post unanswered, so it is answered when delivered again;
+ *         nothing and says the answer was handed over; the channel keeps one
+ *         answer per post, so a second delivery lands no second line, two at
+ *         once land one, and one whose first hand-off was refused while
+ *         another answered lands one; a hand-off refused before or by the
+ *         channel leaves the post unanswered, so it is answered when
+ *         delivered again, or by the turn's reply when the channel took the
+ *         tool's answer and could not keep it;
  *         an answer whose line the channel kept is the answer even when its
  *         request failed; a refused post into another channel leaves an
  *         answered post answered; only a dispatch reaches `answer`;
@@ -59,7 +61,7 @@ import {
   type ChannelNotifyInput,
   type WorkerManifest
 } from "../src/index";
-import { z } from "zod";
+import { CHANNEL_ANSWER_ACTION, channelAnswerInputSchema } from "../src/channel/channel-flow";
 import { failLineWrite, postedLines } from "./channel-post-lines";
 
 const USER_ID = "devuser";
@@ -155,21 +157,18 @@ function redeliverFlow(seatId: string) {
   })({ id: "redeliver-test" });
 }
 
-/** What {@link answerFlow} sends: an answer as a seat's landing sends it. */
-const answerInputSchema = z.object({ postId: z.string(), body: z.string(), author: z.string() });
-
 /** A test-only sender standing in for a seat's landing: one answer dispatched into the channel's own `answer`. */
 function answerFlow() {
   return defineFlow({
     kind: "answer-test",
     actions: {
       answer: {
-        inputSchema: answerInputSchema,
+        inputSchema: channelAnswerInputSchema,
         block: dispatcher({
           name: "answer-channel",
           flowKind: "channel",
-          action: "answer",
-          inputSchema: answerInputSchema,
+          action: CHANNEL_ANSWER_ACTION,
+          inputSchema: channelAnswerInputSchema,
           session: { id: () => HELP }
         })
       }
@@ -352,6 +351,24 @@ function refuseFirstHandOff(stores: StoreRegistry, channelId: string) {
   return { release, held: () => held };
 }
 
+/**
+ * Fail the first write of `channelId`'s state that records a post's answer:
+ * the channel took the answer's hand-off, then could not keep it, so its
+ * request fails with no line.
+ */
+function failAnswerWrite(stores: StoreRegistry, channelId: string) {
+  const set = stores.session.set.bind(stores.session);
+  let armed = true;
+  stores.session.set = async (...args: Parameters<typeof set>) => {
+    const state = (args[1] as { state?: Record<string, unknown> }).state;
+    if (armed && args[0] === channelId && state?.channelAnsweredPosts !== undefined) {
+      armed = false;
+      throw new Error("the store could not keep the answer");
+    }
+    return set(...args);
+  };
+}
+
 describe("a routed agent's answer lands in the channel", () => {
   it("posts a text reply as the seat, one line, which wakes no seat and takes no route (BR-9, BR-12)", async () => {
     const { channel, state, answers } = host();
@@ -402,7 +419,26 @@ describe("a routed agent's answer lands in the channel", () => {
     }
   });
 
-  it("posts only the tool's first call for the post; the second says the answer is in (BR-10)", async () => {
+  // The tool's dispatch returns once the channel takes the hand-off, before the
+  // channel keeps (or refuses) the line, so the turn's reply still goes in.
+  it("lands the turn's reply when the channel took the tool's answer and could not keep it: one line (BR-10)", async () => {
+    const { channel, state } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      failAnswerWrite(runtime.stores, HELP);
+      await post(runtime, channel, HELP, "[route:support.devices] [answer:tool] my laptop won't join the wifi");
+      await quiet(runtime);
+
+      const answered = (await runtime.stores.request.list({ sessionId: HELP })).filter((r) => r.actionName === "answer");
+      expect(JSON.stringify(answered.filter((r) => r.status === "failed"))).toMatch(/could not keep the answer/);
+      expect((await lines(runtime, HELP)).slice(1)).toEqual([{ author: "support.devices", body: "done" }]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("posts only the tool's first call for the post; the second says the answer was handed over (BR-10)", async () => {
     const { channel, state, seat } = host();
     try {
       const runtime = await state.getRuntime();
@@ -412,7 +448,7 @@ describe("a routed agent's answer lands in the channel", () => {
 
       expect((await lines(runtime, HELP)).slice(1)).toEqual([{ author: "support.devices", body: "From the tool, 1." }]);
       const kept = JSON.stringify(await seatRequests(runtime, seat("support.devices").id, HELP));
-      expect(kept).toMatch(/already in the channel/);
+      expect(kept).toMatch(/already handed to the channel/);
     } finally {
       await state.dispose();
     }

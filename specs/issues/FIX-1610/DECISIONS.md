@@ -109,6 +109,8 @@ own issue.
 - **Implementation review**: the one line per routed post moved from a claim in the seat's session,
   given back when a hand-off failed, to the channel, which refuses a second answer in the same
   write that takes the line into its ledger. A route's commit point is the ledger write: a cancel
-  after it still wakes the member.
+  after it still wakes the member. The turn's reply goes to the channel even after the tool's
+  answer, since a hand-off the channel took is not a line it kept; it lands only when the tool's
+  did not.
 
 **Open: none.**
