@@ -2,6 +2,7 @@
 description: Ask the support team anything.
 members: [support.devices, support.accounts, support.fsd, support.general]
 boards: [escalations]
+boardActions: true
 routing:
   fallback: support.general
 ---
