@@ -106,11 +106,25 @@ interface Harness {
   measure: (shape: ShapeName) => Promise<Measurement>;
 }
 
+/** Rows per INSERT when seeding: one statement's worth of time without a turn of the event loop. */
+const INSERT_CHUNK = 10_000;
+
+/**
+ * Let the event loop turn. PGlite runs each statement synchronously and
+ * resolves it as a microtask, so a file that only awaits statements never
+ * reaches the loop's timers or I/O: seeding and measuring here would hold the
+ * worker for the whole file, and Vitest's own calls from it time out
+ * (60 s). A turn after every statement bounds the stall to the longest one.
+ */
+const turn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
 async function harness(): Promise<Harness> {
   const db: PGlite = await freshPglite();
+  await turn();
   const direct: QueryExecutor = {
     async query(text: string, values?: unknown[]) {
       const result = await db.query(text, values);
+      await turn();
       return { rows: result.rows as Record<string, unknown>[], rowCount: result.affectedRows ?? 0 };
     }
   };
@@ -133,25 +147,34 @@ async function harness(): Promise<Harness> {
     const tenant = scope.tenant === undefined ? "NULL" : `'${scope.tenant}'`;
     const org = scope.org === undefined ? "NULL" : `'${scope.org}'`;
     // `g` is the row's number in this batch; the callers turn it into ids.
-    await db.query(
-      `INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, tenant_id, status, version, created_at, updated_at, data)
-       SELECT '${tag}_r_' || g, 'chat', ${user}, ${session("g")}, ${org}, ${tenant}, 'completed', 0, ${from} + g, ${from} + g, '{}'::jsonb
-       FROM generate_series(0, ${count - 1}) AS g`
+    // Inserted in chunks of consecutive `g`, in the same order, so each table
+    // holds exactly the rows, and in the order, one statement would write.
+    const insert = async (write: (first: number, last: number) => string) => {
+      for (let first = 0; first < count; first += INSERT_CHUNK) {
+        await direct.query(write(first, Math.min(first + INSERT_CHUNK, count) - 1));
+      }
+    };
+    await insert(
+      (first, last) =>
+        `INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, tenant_id, status, version, created_at, updated_at, data)
+         SELECT '${tag}_r_' || g, 'chat', ${user}, ${session("g")}, ${org}, ${tenant}, 'completed', 0, ${from} + g, ${from} + g, '{}'::jsonb
+         FROM generate_series(${first}, ${last}) AS g`
     );
-    await db.query(
-      `INSERT INTO sessions (id, flow_kind, user_id, org_id, tenant_id, parent_session_id, version, created_at, updated_at, data)
-       SELECT '${tag}_s_' || g, 'chat', ${user}, ${org}, ${tenant}, ${parent("g")}, 0, ${from} + g, ${from} + g, '{}'::jsonb
-       FROM generate_series(0, ${count - 1}) AS g`
+    await insert(
+      (first, last) =>
+        `INSERT INTO sessions (id, flow_kind, user_id, org_id, tenant_id, parent_session_id, version, created_at, updated_at, data)
+         SELECT '${tag}_s_' || g, 'chat', ${user}, ${org}, ${tenant}, ${parent("g")}, 0, ${from} + g, ${from} + g, '{}'::jsonb
+         FROM generate_series(${first}, ${last}) AS g`
     );
   };
   const measure = async (shape: ShapeName): Promise<Measurement> => {
-    await db.query("ANALYZE");
+    await direct.query("ANALYZE");
     sent.length = 0;
     await SHAPES[shape](stores);
     const issued = sent.filter((s) => s.sql.trimStart().toUpperCase().startsWith("SELECT"));
     expect(issued).toHaveLength(1);
     const { sql, params } = issued[0]!;
-    const result = await db.query(`EXPLAIN (ANALYZE, FORMAT JSON) ${sql}`, params);
+    const result = await direct.query(`EXPLAIN (ANALYZE, FORMAT JSON) ${sql}`, params);
     const plan = (result.rows[0] as { "QUERY PLAN": Array<{ Plan: PlanNode }> })["QUERY PLAN"][0]!.Plan;
     return walk(plan, { rows: 0, removed: 0, plan: "" });
   };
