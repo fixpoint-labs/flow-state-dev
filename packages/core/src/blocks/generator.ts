@@ -2009,7 +2009,8 @@ async function runOwnedGenerateLoop(params: {
  * message item, reasoning/message items are emitted lazily in stream order,
  * and the resolved model identity refines as chunks report it. Seeding also
  * primes `ctx._currentModelIdentity` so tools called on the very first turn
- * still stamp an identity on their `tool_output` items.
+ * still stamp an identity on their `tool_output` items. Only the owned loop
+ * marks step boundaries (`stepBreakPending`); the legacy stream carries none.
  */
 function createStreamEmissionState(
   model: GeneratorModel,
@@ -2049,11 +2050,8 @@ function createStreamEmissionState(
     messageItem: null as Record<string, unknown> | null,
     messageEmitted: false,
     accumulated: "",
-    // Set by the owned step loop when a new step starts after text was
-    // already written; the step's first text then opens with a paragraph
-    // break, so text written before a tool call and text written after it
-    // do not run together in the one message. The legacy single-call stream
-    // carries no step boundaries and never sets it.
+    // Owned loop only: set when a step starts after text was written; the
+    // step's first text opens with a paragraph break.
     stepBreakPending: false,
     resolvedIdentity,
     finalResult: undefined as GeneratorModelResult | undefined,
@@ -2523,6 +2521,7 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
     // Reset so this step's `finish` chunk is what we read below, not a
     // previous step's.
     s.finalResult = undefined;
+    // Consumed by the first non-empty `text_delta` in `handleGeneratorStreamChunk`.
     s.stepBreakPending = s.accumulated.length > 0;
     for await (const chunk of prep.stepModel.streamStep!({
       messages,

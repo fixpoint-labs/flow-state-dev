@@ -1328,6 +1328,7 @@ describe("generator owned step loop — streaming", () => {
       ]);
 
       expect(result.output).toBe("First.\n\nSecond.");
+      expect(result.message).toBe("First.\n\nSecond.");
       expect(result.streamed).toBe("First.\n\nSecond.");
     });
   });
