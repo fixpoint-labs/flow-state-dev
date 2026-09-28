@@ -16,15 +16,21 @@
  * dispatch run (FIX-1071). The link is derived, absent for most tasks, and never
  * something the row is gated on — see `lib/dispatch-run-links`.
  *
- * A task also carries a short note about itself on `feedback`, and the Reason
- * column renders it so a parked row says why without the expander (FIX-1481).
- * The column is keyed on the field being present, never on the `parked`
- * status, and the note is rendered exactly as stored — see `showReason` in
- * `CollectionCard` for why both of those are load-bearing.
+ * A task also carries a short note about itself on `feedback`, and the row's
+ * reason slot renders it so a parked row says why without being opened
+ * (FIX-1481). The slot is keyed on the field being present, never on the
+ * `parked` status, and the note is rendered exactly as stored — see
+ * `showReason` in `CollectionCard` for why both of those are load-bearing.
+ *
+ * Each task is one row that opens in place, like an accordion (FIX-1629). The
+ * collapsed row leads with status, then goal and reason sharing the width, so
+ * the reason is in view on a laptop-width pane; the open row is
+ * `task-row-body`. Open rows are held here, keyed by board and task id, so a
+ * streamed change re-renders a row without closing it.
  */
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
-import { ClipboardList, Eye, Layers } from "lucide-react";
+import { ChevronRight, ClipboardList, Layers } from "lucide-react";
 import {
   groupCollections,
   type BoardMeta,
@@ -40,7 +46,7 @@ import {
 import type { Truncation } from "../../hooks/use-dispatch-runs";
 import { EmptyState } from "../shared/empty-state";
 import { Badge } from "../ui/badge";
-import { JsonViewer } from "../shared/json-viewer";
+import { TaskRowBody } from "./task-row-body";
 
 type Props = {
   /**
@@ -68,6 +74,16 @@ export function TaskCollectionsView({ items, dispatchRuns, truncation, onOpenDis
     () => linkDispatchRunsToTasks(dispatchRuns ?? [], collections).byTask,
     [dispatchRuns, collections]
   );
+  // Open rows, keyed by board and task. Held above the rows so a streamed
+  // change, which re-renders every row, never closes one.
+  const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleRow = useCallback((key: string) => {
+    setOpenRows((was) => {
+      const next = new Set(was);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }, []);
 
   if (collections.length === 0) {
     return (
@@ -87,6 +103,8 @@ export function TaskCollectionsView({ items, dispatchRuns, truncation, onOpenDis
           byTask={byTask}
           truncation={truncation}
           onOpenDispatchRun={onOpenDispatchRun}
+          openRows={openRows}
+          onToggleRow={toggleRow}
         />
       ))}
     </div>
@@ -98,11 +116,15 @@ function CollectionCard({
   byTask,
   truncation,
   onOpenDispatchRun,
+  openRows,
+  onToggleRow,
 }: {
   collection: CollectionView;
   byTask: ReadonlyMap<string, ChildSessionSummary>;
   truncation: Truncation;
   onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
+  openRows: ReadonlySet<string>;
+  onToggleRow: (key: string) => void;
 }) {
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
@@ -116,14 +138,17 @@ function CollectionCard({
   // something wrote, and this panel reports what is stored rather than
   // deciding which stored values are worth a reader's attention.
   //
-  // Per board, so a board where nothing carries a note reads exactly as it did
-  // before — no empty column apologising for itself.
+  // Per board, so a board where nothing carries a note grows no reason slot —
+  // nothing apologising for itself on every row.
   const showReason = collection.tasks.some(
     (entry) => entry.task.feedback !== undefined
   );
 
   return (
-    <div className="rounded-md border border-slate-800 bg-slate-900/40">
+    <div
+      className="min-w-0 rounded-md border border-slate-800 bg-slate-900/40"
+      data-collection-id={collection.id}
+    >
       <div className="flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-2">
         <div className="flex flex-col gap-0.5 min-w-0">
           <div className="flex items-center gap-1.5">
@@ -149,113 +174,122 @@ function CollectionCard({
           Board meta only — no task-change items yet.
         </p>
       ) : (
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
-              <th className="px-3 py-1.5 font-medium">Id</th>
-              <th className="py-1.5 font-medium">Goal</th>
-              <th className="py-1.5 font-medium">Status</th>
-              {showReason && <th className="py-1.5 font-medium">Reason</th>}
-              <th className="py-1.5 font-medium">Assignee</th>
-              <th className="py-1.5 font-medium">Dispatch run</th>
-              <th className="py-1.5 font-medium">Latest kind</th>
-              <th className="px-3 py-1.5 font-medium text-right">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {collection.tasks.map((entry) => (
+        <ul className="min-w-0 text-xs">
+          {collection.tasks.map((entry) => {
+            const key = rowKey(collection.id, entry.task.id);
+            return (
               <TaskRow
                 key={entry.task.id}
                 entry={entry}
+                rowId={key}
+                open={openRows.has(key)}
+                onToggle={() => onToggleRow(key)}
                 showReason={showReason}
                 dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
                 truncation={truncation}
                 onOpenDispatchRun={onOpenDispatchRun}
               />
-            ))}
-          </tbody>
-        </table>
+            );
+          })}
+        </ul>
       )}
     </div>
   );
 }
 
+/** One key per row across boards: two boards may both hold a task id. */
+function rowKey(collectionId: string, taskId: string): string {
+  return `${collectionId}\u0000${taskId}`;
+}
+
+/** A DOM id for the row's body, safe whatever the ids contain. */
+function bodyIdOf(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return `task-row-${(hash >>> 0).toString(36)}-${key.length}`;
+}
+
 function TaskRow({
   entry,
+  rowId,
+  open,
+  onToggle,
   showReason,
   dispatchRun,
   truncation,
   onOpenDispatchRun,
 }: {
   entry: ResolvedTask;
-  /** Decided by the board, so every row in one table has the same columns. */
+  rowId: string;
+  open: boolean;
+  onToggle: () => void;
+  /** Decided by the board, so every row on one board has the same slots. */
   showReason: boolean;
   dispatchRun?: ChildSessionSummary;
   truncation: Truncation;
   onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
 }) {
   const { task } = entry;
+  const bodyId = bodyIdOf(rowId);
+  // Status leads; goal and reason share what is left, each allowed to shrink
+  // to nothing (`minmax(0, 1fr)`) so neither pushes the row past the pane.
+  const columns = showReason
+    ? "auto minmax(0, 1fr) minmax(0, 1fr) auto auto"
+    : "auto minmax(0, 1fr) auto auto";
+  const runLink = (
+    <DispatchRunLink dispatchRun={dispatchRun} truncation={truncation} onOpen={onOpenDispatchRun} />
+  );
   return (
-    <tr className="border-b border-slate-800/50 align-top hover:bg-slate-900/40">
-      <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">
-        {task.id}
-      </td>
-      <td className="py-1.5 pr-2 text-slate-200 max-w-md truncate">
-        {task.goal}
-      </td>
-      <td className="py-1.5 pr-2">
-        <StatusPill status={task.status} />
-      </td>
-      {showReason && (
-        // Rendered exactly as the row carries it — not trimmed, not
-        // normalized. This panel's job is to report what is stored, and a
-        // stored note of spaces is a fact about the row worth seeing.
-        //
-        // Clamped like the Goal cell beside it, because a note can be an
-        // unbroken stack trace and the table has to stay a table. The whole
-        // string is on the title, and the expander below is still complete.
-        <td
-          className="max-w-[18rem] truncate py-1.5 pr-2 text-slate-300"
-          title={task.feedback}
+    <li className="min-w-0 border-b border-slate-800/50" data-task-id={task.id}>
+      <div className="flex min-w-0 items-center gap-2 pr-3 hover:bg-slate-900/40">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={onToggle}
+          data-row-grid
+          className="grid min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 text-left"
+          style={{ gridTemplateColumns: columns }}
         >
-          {task.feedback ?? <span className="text-slate-600">—</span>}
-        </td>
-      )}
-      <td className="py-1.5 pr-2 text-slate-400">{task.assignee ?? "—"}</td>
-      <td className="py-1.5 pr-2">
-        <DispatchRunLink
-          dispatchRun={dispatchRun}
-          truncation={truncation}
-          onOpen={onOpenDispatchRun}
-        />
-      </td>
-      <td className="py-1.5 pr-2 text-slate-400">
-        <span className="font-mono text-[10px]">
-          {entry.kind ?? "—"}
+          <span data-slot="status" className="inline-flex items-center gap-1">
+            <ChevronRight
+              className={`h-3 w-3 shrink-0 text-slate-500 transition-transform ${open ? "rotate-90" : ""}`}
+              aria-hidden
+            />
+            <StatusPill status={task.status} />
+          </span>
+          <span data-slot="goal" className="min-w-0 truncate text-slate-200" title={task.goal}>
+            {task.goal}
+          </span>
+          {showReason && (
+            // Rendered exactly as the row carries it — not trimmed, not
+            // normalized. This panel's job is to report what is stored, and a
+            // stored note of spaces is a fact about the row worth seeing.
+            // Clamped to one line; the whole string is on the title and in
+            // the open row.
+            <span data-slot="reason" className="min-w-0 truncate text-slate-300" title={task.feedback}>
+              {task.feedback ?? <span className="text-slate-600">—</span>}
+            </span>
+          )}
+          <span data-slot="assignee" className="max-w-[10rem] truncate text-slate-400" title={task.assignee}>
+            {task.assignee ?? "—"}
+          </span>
+          <span data-slot="kind" className="whitespace-nowrap text-slate-400">
+            <span className="font-mono text-[10px]">{entry.kind ?? "—"}</span>
+            {entry.changeCount > 1 && (
+              <span className="ml-1 rounded bg-slate-800 px-1 text-[10px] text-slate-400">
+                ×{entry.changeCount}
+              </span>
+            )}
+          </span>
+        </button>
+        {/* Outside the toggle: a button cannot hold another button. */}
+        <span data-slot="run" className="shrink-0">
+          {runLink}
         </span>
-        {entry.prevStatus !== undefined && (
-          <span className="ml-1 text-[10px] text-slate-600">
-            (was {entry.prevStatus})
-          </span>
-        )}
-        {entry.changeCount > 1 && (
-          <span className="ml-1 rounded bg-slate-800 px-1 text-[10px] text-slate-400">
-            ×{entry.changeCount}
-          </span>
-        )}
-      </td>
-      <td className="px-3 py-1.5 text-right">
-        <details className="inline-block">
-          <summary className="inline-flex cursor-pointer items-center gap-0.5 text-[10px] text-slate-400 hover:text-slate-200">
-            <Eye className="h-3 w-3" aria-hidden />
-            view
-          </summary>
-          <div className="mt-2 w-[28rem] max-w-full text-left">
-            <JsonViewer data={task} />
-          </div>
-        </details>
-      </td>
-    </tr>
+      </div>
+      {open && <TaskRowBody entry={entry} id={bodyId} />}
+    </li>
   );
 }
 
