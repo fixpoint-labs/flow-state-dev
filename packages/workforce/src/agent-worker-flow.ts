@@ -97,9 +97,7 @@ import {
 } from "./channel/channel-flow";
 import {
   ROUTED_TURN_STATE,
-  answeredAlready,
-  claimRoutedAnswer,
-  postRoutedAnswer,
+  answerRoutedPost,
   routedTurnStateSchema,
   seatIdConfigSchema
 } from "./channel-post-capability";
@@ -1122,18 +1120,23 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   });
 
   /**
-   * The routed reply's line: the reply, to the post's channel, unless the
-   * seat already has its line for this post (the tool posted it, or the post
-   * was delivered before). An empty reply is a failed answer: the run fails
-   * and nothing is posted, never a stock line. A hand-off the channel refuses
-   * gives the claim back and fails the run, so the post delivered again is
-   * answered.
+   * The routed reply's answer: the reply, to the post's channel. The channel
+   * lands it unless the post has its answer, and takes a post's answers in the
+   * order they were handed over, so after the tool's answer, or on a post
+   * delivered again, it lands no second line. It goes in even when the tool
+   * handed an answer over (`handed`), because that means the channel took the
+   * hand-off, not that it kept the line: a dispatch returns before the channel
+   * writes, so a channel that then cannot keep the tool's answer lands this
+   * reply instead. An empty reply is a failed answer: the run fails and nothing
+   * is posted, never a stock line, unless the tool handed an answer over. A
+   * hand-off the dispatch refuses fails the run and leaves the post
+   * unanswered, so the post delivered again is answered.
    */
-  const claimRoutedLine = handler({
-    name: "agent-claim-routed-line",
+  const routedAnswer = handler({
+    name: "agent-routed-answer",
     inputSchema: z.unknown(),
     outputSchema: z.union([
-      z.object({ channel: z.string(), body: z.string(), author: z.string() }),
+      z.object({ channel: z.string(), postId: z.string(), body: z.string(), author: z.string() }),
       z.object({ answeredAlready: z.literal(true) })
     ]),
     requestStateSchema: routedTurnStateSchema,
@@ -1141,21 +1144,20 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     execute: async (reply: unknown, ctx) => {
       // Run only on a routed turn (the `tapIf` below), which is marked.
       const routed = ctx.request.state.channelRoutedPost!;
-      if (answeredAlready(ctx, routed.postId)) return { answeredAlready: true as const };
-      if (typeof reply !== "string" || reply.trim().length === 0) {
-        throw new Error(
-          `This seat was routed a post in ${routed.channelId} and its turn ended with an empty reply, ` +
-            "so nothing was posted to the channel."
-        );
+      if (typeof reply === "string" && reply.trim().length > 0) {
+        return { channel: routed.channelId, postId: routed.postId, body: reply, author: ctx.flow.config.seatId };
       }
-      if (!(await claimRoutedAnswer(ctx, routed.postId))) return { answeredAlready: true as const };
-      return { channel: routed.channelId, body: reply, author: ctx.flow.config.seatId };
+      if (routed.handed === true) return { answeredAlready: true as const };
+      throw new Error(
+        `This seat was routed a post in ${routed.channelId} and its turn ended with an empty reply, ` +
+          "so nothing was posted to the channel."
+      );
     }
   });
 
   const landRoutedReply = sequencer({ name: "agent-land-routed-reply", inputSchema: z.unknown() })
-    .step(claimRoutedLine)
-    .stepIf((claim) => !("answeredAlready" in claim), postRoutedAnswer);
+    .step(routedAnswer)
+    .stepIf((answer) => !("answeredAlready" in answer), answerRoutedPost);
 
   /**
    * A channel post as this seat hears it. Every delivery runs `run` on the

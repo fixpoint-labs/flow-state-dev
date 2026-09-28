@@ -327,7 +327,7 @@ describe("post-to-channel", () => {
       await bind(runtime.stores, "support.desk", ["support.otto"]);
 
       const turn = await say(runtime, bare, postTurn({ channel: "support.desk", body: "who am I?" }));
-      expect(String(turn.error)).toMatch(/"post-to-channel-claim" cannot read: "seatId": Required/);
+      expect(String(turn.error)).toMatch(/"post-to-channel-line" cannot read: "seatId": Required/);
       expect(scripted.calls).toEqual([]);
       expect(await runtime.stores.request.list({ sessionId: "support.desk" })).toEqual([]);
     } finally {
