@@ -78,6 +78,8 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   const submit = async () => {
     if (picked === null || schema === undefined || sending) return;
     const input = { ...(buildInputFromForm(schema, values) as Record<string, unknown>), taskId };
+    // The previous run's answer is not this one's: clear it before sending.
+    setSent(null);
     setSending(true);
     try {
       const dispatched = await run(picked, input);
@@ -94,8 +96,9 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
     }
   };
 
-  const outcome: RowActionOutcome | null =
-    sent === null
+  const outcome: RowActionOutcome | null = sending
+    ? { state: "pending" }
+    : sent === null
       ? null
       : "error" in sent
         ? { state: "failed", message: sent.error }
@@ -141,7 +144,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
             >
               Run
             </Button>
-            {outcome !== null && sent?.action === picked && <Outcome outcome={outcome} />}
+            {outcome !== null && (sending || sent?.action === picked) && <Outcome outcome={outcome} />}
           </div>
         </div>
       )}

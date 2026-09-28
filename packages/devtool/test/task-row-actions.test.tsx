@@ -184,6 +184,31 @@ describe("running one", () => {
     expect(row().querySelector<HTMLInputElement>('[data-field="taskId"] input')?.value).toBe("task-a");
   });
 
+  it("does not show the previous run's answer as the answer to the next one", async () => {
+    // Run once and see it succeed; run again on the now-settled task. Until the
+    // second run's own answer is in, the row must not still say "Done", or a
+    // refusal would read as success for as long as the dispatch takes.
+    let release: (value: { requestId: string }) => void = () => {};
+    const run = vi
+      .fn<RowActions["run"]>()
+      .mockResolvedValueOnce({ requestId: "req_1" })
+      .mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+    const answered = [request("req_1", "completed", [rootTrace("req_1", { ok: true })])];
+    const { rerender } = render(<Harness run={run} requests={answered} />);
+    await open();
+    await userEvent.click(within(row()).getByRole("button", { name: "cancelTask_issues" }));
+    await userEvent.click(within(row()).getByRole("button", { name: /^run$/i }));
+    expect(row().querySelector("[data-outcome]")?.getAttribute("data-outcome")).toBe("ok");
+
+    await userEvent.click(within(row()).getByRole("button", { name: /^run$/i }));
+    expect(row().querySelector("[data-outcome]")?.getAttribute("data-outcome")).toBe("pending");
+
+    release({ requestId: "req_2" });
+    const refused = rootTrace("req_2", { ok: false, error: "terminal_task_write_declined" });
+    rerender(<Harness run={run} requests={[...answered, request("req_2", "completed", [refused])]} />);
+    await screen.findByText(/Refused: terminal_task_write_declined/);
+  });
+
   it("reads only the request it sent, not an older one on the same session", async () => {
     const outcome = await submitted([
       request("req_old", "completed", [rootTrace("req_old", { ok: true })]),
