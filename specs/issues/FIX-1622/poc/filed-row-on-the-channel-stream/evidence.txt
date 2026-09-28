@@ -1,0 +1,31 @@
+FIX-1622 poc/filed-row-on-the-channel-stream
+Run on main at 9a55b79e4, 2026-09-28. In-memory store, kitchen-sink's scripted model, no key.
+Verdict lines only; the engine's own log lines are dropped.
+
+## As is
+
+PASS F1 — channel stream (components) carried 1 task-change for support.help.escalations with the token: kind=added status=pending request=req_1790615187415_6c6320b32519e; row readable +0.1s after the post, on the stream +0.5s after the post
+PASS F1b — the request that kept it: {"action":"fileTask","status":"completed","session":"support.help","source":"internal"}
+PASS F2 — assistant-session stream, open (1 runs notice(s)), carried 0 item(s) naming the token or the board (0 items in all)
+PASS F3 — resource_change items on any session stream: 0
+PASS F3b — the fileTask request's kept items: ["block_trace","component"]
+PASS F4 — rows with the token: via channel 1, via assistant 1; fields read: attempts,createdAt,goal,id,status,updatedAt
+PASS F6 — a row written from another session: readable through the channel 1; its task-change on the writer's own stream 1, on the channel's stream 0 (4 s later)
+INFO F5 — the task-change item carries: attempts,createdAt,goal,id,incarnationId,metadata,revision,status,updatedAt,writeLogTruncated
+INFO — channel stream (components): 4 items (channel-post, task-change, channel-route); channel stream (all): 7 items; runs notices on the channel: 1
+INFO — channel lines streamed: [["support.devices","[reply:escalated] Filed onto escalations."],["(person)","[route:support.devices] [scenario:needs-a-person] case-token"]]
+control=none exit=0
+
+## GOAL_CONTROL=no-filing (the specialist says it filed; nothing is filed)
+
+FAIL F1 — channel stream (components) carried 0 task-change for support.help.escalations with the token: kind=undefined status=undefined request=undefined; row readable never, on the stream never
+PASS F1b — the request that kept it: null
+PASS F2 — assistant-session stream, open (1 runs notice(s)), carried 0 item(s) naming the token or the board (0 items in all)
+PASS F3 — resource_change items on any session stream: 0
+PASS F3b — the fileTask request's kept items: []
+FAIL F4 — rows with the token: via channel 0, via assistant 0; fields read:
+PASS F6 — a row written from another session: readable through the channel 1; its task-change on the writer's own stream 1, on the channel's stream 0 (4 s later)
+INFO F5 — the task-change item carries:
+INFO — channel stream (components): 3 items (channel-post, channel-route); channel stream (all): 6 items; runs notices on the channel: 1
+INFO — channel lines streamed: [["support.devices","[reply:escalated] Filed onto escalations."],["(person)","[route:support.devices] [scenario:needs-a-person] case-token"]]
+control=no-filing exit=1

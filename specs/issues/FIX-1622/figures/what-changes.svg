@@ -1,0 +1,111 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Two lanes. Today: a specialist in support.help files a case, which writes a row into the organization's escalations ledger; the team panel reads that ledger once, through the assistant's conversation, and draws seven narrow status columns, so the new row appears only after a reload. After: the same filing also keeps a task-change item in support.help, the channel's session stream, which already ships, carries it to the panel about half a second later, and the panel, now a live BoardList read through support.help, re-reads the ledger and draws one list, newest first, each case with its status word. A change kept in another session reaches the list only on its next read, until FIX-1506."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .done  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.3; }
+    .new   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .later { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .col   { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .row   { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .hot   { fill:var(--surface); stroke:var(--accent); stroke-width:1.4; }
+    .ln    { stroke:var(--ink-2); stroke-width:1.4; fill:none; }
+    .ln-a  { stroke:var(--accent); stroke-width:1.6; fill:none; }
+    .ln-d  { stroke:var(--ink-3); stroke-width:1.3; fill:none; stroke-dasharray:5 4; }
+    .hd    { fill:var(--ink-2); }
+    .hd-a  { fill:var(--accent); }
+    .hd-d  { fill:var(--ink-3); }
+    .t-lane{ fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; letter-spacing:.12em; font-weight:600; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-c   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:7.5px; }
+    .t-r   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-st  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-x   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="today">
+    <rect class="lane" x="8" y="8" width="924" height="206" rx="6"/>
+    <text class="t-lane" x="20" y="28">TODAY</text>
+    <rect class="done" x="20" y="44" width="200" height="72" rx="5"/>
+    <text class="t-lbl" x="34" y="62">SUPPORT.HELP</text>
+    <text class="t-b" x="34" y="82">specialist files a case</text>
+    <text class="t-s" x="34" y="100">escalate → channel's fileTask</text>
+    <path class="ln" d="M220 80 H290"/><polygon class="hd" points="296,80 288,76 288,84"/>
+    <text class="t-s" x="236" y="72">writes</text>
+    <rect class="done" x="296" y="44" width="196" height="72" rx="5"/>
+    <text class="t-lbl" x="310" y="62">ORGANIZATION</text>
+    <text class="t-b" x="310" y="82">escalations ledger</text>
+    <text class="t-s" x="310" y="100">one row per case</text>
+    <path class="ln-d" d="M492 80 H554"/><polygon class="hd-d" points="560,80 552,76 552,84"/>
+    <text class="t-s" x="498" y="72">read once</text>
+    <rect class="old" x="560" y="36" width="364" height="170" rx="5"/>
+    <text class="t-lbl" x="574" y="54">TEAM PANEL · VIA THE ASSISTANT, ON MOUNT</text>
+    <g id="columns">
+      <rect class="col" x="570" y="64" width="46" height="104"/><text class="t-c" x="574" y="76">pending</text>
+      <rect class="col" x="620" y="64" width="46" height="104"/><text class="t-c" x="624" y="76">in_prog…</text>
+      <rect class="col" x="670" y="64" width="46" height="104"/><text class="t-c" x="674" y="76">blocked</text>
+      <rect class="col" x="720" y="64" width="46" height="104"/><text class="t-c" x="724" y="76">parked</text>
+      <rect class="col" x="770" y="64" width="46" height="104"/><text class="t-c" x="774" y="76">complet…</text>
+      <rect class="col" x="820" y="64" width="46" height="104"/><text class="t-c" x="824" y="76">errored</text>
+      <rect class="col" x="870" y="64" width="46" height="104"/><text class="t-c" x="874" y="76">cancell…</text>
+      <rect class="later" x="574" y="84" width="38" height="30" rx="3"/>
+      <text class="t-c" x="578" y="102">new…</text>
+    </g>
+    <text class="t-x" x="574" y="188">seven columns · the new row shows after a reload</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="8" y="226" width="924" height="236" rx="6"/>
+    <text class="t-lane" x="20" y="246">AFTER</text>
+    <rect class="done" x="20" y="262" width="200" height="72" rx="5"/>
+    <text class="t-lbl" x="34" y="280">SUPPORT.HELP</text>
+    <text class="t-b" x="34" y="300">specialist files a case</text>
+    <text class="t-s" x="34" y="318">the same request, unchanged</text>
+    <path class="ln" d="M220 298 H290"/><polygon class="hd" points="296,298 288,294 288,302"/>
+    <text class="t-s" x="236" y="290">writes</text>
+    <rect class="done" x="296" y="262" width="196" height="72" rx="5"/>
+    <text class="t-lbl" x="310" y="280">ORGANIZATION</text>
+    <text class="t-b" x="310" y="300">escalations ledger</text>
+    <text class="t-s" x="310" y="318">one row per case</text>
+    <path class="ln" d="M120 334 V352"/><polygon class="hd" points="120,358 116,350 124,350"/>
+    <text class="t-s" x="130" y="349">keeps a task-change item</text>
+    <rect class="done" x="20" y="358" width="472" height="46" rx="5"/>
+    <text class="t-lbl" x="34" y="376">SUPPORT.HELP SESSION STREAM · SHIPPED</text>
+    <text class="t-b" x="34" y="395">carries the item about 0.5 s later</text>
+    <path class="ln-a" d="M492 381 H554"/><polygon class="hd-a" points="560,381 552,377 552,385"/>
+    <text class="t-s" x="498" y="373">change</text>
+    <path class="ln-a" d="M560 298 H498"/><polygon class="hd-a" points="492,298 500,294 500,302"/>
+    <text class="t-s" x="502" y="290">re-read</text>
+    <rect class="later" x="20" y="414" width="472" height="36" rx="5"/>
+    <text class="t-s" x="34" y="436">a change kept in another session · FIX-1506</text>
+    <path class="ln-d" d="M492 432 H554"/><polygon class="hd-d" points="560,432 552,428 552,436"/>
+    <text class="t-s" x="496" y="424">next read</text>
+    <rect class="new" x="560" y="254" width="364" height="196" rx="5"/>
+    <text class="t-lbl" x="574" y="272">BOARDLIST · LIVE · VIA SUPPORT.HELP</text>
+    <g id="list">
+      <rect class="hot" x="574" y="284" width="336" height="28" rx="3"/>
+      <text class="t-r" x="584" y="302">case-token-7f2 · the charger caught fire</text>
+      <text class="t-st" x="852" y="302">pending</text>
+      <rect class="row" x="574" y="318" width="336" height="28" rx="3"/>
+      <text class="t-r" x="584" y="336">the wifi drops every hour</text>
+      <text class="t-st" x="852" y="336">pending</text>
+      <rect class="row" x="574" y="352" width="336" height="28" rx="3"/>
+      <text class="t-r" x="584" y="370">refund never arrived</text>
+      <text class="t-st" x="852" y="370">pending</text>
+    </g>
+    <text class="t-s" x="574" y="404">newest first · a status word on every row</text>
+    <text class="t-s" x="574" y="422">draws what the re-read returns, not the item</text>
+  </g>
+</svg>
