@@ -439,18 +439,18 @@ describe("an edit and another write to one session at once", () => {
     const stores = createInMemoryStores();
     const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
     await keepSession(stores, "parent");
-    await keepSession(stores, "seat", { parentSessionId: "parent", title: "Seat" });
+    await keepSession(stores, "child1", { parentSessionId: "parent", title: "Child1" });
 
     const set = stores.session.set.bind(stores.session);
     const get = stores.session.get.bind(stores.session);
     let renamed = false;
     vi.spyOn(stores.session, "set").mockImplementation(async (id, value, expected) => {
-      const stored = renamed || id !== "seat" ? undefined : await get(id);
+      const stored = renamed || id !== "child1" ? undefined : await get(id);
       // The write that moves only the child's update time.
       const touch = { ...value, updatedAt: 0, version: 0 };
       if (stored !== undefined && isDeepStrictEqual(touch, { ...stored, updatedAt: 0, version: 0 })) {
         renamed = true;
-        expect((await patchMetadata(router, "seat", { title: "Renamed" })).status).toBe(200);
+        expect((await patchMetadata(router, "child1", { title: "Renamed" })).status).toBe(200);
       }
       return set(id, value, expected);
     });
@@ -458,18 +458,18 @@ describe("an edit and another write to one session at once", () => {
     const res = await router.POST(
       new Request("http://localhost/api/flows/relay/parent/actions/deliver", {
         method: "POST",
-        body: JSON.stringify({ userId: "alice", input: { to: "seat" } })
+        body: JSON.stringify({ userId: "alice", input: { to: "child1" } })
       }),
       { params: { path: ["relay", "parent", "actions", "deliver"] } }
     );
     expect(res.status).toBe(202);
     await until(() => renamed, "the run moved the child's update time");
     await until(
-      async () => (await stores.request.list({ sessionId: "seat" })).every((r) => r.status !== "in_progress"),
+      async () => (await stores.request.list({ sessionId: "child1" })).every((r) => r.status !== "in_progress"),
       "the delivered run finished"
     );
 
-    expect((await get("seat"))?.title).toBe("Renamed");
+    expect((await get("child1"))?.title).toBe("Renamed");
   });
 
   // A write of a session record names the version it writes. One that kept
@@ -480,24 +480,24 @@ describe("an edit and another write to one session at once", () => {
     const stores = createInMemoryStores();
     const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
     await keepSession(stores, "parent");
-    await keepSession(stores, "seat", { parentSessionId: "parent", updatedAt: Date.now() - 60_000 });
-    const before = (await stores.session.get("seat"))!;
+    await keepSession(stores, "child1", { parentSessionId: "parent", updatedAt: Date.now() - 60_000 });
+    const before = (await stores.session.get("child1"))!;
 
     const res = await router.POST(
       new Request("http://localhost/api/flows/relay/parent/actions/deliver", {
         method: "POST",
-        body: JSON.stringify({ userId: "alice", input: { to: "seat" } })
+        body: JSON.stringify({ userId: "alice", input: { to: "child1" } })
       }),
       { params: { path: ["relay", "parent", "actions", "deliver"] } }
     );
     expect(res.status).toBe(202);
-    await until(async () => (await stores.session.get("seat"))!.updatedAt > before.updatedAt, "the child moved");
+    await until(async () => (await stores.session.get("child1"))!.updatedAt > before.updatedAt, "the child moved");
     await until(
-      async () => (await stores.request.list({ sessionId: "seat" })).every((r) => r.status !== "in_progress"),
+      async () => (await stores.request.list({ sessionId: "child1" })).every((r) => r.status !== "in_progress"),
       "the delivered run finished"
     );
 
-    expect((await stores.session.get("seat"))!.version).toBeGreaterThan(before.version);
+    expect((await stores.session.get("child1"))!.version).toBeGreaterThan(before.version);
   });
 
   it("keeps a change another write made while the edit was being applied", async () => {

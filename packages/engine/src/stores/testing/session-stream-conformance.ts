@@ -95,8 +95,8 @@ function sayFlow(kind: string, secure = false) {
     kind,
     actions: {
       say: { block: say },
-      // A run under the session: a child derived from a key, as a channel's
-      // seats are.
+      // A run under the session: a child derived from a key, as a keyed
+      // collection member is.
       spawn: {
         block: dispatcher({
           name: `${kind}-spawn`,
@@ -885,16 +885,16 @@ export function createSessionStreamConformanceTests(
 
       await seedSession(stores, "run_1", {
         parentSessionId: "s1",
-        flowId: "support.otto",
-        topic: "post-1"
+        flowId: "child.flow",
+        topic: "topic-1"
       });
       await seedRequest(stores, { id: "req_run_1", sessionId: "run_1", status: "in_progress" });
       const started = await live.waitFor((e) => runsOf(e).includes("run_1"));
       expect(started.type === "session.runs" && started.runs[0]).toMatchObject({
         id: "run_1",
         parentSessionId: "s1",
-        flowId: "support.otto",
-        topic: "post-1"
+        flowId: "child.flow",
+        topic: "topic-1"
       });
 
       const record = await stores.request.get("req_run_1");
@@ -907,9 +907,9 @@ export function createSessionStreamConformanceTests(
     });
 
     /**
-     * A run under the session that finished, then starts again later: a seat
-     * answering a second post in the same conversation. `how` is the way the
-     * second run reaches the child.
+     * A run under the session that finished, then starts again later: a
+     * second request reaching the same child in the same conversation. `how`
+     * is the way the second run reaches the child.
      */
     async function runStartsAgain(how: "spawn" | "deliver"): Promise<void> {
       // Reads that reach back only a moment, so the second run is found
@@ -922,7 +922,7 @@ export function createSessionStreamConformanceTests(
       await live.waitFor((e) => e.type === "session.runs");
 
       const releaseFirst = hold("first");
-      await finished(stores, await act(r, "s1", "spawn", { key: "seat", text: "first", hold: "first" }));
+      await finished(stores, await act(r, "s1", "spawn", { key: "child", text: "first", hold: "first" }));
       const started = await live.waitFor((e) => runsOf(e).length === 1);
       const [child] = runsOf(started);
       releaseFirst();
@@ -934,7 +934,7 @@ export function createSessionStreamConformanceTests(
       const releaseSecond = hold("second");
       const second =
         how === "spawn"
-          ? { key: "seat", text: "second", hold: "second" }
+          ? { key: "child", text: "second", hold: "second" }
           : { to: child!, text: "second", hold: "second" };
       const sent = await act(r, "s1", how, second);
       await finished(stores, sent);

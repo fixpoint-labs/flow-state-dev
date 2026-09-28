@@ -2,10 +2,11 @@
  * `GET /sessions/:sessionId/stream` — one live view of a whole session.
  *
  * A request's stream carries the request a client sent. A session can have
- * other writers: a channel an agent answers in, a board several people work,
- * the same conversation open in two tabs. This route follows all of them. It
- * sends each finished item any request in the session keeps, and a notice
- * naming the session's unfinished runs whenever that set changes.
+ * other writers: a conversation another participant answers in, a board
+ * several people work, the same conversation open in two tabs. This route
+ * follows all of them. It sends each finished item any request in the
+ * session keeps, and a notice naming the session's unfinished runs whenever
+ * that set changes.
  *
  * ## How it finds what is new
  *
