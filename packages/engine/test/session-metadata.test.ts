@@ -430,10 +430,10 @@ describe("an edit and another write to one session at once", () => {
     vi.restoreAllMocks();
   });
 
-  // A run delivered into an existing child moves the child's update time, so
-  // a live view of the parent sees it start. That write must not put back a
-  // title the child was given after the run read it.
-  it("keeps a title edited while a run delivered into the child starts", async () => {
+  // A run delivered into an existing child moves the child's update time when
+  // it is accepted, so a live view of the parent sees it. That write must not
+  // put back a title the child was given after the child was read for it.
+  it("keeps a title edited while a run delivered into the child is accepted", async () => {
     const registry = createFlowRegistry();
     registry.register(deliveryFlow("relay"));
     const stores = createInMemoryStores();

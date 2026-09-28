@@ -22,7 +22,8 @@
  *   set lookup.
  * - **Runs.** When the stream opens, one read takes every run under the session.
  *   After that, only runs whose update time moved since the floor (a run moves
- *   when it starts) and runs already known to be unfinished are checked.
+ *   when a request for it is accepted, before it waits for anything) and runs
+ *   already known to be unfinished are checked.
  *
  * Each read costs what is running now, never the session's whole history.
  * Items go through the session snapshot's own filter (`snapshotItemsOf`), and

@@ -1141,31 +1141,6 @@ export async function runActionInternal<
           { ...session, latestRequestId: requestId, updatedAt: Date.now() },
           "any"
         );
-      } else if (
-        // A delivery into an existing CHILD still moves the child's update
-        // time, and only that. A live view of the parent finds runs that start
-        // by that time (`routes/session-stream-routes.ts`), and a delivery
-        // writes nothing else to the child, so without it a run delivered into
-        // a child whose last run finished would never show as working. Scoped
-        // to children: only they are anyone's runs, and a top-level recipient
-        // is someone's own conversation, better left unwritten.
-        stamp?.recipientLineageId !== undefined &&
-        session !== undefined &&
-        session.parentSessionId != null &&
-        tenantMatches(session.tenantId, options.tenantId) &&
-        session.userId === options.userId
-      ) {
-        // Written only over the version just loaded, and one past it, so a
-        // writer still holding the loaded copy conflicts rather than putting it
-        // back over this one. A write that got in first (a metadata edit, say)
-        // has moved the update time already, and this must not put back a copy
-        // of the child older than that write. A conflict is therefore not an
-        // error.
-        await options.stores.session.set(
-          sessionKey,
-          { ...session, updatedAt: Date.now(), version: session.version + 1 },
-          session.version
-        );
       }
     } catch (setupError) {
       // Pre-controller window — see `stopHeartbeatTimer`.

@@ -601,10 +601,12 @@ export function createInboundTransportHost(
 
   /**
    * Materialize the enqueue-time `in_progress` stub and the `activeRequests`
-   * entry, owner-fenced. The record is written create-if-absent: a lost race
-   * against a foreign owner refuses rather than overwriting, and a lost race
-   * against this same owner (a retry reusing its id) keeps the existing record
-   * and re-stamps it, which is the last-write-wins hand-off it always was.
+   * entry, owner-fenced, and move a child session's update time so a view of
+   * its parent sees the run while it waits. The record is written
+   * create-if-absent: a lost race against a foreign owner refuses rather than
+   * overwriting, and a lost race against this same owner (a retry reusing its
+   * id) keeps the existing record and re-stamps it, which is the
+   * last-write-wins hand-off it always was.
    * Resolves `true` once the entry is this dispatch's to keep warm and to
    * remove on exit.
    */
@@ -633,6 +635,37 @@ export function createInboundTransportHost(
         );
       }
       await stores.request.set(record.id, record, "any");
+    }
+    // A request under a child session moves the child's update time here,
+    // where the request is first recorded as working, and not when its run
+    // starts: the run can wait behind a concurrency key, or in an external
+    // queue, for a long time before that. A live view of the parent finds runs
+    // by that time (`routes/session-stream-routes.ts`), and a child whose last
+    // run finished long ago is found no other way. After the request record,
+    // so a read that finds the moved child finds the request too. Before the
+    // entry, so a failure here leaves no entry behind.
+    if (dispatchEnvelope.sessionId !== undefined) {
+      const sessionKey = resolveSessionStorageKey(
+        dispatchEnvelope.sessionId,
+        dispatchEnvelope.tenantId
+      );
+      const session = await stores.session.get(sessionKey);
+      if (
+        session !== undefined &&
+        session.parentSessionId != null &&
+        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
+        session.userId === dispatchEnvelope.userId
+      ) {
+        // Written only over the version just read, and one past it, so a
+        // writer still holding the older copy conflicts rather than putting it
+        // back over this one. A write that got in first has moved the update
+        // time already, so a conflict is not an error.
+        await stores.session.set(
+          sessionKey,
+          { ...session, updatedAt: Date.now(), version: session.version + 1 },
+          session.version
+        );
+      }
     }
     await stores.activeRequests.register({ ...entry, flowKind: flow.kind, flowId: flow.id });
   };

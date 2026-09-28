@@ -5,7 +5,8 @@
  * run per adapter.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildBlockInstanceId, DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { buildBlockInstanceId, DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { OutputItem, SessionStreamEvent } from "@flow-state-dev/core/items";
 import {
   createFlowApiRouter,
@@ -540,3 +541,215 @@ describe("a connection that ends", () => {
     expect(logged).toHaveLength(1);
   });
 });
+
+describe("a run waiting to start", () => {
+  const shipped = { ...SESSION_STREAM_TIMINGS };
+  let router: Router | undefined;
+
+  beforeEach(() => {
+    SESSION_STREAM_TIMINGS.intervalMs = 25;
+  });
+
+  afterEach(async () => {
+    Object.assign(SESSION_STREAM_TIMINGS, shipped);
+    if (router !== undefined) await disposeFlowApiRouter(router);
+    router = undefined;
+  });
+
+  // A run for a child whose last run finished can wait behind another request
+  // before it starts. Its request is recorded as working from the moment it is
+  // accepted, so a view of the parent that is already open names the child
+  // from then, not only once the run starts. The same for a child named by its
+  // id and one derived again from its key.
+  it.each([
+    ["delivered into it by its id", "deliver"],
+    ["dispatched to it by the key it was derived from", "spawn"]
+  ] as const)("names a child while a run %s waits behind another request", async (_how, action) => {
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let holding = false;
+    const queued = { policy: "queue", key: "user" } as const;
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "chat",
+        actions: {
+          hold: {
+            concurrency: queued,
+            block: handler({
+              name: "hold",
+              execute: async () => {
+                holding = true;
+                await held;
+                return {};
+              }
+            })
+          },
+          deliver: {
+            block: dispatcher({
+              name: "deliver",
+              action: "work",
+              inputSchema: z.object({ to: z.string() }),
+              session: { id: (input: { to: string }) => input.to },
+              payload: () => ({})
+            })
+          },
+          spawn: {
+            block: dispatcher({
+              name: "spawn",
+              action: "work",
+              session: { key: () => "seat" },
+              payload: () => ({})
+            })
+          }
+        },
+        internal: {
+          actions: { work: { concurrency: queued, block: handler({ name: "work", execute: () => ({}) }) } }
+        }
+      })
+    );
+    const stores = createInMemoryStores();
+    router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    await seedSession(stores, Date.now() - 600_000);
+    const anHourAgo = Date.now() - 3_600_000;
+    let child = "seat";
+    if (action === "deliver") {
+      await keepRun(stores, child, anHourAgo, "completed");
+    } else {
+      // Derive the child with one run, and let it finish an hour ago.
+      expect((await post(router, "spawn", {})).status).toBe(202);
+      await until(async () => (await stores.session.list({ parentage: { parentOf: "s1" } })).length === 1, "the child");
+      await until(
+        async () => (await stores.request.list({})).every((r) => r.status !== "in_progress"),
+        "the first run finished"
+      );
+      const [derived] = await stores.session.list({ parentage: { parentOf: "s1" } });
+      child = derived!.id;
+      await stores.session.set(child, { ...derived!, updatedAt: anHourAgo }, "any");
+    }
+
+    const controller = new AbortController();
+    const res = await router.GET(
+      new Request("http://localhost/api/flows/sessions/s1/stream", { signal: controller.signal }),
+      { params: { path: ["sessions", "s1", "stream"] } }
+    );
+    expect(res.status).toBe(200);
+    const events = collectEvents(res);
+    const runNotices = (): string[][] =>
+      events.flatMap((event) => (event.type === "session.runs" ? [event.runs.map((run) => run.id)] : []));
+    try {
+      await until(() => runNotices().length > 0, "the opening notice");
+      expect(runNotices()[0]).toEqual([]);
+
+      // Another request of the same user holds the key the delivered run waits on.
+      expect((await post(router, "hold", {})).status).toBe(202);
+      await until(() => holding, "the other request holds the key");
+      expect((await post(router, action, action === "deliver" ? { to: child } : {})).status).toBe(202);
+      await until(
+        async () => (await stores.request.list({ sessionId: child })).some((r) => r.status === "in_progress"),
+        "the run was accepted"
+      );
+
+      // Well past the few reads it takes to see a child that moved.
+      await new Promise((resolve) => setTimeout(resolve, SESSION_STREAM_TIMINGS.intervalMs * 8));
+      expect(runNotices().at(-1)).toEqual([child]);
+    } finally {
+      release();
+      await until(
+        async () => (await stores.request.list({})).every((r) => r.status !== "in_progress"),
+        "every request finished"
+      );
+      controller.abort();
+    }
+  });
+
+  // Accepting a request writes the child it runs in, before any check of who
+  // is asking has run. Someone else naming the child is refused later, and
+  // must not have moved it first.
+  it("leaves a child as it was when another user's request for it is accepted", async () => {
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "chat",
+        actions: {
+          ping: {
+            concurrency: { policy: "queue", key: "session" },
+            block: handler({ name: "ping", execute: () => ({}) })
+          }
+        }
+      })
+    );
+    const stores = createInMemoryStores();
+    router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    await seedSession(stores, Date.now() - 600_000);
+    await keepRun(stores, "seat", Date.now() - 3_600_000, "completed");
+    const before = (await stores.session.get("seat"))!;
+
+    await router.POST(
+      new Request("http://localhost/api/flows/chat/seat/actions/ping", {
+        method: "POST",
+        body: JSON.stringify({ userId: "mallory", input: {} })
+      }),
+      { params: { path: ["chat", "seat", "actions", "ping"] } }
+    );
+    await until(
+      async () => (await stores.request.list({ sessionId: "seat" })).every((r) => r.status !== "in_progress"),
+      "the request was settled"
+    );
+
+    const after = (await stores.session.get("seat"))!;
+    expect({ version: after.version, updatedAt: after.updatedAt }).toEqual({
+      version: before.version,
+      updatedAt: before.updatedAt
+    });
+  });
+});
+
+/** Post `action` to `s1` as alice. */
+function post(router: Router, action: string, input: unknown): Promise<Response> {
+  return router.POST(
+    new Request(`http://localhost/api/flows/chat/s1/actions/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ userId: "alice", input })
+    }),
+    { params: { path: ["chat", "s1", "actions", action] } }
+  );
+}
+
+/** Every event the stream sends, as it arrives, until the stream ends or is aborted. */
+function collectEvents(res: Response): SessionStreamEvent[] {
+  const events: SessionStreamEvent[] = [];
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  void (async () => {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        buffered += decoder.decode(value, { stream: true });
+        for (let cut = buffered.indexOf("\n\n"); cut >= 0; cut = buffered.indexOf("\n\n")) {
+          const data = buffered
+            .slice(0, cut)
+            .split("\n")
+            .find((line) => line.startsWith("data: "));
+          buffered = buffered.slice(cut + 2);
+          if (data !== undefined) events.push(JSON.parse(data.slice(6)) as SessionStreamEvent);
+        }
+      }
+    } catch {
+      // Aborted.
+    }
+  })();
+  return events;
+}
+
+async function until(condition: () => boolean | Promise<boolean>, what: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!(await condition())) {
+    if (Date.now() > deadline) throw new Error(`never: ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}

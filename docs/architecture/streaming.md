@@ -197,7 +197,7 @@ Replayable events are persisted **before** they are flushed to the SSE wire. The
 
 ## Resume Semantics
 
-Resume after disconnect uses sequence-number cursors:
+A request stream resumes after a disconnect from a sequence-number cursor. (The [session stream](#session-stream) resumes by time.)
 
 ```
 Last-Event-ID: req_123:42

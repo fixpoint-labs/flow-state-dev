@@ -130,7 +130,8 @@ SSE-based item/content streaming with built-in resume:
 
 - **Items** have types (`message`, `reasoning`, `component`, `status`, `error`, etc.) and lifecycle states (`in_progress` → `completed`)
 - **Content** streams within items via delta events — text appears token-by-token
-- **Sequence-number cursors** enable replay after disconnect — no data loss, no duplicates
+- **A request's stream** resumes from a sequence-number cursor after a disconnect: no data loss, no duplicates
+- **The session stream**, which follows every request in a session, resumes from a server time (`?since=`) instead. It repeats a few seconds of overlap on purpose, so a client dedupes by request and item id. See [Session Stream](./streaming.md#session-stream)
 - **Item types determine audience routing** — some items go to the UI, some to the LLM context, some to devtools
 
 See [Streaming](./streaming.md) and [Items](./items.md).
@@ -188,7 +189,7 @@ Key points:
 1. **Async by design** — POST returns `202 Accepted` immediately. Execution happens in the background.
 2. **Live streaming** — Items stream via SSE as blocks execute. The client sees results as they're produced.
 3. **Correctness path** — Client refetches the state snapshot on `request.completed` to get the authoritative final state.
-4. **Resilient resume** — Reconnect after disconnect using `Last-Event-ID` or `starting_after` query param. The server replays missed events from the sequence cursor.
+4. **Resilient resume** — Reconnect a request's stream after a disconnect using `Last-Event-ID` or the `starting_after` query param. The server replays missed events from the sequence cursor. The session stream resumes by time instead ([Session Stream](./streaming.md#session-stream)).
 
 ## Locked contracts (Phase 1)
 
