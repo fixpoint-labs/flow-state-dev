@@ -28,7 +28,7 @@
  * `task-row-body`. Open rows are held here, keyed by board and task id, so a
  * streamed change re-renders a row without closing it.
  */
-import { Component, useCallback, useMemo, useState, type ReactNode } from "react";
+import { Component, useCallback, useId, useMemo, useState, type ReactNode } from "react";
 import type { ActionInputSchema, ChildSessionSummary } from "@flow-state-dev/client";
 import { ChevronRight, ClipboardList, Layers } from "lucide-react";
 import {
@@ -221,7 +221,6 @@ function CollectionCard({
               <RowBoundary key={entry.task.id} taskId={entry.task.id} resetOn={entry.task}>
                 <TaskRow
                   entry={entry}
-                  rowId={key}
                   open={openRows.has(key)}
                   onToggle={() => onToggleRow(key)}
                   showReason={showReason}
@@ -256,16 +255,8 @@ function rowKey(collectionId: string, taskId: string): string {
   return `${collectionId}\u0000${taskId}`;
 }
 
-/** A DOM id for the row's body, safe whatever the ids contain. */
-function bodyIdOf(key: string): string {
-  let hash = 0;
-  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  return `task-row-${(hash >>> 0).toString(36)}-${key.length}`;
-}
-
 function TaskRow({
   entry,
-  rowId,
   open,
   onToggle,
   showReason,
@@ -275,7 +266,6 @@ function TaskRow({
   actions,
 }: {
   entry: ResolvedTask;
-  rowId: string;
   open: boolean;
   onToggle: () => void;
   /** Decided by the board, so every row on one board has the same slots. */
@@ -287,7 +277,7 @@ function TaskRow({
   actions?: (taskId: string) => ReactNode;
 }) {
   const { task } = entry;
-  const bodyId = bodyIdOf(rowId);
+  const bodyId = useId();
   // Status leads; goal and reason share what is left, each allowed to shrink
   // to nothing (`minmax(0, 1fr)`) so neither pushes the row past the pane.
   const columns = showReason
