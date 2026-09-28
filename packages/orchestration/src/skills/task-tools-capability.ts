@@ -42,7 +42,7 @@
  */
 
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
-import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, StateRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   getOrCreateTaskCollection,
@@ -62,6 +62,9 @@ import {
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.
 import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
+// The resolver `taskBoard()` recorded for its handle, read without importing
+// the task-board barrel (which imports this module's neighbours).
+import { boardResolverOf } from "../task-board/board-resolver";
 // `shouldRetryOnFail` is the collection's own routing predicate for `fail()`.
 // Imported from the module rather than the package barrel so the recovery
 // composer stays in step with `fail()` without widening the public surface —
@@ -445,8 +448,15 @@ const claimGuard = (
 function buildTaskTools(
   resolve: TaskCollectionResolver,
   roster?: WorkerRoster,
-  nameSuffix?: string
+  nameSuffix?: string,
+  /**
+   * Capabilities each tool composes. Only {@link taskToolActions} passes one: a
+   * board's own capability, so the ledger's resource is installed on the
+   * action's block rather than left for the flow to declare.
+   */
+  uses?: readonly DefinedCapability[],
 ) {
+  const withUses = uses === undefined ? {} : { uses: [...uses] };
   /**
    * The eight names, optionally board-qualified.
    *
@@ -570,6 +580,7 @@ function buildTaskTools(
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
     parentStateSchema,
+    ...withUses,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
@@ -614,6 +625,7 @@ function buildTaskTools(
     inputSchema: z.object({ taskId: z.string(), assignee: z.string() }),
     outputSchema: okOrError,
     parentStateSchema,
+    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c) => c.setAssignee(input.taskId, input.assignee), {
         assignee: input.assignee,
@@ -627,6 +639,7 @@ function buildTaskTools(
     inputSchema: z.object({ taskId: z.string(), output: z.unknown() }),
     outputSchema: okOrError,
     parentStateSchema,
+    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.complete(input.taskId, input.output, claimGuard(claim)),
@@ -639,6 +652,7 @@ function buildTaskTools(
     inputSchema: z.object({ taskId: z.string(), error: z.string() }),
     outputSchema: okOrError,
     parentStateSchema,
+    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.fail(input.taskId, input.error, claimGuard(claim)),
@@ -651,6 +665,7 @@ function buildTaskTools(
     inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
     outputSchema: okOrError,
     parentStateSchema,
+    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.block(input.taskId, input.reason, claimGuard(claim)),
@@ -666,6 +681,7 @@ function buildTaskTools(
     inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
     outputSchema: okOrError,
     parentStateSchema,
+    ...withUses,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.cancel(input.taskId, input.reason, claimGuard(claim)),
@@ -688,6 +704,7 @@ function buildTaskTools(
     }),
     outputSchema: okOrError,
     parentStateSchema,
+    ...withUses,
     execute: (input, ctx) =>
       withTask(
         ctx,
@@ -752,6 +769,7 @@ function buildTaskTools(
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
     parentStateSchema,
+    ...withUses,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
@@ -845,3 +863,106 @@ export function createTaskToolsCapability(
  * resolver for it to `createTaskToolsCapability`.
  */
 export const taskTools = createTaskToolsCapability();
+
+// ---------------------------------------------------------------------------
+// The eight tools as flow actions
+// ---------------------------------------------------------------------------
+
+/**
+ * The qualifier that makes one board's eight task tools distinct from
+ * another's: the board's collection id with every character a provider does
+ * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
+ * `eng.feature.work`'s tools are `cancelTask_eng_feature_work`.
+ *
+ * **Pinned.** It is the name a model is told about on a channel board and the
+ * name an action carries under {@link taskToolActions}, and the DevTool scopes
+ * a row's actions to its board by it.
+ */
+export function taskToolSuffix(collectionId: string): string {
+  return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/**
+ * What {@link taskToolActions} reads off a board handle. Structural, so this
+ * module does not import the task-board barrel.
+ */
+export interface TaskToolActionsBoard {
+  readonly collectionId: string;
+  readonly backing: string;
+  /** Composed by each action, so the board's ledger is installed with it. */
+  readonly capability: DefinedCapability<any, any>;
+}
+
+/**
+ * A durable board's eight task tools as a flow `actions` map, named
+ * `<tool>_<suffix>` ({@link taskToolSuffix}). Spread it into `defineFlow`'s
+ * `actions` to let a caller — a person in the DevTool, an app's own screen —
+ * change a task from outside the run that works it.
+ *
+ * Each action runs the same guarded verb a model's tool does, so a move the
+ * task cannot make comes back as `{ ok: false, error }` and writes nothing.
+ * None of them claims or drains the board. An action holds no claim, so it
+ * settles as a coordinator does: a legal transition lands even on a row a
+ * worker holds, and that worker's own later result is declined.
+ *
+ * Two forms:
+ *
+ * - `taskToolActions(board)` — a `taskBoard()` handle. Its rows are reached
+ *   through the board's own resolver, and each action composes the board's
+ *   capability, so the flow need not declare the collection again.
+ * - `taskToolActions(collectionId, resolve)` — for a caller that resolves a
+ *   durable ledger itself (a Workforce channel does, to fence each action to
+ *   its own session).
+ *
+ * These are public actions: anyone who can call the flow can call them.
+ *
+ * @throws When the board's backing is not `resource`. A request- or
+ *   sequencer-backed ledger is gone when the request that filed its rows ends,
+ *   so a later action could never find them.
+ */
+export function taskToolActions(board: TaskToolActionsBoard): Record<string, ActionConfig>;
+export function taskToolActions(
+  collectionId: string,
+  resolve: TaskCollectionResolver,
+): Record<string, ActionConfig>;
+export function taskToolActions(
+  boardOrId: TaskToolActionsBoard | string,
+  resolveCollection?: TaskCollectionResolver,
+): Record<string, ActionConfig> {
+  let collectionId: string;
+  let resolve: TaskCollectionResolver;
+  let uses: DefinedCapability[] | undefined;
+  if (typeof boardOrId === "string") {
+    if (resolveCollection === undefined) {
+      throw new Error(
+        `taskToolActions("${boardOrId}") needs a resolver for the ledger as its second argument.`,
+      );
+    }
+    collectionId = boardOrId;
+    resolve = resolveCollection;
+  } else {
+    collectionId = boardOrId.collectionId;
+    if (boardOrId.backing !== "resource") {
+      throw new Error(
+        `taskToolActions: board "${collectionId}" is ${boardOrId.backing}-backed, and its tasks ` +
+          `do not outlive the request that filed them, so a later action could never find ` +
+          `them. Give the board a durable collection: \`collection: defineTaskCollection(...)\`.`,
+      );
+    }
+    const recorded = boardResolverOf(boardOrId);
+    if (recorded === undefined) {
+      throw new Error(
+        `taskToolActions: board "${collectionId}" was not built by taskBoard(). Pass ` +
+          `\`taskToolActions(collectionId, resolve)\` for a ledger you resolve yourself.`,
+      );
+    }
+    resolve = recorded;
+    uses = [boardOrId.capability];
+  }
+  return Object.fromEntries(
+    buildTaskTools(resolve, undefined, taskToolSuffix(collectionId), uses).map((tool) => [
+      tool.name,
+      { block: tool, description: tool.description },
+    ]),
+  );
+}
