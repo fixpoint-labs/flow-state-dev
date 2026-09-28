@@ -2009,8 +2009,7 @@ async function runOwnedGenerateLoop(params: {
  * message item, reasoning/message items are emitted lazily in stream order,
  * and the resolved model identity refines as chunks report it. Seeding also
  * primes `ctx._currentModelIdentity` so tools called on the very first turn
- * still stamp an identity on their `tool_output` items. Only the owned loop
- * marks step boundaries (`stepBreakPending`); the legacy stream carries none.
+ * still stamp an identity on their `tool_output` items.
  */
 function createStreamEmissionState(
   model: GeneratorModel,
@@ -2050,9 +2049,6 @@ function createStreamEmissionState(
     messageItem: null as Record<string, unknown> | null,
     messageEmitted: false,
     accumulated: "",
-    // Owned loop only: set when a step starts after text was written; the
-    // step's first text opens with a paragraph break.
-    stepBreakPending: false,
     resolvedIdentity,
     finalResult: undefined as GeneratorModelResult | undefined,
   };
@@ -2169,18 +2165,13 @@ async function handleGeneratorStreamChunk(
       }
       s.messageEmitted = true;
     }
-    let delta = chunk.textDelta;
-    if (s.stepBreakPending && delta.length > 0) {
-      delta = `\n\n${delta}`;
-      s.stepBreakPending = false;
-    }
-    s.accumulated += delta;
+    s.accumulated += chunk.textDelta;
     if (emit) {
       await ctx.response.emit({
         type: "content.delta",
         itemId: s.itemId,
         contentIndex: s.contentPartIndex,
-        delta
+        delta: chunk.textDelta
       });
     }
   } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
@@ -2521,9 +2512,10 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
     // Reset so this step's `finish` chunk is what we read below, not a
     // previous step's.
     s.finalResult = undefined;
-    // Consumed by the first non-empty `text_delta` in `handleGeneratorStreamChunk`.
-    s.stepBreakPending = s.accumulated.length > 0;
-    for await (const chunk of prep.stepModel.streamStep!({
+    // A step that writes text after earlier text opens with a paragraph
+    // break. A tool-only step never consumes this, so it adds no break.
+    let paragraphBreak = s.accumulated.length > 0;
+    for await (const raw of prep.stepModel.streamStep!({
       messages,
       tools: activeStepTools(toolset, activeToolNames),
       providerTools: providerTools.length > 0 ? providerTools : undefined,
@@ -2532,7 +2524,12 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
       providerOptions: resolvedProviderOpts,
       caching: resolvedCaching,
     })) {
-      await handleGeneratorStreamChunk(remapChunkToolNames(chunk, toolset), s, ctx);
+      let chunk = remapChunkToolNames(raw, toolset);
+      if (paragraphBreak && chunk.type === "text_delta" && chunk.textDelta) {
+        paragraphBreak = false;
+        chunk = { ...chunk, textDelta: `\n\n${chunk.textDelta}` };
+      }
+      await handleGeneratorStreamChunk(chunk, s, ctx);
     }
 
     // Widened read: the handler mutates `s.finalResult` inside the loop, so
