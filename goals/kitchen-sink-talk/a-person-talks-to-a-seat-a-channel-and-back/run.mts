@@ -17,8 +17,9 @@
  *        within 15 s, and the row clears. Nobody else works or answers.
  *   b    three posts, each after the previous answer: B1 to devices, B2 to
  *        accounts, B3 unmarked for the fallback, each answered through the post
- *        tool: the right seat works, then one line each, by it; nobody else
- *        works. Each seat's conversation in the channel holds only its own posts.
+ *        tool: the right seat works, then one line each, by it, and its row
+ *        clears before the next post goes; nobody else works. Each seat's
+ *        conversation in the channel holds only its own posts.
  *   c1   "New conversation" on devices, token C1: the person's turn
  *        (`c1:turn`), a reply under it (`c1:reply`).
  *   c2   there, the recall scenario, token C2: the person's turn (`c2:turn`),
@@ -343,10 +344,12 @@ async function follow(page: Page, sentAt: number, answered: (r: Reading) => bool
   return { readings, lineAt, clearedAt };
 }
 
-/** The seats seen working in `readings` that were not already working before Send. */
-function othersWorking(readings: Reading[], before: Reading, seat: string): string[] {
-  const already = new Set(before.working);
-  const seen = readings.flatMap((r) => r.working).filter((w) => !already.has(w));
+/**
+ * The seats other than `seat` seen working in `readings`. A row left from an
+ * earlier post counts too: subtracting it would hide an overlap.
+ */
+function othersWorking(readings: Reading[], seat: string): string[] {
+  const seen = readings.flatMap((r) => r.working);
   return [...new Set(seen.map(seatOf).filter((s): s is string => s !== undefined && s !== seat))];
 }
 
@@ -434,7 +437,6 @@ interface Tokens {
 async function legA(page: Page, t: Tokens, fail: Fail, evidence: string[]): Promise<void> {
   const seat = SEATS.devices.id;
   await showChannel(page);
-  const before = await readChannel(page);
   const sentAt = await postLine(page, `${route("devices")} ${M.textAnswer} ${t.a} is my laptop covered for a cracked screen?`);
   const f = await follow(page, sentAt, (r) => (answersTo(r.lines, t.a)?.length ?? 0) > 0, fixture.lineWithinMs);
   const workingAt = f.readings.find(
@@ -443,7 +445,7 @@ async function legA(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
   const last = f.readings.at(-1)!;
   const answers = answersTo(last.lines, t.a) ?? [];
   const most = Math.max(0, ...f.readings.map((r) => answersTo(r.lines, t.a)?.length ?? 0));
-  const others = othersWorking(f.readings, before, seat);
+  const others = othersWorking(f.readings, seat);
 
   if (workingAt === undefined) {
     fail("a:working", `the panel never showed "${seat} is working" before its line (line ${secs(sentAt, f.lineAt)}; ${f.readings.length} readings, rows seen: ${JSON.stringify([...new Set(f.readings.flatMap((r) => r.working))])})`);
@@ -483,11 +485,17 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
     { token: t.b[2], role: fixture.fallback, marked: false, ask: "where do I leave feedback about the office?" },
   ];
   await showChannel(page);
+  let previous = `A (${t.a})`;
   for (const post of plan) {
     const seat = SEATS[post.role].id;
-    // The last seat's row goes first, so this post's readings hold only its own work.
-    await readUntil(() => readChannel(page), (r) => r.working.length === 0, 5_000);
-    const before = await readChannel(page);
+    const name = `${post.token} (${post.marked ? route(post.role) : "unmarked, the fallback"})`;
+    // The last post's row is gone before this one goes. One that stays is that post's, and it is
+    // kept in this post's readings, so an overlap still shows.
+    const idle = await readUntil(() => readChannel(page), (r) => r.working.length === 0, 5_000);
+    if (idle.working.length > 0) {
+      fail("b:clears", `${previous}: ${JSON.stringify(idle.working)} still showed when ${post.token} was to be sent`);
+    }
+    previous = name;
     const text = `${post.marked ? `${route(post.role)} ` : ""}${M.toolAnswer} ${post.token} ${post.ask}`;
     const sentAt = await postLine(page, text);
     const f = await follow(page, sentAt, (r) => repliesOf(r.lines, post.token).length > 0, fixture.lineWithinMs);
@@ -497,8 +505,7 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
     )?.at;
     const replies = repliesOf(f.readings.at(-1)!.lines, post.token);
     const most = Math.max(0, ...f.readings.map((r) => repliesOf(r.lines, post.token).length));
-    const others = othersWorking(f.readings, before, seat);
-    const name = `${post.token} (${post.marked ? route(post.role) : "unmarked, the fallback"})`;
+    const others = othersWorking(f.readings, seat);
     const ok0 = failuresSoFar.length;
     if (workingAt === undefined) {
       fail("b:working", `${name}: the panel never showed "${seat} is working" before its line (line ${secs(sentAt, f.lineAt)}; ${f.readings.length} readings, rows seen: ${JSON.stringify([...new Set(f.readings.flatMap((r) => r.working))])})`);
@@ -508,9 +515,13 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
     } else if (replies.length !== 1 || most > 1 || replies[0]!.label !== seat || !replies[0]!.body.includes(M.toolReply)) {
       fail("b:line", `${name}: the lines carrying it are ${JSON.stringify(replies.map((l) => `${l.label}: ${l.body}`))}, at most ${most} in one reading (want one, by ${seat}, carrying ${M.toolReply})`);
     }
+    // As in leg a: every row is gone within 5 s of the line. B3's is the last, with no post after it.
+    if (f.lineAt !== undefined && f.clearedAt === undefined) {
+      fail("b:clears", `${name}: ${JSON.stringify(f.readings.at(-1)!.working)} still showed 5s after its line`);
+    }
     if (others.length > 0) fail("b:alone", `${name}: the panel showed ${others.join(", ")} working on it (want ${seat} alone)`);
     if (failuresSoFar.length === ok0) {
-      evidence.push(`b: ${name}: line ${secs(sentAt, f.lineAt)} by ${seat}, working ${secs(sentAt, workingAt)}, nobody else seen working`);
+      evidence.push(`b: ${name}: line ${secs(sentAt, f.lineAt)} by ${seat}, working ${secs(sentAt, workingAt)}, cleared ${secs(sentAt, f.clearedAt)}, nobody else seen working`);
     }
   }
 
@@ -943,17 +954,22 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
     await page.goto(`${server.origin}/`);
     await ready(page);
     await showChannel(page);
+    const within = `${fixture.smoke.withinMs / 1000}s`;
     for (const [i, post] of posts.entries()) {
       const want = post.want === undefined ? undefined : SEATS[post.want].id;
-      await readUntil(() => readChannel(page), (r) => r.working.length === 0, fixture.smoke.withinMs);
-      const before = await readChannel(page);
+      // No post goes while a run is working: every answer then belongs to the post it follows.
+      const idle = await readUntil(() => readChannel(page), (r) => r.working.length === 0, fixture.smoke.withinMs);
+      if (idle.working.length > 0) {
+        fail("smoke", `before post ${i + 1}: ${JSON.stringify(idle.working)} still showed after ${within}, so the smoke stops here and post ${i + 1} is not sent`);
+        break;
+      }
       const sentAt = await postLine(page, `${post.text} ${post.mark}`);
       // Every run the post started ends before the answers are counted, so a second answer is not missed.
       const f = await follow(page, sentAt, (r) => (answersTo(r.lines, post.mark)?.length ?? 0) > 0, fixture.smoke.withinMs, fixture.smoke.withinMs);
       const answers = answersTo(f.readings.at(-1)!.lines, post.mark) ?? [];
-      const worked = [...new Set(f.readings.flatMap((r) => r.working).filter((w) => !before.working.includes(w)).map(seatOf))];
+      const worked = [...new Set(f.readings.flatMap((r) => r.working).map(seatOf))];
       answeredBy.push(answers[0]);
-      const said = `post ${i + 1} ${JSON.stringify(post.text)}: ${answers.length} line(s) ${secs(sentAt, f.lineAt)}, ${answers.map((l) => `${l.label}: ${JSON.stringify(l.body)}`).join(" | ") || "none"}; working seen: ${worked.join(", ") || "none"}`;
+      const said = `post ${i + 1} ${JSON.stringify(post.text)}: ${answers.length} line(s) ${secs(sentAt, f.lineAt)}, ${answers.map((l) => `${l.label}: ${JSON.stringify(l.body)}`).join(" | ") || "none"}; working seen: ${worked.join(", ") || "none"}; cleared ${secs(sentAt, f.clearedAt)}`;
       console.log(`  smoke ${said}`);
       evidence.push(said);
       if (f.lineAt === undefined) fail("smoke", `post ${i + 1}: no answer within ${fixture.smoke.withinMs / 1000}s of Send, with no reload`);
@@ -972,15 +988,28 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
         }
         if (subject.length === 0) fail("smoke", `the follow-up's answer names none of ${JSON.stringify(post.subject)}: ${JSON.stringify(answers[0]!.body)}`);
       }
+      // A run still working (or no answer to wait out) means the next post could draw this one's answer.
+      if (f.clearedAt === undefined) {
+        const next = i + 1 < posts.length ? `post ${i + 2} is not sent` : "no post follows";
+        fail(
+          "smoke",
+          f.lineAt === undefined
+            ? `post ${i + 1}: with no answer, the smoke stops here and ${next}`
+            : `post ${i + 1}: ${JSON.stringify(f.readings.at(-1)!.working)} still showed ${within} after its answer, so a run it started never ended; the smoke stops here and ${next}`,
+        );
+        break;
+      }
     }
+    // Only the posts that went.
+    const sent = posts.slice(0, answeredBy.length);
     await reload(page);
     await showChannel(page);
     const after = await readUntil(
       () => readChannel(page),
-      (r) => posts.every((p) => postsOf(r.lines, p.mark).length > 0),
+      (r) => sent.every((p) => postsOf(r.lines, p.mark).length > 0),
       15_000,
     );
-    for (const [i, post] of posts.entries()) {
+    for (const [i, post] of sent.entries()) {
       const kept = answersTo(after.lines, post.mark) ?? [];
       if (kept.length !== 1 || kept[0]!.label !== answeredBy[i]?.label) {
         fail("smoke", `after the reload, post ${i + 1} is answered by ${JSON.stringify(kept.map((l) => l.label))} (want the one line it showed, by ${answeredBy[i]?.label ?? "its specialist"})`);
