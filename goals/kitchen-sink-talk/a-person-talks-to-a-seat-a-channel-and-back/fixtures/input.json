@@ -12,9 +12,9 @@
   "escalatesTo": "accounts",
   "markers": {
     "route": "[route:{seat}]",
-    "textAnswer": "[scenario:wake]",
+    "textAnswer": "[scenario:wake-after-a-hold]",
     "textReply": "[reply:wake]",
-    "toolAnswer": "[scenario:reply-in-channel]",
+    "toolAnswer": "[scenario:reply-after-a-hold]",
     "toolReply": "[reply:in-channel]",
     "talk": "[scenario:talk-to-seat]",
     "talkReply": "[reply:talk-to-seat]",

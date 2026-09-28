@@ -25,7 +25,7 @@
  *        naming C1 and no token from a or b. The channel shows none of it.
  *   seg  (part 4) devices' conversation in the channel holds nothing of C1.
  *   e    (part 2) a needs-a-person post, token E: the specialist's line says
- *        it filed (`e:line`); the team panel's escalations column shows one
+ *        it filed (`e:line`); the team panel's escalations list shows one
  *        row carrying E on the open page (`e:row-open`) and after the reload
  *        (`e:row`); the boot still warns that nothing drains escalations
  *        (`e:warning`).
@@ -702,13 +702,13 @@ async function partTwo(page: Page, origin: string, t: Tokens, fail: Fail, eviden
   } else {
     evidence.push(`e: open page, ${seat}'s line ${secs(sentAt, f.lineAt)}: ${JSON.stringify(answers[0]!.body)}`);
   }
-  // The row, on the open page: the column shows it without a reload.
+  // The row, on the open page: the list shows it without a reload.
   const openRows = await readUntil(() => boardRows(page), (rs) => rs.some((r) => r.includes(t.e)), fixture.lineWithinMs);
   const openMine = openRows.filter((r) => r.includes(t.e));
   if (openMine.length !== 1) {
-    fail("e:row-open", `open page: the team panel's ${board} column holds ${openMine.length} rows carrying ${t.e} within ${fixture.lineWithinMs / 1000}s of its line, with no reload (want 1); it shows ${openRows.length} rows, ${rowsBefore} when the leg began`);
+    fail("e:row-open", `open page: the team panel's ${board} list holds ${openMine.length} rows carrying ${t.e} within ${fixture.lineWithinMs / 1000}s of its line, with no reload (want 1); it shows ${openRows.length} rows, ${rowsBefore} when the leg began`);
   } else {
-    evidence.push(`e: open page, the ${board} column shows ${JSON.stringify(openMine[0])}`);
+    evidence.push(`e: open page, the ${board} list shows ${JSON.stringify(openMine[0])}`);
   }
   // The row is written by the channel's own request, a moment after the
   // dispatch. Let it land before the reload; nothing here is graded.
@@ -732,9 +732,9 @@ async function partTwo(page: Page, origin: string, t: Tokens, fail: Fail, eviden
   const rows = await readUntil(() => boardRows(page), (rs) => rs.some((r) => r.includes(t.e)), 10_000);
   const mine = rows.filter((r) => r.includes(t.e));
   if (mine.length !== 1) {
-    fail("e:row", `after the reload, the team panel's ${board} column holds ${mine.length} rows carrying ${t.e} (want 1); it shows ${rows.length} rows`);
+    fail("e:row", `after the reload, the team panel's ${board} list holds ${mine.length} rows carrying ${t.e} (want 1); it shows ${rows.length} rows`);
   } else {
-    evidence.push(`e: after the reload, the ${board} column shows ${JSON.stringify(mine[0])}`);
+    evidence.push(`e: after the reload, the ${board} list shows ${JSON.stringify(mine[0])}`);
   }
 }
 
