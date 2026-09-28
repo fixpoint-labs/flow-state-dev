@@ -1,9 +1,10 @@
 /**
- * SSE stream clients for request and optional user stream consumption.
+ * SSE stream clients for request, session and optional user stream consumption.
  */
 import { toError } from "@flow-state-dev/contracts/helpers";
 import type {
   RequestStreamEvent,
+  SessionStreamEvent,
   UserStreamEvent
 } from "@flow-state-dev/core/items";
 import { buildFlowApiUrl, resolveFetch } from "../internal/http";
@@ -11,6 +12,8 @@ import type {
   ClientFetch,
   RequestSSECallbacks,
   RequestStreamHandle,
+  SessionSSECallbacks,
+  SessionStreamHandle,
   UserSSECallbacks,
   UserStreamHandle
 } from "../types";
@@ -340,6 +343,152 @@ export function createUserSSEClient(
 }
 
 /**
+ * Configuration for following a whole session over
+ * `GET /api/flows/sessions/:sessionId/stream`.
+ */
+export type CreateSessionSSEClientOptions = SessionSSECallbacks & {
+  sessionId: string;
+  baseUrl?: string;
+  fetcher?: ClientFetch;
+  /**
+   * A server time to start from: one an earlier connection heard
+   * (`handle.lastAt`), or the session snapshot's `at` when the stream follows a
+   * snapshot. The server's first read reaches a few seconds before it.
+   * Omitted, it reaches back about a minute.
+   */
+  since?: number;
+  /**
+   * The session snapshot's `sessionCreatedAt`, when the stream follows a
+   * snapshot. Every connection then follows that session only: once its id
+   * holds another session, the server answers 404 and the client stops.
+   */
+  sessionCreatedAt?: number;
+  /** The session snapshot's type filter, so the stream sends what the snapshot shows. */
+  itemTypes?: string[];
+  /** Reconnect backoff: `initialDelayMs` (default 1000) doubling to `maxDelayMs` (default 30000). */
+  retry?: { initialDelayMs?: number; maxDelayMs?: number };
+};
+
+/**
+ * Answers that mean the stream is not there for this caller: refused, absent,
+ * not built, or (409) a session kept before records named their owner, which
+ * stays refused until it is migrated. Retrying cannot change them.
+ */
+const SESSION_STREAM_STOP_STATUSES: ReadonlySet<number> = new Set([401, 403, 404, 409, 501]);
+
+/**
+ * Follow a whole session: every finished item any request in it keeps, and a
+ * notice whenever its unfinished runs change.
+ *
+ * The connection is expected to drop: the network, a host's time limit, the
+ * server's own close after at most 15 minutes. Each time, the client
+ * reconnects with backoff and hands back the last server time it heard, so
+ * nothing kept in between is missed; `onReconnecting` says each try is coming,
+ * and how many there have been since the stream last delivered. The stream starts a few seconds before
+ * `since`, so an item can arrive again: across a reconnect, or when the
+ * snapshot that gave `since` already held it. An item a request emits more
+ * than once under one id arrives once per emission. Tell items apart by
+ * `requestId` and `item.id` and keep the copy that sorts later by
+ * `compareItemOrder`.
+ *
+ * A 401, 403, 404, 409 or 501 stops the client for good, quietly: `onStop`
+ * fires, `onError` does not, and nothing is retried.
+ */
+export function createSessionSSEClient(
+  options: CreateSessionSSEClientOptions
+): SessionStreamHandle {
+  const fetcher = resolveFetch(options.fetcher);
+  const initialDelayMs = options.retry?.initialDelayMs ?? 1_000;
+  const maxDelayMs = options.retry?.maxDelayMs ?? 30_000;
+  const path = `/api/flows/sessions/${encodeURIComponent(options.sessionId)}/stream`;
+  const itemTypes =
+    options.itemTypes === undefined || options.itemTypes.length === 0
+      ? undefined
+      : options.itemTypes.join(",");
+  let lastAt = options.since;
+  let stopped = false;
+  let attempt = 0;
+  let controller: AbortController | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const reconnectLater = (): void => {
+    if (stopped) return;
+    const delay = Math.min(maxDelayMs, initialDelayMs * 2 ** attempt);
+    attempt += 1;
+    timer = setTimeout(() => {
+      timer = undefined;
+      void connect();
+    }, delay);
+    options.onReconnecting?.({ attempt });
+  };
+
+  const connect = async (): Promise<void> => {
+    if (stopped) return;
+    const current = new AbortController();
+    controller = current;
+    try {
+      const response = await fetcher(
+        buildFlowApiUrl({
+          baseUrl: options.baseUrl,
+          path,
+          query: { since: lastAt, session_created_at: options.sessionCreatedAt, item_types: itemTypes }
+        }),
+        { method: "GET", headers: { accept: "text/event-stream" }, signal: current.signal }
+      );
+      if (SESSION_STREAM_STOP_STATUSES.has(response.status)) {
+        void response.body?.cancel().catch(() => {});
+        stopped = true;
+        options.onStop?.({ status: response.status });
+        return;
+      }
+      if (!response.ok) {
+        void response.body?.cancel().catch(() => {});
+      } else {
+        await readSSEBody({
+          response,
+          signal: current.signal,
+          onFrame: (frame) => {
+            if (stopped || frame.data === undefined) return;
+            let event: SessionStreamEvent;
+            try {
+              event = JSON.parse(frame.data) as SessionStreamEvent;
+            } catch (error) {
+              options.onError?.(toError(error, "Unparseable session stream event"));
+              return;
+            }
+            lastAt = event.at;
+            attempt = 0;
+            dispatchSessionEvent(event, options);
+          }
+        });
+      }
+    } catch (error) {
+      if (stopped || isAbortError(error)) return;
+      // A dropped connection is expected; reconnect below.
+    }
+    reconnectLater();
+  };
+
+  void connect();
+
+  return {
+    close: () => {
+      if (stopped) return;
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+      controller?.abort();
+    },
+    get lastAt() {
+      return lastAt;
+    },
+    get stopped() {
+      return stopped;
+    }
+  };
+}
+
+/**
  * Reads SSE frames from a Response body. Shared by both the GET SSE client
  * and the inline streaming (POST response) client.
  */
@@ -616,6 +765,20 @@ function dispatchUserEvent(event: UserStreamEvent, callbacks: UserSSECallbacks):
 
   if (event.type === "debug") {
     callbacks.onDebug?.(event);
+  }
+}
+
+function dispatchSessionEvent(
+  event: SessionStreamEvent,
+  callbacks: SessionSSECallbacks
+): void {
+  callbacks.onEvent?.(event);
+  if (event.type === "session.item") {
+    callbacks.onItem?.(event);
+    return;
+  }
+  if (event.type === "session.runs") {
+    callbacks.onRuns?.(event);
   }
 }
 

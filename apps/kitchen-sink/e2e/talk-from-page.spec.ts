@@ -29,6 +29,13 @@
  * (`support.otto`, woken by a post, answers in `support.desk` itself; the line
  * is labelled `support.otto` after a reload) and BR-9 (its line wakes nobody:
  * each agent seat heard the token once, in the person's post).
+ *
+ * And by `specs/issues/FIX-1609/BUSINESS-RULES.md`: BR-1, BR-7 and BR-8
+ * (with the channel open, `support.otto is working` shows, then otto's line
+ * lands and the row clears, with no reload), BR-20 and BR-21 (the panel is
+ * the only view that follows its session: one session stream, for
+ * `support.desk`, and none for the assistant). This one is read before any
+ * reload, on purpose: what it checks is the page keeping up by itself.
  */
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -328,4 +335,40 @@ test("a woken support.otto answers in support.desk under its own name, and its l
     await expect(heard).toHaveCount(1);
     await expect(heard).toContainText(`devuser in support.desk: ${line}`);
   }
+});
+
+test("with support.desk open, support.otto shows as working and then its line lands, with no reload", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  // Every session stream the page opens, by the session it follows.
+  const followed: string[] = [];
+  page.on("request", (request) => {
+    const match = /^\/api\/flows\/sessions\/([^/]+)\/stream$/.exec(new URL(request.url()).pathname);
+    if (match !== null) followed.push(decodeURIComponent(match[1]!));
+  });
+
+  const mark = `reply-token-${token()}`;
+  const line = `[scenario:reply-after-a-hold] ${mark} when do refunds post?`;
+  await openShell(page);
+  await open(page, "channel");
+  await row(page, "support.desk").click();
+  const channel = picked(page);
+  await channel.getByLabel("Post to this channel").fill(line);
+  await channel.getByRole("button", { name: "Send" }).click();
+  await expect(channel.getByTestId("channel-line").filter({ hasText: line })).toHaveCount(1);
+
+  // Otto holds its answer about three seconds: long enough to be seen working.
+  const working = channel.getByTestId("working-row").filter({ hasText: "support.otto is working" });
+  await expect(working).toHaveCount(1);
+  const reply = channel.getByTestId("channel-line").filter({ hasText: `[reply:in-channel] ${mark}` });
+  await expect(reply).toHaveCount(0);
+
+  // Then its line lands in the open panel, under its name, and the row clears.
+  await expect(reply).toHaveCount(1, { timeout: 15_000 });
+  await expect(reply.getByTestId("channel-line-label")).toHaveText("support.otto");
+  await expect(working).toHaveCount(0);
+
+  // Only the channel's panel follows its session; the assistant does not.
+  expect([...new Set(followed)]).toEqual(["support.desk"]);
 });

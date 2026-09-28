@@ -54,10 +54,33 @@ describe("compareItemOrder", () => {
     expect(compareItemOrder(b, a)).toBeGreaterThan(0);
   });
 
-  it("returns zero for identical ordering keys", () => {
-    const a = makeItem({ id: "a", ts: 100, itemIndex: 1 });
-    const b = makeItem({ id: "b", ts: 100, itemIndex: 1 });
-    expect(compareItemOrder(a, b)).toBe(0);
+  // A store that merges several requests' items would otherwise keep a tie in
+  // arrival order, while a reload keeps the server's order. The server sorts a
+  // snapshot with this same comparator, so a total order makes the two agree.
+  it("breaks a tie on time and index by request id, then item id", () => {
+    const fromA = makeItem({ id: "z", requestId: "req_a", ts: 100, itemIndex: 0 });
+    const fromB = makeItem({ id: "a", requestId: "req_b", ts: 100, itemIndex: 0 });
+    expect(compareItemOrder(fromA, fromB)).toBeLessThan(0);
+    expect(compareItemOrder(fromB, fromA)).toBeGreaterThan(0);
+
+    const first = makeItem({ id: "a", ts: 100, itemIndex: 1 });
+    const second = makeItem({ id: "b", ts: 100, itemIndex: 1 });
+    expect(compareItemOrder(first, second)).toBeLessThan(0);
+    expect(compareItemOrder(first, { ...first })).toBe(0);
+  });
+
+  it("inserts a tie across requests in the same place whatever order it arrives in", () => {
+    const fromA = makeItem({ id: "m", requestId: "req_a", ts: 100, itemIndex: 0 });
+    const fromB = makeItem({ id: "m", requestId: "req_b", ts: 100, itemIndex: 0 });
+    const byRequest = (item: OutputItem) => `${item.requestId}/${item.id}`;
+    const aFirst = createRequestStreamStore({ keyOf: byRequest });
+    aFirst.upsert(fromA);
+    aFirst.upsert(fromB);
+    const bFirst = createRequestStreamStore({ keyOf: byRequest });
+    bFirst.upsert(fromB);
+    bFirst.upsert(fromA);
+    expect(bFirst.getSorted()).toEqual(aFirst.getSorted());
+    expect(aFirst.getSorted()).toEqual([fromA, fromB]);
   });
 });
 
@@ -251,6 +274,57 @@ describe("createRequestStreamStore — loadSnapshot", () => {
     store.loadSnapshot([makeItem({ id: "a", ts: 100 })]);
     expect(store.status).toBe("completed");
     expect(store.lastSequenceNumber).toBe(7);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// keyOf: a store holding more than one request's items
+// ---------------------------------------------------------------------------
+
+describe("createRequestStreamStore — keyOf", () => {
+  // Two requests that keep a keyed item with the same key keep the same id.
+  const fromA = makeItem({ id: "keyed", requestId: "req_a", ts: 1 });
+  const fromB = makeItem({ id: "keyed", requestId: "req_b", ts: 2 });
+  const byRequest = (item: OutputItem) => `${item.requestId}/${item.id}`;
+
+  it("holds both requests' items when keyed by request and id", () => {
+    const loaded = createRequestStreamStore({ keyOf: byRequest });
+    loaded.loadSnapshot([fromA, fromB]);
+    expect(loaded.getSorted()).toEqual([fromA, fromB]);
+
+    const upserted = createRequestStreamStore({ keyOf: byRequest });
+    upserted.upsert(fromA);
+    upserted.upsert(fromB);
+    expect(upserted.getSorted()).toEqual([fromA, fromB]);
+    expect(upserted.getById("req_a/keyed")).toBe(fromA);
+  });
+
+  it("sends a delta to the request it names", () => {
+    const store = createRequestStreamStore({ keyOf: byRequest });
+    const text = (item: OutputItem) =>
+      ({ ...item, content: [{ type: "output_text", text: "" }] }) as OutputItem;
+    store.loadSnapshot([text(fromA), text(fromB)]);
+    store.accumulateDelta("req_b/keyed", 0, "for b");
+    store.flushDeltas();
+    const shown = store.getSorted() as Array<OutputItem & { content: Array<{ text: string }> }>;
+    expect(shown.map((item) => item.content[0]?.text)).toEqual(["", "for b"]);
+  });
+
+  // A view whose own request stream dropped mid-item holds a partial copy; the
+  // finished copy that arrives later must take its place, not be skipped.
+  it("replaces a held partial item with a finished copy under the same key", () => {
+    const store = createRequestStreamStore({ keyOf: byRequest });
+    store.upsert(makeItem({ id: "keyed", requestId: "req_a", ts: 1, status: "in_progress" }));
+    store.upsert(fromA);
+    expect(store.getById("req_a/keyed")).toBe(fromA);
+    expect(store.getSorted()).toEqual([fromA]);
+  });
+
+  it("keys by id alone by default, where a later copy replaces the earlier", () => {
+    const store = createRequestStreamStore();
+    store.upsert(fromA);
+    store.upsert(fromB);
+    expect(store.getSorted()).toEqual([fromB]);
   });
 });
 

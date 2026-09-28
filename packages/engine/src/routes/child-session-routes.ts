@@ -226,13 +226,13 @@ type ChildSessionRouteContext = {
  * `undefined` exact-matches unbound records. That difference is a
  * data-isolation boundary, not a nicety.
  */
-type ParentIdentity = {
+export type ParentIdentity = {
   userId: string;
   orgId: string | undefined;
   tenantId: string | undefined;
 };
 
-function parentIdentity(
+export function parentIdentity(
   parent: SessionRecord,
   tenantId: string | undefined
 ): ParentIdentity {
@@ -273,7 +273,7 @@ function parentIdentity(
  * is an alarm the user has no way to clear, and the failed attempt is still
  * one hop away in the job's own history.
  */
-async function resolveDispatchRunStatus(
+export async function resolveDispatchRunStatus(
   store: RequestStore,
   childSessionId: string,
   identity: ParentIdentity
@@ -319,7 +319,7 @@ async function resolveDispatchRunStatus(
  *
  * The labels decide nothing here or anywhere else — see `SessionRecord.topic`.
  */
-function readChildSessionLabels(
+export function readChildSessionLabels(
   record: SessionRecord
 ): Pick<ChildSessionSummary, "topic" | "coordinate"> {
   return {

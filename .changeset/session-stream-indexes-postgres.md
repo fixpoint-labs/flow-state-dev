@@ -1,0 +1,5 @@
+---
+"@flow-state-dev/store-postgres": patch
+---
+
+Add four indexes that serve the session stream's repeated reads, a pair for each, keyed on the session's owner and organization ahead of the update time: `idx_requests_session_owner_updated` on `requests(session_id, user_id, org_id, updated_at)` and `idx_sessions_parent_owner_updated` on `sessions(parent_session_id, user_id, org_id, updated_at)` for a caller with no tenant, and `idx_requests_session_tenant_owner_updated` on `requests(session_id, tenant_id, user_id, org_id, updated_at)` and `idx_sessions_parent_tenant_owner_updated` on `sessions(parent_session_id, tenant_id, user_id, org_id, updated_at)` for a caller bound to a tenant. A read then walks only what changed in the session it follows, never rows another owner or organization keeps under the same id. They are built `CONCURRENTLY` at schema init, so writes are not blocked, and an invalid one left by an interrupted build is dropped and rebuilt on the next init. No data changes (FIX-1609).

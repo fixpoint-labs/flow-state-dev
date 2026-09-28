@@ -116,7 +116,7 @@ Each row is a `ChildSessionSummary`:
 | `createdAt` / `updatedAt` | `number` | |
 | `topic` | `string \| undefined` | Display label: the key the run's session was derived from. |
 | `coordinate` | `string \| undefined` | Display label for the entry running it. |
-| `status` | `ChildSessionStatus \| undefined` | Absent until the run has executed something. |
+| `status` | `ChildSessionStatus \| undefined` | Absent until a run has been dispatched into the session. |
 | `flowId` | `string \| undefined` | The flow instance that owns the run; the address to read it through. Absent on a row that records no owner. |
 
 The table is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.
@@ -150,6 +150,89 @@ const stream = createSSEClient({
 ```
 
 Supports resume via `Last-Event-ID` or `starting_after`.
+
+### `createSessionSSEClient(options)`
+
+Opens one stream for a whole session: `GET /api/flows/sessions/:sessionId/stream`. It delivers each finished item from any request in the session, with the id of the request that kept it, and a notice naming the session's unfinished background runs whenever that set changes. Items the session snapshot hides are never sent.
+
+To build a live view, read the whole session snapshot, then open the stream from its first page's `at`, the server time that read began. The pages hold everything saved before that time, and the stream picks up everything saved after. Pass the snapshot's `sessionCreatedAt` too, so the stream follows the session you read and not a later one that takes its id. The example calls `readHistory`, from [Reading a live session's history](#reading-a-live-sessions-history) below, to read every page without missing an item. `useSession` with `live: true` does all of this for you.
+
+```ts
+import {
+  compareItemOrder,
+  createSessionClient,
+  createSessionSSEClient,
+} from "@flow-state-dev/client";
+
+const sessions = createSessionClient();
+const history = await readHistory(); // see "Reading a live session's history"
+
+// Keyed by request id and item id together: two requests can save items with the same id.
+const items = new Map(history.items.map((item) => [`${item.requestId}:${item.id}`, item]));
+
+const stream = createSessionSSEClient({
+  sessionId,
+  since: history.at, // the first page's `at`
+  sessionCreatedAt: history.sessionCreatedAt,
+  onItem: ({ requestId, item }) => {
+    const key = `${requestId}:${item.id}`;
+    const held = items.get(key);
+    // A streamed item is finished. It replaces an in-progress copy, or a copy that sorts earlier.
+    if (held === undefined || held.status === "in_progress" || compareItemOrder(item, held) >= 0) {
+      items.set(key, item);
+      render([...items.values()].sort(compareItemOrder));
+    }
+  },
+  onRuns: ({ runs }) => showWorking(runs), // every unfinished run, each time the set changes
+  onStop: ({ status }) => { /* refused, or the server has no session stream */ },
+});
+
+stream.close();
+```
+
+| Option | Notes |
+|--------|-------|
+| `since` | A server time (epoch ms) to start from: the snapshot's `at`, or `stream.lastAt` from an earlier connection. The stream starts a few seconds before it. Omitted, or when a snapshot comes back without `at`, it starts about a minute back. |
+| `sessionCreatedAt` | The snapshot's `sessionCreatedAt`. Every connection, reconnects included, then follows that session only. Once its id holds another session, the reconnect is refused and the client stops: 404, or 403 if the app authenticates and another user or organization holds the id. Omitted, a reconnect follows whatever session holds the id, if the caller may read it. |
+| `itemTypes` | Item types to send. Give it the same list as the snapshot's `itemTypes` so the stream sends what the snapshot shows. |
+| `onReconnecting` | Called with `{ attempt }` each time the connection has dropped and the client is about to try again. `attempt` counts the tries since the stream last delivered an event. `1` is the first try after a drop, such as the server's own close. `2` or more means a try has failed, and what the stream last told you, such as which runs are unfinished, may be out of date until it delivers again. |
+
+The snapshot's items come in `compareItemOrder` order: `ts`, then `itemIndex`, then `requestId`, then `id`. The stream sends different requests' items in no set order, so sort anything you merge with the same comparator and a live view shows what a reload shows.
+
+It reconnects with backoff, including when the server closes the connection after at most 15 minutes, and passes back the server time it last heard so the server resends what it might have missed. So the same copy of an item can arrive more than once, after a reconnect or when it was saved just before the snapshot's `at`. An item one request emits more than once under the same id, such as a keyed component, also arrives once per emission, each copy with its own `ts` and `itemIndex`. Holding items by request id and item id, keeping the copy that sorts later and letting a finished copy replace an in-progress one, as above, handles both. It stops, without retrying, when the server refuses the session or has no such route.
+
+The server also ends the connection when the session is deleted or replaced by a new session under the same id. The client reconnects as usual. If the session is gone, the reconnect gets 404; if the app authenticates and another user or organization now holds the id, it gets 403. If the same owner created the session again, or the app doesn't authenticate, the reconnect gets 404 when you passed `sessionCreatedAt`, and otherwise follows the new session. A 403 or 404 stops the client through `onStop`, with no error.
+
+#### Reading a live session's history
+
+With `includeItems: true` the snapshot's items come oldest first, 100 to a page by default, and `pagination.hasMore` says another page follows. Each page is cut from the history as it stands when you ask, so if the history shifts partway through your read, as when a keyed component is emitted again or a request is removed, an item can fall between two pages. The stream won't send that item later, so check for it: ask for each later page one item early, at `pagination.nextOffset - 1`, and compare its first item with the last one you hold. If `compareItemOrder` says they differ, read again from the first page. Do the same when a later page's `sessionCreatedAt` differs from the first page's: the id was deleted and taken by a new session during the read. Give up after a few tries; this one throws after five.
+
+```ts
+async function readHistory() {
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const first = await sessions.getSessionState(sessionId, { includeItems: true });
+    const held = [...(first.items ?? [])];
+    let page = first;
+    let whole = true;
+    while (whole && page.pagination?.hasMore) {
+      page = await sessions.getSessionState(sessionId, {
+        includeItems: true,
+        offset: page.pagination.nextOffset - 1, // start on the last item already held
+      });
+      const [overlap, ...rest] = page.items ?? [];
+      const last = held[held.length - 1];
+      whole =
+        page.sessionCreatedAt === first.sessionCreatedAt && // still the same session
+        overlap !== undefined &&
+        last !== undefined &&
+        compareItemOrder(overlap, last) === 0;
+      held.push(...rest);
+    }
+    if (whole) return { at: first.at, sessionCreatedAt: first.sessionCreatedAt, items: held };
+  }
+  throw new Error(`Session ${sessionId} kept shifting while its history was read`);
+}
+```
 
 ### `createRequestStreamStore()` and `bindStoreToCallbacks(store, options?)`
 

@@ -21,14 +21,14 @@ import {
 } from "@flow-state-dev/core/types";
 import { cloneValue, resolveClientProjection, hasClientProjection } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
-import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
+import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
-import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -105,6 +105,46 @@ export async function loadTenantSession(
   if (record === undefined) return undefined;
   if (!tenantMatches(record.tenantId, tenantId)) return undefined;
   return record;
+}
+
+/**
+ * Whether `session`, a handler's own read of the session its route addresses,
+ * is the session the owner check admitted the caller to
+ * (`RouteAuthResult.session`). The check found none (`null`): then no session
+ * is, since one that arrived after it was never checked. The check read
+ * nothing (`undefined`, nothing in the app authenticates): then there is
+ * nothing to compare, and any is.
+ */
+export function isCheckedSession(
+  checked: SessionRecord | null | undefined,
+  session: SessionRecord
+): boolean {
+  if (checked === undefined) return true;
+  return checked !== null && isSameSession(checked, session);
+}
+
+/**
+ * The request filter for what a session shows, in its snapshot and its
+ * stream: requests made in it (by bare id) under its tenant, its owner and its
+ * organization.
+ *
+ * Every request that runs in a session carries its owner and organization;
+ * `createExecutionContext` refuses any other. A request record under the id
+ * with another owner or organization is one that was refused there, or one an
+ * earlier session under the same id left behind, and it is not this session's
+ * to show. Every key is present, so an `undefined` tenant or organization
+ * exact-matches unbound records rather than lifting the filter.
+ *
+ * @param sessionId The bare session id, as request records carry it.
+ * @param session The session's own record, already read for the caller's tenant.
+ * @param tenantId The caller's tenant.
+ */
+export function sessionRequestScope(
+  sessionId: string,
+  session: SessionRecord,
+  tenantId: string | undefined
+): { sessionId: string; tenantId: string | undefined; userId: string; orgId: string | undefined } {
+  return { sessionId, tenantId, userId: session.userId, orgId: session.orgId ?? undefined };
 }
 
 // `extractBareTopic` now lives in core alongside `getPatternPrefix` /
@@ -569,6 +609,33 @@ export async function buildResourceSnapshot(options: {
   }
 
   return hasAny ? out : undefined;
+}
+
+/**
+ * The items a session snapshot shows from one request's item log.
+ *
+ * The request's physical log is collapsed to its canonical view first
+ * (FIX-811): a resumed request's suspending block re-emits its pre-suspension
+ * items, and the superseded copies must not surface. Per request, because
+ * logical ids are scoped by request id. Then either the caller's type filter
+ * or, without one, client visibility decides what stays.
+ *
+ * The one filter behind both the session snapshot (`GET /sessions/:id/state`)
+ * and the session stream (`GET /sessions/:id/stream`), so a live view and a
+ * reload show the same set.
+ *
+ * @param items One request record's `items`, as the store returned them.
+ * @param itemTypes The snapshot's `item_types` filter, when the caller passed one.
+ * @returns The items a snapshot would show from that request, in log order.
+ */
+export function snapshotItemsOf(
+  items: readonly OutputItem[] | undefined,
+  itemTypes?: ReadonlySet<string>
+): OutputItem[] {
+  if (items === undefined) return [];
+  return collapseToCanonicalLog(items).filter((item) =>
+    itemTypes !== undefined ? itemTypes.has(item.type) : resolveItemVisibility(item).client
+  );
 }
 
 export function sortItems(items: OutputItem[] | undefined): OutputItem[] {

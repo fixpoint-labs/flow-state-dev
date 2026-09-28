@@ -11,6 +11,8 @@
  * kind answers through `desk-clerk-answer`, scripted by `deskClerkMock`: one
  * scenario answers, the other files the note through the kind's
  * `desk-clerk-file` tool and then says so.
+ * A scenario can hold its answer for a while first (`holdMs`), which
+ * `test/mock-flowstate.ts` applies before the model runs.
  * `policy: "allow"` (set in `test/mock-flowstate.ts`) catches anything else
  * with a no-op model.
  *
@@ -35,6 +37,8 @@ import { mockEvaluationModel, mockGenerator } from "@flow-state-dev/testing";
 type ScenarioScript = {
   /** Whether the latest user turn picks this scenario. */
   match: (turn: string) => boolean;
+  /** How long the seat holds before answering, so a page can see it working. */
+  holdMs?: number;
   /** The steps, or a function of the turn and what this call's tools returned so far. */
   steps:
     | MockGeneratorScriptStep[]
@@ -102,24 +106,40 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
     // `reply-token-…`, never the scenario marker, so a seat that hears the
     // line does not answer it again. A seat without the tool posts nothing.
     match: (turn) => turn.includes("[scenario:reply-in-channel]"),
-    steps: (turn) => {
-      const channel = /^"?\S+ in ([^\s:]+): /.exec(turn)?.[1] ?? "no-channel";
-      const token = /reply-token-[a-z0-9]+/.exec(turn)?.[0] ?? "no-token";
-      return [
-        {
-          toolCalls: [
-            {
-              toolCallId: `tc_${token}`,
-              toolName: "post-to-channel",
-              args: { channel, body: `[reply:in-channel] ${token} Refunds post on Fridays.` },
-            },
-          ],
-        },
-        { text: "[reply:in-channel] Answered in the channel." },
-      ];
-    },
+    steps: replyInChannel,
+  },
+  {
+    // The same answer, held about three seconds first, so a page can be seen
+    // showing the seat as working on the post before its line lands.
+    match: (turn) => turn.includes("[scenario:reply-after-a-hold]"),
+    holdMs: 3_000,
+    steps: replyInChannel,
   },
 ];
+
+/**
+ * A seat's answer in the channel its heard turn names: `post-to-channel` with
+ * no text first, so the real tool runs, then a line in the seat's own
+ * conversation. The line carries `[reply:in-channel]` and the post's
+ * `reply-token-…`, never a scenario marker, so a seat that hears the line does
+ * not answer it again.
+ */
+function replyInChannel(turn: string): MockGeneratorScriptStep[] {
+  const channel = /^"?\S+ in ([^\s:]+): /.exec(turn)?.[1] ?? "no-channel";
+  const token = /reply-token-[a-z0-9]+/.exec(turn)?.[0] ?? "no-token";
+  return [
+    {
+      toolCalls: [
+        {
+          toolCallId: `tc_${token}`,
+          toolName: "post-to-channel",
+          args: { channel, body: `[reply:in-channel] ${token} Refunds post on Fridays.` },
+        },
+      ],
+    },
+    { text: "[reply:in-channel] Answered in the channel." },
+  ];
+}
 
 /**
  * The desk clerk's scenarios. `[scenario:clerk-answer]` answers in words the
@@ -236,6 +256,26 @@ export const assistantMock = buildScenarioMock("assistant-generator", SCENARIO_S
 
 /** Both of the `agent` kind's answering generators. */
 export const agentSeatMock = buildScenarioMock("agent-answer", AGENT_SEAT_SCRIPTS);
+
+/** The scripts whose scenarios may hold, by the generator they answer for. */
+const SCRIPTS_BY_GENERATOR: Record<string, ScenarioScript[]> = {
+  "agent-answer": AGENT_SEAT_SCRIPTS,
+  "agent-answer-with-activate-tool": AGENT_SEAT_SCRIPTS,
+};
+
+/**
+ * How long `generator` holds before answering this call: the `holdMs` of the
+ * scenario the latest user turn picks, or 0.
+ *
+ * @param generator The generator block's name, as the model resolver gets it.
+ * @param input The call's messages.
+ */
+export function holdBeforeAnswer(generator: string, input: unknown): number {
+  const scripts = SCRIPTS_BY_GENERATOR[generator];
+  if (scripts === undefined) return 0;
+  const turn = latestUserTurn(input);
+  return scripts.find((s) => s.match(turn))?.holdMs ?? 0;
+}
 
 /** The desk clerk's answering generator. */
 export const deskClerkMock = buildScenarioMock("desk-clerk-answer", DESK_CLERK_SCRIPTS);

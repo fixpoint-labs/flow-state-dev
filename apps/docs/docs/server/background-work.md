@@ -321,8 +321,9 @@ after the claim lapsed, keeps the status it already has and records nothing. See
 [Recording a result that may no longer
 apply](../orchestration/task-substrate.md#recording-a-result-that-may-no-longer-apply).
 
-A job with no runs yet has no `status` field at all. Absence means "nothing has
-run", which is different from any of the values above.
+A job with nothing dispatched to it yet has no `status` field at all. That
+absence is different from any of the values above: a job that has been
+dispatched but is still waiting in a queue already reads `active`.
 
 A job that failed and was retried successfully reads `completed`; the failed
 attempt is still there in the job's own history.

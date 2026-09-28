@@ -24,8 +24,9 @@ Server (execution)                    Client (SSE)
 **Key concepts:**
 - POST returns `202 Accepted` immediately — execution is async
 - Client establishes SSE connection for the `requestId` to receive live events
-- Each event has a `sequence_number` for ordering and replay
+- Each request-stream event has a `sequence_number` for ordering and replay
 - SSE `id` format: `${requestId}:${sequence_number}`
+- The [session stream](#session-stream), which follows a whole session rather than one request, has neither: it resumes by time, with overlap and dedupe
 
 ## Item Types
 
@@ -196,7 +197,7 @@ Replayable events are persisted **before** they are flushed to the SSE wire. The
 
 ## Resume Semantics
 
-Resume after disconnect uses sequence-number cursors:
+A request stream resumes after a disconnect from a sequence-number cursor. (The [session stream](#session-stream) resumes by time.)
 
 ```
 Last-Event-ID: req_123:42
@@ -209,6 +210,34 @@ GET /stream?starting_after=42
 - `ping` events and diagnostics are NOT replayed
 - `content.delta` events are NOT replayed (FIX-479). The current item snapshot in `request.items` carries the running text up to the most recent coalesced flush; reconnecting clients pick up live deltas from the new connection forward, and the eventual `item.done` payload supersedes with the authoritative final text. Page-load bootstrap (`/items` synthesis path) shows the latest accumulated text rather than empty content for in-flight messages
 - `content.audio.delta` events are NOT replayed (FIX-523). The durable `OutputAudioContent` snapshot is delivered via `content.added` / `content.done` and survives reconnects; in-flight audio chunks are lost. Clients hear a gap from disconnect to the next live delta. This matches every comparable system (OpenAI Realtime, ElevenLabs WS, Cartesia, LiveKit) — nobody does mid-stream audio resume
+
+## Session Stream
+
+`GET /sessions/:sessionId/stream` follows a whole session: every finished item any request in it keeps, including requests this client did not send, and the session's unfinished runs. `useSession(id, { live: true })` opens it through `createSessionSSEClient`. Everything above about sequence numbers is the request stream's contract; the session stream's differs.
+
+| Event | Carries |
+|-------|---------|
+| `session.item` | `requestId` and one finished `item`, filtered as the session snapshot filters its items |
+| `session.runs` | Every unfinished run under the session. Sent when the stream opens, then whenever that set changes |
+| `ping` | Nothing; sent while nothing else is |
+
+Envelope: `{ stream: "session", sessionId, at, type, ... }`. There is no `sequence_number` and no SSE `id`: a session has many writers, often on other servers, and no single log to number.
+
+Resume is by time, with overlap and dedupe:
+
+- **The cursor is `at`**, a server time. A client that reconnects hands back the last `at` it heard as `?since=`. Without `since`, the first read reaches back about a minute.
+- **From a snapshot.** The session snapshot (`GET /sessions/:sessionId/state`) carries `at` too: the server time its read began, so everything kept before it is in the snapshot. A client that opens the stream after a snapshot hands that `at` back as `since`, and nothing kept after the snapshot's read is missed however long the snapshot took to arrive. `useSession` does this with the last snapshot it applied. That holds only if the snapshot is whole: it is read in pages by offset, and a request removed, or a keyed item emitted again, between two pages shifts the later ones. So `useSession` starts each later page on the last item it already read, and starts the read over when that item is not there; after five tries it fails rather than show part of the history as all of it.
+- **Overlap.** Each read reaches back a margin (5 s) before the cursor, to cover other servers' clocks and write latency. Within one connection each copy of an item is sent once. A keyed item emitted again is a later copy, with a later `ts` and `itemIndex`, so it is sent again. After a reconnect, a copy can arrive again.
+- **The cursor never runs ahead of delivery.** An event's `at` moves to a read's start only once that read's items are all sent, so a connection that drops before or midway through a read resumes from where that read began.
+- **Dedupe by `(requestId, item.id)`**, never `item.id` alone: a keyed item's id comes from its key, so two requests can keep the same id. `useSession` holds a session's items under that pair.
+- **One order.** Items are shown by `ts`, then `itemIndex`, then `requestId`, then `id` (`compareItemOrder` in contracts). The snapshot sorts with it and so does a client merging streamed items, so a live view and a reload agree even when two requests' items share a time and an index. The stream itself sends in no particular order across requests.
+- **A finished copy stands.** A view that joins its own request stream, the session stream, and snapshots can get one item from each, in any order. Once it holds a finished copy, it never replaces it with an unfinished one, from any source, nor with a finished copy stamped earlier (`ts`, then `itemIndex`): a keyed item emitted twice sends two finished copies, and they can arrive in either order. It takes no text delta for it, and no content part at an index the finished copy already has. A part appended after the item finished, such as synthesized audio, still lands.
+- **A snapshot settles by order, not by time.** The view keeps each live copy it takes, from either stream, until a snapshot it requested after that copy arrived. A snapshot requested earlier neither drops nor rewinds the copy, however long it takes to land. One requested later holds the item or shows it is gone, since the session stream sends only what the server has kept. Of two snapshots, the one requested later wins: once it has landed, an earlier one is dropped whole, with the session detail read beside it, and its failure is not shown. A snapshot that lands takes away the error an earlier failed snapshot read set, and no other error. A session switch retires every read in flight.
+- **The message being sent.** While a request is sent, the view shows the user's message itself. The server's user message for that request replaces it, from whichever stream brings it first.
+- **Ends.** The server closes the connection after at most 15 minutes, and the client reconnects. A 401, 403, 404, 409 (`migration-required`) or 501 stops the client for good, without an error; anything else is retried with backoff, and `onReconnecting` reports each try with how many there have been since the stream last delivered. In `useSession`, once a connection has named the runs, a failed reconnect or a stop keeps the rows and raises `childSessionsStale`, until a connection names the runs again or for good; the routine reconnect after the 15-minute close does not. A stop before any connection named the runs leaves the view as it is without `live`.
+- **One session, the one checked.** The stream follows the session its caller was checked against when it opened, and no other. It shows only requests made in it under its owner and organization, as the snapshot does, and only its owner's runs. After every read, before sending what it found, the server reads the session again: if it was deleted, or its id now holds another session (told apart by tenant, owner, organization, flow instance, `createdAt` and lineage, not by version: `isSameSession`), the connection ends and nothing from that read is sent. The reconnect is then answered as any open is: a 404 or a 403 stops the client, and a caller allowed to read the session that now holds the id follows that one. A client that follows a snapshot names the session it read instead (the snapshot's `sessionCreatedAt`, sent as `?session_created_at=`), and every connection it opens is refused with a 404 once the id holds another; `useSession` follows the new session only once a snapshot of it lands. The same holds for every read keyed by an id an earlier read found: a request's items read by its id count only while the id holds the request the list found (`isSameRequest`), and a run already named is dropped once its child is gone or its id holds another session.
+
+The server reads the store about once a second per open connection, with filters every adapter has, so a reply written by another server reaches a view held by this one. Each read costs what is running now, not the session's history; the store-side indexes live with each adapter. Once the connection ends, the server makes no further store read for it, even midway through a read. The route holds the caller's `Request` until then, not only its signal: on Node a request's signal hears the abort of the signal it was built with only while the request itself is alive, and a host may report the caller leaving through that abort alone.
 
 ## Store-driven event subscriptions
 
@@ -264,6 +293,8 @@ State/resource mutations auto-emit `state_change` and `resource_change` items.
 3. Materialize item lifecycle state from events
 4. On `request.completed`, refetch state snapshot (required correctness path)
 5. Treat `state_change`/`resource_change` as invalidation signals for mid-request reactivity
+
+On the [session stream](#session-stream), the cursor is the last `at` heard and dedupe is by `(requestId, item.id)`.
 
 ## Item Provenance
 

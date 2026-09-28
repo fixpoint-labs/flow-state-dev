@@ -16,8 +16,9 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - Actions are flow-level only (`defineFlow({ actions })`) → [Flows](../architecture/flows-and-actions.md)
 - Required caller input: `userId`
 - Stream model: item/content lifecycle; no part-envelope model → [Streaming](../architecture/streaming.md)
-- Stream cursor: `${requestId}:${sequence_number}`
-- Resume paths: both `Last-Event-ID` and `starting_after`
+- Request-stream cursor: `${requestId}:${sequence_number}`
+- Request-stream resume paths: both `Last-Event-ID` and `starting_after`
+- Session-stream cursor: the event's `at` (a server time), handed back as `?since=`; no sequence number → [Streaming](../architecture/streaming.md#session-stream)
 - Generator provider boundary: Vercel AI SDK in Phase 1
 - `@flow-state-dev/client` required; `@flow-state-dev/react` wraps client (no transport logic)
 - Inbound transport contract: `InboundTransportAdapter`, `InboundRequestEnvelope`, `RequestRecord.source`
@@ -83,8 +84,9 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Streaming
 
-- SSE named events; deterministic ordering by `sequence_number`
-- Replay correctness: persisted items + sequence ordering
+- SSE named events; a request stream orders deterministically by `sequence_number`
+- Request-stream replay correctness: persisted items + sequence ordering
+- Session stream: resumes from `at` with a read overlap, deduped by `(requestId, item.id)`; no sequence ordering
 - Event categories: request/item/content lifecycle, optional `resource.changed`, debug
 
 → [Streaming](../architecture/streaming.md)

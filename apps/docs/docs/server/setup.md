@@ -231,6 +231,8 @@ The same holds after a restart, whichever instances are registered afterwards an
 | GET | `/api/flows/sessions` | List sessions |
 | GET | `/api/flows/sessions/:sessionId` | Session detail |
 | GET | `/api/flows/sessions/:sessionId/state` | State snapshot (clientData) |
+| GET | `/api/flows/sessions/:sessionId/stream` | SSE session stream: every request's finished items, unfinished runs |
+| PATCH | `/api/flows/sessions/:sessionId/metadata` | Update title, description, tags, metadata |
 | GET | `/api/flows/sessions/:sessionId/children` | [Sessions](./background-work.md) started under this one |
 | POST | `/api/flows/:flowId/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |

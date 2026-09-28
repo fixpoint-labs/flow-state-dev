@@ -100,12 +100,14 @@ const session = useSession(sessionId, {
 });
 ```
 
+`live: true` makes the view hear requests it didn't send, for a session with more than one writer (a channel where agents answer, the same conversation in two tabs). The hook opens one session stream after its first snapshot: each finished item from any request joins `items` about a second after the server saves it, and `childSessions` is re-read when a run is dispatched, even one still waiting its turn, and again when the run finishes. Items are keyed by request and id together, so two requests that each save an item with the same id both appear in `items`. An item one request emits more than once under the same id, such as a keyed component, shows its latest copy, whatever order the copies arrive in. Default `false`; a server without the stream, or one that refuses it when the view first connects, leaves the view as it would be without `live`, with no error. Once the stream is open, a drop the first reconnect recovers from, such as the server's routine close, shows no change. If that reconnect fails, `childSessionsStale` is raised and `items` stays as it is, with no error, until a connection gets through. A reconnect is refused when the session is deleted while the view is open, when the reader's access is revoked, or when a new session takes its id. The flag then stays raised until a snapshot read, such as `refresh()`, finds a new session under the id that the reader can open, and moves the view onto it.
+
 Returns:
 - `detail` — Session metadata
 - `snapshot` — Current state snapshot with clientData
 - `latestRequest` — Most recent request on this session as a `SessionRequestSummary`, regardless of status. `null` until first fetch resolves. Refreshed on mount and on every terminal SSE event so consumers can render recovery affordances.
 - `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
-- `isLoading`, `isStreaming`, `error` — Status flags
+- `isLoading`, `isStreaming`, `error` — Status flags. The hook reads a long history a page at a time and starts over when the pages shift under it, as when a keyed component is emitted again partway through the read; if they still shift after five tries, it sets `error` rather than show part of the history. A snapshot read started after the failure, such as `refresh()`, clears that error when it succeeds, as it clears any error a failed snapshot read left; it leaves an action's error alone.
 - `statusMessage` — Request-scoped status slot mirror. Latest `ctx.emit.status()` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Working..." fallback.
 - `sendAction(action, input)` — Trigger an action
 - `abortRequest()` — Stop the in-flight request (signals the server to mark it `aborted`)
@@ -197,11 +199,11 @@ const session = useSession(sessionId, {
 
 The server caps that value and rejects a larger one with a 400, which the hook surfaces as `childSessionsStale` rather than rows. The cap defaults to 100 and is raised with `maxChildSessionListLimit` on the server — so asking for more than the deployment permits is a misconfiguration you hear about, not a silent truncation.
 
-Current as of the reader's last interaction. It is re-read on mount, at the start of each action, and on `refresh()` — nothing keeps it current while the user waits, so work started elsewhere appears on the next action or refresh.
+Current as of the reader's last interaction: re-read on mount, at the start of each action, and on `refresh()`. With `live: true` it is also re-read when a run is dispatched, even one still waiting its turn, and again when the run finishes. In that mode it lists every run that hasn't finished, even one older than the page.
 
-`status` is absent until the work has run something. `"active"` means only *not finished*: it does not separate working from queued from waiting on a person, and it reports the last state recorded rather than checking a worker is alive — so work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. Treat unrecognised values as displayable; the set grows.
+`status` is absent until a run has been dispatched into the row's session. `"active"` means only *not finished*: it does not separate working from queued from waiting on a person, and it reports the last state recorded rather than checking a worker is alive — so work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. Treat unrecognised values as displayable; the set grows.
 
-`SessionView.childSessionsStale` is `true` in two cases with different remedies: the most recent re-read failed, which the next successful read clears; or the requested `limit` is above the server's cap, which only a smaller `limit` clears. The rows already read are kept either way — the hook never empties the list.
+`SessionView.childSessionsStale` is `true` in cases with different remedies: the most recent re-read failed, which the next successful read clears; the requested `limit` is above the server's cap, which only a smaller `limit` clears; or, with `live: true`, the session stream stopped following the session, as described under `live` above. The rows already read are kept in every case — the hook never empties the list.
 
 To open one, read it as the session it is, passing the flow **the run belongs to**, which is not always the conversation's — a run dispatched into another instance belongs to that instance. The row's `flowId` is that address whenever it carries one; fall back to the conversation's own kind when it does not. A different name reads as a different flow: an active run's stream 404s and the view stays on its first snapshot.
 

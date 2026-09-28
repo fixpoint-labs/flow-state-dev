@@ -86,6 +86,16 @@ createSSEClient({
 
 `bindStoreToCallbacks` is the shared reducer: it maps each SSE event to a store mutation and calls `onChange("item" | "content" | "status")` so you decide when to snapshot — synchronously, or batched on an animation frame for trace-heavy views. The store buffers content deltas, so call `store.flushDeltas()` before reading `getSorted()`. The same binder works with `createSSEClientFromResponse` when you already hold a streamed POST `Response`.
 
+The store holds each item under `item.id` by default, which is unique within one request. To hold items from several requests, where two can save items with the same id, pass `keyOf`:
+
+```ts
+const store = createRequestStreamStore({
+  keyOf: (item) => `${item.requestId}/${item.id}`,
+});
+```
+
+Every store method that takes an item id then takes that key instead, and an item's key must not change over its life. `bindStoreToCallbacks` addresses items by their id, so pair it only with the default key.
+
 If you're on React you don't need this — `useSession` and `useRequestStream` wrap the store for you.
 
 ## Session management
@@ -100,6 +110,13 @@ const snapshot = await sessions.getSessionState("sess_1", {
   includeItems: true,
   clientData: ["session.artifactsList", "user.preferences"],
 });
+// `snapshot.at` is the server time the read began. Items come in pages
+// (`pagination.hasMore`, `pagination.nextOffset`). To follow the session, read
+// every page, starting each later page one item early (`nextOffset - 1`) and
+// reading again from the first page if that item is not the last one you hold,
+// or if the page's `sessionCreatedAt` differs from the first page's. Then pass
+// the first page's `at` and `sessionCreatedAt` to `createSessionSSEClient`
+// (`since`, `sessionCreatedAt`), so it follows the session you read.
 
 // List a session's requests. Returns summaries only by default; pass
 // `includeItems` to back-fill each request's item log — useful for inspecting
@@ -178,10 +195,10 @@ all three with `== null`.
 happening right now. `"active"` asserts only that the work hasn't finished: queued,
 mid-run, and paused waiting for a person all read `"active"`, and so does work whose
 worker died, until the server records otherwise. The terminal values are
-`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A run that has never
-executed anything carries no `status` at all. Don't fold that absence into one of the five
-values. Your own label for it, like `"Not started"`, is fine; mapping it to
-`"active"` claims work is under way before it started.
+`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A row whose session has had
+no run dispatched into it carries no `status` at all. Don't fold that absence into one of the
+five values. Your own label for it, like `"Not started"`, is fine; mapping it to
+`"active"` claims a run is pending when none has been dispatched.
 
 A session that started nothing resolves to `[]`; an unknown session, or one the
 caller isn't allowed to read, rejects with `ClientHttpError`. There is no counterpart
@@ -278,8 +295,10 @@ const result = await recovery.resumeSuspension("chat", "req_1", {
 - `createTypedClient(options)` — Flow-bound typed client
 - `createSessionClient(options)` — Session CRUD and state snapshots
 - `createSSEClient(options)` — Request stream consumer
+- `createSessionSSEClient(options)` — Whole-session stream: finished items from every request, and run changes
+- `compareItemOrder(a, b)` — Display order for items from many requests (`ts`, `itemIndex`, `requestId`, then `id`); a session snapshot's items come in this order, so sort merged items with it
 - `createUserSSEClient(options)` — User-level stream consumer
-- `createRequestStreamStore()` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
+- `createRequestStreamStore({ keyOf? })` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `createRecoveryClient(options)` — Sweep stale requests and retry interrupted/failed ones
 - `createResourceClient(options)` — Resource content fetch, CRUD, paginated state reads, and manifest

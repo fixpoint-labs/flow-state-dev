@@ -47,6 +47,8 @@ export { resolveItemVisibility } from "./resolve-visibility";
 
 export { collapseToCanonicalLog } from "./canonical-log";
 
+export { compareItemOrder } from "./order";
+
 export {
   attributeItemsToTasks,
   itemsForTask,
@@ -90,7 +92,13 @@ export type {
   RequestStatus,
   RequestStatusEvent,
   ScopeStateChangedEvent,
+  SessionEventBase,
+  SessionItemEvent,
   SessionMetadataChangedEvent,
+  SessionPingEvent,
+  SessionRun,
+  SessionRunsChangedEvent,
+  SessionStreamEvent,
   ResourceChangedEvent,
   ResourceContentCreatedEvent,
   ResourceContentDeletedEvent,

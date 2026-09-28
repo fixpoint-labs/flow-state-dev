@@ -56,7 +56,7 @@
  */
 
 import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
-import type { SessionParentage } from "./types";
+import type { RequestRecord, SessionParentage, SessionRecord } from "./types";
 
 /**
  * Minimal flow shape carrying the scope-isolation flags plus the instance
@@ -449,4 +449,49 @@ export function resolveLineageId(session: {
   lineageId?: string | null;
 }): string {
   return session.lineageId ?? `lin_${session.id}`;
+}
+
+/**
+ * Whether `current`, read again by the same key, is still the session
+ * `earlier` was: the same tenant, owner, organization and flow instance, born
+ * at the same moment.
+ *
+ * A session id can be deleted and used again, by anyone, under any flow. The
+ * record created in its place is another session, though its version starts
+ * over: it has its own `createdAt` and lineage, and both are written once,
+ * when a record is born. Anything that read a session (a route's owner check,
+ * a request's admission, a stream opening) and reads it again to go on uses
+ * this, so the second read never stands in for the first.
+ */
+export function isSameSession(earlier: SessionRecord, current: SessionRecord): boolean {
+  return (
+    scopeValueMatches(current.tenantId, earlier.tenantId) &&
+    current.userId === earlier.userId &&
+    scopeValueMatches(current.orgId, earlier.orgId) &&
+    current.flowKind === earlier.flowKind &&
+    scopeValueMatches(current.flowId, earlier.flowId) &&
+    current.createdAt === earlier.createdAt &&
+    resolveLineageId(current) === resolveLineageId(earlier)
+  );
+}
+
+/**
+ * Whether `current`, read by the id an earlier read found, is still the
+ * request `earlier` was: made in the same session, under the same tenant,
+ * owner, organization and flow instance, at the same moment.
+ *
+ * A request id is the caller's to choose. One that retention deleted can be
+ * used again, by anyone, between a read that found it and a read by its id,
+ * and the record then under the id is another request.
+ */
+export function isSameRequest(earlier: RequestRecord, current: RequestRecord): boolean {
+  return (
+    scopeValueMatches(current.sessionId, earlier.sessionId) &&
+    scopeValueMatches(current.tenantId, earlier.tenantId) &&
+    current.userId === earlier.userId &&
+    scopeValueMatches(current.orgId, earlier.orgId) &&
+    current.flowKind === earlier.flowKind &&
+    scopeValueMatches(current.flowId, earlier.flowId) &&
+    current.createdAt === earlier.createdAt
+  );
 }

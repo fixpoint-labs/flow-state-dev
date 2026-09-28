@@ -19,7 +19,10 @@ import type {
   ResourceContentDeletedEvent,
   ResourceContentUpdatedEvent,
   ScopeStateChangedEvent,
+  SessionItemEvent,
   SessionMetadataChangedEvent,
+  SessionRunsChangedEvent,
+  SessionStreamEvent,
   UserDebugEvent,
   UserResourceChangedEvent,
   UserStreamEvent
@@ -185,7 +188,11 @@ export type SessionDetail = SessionSummary & {
 
 /**
  * How a ChildSession's runs ended, or that they have not ended. `"active"`
- * asserts only *not finished* — never gloss it as "running" or "live".
+ * asserts only *not finished*. In a list read once, never gloss it as
+ * "running" or "live": the read may be stale. A view that follows its session
+ * (`useSession(id, { live: true })`) re-reads the list as runs start and
+ * finish, so there `"active"` may read as "working", which clears when the run
+ * ends. A paused or stopped run reads the same.
  *
  * See `docs/architecture/server-and-client.md` § Background work (ChildSessions)
  * for the full semantics, including why this is not `RequestStatus`.
@@ -405,6 +412,19 @@ export type ResourceManifest = {
 export type SessionStateSnapshotResponse = {
   sessionId: string;
   flowKind: string;
+  /**
+   * The server time this read began. Everything kept before it is in the
+   * snapshot, so a client that then follows the session passes it to the
+   * session stream as `since`. An older server omits it.
+   */
+  at?: number;
+  /**
+   * When the session this snapshot read was created. A session id can be
+   * deleted and used again, so a client that then follows the session passes
+   * this to the session stream as `sessionCreatedAt`, and the stream follows
+   * this session and none that takes its id later. An older server omits it.
+   */
+  sessionCreatedAt?: number;
   clientData: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
@@ -666,6 +686,54 @@ export type ListDebugCollectionItemsOptions = {
   cursor?: string | null;
   /** Case-sensitive substring filter on the bare topic. */
   topic?: string;
+};
+
+/**
+ * Handle returned by a session-stream connection.
+ */
+export interface SessionStreamHandle {
+  /** Stop following the session: closes the connection and any pending reconnect. */
+  close(): void;
+  /** The server time of the last event heard, handed back as `since` on a reconnect. */
+  readonly lastAt?: number;
+  /** True once the client stopped for good: closed, or refused by the server. */
+  readonly stopped: boolean;
+}
+
+/**
+ * Callback set for session-stream events.
+ *
+ * The stream starts a few seconds before `since`, so `onItem` can fire for an
+ * item it already delivered, or one the snapshot that gave `since` already
+ * held, and an item a request emits more than once under one id (a keyed
+ * component) fires once per emission. Tell items apart by `requestId` and
+ * `item.id` together and keep the copy that sorts later by
+ * `compareItemOrder`.
+ */
+export type SessionSSECallbacks = {
+  /** A finished item a request in the session kept, from any request. */
+  onItem?: (event: SessionItemEvent) => void;
+  /** The session's unfinished runs, on open and whenever the set changes. */
+  onRuns?: (event: SessionRunsChangedEvent) => void;
+  /** Every event, pings included. */
+  onEvent?: (event: SessionStreamEvent) => void;
+  /**
+   * The server refused the stream (401 or 403), does not have it (404, 501),
+   * cannot say who owns the session until it is migrated (409), or the session
+   * is gone. The client does not retry; the view carries on as it would
+   * without the stream.
+   */
+  onStop?: (reason: { status: number }) => void;
+  /**
+   * The connection dropped and the client will try again after its backoff.
+   * `attempt` counts the tries since the stream last delivered an event: 1 is
+   * the reconnect after an ordinary close, such as the server's own after 15
+   * minutes; 2 or more means a try has failed since. Until a connection
+   * delivers again, what the stream last said may no longer be current.
+   */
+  onReconnecting?: (event: { attempt: number }) => void;
+  /** An event the client could not parse. Connection drops are retried, not reported. */
+  onError?: (error: Error) => void;
 };
 
 /**

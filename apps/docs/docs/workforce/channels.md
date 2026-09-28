@@ -230,7 +230,18 @@ await channel.sendAction("post", { body });
 
 Leave `author` out when a person is posting. `author` has to be one of the channel's members, and a person using your app usually isn't one, so naming them is refused. The line still says who posted: `principal` is the identity your server resolved for the request. A post with no `author` notifies every member, which is right here, because the person who wrote it is not among them.
 
-A line another member posts appears when the page reads the channel again: after its own post, or when it opens the channel.
+An agent's answer, or a post from another tab, is a request the page didn't send. Add `live: true` and it appears within about a second, with no reload:
+
+```tsx
+const channel = useSession("engineering.standup", {
+  flowKind: "channel",
+  items: { itemTypes: ["component"] },
+  live: true,
+});
+const busy = channel.childSessions.filter((run) => run.status === "active");
+```
+
+`busy` lists the runs posts have started that haven't finished. Each row's `flowId` is the seat's address, so the page can say who is working.
 
 ## What the transcript proves, and what it doesn't
 

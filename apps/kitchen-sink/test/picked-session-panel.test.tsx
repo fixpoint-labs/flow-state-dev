@@ -32,10 +32,14 @@ afterEach(cleanup);
 
 type Item = Record<string, unknown>;
 
+type Run = { id: string; flowId?: string; status?: string };
+
 function session(
   over: {
     sessionId?: string;
     items?: Item[];
+    childSessions?: Run[];
+    childSessionsStale?: boolean;
     isStreaming?: boolean;
     isStuck?: boolean;
     sendAction?: ReturnType<typeof vi.fn>;
@@ -44,6 +48,13 @@ function session(
   return {
     sessionId: over.sessionId ?? "sess-a",
     items: over.items ?? [],
+    childSessions: (over.childSessions ?? []).map((run) => ({
+      parentSessionId: over.sessionId ?? "sess-a",
+      createdAt: 1,
+      updatedAt: 1,
+      ...run,
+    })),
+    childSessionsStale: over.childSessionsStale ?? false,
     isStreaming: over.isStreaming ?? false,
     isStuck: over.isStuck ?? false,
     isFinishing: false,
@@ -246,5 +257,111 @@ describe("a seat's panel", () => {
     expect(screen.queryByTestId("picked-composer")).toBeNull();
     expect(screen.getByTestId("picked-read-only").textContent).toContain("runs rows from a board");
     expect(screen.queryByText(/go to the assistant/)).toBeNull();
+  });
+});
+
+describe("who is working", () => {
+  const rows = () => screen.queryAllByTestId("working-row").map((el) => el.textContent);
+  const rerender = (view: ReturnType<typeof panel>, kind: string, s: never) =>
+    view.rerender(<PickedSessionPanel session={s} kind={kind} requestStatus={requestStatus} conversation={null} />);
+
+  it.each(["channel", "agent"])("a %s panel names each unfinished run by its flow", (kind) => {
+    panel(kind, session({ childSessions: [{ id: "run-1", flowId: "support.otto", status: "active" }] }));
+    expect(rows()).toEqual(["support.otto is working"]);
+  });
+
+  it("clears the row when the run finishes, however it ends, and keeps the line it posted", () => {
+    const working = [{ id: "run-1", flowId: "support.otto", status: "active" }];
+    const view = panel("channel", session({ childSessions: working }));
+    expect(rows()).toEqual(["support.otto is working"]);
+
+    for (const status of ["completed", "failed", "incomplete", "aborted"]) {
+      rerender(view, "channel", session({ childSessions: working }));
+      expect(rows()).toEqual(["support.otto is working"]);
+      rerender(
+        view,
+        "channel",
+        session({
+          childSessions: [{ id: "run-1", flowId: "support.otto", status }],
+          items: [line("o", "refunds post on Fridays", { author: "support.otto" })],
+        }),
+      );
+      expect(rows()).toEqual([]);
+      expect(screen.getAllByTestId("channel-line-body").map((el) => el.textContent)).toEqual([
+        "refunds post on Fridays",
+      ]);
+    }
+  });
+
+  it("reads a run with no status, which has no run to speak of, as not working", () => {
+    panel("channel", session({ childSessions: [{ id: "run-1", flowId: "support.otto" }] }));
+    expect(rows()).toEqual([]);
+  });
+
+  it("shows two seats working on one post as two rows, each clearing on its own", () => {
+    const view = panel(
+      "channel",
+      session({
+        childSessions: [
+          { id: "run-1", flowId: "support.otto", status: "active" },
+          { id: "run-2", flowId: "support.ada", status: "active" },
+        ],
+      }),
+    );
+    expect(rows()).toEqual(["support.otto is working", "support.ada is working"]);
+    rerender(
+      view,
+      "channel",
+      session({
+        childSessions: [
+          { id: "run-1", flowId: "support.otto", status: "completed" },
+          { id: "run-2", flowId: "support.ada", status: "active" },
+        ],
+      }),
+    );
+    expect(rows()).toEqual(["support.ada is working"]);
+  });
+
+  it("shows a run with no recorded flow as background work, not a seat", () => {
+    panel("channel", session({ childSessions: [{ id: "run-1", status: "active" }] }));
+    expect(rows()).toEqual(["Background work is running"]);
+  });
+
+  // A failed re-read keeps the last rows it had, and a run it names may have
+  // finished since. The row says when it was true, not that it is true now.
+  it("says a row was true at the last check while the list could not be read again", () => {
+    const working = [
+      { id: "run-1", flowId: "support.otto", status: "active" },
+      { id: "run-2", status: "active" },
+    ];
+    const view = panel("channel", session({ childSessions: working, childSessionsStale: true }));
+    expect(rows()).toEqual([
+      "support.otto was working at the last check",
+      "Background work was running at the last check",
+    ]);
+
+    rerender(view, "channel", session({ childSessions: working }));
+    expect(rows()).toEqual(["support.otto is working", "Background work is running"]);
+  });
+
+  it("keeps no timer of its own, and keeps the draft, as lines land and runs end", async () => {
+    vi.useFakeTimers();
+    try {
+      const view = panel("channel", session({ childSessions: [{ id: "run-1", flowId: "support.otto", status: "active" }] }));
+      fireEvent.change(screen.getByLabelText("Post to this channel"), { target: { value: "half a thought" } });
+      rerender(
+        view,
+        "channel",
+        session({
+          childSessions: [{ id: "run-1", flowId: "support.otto", status: "completed" }],
+          items: [line("o", "refunds post on Fridays", { author: "support.otto" })],
+        }),
+      );
+      expect(vi.getTimerCount()).toBe(0);
+      // Not remounted: the draft is still there.
+      expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe("half a thought");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

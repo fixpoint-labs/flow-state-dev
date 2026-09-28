@@ -82,6 +82,12 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       sessionId: p.sessionId
     }))
   ],
+  session_stream: [
+    entry("GET", "/sessions/:sessionId/stream", (p) => ({
+      kind: "session_stream",
+      sessionId: p.sessionId
+    }))
+  ],
   user_stream: [
     entry("GET", "/users/:userId/stream", (p) => ({
       kind: "user_stream",
