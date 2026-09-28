@@ -313,8 +313,38 @@ async function runFromRow(
     if ((await input.count()) === 0) return { problem: `"${action}"'s form has no ${field} field` };
     await input.fill(value);
   }
-  await row.getByRole("button", { name: /^run$/i }).click();
   const outcome = row.locator("[data-outcome]").first();
+  const previous = (await outcome.count()) > 0 ? await outcome.getAttribute("data-outcome") : null;
+  // A settled answer on screen from an earlier run is not this run's. Watch
+  // the row from before the click, so a new answer is told apart from the old
+  // one even when it arrives too fast to catch it running, or reads the same.
+  await row.evaluate((el) => {
+    const w = window as unknown as { __goalOutcomeMoved?: boolean };
+    w.__goalOutcomeMoved = false;
+    // Only a change to the outcome itself counts: its state, its text, or the
+    // outcome being added or removed. (No named helpers in here: the page
+    // does not have the bundler's name shim.)
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of [record.target, ...record.addedNodes, ...record.removedNodes]) {
+          const element = node instanceof Element ? node : node.parentElement;
+          if (element === null) continue;
+          if (element.hasAttribute("data-outcome") || element.querySelector("[data-outcome]") !== null) w.__goalOutcomeMoved = true;
+          if (record.type !== "childList" && element.closest("[data-outcome]") !== null) w.__goalOutcomeMoved = true;
+        }
+      }
+    }).observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["data-outcome"] });
+  });
+  await row.getByRole("button", { name: /^run$/i }).click();
+  if (previous !== null && previous !== "pending") {
+    const moved = await page
+      .waitForFunction(() => (window as unknown as { __goalOutcomeMoved?: boolean }).__goalOutcomeMoved === true, undefined, { timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!moved) return { problem: `the row kept showing the previous run's "${previous}" after "${action}" was run again` };
+    // Past the old answer; what settles next is this run's.
+    await page.waitForTimeout(250);
+  }
   for (let waited = 0; waited <= SETTLE_MS; waited += 250) {
     const state = (await outcome.count()) > 0 ? await outcome.getAttribute("data-outcome") : null;
     if (state !== null && state !== "pending") {
