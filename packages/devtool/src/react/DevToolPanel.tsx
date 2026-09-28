@@ -48,11 +48,12 @@ import { useSessionRequests } from "./hooks/use-session-requests";
 import { useReplay } from "./hooks/use-replay";
 import { useContinueRequest } from "./hooks/use-continue-request";
 import { useLiveMode } from "./hooks/use-live-mode";
+import { usePoll } from "./hooks/use-poll";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { useDispatchRuns } from "./hooks/use-dispatch-runs";
 import { useReadFence } from "@flow-state-dev/react";
 import { flattenTaskItems } from "./lib/task-collection-state";
-import { pickFurthestStatus } from "./lib/request-status";
+import { pickFurthestStatus, snapshotSupersedesLive } from "./lib/request-status";
 
 const NAV_EXPANDED_WIDTH = 300;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -394,20 +395,25 @@ function PanelContent({ className }: { className?: string }) {
           ? liveStreamStatus
           : pickFurthestStatus(liveStreamStatus, req.status)
         : req.status;
+      // A finished request's polled log is complete; a live cache left by a
+      // stream the panel has since moved off is not (see the helper).
+      const settled = snapshotSupersedesLive(req.status, req.items, req.id === streamRequestId && streamIsLive);
       groups.push({
         requestId: req.id,
         action: req.actionName,
         status,
         startedAt: req.startedAtMs ?? req.createdAt,
         duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
-        items: liveItems.get(req.id) ?? req.items ?? [],
+        items: settled ? req.items! : (liveItems.get(req.id) ?? req.items ?? []),
         // `req.items` (from `listSessionRequests({ includeItems: true })`) is
         // the raw, uncollapsed log already — but it's the polled snapshot, so
         // it can be empty/stale while a request is actively streaming. A
         // per-row Continue action's own stream (`liveRawItems`) takes
         // priority; for the watched main-stream request, fall back to the
         // live `streamState.rawItems` (trace-inclusive) before the polled list.
-        rawItems: liveRawItems.get(req.id) ?? (isWatched ? streamState?.rawItems : undefined) ?? req.items ?? [],
+        rawItems: settled
+          ? req.items!
+          : (liveRawItems.get(req.id) ?? (isWatched ? streamState?.rawItems : undefined) ?? req.items ?? []),
         source: req.source,
         metadata: req.metadata,
       });
@@ -592,11 +598,7 @@ function PanelContent({ className }: { className?: string }) {
       }),
     [rowRequestIds, requests, streamRequestId, streamStatus],
   );
-  useEffect(() => {
-    if (!rowRequestRunning) return;
-    const timer = window.setInterval(() => void refreshRequests(), ROW_REQUEST_POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [rowRequestRunning, refreshRequests]);
+  usePoll(rowRequestRunning, refreshRequests, ROW_REQUEST_POLL_MS);
 
   // After a suspension is resolved, re-attach the live stream to the continued
   // (same-id) request. The request stream follows the continuation through the

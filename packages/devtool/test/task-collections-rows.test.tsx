@@ -212,6 +212,19 @@ describe("opening a row", () => {
     expect(body.queryByText("feedback", { selector: "dt" })).toBeNull();
   });
 
+  it("BR-4 · shows a carried empty list as empty, apart from an absent one", async () => {
+    // `labels: []` is a field the task carries; hiding it reads the same as a
+    // task that has no labels field at all.
+    render(view([taskItem({ id: "task-empty", goal: "empty", status: "pending", labels: [], deps: [] })]));
+    await userEvent.click(toggleOf("task-empty"));
+
+    const body = within(rowOf("task-empty"));
+    const field = (label: string) =>
+      body.getByText(label, { selector: "dt" }).nextElementSibling as HTMLElement;
+    expect(field("Labels").textContent).toBe("none");
+    expect(field("Deps").textContent).toBe("none");
+  });
+
   it("BR-4 · omits a field the task does not carry, rather than faking it", async () => {
     render(view([taskItem({ id: "task-bare", goal: "bare", status: "pending" })]));
     await userEvent.click(toggleOf("task-bare"));

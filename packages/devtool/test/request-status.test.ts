@@ -6,7 +6,7 @@
  * catches up.
  */
 import { describe, expect, it } from "vitest";
-import { pickFurthestStatus } from "../src/react/lib/request-status";
+import { pickFurthestStatus, snapshotSupersedesLive } from "../src/react/lib/request-status";
 
 describe("pickFurthestStatus", () => {
   it("prefers a mid-flight suspend the snapshot hasn't caught up to", () => {
@@ -33,5 +33,32 @@ describe("pickFurthestStatus", () => {
 
   it("treats unknown statuses as in-flight so they never spuriously win", () => {
     expect(pickFurthestStatus("mystery", "completed")).toBe("completed");
+  });
+});
+
+describe("snapshotSupersedesLive", () => {
+  // A request's items cached from a stream the panel has since moved off are
+  // a partial log. Once the store says the request has finished, its polled
+  // log is complete and must win, or the Tasks tab keeps the stale partial.
+  const items = [{ id: "i1" }];
+
+  it("prefers the polled log once the store has the request finished and no stream is open on it", () => {
+    for (const status of ["completed", "failed", "aborted", "incomplete"]) {
+      expect(snapshotSupersedesLive(status, items, false)).toBe(true);
+    }
+  });
+
+  it("keeps the live cache while the request is still going or can still resume", () => {
+    // `interrupted` is where a Continue streams from, and `suspended` is where
+    // a resume re-attaches: the store's log is the older one there.
+    for (const status of ["in_progress", "suspended", "interrupted"]) {
+      expect(snapshotSupersedesLive(status, items, false)).toBe(false);
+    }
+  });
+
+  it("keeps the live cache while a stream is open on the request, or the polled log is empty", () => {
+    expect(snapshotSupersedesLive("completed", items, true)).toBe(false);
+    expect(snapshotSupersedesLive("completed", [], false)).toBe(false);
+    expect(snapshotSupersedesLive("completed", undefined, false)).toBe(false);
   });
 });

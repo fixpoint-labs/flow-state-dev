@@ -156,8 +156,56 @@ describe("outcomeOf", () => {
     expect(outcomeOf(request([message, structureRoot]), "r1")).toEqual({ state: "refused", message: "no such task" });
   });
 
+  it("says the outcome isn't visible when a reference nested inside a structure was not retained", () => {
+    // `{ ok: false, error: <evicted ref> }` resolves to `{ ok: false, error:
+    // undefined }`. Read as it stands, that is not a refusal and would say
+    // "Done". Any unresolved reference, at any depth, means the result can't
+    // be told.
+    const structureRoot = (entries: Record<string, unknown>) => ({
+      type: "block_trace",
+      status: "completed",
+      provenance: {},
+      output: { kind: "structure", shape: { container: "object", entries } },
+    });
+    const nested = structureRoot({ ok: { kind: "inline", value: false }, error: { kind: "ref", sourceItemId: "gone" } });
+    expect(outcomeOf(request([nested]), "r1")).toEqual({ state: "unknown", reason: "not-retained" });
+    const inArray = {
+      type: "block_trace",
+      status: "completed",
+      provenance: {},
+      output: { kind: "structure", shape: { container: "array", entries: [{ kind: "ref", sourceItemId: "gone" }] } },
+    };
+    expect(outcomeOf(request([inArray]), "r1")).toEqual({ state: "unknown", reason: "not-retained" });
+    // A ref to a trace that finished without an output, one hop down.
+    const emptyChild = { id: "t-empty", type: "block_trace", status: "completed", provenance: { parentBlockInstanceId: "root" } };
+    const viaChild = structureRoot({ result: { kind: "ref", sourceItemId: "t-empty" } });
+    expect(outcomeOf(request([emptyChild, viaChild]), "r1")).toEqual({ state: "unknown", reason: "not-retained" });
+  });
+
+  it("reads ok:false as a refusal whatever the error looks like", () => {
+    expect(outcomeOf(request([root("completed", { ok: false })]), "r1")).toEqual({
+      state: "refused",
+      message: "The action refused, without a reason.",
+    });
+    expect(outcomeOf(request([root("completed", { ok: false, error: { message: "locked" } })]), "r1")).toEqual({
+      state: "refused",
+      message: "locked",
+    });
+    expect(outcomeOf(request([root("completed", { ok: false, error: { code: 7 } })]), "r1")).toEqual({
+      state: "refused",
+      message: '{"code":7}',
+    });
+  });
+
+  it("reads a declined write as a refusal even without a reason or status", () => {
+    expect(outcomeOf(request([root("completed", { outcome: "declined" })]), "r1")).toEqual({
+      state: "refused",
+      message: "Declined: the write did not land.",
+    });
+  });
+
   it("says the outcome isn't visible when a referenced output was not retained", () => {
     const refRoot = { type: "block_trace", status: "completed", provenance: {}, output: { kind: "ref", sourceItemId: "gone" } };
-    expect(outcomeOf(request([refRoot]), "r1")).toEqual({ state: "unknown" });
+    expect(outcomeOf(request([refRoot]), "r1")).toEqual({ state: "unknown", reason: "not-retained" });
   });
 });

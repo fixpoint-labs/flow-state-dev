@@ -187,7 +187,9 @@ function Outcome({ outcome }: { outcome: RowActionOutcome }) {
     case "unknown":
       return (
         <span data-outcome="unknown" className="text-[11px] text-slate-400">
-          Sent. The outcome isn't visible: this request left no trace (trace observability is off).
+          {outcome.reason === "no-trace"
+            ? "Sent. The outcome isn't visible: this request left no trace (trace observability is off)."
+            : "Sent. The outcome isn't visible: part of the result was not retained."}
         </span>
       );
   }

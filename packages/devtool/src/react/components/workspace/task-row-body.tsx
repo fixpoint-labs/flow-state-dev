@@ -52,6 +52,10 @@ function isScalar(value: unknown): value is string | number | boolean {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
 
+function listText(list: readonly string[] | undefined): string {
+  return list === undefined || list.length === 0 ? "none" : list.join(", ");
+}
+
 /** Wrap anywhere: a value may be one unbroken token. */
 const WRAP = "whitespace-pre-wrap [overflow-wrap:anywhere]";
 
@@ -74,8 +78,9 @@ export function TaskRowBody({ entry, id, children }: Props) {
   );
   add("Assignee", task.assignee, task.assignee !== undefined);
   add("Priority", String(task.priority), task.priority !== undefined);
-  add("Labels", task.labels?.join(", "), task.labels !== undefined && task.labels.length > 0);
-  add("Deps", task.deps?.join(", "), task.deps !== undefined && task.deps.length > 0);
+  // A carried empty list is shown as such, apart from an absent one.
+  add("Labels", listText(task.labels), task.labels !== undefined);
+  add("Deps", listText(task.deps), task.deps !== undefined);
   // Keyed on presence and rendered as stored, as the collapsed slot is.
   add("Reason", task.feedback, task.feedback !== undefined);
   add("Error", task.error, task.error !== undefined);

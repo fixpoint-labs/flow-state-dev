@@ -37,3 +37,27 @@ export function pickFurthestStatus(streamStatus: string, storeStatus: string): s
   const store = REQUEST_STATUS_RANK[storeStatus] ?? 0;
   return stream >= store ? streamStatus : storeStatus;
 }
+
+/**
+ * Should a request's polled item log replace what a live stream cached for it?
+ *
+ * A stream the panel has moved off (a second dispatch takes the one stream
+ * slot) leaves a partial log in the live cache. Once the store has the request
+ * finished, its polled log is complete, so it wins. Not while a stream is open
+ * on the request, not from `suspended` or `interrupted` (a resume or Continue
+ * streams from there, so the live side is the newer one), and not when the
+ * poll brought no items.
+ *
+ * @param storeStatus The request's status in the polled list.
+ * @param storeItems Its polled item log, when the list carried one.
+ * @param streamOpen Whether a live stream is currently open on this request.
+ */
+export function snapshotSupersedesLive(
+  storeStatus: string,
+  storeItems: readonly unknown[] | undefined,
+  streamOpen: boolean
+): boolean {
+  if (streamOpen) return false;
+  if (storeItems === undefined || storeItems.length === 0) return false;
+  return REQUEST_STATUS_RANK[storeStatus] === 2;
+}
