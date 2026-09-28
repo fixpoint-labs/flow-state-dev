@@ -2009,7 +2009,8 @@ async function runOwnedGenerateLoop(params: {
  * message item, reasoning/message items are emitted lazily in stream order,
  * and the resolved model identity refines as chunks report it. Seeding also
  * primes `ctx._currentModelIdentity` so tools called on the very first turn
- * still stamp an identity on their `tool_output` items.
+ * still stamp an identity on their `tool_output` items. Only the owned loop
+ * inserts a blank line between step texts; the legacy stream carries none.
  */
 function createStreamEmissionState(
   model: GeneratorModel,
