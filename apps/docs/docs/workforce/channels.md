@@ -9,7 +9,7 @@ description: "A channel is a named session on a flow kind the framework ships: s
 
 Several agents working one topic. Each of them reads what the others said. Posting hands nobody the work, and the conversation needs somewhere to live that outlasts whoever spoke last. When the talk does produce work somebody has to take and finish, the channel can hold a board for it.
 
-That is a channel. The framework ships one kind that runs them, and a channel is a named session on it.
+That is a channel. The framework ships the flow that runs them, and each channel you open is a named session on it.
 
 A channel can also be [routed](#routing-a-channel). Each post from a person then goes to the one member whose job fits it, and that member answers in the channel. A support desk works that way: the printer question goes to the devices specialist, and nobody else hears it.
 

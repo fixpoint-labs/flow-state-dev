@@ -84,6 +84,8 @@ The specialist answers with the channel's last 20 lines in view, so "where can I
 
 Take the `routing:` lines out and every specialist hears every post, which is what a channel does by default.
 
+The support desk needs actions to run in process. With `FSD_BULLMQ_DISPATCH=1` (see [Environment variables](#environment-variables)), a post to `support.help` shows up in the channel but no specialist answers it. A specialist you talk to directly answers but says it couldn't file the case.
+
 ### When a case needs a person
 
 A specialist that decides a case needs a person calls `escalate`, a tool in `workforce/blocks/escalate.ts`. It files one row onto the channel's `escalations` board through the channel's own `fileTask` action, signed with the specialist's own id, and the specialist says so in its answer. The model chooses only what the row says. The case appears in the team panel's `escalations` list, newest first, with its status, in every open tab as soon as it is filed. The list follows `support.help`, the channel the specialist files through. A tab holds one stream connection for the list, and a second if `support.help` is also open in the navigator.
@@ -98,8 +100,6 @@ Nobody works `escalations` in this app, and the boot says so:
 ```
 
 Filed cases stay `pending` for a person to read. In an app of your own, that warning is how you find out a board has nobody draining it.
-
-Filing needs the in-process dispatcher. With `FSD_BULLMQ_DISPATCH=1`, a post to `support.help` is written but no specialist answers, and a specialist you talk to directly still answers but says it couldn't file.
 
 ### Talking to one specialist
 
