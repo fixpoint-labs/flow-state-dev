@@ -143,8 +143,8 @@ Two more serve the session stream (`GET /api/flows/sessions/:sessionId/stream`),
 
 | Index | Serves |
 | --- | --- |
-| `idx_requests_session_tenant_updated (session_id, tenant_id, updated_at)` | One session's requests, newest-updated first. |
-| `idx_sessions_parent_scope_updated (parent_session_id, tenant_id, org_id, updated_at)` | One parent's runs, newest-updated first. |
+| `idx_requests_session_tenant_owner_updated (session_id, tenant_id, user_id, org_id, updated_at)` | One session's requests, newest-updated first. |
+| `idx_sessions_parent_tenant_owner_updated (parent_session_id, tenant_id, user_id, org_id, updated_at)` | One parent's runs, newest-updated first. |
 
 Each read uses its index and sorts nothing, whether or not the caller is bound to a tenant.
 

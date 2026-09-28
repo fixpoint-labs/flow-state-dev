@@ -160,18 +160,16 @@ The ordering columns are declared ascending and scanned backwards, which Postgre
 
 An interrupted concurrent build leaves an *invalid* index that `IF NOT EXISTS` would then skip forever, so the schema step drops an invalid one by that name before rebuilding. On a healthy database that check is a no-op.
 
-Four more serve the session stream (`GET /api/flows/sessions/:sessionId/stream`), which re-reads the session it follows about once a second while a view has it open. Each read pages newest-updated first and stops at the first row older than the point the stream has already covered: a few seconds before its previous read, or on a new connection, a few seconds before the client's `since` (one minute back without one). Each of its two reads has one index for a caller not bound to a tenant and one for a caller that is. All four are built `CONCURRENTLY` at startup, with the same invalid-index check.
+Four more serve the session stream (`GET /api/flows/sessions/:sessionId/stream`), which re-reads the session it follows about once a second while a view has it open. Each read pages newest-updated first and stops at the first row older than the point the stream has already covered: a few seconds before its previous read, or on a new connection, a few seconds before the client's `since` (one minute back without one). Each of its two reads has one index for a caller not bound to a tenant and one for a caller that is, and each index names the followed session's owner and organization ahead of `updated_at`, as the read does. All four are built `CONCURRENTLY` at startup, with the same invalid-index check.
 
 | Index | Serves |
 | --- | --- |
-| `idx_requests_session_updated (session_id, updated_at)` | One session's requests, newest-updated first, for a caller not bound to a tenant. |
-| `idx_requests_session_tenant_updated (session_id, tenant_id, updated_at)` | The same read for a caller bound to a tenant. |
-| `idx_sessions_parent_updated (parent_session_id, updated_at)` | One parent's runs, newest-updated first, for a caller not bound to a tenant. |
-| `idx_sessions_parent_scope_updated (parent_session_id, tenant_id, org_id, updated_at)` | The same read for a caller bound to a tenant. |
+| `idx_requests_session_owner_updated (session_id, user_id, org_id, updated_at)` | One session's requests, newest-updated first, for a caller not bound to a tenant. |
+| `idx_requests_session_tenant_owner_updated (session_id, tenant_id, user_id, org_id, updated_at)` | The same read for a caller bound to a tenant. |
+| `idx_sessions_parent_owner_updated (parent_session_id, user_id, org_id, updated_at)` | One parent's runs, newest-updated first, for a caller not bound to a tenant. |
+| `idx_sessions_parent_tenant_owner_updated (parent_session_id, tenant_id, user_id, org_id, updated_at)` | The same read for a caller bound to a tenant. |
 
-The schema also creates `stat_requests_session_tenant`, a `dependencies` statistics object on `requests (session_id, tenant_id)`. It tells the planner that a session's requests share one tenant, so a bound caller's read picks its index instead of sorting the session's history. It changes estimates only, and takes effect once the table has been analyzed.
-
-Once the table has been analyzed, a read's cost doesn't grow with the followed session's history or with activity in other sessions, whether or not the caller is bound to a tenant: each read uses its index and sorts nothing.
+Once the tables have been analyzed, a read's cost doesn't grow with the followed session's history, with activity in other sessions, or with rows another owner or organization keeps under the same ids, whether or not the caller is bound to a tenant: each read uses its index and sorts nothing.
 
 ### The tenant and org filters
 

@@ -445,14 +445,22 @@ routes can also answer `404` when the session is replaced by a new one under
 the same id while the request is being answered. `createSessionSSEClient` in
 `@flow-state-dev/client` reads it.
 
-Query parameters, both optional:
+Query parameters, all optional:
 
 - `since`: a server time (epoch ms) to start from, either the `at` of the last
   event you heard or, when the stream follows a snapshot, the snapshot's `at`.
   A snapshot's `at` is the time its read began, and everything saved before it
   is in the snapshot; when you read its items over several pages, use the
-  first page's `at`. The stream starts a few seconds before `since`, so
+  first page's `at`. Pages are cut from the history as it stands at each
+  request, so an item can fall between two pages if the history shifts during
+  the read: start each later page one item early and read again if that item
+  is not the one you last held, or if the page's `sessionCreatedAt` differs
+  from the first page's. The stream starts a few seconds before `since`, so
   nothing is missed. Without it, the stream starts one minute back.
+- `session_created_at`: the snapshot's `sessionCreatedAt`, the time the
+  session it read was created. The stream then follows that session only: once
+  the id holds a session created at any other time, a connection answers `404`,
+  or `403` if the app authenticates and another user or organization holds it.
 - `item_types`: comma-separated item types, applied as on the snapshot route.
 
 Each SSE frame's `event` is the event's `type`, and its `data` is the whole
@@ -488,7 +496,8 @@ under the same id. The
 reconnect then answers `404` if the session is gone, or `403` if the app
 authenticates and another user or organization now holds the id. If the same
 owner created the session again, or the app doesn't authenticate, the
-reconnect follows the new session. `createSessionSSEClient` stops for good,
+reconnect answers `404` when it names `session_created_at`, and otherwise
+follows the new session. `createSessionSSEClient` stops for good,
 without an error, on a `401`, `403`, `404`, `409` or `501`.
 
 A session deleted and created again under the same id, by the same owner in

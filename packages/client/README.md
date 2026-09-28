@@ -111,8 +111,12 @@ const snapshot = await sessions.getSessionState("sess_1", {
   clientData: ["session.artifactsList", "user.preferences"],
 });
 // `snapshot.at` is the server time the read began. Items come in pages
-// (`pagination.hasMore`, `pagination.nextOffset`); to follow the session, read
-// every page and pass the first page's `at` to `createSessionSSEClient` as `since`.
+// (`pagination.hasMore`, `pagination.nextOffset`). To follow the session, read
+// every page, starting each later page one item early (`nextOffset - 1`) and
+// reading again from the first page if that item is not the last one you hold,
+// or if the page's `sessionCreatedAt` differs from the first page's. Then pass
+// the first page's `at` and `sessionCreatedAt` to `createSessionSSEClient`
+// (`since`, `sessionCreatedAt`), so it follows the session you read.
 
 // List a session's requests. Returns summaries only by default; pass
 // `includeItems` to back-fill each request's item log — useful for inspecting

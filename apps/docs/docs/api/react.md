@@ -98,11 +98,13 @@ It is current as of the reader's last interaction: re-read on mount, at the star
 
 `live` defaults to `false`. When `true`, the hook also hears requests it didn't send and keeps `childSessions` current as runs are dispatched and finish. See [Hearing requests you didn't send](/docs/client/react#hearing-requests-you-didnt-send).
 
-The list holds 25 rows by default; pass `childSessions: { limit }` in the hook's options for a different page size. `childSessionsStale` turns `true` on a failed re-read, cleared by the next successful one, and on a `limit` above the server's cap, cleared only by asking for a page that fits. The rows already read stay either way — the hook never empties the list. [Background work](/docs/client/react#background-work) walks through rendering the panel.
+The list holds 25 rows by default; pass `childSessions: { limit }` in the hook's options for a different page size. `childSessionsStale` turns `true` on a failed re-read, cleared by the next successful one, and on a `limit` above the server's cap, cleared only by asking for a page that fits. With `live: true` it also turns `true` when the session stream stops following the session after it opened: from the first failed reconnect until a connection gets through, and after a refused reconnect until a snapshot read, such as `refresh()`, finds a new session under the id that the reader can open. That read moves the view onto the new session. The rows already read stay in every case — the hook never empties the list. [Background work](/docs/client/react#background-work) walks through rendering the panel.
 
 `resumeLatestRequest` is a no-op unless `latestRequest.status` is `interrupted` or `failed`. The server creates a new request that re-runs the original action with the same input, and the hook auto-attaches to its stream. The re-run goes through the flow instance recorded as the request's owner (`latestRequest.flowId`), not the provider's `flowKind`, so a session started through one copy of a flow stays with it; `continueRequest` re-enters the same way.
 
 `resumeSuspension` resolves a pending durable-execution suspension and streams the resumed continuation back into `session.items`, so the resolution renders live (no refresh) even on serverless. `requestId` is the suspended request's id (carried on the suspension item); the continuation re-enters that same id. This is the streaming resume `useSuspensions` and `<SuspensionResolverProvider>` build on.
+
+The hook reads a long history a page at a time and starts over when the pages shift under it, as when a keyed component is emitted again partway through the read. If they still shift after five tries, it sets `error` rather than show part of the history. A snapshot read started after the failure, such as `refresh()`, clears that error when it succeeds, as it clears any error a failed snapshot read left. It leaves an action's error alone.
 
 ### `useClientData(session, options)`
 
