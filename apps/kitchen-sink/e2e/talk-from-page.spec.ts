@@ -208,7 +208,9 @@ test("a new support.devices conversation keeps the message and the reply across 
   const panel = picked(page);
   await panel.getByLabel("Message this seat").fill(message);
   await panel.getByRole("button", { name: "Send" }).click();
-  await expect(panel.getByText(message, { exact: true })).toBeVisible();
+  // Read in the conversation: the live view can draw the message while the
+  // composer still holds its text, until the server has taken the send.
+  await expect(panel.getByRole("log").getByText(message, { exact: true })).toBeVisible();
   await expect(panel.getByText(/\[reply:talk-to-seat\]/)).toBeVisible();
 
   // The conversation that was opened, so the reload can come back to it.
