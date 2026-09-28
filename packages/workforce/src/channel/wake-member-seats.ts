@@ -70,6 +70,38 @@ function seatIdOf(seat: FlowInstance): string {
 }
 
 /**
+ * The seats that can hear a post, grouped by the logical id a channel's
+ * `members:` names them by. The wake's test of who can be woken, shared with
+ * `routeByPurpose` so a route never offers a member the wake would not run.
+ * Not re-exported from the package root.
+ */
+export function hearingSeatsById(seats: readonly FlowInstance[]): Map<string, FlowInstance[]> {
+  const byId = new Map<string, FlowInstance[]>();
+  for (const seat of seats) {
+    if (!hearsPosts(seat)) continue;
+    const seatId = seatIdOf(seat);
+    byId.set(seatId, [...(byId.get(seatId) ?? []), seat]);
+  }
+  return byId;
+}
+
+/**
+ * The seat of one logical id that this post's caller may reach: one pinned to
+ * the caller's organization and user first, then one visible to the whole
+ * organization, then one pinned to none. A seat pinned to anyone else is not
+ * this caller's. Shared with `routeByPurpose`; not re-exported from the root.
+ */
+export function reachableSeat(group: readonly FlowInstance[], ctx: BlockContext): FlowInstance | undefined {
+  const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
+  const userId = ctx.user?.identity.userId ?? ctx.user?.identity.id;
+  return (
+    group.find((seat) => seat.ownerPin?.orgId === orgId && seat.ownerPin?.userId !== undefined && seat.ownerPin?.userId === userId) ??
+    group.find((seat) => seat.ownerPin !== undefined && seat.ownerPin.orgId === orgId && seat.ownerPin.userId === undefined) ??
+    group.find((seat) => seat.ownerPin === undefined)
+  );
+}
+
+/**
  * The notify block that wakes each member whose hired seat declares the
  * internal `onChannelPost` entry, once per post, and never on a post with an
  * `author`.
@@ -86,43 +118,32 @@ export function wakeMemberSeats(
   const fallback = options.fallback ?? silent;
 
   // One dispatcher per seat that can hear a post, grouped by logical id.
-  const wakes = new Map<string, Array<{ seat: FlowInstance; wake: BlockDefinition<any, any> }>>();
-  for (const seat of seats) {
-    if (!hearsPosts(seat)) continue;
-    const seatId = seatIdOf(seat);
-    const wake = dispatcher({
-      name: `wake-${seat.id}`,
-      flowKind: seat.id,
-      action: CHANNEL_POST_ENTRY,
-      inputSchema: channelNotifyInputSchema,
-      // One conversation per seat per channel, adopted on every post after the first.
-      session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` }
-    });
-    const group = wakes.get(seatId) ?? [];
-    group.push({ seat, wake });
-    wakes.set(seatId, group);
+  const hearing = hearingSeatsById(seats);
+  const wakes = new Map<FlowInstance, BlockDefinition<any, any>>();
+  for (const seat of [...hearing.values()].flat()) {
+    wakes.set(
+      seat,
+      dispatcher({
+        name: `wake-${seat.id}`,
+        flowKind: seat.id,
+        action: CHANNEL_POST_ENTRY,
+        inputSchema: channelNotifyInputSchema,
+        // One conversation per seat per channel, adopted on every post after the first.
+        session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` }
+      })
+    );
   }
 
   /**
-   * The seat a member names, for this post's caller: one pinned to the
-   * caller's organization and user first, then one visible to the whole
-   * organization, then one pinned to none. A seat pinned to anyone else is not
-   * this caller's to wake, so the member gets the fallback.
+   * The wake for the seat a member names, for this post's caller. A seat this
+   * caller may not reach is not theirs to wake, so the member gets the fallback.
    */
   const wakeFor = (member: string, ctx: BlockContext): BlockDefinition<any, any> | undefined => {
-    const group = wakes.get(member);
-    if (group === undefined) return undefined;
-    const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
-    const userId = ctx.user?.identity.userId ?? ctx.user?.identity.id;
-    const pin = (seat: FlowInstance) => seat.ownerPin;
-    const found =
-      group.find(({ seat }) => pin(seat)?.orgId === orgId && pin(seat)?.userId !== undefined && pin(seat)?.userId === userId) ??
-      group.find(({ seat }) => pin(seat) !== undefined && pin(seat)!.orgId === orgId && pin(seat)!.userId === undefined) ??
-      group.find(({ seat }) => pin(seat) === undefined);
-    return found?.wake;
+    const seat = reachableSeat(hearing.get(member) ?? [], ctx);
+    return seat === undefined ? undefined : wakes.get(seat);
   };
 
-  const routes = [...[...wakes.values()].flat().map(({ wake }) => wake), silent];
+  const routes = [...wakes.values(), silent];
   if (fallback !== silent) routes.push(fallback);
 
   return router({

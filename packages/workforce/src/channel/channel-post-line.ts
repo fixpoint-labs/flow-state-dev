@@ -40,3 +40,17 @@ export const channelTranscriptLineSchema = z.object({
 });
 
 export type ChannelTranscriptLine = z.infer<typeof channelTranscriptLineSchema>;
+
+/**
+ * The lines in order, keeping the first line with each id: the one rule for
+ * merging a channel's kept transcript with its posted lines. Not re-exported
+ * from the package root or the browser entry.
+ */
+export function withoutRepeats(lines: readonly ChannelTranscriptLine[]): ChannelTranscriptLine[] {
+  const seen = new Set<string>();
+  return lines.filter((line) => {
+    if (seen.has(line.id)) return false;
+    seen.add(line.id);
+    return true;
+  });
+}

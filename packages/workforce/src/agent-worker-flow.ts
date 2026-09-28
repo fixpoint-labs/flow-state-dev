@@ -89,7 +89,20 @@ import {
   pushActiveSkill
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
-import { channelNotifyInputSchema, type ChannelNotifyInput } from "./channel/channel-flow";
+import {
+  channelNotifyInputSchema,
+  channelTranscriptLineSchema,
+  type ChannelNotifyInput,
+  type ChannelTranscriptLine
+} from "./channel/channel-flow";
+import {
+  ROUTED_TURN_STATE,
+  answeredAlready,
+  claimRoutedAnswer,
+  postRoutedAnswer,
+  routedTurnStateSchema,
+  seatIdConfigSchema
+} from "./channel-post-capability";
 import { SEAT_PACKAGES_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
   catalogSeatCapabilities,
@@ -744,6 +757,13 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   const catalogResources = catalogDeclaredResources(catalog, seatCapabilityCatalog);
   const settings = settingsSchema({ ...options, catalog }, seatCapabilityCatalog);
   const inputSchema = z.object({ message: z.string() });
+  /**
+   * The answer's own input: the turn, and on a routed channel post the
+   * channel's lines before it. Only the kind's `onChannelPost` sets `recent`,
+   * from the fan-out's delivery; the public `run` action's input is
+   * `inputSchema`, which has no such field, so a caller cannot hand lines in.
+   */
+  const turnInputSchema = inputSchema.extend({ recent: z.array(channelTranscriptLineSchema).optional() });
 
   const appSkills = options.skills ?? [];
 
@@ -869,7 +889,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
     generator({
       name,
-      inputSchema,
+      inputSchema: turnInputSchema,
       flowConfigSchema: settings,
       itemVisibility: { client: true, history: true },
       // The earlier turns of THIS conversation, so a follow-up keeps its
@@ -929,6 +949,11 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
         (_input, ctx) => packageInstructionsOf(ctx.flow.config[SEAT_PACKAGES_KEY])
       ],
       model: (_input, ctx) => ctx.flow.config.model,
+      // A routed channel post's lines before it, for this turn only: the
+      // context slot reaches the model on its own call and is never stored,
+      // so the lines are not kept in the conversation or sent on a later
+      // turn. Absent on every other turn.
+      context: [(input) => recentLinesContext(input.recent)],
       // The seat's granted tools. With a written `tools:` line, both halves of
       // it: `tools` holds the names that resolved to the app's CATALOG;
       // `seatTools` holds the blocks that resolved to this seat's own folders,
@@ -1054,7 +1079,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     }
   });
 
-  const answered = sequencer({ name: "agent-run", inputSchema, flowConfigSchema: settings })
+  const answered = sequencer({ name: "agent-run", inputSchema: turnInputSchema, flowConfigSchema: settings })
     .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier !== true, matcherWithoutClassifier)
     .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier === true, matcherWithClassifier)
     .tap(appendSeatDefaults)
@@ -1079,6 +1104,78 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // call that times out, say — is not a conversation failure.
   const run = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
 
+  /**
+   * Marks the turn as the answer to a routed post, so the post tool and the
+   * landing below know which post it is. Request state, not session state:
+   * one seat session can answer two routed posts at once (a follow-up held for
+   * it), and each is its own request.
+   */
+  const markRoutedTurn = handler({
+    name: "agent-mark-routed-turn",
+    inputSchema: channelNotifyInputSchema,
+    outputSchema: z.object({}),
+    requestStateSchema: routedTurnStateSchema,
+    execute: async (post: ChannelNotifyInput, ctx) => {
+      await ctx.request.patchState({ [ROUTED_TURN_STATE]: { channelId: post.channelId, postId: post.postId } });
+      return {};
+    }
+  });
+
+  /**
+   * The routed reply's line: the reply, to the post's channel, unless the
+   * seat already has its line for this post (the tool posted it, or the post
+   * was delivered before). An empty reply is a failed answer: the run fails
+   * and nothing is posted, never a stock line. A hand-off the channel refuses
+   * gives the claim back and fails the run, so the post delivered again is
+   * answered.
+   */
+  const claimRoutedLine = handler({
+    name: "agent-claim-routed-line",
+    inputSchema: z.unknown(),
+    outputSchema: z.union([
+      z.object({ channel: z.string(), body: z.string(), author: z.string() }),
+      z.object({ answeredAlready: z.literal(true) })
+    ]),
+    requestStateSchema: routedTurnStateSchema,
+    flowConfigSchema: seatIdConfigSchema,
+    execute: async (reply: unknown, ctx) => {
+      // Run only on a routed turn (the `tapIf` below), which is marked.
+      const routed = ctx.request.state.channelRoutedPost!;
+      if (answeredAlready(ctx, routed.postId)) return { answeredAlready: true as const };
+      if (typeof reply !== "string" || reply.trim().length === 0) {
+        throw new Error(
+          `This seat was routed a post in ${routed.channelId} and its turn ended with an empty reply, ` +
+            "so nothing was posted to the channel."
+        );
+      }
+      if (!(await claimRoutedAnswer(ctx, routed.postId))) return { answeredAlready: true as const };
+      return { channel: routed.channelId, body: reply, author: ctx.flow.config.seatId };
+    }
+  });
+
+  const landRoutedReply = sequencer({ name: "agent-land-routed-reply", inputSchema: z.unknown() })
+    .step(claimRoutedLine)
+    .stepIf((claim) => !("answeredAlready" in claim), postRoutedAnswer);
+
+  /**
+   * A channel post as this seat hears it. Every delivery runs `run` on the
+   * heard turn. A routed one (the channel's route picked this seat, and only
+   * the fan-out says so) also carries the channel's lines before the post,
+   * which the answer sees as context, and ends with the reply posted into the
+   * channel as the seat. The reply is not otherwise posted: an unrouted post
+   * reaches the channel only if the turn calls the post tool.
+   */
+  const heardPost = sequencer({ name: "agent-heard-post", inputSchema: channelNotifyInputSchema })
+    .tapIf((post: ChannelNotifyInput) => post.routed === true, markRoutedTurn)
+    .step(
+      (post: ChannelNotifyInput) => ({
+        message: heardTurn(post),
+        ...(post.recent === undefined ? {} : { recent: post.recent })
+      }),
+      run
+    )
+    .tapIf((_reply, ctx) => ctx.request.state[ROUTED_TURN_STATE] !== undefined, landRoutedReply);
+
   const flow = defineFlow({
     kind: AGENT_KIND,
     // Required by contract C2. A plain singleton's seats mint and are then
@@ -1102,7 +1199,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       actions: {
         onChannelPost: {
           inputSchema: channelNotifyInputSchema,
-          block: run.connectInput((post: ChannelNotifyInput) => ({ message: heardTurn(post) })),
+          block: heardPost,
           userMessage: heardTurn
         }
       }
@@ -1162,8 +1259,22 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
 /**
  * A channel post as an agent seat hears it: `<writer> in <channel>: <body>`.
  * The writer is the post's `author` (a seat wrote it), else its `principal`;
- * the channel is the channel's session id.
+ * the channel is the channel's session id. A routed post adds one sentence
+ * saying where the reply goes.
  */
 function heardTurn(post: ChannelNotifyInput): string {
-  return `${post.author ?? post.principal} in ${post.channelId}: ${post.body}`;
+  const heard = `${post.author ?? post.principal} in ${post.channelId}: ${post.body}`;
+  if (post.routed !== true) return heard;
+  return `${heard}\n\nYou were picked to answer this post, and your reply is posted to ${post.channelId} as you.`;
+}
+
+/**
+ * A routed turn's context section: the channel's lines before the post,
+ * oldest first, each as `<writer>: <body>`. `undefined` with no lines, so the
+ * slot drops it and a turn that has none carries no section.
+ */
+function recentLinesContext(recent: readonly ChannelTranscriptLine[] | undefined): string | undefined {
+  if (recent === undefined || recent.length === 0) return undefined;
+  const lines = recent.map((line) => `- ${line.author ?? line.principal}: ${line.body}`);
+  return ["Recent lines in the channel, oldest first:", ...lines].join("\n");
 }

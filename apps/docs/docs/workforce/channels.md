@@ -48,7 +48,7 @@ No line says which kind it runs. An omitted `flow:` selects the built-in, which 
 
 `members` is the channel's roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular member. It is the declared list and nothing else writes it: there is no join or leave verb yet, so changing who is in a channel means editing the record and opening a fresh channel. An edit to `members` does not reach a channel that is already open.
 
-Five keys are declarable: `flow`, `description`, `members`, `boards`, `instructions`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
+Six keys are declarable: `flow`, `description`, `members`, `boards`, `instructions` and `routing`. [Routing a channel](#routing-a-channel) covers the last. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
 
 ## Channels on disk
 
@@ -101,7 +101,7 @@ Both folder names follow [the tree's name rule](./workers-on-disk.md#names-in-th
 
 ### What the file is checked for
 
-`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of five keys is checked later. So a `CHANNEL.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
+`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of six keys is checked later. So a `CHANNEL.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
 
 ### When a folder is wrong
 
@@ -242,11 +242,9 @@ So: a channel transcript is evidence that the channel's own principal wrote a li
 
 ## Where posting from another flow works, and where it doesn't
 
-A post from one flow into a channel's session is a delivery into a session that already exists. That needs dispatch to run in the same process.
+Posting from another flow needs dispatch to run in the same process. On a deployment whose dispatcher hands work to an external queue, a post into an opened channel is refused with `external-dispatcher`.
 
-On a deployment whose dispatcher hands work to an external queue, such a delivery is refused by name, `external-dispatcher`, whether or not the session exists.
-
-Client posts through the ordinary action route still work on the same host. Only the flow-to-flow door closes.
+On that kind of deployment, a post from a client is written to the channel, but no member is [woken](#waking-members), and a [routed channel](#routing-a-channel) never picks a member or answers.
 
 ## Waking members
 
@@ -370,6 +368,151 @@ channel. Authorship is not verified.
 A busy channel keeps growing each seat's conversation, and a seat remembers only as far back as
 its history window reaches. Nothing summarizes older posts for it.
 
+## Routing a channel
+
+Waking every agent in a channel suits a standup. It doesn't suit a support channel, where a
+question about a printer should reach the one specialist who handles devices and nobody else.
+Routing does that: each post from a person goes to one member, picked by what the post is about,
+and that member's answer shows in the channel.
+
+Turn it on in the channel's file by naming the member who takes whatever fits nobody else:
+
+```md
+---
+description: Ask the support team anything.
+members: [support.devices, support.accounts, support.fsd, support.general]
+routing:
+  fallback: support.general
+---
+```
+
+Then give the channel kind the route. It needs the seats you hired and a model that can evaluate:
+
+```ts
+import { defineChannelFlow, routeByPurpose, wakeMemberSeats } from "@flow-state-dev/workforce";
+
+defineChannelFlow({
+  notify: wakeMemberSeats(seats),
+  route: routeByPurpose(seats, { model: "typesafe-ai/jev" }),
+});
+```
+
+The route picks a member with an evaluator: a block that asks a model a question with a fixed set
+of answers and gets one of them back. Not every model can do that; see
+[Evaluation models](/docs/fundamentals/models#evaluation-models). A channel without the
+`routing:` line is not routed, even on a kind built with a route: it wakes every agent member.
+
+The fallback has to be a member whose hired seat can hear a post, or the app refuses to start and
+names the channel. So does a `routing:` line on a kind built without a route. The line is read
+from the file each time the app starts, so adding it to a channel that is already open routes that
+channel from the next start, with its lines kept.
+
+### How a post finds its member
+
+For each post from a person, in this order:
+
+1. **The member already on it.** If the person's last post was routed to a member by the
+   evaluator or the fallback, and that member hasn't answered yet, this one goes there too, with no
+   model call. A post held this way holds nothing, so the one after it is routed by what it says.
+   A post whose route isn't recorded yet holds nothing either, so of two posts sent close together,
+   the second may be routed by what it says rather than held.
+2. **One evaluator call.** Otherwise the route asks one question: which member should answer?
+   The choices are the members whose seat can hear a post and has a description, each described
+   by the `description:` in its `WORKER.md`. The model also sees the channel's recent lines, which
+   is how "it fails right after the password" reaches the specialist who asked about the password.
+   A seat [hired while the app runs](./durable-hire.md) has no description, because `hire` takes
+   none, so it is never a choice. It can still take a post as the fallback, and step 1 then sends
+   it the person's next post. When no member has a description, there is no call and the fallback
+   takes the post.
+3. **The fallback.** If the call fails, or answers with anything outside the choices, the
+   fallback member takes the post. A model that can't evaluate fails every call, so every post
+   goes to the fallback. If the person posting can't reach any seat of the fallback's, nobody
+   answers, and the route records why.
+
+Only that member receives the post. Nobody else in the channel is told about it. A post a seat
+wrote is never routed and wakes nobody, as in any channel.
+
+Write the `description:` lines for the route to read. "Printers, laptops, phones and wifi" routes
+better than "Our devices person".
+
+Each decision is recorded on the channel's session as a `channel-route` item: which member, and
+whether it came from the member already on it, the evaluator, or the fallback, with the reason
+when the fallback took it or nobody could. It never shows as a line in the channel, and the chat
+renderers skip it.
+
+Every channel on a kind built with a route (`defineChannelFlow({ route })`) keeps its last 20 lines,
+and the person's last post with where it went, in its session state under `channelRouteLedger`,
+whether or not its `CHANNEL.md` declares `routing:`. Each post updates it. So neither the lines a
+routed member sees nor the hold in step 1 is limited by the session's [history
+window](#posting-and-reading). The exception is the first post after a channel's kind gains a route: its first post on a kind built with one, or its first after the channel was posted to while the app ran its kind without a route. That post is
+never held, and its member sees only the earlier lines still inside the history window, which can be
+fewer than 20. Removing `routing:` from a channel's file and restoring it loses no lines. A person's
+post made while it was removed holds nothing, so the next routed post after it is placed by the
+evaluator or the fallback. A channel on a kind built without a route keeps no record.
+
+### The answer lands in the channel
+
+The routed member answers the way any woken seat does, in its own conversation. For a seat of the
+built-in `agent` kind, the reply is then posted into the channel as that seat's line. The model
+doesn't have to call [`post-to-channel`](#a-seat-answering-in-the-channel); if it does, its first
+post to that channel is the answer. Each post gets at most one line from its member. An empty reply
+posts nothing and ends that seat's run as failed.
+
+A [kind of your own](#making-a-kind-of-your-own-hear-posts) gets `routed: true` and the recent
+lines as `recent` on its delivery. Its reply is not posted for it.
+
+### What the member sees when it answers
+
+The routed member's model sees the channel's last 20 lines along with the post, whoever wrote
+them and whoever they went to. That's how "where can I buy it?" finds its "it" when the laptop
+came up with another member. The lines are there for that one answer and aren't kept in the
+member's conversation. What the conversation keeps is every post routed to the member and its
+answers, as far back as its history window reaches. Any other line older than the last 20 is out of
+its view. A seat woken in an unrouted channel, or talked to directly, gets no lines.
+
+### What routing can't do
+
+- Apart from the posts routed to it and its own answers, a member sees only the channel's last 20
+  lines when it answers. Something said earlier may have to be said again.
+- A post sent before the member answers can go to that member, whatever it's about. The post after
+  it is routed by what it says.
+- A follow-up after an answer relies on the evaluator call. If that call fails, the follow-up goes
+  to the fallback.
+- A member with no `description:`, such as a seat hired while the app runs, is never picked for
+  what a post is about. It gets a post only as the fallback, or as the next post held for it after
+  that.
+- One model per channel kind. Two channels on the same kind route with the same model.
+- A change to `routing:` waits for the next start.
+- It needs dispatch in the same process. Behind a dispatcher that hands work to an external queue,
+  such as BullMQ, a post is written but no member is picked or woken, and nothing answers. See
+  [Where posting from another flow works](#where-posting-from-another-flow-works-and-where-it-doesnt).
+
+### Testing a routed channel
+
+Script the route's evaluation by its block name, `channel-route`, with `createMockModelResolver`
+from `@flow-state-dev/testing`. The route asks one question, `member`, and a choice answers it:
+
+```ts
+import { createMockModelResolver, mockEvaluationModel } from "@flow-state-dev/testing";
+
+// Posts about a printer go to devices, everything else to accounts.
+const route = mockEvaluationModel({
+  answers: ({ state }) => {
+    const { post } = state as { post: { from: string; text: string } };
+    const member = post.text.includes("printer") ? "support.devices" : "support.accounts";
+    return { member: { type: "choice", choice: member } };
+  },
+});
+
+const modelResolver = createMockModelResolver({ evaluators: { "channel-route": route } });
+```
+
+Pass it as `modelResolver` to the `createFlowState` your test builds. Each call is handed
+`{ recent, post }`, the channel's lines before the post and the post itself, each line as
+`{ from, text }`, where `from` is the line's `author` or, when it has none, its `principal`. A
+choice outside the members offered, or an `answers` function that throws, sends the post to the
+fallback. `route.calls` records every call, so a held post shows up as no call at all.
+
 ## A seat answering in the channel
 
 Waking a seat runs it in its own conversation, so its answer stays there unless it posts it. To
@@ -388,6 +531,10 @@ description: Answers questions on the support desk.
 tools: [post-to-channel]
 ---
 ```
+
+In a [routed channel](#routing-a-channel) the member a post was routed to doesn't need the tool:
+its reply is posted for it. The tool is for everything else, such as a seat you talk to directly
+that wants to say something in a channel.
 
 The model calls `post-to-channel` with the channel's id and what to say. A woken seat reads the id
 off the post it heard, from the turn described in [Waking agent seats](#waking-agent-seats). The tool posts through that channel's own

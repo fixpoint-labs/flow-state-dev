@@ -14,6 +14,10 @@
  * `policy: "allow"` (set in `test/mock-flowstate.ts`) catches anything else
  * with a no-op model.
  *
+ * A routed channel's one evaluation, block name `channel-route`, is scripted
+ * by `channelRouteMock`: `[route:<member>]` in a post picks that member, and
+ * a post that names none fails the call, so the channel's fallback takes it.
+ *
  * `assistantMock` uses a hand-rolled scenario dispatcher because the
  * built-in `mockGenerator` only supports either plain sequential steps
  * (consumed once) or predicates (matched repeatedly with a fixed `then`).
@@ -26,7 +30,7 @@ import type {
   MockGeneratorScriptStep,
   MockGeneratorScriptEntry,
 } from "@flow-state-dev/testing";
-import { mockGenerator } from "@flow-state-dev/testing";
+import { mockEvaluationModel, mockGenerator } from "@flow-state-dev/testing";
 
 type ScenarioScript = {
   /** Whether the latest user turn picks this scenario. */
@@ -235,6 +239,23 @@ export const agentSeatMock = buildScenarioMock("agent-answer", AGENT_SEAT_SCRIPT
 
 /** The desk clerk's answering generator. */
 export const deskClerkMock = buildScenarioMock("desk-clerk-answer", DESK_CLERK_SCRIPTS);
+
+/**
+ * A routed channel's evaluation. Reads the post from the state the route
+ * hands it (`{ recent, post: { from, text } }`): `[route:<member>]` picks that
+ * member, where `<member>` is the id a channel's `members:` lists. A post
+ * that names none fails the call, which sends it to the channel's fallback.
+ */
+export const channelRouteMock = mockEvaluationModel({
+  answers: ({ state }) => {
+    const text = (state as { post?: { text?: unknown } }).post?.text;
+    const member = typeof text === "string" ? /\[route:([^\]\s]+)\]/.exec(text)?.[1] : undefined;
+    if (member === undefined) {
+      throw new Error("channel-route (test mode): the post names no [route:<member>], so the call fails");
+    }
+    return { member: { type: "choice", choice: member } };
+  },
+});
 
 const alwaysTrue = (_input: unknown) => true;
 

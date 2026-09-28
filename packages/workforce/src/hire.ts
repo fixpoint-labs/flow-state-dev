@@ -67,6 +67,7 @@ import {
 } from "./seat-references";
 import { workerConfigSchema } from "./worker-config";
 import { heldPackageProblems, resolveHeldPackages } from "./seat-packages";
+import { recordSeatDescription } from "./seat-description";
 
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
@@ -836,6 +837,9 @@ export function hireWorkforce(
         continue;
       }
 
+      // Beside the seat, never in its settings: see `seat-description.ts`.
+      const description = manifest.declared.description;
+      if (typeof description === "string") recordSeatDescription(seat, description);
       seats.push(seat);
     } catch (error) {
       // The flow's own refusal, with the worker's id in front of it, and — when

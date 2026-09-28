@@ -41,6 +41,7 @@ import {
   channelFlow,
   defineChannelFlow,
   holdsBoards,
+  routeOf,
   type ChannelSessionState
 } from "./channel-flow";
 import {
@@ -48,6 +49,11 @@ import {
   channelBoardId,
   channelBoardNameProblem
 } from "./channel-board";
+import type { ChannelRouting } from "./channel-route";
+
+/** The `CHANNEL.md` key that routes a channel, and its one subkey. */
+const ROUTING_KEY = "routing";
+const FALLBACK_KEY = "fallback";
 
 /**
  * Every key a `CHANNEL.md` may declare. Closed, and checked by name.
@@ -56,16 +62,22 @@ import {
  * state. The other four are the channel's own facts. Anything else refuses,
  * including `id`, which is the record's identity rather than a setting.
  *
- * `boards` is the fifth member and the newest: a list of plain local names,
- * read exactly as `members` is. It never carries an id — the ledger's identity
- * is minted from where the channel sits.
+ * `boards` is the fifth member: a list of plain local names, read exactly as
+ * `members` is. It never carries an id — the ledger's identity is minted from
+ * where the channel sits.
+ *
+ * `routing` is the sixth and the newest: a mapping with one subkey,
+ * `fallback:`, the member who takes a post the route cannot place. Like
+ * `boards`, it is built onto the kind at every boot and never written into the
+ * channel's session.
  */
 const DECLARABLE_KEYS = [
   "flow",
   "description",
   "members",
   CHANNEL_BOARDS_KEY,
-  INSTRUCTIONS_KEY
+  INSTRUCTIONS_KEY,
+  ROUTING_KEY
 ] as const;
 
 /**
@@ -235,7 +247,7 @@ function validate(
   manifest: ChannelManifest,
   kinds: Record<string, ChannelKind>,
   available: string
-): { kind: string } | { problem: string } {
+): { kind: string; routing?: ChannelRouting } | { problem: string } {
   const declared = manifest.declared;
 
   // Refused by its own name, and before the closed-list check, so an author
@@ -310,6 +322,9 @@ function validate(
     return { problem: `declares an \`${INSTRUCTIONS_KEY}:\` that is not text` };
   }
 
+  const routing = routingOf(declared);
+  if (routing !== undefined && "problem" in routing) return routing;
+
   const selected = kindOf(declared);
   if ("problem" in selected) return selected;
 
@@ -352,7 +367,72 @@ function validate(
     };
   }
 
-  return { kind: selected.kind };
+  if (routing === undefined) return { kind: selected.kind };
+
+  // A route is what places a post, and only a kind built with one has it. The
+  // line on any other kind would read as routed and wake every member.
+  const route = routeOf(factory);
+  if (route === undefined) {
+    return {
+      problem:
+        `declares \`${ROUTING_KEY}:\` and runs on channel kind "${selected.kind}", which was built ` +
+        `without a route. Build the kind with \`defineChannelFlow({ notify, route: ` +
+        `routeByPurpose(seats, { model }) })\`, or drop the \`${ROUTING_KEY}:\` line.`
+    };
+  }
+  const members = isListOfNames(declared.members) ? declared.members : [];
+  if (!members.includes(routing.fallback)) {
+    return {
+      problem:
+        `declares \`${ROUTING_KEY}:\` with \`${FALLBACK_KEY}: ${routing.fallback}\`, and ` +
+        `"${routing.fallback}" is not among its \`members:\`. The fallback takes the posts the ` +
+        `route cannot place, so it has to be a member.`
+    };
+  }
+  if (!route.members.includes(routing.fallback)) {
+    return {
+      problem:
+        `declares \`${ROUTING_KEY}:\` with \`${FALLBACK_KEY}: ${routing.fallback}\`, and no seat ` +
+        `the route was built with hears posts for it. Every post the route cannot place would ` +
+        `reach nobody. Hire "${routing.fallback}" on a kind that hears posts, or name another ` +
+        `member.`
+    };
+  }
+  return { kind: selected.kind, routing };
+}
+
+/**
+ * The record's `routing:`, read and shape-checked: `undefined` when it
+ * declares none, the setting when it is well formed, or why it is not.
+ */
+function routingOf(declared: Record<string, unknown>): ChannelRouting | { problem: string } | undefined {
+  if (!Object.hasOwn(declared, ROUTING_KEY)) return undefined;
+  const routing = declared[ROUTING_KEY];
+  if (typeof routing !== "object" || routing === null || Array.isArray(routing)) {
+    return {
+      problem:
+        `declares a \`${ROUTING_KEY}:\` that is not a mapping. Write it as ` +
+        `\`${ROUTING_KEY}:\` with \`${FALLBACK_KEY}: <member>\` indented under it.`
+    };
+  }
+  const unknown = Object.keys(routing).filter((key) => key !== FALLBACK_KEY);
+  if (unknown.length > 0) {
+    return {
+      problem:
+        `declares ${unknown.map((key) => `\`${key}\``).join(", ")} under \`${ROUTING_KEY}:\`, and ` +
+        `\`${ROUTING_KEY}:\` declares only \`${FALLBACK_KEY}:\`. The route's model is the app's, ` +
+        `named once in code.`
+    };
+  }
+  const fallback = (routing as Record<string, unknown>)[FALLBACK_KEY];
+  if (typeof fallback !== "string" || fallback.trim().length === 0) {
+    return {
+      problem:
+        `declares \`${ROUTING_KEY}:\` with no \`${FALLBACK_KEY}:\` member. Name the member who ` +
+        `takes a post the route cannot place.`
+    };
+  }
+  return { fallback };
 }
 
 /**
@@ -442,6 +522,8 @@ export function channelInstances(
   const minted = new Map<string, string>();
   /** The minted ids each selected kind must be built holding. */
   const boardsByKind = new Map<string, string[]>();
+  /** Each selected kind's routed channels: channel id → its `routing:`. */
+  const routingByKind = new Map<string, Record<string, ChannelRouting>>();
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -463,6 +545,9 @@ export function channelInstances(
       continue;
     }
     selected.add(result.kind);
+    if (result.routing !== undefined) {
+      routingByKind.set(result.kind, { ...routingByKind.get(result.kind), [manifest.id]: result.routing });
+    }
 
     // Minted here rather than in `validate`, because uniqueness is a fact
     // about the ROSTER and not about one record. An id is a storage key: two
@@ -504,12 +589,14 @@ export function channelInstances(
   return [...selected].sort().map((kind) => {
     const factory = kinds[kind]!;
     const boards = boardsByKind.get(kind);
+    const routing = routingByKind.get(kind);
     // A kind holding nothing is built exactly as it was before boards existed,
     // and `validate` has already refused the third case — boards named on a
-    // kind that cannot hold them.
-    return boards === undefined || !holdsBoards(factory)
-      ? factory()
-      : factory.withBoards(boards)();
+    // kind that cannot hold them. Routing likewise: only a kind built with a
+    // route gets here holding any.
+    if (!holdsBoards(factory)) return factory();
+    const withBoards = boards === undefined ? factory : factory.withBoards(boards);
+    return (routing === undefined ? withBoards : withBoards.withRouting(routing))();
   });
 }
 

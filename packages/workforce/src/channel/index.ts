@@ -14,11 +14,11 @@
  * `./channel-post-line.ts`, re-exported from `../browser.ts`.
  */
 
+export { emitChannelPostLine, readChannelPostLines } from "./channel-items";
+
 export {
   CHANNEL_KIND,
   CHANNEL_POST_COMPONENT,
-  emitChannelPostLine,
-  readChannelPostLines,
   ChannelPostRefusedError,
   INVENTORY_REGISTER_CHANNEL,
   INVENTORY_REGISTER_SEATS,
@@ -51,6 +51,17 @@ export {
 } from "./channel-flow";
 
 export { wakeMemberSeats, type WakeMemberSeatsOptions } from "./wake-member-seats";
+
+export { routeByPurpose, type RouteByPurposeOptions } from "./route-by-purpose";
+
+export {
+  CHANNEL_ROUTE_COMPONENT,
+  CHANNEL_ROUTE_EVALUATOR,
+  channelRouteRecordSchema,
+  type ChannelRoute,
+  type ChannelRouteRecord,
+  type ChannelRouting
+} from "./channel-route";
 
 export {
   channelBoardIds,
