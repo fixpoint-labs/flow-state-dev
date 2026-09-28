@@ -16,11 +16,12 @@
  *   BR-1  the person's next post, with no line from that member since, is held:
  *         the same member, no call;
  *   BR-4  a post after a held one is not held, and neither is one whose last
- *         post's route is not recorded yet;
+ *         post's route is not recorded yet, as for a post that failed after
+ *         its line was kept, which the route reads as the channel shows it;
  *   BR-5  a follow-up after the member's line takes the call, with that line in it;
  *   BR-3  a failed call, or a pick outside the options, runs the fallback alone;
- *         a cancelled fan-out runs nobody and makes no write the route had not
- *         started;
+ *         a fan-out cancelled before the ledger takes its route runs nobody
+ *         and makes no later write; once the ledger has it, the member runs;
  *   BR-6  a fallback the caller cannot reach, or that is not a member of the open
  *         channel, runs nobody, recorded as failed;
  *   BR-7  nobody else receives a routed post;
@@ -52,7 +53,7 @@ import {
   type WorkerManifest
 } from "../src/index";
 import { hireWorkforce } from "../src/hire";
-import { postedLines } from "./channel-post-lines";
+import { failLineWrite, postedLines } from "./channel-post-lines";
 
 const USER_ID = "u_route";
 const HELP = "support.help";
@@ -488,6 +489,46 @@ describe("a person's post to a routed channel", () => {
     }
   });
 
+  // The ledger holds what the channel shows. A post whose line's event write
+  // failed still leaves its line: the failed request's record keeps every item
+  // it emitted. So the route reads that line, and the post is the person's
+  // last one, with no route recorded, which holds nothing.
+  it("reads a post whose line's event write failed as the channel shows it: a recent line, holding nothing (BR-4, BR-24)", async () => {
+    const { channel, state, heard, route } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP, MEMBERS);
+      await post(runtime, channel, HELP, "[route:support.devices] my laptop won't join the wifi");
+      await settle(runtime, HELP, 1);
+      failLineWrite(runtime.stores, "a failed post");
+      const failed = await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow: channel,
+        actionName: "post",
+        input: { body: "[route:support.general] a failed post" },
+        userId: USER_ID,
+        sessionId: HELP,
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig }
+      });
+      expect(failed.error).toBeDefined();
+      expect((await postedLines(runtime.stores, HELP)).map((line) => line.body)).toContain(
+        "[route:support.general] a failed post"
+      );
+      await post(runtime, channel, HELP, "[route:support.accounts] and it says wrong password");
+      await settle(runtime, HELP, 2);
+
+      expect(who(heard, "wrong password")).toEqual(["support.accounts"]);
+      expect(callsFor(route, "wrong password")).toHaveLength(1);
+      expect(heard.find((h) => h.body.includes("wrong password"))?.recent).toEqual([
+        "[route:support.devices] my laptop won't join the wifi",
+        "[route:support.general] a failed post"
+      ]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("hands the member and the call the 20 lines before the post, however many requests came between (BR-24)", async () => {
     const { channel, state, heard, route } = host();
     try {
@@ -620,16 +661,24 @@ describe("a person's post to a routed channel", () => {
     }
   });
 
-  // A cancel that lands after the call answered is still a cancel: the route
-  // makes none of the writes it had not started, and wakes nobody. A write
-  // already under way when the cancel lands is kept.
+  // The ledger write is the route's commit point. A cancel seen before it,
+  // even after the call answered, stops the route: no later write, nobody
+  // woken, and a record already under way is kept. Once the ledger has the
+  // route, the cancel is too late: the member is woken, as the ledger says.
   it.each([
-    { at: "answer", when: "as the call answers", records: 0, noted: false },
-    { at: "record", when: "while the route's record is written", records: 1, noted: false },
-    { at: "ledger", when: "while the ledger takes the route", records: 1, noted: true }
+    { at: "answer", when: "as the call answers", outcome: "wakes nobody", records: 0, noted: false, woken: [] },
+    { at: "record", when: "while the route's record is written", outcome: "wakes nobody", records: 1, noted: false, woken: [] },
+    {
+      at: "ledger",
+      when: "while the ledger takes the route",
+      outcome: "still wakes the member",
+      records: 1,
+      noted: true,
+      woken: ["support.devices"]
+    }
   ] as const)(
-    "wakes nobody when the fan-out is cancelled $when, and makes no later write (BR-3)",
-    async ({ at, records, noted }) => {
+    "$outcome when the fan-out is cancelled $when (BR-3)",
+    async ({ at, records, noted, woken }) => {
       let cancel = async (): Promise<void> => {};
       const { channel, state, heard } = host(
         at === "answer"
@@ -649,7 +698,7 @@ describe("a person's post to a routed channel", () => {
 
         const [fanOut] = (await runtime.stores.request.list({ sessionId: HELP })).filter((r) => r.actionName === "onPosted");
         expect(fanOut!.status).toBe("aborted");
-        expect(heard).toEqual([]);
+        expect(heard.map((h) => h.seat)).toEqual(woken);
         expect(await routeRecords(runtime.stores, HELP)).toHaveLength(records);
         const [line] = await postedLines(runtime.stores, HELP);
         const session = await runtime.stores.session.get(HELP);
