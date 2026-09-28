@@ -37,8 +37,8 @@ Three questions, in this order. The author check comes first so a seat's line ne
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-9 | The routed member's turn ends with reply text, and the seat posted nothing for this post | The reply is posted through the channel's `post` as the seat: `author` is its `seatId`. Exactly one line | Goal check · V3 |
-| BR-10 | The turn calls the post tool for this channel, once or more | The first call is the line; later ones for that post post nothing and say the answer is in, and nothing lands after. Keyed on the post's id in the seat's session, so a second delivery lands no second line | V3 |
+| BR-9 | The routed member's turn ends with reply text, and the seat posted nothing for this post | The reply is posted into the channel as the seat, checked as a `post` is: `author` is its `seatId`. Exactly one line | Goal check · V3 |
+| BR-10 | The turn calls the post tool for this channel, once or more | The first call is the line; later ones for that post post nothing and say the answer is in, and nothing lands after. The channel keeps one answer per post, keyed on the post's id, so a second delivery lands no second line, and a hand-off refused before or by the channel leaves the post to be answered | V3 |
 | BR-11 | The turn ends with an empty reply | Nothing is posted. The run ends as a failed answer, recorded in the seat's conversation | V3 |
 | BR-12 | The landed line reaches the fan-out | It carries an `author`, so BR-8: no seat runs, no route | Goal check |
 | BR-13 | A routed post's heard turn | Says the reply is posted to the channel. An unrouted post's turn is byte for byte FIX-1590's | V3 |

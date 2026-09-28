@@ -55,7 +55,7 @@ own issue.
 | | |
 |---|---|
 | **Instead of** | Forcing the post tool on the turn · the channel's route step posting the reply · landing for every woken member |
-| **Because** | Epic D6 fixes the outcome; this places it. The agent kind runs the turn and holds the seat's id, and posting through the channel's `post` as the seat keeps the member check, the author rule and the line (ER-3, ER-4). A forced tool call still leaves the words to the model. A channel-side post is a line no seat sent. Landing for every member is five answers. The fan-out marks the delivery, never the post (BP-031) |
+| **Because** | Epic D6 fixes the outcome; this places it. The agent kind runs the turn and holds the seat's id, and posting into the channel as the seat, checked as a `post` is, keeps the member check, the author rule and the line (ER-3, ER-4). A forced tool call still leaves the words to the model. A channel-side post is a line no seat sent. Landing for every member is five answers. The fan-out marks the delivery, never the post (BP-031) |
 | **Locks in** | A routed agent can't stay quiet: an empty reply is a failed answer in its run, never a stock line. A kind of your own gets the mark and decides. Landing needs dispatch in process, like the tool (FIX-1594 D3) |
 
 ## Decided, not asked
@@ -67,7 +67,9 @@ own issue.
   per channel kind. A fallback without a hired seat that hears posts, an unknown subkey, or
   `routing:` on a kind without a route refuses at bind. The line is read from the file at every
   boot, as `boards:` is, and never stored, so it reaches an open channel.
-- **One line per routed post:** the seat's first post for it, by the tool or the landing.
+- **One line per routed post:** the seat's first post for it, by the tool or the landing. The
+  channel keeps it, one answer per post, so a hand-off the channel never took leaves nothing to
+  undo.
 - **The window is the last 20 lines**, one constant for the route and the turn.
 - **A seat's post takes no route**; it fans out as unrouted, where no seat runs (ER-3).
 - **The options are the members with a seat that hears posts and the caller can reach**,
@@ -104,5 +106,9 @@ own issue.
 - **Review round 1**: D4, the owner's call, after a second POC; D3 to *decided, not asked*. Five
   correctness folds: a fallback that can run, one line per routed post, routing read at every
   boot, the route record kept out of threads, a patch changeset.
+- **Implementation review**: the one line per routed post moved from a claim in the seat's session,
+  given back when a hand-off failed, to the channel, which refuses a second answer in the same
+  write that takes the line into its ledger. A route's commit point is the ledger write: a cancel
+  after it still wakes the member.
 
 **Open: none.**

@@ -51,8 +51,8 @@ import {
   routeRequestSchema,
   type ChannelRoute,
   type ChannelRouting,
-  type RouteDecision,
-  type RouteLedgerState
+  type PostCase,
+  type RouteDecision
 } from "./channel-route";
 import {
   defineChannelInventoryCollection,
@@ -105,6 +105,40 @@ export const channelPostInputSchema = z
   .strict();
 
 export type ChannelPostInput = z.infer<typeof channelPostInputSchema>;
+
+/**
+ * The internal action a seat's answer to a routed post goes through: the
+ * built-in agent kind's landing and its post tool send a routed turn's answer
+ * here, not to `post`. Declared only on a kind built with a route and a
+ * notify slot, the only kind that routes a post.
+ */
+export const CHANNEL_ANSWER_ACTION = "answer";
+
+/**
+ * What an answer carries: the post it answers, the words, and the seat.
+ * Closed, and never caller-addressed: a caller who could name a post could
+ * take its one answer.
+ */
+const channelAnswerInputSchema = z
+  .object({ postId: z.string().min(1), body: z.string().min(1), author: z.string().min(1) })
+  .strict();
+
+type ChannelAnswerInput = z.infer<typeof channelAnswerInputSchema>;
+
+/**
+ * The channel-session field recording the routed posts that have their
+ * answer: the post's id, and the id of the line that answered it. Never
+ * trimmed, so a post delivered again however late lands no second answer. It
+ * grows by one entry per routed answer, beside the lines the channel keeps.
+ */
+const ANSWERED_POSTS_STATE = "channelAnsweredPosts";
+
+/** A routed kind's channel state, as far as its appends go: the route ledger and the answered posts. */
+const routedChannelStateSchema = routeLedgerStateSchema.extend({
+  [ANSWERED_POSTS_STATE]: z.record(z.string(), z.string()).optional()
+});
+
+type RoutedChannelState = z.infer<typeof routedChannelStateSchema>;
 
 /** What `read` projects: the channel, not the session's machinery. */
 export const channelReadOutputSchema = z.object({
@@ -258,54 +292,102 @@ const keptPostSchema = z.object({ line: channelTranscriptLineSchema, postCase: p
 type KeptPost = z.infer<typeof keptPostSchema>;
 
 /**
- * The append on a kind built with a route. Every line, on every channel of the
- * kind, goes into the route's ledger (`channel-route.ts`) before it is kept as
- * the channel's item. Under the post queue, so the ledger takes the channel's
- * lines in order. On a channel that declares `routing:`, a person's post comes
- * out with its case.
+ * Keep one line on a kind built with a route. The rule: **the channel's state
+ * is written with each line, in one write just before its item, and the
+ * engine keeps every item a request emits on that request's record, even when
+ * the request then fails.** So the route's ledger (`channel-route.ts`) holds
+ * every line the channel shows, including one whose post failed after its
+ * item was emitted, and a line that could not enter the ledger is never
+ * emitted. The one gap is a store that loses the request's own record too:
+ * the ledger then holds a line the channel does not.
  *
- * Kept whether or not the channel is routed, so a channel whose file drops
- * `routing:` and later restores it has every line in the ledger. A person's
- * post while it is not routed becomes the last post with no route, so it holds
- * nothing. A kind built without a route keeps no ledger, and drops one left
- * from before (`appendPost`).
+ * For an answer, the same write marks its post answered, and is where a second
+ * answer is refused: the mark is read and set in the one atomic write, so of
+ * two answers to one post only the first to be written is emitted, and the
+ * other writes nothing.
+ *
+ * Every line, on every channel of the kind, goes into the ledger, under the
+ * post queue, so the ledger takes the channel's lines in order. Kept whether or
+ * not the channel is routed, so a channel whose file drops `routing:` and later
+ * restores it has every line in the ledger. A person's post while it is not
+ * routed becomes the last post with no route, so it holds nothing. A kind
+ * built without a route keeps no ledger, and drops one left from before
+ * (`appendPost`).
  *
  * A channel's first line with no ledger starts one from the lines in the
  * request's history window, the same window `read` sees, with no post to hold
  * for. On a busy channel that window can hold fewer than 20 lines.
  *
- * The ledger is written first so a post that could not keep it fails with
- * nothing posted. A line whose item then fails to keep is left in the ledger,
- * where the route reads it as one of the recent lines until 20 more push it
- * out; the post itself fails.
+ * @returns What was kept, with a person's post's case; `undefined` when the
+ *   post `answers` names has its answer already, and nothing was written.
+ */
+async function keepRoutedLine(
+  ctx: BlockContext<Record<string, unknown>, RoutedChannelState>,
+  line: ChannelTranscriptLine,
+  answers?: string
+): Promise<{ postCase?: PostCase } | undefined> {
+  const seed = ctx.session.state[ROUTE_LEDGER_STATE] ?? {
+    lines: withoutRepeats([
+      ...(boundChannel(ctx.session.state)?.transcript ?? []),
+      ...readChannelPostLines(ctx, channelTranscriptLineSchema)
+    ]).slice(-RECENT_LINES)
+  };
+  // The outcome comes back from the invocation that committed: `atomicState`
+  // may run its mutator more than once.
+  const kept = await withOutcome(
+    (mutator: (state: RoutedChannelState) => RoutedChannelState) => ctx.session.atomicState(mutator),
+    (state: RoutedChannelState) => {
+      const answered = state[ANSWERED_POSTS_STATE] ?? {};
+      if (answers !== undefined && Object.hasOwn(answered, answers)) return { state: {}, result: undefined };
+      const next = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
+      return {
+        state: {
+          [ROUTE_LEDGER_STATE]: next.ledger,
+          ...(answers === undefined ? {} : { [ANSWERED_POSTS_STATE]: { ...answered, [answers]: line.id } })
+        },
+        result: next.postCase === undefined ? {} : { postCase: next.postCase }
+      };
+    }
+  );
+  if (kept !== undefined) await emitChannelPostLine(ctx, line);
+  return kept;
+}
+
+/**
+ * The append on a kind built with a route: the line, kept by
+ * {@link keepRoutedLine}. On a channel that declares `routing:`, a person's
+ * post comes out with its case.
  */
 const appendRoutedPostFor = (routing: Readonly<Record<string, ChannelRouting>>) =>
   handler({
     name: "channel-append-routed-post",
     inputSchema: channelPostInputSchema,
     outputSchema: keptPostSchema,
-    sessionStateSchema: routeLedgerStateSchema,
+    sessionStateSchema: routedChannelStateSchema,
     execute: async (input: ChannelPostInput, ctx): Promise<KeptPost> => {
       const line = lineFor(input, ctx);
-      const seed = ctx.session.state[ROUTE_LEDGER_STATE] ?? {
-        lines: withoutRepeats([
-          ...(boundChannel(ctx.session.state)?.transcript ?? []),
-          ...readChannelPostLines(ctx, channelTranscriptLineSchema)
-        ]).slice(-RECENT_LINES)
-      };
-      // The case comes back from the invocation that committed: `atomicState`
-      // may run its mutator more than once.
-      const postCase = await withOutcome(
-        (mutator: (state: RouteLedgerState) => RouteLedgerState) => ctx.session.atomicState(mutator),
-        (state: RouteLedgerState) => {
-          const kept = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
-          return { state: { [ROUTE_LEDGER_STATE]: kept.ledger }, result: kept.postCase };
-        }
-      );
-      await emitChannelPostLine(ctx, line);
+      const postCase = (await keepRoutedLine(ctx, line))?.postCase;
       return postCase === undefined || routing[ctx.session.identity.id] === undefined ? { line } : { line, postCase };
     }
   });
+
+/**
+ * A seat's answer to a routed post: the post's one answer, or nothing (`null`)
+ * when it has one. Checked like a post (`lineFor`), so a refused answer writes
+ * nothing, then kept by {@link keepRoutedLine}, whose one write refuses a
+ * second answer. Two deliveries of one post land one line; a hand-off refused
+ * before it got here, or refused here, leaves the post to be answered again.
+ */
+const appendAnswer = handler({
+  name: "channel-append-answer",
+  inputSchema: channelAnswerInputSchema,
+  outputSchema: channelTranscriptLineSchema.nullable(),
+  sessionStateSchema: routedChannelStateSchema,
+  execute: async ({ postId, body, author }: ChannelAnswerInput, ctx): Promise<ChannelTranscriptLine | null> => {
+    const line = lineFor({ body, author }, ctx);
+    return (await keepRoutedLine(ctx, line, postId)) === undefined ? null : line;
+  }
+});
 
 /**
  * The clean projection. Deliberately not `ctx.session.items.client()`.
@@ -1200,6 +1282,16 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
             )
             .map(({ line }: KeptPost) => line);
 
+  // A seat's answer to a routed post, on the only kind that routes one: the
+  // line, handed off like any seat's line, or nothing when the post has its
+  // answer already.
+  const answer =
+    handOff === undefined || routeBlock === undefined
+      ? undefined
+      : sequencer({ name: "channel-answer", inputSchema: channelAnswerInputSchema })
+          .step(appendAnswer)
+          .tapIf((line: ChannelTranscriptLine | null) => line !== null, fanOutOf, handOff);
+
   const flow = defineFlow({
     kind: CHANNEL_KIND,
     // Not a preference: it is the declared mechanism for "one kind means one
@@ -1268,6 +1360,11 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // internal dispatch, and the arbiter reads `concurrency` off whichever
         // entry it resolved. Sharing the block ref is the whole dedupe there is.
         post: { block: post, concurrency: "queue" },
+        // Here only, never in `actions`: the answer names the post it answers,
+        // so a caller who could reach it could take that post's one answer.
+        // On the post queue's key (the session), so answers and posts are one
+        // line at a time.
+        ...(answer === undefined ? {} : { [CHANNEL_ANSWER_ACTION]: { block: answer, concurrency: "queue" as const } }),
         read: { block: readChannel },
         ...(fileTask === undefined || readBoard === undefined
           ? {}

@@ -8,18 +8,23 @@
  * by block name (`[route:<member>]` picks); the seats' answers are scripted by
  * a marker in the post: `[answer:text]` replies in text, `[answer:tool]` posts
  * through the tool once, `[answer:tool-twice]` twice, `[answer:tool-then-away]`
- * once and then into a channel nobody opened, `[answer:empty]` replies with
- * nothing. Every landing assertion is on the lines the channel stored.
+ * once and then into a channel nobody opened, `[answer:tool-then-empty]` once
+ * and then replies with nothing, `[answer:empty]` replies with nothing. Every
+ * landing assertion is on the lines the channel stored.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1610/BUSINESS-RULES.md`, V3):
  *   BR-9  a text reply lands as the seat: one line, `author` its seat id;
  *   BR-10 the tool's first post for the post is the line; a second posts
- *         nothing and says the answer is in; a second delivery of the same
- *         post lands no second line, and two at once land one; a hand-off
- *         the channel refused leaves the post unanswered, so it is answered
- *         when delivered again, and a refused post into another channel
- *         leaves an answered post answered;
- *   BR-11 an empty reply lands nothing and fails the run;
+ *         nothing and says the answer is in; the channel keeps one answer per
+ *         post, so a second delivery lands no second line, two at once land
+ *         one, and one whose first hand-off was refused while another
+ *         answered lands one; a hand-off refused before or by the channel
+ *         leaves the post unanswered, so it is answered when delivered again;
+ *         an answer whose line the channel kept is the answer even when its
+ *         request failed; a refused post into another channel leaves an
+ *         answered post answered; only a dispatch reaches `answer`;
+ *   BR-11 an empty reply lands nothing and fails the run, unless the turn
+ *         answered through the tool first;
  *   BR-12 the landed line wakes no seat and takes no route;
  *   BR-13 the routed heard turn says the reply is posted to the channel; the
  *         unrouted one is unchanged;
@@ -54,7 +59,8 @@ import {
   type ChannelNotifyInput,
   type WorkerManifest
 } from "../src/index";
-import { postedLines } from "./channel-post-lines";
+import { z } from "zod";
+import { failLineWrite, postedLines } from "./channel-post-lines";
 
 const USER_ID = "devuser";
 const HELP = "support.help";
@@ -98,6 +104,7 @@ function scriptedAnswers(): MockGeneratorInstance & { answers: AnswerCall[] } {
       if (turn.includes("[answer:tool-then-away]") && step === 0) return toolCall("From the tool.");
       if (turn.includes("[answer:tool-then-away]") && step === 1) return toolCall("Elsewhere.", "support.nowhere");
       if (turn.includes("[answer:tool-twice]") && step < 2) return toolCall(`From the tool, ${step + 1}.`);
+      if (turn.includes("[answer:tool-then-empty]")) return step === 0 ? toolCall("From the tool.") : { text: "" };
       if (turn.includes("[answer:tool]") && step === 0) return toolCall("From the tool.");
       if (turn.includes("[answer:tool")) return { text: "done" };
       return { text: `Re: ${said}` };
@@ -148,6 +155,28 @@ function redeliverFlow(seatId: string) {
   })({ id: "redeliver-test" });
 }
 
+/** What {@link answerFlow} sends: an answer as a seat's landing sends it. */
+const answerInputSchema = z.object({ postId: z.string(), body: z.string(), author: z.string() });
+
+/** A test-only sender standing in for a seat's landing: one answer dispatched into the channel's own `answer`. */
+function answerFlow() {
+  return defineFlow({
+    kind: "answer-test",
+    actions: {
+      answer: {
+        inputSchema: answerInputSchema,
+        block: dispatcher({
+          name: "answer-channel",
+          flowKind: "channel",
+          action: "answer",
+          inputSchema: answerInputSchema,
+          session: { id: () => HELP }
+        })
+      }
+    }
+  })({ id: "answer-test" });
+}
+
 function host() {
   const agent = defineAgentWorkerFlow({ uses: [channelPostCapability] });
   const seats = hireWorkforce(workers(), { kinds: { agent } });
@@ -161,10 +190,12 @@ function host() {
   });
   const answers = scriptedAnswers();
   const redeliver = redeliverFlow("support.devices");
+  const answerer = answerFlow();
   const state = createFlowState({
     flows: {
       [channel!.id]: channel!,
       [redeliver.id]: redeliver,
+      [answerer.id]: answerer,
       ...Object.fromEntries(seats.map((seat) => [seat.id, seat]))
     },
     stores: { default: { primary: inMemoryStores() } },
@@ -175,7 +206,7 @@ function host() {
     })
   });
   const seat = (id: string) => seats.find((s) => s.id === id)!;
-  return { channel: channel!, state, answers, seat, redeliver };
+  return { channel: channel!, state, answers, seat, redeliver, answerer };
 }
 
 async function bind(stores: StoreRegistry, sessionId: string) {
@@ -277,6 +308,50 @@ async function deliver(runtime: FlowStateRuntime, redeliver: FlowInstance, postI
   expect(result.error).toBeUndefined();
 }
 
+/** One answer to `postId`, by support.devices unless `author` says, dispatched into HELP's `answer` from one sender session. */
+async function answerInto(
+  runtime: FlowStateRuntime,
+  answerer: FlowInstance,
+  postId: string,
+  body: string,
+  author = "support.devices"
+) {
+  const result = await runAction({
+    orgId: DEFAULT_ORG_ID,
+    flow: answerer,
+    actionName: "answer",
+    input: { postId, body, author },
+    userId: USER_ID,
+    sessionId: "answer-session",
+    stores: runtime.stores,
+    runtimeConfig: { ...runtime.runtimeConfig }
+  });
+  expect(result.error).toBeUndefined();
+}
+
+/**
+ * Hold the first dispatch into `channelId` at its session lookup until
+ * `release`, then answer it as a session nobody opened: that one hand-off is
+ * refused, and every later one finds the channel.
+ */
+function refuseFirstHandOff(stores: StoreRegistry, channelId: string) {
+  const get = stores.session.get.bind(stores.session);
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let held = false;
+  stores.session.get = async (...args: Parameters<typeof get>) => {
+    if (!held && args[0] === channelId) {
+      held = true;
+      await released;
+      return undefined;
+    }
+    return get(...args);
+  };
+  return { release, held: () => held };
+}
+
 describe("a routed agent's answer lands in the channel", () => {
   it("posts a text reply as the seat, one line, which wakes no seat and takes no route (BR-9, BR-12)", async () => {
     const { channel, state, answers } = host();
@@ -306,6 +381,22 @@ describe("a routed agent's answer lands in the channel", () => {
       await quiet(runtime);
 
       expect((await lines(runtime, HELP)).slice(1)).toEqual([{ author: "support.devices", body: "From the tool." }]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("ends a turn that answered through the tool and then said nothing as answered, not failed (BR-10, BR-11)", async () => {
+    const { channel, state, seat } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      await post(runtime, channel, HELP, "[route:support.devices] [answer:tool-then-empty] my laptop won't join the wifi");
+      await quiet(runtime);
+
+      expect((await lines(runtime, HELP)).slice(1)).toEqual([{ author: "support.devices", body: "From the tool." }]);
+      const [request] = await seatRequests(runtime, seat("support.devices").id, HELP);
+      expect(request!.status).toBe("completed");
     } finally {
       await state.dispose();
     }
@@ -420,6 +511,36 @@ describe("a routed agent's answer lands in the channel", () => {
     }
   });
 
+  it("answers a post whose first hand-off was refused while a second delivery answered it: one line (BR-10)", async () => {
+    const { state, redeliver, seat, answers } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      const first = refuseFirstHandOff(runtime.stores, HELP);
+      await deliver(runtime, redeliver, "p_overlap", "[answer:text] my laptop won't join the wifi");
+      await until(async () => first.held(), "the first hand-off to reach the channel");
+      // The second delivery's turn runs to its end while the first hand-off is held.
+      await deliver(runtime, redeliver, "p_overlap", "[answer:text] my laptop won't join the wifi");
+      await until(
+        async () =>
+          (await seatRequests(runtime, seat("support.devices").id, "redeliver-session")).some(
+            (request) => request.status !== "in_progress"
+          ),
+        "the second delivery's turn"
+      );
+      first.release();
+      await quiet(runtime);
+
+      expect(answers.answers).toHaveLength(2);
+      expect(JSON.stringify(await seatRequests(runtime, seat("support.devices").id, "redeliver-session"))).toMatch(
+        /session-not-found/
+      );
+      expect(await lines(runtime, HELP)).toEqual([{ author: "support.devices", body: "Re: my laptop won't join the wifi" }]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it.each([
     ["the landing", "[answer:text]", "Re: my laptop won't join the wifi"],
     ["the tool", "[answer:tool]", "From the tool."]
@@ -443,7 +564,7 @@ describe("a routed agent's answer lands in the channel", () => {
     }
   });
 
-  it("keeps the answer's claim when a post into another channel is refused: delivered again, it lands nothing more (BR-10)", async () => {
+  it("leaves the post answered when a post into another channel is refused: delivered again, it lands nothing more (BR-10)", async () => {
     const { state, redeliver } = host();
     try {
       const runtime = await state.getRuntime();
@@ -471,6 +592,91 @@ describe("a routed agent's answer lands in the channel", () => {
       const [request] = await seatRequests(runtime, seat("support.devices").id, HELP);
       expect(request!.status).toBe("failed");
       expect(JSON.stringify(request)).toMatch(/empty reply/);
+    } finally {
+      await state.dispose();
+    }
+  });
+});
+
+describe("the channel keeps one answer per post", () => {
+  it("lands one line for two answers to one post at once, the first kept (BR-10)", async () => {
+    const { state, answerer } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      await Promise.all([
+        answerInto(runtime, answerer, "p_once", "First."),
+        answerInto(runtime, answerer, "p_once", "Second.")
+      ]);
+      await quiet(runtime);
+
+      const landed = await lines(runtime, HELP);
+      expect(landed).toHaveLength(1);
+      expect(["First.", "Second."]).toContain(landed[0]!.body);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("takes an answer only by dispatch: a caller cannot name a post and take its answer (BP-031)", async () => {
+    const { channel, state } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      // No `source`: resolved as a caller-addressed request would be.
+      const attempt = runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow: channel,
+        actionName: "answer",
+        input: { postId: "p_taken", body: "Not the desk.", author: "support.devices" },
+        userId: USER_ID,
+        sessionId: HELP,
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig }
+      });
+      await expect(attempt).rejects.toThrow('does not define action "answer"');
+      expect(await lines(runtime, HELP)).toEqual([]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("writes nothing for an answer the channel refused, so the post answered again lands one line (BR-10)", async () => {
+    const { state, answerer } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      await answerInto(runtime, answerer, "p_refused", "From a stranger.", "support.nobody");
+      await quiet(runtime);
+      const [refused] = (await runtime.stores.request.list({ sessionId: HELP })).filter((r) => r.actionName === "answer");
+      expect(JSON.stringify(refused)).toMatch(/author-not-a-member/);
+
+      await answerInto(runtime, answerer, "p_refused", "From the desk.");
+      await quiet(runtime);
+
+      expect(await lines(runtime, HELP)).toEqual([{ author: "support.devices", body: "From the desk." }]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  // The failed request's record keeps every item it emitted, so an answer whose
+  // event write failed is still the channel's line for the post.
+  it("counts an answer whose event write failed as the post's answer, since the channel keeps its line: one line (BR-10)", async () => {
+    const { state, answerer } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP);
+      failLineWrite(runtime.stores, "First.");
+      await answerInto(runtime, answerer, "p_failed", "First.");
+      await quiet(runtime);
+      const [failed] = (await runtime.stores.request.list({ sessionId: HELP })).filter((r) => r.actionName === "answer");
+      expect(failed!.status).toBe("failed");
+
+      await answerInto(runtime, answerer, "p_failed", "Again.");
+      await quiet(runtime);
+
+      expect(await lines(runtime, HELP)).toEqual([{ author: "support.devices", body: "First." }]);
     } finally {
       await state.dispose();
     }
