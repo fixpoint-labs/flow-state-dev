@@ -145,8 +145,8 @@ const chatAgentFlow = defineFlow({
 
   // FIX-435: resources live in a single flat flow.resources map; their
   // intrinsic scope routes them to the right storage layer.
-  // `workforcePanelResources`: the roster, the boot report and the boards the
-  // shell's right panel reads through this flow's session.
+  // `workforcePanelResources`: the roster and the boot report the shell's
+  // right panel reads through this flow's session.
   resources: {
     ...(mem.userResources ?? {}),
     ...workforcePanelResources,

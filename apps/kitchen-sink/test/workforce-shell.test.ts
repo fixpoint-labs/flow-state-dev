@@ -19,6 +19,8 @@
  *   - remove `workforcePanelResources` from the chat-agent flow: the
  *     declaration case fails, which is the state in which every panel read
  *     answers "unknown resource".
+ *   - drop the board from `support.help`'s `CHANNEL.md`: the board case and
+ *     the channel flow's declaration case both fail.
  */
 import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
@@ -26,7 +28,7 @@ import { CHANNEL_KIND, channelBoard, channelBoardIds, HIRED_ROSTER_RESOURCE } fr
 import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 
 import chatAgentFlow from "../flows/chat-agent/flow";
-import { kitchenSinkKinds, workforceRoot } from "../workforce/hire";
+import { hireKitchenSinkWorkforce, kitchenSinkKinds, workforceRoot } from "../workforce/hire";
 import { channelKinds } from "../workforce/workforce.gen";
 import {
   CHANNEL_KINDS,
@@ -125,6 +127,13 @@ describe("each seat kind's composer sends to an action the kind declares", () =>
   });
 });
 
+/** Whether `resources` declares `ref` so a browser may read its rows. */
+function expectBrowserReadable(resources: Record<string, unknown>, ref: string, flow: string): void {
+  const declared = resources[ref] as { client?: { state?: { read?: boolean } } } | undefined;
+  expect(declared, `${flow} declares no resource "${ref}"`).toBeDefined();
+  expect(declared!.client?.state?.read).toBe(true);
+}
+
 describe("the shell's flow declares what the panel reads", () => {
   const resources = (chatAgentFlow as unknown as { resources?: Record<string, unknown> })
     .resources ?? {};
@@ -132,14 +141,29 @@ describe("the shell's flow declares what the panel reads", () => {
   const cases: [label: string, ref: string][] = [
     ["the roster", HIRED_ROSTER_RESOURCE],
     ["the boot report", ROSTER_BOOT_REPORT_REF],
-    ...SHELL_BOARDS.map((board): [string, string] => [`board ${board.ref}`, board.ref]),
   ];
 
   it.each(cases)("%s, readable by a browser", (_label, ref) => {
-    const declared = resources[ref] as { client?: { state?: { read?: boolean } } } | undefined;
-    expect(declared, `chat-agent declares no resource "${ref}"`).toBeDefined();
-    expect(declared!.client?.state?.read).toBe(true);
+    expectBrowserReadable(resources, ref, "chat-agent");
   });
+
+  // Each board is read through its channel's session, so it is the flow that
+  // session runs on, the one the channel's file selects, that must declare it.
+  it.each(SHELL_BOARDS.map((board) => [board.ref, board] as const))(
+    "board %s, readable by a browser through its channel's session",
+    async (_ref, board) => {
+      const { channelFlows } = await hireKitchenSinkWorkforce();
+      const channel = SHELL_CHANNELS.find(({ id }) => id === board.channelId);
+      expect(channel, `SHELL_CHANNELS has no channel "${board.channelId}"`).toBeDefined();
+      const flow = channelFlows.find(({ kind }) => kind === channel!.kind);
+      expect(flow, `no channel flow of kind "${channel!.kind}"`).toBeDefined();
+      expectBrowserReadable(
+        (flow!.resources ?? {}) as Record<string, unknown>,
+        board.ref,
+        `the "${channel!.kind}" channel flow`,
+      );
+    },
+  );
 
   it("uses refs the collection route can address: one path segment each", () => {
     for (const ref of [HIRED_ROSTER_RESOURCE, ROSTER_BOOT_REPORT_REF, ...SHELL_BOARDS.map((b) => b.ref)]) {

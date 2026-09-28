@@ -16,7 +16,7 @@ import {
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
-import { createClient, createResourceClient, createSessionClient } from "@flow-state-dev/client";
+import { createClient, createResourceClient, createSessionClient, type ClientFetch } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
 
@@ -87,6 +87,13 @@ type MobilePanel = "chat" | "artifacts";
  */
 const SHOW_SEATS_IN_RAIL = true;
 
+/**
+ * The `fetch` the panels read with, and a board's live stream is sent with, so
+ * the stream goes out the way the reads do. This app sends no credential; a
+ * host that does adds it here, once, for both.
+ */
+const panelFetch: ClientFetch = (input, init) => fetch(input, init);
+
 /** Whether a navigator leaf is a seat, and so opens into its detail. */
 function isSeatKind(kind: string): boolean {
   return (SEAT_KINDS as readonly string[]).includes(kind);
@@ -155,8 +162,9 @@ function PageInner() {
     process.env.NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE === "1"
       ? searchParams.get("e2eSession")
       : null;
-  // The goal control `no-live` opens the rail's panels without following their
-  // session, so a goal check can be seen to fail without it.
+  // The goal control `no-live` opens the rail's panels and the team panel's
+  // boards without following their session, so a goal check can be seen to
+  // fail without it.
   const pickedLive = pageGoalControl(searchParams) !== "no-live";
   return (
     <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAgentRenderers}>
@@ -261,10 +269,11 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   // One resource client for every panel read, held stable: the panels fence
   // their reads on it, so a new object each render would read as a new
   // backend each render.
-  const resourceClient = useMemo(() => createResourceClient({ baseUrl: "" }), []);
-  // The panels read through the assistant's session, because that flow is the
-  // one declaring the roster and the boards. Its organization, from its own
-  // record, is the one a seat's address is read against.
+  const resourceClient = useMemo(() => createResourceClient({ baseUrl: "", fetcher: panelFetch }), []);
+  // The roster reads through the assistant's session, because that flow is the
+  // one declaring it; each board reads through its own channel's session. The
+  // assistant's organization, from its own record, is the one a seat's address
+  // is read against.
   const panelSessionId = flow.activeSessionId;
   const panelOrgId = session.detail?.orgId;
 
@@ -572,6 +581,8 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     <TeamPanel
       sessionId={panelSessionId}
       resourceClient={resourceClient}
+      fetcher={panelFetch}
+      live={pickedLive}
       top={
         mode === "build" ? (
           <ArtifactPanel

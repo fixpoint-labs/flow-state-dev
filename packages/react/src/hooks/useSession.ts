@@ -8,7 +8,6 @@ import {
   createRecoveryClient,
   createRequestStreamStore,
   createSessionClient,
-  createSessionSSEClient,
   createSSEClient,
   createSSEClientFromResponse,
   type ExecuteActionResponse,
@@ -36,6 +35,7 @@ import type { ResumeAction } from "@flow-state-dev/core/types";
 // Previously hand-mirrored here because react may only type-import core.
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
+import { followSession } from "../internal/followSession";
 import {
   isReducibleStateChange,
   mergeStateChangeIntoSnapshot
@@ -1535,9 +1535,7 @@ export function useSession(
     // Every connection names the runs first. Until one has, the stream has
     // vouched for nothing, so a stream refused or dropped before then leaves
     // the view as it would be without `live` (BR-16).
-    let following = false;
-
-    const handle = createSessionSSEClient({
+    const close = followSession({
       sessionId,
       baseUrl,
       since: snapshotAtRef.current,
@@ -1545,25 +1543,17 @@ export function useSession(
       itemTypes: itemConfig.itemTypes,
       onItem: acceptItem,
       onRuns: (event) => {
-        following = true;
         setLiveRuns(event.runs);
         setLiveLapsed(false);
         void refreshChildSessionsRef.current();
       },
-      // The first try after a drop takes about a second, the stream's own
-      // pace; once one has failed, the rows are no longer current.
-      onReconnecting: ({ attempt }) => {
-        if (following && attempt >= 2) setLiveLapsed(true);
-      },
-      // Refused for good, or the session is gone. Nothing will say when the
-      // runs finish, so none of the rows may read as working again.
-      onStop: () => {
-        if (following) setLiveLapsed(true);
-      }
+      // A reconnect failed, or the stream was refused for good. Nothing may
+      // say when the runs finish, so none of the rows may read as working.
+      onLapsed: () => setLiveLapsed(true)
     });
 
     return () => {
-      handle.close();
+      close();
       setLiveRuns(null);
       setLiveLapsed(false);
     };

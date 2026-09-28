@@ -7,10 +7,10 @@ description: Render a roster, its channels and its boards with components from @
 
 # Workforce components
 
-`@flow-state-dev/react` ships the screens a workforce needs. Most of it is one component: a navigator that browses your flows. Beside it sit the roster and a board's columns. You import them; there is nothing to copy into your app.
+`@flow-state-dev/react` ships the screens a workforce needs. Most of it is one component: a navigator that browses your flows. Beside it sit the roster and a board, drawn as columns or as a list. You import them; there is nothing to copy into your app.
 
 ```tsx
-import { FlowNavigator, Roster, BoardColumns } from "@flow-state-dev/react";
+import { FlowNavigator, Roster, BoardColumns, BoardList } from "@flow-state-dev/react";
 
 <FlowNavigator
   sections={[
@@ -37,7 +37,7 @@ There is no prop for choosing the depth. What the navigator shows always matches
 
 ## Showing the roster and the boards
 
-`Roster` and `BoardColumns` read collections through a session you pass in. That session's flow has to declare the collections, under the keys the components read:
+`Roster`, `BoardColumns` and `BoardList` read collections through a session you pass in. That session's flow has to declare the collections, under the keys the components read:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -69,17 +69,15 @@ type ShellPanelsProps = {
 };
 
 export function ShellPanels({ sessionId, bootProblems, getToken }: ShellPanelsProps) {
-  const resourceClient = useMemo(
-    () =>
-      createResourceClient({
-        fetcher: async (input, init) => {
-          const headers = new Headers(init?.headers);
-          headers.set("Authorization", `Bearer ${await getToken()}`);
-          return fetch(input, { ...init, headers });
-        },
-      }),
+  const fetcher = useMemo<typeof fetch>(
+    () => async (input, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set("Authorization", `Bearer ${await getToken()}`);
+      return fetch(input, { ...init, headers });
+    },
     [getToken],
   );
+  const resourceClient = useMemo(() => createResourceClient({ fetcher }), [fetcher]);
 
   return (
     <>
@@ -96,13 +94,43 @@ Pass the same `resourceClient` to both, built once. Leave it out and each panel 
 
 A board column is grouped by task status. An empty board says so, and names the usual reason: no seat drains it.
 
+### A board as a list
+
+`BoardList` draws the same board as one list, newest first, with each task's status beside it. Reach for it when people scan a board rather than work it, such as a queue of cases waiting for a person. It takes the same `sessionId`, `boardRef` and `resourceClient` as `BoardColumns`, plus `live` and the `fetcher` that goes with it. This example assumes a `fetcher` and a `resourceClient` built the way `ShellPanels` builds them above, once and shared:
+
+```tsx
+import { BoardList } from "@flow-state-dev/react";
+
+<BoardList
+  sessionId="support.help"
+  boardRef="support.help.escalations"
+  resourceClient={resourceClient}
+  fetcher={fetcher}
+  live
+/>
+```
+
+With `live`, the list follows the session you pass and reads the board again whenever that session records a change to it. A task filed through a channel's `fileTask` is recorded in the channel's own session, so pass the channel's id, as above. Each new task then shows up in every tab that has the list open. Reading through the channel needs nothing extra in your shell's flow.
+
+`fetcher` is the `fetch` the live stream is sent with. When you pass your own `resourceClient` and `live`, also pass the `fetcher` that client was built with, so the stream carries the same credential as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`. Pass neither and both go through the nearest `FlowProvider`'s `baseUrl` with the plain `fetch`. If your `resourceClient` reads a different origin, pass that origin as the `baseUrl` prop on `BoardList` as well, so the stream goes to the same server as the reads.
+
+Rows already on screen stay there while the list reads again.
+
+A change recorded in a different session does not reach a live list until something makes it read again: a remount, a reload, or the next change in the session it follows. A seat that claims and finishes tasks from its own conversation is the usual example. So `live` suits a board that is filed through its channel and read by people. For a board your seats work, read it on mount, as `BoardColumns` does.
+
+Each live list holds its own connection to its session's stream while it is mounted, the same kind [`useSession`'s `live`](../client/react.md#hearing-requests-you-didnt-send) opens. A page that also follows that session with `useSession(..., { live: true })` holds two connections to it. If the server doesn't offer the stream, or refuses it, the list reads once, as if you hadn't asked, with no error.
+
+Each row shows the task's `title` (its `goal` if there is no title, its `id` if there is neither), its status word, and the assignee when there is one. The words are the ones the columns are headed with (`pending`, `in_progress`, and so on, with `awaiting_review` shown as `parked`). A task in a status the list doesn't recognise shows with its own word. No row is hidden. A row without a `createdAt` follows the dated ones.
+
+Loading, an empty board and a failed read look different from each other. A failed read says what failed and offers a Retry button. The `empty` slot replaces the empty note. The `row` slot returns the body that goes inside the list's own `<li>`, which carries `data-task-id`.
+
 ## Where each component reads from
 
 What a component reads decides what it shows and when it updates.
 
 **The session's item stream.** Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) draw on the items a session persisted. They update as items arrive, and they are still there after a reload.
 
-**A standing collection.** The roster and the board columns read a collection that lives outside any one session. Everyone in the organization sees the same rows. They read it when they mount and don't watch it afterwards, so a change somebody else makes appears the next time the panel mounts. To read again on demand, change the component's React `key`.
+**A standing collection.** The roster, the board columns and the board list read a collection that lives outside any one session. Everyone in the organization sees the same rows. Each reads on mount and does not watch. The exception is a `BoardList` with `live`, which reads again when the session it follows records a change to the board ([A board as a list](#a-board-as-a-list)). To read one on demand, change the component's React `key`.
 
 **The flow list.** The navigator reads your server's flow list once, however many sections you give it. It reads a leaf's sessions only when that **leaf** opens: a singleton kind, or one instance of a collection kind. Opening a collection kind's row asks your server for nothing, so a roster of two hundred seats costs one request to draw, and one more when somebody opens a seat.
 
@@ -113,7 +141,7 @@ Like the panels, the navigator reads on mount and doesn't watch. To re-read a le
 The components ship with no CSS framework and no icon set. Style them with:
 
 - **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator,
-  `--fsd-panel-*` for the roster and the board columns. Set them on any ancestor.
+  `--fsd-panel-*` for the roster, the board columns and the board list. Set them on any ancestor.
 - **Slots** for the parts that are yours. The navigator's are `rowTrailing` at the end of a row, `leafToolbar` on an open leaf's row, `leafDetail` under an open leaf's row for content that doesn't fit on it, `sectionHeader` beside a section label, and `emptySection` for a section whose kinds your server doesn't have.
 
 The navigator draws a dashed line down from each open row, past the rows under it, and indents each level by the width of the expand arrow. `--fsd-nav-guide` sets the line colour. Set it to `transparent` to hide the lines.

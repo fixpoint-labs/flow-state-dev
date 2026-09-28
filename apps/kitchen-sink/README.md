@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a team, gives that team a channel and a board, and shows all of it in a shell whose navigator, roster and board columns are imported from `@flow-state-dev/react`.
+The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a team, gives that team a channel and a board, and shows all of it in a shell whose navigator, roster and board list are imported from `@flow-state-dev/react`.
 
 Kitchen sink is a reference app, not a minimal example. It hosts every subsystem and is where features get tested end to end. For small, focused, copy-paste-able demos see `examples/`.
 
@@ -89,7 +89,7 @@ Take the `routing:` lines out and every specialist hears every post, which is wh
 
 #### When a case needs a person
 
-A specialist that decides a case needs a person calls `escalate`, a tool in `workforce/blocks/escalate.ts`. It files one row onto the channel's `escalations` board through the channel's own `fileTask` action, signed with the specialist's own id, and the specialist says so in its answer. The model chooses only what the row says. The rows show in the team panel's `escalations` column.
+A specialist that decides a case needs a person calls `escalate`, a tool in `workforce/blocks/escalate.ts`. It files one row onto the channel's `escalations` board through the channel's own `fileTask` action, signed with the specialist's own id, and the specialist says so in its answer. The model chooses only what the row says. The case appears in the team panel's `escalations` list, newest first, with its status, in every open tab as soon as it is filed. The list follows `support.help`, the channel the specialist files through. A tab holds one stream connection for the list, and a second if `support.help` is also open in the navigator.
 
 Only the channel's members can file there. Any other seat given the tool is told nothing was filed, and nothing is sent to the channel.
 
