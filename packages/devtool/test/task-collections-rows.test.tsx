@@ -252,3 +252,24 @@ describe("opening a row", () => {
     expect(inputField.innerHTML).toMatch(/overflow-auto|break-all|\[overflow-wrap:anywhere\]/);
   });
 });
+
+describe("a row that cannot render", () => {
+  it("does not blank the tab: the other rows still show, and the bad one says so", () => {
+    // A task the view cannot draw (a goal that is not text) must cost its own
+    // row, never the whole board.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(
+        view([
+          taskItem({ id: "bad", goal: { not: "text" } as never, status: "pending" }, 0),
+          taskItem({ id: "good", goal: "still readable", status: "pending" }, 1),
+        ])
+      );
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(within(rowOf("good")).getByText("still readable")).toBeInTheDocument();
+    expect(rowOf("bad").textContent).toMatch(/could not be drawn/i);
+  });
+});

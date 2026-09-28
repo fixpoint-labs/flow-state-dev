@@ -28,7 +28,7 @@
  * `task-row-body`. Open rows are held here, keyed by board and task id, so a
  * streamed change re-renders a row without closing it.
  */
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { Component, useCallback, useMemo, useState, type ReactNode } from "react";
 import type { ActionInputSchema, ChildSessionSummary } from "@flow-state-dev/client";
 import { ChevronRight, ClipboardList, Layers } from "lucide-react";
 import {
@@ -218,30 +218,31 @@ function CollectionCard({
           {collection.tasks.map((entry) => {
             const key = rowKey(collection.id, entry.task.id);
             return (
-              <TaskRow
-                key={entry.task.id}
-                entry={entry}
-                rowId={key}
-                open={openRows.has(key)}
-                onToggle={() => onToggleRow(key)}
-                showReason={showReason}
-                dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
-                truncation={truncation}
-                onOpenDispatchRun={onOpenDispatchRun}
-                actions={
-                  rowActions === undefined || actionNames === undefined
-                    ? undefined
-                    : (taskId) => (
-                        <TaskRowActions
-                          taskId={taskId}
-                          actions={actionNames}
-                          schemas={rowActions.schemas}
-                          run={rowActions.run}
-                          requests={rowActions.requests}
-                        />
-                      )
-                }
-              />
+              <RowBoundary key={entry.task.id} taskId={entry.task.id} resetOn={entry.task}>
+                <TaskRow
+                  entry={entry}
+                  rowId={key}
+                  open={openRows.has(key)}
+                  onToggle={() => onToggleRow(key)}
+                  showReason={showReason}
+                  dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
+                  truncation={truncation}
+                  onOpenDispatchRun={onOpenDispatchRun}
+                  actions={
+                    rowActions === undefined || actionNames === undefined
+                      ? undefined
+                      : (taskId) => (
+                          <TaskRowActions
+                            taskId={taskId}
+                            actions={actionNames}
+                            schemas={rowActions.schemas}
+                            run={rowActions.run}
+                            requests={rowActions.requests}
+                          />
+                        )
+                  }
+                />
+              </RowBoundary>
             );
           })}
         </ul>
@@ -489,4 +490,33 @@ function CountsRibbon({ counts }: { counts: NonNullable<BoardMeta["counts"]> }) 
       )}
     </div>
   );
+}
+
+/**
+ * One row's render failure stays in that row. A task the view cannot draw (a
+ * field of a shape it does not expect) shows a one-line note in its place, and
+ * every other row on the board still renders. Retried when the task changes.
+ */
+class RowBoundary extends Component<
+  { taskId: string; resetOn: unknown; children: ReactNode },
+  { error: string | null }
+> {
+  state: { error: string | null } = { error: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+
+  componentDidUpdate(previous: { resetOn: unknown }) {
+    if (this.state.error !== null && previous.resetOn !== this.props.resetOn) this.setState({ error: null });
+  }
+
+  render() {
+    if (this.state.error === null) return this.props.children;
+    return (
+      <li className="min-w-0 border-b border-slate-800/50 px-3 py-1.5 text-red-300" data-task-id={this.props.taskId}>
+        <span className="font-mono">{this.props.taskId}</span> could not be drawn: {this.state.error}
+      </li>
+    );
+  }
 }
