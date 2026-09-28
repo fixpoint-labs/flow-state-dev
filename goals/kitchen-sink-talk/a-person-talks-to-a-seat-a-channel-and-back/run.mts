@@ -129,8 +129,9 @@ const route = (role: Role) => M.route.replace("{seat}", SEATS[role].id);
 const CONTROLS: Record<string, { how: "server" | "page" | "network" | "checkout"; fail: string[]; green: string[] }> = {
   // The live view and the route: nobody shows as working, a's answer never shows unreloaded, B2 and B3 reach the wrong seat.
   main: { how: "checkout", fail: ["a:working", "a:line", "b:line"], green: ["c1"] },
-  // No live view: no working row, no answer and no filed row until a reload.
-  "no-live": { how: "page", fail: ["a:working", "a:line", "b:working", "b:line", "e:row-open"], green: ["c1", "c2", "seg"] },
+  // No live view: no answer and no filed row until a reload. Not the working rows: the page still re-reads its
+  // runs when the person posts, so whether a row shows (and then never clears) depends on which read wins.
+  "no-live": { how: "page", fail: ["a:line", "b:line", "e:row-open"], green: ["c1", "c2", "seg"] },
   // A text answer never lands without a post-tool call.
   "no-landing": { how: "server", fail: ["a:line", "e:line"], green: ["b", "c1", "c2", "seg"] },
   // Every member wakes: others work, and the one-line answers and the one filed row multiply or never land.
