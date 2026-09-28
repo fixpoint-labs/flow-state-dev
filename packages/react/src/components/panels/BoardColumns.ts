@@ -160,14 +160,15 @@ const KNOWN = new Set<string>(BOARD_STATUS_COLUMNS);
  */
 const LEGACY_PARKED_STATUS = "awaiting_review";
 
-function isCard(value: unknown): value is BoardCard {
+/** Whether a row read off a board has the fields every card has. Shared with `BoardList`. */
+export function isCard(value: unknown): value is BoardCard {
   if (value === null || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
   return typeof row.id === "string" && typeof row.status === "string";
 }
 
-/** Map a stored row's status forward, so grouping only ever sees one vocabulary. */
-function migrateCardStatus(card: BoardCard): BoardCard {
+/** Map a stored row's status forward, so grouping only ever sees one vocabulary. Shared with `BoardList`. */
+export function migrateCardStatus(card: BoardCard): BoardCard {
   return card.status === LEGACY_PARKED_STATUS ? { ...card, status: "parked" } : card;
 }
 

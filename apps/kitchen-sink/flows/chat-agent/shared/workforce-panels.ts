@@ -2,9 +2,10 @@
  * The collections the shell's right panel reads, declared on the shell's flow.
  *
  * A panel read resolves its ref against the reading session's own flow, so the
- * shell can only show the roster and the boards if `chat-agent` declares them.
- * Each one is org-scoped, so a chat-agent session reads its own
- * organization's rows and no other's.
+ * shell can only show the roster if `chat-agent` declares it. Each one is
+ * org-scoped, so a chat-agent session reads its own organization's rows and no
+ * other's. The boards are not here: each is read through its own channel's
+ * session, whose flow already declares it.
  *
  * - `HIRED_ROSTER_RESOURCE` — the hired roster, from the same factory the
  *   admin flow and the boot reload use, so there is one declaration of that
@@ -17,22 +18,12 @@
  *   in this flow does. The key and the row's schema are declared in
  *   `lib/` (`workforce-shell.ts` and `roster-boot-report-schema.ts`), since
  *   the boot writer must reach them without importing this flow module.
- * - One ledger per board in `SHELL_BOARDS`, declared through `channelBoard` so
- *   it is the same declaration the channel itself holds.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
-import {
-  channelBoard,
-  defineHiredRosterCollection,
-  HIRED_ROSTER_RESOURCE,
-} from "@flow-state-dev/workforce";
+import { defineHiredRosterCollection, HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
 
 import { rosterBootReportSchema } from "@/lib/roster-boot-report-schema";
-import {
-  ROSTER_BOOT_REPORT_PREFIX,
-  ROSTER_BOOT_REPORT_REF,
-  SHELL_BOARDS,
-} from "@/lib/workforce-shell";
+import { ROSTER_BOOT_REPORT_PREFIX, ROSTER_BOOT_REPORT_REF } from "@/lib/workforce-shell";
 
 /**
  * Org-scoped and shared across flows: the boot writes it with no flow at all,
@@ -50,10 +41,4 @@ export const rosterBootReportCollection = defineResourceCollection({
 export const workforcePanelResources = {
   [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
   [ROSTER_BOOT_REPORT_REF]: rosterBootReportCollection,
-  ...Object.fromEntries(
-    SHELL_BOARDS.map(({ channelId, board }) => {
-      const ledger = channelBoard(channelId, board);
-      return [ledger.id, ledger];
-    }),
-  ),
 };

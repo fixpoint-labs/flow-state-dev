@@ -41,6 +41,11 @@
  * session: one session stream, for `support.help`, and none for the
  * assistant). That one is read before any reload, on purpose: what it
  * checks is the page keeping up by itself.
+ *
+ * And by `specs/issues/FIX-1622/BUSINESS-RULES.md`: BR-1 and BR-2 (a case
+ * filed while the page is open shows on escalations with no reload, as one
+ * row with its status word, and no status columns), BR-21 (each row is still
+ * an `li[data-task-id]` in the board's panel). Also read before any reload.
  */
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -296,6 +301,28 @@ test("a post that needs a person is one row on escalations in the team panel aft
   await expect(board.locator("li[data-task-id]").filter({ hasText: mark })).toHaveCount(1);
 });
 
+test("a post that needs a person shows on escalations in the team panel with no reload, as one row in a list with its status", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  const mark = `case-token-${token()}`;
+  const channel = await openChannel(page);
+  // The board is read before the post, so a row that shows afterwards came
+  // from the page keeping up by itself, not from that read.
+  const board = page.getByTestId(`board-${CHANNEL}.escalations`);
+  await expect(board.locator('[data-panel="board"]')).toBeVisible();
+  await expect(board.locator('[data-state="loading"]')).toHaveCount(0);
+
+  await post(channel, `[route:support.devices] [scenario:needs-a-person] ${mark} the charger caught fire`);
+
+  const filed = board.locator("li[data-task-id]").filter({ hasText: mark });
+  await expect(filed).toHaveCount(1, { timeout: 15_000 });
+  await expect(filed.locator("[data-task-status]")).toHaveText("pending");
+  // One list, not a column per status.
+  await expect(board.locator("[data-column]")).toHaveCount(0);
+  await answerLanded(page, mark);
+});
+
 test("a post to support.help runs the specialist it was routed to once, in its own conversation for the channel, and nobody else", async ({
   page,
   consoleErrors: _consoleErrors,
@@ -414,6 +441,7 @@ test("with support.help open, the routed specialist shows as working and then it
   await expect(reply.getByTestId("channel-line-label")).toHaveText("support.devices");
   await expect(working).toHaveCount(0);
 
-  // Only the channel's panel follows its session; the assistant does not.
+  // Only the channel's session is followed, by its panel and by the team
+  // panel's board; the assistant's is not.
   expect([...new Set(followed)]).toEqual([CHANNEL]);
 });

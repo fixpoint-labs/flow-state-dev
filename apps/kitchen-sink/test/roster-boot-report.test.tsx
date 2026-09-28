@@ -140,13 +140,11 @@ async function harness() {
   async function panelFor(org: string, options: { failReport?: boolean } = {}): Promise<HTMLElement> {
     const sessionId = await openSession(org);
     const reportReads: string[] = [];
-    const client = createResourceClient({
-      baseUrl: "http://test",
-      fetcher: fetcherFor(org, reportReads, options.failReport),
-    });
+    const fetcher = fetcherFor(org, reportReads, options.failReport);
+    const client = createResourceClient({ baseUrl: "http://test", fetcher });
     const { container } = render(
       <FlowProvider flowKind={FLOW_KIND} userId={`user-of-${org}`} baseUrl="http://test">
-        <TeamPanel sessionId={sessionId} resourceClient={client} />
+        <TeamPanel sessionId={sessionId} resourceClient={client} fetcher={fetcher} />
       </FlowProvider>,
     );
     const panel = within(container).getByTestId("roster-panel").parentElement!;

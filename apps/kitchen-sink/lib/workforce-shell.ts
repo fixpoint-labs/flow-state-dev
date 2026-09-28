@@ -19,7 +19,7 @@
  * kind, a seat's description or a board changes there and not here.
  */
 
-/** The flow the stream talks to, and the one whose session the panels read through. */
+/** The flow the stream talks to, and the one whose session the roster reads through. */
 export const SHELL_FLOW_KIND = "chat-agent";
 
 /**
@@ -122,9 +122,9 @@ export const ROSTER_BOOT_REPORT_KEY = `${ROSTER_BOOT_REPORT_PREFIX}latest`;
  * The boards the right panel draws, one per `boards:` entry in the tree's
  * `CHANNEL.md` files.
  *
- * `ref` is the ledger id the workforce package mints for that pair. The flow
- * declares each board through `channelBoard(channelId, board)` rather than
- * from `ref`, and the test checks the two agree.
+ * `ref` is the ledger id the workforce package mints for that pair. The panel
+ * reads each board through its channel's session, whose flow declares it under
+ * that id, and the test checks the two agree.
  */
 export const SHELL_BOARDS = [
   { channelId: "support.help", board: "escalations", ref: "support.help.escalations" },
