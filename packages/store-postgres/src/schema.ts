@@ -65,15 +65,7 @@ const REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_requests_session_status  ON requests(session_id, status)",
   "CREATE INDEX IF NOT EXISTS idx_requests_session_tenant  ON requests(session_id, tenant_id)",
   "CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id)",
-  "CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at)",
-  // Not an index: tells the planner a session's requests share its tenant.
-  // Without it the planner multiplies the two selectivities as if they were
-  // independent, expects a handful of rows for one tenant's session, and
-  // sorts them through `idx_requests_session_tenant` rather than walking
-  // `idx_requests_session_tenant_updated`, so the session stream's read for a
-  // tenant-bound caller sorts the session's whole history every second.
-  // Filled by ANALYZE; changes estimates only.
-  "CREATE STATISTICS IF NOT EXISTS stat_requests_session_tenant (dependencies) ON session_id, tenant_id FROM requests"
+  "CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at)"
 ];
 
 /**
@@ -130,24 +122,29 @@ const CONCURRENT_INDEXES = [
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_created ON requests(session_id, created_at, id)",
   // The session stream's two reads, repeated about once a second per open
   // view: one session's requests and one parent's runs, newest-updated first,
-  // paged until a row is older than the floor. Without these the planner
-  // either sorts the session's whole history or walks the global
-  // `updated_at` index through every other session's newer rows; either way
-  // the read grows with something other than what changed.
+  // paged until a row is older than the floor. Each names the session's
+  // owner and org as well as its id, and the index names them too, ahead of
+  // the ordering column. Without them the planner either sorts the session's
+  // whole history, or walks the global `updated_at` index through every other
+  // session's newer rows, or walks rows under the same id that another owner
+  // keeps (a session id can be used again, and a request its owner never made
+  // is refused but kept), and the read grows with something other than what
+  // changed.
   //
   // A pair for each read, as for the child listing above and for the same
-  // reason: the bare pair serves the unbound caller (every single-tenant
-  // deployment), and the scope pair the caller bound to a tenant. Without the
-  // scope pair a bound caller's reads sort the session's whole history on
-  // every read (measured: 70 examined rows grow to 1,600 and 570 once the
-  // session has 500 older rows). The scope pair alone fails the unbound
-  // caller instead, which loses the ordering to `IS NULL`: the planner walks
-  // the global `updated_at` index and discards 100,508 rows after a burst
-  // elsewhere. `session-stream-indexes.test.ts` holds both callers flat.
-  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_updated ON requests(session_id, updated_at)",
-  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_updated ON sessions(parent_session_id, updated_at)",
-  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_tenant_updated ON requests(session_id, tenant_id, updated_at)",
-  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_scope_updated ON sessions(parent_session_id, tenant_id, org_id, updated_at)"
+  // reason: the pair without `tenant_id` serves the unbound caller (every
+  // single-tenant deployment), and the pair with it the caller bound to a
+  // tenant. The tenant pair alone fails the unbound caller, which loses the
+  // ordering to `IS NULL`: measured before owner and org joined the key, the
+  // planner walked the global `updated_at` index and discarded 100,508 rows
+  // after a burst elsewhere. `session-stream-indexes.test.ts` measures both
+  // callers, on the options the stream sends, against a long history, a burst
+  // elsewhere, another tenant, and another owner's and another org's newer
+  // rows under the same ids.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_owner_updated ON requests(session_id, user_id, org_id, updated_at)",
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_owner_updated ON sessions(parent_session_id, user_id, org_id, updated_at)",
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_tenant_owner_updated ON requests(session_id, tenant_id, user_id, org_id, updated_at)",
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_tenant_owner_updated ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at)"
 ];
 
 /**
@@ -159,7 +156,7 @@ const DROP_INVALID_CONCURRENT_INDEXES = `DO $$
 DECLARE
   n TEXT;
 BEGIN
-  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created', 'idx_requests_session_updated', 'idx_sessions_parent_updated', 'idx_requests_session_tenant_updated', 'idx_sessions_parent_scope_updated']
+  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created', 'idx_requests_session_owner_updated', 'idx_sessions_parent_owner_updated', 'idx_requests_session_tenant_owner_updated', 'idx_sessions_parent_tenant_owner_updated']
   LOOP
     IF EXISTS (
       SELECT 1 FROM pg_class c

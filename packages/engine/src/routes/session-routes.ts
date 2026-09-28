@@ -20,13 +20,13 @@ import {
   getPositiveInteger,
   getString,
   isCheckedSession,
-  isSameSession,
   jsonResponse,
   loadTenantSession,
   parseJsonBody,
   refuseUnattributedRecord
 } from "./route-utils";
 import {
+  isSameSession,
   resolveSessionStorageKey,
   tenantMatches,
   toBareSessionId

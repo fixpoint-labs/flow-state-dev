@@ -860,6 +860,94 @@ describe("a run waiting to start", () => {
       updatedAt: before.updatedAt
     });
   });
+
+  // The child is read when the request is admitted and again when it is
+  // moved. Deleted and created again in between, the id holds another
+  // session, which the request was never admitted to; created in between,
+  // after admission found nothing under the id, the same. A run held behind
+  // another request keeps the child as the move left it until the case looks.
+  it.each([
+    ["deleted and created again by its owner under another flow instance", true, { flowKind: "notes", flowId: "notes" }],
+    ["deleted and created again by its owner, under the same flow", true, { lineageId: "lin_again", createdAt: Date.now() - 1_800_000 }],
+    ["created by its owner under another flow instance, after admission found none", false, { flowKind: "notes", flowId: "notes" }]
+  ] as const)("leaves a child as it was when it is %s, between the request's admission and the move", async (_how, present, again) => {
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let holding = false;
+    const queued = { policy: "queue", key: "user" } as const;
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "chat",
+        actions: {
+          hold: {
+            concurrency: queued,
+            block: handler({
+              name: "hold",
+              execute: async () => {
+                holding = true;
+                await held;
+                return {};
+              }
+            })
+          },
+          ping: { concurrency: queued, block: handler({ name: "ping", execute: () => ({}) }) }
+        }
+      })
+    );
+    registry.register(defineFlow({ kind: "notes", actions: { ping: { block: handler({ name: "ping", execute: () => ({}) }) } } }));
+    const stores = createInMemoryStores();
+    router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    await seedSession(stores, Date.now() - 600_000);
+    if (present) await keepRun(stores, "seat", Date.now() - 3_600_000, "completed");
+
+    // Once the request's record is written, which is after its admission read
+    // the child and before the move reads it again.
+    const set = stores.request.set.bind(stores.request);
+    let replaced: SessionRecord | undefined;
+    vi.spyOn(stores.request, "set").mockImplementation(async (id, record, mode) => {
+      const written = await set(id, record, mode);
+      if (replaced === undefined && mode === "absent" && record.sessionId === "seat") {
+        if (!present) await keepRun(stores, "seat", Date.now() - 3_600_000, "completed");
+        const child = (await stores.session.get("seat"))!;
+        await stores.session.delete("seat");
+        replaced = { ...child, ...again };
+        await stores.session.set("seat", replaced, "any");
+        replaced = (await stores.session.get("seat"))!;
+      }
+      return written;
+    });
+
+    try {
+      expect((await post(router, "hold", {})).status).toBe(202);
+      await until(() => holding, "the other request holds the key");
+      const res = await router.POST(
+        new Request("http://localhost/api/flows/chat/seat/actions/ping", {
+          method: "POST",
+          body: JSON.stringify({ userId: "alice", input: {} })
+        }),
+        { params: { path: ["chat", "seat", "actions", "ping"] } }
+      );
+      expect(res.status).toBe(202);
+      await until(() => replaced !== undefined, "the child replaced");
+      // Well past the move, and the run still waits behind the other request.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const after = (await stores.session.get("seat"))!;
+      expect({ version: after.version, updatedAt: after.updatedAt }).toEqual({
+        version: replaced!.version,
+        updatedAt: replaced!.updatedAt
+      });
+    } finally {
+      release();
+      await until(
+        async () => (await stores.request.list({})).every((r) => r.status !== "in_progress"),
+        "every request finished"
+      );
+    }
+  });
 });
 
 describe("the session a stream or a snapshot opens on", () => {
@@ -903,18 +991,22 @@ describe("the session a stream or a snapshot opens on", () => {
     between: (stores: StoreRegistry, checked: SessionRecord | undefined) => Promise<void>
   ): Promise<{ status: number; ran: boolean }> {
     const registry = createFlowRegistry();
-    registry.register(
-      defineFlow({
-        kind: "chat",
-        actions: { say: { block: handler({ name: "say", execute: () => ({}) }) } },
-        authentication: {
-          resolvePrincipal: (context: { request?: Request }) => {
-            const user = context.request?.headers.get("x-user");
-            return user == null ? null : { userId: user, orgId: "org_test" };
+    // Two flows under one authentication, so a session of either is one the
+    // caller can be admitted to.
+    for (const kind of ["chat", "notes"]) {
+      registry.register(
+        defineFlow({
+          kind,
+          actions: { say: { block: handler({ name: "say", execute: () => ({}) }) } },
+          authentication: {
+            resolvePrincipal: (context: { request?: Request }) => {
+              const user = context.request?.headers.get("x-user");
+              return user == null ? null : { userId: user, orgId: "org_test" };
+            }
           }
-        }
-      })
-    );
+        })
+      );
+    }
     const stores = createInMemoryStores();
     router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
     if (seeded) {
@@ -961,6 +1053,19 @@ describe("the session a stream or a snapshot opens on", () => {
     }
   );
 
+  // The same owner's session under another flow instance is another session
+  // too, checked against that flow's rules, not the one the check applied.
+  it.each(["stream", "state"] as const)(
+    "opens the %s only on the session its caller was checked against, though its owner's session of another flow takes the id",
+    async (route) => {
+      const opened = await openAcrossTheCheck(route, "alice", true, async (stores, checked) => {
+        await stores.session.delete("s1");
+        await stores.session.set("s1", { ...checked!, flowKind: "notes", flowId: "notes" }, "any");
+      });
+      expect(opened).toEqual({ status: 404, ran: true });
+    }
+  );
+
   it.each(["stream", "state"] as const)("opens the %s on no session that arrived after the check found none", async (route) => {
     // Mallory asks for an id nobody holds, and the check lets the route answer
     // its own 404. Before it does, someone else's session takes the id.
@@ -970,6 +1075,175 @@ describe("the session a stream or a snapshot opens on", () => {
       await stores.session.set("s1", { ...(await stores.session.get("s1"))!, orgId: "org_test" }, "any");
     });
     expect(opened).toEqual({ status: 404, ran: true });
+  });
+});
+
+describe("a request the list found, read again by its id", () => {
+  const shipped = { ...SESSION_STREAM_TIMINGS };
+  let router: Router | undefined;
+
+  beforeEach(() => {
+    SESSION_STREAM_TIMINGS.intervalMs = 25;
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    Object.assign(SESSION_STREAM_TIMINGS, shipped);
+    if (router !== undefined) await disposeFlowApiRouter(router);
+    router = undefined;
+  });
+
+  const said = (requestId: string, value: string): OutputItem =>
+    item(requestId, `m_${value}`, "message", 0, buildBlockInstanceId(requestId, "root", 0), text(value));
+
+  // Adapters that keep items apart from the record list requests without
+  // them, and the stream reads each one it found again by its id. A request
+  // id is the caller's to choose: retention can delete the request between
+  // the two reads, and another request can take its id. What that one holds
+  // is not this session's to send.
+  it.each([
+    ["nothing: the request is still there", undefined, ["mine"]],
+    ["another user's request", { userId: "mallory" }, []],
+    ["a request under another organization", { orgId: "org_other" }, []],
+    ["a request in another session", { sessionId: "s2" }, []],
+    ["a request under another tenant", { tenantId: "t2" }, []]
+  ] as const)("sends a request's items only while its id still holds it; the id taken by %s", async (_by, replacement, expected) => {
+    const built = buildRouter();
+    router = built.router;
+    const { stores } = built;
+    await seedSession(stores, Date.now() - 600_000);
+    await keepRequest(stores, "req_reused", [said("req_reused", "mine")], Date.now());
+
+    const list = stores.request.list.bind(stores.request);
+    vi.spyOn(stores.request, "list").mockImplementation(async (options) => {
+      const rows = await list(options);
+      // As the SQL adapters answer a list read without `withItems`.
+      return options?.withItems === true ? rows : rows.map((row) => ({ ...row, items: undefined }));
+    });
+    const get = stores.request.get.bind(stores.request);
+    let reads = 0;
+    vi.spyOn(stores.request, "get").mockImplementation(async (id) => {
+      if (id === "req_reused" && ++reads === 1 && replacement !== undefined) {
+        const listed = (await get(id))!;
+        await stores.request.delete(id);
+        await stores.request.set(
+          id,
+          { ...listed, ...replacement, createdAt: Date.now(), updatedAt: Date.now(), items: [said(id, "someone else's")] },
+          "any"
+        );
+      }
+      return get(id);
+    });
+
+    const events = await streamedEvents(router);
+    expect(reads).toBeGreaterThan(0);
+    const texts = events.flatMap((event) =>
+      event.type === "session.item" ? [(event.item as unknown as { content: Array<{ text: string }> }).content[0]!.text] : []
+    );
+    expect(texts).toEqual(expected);
+  });
+});
+
+describe("a run the stream already named", () => {
+  const shipped = { ...SESSION_STREAM_TIMINGS };
+  let router: Router | undefined;
+
+  beforeEach(() => {
+    SESSION_STREAM_TIMINGS.intervalMs = 25;
+  });
+
+  afterEach(async () => {
+    Object.assign(SESSION_STREAM_TIMINGS, shipped);
+    if (router !== undefined) await disposeFlowApiRouter(router);
+    router = undefined;
+  });
+
+  // A run found once and not since is checked again each read, by its
+  // requests. Its requests can outlive its child: a crash leaves one reading
+  // as working, and the child goes, or another session takes its id. The run
+  // it named then is not under the session any more.
+  it.each([
+    ["deleted", undefined],
+    ["deleted and created again by another user", "mallory"]
+  ] as const)("drops a run whose child is %s while its request still reads as working", async (_what, recreatedBy) => {
+    const built = buildRouter();
+    router = built.router;
+    const { stores } = built;
+    await seedSession(stores, Date.now() - 600_000);
+    // Found by the first read of runs only: nothing about it has moved in an hour.
+    await keepRun(stores, "seat", Date.now() - 3_600_000, "in_progress");
+
+    const controller = new AbortController();
+    const res = await router.GET(
+      new Request("http://localhost/api/flows/sessions/s1/stream", { signal: controller.signal }),
+      { params: { path: ["sessions", "s1", "stream"] } }
+    );
+    const events = collectEvents(res);
+    const runNotices = (): string[][] =>
+      events.flatMap((event) => (event.type === "session.runs" ? [event.runs.map((run) => run.id)] : []));
+    try {
+      await until(() => runNotices().length > 0, "the opening notice");
+      expect(runNotices()[0]).toEqual(["seat"]);
+
+      const child = (await stores.session.get("seat"))!;
+      await stores.session.delete("seat");
+      if (recreatedBy !== undefined) {
+        const anHourAgo = Date.now() - 3_600_000;
+        await stores.session.set(
+          "seat",
+          { ...child, userId: recreatedBy, lineageId: "lin_again", createdAt: anHourAgo + 1, updatedAt: anHourAgo + 1 },
+          "any"
+        );
+      }
+
+      await until(() => runNotices().at(-1)?.length === 0, "the run to go");
+      expect((await stores.request.get("req_seat"))?.status).toBe("in_progress");
+    } finally {
+      controller.abort();
+    }
+  });
+});
+
+describe("the session a snapshot read", () => {
+  let router: Router | undefined;
+
+  afterEach(async () => {
+    if (router !== undefined) await disposeFlowApiRouter(router);
+    router = undefined;
+  });
+
+  /** Open `s1`'s stream with `query`; the response status. */
+  async function open(query: string): Promise<number> {
+    const controller = new AbortController();
+    const res = await router!.GET(
+      new Request(`http://localhost/api/flows/sessions/s1/stream${query}`, { signal: controller.signal }),
+      { params: { path: ["sessions", "s1", "stream"] } }
+    );
+    controller.abort();
+    return res.status;
+  }
+
+  // A view reads the snapshot, then follows the session from it, and
+  // reconnects whenever the connection drops. A session id can be deleted and
+  // used again, here by its own owner: the stream carries on from the
+  // snapshot, so it follows that session and no later one.
+  it("is the one the stream follows: once the id holds a session created later, it answers 404", async () => {
+    const built = buildRouter();
+    router = built.router;
+    await seedSession(built.stores, Date.now() - 600_000);
+    const res = await router.GET(new Request("http://localhost/api/flows/sessions/s1/state"), {
+      params: { path: ["sessions", "s1", "state"] }
+    });
+    const { sessionCreatedAt } = (await res.json()) as { sessionCreatedAt?: number };
+    const read = (await built.stores.session.get("s1"))!;
+    expect(sessionCreatedAt).toBe(read.createdAt);
+    expect(await open(`?session_created_at=${sessionCreatedAt}`)).toBe(200);
+
+    await built.stores.session.delete("s1");
+    await seedSession(built.stores);
+    expect(await open(`?session_created_at=${sessionCreatedAt}`)).toBe(404);
+    // Named by no snapshot, the stream opens on whichever session holds the id.
+    expect(await open("")).toBe(200);
   });
 });
 

@@ -357,6 +357,12 @@ export type CreateSessionSSEClientOptions = SessionSSECallbacks & {
    * Omitted, it reaches back about a minute.
    */
   since?: number;
+  /**
+   * The session snapshot's `sessionCreatedAt`, when the stream follows a
+   * snapshot. Every connection then follows that session only: once its id
+   * holds another session, the server answers 404 and the client stops.
+   */
+  sessionCreatedAt?: number;
   /** The session snapshot's type filter, so the stream sends what the snapshot shows. */
   itemTypes?: string[];
   /** Reconnect backoff: `initialDelayMs` (default 1000) doubling to `maxDelayMs` (default 30000). */
@@ -425,7 +431,7 @@ export function createSessionSSEClient(
         buildFlowApiUrl({
           baseUrl: options.baseUrl,
           path,
-          query: { since: lastAt, item_types: itemTypes }
+          query: { since: lastAt, session_created_at: options.sessionCreatedAt, item_types: itemTypes }
         }),
         { method: "GET", headers: { accept: "text/event-stream" }, signal: current.signal }
       );

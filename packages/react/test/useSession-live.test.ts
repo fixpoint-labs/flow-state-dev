@@ -220,6 +220,85 @@ describe("useSession live", () => {
     expect(streams[0]?.options.since).toBeUndefined();
   });
 
+  // A session id can be deleted and used again. The stream carries on from
+  // the snapshot, so it follows the session the snapshot read, and no other
+  // that takes its id later.
+  describe("the session the snapshot read", () => {
+    const of = (createdAt: number, at: number, items: OutputItem[] = []) => ({
+      ...snapshot(items, at),
+      sessionCreatedAt: createdAt
+    });
+
+    it("is the one the stream follows", async () => {
+      sessionClientMock.getSessionState.mockResolvedValue(of(7, 10));
+      await mountLive();
+      expect(streams[0]?.options).toMatchObject({ since: 10, sessionCreatedAt: 7 });
+    });
+
+    it("moves the stream to another session under the id once a snapshot of it lands", async () => {
+      sessionClientMock.getSessionState.mockResolvedValue(of(7, 10));
+      const { result } = await mountLive();
+
+      sessionClientMock.getSessionState.mockResolvedValue(of(8, 30));
+      await act(async () => {
+        await result.current.refresh();
+      });
+      await waitFor(() => expect(streams.filter((s) => !s.closed)).toHaveLength(1));
+      expect(streams).toHaveLength(2);
+      expect(streams[0]?.closed).toBe(true);
+      expect(streams[1]?.options).toMatchObject({ since: 30, sessionCreatedAt: 8 });
+    });
+
+    it("keeps the stream open when a snapshot of the same session lands", async () => {
+      sessionClientMock.getSessionState.mockResolvedValue(of(7, 10));
+      const { result } = await mountLive();
+
+      sessionClientMock.getSessionState.mockResolvedValue(of(7, 30));
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(streams).toHaveLength(1);
+      expect(streams[0]?.closed).toBe(false);
+    });
+
+    // A later page read after another session took the id holds that
+    // session's history, which can share an item with the page before it.
+    it("starts a history read over when a later page comes from another session under the id", async () => {
+      const lines = (from: string, count: number): OutputItem[] =>
+        Array.from({ length: count }, (_, i) =>
+          i === 99
+            ? message("req_099", "m99", "shared", 100)
+            : message(`req_${String(i).padStart(3, "0")}`, `m${i}`, `${from} ${i}`, i + 1)
+        );
+      const first = lines("first", 150);
+      const second = lines("second", 150);
+      let pages = 0;
+      sessionClientMock.getSessionState.mockImplementation(
+        async (_id: string, options: { offset?: number; limit?: number } = {}) => {
+          pages += 1;
+          const history = pages === 1 ? first : second;
+          const offset = options.offset ?? 0;
+          const limit = options.limit ?? 100;
+          return {
+            ...of(pages === 1 ? 7 : 8, 10, history.slice(offset, offset + limit)),
+            pagination: {
+              offset,
+              limit,
+              total: history.length,
+              hasMore: offset + limit < history.length,
+              nextOffset: Math.min(offset + limit, history.length)
+            }
+          };
+        }
+      );
+      const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(texts(result.current.items)).toEqual(second.map(textOf));
+      expect(result.current.snapshot?.sessionCreatedAt).toBe(8);
+    });
+  });
+
   it("shows a line another request kept, once, however often it arrives (BR-1, BR-13)", async () => {
     sessionClientMock.getSessionState.mockResolvedValue(snapshot([message("req_mine", "m0", "hello", 1)]));
     const { result } = await mountLive();
@@ -530,6 +609,113 @@ describe("useSession live", () => {
       expect(result.current.error).not.toBeNull();
       expect(result.current.items).toEqual([]);
       expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(10);
+    });
+
+    it("takes the give-up error away once a later read holds still", async () => {
+      let kept = history(150);
+      let moving = true;
+      serve(
+        () => kept,
+        () => {
+          if (moving) kept = kept.slice(1);
+        }
+      );
+      const { result } = await mount();
+      expect(result.current.error?.message).toMatch(/changed during each of 5 reads/);
+
+      moving = false;
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(result.current.error).toBeNull();
+      expect(texts(result.current.items)).toEqual(kept.map(textOf));
+    });
+  });
+
+  // A snapshot read that fails shows its error until a read requested after it
+  // lands. Nothing else a snapshot read does touches the error.
+  describe("an error a snapshot read left", () => {
+    it("goes once a later read lands", async () => {
+      const { result } = await mountLive();
+      sessionClientMock.getSessionState.mockRejectedValueOnce(new Error("connection reset"));
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(result.current.error?.message).toBe("connection reset");
+
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(result.current.error).toBeNull();
+    });
+
+    it("stays when a read requested before the failed one lands after it", async () => {
+      const { result } = await mountLive();
+      const reads: Array<{ resolve: (value: unknown) => void; reject: (cause: unknown) => void }> = [];
+      sessionClientMock.getSessionState.mockImplementation(
+        () => new Promise((resolve, reject) => reads.push({ resolve, reject }))
+      );
+
+      let older: Promise<void> = Promise.resolve();
+      let newer: Promise<void> = Promise.resolve();
+      act(() => {
+        older = result.current.refresh();
+        newer = result.current.refresh();
+      });
+      await act(async () => {
+        reads[1]!.reject(new Error("connection reset"));
+        await newer;
+      });
+      await act(async () => {
+        reads[0]!.resolve(snapshot([], 10));
+        await older;
+      });
+
+      expect(result.current.error?.message).toBe("connection reset");
+    });
+
+    it("leaves an action's error alone, though a read failed before it", async () => {
+      const { result } = await mountLive();
+      sessionClientMock.getSessionState.mockRejectedValueOnce(new Error("connection reset"));
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(result.current.error?.message).toBe("connection reset");
+
+      clientMock.sendActionStream.mockRejectedValue(new Error("rate limited"));
+      await act(async () => {
+        await result.current.sendAction("say", { text: "hi" }).catch(() => {});
+      });
+      expect(result.current.error?.message).toBe("rate limited");
+
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(result.current.error?.message).toBe("rate limited");
+    });
+
+    it("leaves the error the mount's lookup of running requests left", async () => {
+      sessionClientMock.getSession.mockResolvedValue({
+        id: "sess1",
+        flowKind: "demo",
+        userId: "devuser",
+        createdAt: 0,
+        updatedAt: 0,
+        latestRequestId: "req_mine"
+      });
+      sessionClientMock.listSessionRequests.mockImplementation(
+        async (_id: string, options: { status?: string } = {}) => {
+          if (options.status === "in_progress") throw new Error("lookup failed");
+          return [];
+        }
+      );
+      const { result } = renderHook(() => useSession("sess1", { flowKind: "demo", autoResume: true }));
+      await waitFor(() => expect(result.current.error?.message).toBe("lookup failed"));
+
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(result.current.error?.message).toBe("lookup failed");
     });
   });
 

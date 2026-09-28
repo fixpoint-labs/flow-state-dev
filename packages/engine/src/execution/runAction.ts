@@ -21,7 +21,7 @@ import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResume
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import { isSameSession, resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -1131,9 +1131,17 @@ export async function runActionInternal<
       // the recipient's own conversation should not have its auto-resume target
       // replaced by an inbound dispatch. A derived child is its own session and
       // keeps the write.
+      //
+      // And only to the session admission read and admitted, owned by this
+      // flow instance: one deleted and created again under the id since, by
+      // anyone and under any flow, is another session, and its pointer is not
+      // this request's to move. A session that arrived after admission found
+      // none is judged here as admission would have judged it.
       if (
         stamp?.recipientLineageId === undefined &&
         session !== undefined &&
+        (admittedSession === undefined || isSameSession(admittedSession, session)) &&
+        ownsRecord(options.flow, session) &&
         tenantMatches(session.tenantId, options.tenantId) &&
         session.userId === options.userId &&
         isValidOrgId(session.orgId) &&

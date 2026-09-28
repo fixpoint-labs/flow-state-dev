@@ -541,6 +541,10 @@ export function useSession(
   // that item again.
   const snapshotSequenceRef = useRef(0);
   const snapshotAppliedSequenceRef = useRef(0);
+  // The error a snapshot read that failed left, with that read's place in
+  // order. A read requested after it that lands takes it away; an older one
+  // landing late does not, and no read takes away an error from anywhere else.
+  const snapshotFailureRef = useRef<{ error: Error; sequence: number } | null>(null);
   // Two guards, and they answer different questions. The generation asks
   // "is this response still about the thing we are reading?" and advances
   // whenever the read identity changes (session id, or the client itself,
@@ -832,6 +836,13 @@ export function useSession(
     (nextSnapshot: SessionStateSnapshotResponse, read: SnapshotRead): boolean => {
       if (read.sequence <= snapshotAppliedSequenceRef.current) return false;
       snapshotAppliedSequenceRef.current = read.sequence;
+      // A read requested after the one that failed has landed: the view is
+      // current again, so that failure no longer describes it.
+      const failure = snapshotFailureRef.current;
+      if (failure !== null && read.sequence > failure.sequence) {
+        snapshotFailureRef.current = null;
+        setError((current) => (current === failure.error ? null : current));
+      }
       const { arrivalsBefore } = read;
       snapshotAtRef.current = nextSnapshot.at;
       // Drain any state_changes that arrived while snapshot was null. The
@@ -906,6 +917,17 @@ export function useSession(
     [itemConfig.enabled, itemConfig.includeTransient, itemConfig.itemTypes]
   );
 
+  /**
+   * Show the error a snapshot read met, unless a read requested after it has
+   * already landed: the view is current then, whatever this one met.
+   */
+  const failSnapshotRead = useCallback((read: SnapshotRead, cause: unknown): void => {
+    if (read.sequence <= snapshotAppliedSequenceRef.current) return;
+    const error = cause instanceof Error ? cause : new Error(String(cause));
+    snapshotFailureRef.current = { error, sequence: read.sequence };
+    setError(error);
+  }, []);
+
   const fetchSessionSnapshot = useCallback(async (): Promise<SessionStateSnapshotResponse | null> => {
     if (sessionId === undefined) {
       return null;
@@ -924,8 +946,9 @@ export function useSession(
     // from the first page's `at`, and never sends an item kept before that.
     // So each later page starts one item early, on the last item the read
     // holds. If that is not the item there, the history moved, and the read
-    // starts over. Each page stays one bounded request, and any server that
-    // pages by offset answers it.
+    // starts over. So does a page read from another session that took the id
+    // since the first page. Each page stays one bounded request, and any
+    // server that pages by offset answers it.
     const readPages = async (): Promise<SessionStateSnapshotResponse | null> => {
       let offset = 0;
       let first: SessionStateSnapshotResponse | null = null;
@@ -943,6 +966,7 @@ export function useSession(
         if (first === null) {
           first = page;
         } else {
+          if (page.sessionCreatedAt !== first.sessionCreatedAt) return null;
           const last = mergedItems[mergedItems.length - 1];
           const overlap = pageItems[0];
           if (last === undefined || overlap === undefined || compareItemOrder(overlap, last) !== 0) {
@@ -995,11 +1019,9 @@ export function useSession(
         setDetail(nextDetail);
       }
     } catch (cause) {
-      // A newer read already landed: the view is current, whatever this one met.
-      if (read.sequence <= snapshotAppliedSequenceRef.current) return;
-      setError(cause instanceof Error ? cause : new Error(String(cause)));
+      failSnapshotRead(read, cause);
     }
-  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead]);
+  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead]);
 
   /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
@@ -1327,6 +1349,9 @@ export function useSession(
     setSnapshotAppliedFor(undefined);
 
     void (async () => {
+      // The snapshot read in flight, if any: a failure while one is out is
+      // that read's, and a later read that lands takes it away.
+      let reading: SnapshotRead | undefined;
       try {
         // The catch-up below has to know the latest request was still running
         // BEFORE the snapshot was read, and a status read that RACES the
@@ -1345,6 +1370,7 @@ export function useSession(
         }
 
         const read = beginSnapshotRead();
+        reading = read;
         const [nextDetail, nextSnapshot] = await Promise.all([
           sessionClient.getSession(sessionId),
           fetchSessionSnapshot(),
@@ -1352,6 +1378,7 @@ export function useSession(
             ? Promise.resolve(latestBeforeSnapshot)
             : refreshLatestRequest()
         ]);
+        reading = undefined;
 
         if (cancelled) {
           return;
@@ -1413,7 +1440,9 @@ export function useSession(
             // snapshot over the item store, so running it after a stream had
             // opened would drop whatever that stream had already delivered.
             const catchUpRead = beginSnapshotRead();
+            reading = catchUpRead;
             const catchUpSnapshot = await fetchSessionSnapshot();
+            reading = undefined;
 
             if (cancelled) return;
 
@@ -1439,7 +1468,8 @@ export function useSession(
         }
       } catch (cause) {
         if (!cancelled) {
-          setError(cause instanceof Error ? cause : new Error(String(cause)));
+          if (reading !== undefined) failSnapshotRead(reading, cause);
+          else setError(cause instanceof Error ? cause : new Error(String(cause)));
         }
       } finally {
         if (!cancelled) {
@@ -1451,7 +1481,7 @@ export function useSession(
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
+  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
 
   // Clean up when sessionId changes — close old stream and reset request state
   // so the new session isn't blocked by the previous session's in-flight request.
@@ -1479,6 +1509,10 @@ export function useSession(
   // through a ref so a new identity doesn't reopen the connection.
   const refreshChildSessionsRef = useRef(refreshChildSessions);
   refreshChildSessionsRef.current = refreshChildSessions;
+  // The session the applied snapshot read, as the stream is told to follow
+  // it. A snapshot that lands from another session under the id (deleted and
+  // created again) opens the stream again, on that one.
+  const followedSessionCreatedAt = snapshot?.sessionCreatedAt;
 
   useEffect(() => {
     if (!live || sessionId === undefined || snapshotAppliedFor !== sessionId) return;
@@ -1507,6 +1541,7 @@ export function useSession(
       sessionId,
       baseUrl,
       since: snapshotAtRef.current,
+      sessionCreatedAt: followedSessionCreatedAt,
       itemTypes: itemConfig.itemTypes,
       onItem: acceptItem,
       onRuns: (event) => {
@@ -1536,6 +1571,7 @@ export function useSession(
     live,
     sessionId,
     snapshotAppliedFor,
+    followedSessionCreatedAt,
     baseUrl,
     takeLiveItem,
     itemConfig.enabled,

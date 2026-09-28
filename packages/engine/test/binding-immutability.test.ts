@@ -17,7 +17,7 @@
  * createExecutionContext. These tests cover both gaps plus the late-bind case
  * (per spec §10.2 we throw rather than silently ignore).
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -278,6 +278,10 @@ describe("createExecutionContext binding immutability", () => {
 });
 
 describe("a refused request and the session's latest request", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   // `runAction` records the newest request on the session (the pointer a
   // client uses to resume a stream) before `createExecutionContext` checks the
   // caller. A request the check then refuses must not have moved that pointer,
@@ -316,5 +320,71 @@ describe("a refused request and the session's latest request", () => {
     const after = await stores.session.get("sess_latest");
     expect(after?.latestRequestId).toBe("req_owner");
     expect(after?.updatedAt).toBe(before?.updatedAt);
+  });
+
+  // The session is read when the request is admitted and again when the
+  // pointer is written. A session that takes the id in between is another
+  // one, which the request was never admitted to, whoever it belongs to.
+  it.each([
+    ["created again under another flow instance", { flowKind: "notes-flow", flowId: "notes-flow" }],
+    ["deleted and created again by its owner", { lineageId: "lin_again", createdAt: 1 }]
+  ] as const)("keeps it when the session is %s between the request's admission and the write", async (_what, again) => {
+    const stores = createInMemoryStores();
+    await send(stores, "req_first", { userId: "alice", orgId: "org_a" });
+    await send(stores, "req_owner", { userId: "alice", orgId: "org_a" });
+    const before = (await stores.session.get("sess_latest"))!;
+
+    const get = stores.session.get.bind(stores.session);
+    let replaced = false;
+    vi.spyOn(stores.session, "get").mockImplementation(async (id) => {
+      const found = await get(id);
+      if (!replaced && id === "sess_latest") {
+        // Admission has its copy; the id now holds another session.
+        replaced = true;
+        await stores.session.delete(id);
+        await stores.session.set(id, { ...before, ...again }, "any");
+      }
+      return found;
+    });
+
+    await send(stores, "req_next", { userId: "alice", orgId: "org_a" }).catch(() => {});
+    expect(replaced).toBe(true);
+    expect((await get("sess_latest"))?.latestRequestId).toBe("req_owner");
+  });
+
+  // Admission found no session, so it checked none. One that arrives before
+  // the write is judged there as admission would have judged it.
+  it("keeps it on a session of another flow instance that arrived after admission found none", async () => {
+    const stores = createInMemoryStores();
+    const get = stores.session.get.bind(stores.session);
+    let arrived = false;
+    vi.spyOn(stores.session, "get").mockImplementation(async (id) => {
+      const found = await get(id);
+      if (!arrived && id === "sess_latest") {
+        arrived = true;
+        await stores.session.set(
+          id,
+          {
+            id,
+            flowKind: "notes-flow",
+            flowId: "notes-flow",
+            userId: "alice",
+            orgId: "org_a",
+            state: {},
+            version: 0,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            latestRequestId: "req_theirs",
+            journal: []
+          },
+          "any"
+        );
+      }
+      return found;
+    });
+
+    await send(stores, "req_next", { userId: "alice", orgId: "org_a" }).catch(() => {});
+    expect(arrived).toBe(true);
+    expect((await get("sess_latest"))?.latestRequestId).toBe("req_theirs");
   });
 });

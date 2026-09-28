@@ -815,6 +815,55 @@ export function createSessionStreamConformanceTests(
       expect(items.map(textOf)).toEqual(["mine"]);
     });
 
+    // An adapter that keeps items apart from the record lists requests
+    // without them, and the stream reads each one it found again by its id. A
+    // request id is the caller's to choose: retention can delete the request
+    // between the two reads, and another user's request, in another session,
+    // can take its id. Nothing that one holds is sent.
+    it("sends nothing from a request that took the id of one it found, between the two reads", async () => {
+      const stores = await createStores();
+      await seedSession(stores, "s1", { createdAt: Date.now() - 60_000 });
+      await seedSession(stores, "s2", { userId: "mallory", createdAt: Date.now() - 60_000 });
+      await seedRequest(stores, {
+        id: "req_reused",
+        sessionId: "s1",
+        status: "completed",
+        items: [message("m_mine", "mine")]
+      });
+
+      let replaced = false;
+      const request = new Proxy(stores.request, {
+        get(target, key) {
+          const value = Reflect.get(target, key, target) as unknown;
+          if (key !== "get") return typeof value === "function" ? value.bind(target) : value;
+          return async (id: string) => {
+            if (id === "req_reused" && !replaced) {
+              replaced = true;
+              await target.delete(id);
+              await seedRequest(stores, {
+                id,
+                sessionId: "s2",
+                userId: "mallory",
+                status: "completed",
+                items: [message("m_theirs", "someone else's")]
+              });
+            }
+            return target.get(id);
+          };
+        }
+      });
+      const r = router({ ...stores, request });
+
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await delay(FAST_TIMINGS.intervalMs * 6);
+      const streamed = live.events.flatMap((event) =>
+        event.type === "session.item" ? [textOf(event.item)] : []
+      );
+      // An adapter whose list read carries the items reads nothing by id.
+      expect(streamed).toEqual(replaced ? [] : ["mine"]);
+    });
+
     it("writes nothing: the session and its latest request stay as they were (BR-19)", async () => {
       const stores = await createStores();
       const r = router(stores);

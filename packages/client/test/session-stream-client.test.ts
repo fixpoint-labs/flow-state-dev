@@ -140,6 +140,40 @@ describe("createSessionSSEClient", () => {
     ]);
   });
 
+  // A session id can be deleted and used again. A stream that follows a
+  // snapshot names the session that snapshot read on every connection, so a
+  // reconnect after the id changed hands is refused rather than carrying on
+  // with another session's items.
+  it("names the session a snapshot read on every connection, reconnects included", async () => {
+    const urls: string[] = [];
+    let call = 0;
+    const fetcher: ClientFetch = (async (url: string, init?: RequestInit) => {
+      urls.push(url);
+      call += 1;
+      if (call === 1) return ended(frame(itemEvent(1_000, "req_1", "m1")));
+      if (call === 2) return new Response(null, { status: 404 });
+      return held("", init?.signal ?? undefined);
+    }) as ClientFetch;
+    const onStop = vi.fn();
+    const handle = createSessionSSEClient({
+      sessionId: "s1",
+      fetcher,
+      since: 500,
+      sessionCreatedAt: 42,
+      retry: { initialDelayMs: 10 },
+      onStop
+    });
+    handles.push(handle);
+
+    await until(() => onStop.mock.calls.length === 1);
+    expect(urls).toEqual([
+      "/api/flows/sessions/s1/stream?since=500&session_created_at=42",
+      "/api/flows/sessions/s1/stream?since=1000&session_created_at=42"
+    ]);
+    expect(onStop).toHaveBeenCalledWith({ status: 404 });
+    expect(handle.stopped).toBe(true);
+  });
+
   it("backs off between failed attempts, doubling up to the cap", async () => {
     const at: number[] = [];
     const fetcher: ClientFetch = (async () => {

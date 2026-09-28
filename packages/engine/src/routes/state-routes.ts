@@ -240,6 +240,10 @@ export async function handleGetSessionState(
     sessionId: route.sessionId,
     flowKind: session.flowKind,
     at,
+    // Which session under the id this read: one deleted and created again
+    // later is another. A client following the session hands it to the
+    // session stream, which then follows this one only.
+    sessionCreatedAt: session.createdAt,
     clientData: {
       session:
         Object.keys(sessionClientData).length > 0

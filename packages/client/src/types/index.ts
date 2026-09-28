@@ -418,6 +418,13 @@ export type SessionStateSnapshotResponse = {
    * session stream as `since`. An older server omits it.
    */
   at?: number;
+  /**
+   * When the session this snapshot read was created. A session id can be
+   * deleted and used again, so a client that then follows the session passes
+   * this to the session stream as `sessionCreatedAt`, and the stream follows
+   * this session and none that takes its id later. An older server omits it.
+   */
+  sessionCreatedAt?: number;
   clientData: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;

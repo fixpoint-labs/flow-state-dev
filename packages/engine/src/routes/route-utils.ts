@@ -28,7 +28,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
-import { resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -105,25 +105,6 @@ export async function loadTenantSession(
   if (record === undefined) return undefined;
   if (!tenantMatches(record.tenantId, tenantId)) return undefined;
   return record;
-}
-
-/**
- * Whether `current`, read by the same id and tenant, is still the session
- * `authorized` was: the same owner and organization, born at the same moment.
- *
- * A session id can be deleted and used again, by anyone. The record created
- * in its place is another session, though its version starts over: it has its
- * own `createdAt` and lineage, and both are written once, when a record is
- * born. A route that read a session, and reads it again to go on, uses this so
- * the second read never stands in for the first.
- */
-export function isSameSession(authorized: SessionRecord, current: SessionRecord): boolean {
-  return (
-    current.userId === authorized.userId &&
-    (current.orgId ?? undefined) === (authorized.orgId ?? undefined) &&
-    current.createdAt === authorized.createdAt &&
-    resolveLineageId(current) === resolveLineageId(authorized)
-  );
 }
 
 /**

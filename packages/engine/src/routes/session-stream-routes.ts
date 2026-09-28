@@ -19,11 +19,14 @@
  *   finishing write follows its items and moves its update time, so the two
  *   reads miss nothing. The floor trails each read's start by a few seconds,
  *   which covers other servers' clocks and write latency; a repeat costs one
- *   set lookup.
+ *   set lookup. A request whose items are read by its id after the list found
+ *   it counts only while the id still holds that request (`isSameRequest`).
  * - **Runs.** When the stream opens, one read takes every run under the session.
  *   After that, only runs whose update time moved since the floor (a run moves
  *   when a request for it is accepted, before it waits for anything) and runs
- *   already known to be unfinished are checked.
+ *   already known to be unfinished are checked. A known run no read found
+ *   again is read by its key, and dropped once its child is gone or another
+ *   session holds the id (`isSameSession`).
  *
  * Each read costs what is running now, never the session's whole history.
  * Items go through the session snapshot's own filter (`snapshotItemsOf`), and
@@ -39,7 +42,10 @@
  * snapshot reads them), and runs under its tenant, owner and organization too.
  * After each read, before anything it found is sent, the session is read again:
  * if it is gone, or its id now holds another session (`isSameSession`), the
- * connection ends and nothing from that read is sent.
+ * connection ends and nothing from that read is sent. A client that follows a
+ * snapshot names the session that snapshot read (`session_created_at`), and
+ * every connection it opens, reconnects included, is refused with a 404 once
+ * the id holds any other.
  *
  * ## How it ends
  *
@@ -59,15 +65,21 @@ import type {
   SessionRun,
   SessionStreamEvent
 } from "@flow-state-dev/core/items";
-import type { RequestRecord, RequestStatus, SessionRecord, StoreRegistry } from "../stores/types";
+import type {
+  RequestListOptions,
+  RequestRecord,
+  RequestStatus,
+  SessionListOptions,
+  SessionRecord,
+  StoreRegistry
+} from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
-import { toBareSessionId } from "../stores/scope-keys";
+import { isSameRequest, isSameSession, toBareSessionId } from "../stores/scope-keys";
 import { abortableSleep } from "../stores/subscribe-helpers";
 import { serializeSSEFrame } from "../streaming/sse";
 import { createSSEStream, type SSEStreamHandle } from "../streaming/sse-stream";
 import {
   isCheckedSession,
-  isSameSession,
   jsonResponse,
   loadTenantSession,
   refuseUnattributedRecord,
@@ -103,6 +115,41 @@ export const SESSION_STREAM_TIMINGS = {
 /** Requests whose items may change without their update time moving. */
 const UNFINISHED_REQUEST_STATUSES: readonly RequestStatus[] = ["in_progress", "suspended"];
 
+/**
+ * The two ordered reads every connection repeats about once a second, as the
+ * list options it sends: one session's requests and one parent's runs, newest
+ * updated first. Each adapter's index tests measure these, so they measure
+ * exactly what the stream asks of the database.
+ *
+ * @param sessionId The bare session id the stream follows.
+ * @param session That session's record, as the stream opened on it.
+ * @param tenantId The caller's tenant.
+ * @param limit Rows to read, newest first.
+ */
+export const sessionStreamReads = {
+  recentRequests: (
+    sessionId: string,
+    session: SessionRecord,
+    tenantId: string | undefined,
+    limit: number
+  ): RequestListOptions => ({
+    ...sessionRequestScope(sessionId, session, tenantId),
+    orderBy: "updatedAt",
+    limit
+  }),
+  recentRuns: (
+    sessionId: string,
+    session: SessionRecord,
+    tenantId: string | undefined,
+    limit: number
+  ): SessionListOptions => ({
+    parentage: { parentOf: sessionId },
+    orderBy: "updatedAt",
+    limit,
+    ...parentIdentity(session, tenantId)
+  })
+};
+
 /** Rows the first read of requests or runs updated since the floor asks for. */
 const RECENT_READ_LIMIT = 20;
 
@@ -126,7 +173,9 @@ type SessionStreamRouteContext = {
  *
  * Query: `since`, a server time the stream sent earlier or the session
  * snapshot's `at` (the first read reaches a few seconds before it; without it,
- * the last minute), and `item_types`, the snapshot's own type filter.
+ * the last minute); `session_created_at`, the snapshot's `sessionCreatedAt`
+ * (a 404 once the id holds a session created at any other time); and
+ * `item_types`, the snapshot's own type filter.
  */
 export async function handleSessionStream(
   request: Request,
@@ -138,13 +187,21 @@ export async function handleSessionStream(
   // long as it lasts is scoped by this copy, so this copy must be the session
   // that check admitted the caller to, not one that took its id since (or
   // arrived after the check found none).
-  if (session === undefined || !isCheckedSession(ctx.checkedSession, session)) {
+  // And the client may name the session it read before (the snapshot's
+  // `sessionCreatedAt`): the stream carries on from that read, so it follows
+  // that session, not one that took the id since.
+  const url = new URL(request.url);
+  const named = url.searchParams.get("session_created_at");
+  if (
+    session === undefined ||
+    !isCheckedSession(ctx.checkedSession, session) ||
+    (named !== null && named !== "" && Number(named) !== session.createdAt)
+  ) {
     return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
   }
   const unattributed = refuseUnattributedRecord(ctx.registry, session);
   if (unattributed !== undefined) return unattributed;
 
-  const url = new URL(request.url);
   const since = parseSince(url.searchParams.get("since"));
   const itemTypesParam = url.searchParams.get("item_types");
   const itemTypes = itemTypesParam
@@ -350,13 +407,17 @@ async function readFinishedItems(
 
   await forEachUpdatedSince(
     floor,
-    (limit) => stores.request.list({ ...scope, orderBy: "updatedAt", limit }),
+    (limit) => stores.request.list(sessionStreamReads.recentRequests(sessionId, options.session, tenantId, limit)),
     async (record) => {
       if (records.has(record.id)) return;
       // Adapters that keep items apart from the record leave them off a list
       // read without `withItems`; read the few updated since the floor whole.
+      // By id alone, so only while the id still holds the request the list
+      // found under this session's scope. One that took the id since was
+      // written after this read began, and a later read finds it if it is
+      // this session's.
       const whole = record.items !== undefined ? record : await stores.request.get(record.id);
-      if (whole !== undefined) records.set(whole.id, whole);
+      if (whole !== undefined && isSameRequest(record, whole)) records.set(whole.id, whole);
     }
   );
 
@@ -376,13 +437,14 @@ async function readFinishedItems(
  * known to be unfinished.
  */
 class RunTracker {
-  private readonly open = new Map<string, SessionRun>();
+  /** Each unfinished run by bare id, with the child record the read that named it found. */
+  private readonly open = new Map<string, { run: SessionRun; child: SessionRecord }>();
 
   constructor(private readonly options: FollowOptions) {}
 
   /** The unfinished runs, newest first. */
   list(): SessionRun[] {
-    return [...this.open.values()].sort((a, b) => b.createdAt - a.createdAt);
+    return [...this.open.values()].map(({ run }) => run).sort((a, b) => b.createdAt - a.createdAt);
   }
 
   /**
@@ -408,28 +470,30 @@ class RunTracker {
    * unfinished. Returns whether the unfinished set changed.
    */
   async refresh(floor: number): Promise<boolean> {
-    const { stores, sessionId, identity } = this.options;
+    const { stores, sessionId, session, tenantId, identity } = this.options;
     const before = new Set(this.open.keys());
     const checked = new Set<string>();
 
     await forEachUpdatedSince(
       floor,
-      (limit) =>
-        stores.session.list({
-          parentage: { parentOf: sessionId },
-          orderBy: "updatedAt",
-          limit,
-          ...identity
-        }),
+      (limit) => stores.session.list(sessionStreamReads.recentRuns(sessionId, session, tenantId, limit)),
       async (child) => {
         checked.add(await this.check(child));
       }
     );
 
-    for (const run of [...this.open.values()]) {
-      if (checked.has(run.id)) continue;
-      const status = await resolveDispatchRunStatus(stores.request, run.id, identity);
-      if (status !== "active") this.open.delete(run.id);
+    for (const [id, { child }] of [...this.open]) {
+      if (checked.has(id)) continue;
+      // No read found it this time, so its record is as old as the read that
+      // did. Read by its key, the child must still be that one: gone, or
+      // deleted and created again (by anyone), it is no longer this run.
+      const current = await stores.session.get(child.id);
+      if (current === undefined || !isSameSession(child, current)) {
+        this.open.delete(id);
+        continue;
+      }
+      const status = await resolveDispatchRunStatus(stores.request, id, identity);
+      if (status !== "active") this.open.delete(id);
     }
 
     if (before.size !== this.open.size) return true;
@@ -442,7 +506,7 @@ class RunTracker {
     const { stores, tenantId, identity } = this.options;
     const id = toBareSessionId(child.id, tenantId);
     const status = await resolveDispatchRunStatus(stores.request, id, identity);
-    if (status === "active") this.open.set(id, toSessionRun(child, id, this.options.sessionId));
+    if (status === "active") this.open.set(id, { run: toSessionRun(child, id, this.options.sessionId), child });
     else this.open.delete(id);
     return id;
   }

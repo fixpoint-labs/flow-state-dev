@@ -64,10 +64,13 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent_scope_created
 -- The session stream re-reads one parent's runs newest-updated first, about
 -- once a second per open view, and stops at the first run older than its
 -- floor. Without an index in that order the page limit applies after sorting
--- the parent's whole child set. SQLite takes \`IS ?\` as an equality, so this
--- one index serves the bound and unbound caller alike.
-CREATE INDEX IF NOT EXISTS idx_sessions_parent_scope_updated
-  ON sessions(parent_session_id, tenant_id, org_id, updated_at);
+-- the parent's whole child set. The read names the parent's tenant, owner and
+-- org, and so does the index, ahead of the order: runs under the same parent
+-- id that another owner or org keeps are then never walked. SQLite takes
+-- \`IS ?\` as an equality, so this one index serves the bound and unbound
+-- caller alike.
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_tenant_owner_updated
+  ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at);
 `;
 
 const REQUESTS_TABLE = `
@@ -106,9 +109,11 @@ CREATE INDEX IF NOT EXISTS idx_requests_session_created
   ON requests(session_id, created_at, id);
 -- The session stream's recent read: one session's requests newest-updated
 -- first, paged until one is older than the floor, about once a second per
--- open view. Ordered here so it walks what changed, not the session's history.
-CREATE INDEX IF NOT EXISTS idx_requests_session_tenant_updated
-  ON requests(session_id, tenant_id, updated_at);
+-- open view. Ordered here so it walks what changed, not the session's history,
+-- and keyed on the session's tenant, owner and org as the read is, so it
+-- never walks requests under the id that another owner or org keeps.
+CREATE INDEX IF NOT EXISTS idx_requests_session_tenant_owner_updated
+  ON requests(session_id, tenant_id, user_id, org_id, updated_at);
 `;
 
 const USERS_TABLE = `
