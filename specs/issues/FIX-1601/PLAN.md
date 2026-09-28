@@ -57,16 +57,16 @@ reddens another leg, or is missing from the commit is a finding.
 | Control | Removes | Must fail | Stays green | Named by |
 |---|---|---|---|---|
 | Today's `main` | The live view and the route (QR-5b) | a · b | c1 | Epic ER-17 |
-| `GOAL_CONTROL=no-live` | The panel's live view | a · b | c | FIX-1609 |
-| `no-landing` | Landing without a tool call | a | b · c | FIX-1610 |
-| `no-route` | `support`'s routing line | a · b | c | FIX-1610 |
-| `drop-user-message` | Leg c's person turns | c | a · b | FIX-1585 |
-| The no-history control | The seat sending its earlier turns | c2 | a · b · c1 | FIX-1612; its kitchen-sink switch ships with FIX-1611 |
-| The filing control | Filing onto `escalations` | Part 2 | a to c | FIX-1611 |
+| `GOAL_CONTROL=no-live` | The panel's live view and the escalations list's | a · b · Part 2 | c · seg | FIX-1609, FIX-1622 |
+| `no-landing` | Landing without a tool call | a · Part 2 | b · c · seg | FIX-1610 |
+| `no-route` | `support`'s routing line | a · b · Part 2 | c · seg | FIX-1610 |
+| `drop-user-message` | Leg c's person turns | c | a · b · seg · Part 2 | FIX-1585 |
+| The no-history control | The seat sending its earlier turns | c2 | a · b · c1 · seg · Part 2 | FIX-1612; its kitchen-sink switch ships with FIX-1611 |
+| The filing control | Filing onto `escalations` | Part 2 | a to c · seg | FIX-1611 |
 
 `no-live` and `no-route` each break a and b on their own: without the live view, a's answer never
 shows unreloaded and b waits on each answer; without the route, every member wakes (ER-2),
-failing a's "nobody else works" and b's one per post.
+failing a's "nobody else works" and b's one per post. Three also break part 2: without the live view the list shows the filed row only after a reload; without landing, the filed-case answer, which calls no post tool, never lands; without the route, every member answers it.
 
 `no-landing` and `no-route` act in FIX-1610's fixture host. FIX-1611 brings them, the no-history and
 filing controls, and the recall and needs-a-person scenarios to kitchen-sink (ER-7).

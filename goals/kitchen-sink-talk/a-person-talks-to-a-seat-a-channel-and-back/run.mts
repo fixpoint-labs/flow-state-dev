@@ -124,12 +124,12 @@ const route = (role: Role) => M.route.replace("{seat}", SEATS[role].id);
  */
 const CONTROLS: Record<string, { how: "server" | "page" | "network" | "checkout"; fail: string[]; green: string[] }> = {
   main: { how: "checkout", fail: ["a", "b"], green: ["c1"] },
-  "no-live": { how: "page", fail: ["a", "b"], green: ["c1", "c2"] },
-  "no-landing": { how: "server", fail: ["a"], green: ["b", "c1", "c2"] },
-  "no-route": { how: "server", fail: ["a", "b"], green: ["c1", "c2"] },
-  "drop-user-message": { how: "network", fail: ["c1", "c2"], green: ["a", "b"] },
-  "no-history": { how: "server", fail: ["c2"], green: ["a", "b", "c1"] },
-  "no-filing": { how: "server", fail: ["e"], green: ["a", "b", "c1", "c2"] },
+  "no-live": { how: "page", fail: ["a", "b", "e"], green: ["c1", "c2", "seg"] },
+  "no-landing": { how: "server", fail: ["a", "e"], green: ["b", "c1", "c2", "seg"] },
+  "no-route": { how: "server", fail: ["a", "b", "e"], green: ["c1", "c2", "seg"] },
+  "drop-user-message": { how: "network", fail: ["c1", "c2"], green: ["a", "b", "seg", "e"] },
+  "no-history": { how: "server", fail: ["c2"], green: ["a", "b", "c1", "seg", "e"] },
+  "no-filing": { how: "server", fail: ["e"], green: ["a", "b", "c1", "c2", "seg"] },
 };
 if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(CONTROLS).join(", ")}`);
@@ -443,7 +443,7 @@ async function legA(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
   }
   if (others.length > 0) fail("a:alone", `the panel showed ${others.join(", ")} working on a post routed to ${seat}`);
   if (f.lineAt !== undefined && answers.length === 1) {
-    evidence.push(`a: line ${secs(sentAt, f.lineAt)} by ${answers[0]!.label} ${JSON.stringify(answers[0]!.body)}; working ${secs(sentAt, workingAt)}; ${others.length === 0 ? "nobody else seen working" : `also working: ${others.join(", ")}`}`);
+    evidence.push(`a: line ${secs(sentAt, f.lineAt)} by ${answers[0]!.label} ${JSON.stringify(answers[0]!.body)}; working ${secs(sentAt, workingAt)}; cleared ${secs(sentAt, f.clearedAt)}; ${others.length === 0 ? "nobody else seen working" : `also working: ${others.join(", ")}`}`);
   }
 
   await reload(page);

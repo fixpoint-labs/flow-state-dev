@@ -27,12 +27,12 @@
 
 | Control | Where it acts | Must FAIL | Stays green |
 |---|---|---|---|
-| `GOAL_CONTROL=no-live` (FIX-1609) | the page, opened with `?goalControl=no-live` | a, b | c1, c2 |
-| `GOAL_CONTROL=no-landing` (FIX-1610, kitchen-sink's from FIX-1611) | the server | a | b, c1, c2 |
-| `GOAL_CONTROL=no-route` (FIX-1610, kitchen-sink's from FIX-1611) | the server | a, b | c1, c2 |
-| `GOAL_CONTROL=drop-user-message` (FIX-1585) | this run, at the page's `fetch`: leg c's snapshot, its action streams and its live session stream lose their `user` items | c1, c2 | a, b |
-| `GOAL_CONTROL=no-history` (FIX-1612, switch from FIX-1611) | the server | c2 | a, b, c1 |
-| `GOAL_CONTROL=no-filing` (FIX-1611) | the server | e | a, b, c1, c2 |
+| `GOAL_CONTROL=no-live` (FIX-1609) | the page, opened with `?goalControl=no-live`: the channel's live view and the escalations list's | a, b, e (the list shows the row only after the reload) | c1, c2, seg |
+| `GOAL_CONTROL=no-landing` (FIX-1610, kitchen-sink's from FIX-1611) | the server | a, e (the filed-case answer lands without a tool call) | b, c1, c2, seg |
+| `GOAL_CONTROL=no-route` (FIX-1610, kitchen-sink's from FIX-1611) | the server | a, b, e (every member wakes) | c1, c2, seg |
+| `GOAL_CONTROL=drop-user-message` (FIX-1585) | this run, at the page's `fetch`: leg c's snapshot, its action streams and its live session stream lose their `user` items | c1, c2 | a, b, seg, e |
+| `GOAL_CONTROL=no-history` (FIX-1612, switch from FIX-1611) | the server | c2 | a, b, c1, seg, e |
+| `GOAL_CONTROL=no-filing` (FIX-1611) | the server | e | a, b, c1, c2, seg |
 | `GOAL_CONTROL=main` | today's `main`, its own build: a checkout of the last commit before FIX-1609 and FIX-1610, with this directory copied in; it reads `fixtures/today-main.json` | a, b | c1 |
 
 `drop-user-message` filters at the page's `fetch` rather than with Playwright's routing because the live session stream never ends, and a routed response is read whole before the page gets any of it.
