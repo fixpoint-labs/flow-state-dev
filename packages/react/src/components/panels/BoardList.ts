@@ -18,8 +18,8 @@
 import { createElement, useMemo, type ReactNode } from "react";
 import { createResourceClient, type ClientFetch } from "@flow-state-dev/client";
 import { useFlowContext } from "../../context/FlowContext";
-import { isCard, migrateCardStatus, type BoardCardRow } from "./BoardColumns";
-import { usePanelRows, type PanelRow, type PanelRowSource } from "./reads";
+import { cardRows, type BoardCard, type BoardCardRow } from "./cards";
+import { usePanelRows, type PanelRowSource } from "./reads";
 import { bareList, labelStyle, note, panelStyle, retryLine, rowStyle } from "./chrome";
 
 /** The parts of a board list that belong to the host rather than to the component. */
@@ -56,28 +56,37 @@ type BoardListCommonProps = {
  * - `fetcher`: the `fetch` the live stream is sent with, and the read too when
  *   no `resourceClient` is passed. Pass the one the `resourceClient` was built
  *   with, so the stream carries the same credential as the read. Stable, too.
+ * - `baseUrl`: the origin the live stream is sent to, and the read too when no
+ *   `resourceClient` is passed. Defaults to the nearest `FlowProvider`'s. A
+ *   host whose `resourceClient` reads another origin passes that origin here,
+ *   so the stream follows the session on the server the board is read from.
  * - `live`: read the board again whenever the session keeps a change to it.
  *
  * A host that passes its own `resourceClient` and asks for `live` has to pass
  * `fetcher` as well: a stream sent without the read's credential is refused,
  * and a refused stream leaves the list reading once, with no error. Passing
- * neither sends both through the nearest `FlowProvider`'s `baseUrl` with the
- * plain `fetch`.
+ * neither sends both with the plain `fetch`, to `baseUrl` when it is given and
+ * the nearest `FlowProvider`'s otherwise. A `resourceClient` without `live`
+ * reads through the client alone, so neither `fetcher` nor `baseUrl` has
+ * anything to do there.
  */
 type BoardListTransportProps =
   | {
       readonly resourceClient?: undefined;
       readonly fetcher?: ClientFetch;
+      readonly baseUrl?: string;
       readonly live?: boolean;
     }
   | {
       readonly resourceClient: PanelRowSource;
       readonly fetcher: ClientFetch;
+      readonly baseUrl?: string;
       readonly live?: boolean;
     }
   | {
       readonly resourceClient: PanelRowSource;
       readonly fetcher?: undefined;
+      readonly baseUrl?: undefined;
       readonly live?: false;
     };
 
@@ -88,6 +97,7 @@ export type BoardListProps = BoardListCommonProps & BoardListTransportProps;
  * type test beside it, so a new prop cannot go unlisted.
  */
 export const boardListPropNames = [
+  "baseUrl",
   "boardRef",
   "fetcher",
   "limit",
@@ -97,23 +107,21 @@ export const boardListPropNames = [
   "slots"
 ] as const;
 
-/** When a row was created, if the board published it. */
-function createdAtOf(clientData: unknown): number | undefined {
-  const createdAt = (clientData as { createdAt?: unknown }).createdAt;
+/** When a card was created, if the board published it. */
+function createdAtOf(card: BoardCard): number | undefined {
+  const createdAt = (card as { createdAt?: unknown }).createdAt;
   return typeof createdAt === "number" && Number.isFinite(createdAt) ? createdAt : undefined;
 }
 
 /**
- * Every card the read returned, newest first by `createdAt`; a row without
- * one follows the dated rows, in the order the read returned it.
+ * The cards newest first by `createdAt`; a row without one follows the dated
+ * rows, in the order the read returned it.
  */
-function newestFirst(rows: readonly PanelRow[]): BoardCardRow[] {
+function newestFirst(rows: readonly BoardCardRow[]): BoardCardRow[] {
   const dated: Array<{ createdAt: number; row: BoardCardRow }> = [];
   const undated: BoardCardRow[] = [];
-  for (const { topic, clientData } of rows) {
-    if (!isCard(clientData)) continue;
-    const row = { topic, card: migrateCardStatus(clientData) };
-    const createdAt = createdAtOf(clientData);
+  for (const row of rows) {
+    const createdAt = createdAtOf(row.card);
     if (createdAt === undefined) undated.push(row);
     else dated.push({ createdAt, row });
   }
@@ -137,7 +145,8 @@ function defaultRowBody({ card }: BoardCardRow): ReactNode {
 export function BoardList(props: BoardListProps): ReactNode {
   const { sessionId, boardRef, resourceClient, fetcher, limit, live = false, slots = {} } = props;
 
-  const baseUrl = useFlowContext().baseUrl;
+  const providerBaseUrl = useFlowContext().baseUrl;
+  const baseUrl = props.baseUrl ?? providerBaseUrl;
   const fallback = useMemo(() => createResourceClient({ baseUrl, fetcher }), [baseUrl, fetcher]);
   const source = resourceClient ?? fallback;
 
@@ -149,7 +158,7 @@ export function BoardList(props: BoardListProps): ReactNode {
     "Failed to load this board",
     live ? { baseUrl, fetcher } : undefined
   );
-  const rows = useMemo(() => newestFirst(state.rows), [state.rows]);
+  const rows = useMemo(() => newestFirst(cardRows(state.rows)), [state.rows]);
 
   if (state.error !== null) {
     return createElement(

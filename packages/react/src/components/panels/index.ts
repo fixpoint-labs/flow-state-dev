@@ -23,13 +23,13 @@ export {
   boardColumnsPropNames,
   groupIntoColumns,
   BOARD_STATUS_COLUMNS,
-  type BoardCard,
-  type BoardCardRow,
   type BoardColumn,
   type BoardColumnsProps,
   type BoardColumnsSlots,
   type BoardStatus
 } from "./BoardColumns";
+
+export type { BoardCard, BoardCardRow } from "./cards";
 
 export {
   BoardList,

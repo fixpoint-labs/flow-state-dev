@@ -21,6 +21,7 @@
 import { createElement, useMemo, type ReactNode } from "react";
 import { createResourceClient } from "@flow-state-dev/client";
 import { useFlowContext } from "../../context/FlowContext";
+import { cardRows, type BoardCardRow } from "./cards";
 import { usePanelRows, type PanelRowSource } from "./reads";
 import {
   bareList,
@@ -55,30 +56,6 @@ export const BOARD_STATUS_COLUMNS = [
 ] as const;
 
 export type BoardStatus = (typeof BOARD_STATUS_COLUMNS)[number];
-
-/**
- * One row as a board publishes it.
- *
- * The stored envelope carries far more — the claim, the lease, the retry
- * ledger, the write log — and the collection's `expose` withholds all of it,
- * so this is the whole of what arrives. Every field but `id` and `status` is
- * optional, because a task that has not been titled, assigned or failed simply
- * has not got one (BP-030): read each through a `== null` guard.
- */
-export type BoardCard = {
-  readonly id: string;
-  readonly status: string;
-  readonly title?: string;
-  readonly goal?: string;
-  readonly assignee?: string;
-  readonly error?: string;
-};
-
-/** A card, plus the topic it was stored under. */
-export type BoardCardRow = {
-  readonly topic: string;
-  readonly card: BoardCard;
-};
 
 /** One column, as a slot is handed it. */
 export type BoardColumn = {
@@ -142,35 +119,6 @@ export const boardColumnsPropNames = [
 ] as const;
 
 const KNOWN = new Set<string>(BOARD_STATUS_COLUMNS);
-
-/**
- * The status `awaiting_review` shipped as `parked` (FIX-1245).
- *
- * The substrate maps it forward at its own read boundary, but a client read
- * does not pass through that boundary: the collection route projects the
- * stored row and the task collection's `withMigratedStatus` never runs. So a
- * row persisted before the rename arrives here still carrying the old word,
- * and without this it would be treated as a status this version does not
- * know — earning its own column beside `parked` rather than landing in it.
- *
- * `packages/ui/registry/components/task-plan-state.ts` carries the same
- * mapping for the other renderer, at the same kind of fold and for the same
- * reason. This matches it rather than inventing a second spelling. A row
- * written after the rename allocates nothing.
- */
-const LEGACY_PARKED_STATUS = "awaiting_review";
-
-/** Whether a row read off a board has the fields every card has. Shared with `BoardList`. */
-export function isCard(value: unknown): value is BoardCard {
-  if (value === null || typeof value !== "object") return false;
-  const row = value as Record<string, unknown>;
-  return typeof row.id === "string" && typeof row.status === "string";
-}
-
-/** Map a stored row's status forward, so grouping only ever sees one vocabulary. Shared with `BoardList`. */
-export function migrateCardStatus(card: BoardCard): BoardCard {
-  return card.status === LEGACY_PARKED_STATUS ? { ...card, status: "parked" } : card;
-}
 
 /**
  * Group rows into columns: every known status in order, then any status the
@@ -238,13 +186,7 @@ export function BoardColumns(props: BoardColumnsProps): ReactNode {
     "Failed to load this board"
   );
 
-  const rows = useMemo(
-    () =>
-      state.rows
-        .filter((row): row is { topic: string; clientData: BoardCard } => isCard(row.clientData))
-        .map((row) => ({ topic: row.topic, card: migrateCardStatus(row.clientData) })),
-    [state.rows]
-  );
+  const rows = useMemo(() => cardRows(state.rows), [state.rows]);
   const columns = useMemo(() => groupIntoColumns(rows), [rows]);
 
   if (state.error !== null) {

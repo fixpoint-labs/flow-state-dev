@@ -6,10 +6,10 @@
  * The stream is faked at the client seam, so each live case hands the list
  * exactly the events it would get and counts the board reads it makes. Reads
  * are counted rather than only the rows asserted, because a list that polls,
- * or re-reads on every copy the stream repeats, draws the same rows. The one
- * transport case runs the real stream client against a host `fetch`, since
- * "the stream carries the read's credential" is the list and the client
- * together.
+ * or re-reads on every copy the stream repeats, draws the same rows. The
+ * transport cases run the real stream client against a host `fetch`, since
+ * "the stream carries the read's credential, to the read's origin" is the
+ * list and the client together.
  *
  * Every read the list makes is held until the case releases it, so "a change
  * that lands mid-read" is a change delivered while a read is still open.
@@ -45,6 +45,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 });
 
 import { BoardList, boardListPropNames } from "../src/components/panels/BoardList";
+import { FlowProvider } from "../src/context/FlowContext";
 
 const BOARD = "eng.feature.triage";
 const SESSION = "s1";
@@ -273,6 +274,7 @@ describe("BoardList · the list (V1)", () => {
 
   it("publishes the props it takes, and no organization filter", () => {
     expect([...boardListPropNames]).toEqual([
+      "baseUrl",
       "boardRef",
       "fetcher",
       "limit",
@@ -289,14 +291,25 @@ describe("BoardList · the list (V1)", () => {
 // ---------------------------------------------------------------------------
 
 describe("BoardList · live (V2)", () => {
-  /** Mount a live list, let its first read land, and hand back the source. */
-  async function mountLive(rows: Row[] = [card("t-1", "pending")]) {
-    const source = heldSource(rows);
-    const view = render(
+  function renderLive(source: ReturnType<typeof heldSource>) {
+    return render(
       createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, resourceClient: source, fetcher: vi.fn(), live: true })
     );
+  }
+
+  /**
+   * Mount a live list, connect its stream, and let both of its first reads
+   * land: the one on mount and the one on connecting. Hands back the source
+   * at two reads.
+   */
+  async function mountLive(rows: Row[] = [card("t-1", "pending")]) {
+    const source = heldSource(rows);
+    const view = renderLive(source);
+    deliver(opening(100));
+    await source.release();
     await source.release();
     await waitFor(() => expect(rowIds()).toHaveLength(rows.length));
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
     return { source, view };
   }
 
@@ -316,22 +329,82 @@ describe("BoardList · live (V2)", () => {
       opened.push(streams.length === 1 ? "read after the stream" : "read before the stream");
       return new Promise(() => {});
     });
-    render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, resourceClient: source, fetcher: vi.fn(), live: true }));
+    renderLive(source);
     expect(opened).toEqual(["read after the stream"]);
     expect(streams[0]!.options).toMatchObject({ sessionId: SESSION, itemTypes: ["component"] });
     // No `since`: the first connection reaches back a minute.
     expect(streams[0]!.options.since).toBeUndefined();
   });
 
+  it("reads on mount and once more when its stream first connects, and not for a later runs notice", async () => {
+    const source = heldSource([card("t-1", "pending")]);
+    renderLive(source);
+    expect(source.pending()).toBe(1);
+    // Connecting while the mount read is open queues the second read behind it.
+    deliver(opening(100));
+    expect(source.pending()).toBe(1);
+    await source.release();
+    expect(source.pending()).toBe(1);
+    await source.release();
+    // A later notice on the same connection says the runs changed, not the board.
+    deliver(opening(1_100));
+    await settle();
+    expect(source.pending()).toBe(0);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a change kept during its mount read with the page's clock 10 s ahead of the server's", async () => {
+    const source = heldSource([]);
+    renderLive(source);
+    // The stream connects while the mount read is still open.
+    deliver(opening(100));
+    // The mount read reached the store just before the change was kept.
+    await source.release();
+    source.setRows([card("t-new", "pending")]);
+    // The stream's first read finds the change, stamped by the server's clock,
+    // 10 s behind this page's.
+    deliver(itemEvent(100, "req_file", taskChange("req_file", BOARD, "t-new", Date.now() - 10_000)));
+    await settle();
+    expect(source.pending()).toBe(1);
+    await source.release();
+    await waitFor(() => expect(rowIds()).toEqual(["t-new"]));
+    await settle();
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads nothing for the history its first connection replays, however recent, nor for its replay after a reconnect (BR-12)", async () => {
+    const { source } = await mountLive([card("t-1", "pending"), card("t-2", "pending")]);
+    // The first connection's first read reaches back a minute, and here lands
+    // after the read on connecting has settled: a change from 30 s ago and one
+    // from just now. That read holds both.
+    const history = [
+      itemEvent(100, "req_a", taskChange("req_a", BOARD, "t-1", Date.now() - 30_000)),
+      itemEvent(100, "req_b", taskChange("req_b", BOARD, "t-2", Date.now()))
+    ];
+    for (const event of history) deliver(event);
+    await settle();
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+
+    // A reconnect delivers the same changes again, as its own first read.
+    act(() => openStream().onReconnecting?.({ attempt: 1 }));
+    deliver(opening(1_100));
+    for (const event of history) deliver({ ...event, at: 1_100 });
+    await settle();
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+
+    // A change heard after the first read did its reaching back still wakes it.
+    deliver(itemEvent(2_100, "req_c", taskChange("req_c", BOARD, "t-3", Date.now())));
+    expect(source.pending()).toBe(1);
+  });
+
   it("reads the board again on a change to it, and draws the read, never the change (BR-8, BR-9)", async () => {
     const { source } = await mountLive([card("t-1", "pending", { title: "Charger fire" })]);
-    deliver(opening(100));
     // The change says `completed` and carries fields the board withholds; the read says `pending`.
     deliver(itemEvent(200, "req_1", taskChange("req_1", BOARD, "t-1", Date.now(), { status: "completed", metadata: { author: "x" } })));
     expect(source.pending()).toBe(1);
     await source.release();
 
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
     expect(document.querySelector('li[data-task-id="t-1"] [data-task-status]')?.textContent).toBe("pending");
     expect(document.body.textContent).not.toContain("completed");
     expect(document.body.textContent).not.toContain("author");
@@ -339,7 +412,6 @@ describe("BoardList · live (V2)", () => {
 
   it("reads nothing for another board's change, another kind of component, or an item that is not a component (BR-10)", async () => {
     const { source } = await mountLive();
-    deliver(opening(100));
     deliver(itemEvent(200, "req_1", taskChange("req_1", "eng.feature.backlog", "t-9", Date.now())));
     deliver(itemEvent(200, "req_1", component("req_1", "cp_1", "note", { body: "hello", collectionId: BOARD }, Date.now())));
     deliver(
@@ -349,12 +421,11 @@ describe("BoardList · live (V2)", () => {
       } as unknown as OutputItem)
     );
     await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
   });
 
   it("reads at most once more for a burst, with one read in flight and one queued (BR-11)", async () => {
     const { source } = await mountLive();
-    deliver(opening(100));
     for (const n of [1, 2, 3, 4, 5]) {
       deliver(itemEvent(200, `req_${n}`, taskChange(`req_${n}`, BOARD, `t-${n}`, Date.now())));
     }
@@ -365,19 +436,19 @@ describe("BoardList · live (V2)", () => {
     await source.release();
     await settle();
     expect(source.pending()).toBe(0);
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(4);
   });
 
-  it("reads once more after the first read when a change lands while that read pages", async () => {
+  it("reads a change that lands while the mount read pages in the one read queued behind it", async () => {
     const source = heldSource([]);
-    render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, resourceClient: source, fetcher: vi.fn(), live: true }));
+    renderLive(source);
     deliver(opening(100));
-    // Filed while the first read is still open: that read may or may not hold it.
+    // Kept while the mount read is still open, and heard after the stream's first read.
     deliver(itemEvent(1_200, "req_file", taskChange("req_file", BOARD, "t-new", Date.now())));
     source.setRows([card("t-new", "pending")]);
     expect(source.pending()).toBe(1);
     await source.release();
-    // Exactly one more, after it.
+    // Exactly one more, after it: the read on connecting, which the change joined.
     expect(source.pending()).toBe(1);
     await source.release();
     await waitFor(() => expect(rowIds()).toEqual(["t-new"]));
@@ -385,58 +456,30 @@ describe("BoardList · live (V2)", () => {
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
   });
 
-  it("reads nothing for the history its first connection replays from before the first read (BR-12)", async () => {
-    const source = heldSource([card("t-1", "pending"), card("t-2", "pending")]);
-    render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, resourceClient: source, fetcher: vi.fn(), live: true }));
-    // The first connection's first read reaches back a minute: two changes from 30 s ago.
-    const longAgo = Date.now() - 30_000;
-    deliver(opening(100));
-    deliver(itemEvent(100, "req_a", taskChange("req_a", BOARD, "t-1", longAgo)));
-    deliver(itemEvent(100, "req_b", taskChange("req_b", BOARD, "t-2", longAgo + 1)));
-    await source.release();
-    await waitFor(() => expect(rowIds()).toHaveLength(2));
-    await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
-
-    // A change heard after that first read did its reaching back still wakes it.
-    deliver(itemEvent(1_100, "req_c", taskChange("req_c", BOARD, "t-3", Date.now())));
-    expect(source.pending()).toBe(1);
-  });
-
-  it("reads again for history from within the clock margin of the first read, since that read may not hold it", async () => {
-    const source = heldSource([]);
-    render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, resourceClient: source, fetcher: vi.fn(), live: true }));
-    deliver(opening(100));
-    deliver(itemEvent(100, "req_a", taskChange("req_a", BOARD, "t-1", Date.now())));
-    await source.release();
-    expect(source.pending()).toBe(1);
-  });
-
   it("reads nothing for a copy the stream repeats across a reconnect, and reads a change kept during the drop (BR-12, BR-14)", async () => {
     const { source } = await mountLive();
-    deliver(opening(100));
     const filed = taskChange("req_1", BOARD, "t-1", Date.now());
     deliver(itemEvent(1_100, "req_1", filed));
     await source.release();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
 
-    // The connection drops; the next one resumes a little before where it left off.
+    // The connection drops; the next one resumes a little before where it
+    // left off, and its notice reads nothing.
     act(() => openStream().onReconnecting?.({ attempt: 1 }));
     deliver(opening(1_100));
     deliver(itemEvent(1_100, "req_1", filed));
     await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
 
     // Kept while the stream was down: new to the list, so it reads.
     deliver(itemEvent(1_100, "req_2", taskChange("req_2", BOARD, "t-2", Date.now() - 20_000)));
     expect(source.pending()).toBe(1);
     await source.release();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(4);
   });
 
   it("reads for a later copy of the same keyed change, stamped after the one it heard", async () => {
     const { source } = await mountLive();
-    deliver(opening(100));
     const ts = Date.now();
     deliver(itemEvent(1_100, "req_1", taskChange("req_1", BOARD, "t-1", ts)));
     await source.release();
@@ -444,10 +487,13 @@ describe("BoardList · live (V2)", () => {
     expect(source.pending()).toBe(1);
   });
 
-  it("keeps its rows and says nothing when the stream stops, and reads nothing more (BR-15)", async () => {
+  it("keeps its rows and says nothing when the stream is refused, and reads nothing more (BR-15)", async () => {
     for (const status of [401, 404, 501]) {
       streams.length = 0;
-      const { source } = await mountLive([card("t-1", "pending")]);
+      const source = heldSource([card("t-1", "pending")]);
+      renderLive(source);
+      await source.release();
+      await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
       act(() => openStream().onStop?.({ status }));
       await settle();
       expect(rowIds()).toEqual(["t-1"]);
@@ -459,7 +505,6 @@ describe("BoardList · live (V2)", () => {
 
   it("does not show loading over its rows while it reads them again", async () => {
     const { source } = await mountLive([card("t-1", "pending")]);
-    deliver(opening(100));
     deliver(itemEvent(1_100, "req_1", taskChange("req_1", BOARD, "t-2", Date.now())));
     expect(source.pending()).toBe(1);
     expect(document.querySelector('[data-state="loading"]')).toBeNull();
@@ -489,7 +534,7 @@ describe("BoardList · live (V2)", () => {
 // V3 · the stream's credential
 // ---------------------------------------------------------------------------
 
-describe("BoardList · the stream carries the read's credential (V3, BR-16)", () => {
+describe("BoardList · the stream carries the read's credential, to the read's origin (V3, BR-16)", () => {
   it("sends the stream through the host's fetch, header and all", async () => {
     realStream.on = true;
     // The plain `fetch`: anything that reaches it went out without the host's header.
@@ -536,6 +581,68 @@ describe("BoardList · the stream carries the read's credential (V3, BR-16)", ()
     expect(paths).toEqual(
       expect.arrayContaining([`/api/flows/sessions/${SESSION}/stream`, `/api/flows/sessions/${SESSION}/resources/${BOARD}`])
     );
+    expect(plain).not.toHaveBeenCalled();
+  });
+
+  it("sends the stream to the origin the host's client reads, not the provider's", async () => {
+    realStream.on = true;
+    const plain = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", plain);
+    const urls: string[] = [];
+    const hostFetch = vi.fn(async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return new Response(null, { status: 404 });
+    });
+
+    render(
+      createElement(
+        FlowProvider,
+        { baseUrl: "https://provider.example" },
+        createElement(BoardList, {
+          sessionId: SESSION,
+          boardRef: BOARD,
+          resourceClient: fixedSource([card("t-1", "pending")]),
+          fetcher: hostFetch,
+          baseUrl: "https://boards.example",
+          live: true
+        })
+      )
+    );
+    await waitFor(() => expect(urls.some((url) => url.includes("/stream"))).toBe(true));
+    const stream = new URL(urls.find((url) => url.includes("/stream"))!);
+    expect(stream.origin).toBe("https://boards.example");
+    expect(stream.pathname).toBe(`/api/flows/sessions/${SESSION}/stream`);
+    expect(plain).not.toHaveBeenCalled();
+  });
+
+  it("reads from that origin too when the host passes no client of its own", async () => {
+    realStream.on = true;
+    const plain = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", plain);
+    const origins = new Set<string>();
+    const hostFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      origins.add(new URL(url).origin);
+      if (url.includes("/stream")) return new Response(null, { status: 404 });
+      return new Response(JSON.stringify({ items: [card("t-1", "pending")] }), { status: 200 });
+    });
+
+    render(
+      createElement(
+        FlowProvider,
+        { baseUrl: "https://provider.example" },
+        createElement(BoardList, {
+          sessionId: SESSION,
+          boardRef: BOARD,
+          fetcher: hostFetch,
+          baseUrl: "https://boards.example",
+          live: true
+        })
+      )
+    );
+    await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
+    await waitFor(() => expect(hostFetch).toHaveBeenCalledTimes(2));
+    expect([...origins]).toEqual(["https://boards.example"]);
     expect(plain).not.toHaveBeenCalled();
   });
 });

@@ -136,13 +136,6 @@ function useFencedRead<T>(
   };
 }
 
-/**
- * How far an item's server time may run ahead of this page's clock and still
- * be trusted to predate a read the page started. The same allowance the
- * session stream gives its own servers' clocks.
- */
-const CLOCK_MARGIN_MS = 5_000;
-
 /** Where a live read hears about changes, and the transport the stream is sent with. */
 export type PanelLive = {
   readonly baseUrl?: string;
@@ -162,38 +155,46 @@ function namesBoard(item: OutputItem, boardRef: string): boolean {
 /**
  * Read a board, and read it again whenever the session keeps a change to it.
  *
- * The stream opens before the first read, so a change kept while that read
- * pages is heard, and schedules one more read after it. Reads are coalesced:
- * one in flight, and one queued for any number of changes that arrive
- * meanwhile. A copy the stream delivers again (the same request id and item
- * id, stamped no later than one already heard) wakes nothing, and neither does
- * a change the stream's first read found that is older than the first board
- * read by more than the clock margin, since that read already holds it. What
- * the item carries is never drawn: it says when to read, never what. A stream
- * refused, missing or stopped leaves the rows as they are, with no error.
+ * The board is read on mount, and once more when the stream first connects.
+ * The server names the session's runs before its first read of the session's
+ * items, so that second read reaches the store a round trip after the
+ * stream's first read has begun. A change that first read finds (history)
+ * wakes nothing: the second read holds it. Only a change kept after the
+ * second read and still found by the first would wait for the next change,
+ * and that needs the server's first read to outlast the round trip. Nothing
+ * here compares a server's clock with this page's.
+ *
+ * After that, every change kept to this board reads it again, a reconnect
+ * included. Reads are coalesced: one in flight, and one queued for any number
+ * of changes that arrive meanwhile. A copy the stream delivers again (the
+ * same request id and item id, stamped no later than one already heard) wakes
+ * nothing. What the item carries is never drawn: it says when to read, never
+ * what. A stream refused, missing or stopped leaves the rows as they are, with
+ * no error.
  */
 function liveBoardDriver(sessionId: string, boardRef: string, live: PanelLive): ReadDriver {
   return (read) => {
     const heard = new Map<string, OutputItem>();
-    let firstReadAt: number | undefined;
-    const reads = coalescedReads(() => {
-      firstReadAt ??= Date.now();
-      return read();
-    });
+    const reads = coalescedReads(read);
+    let connected = false;
 
     const close = followSession({
       sessionId,
       baseUrl: live.baseUrl,
       fetcher: live.fetcher,
       itemTypes: ["component"],
+      onRuns: () => {
+        if (connected) return;
+        connected = true;
+        reads.request();
+      },
       onItem: ({ requestId, item }, { history }) => {
         if (!namesBoard(item, boardRef)) return;
         const key = `${requestId}\u0000${item.id}`;
         const held = heard.get(key);
         if (held !== undefined && compareItemOrder(item, held) <= 0) return;
         heard.set(key, item);
-        if (history && firstReadAt !== undefined && item.ts < firstReadAt - CLOCK_MARGIN_MS) return;
-        reads.request();
+        if (!history) reads.request();
       }
     });
     reads.request();

@@ -112,7 +112,7 @@ import { BoardList } from "@flow-state-dev/react";
 
 With `live`, the list follows the session you pass and reads the board again whenever that session records a change to it. A task filed through a channel's `fileTask` is recorded in the channel's own session, so pass the channel's id, as above. Each new task then shows up in every tab that has the list open. Reading through the channel needs nothing extra in your shell's flow.
 
-`fetcher` is the `fetch` the live stream is sent with. When you pass your own `resourceClient` and `live`, also pass the `fetcher` that client was built with, so the stream carries the same credential as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`. Pass neither and both go through the nearest `FlowProvider`'s `baseUrl` with the plain `fetch`.
+`fetcher` is the `fetch` the live stream is sent with. When you pass your own `resourceClient` and `live`, also pass the `fetcher` that client was built with, so the stream carries the same credential as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`. Pass neither and both go through the nearest `FlowProvider`'s `baseUrl` with the plain `fetch`. If your `resourceClient` reads a different origin, pass that origin as the `baseUrl` prop on `BoardList` as well, so the stream goes to the same server as the reads.
 
 Rows already on screen stay there while the list reads again.
 

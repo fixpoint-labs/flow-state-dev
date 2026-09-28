@@ -17,10 +17,10 @@ export type FollowSessionOptions = {
   readonly itemTypes?: string[];
   /**
    * A finished item the session kept. `history` is true for an item the
-   * stream's very first read found: one kept before the stream opened, as far
-   * back as that read reaches. An item a reconnect delivers again is not
-   * history; telling a repeat apart is the caller's (`requestId` and `item.id`,
-   * ordered by `compareItemOrder`).
+   * stream's very first read found, as far back as that read reaches: the
+   * server makes that read after it names the runs. An item a reconnect
+   * delivers again is not history; telling a repeat apart is the caller's
+   * (`requestId` and `item.id`, ordered by `compareItemOrder`).
    */
   readonly onItem: (event: SessionItemEvent, meta: { readonly history: boolean }) => void;
   /** The session's unfinished runs: named first on every connection, then on each change. */

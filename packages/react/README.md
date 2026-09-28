@@ -535,7 +535,7 @@ Each panel reads through a resource client. Pass your own through `resourceClien
 
 A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 
-A host that passes its own `resourceClient` and wants `live` also passes `fetcher`, the `fetch` that client was built with. The stream is sent with it, so it carries the same credential as the reads. With `fetcher` alone, `live` works and the reads use it too. With neither, reads and stream go through the `FlowProvider`'s `baseUrl` with the plain `fetch`. TypeScript rejects `resourceClient` with `live` and no `fetcher`.
+A host that passes its own `resourceClient` and wants `live` also passes `fetcher`, the `fetch` that client was built with. The stream is sent with it, so it carries the same credential as the reads. With `fetcher` alone, `live` works and the reads use it too. With neither, reads and stream go through the `FlowProvider`'s `baseUrl` with the plain `fetch`. If your `resourceClient` reads a different origin, pass that origin as the `baseUrl` prop on `BoardList` as well, so the stream goes to the same server as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`.
 
 Style them by setting the `--fsd-panel-*` CSS custom properties on any ancestor. Fill in your own affordances through `slots`: `rowTrailing` and `empty` on `Roster`; `card`, `columnHeader` and `empty` on `BoardColumns`; `row` and `empty` on `BoardList`. `SeatDetail` has no slots.
 

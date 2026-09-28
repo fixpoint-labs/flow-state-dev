@@ -58,6 +58,16 @@ export type LiveWithHostTransport = IsTrue<
 >;
 export type ReadOnceWithHostClient = IsTrue<Assignable<Where & { resourceClient: HostClient }, BoardListProps>>;
 export type LiveOnTheProvider = IsTrue<Assignable<Where & { live: true }, BoardListProps>>;
+/**
+ * A host client that reads another origin names that origin too, so the
+ * stream follows the session on the same server; and a client read without
+ * `live` takes no origin it would never use.
+ */
+export type LiveWithHostTransportElsewhere = IsTrue<
+  Assignable<Where & { resourceClient: HostClient; fetcher: HostFetch; baseUrl: string; live: boolean }, BoardListProps>
+>;
+export type LiveOnAnotherOrigin = IsTrue<Assignable<Where & { baseUrl: string; live: true }, BoardListProps>>;
+export type OriginWithoutLive = IsFalse<Assignable<Where & { resourceClient: HostClient; baseUrl: string }, BoardListProps>>;
 export type LiveWithoutTransport = IsFalse<Assignable<Where & { resourceClient: HostClient; live: true }, BoardListProps>>;
 export type MaybeLiveWithoutTransport = IsFalse<
   Assignable<Where & { resourceClient: HostClient; live: boolean }, BoardListProps>
