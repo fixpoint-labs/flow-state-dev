@@ -26,7 +26,7 @@
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import { taskToolActions } from "@flow-state-dev/orchestration";
+import { taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import {
@@ -1197,11 +1197,26 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   // Only for the boards of channels that opted in. Built from the minted ids,
   // so a channel with no board, or one that did not opt in, adds nothing.
   const optedIn = new Set(options.boardActions ?? []);
+  const actionBoards = boardIds.filter((id) => optedIn.has(id.slice(0, id.lastIndexOf("."))));
+  // The qualifier is not injective (`eng.feature.work` and `eng_feature.work`
+  // both give `eng_feature_work`), and one actions map holds every board's
+  // actions. Merged, the later board's would silently replace the earlier's and
+  // settle its rows on the wrong ledger, so two such boards are refused here.
+  const boardBySuffix = new Map<string, string>();
+  for (const id of actionBoards) {
+    const clash = boardBySuffix.get(taskToolSuffix(id));
+    if (clash !== undefined) {
+      throw new Error(
+        `boardActions: boards "${clash}" and "${id}" would both name their task actions ` +
+          `\`<tool>_${taskToolSuffix(id)}\`, so one would replace the other. Rename a channel ` +
+          `or a board, or turn \`boardActions\` off on one of their channels.`
+      );
+    }
+    boardBySuffix.set(taskToolSuffix(id), id);
+  }
   const boardTaskActions = Object.assign(
     {},
-    ...boardIds
-      .filter((id) => optedIn.has(id.slice(0, id.lastIndexOf("."))))
-      .map((id) => boardTaskActionsFor(boardIds, id))
+    ...actionBoards.map((id) => boardTaskActionsFor(boardIds, id))
   ) as Record<string, ActionConfig>;
 
   // Built on the FACTORY, never behind a `kind === "channel"` test inside the

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { ActionInputSchema } from "@flow-state-dev/client";
-import { taskActionsFor, taskToolSuffix } from "../src/react/lib/task-actions";
+import { outcomeOf, taskActionsFor, taskToolSuffix } from "../src/react/lib/task-actions";
 
 const takesTaskId: ActionInputSchema = {
   type: "object",
@@ -54,6 +54,27 @@ describe("taskActionsFor", () => {
     expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer"]);
   });
 
+  it("matches a task tool to its board exactly, not by a shared ending", () => {
+    // `cancelTask_feature_work` ends with `_work` too. Offered on the `work`
+    // rows, it would send a `work` task's id to the other board's ledger.
+    const schemas = { cancelTask_work: takesTaskId, cancelTask_feature_work: takesTaskId };
+    const names = Object.keys(schemas);
+    expect(taskActionsFor(names, schemas, "work", ["work", "feature.work"])).toEqual(["cancelTask_work"]);
+    expect(taskActionsFor(names, schemas, "feature.work", ["work", "feature.work"])).toEqual([
+      "cancelTask_feature_work",
+    ]);
+    // The same when the longer board has no tasks yet, so the tab does not list it.
+    expect(taskActionsFor(names, schemas, "work", ["work"])).toEqual(["cancelTask_work"]);
+  });
+
+  it("gives an app's suffixed action to the board with the longest matching suffix", () => {
+    const schemas = { answer_feature_work: takesTaskId, answer_work: takesTaskId };
+    const names = Object.keys(schemas);
+    const boards = ["work", "feature.work"];
+    expect(taskActionsFor(names, schemas, "work", boards)).toEqual(["answer_work"]);
+    expect(taskActionsFor(names, schemas, "feature.work", boards)).toEqual(["answer_feature_work"]);
+  });
+
   it("offers nothing when the flow has no schemas", () => {
     expect(taskActionsFor(["answer"], undefined, "issues", ["issues"])).toEqual([]);
   });
@@ -64,5 +85,44 @@ describe("taskToolSuffix (mirrors orchestration's rule)", () => {
     expect(taskToolSuffix("eng.feature.work")).toBe("eng_feature_work");
     expect(taskToolSuffix("support.help.escalations")).toBe("support_help_escalations");
     expect(taskToolSuffix("a-b_c")).toBe("a-b_c");
+  });
+});
+
+describe("outcomeOf", () => {
+  const root = (status: string, value?: unknown) => ({
+    type: "block_trace",
+    status,
+    provenance: {},
+    ...(value === undefined ? {} : { output: { kind: "inline", value } }),
+  });
+  const request = (rawItems: unknown[]) => [{ requestId: "r1", status: "completed", rawItems }];
+
+  it("reads a guarded verb's refusal as a refusal", () => {
+    expect(outcomeOf(request([root("completed", { ok: false, error: "task is terminal" })]), "r1")).toEqual({
+      state: "refused",
+      message: "task is terminal",
+    });
+  });
+
+  it("reads a declined task write as a refusal, not a success", () => {
+    // An app action such as `answer` returns the ledger's write outcome. A
+    // declined one wrote nothing, so the row must not say it worked.
+    const declined = { outcome: "declined", reason: "terminal", status: "completed" };
+    expect(outcomeOf(request([root("completed", declined)]), "r1")).toEqual({
+      state: "refused",
+      message: "Declined (terminal): the task is completed.",
+    });
+    expect(outcomeOf(request([root("completed", { outcome: "recorded" })]), "r1")).toEqual({
+      state: "ok",
+      output: { outcome: "recorded" },
+    });
+  });
+
+  it("reads the root trace's final state, not its in-progress entry", () => {
+    // The raw log keeps the root's `in_progress` trace ahead of its completed one.
+    const items = [root("in_progress"), root("completed", { ok: false, error: "no such task" })];
+    expect(outcomeOf(request(items), "r1")).toEqual({ state: "refused", message: "no such task" });
+    const failed = [root("in_progress"), { ...root("failed"), error: { message: "boom" } }];
+    expect(outcomeOf(request(failed), "r1")).toEqual({ state: "failed", message: "boom" });
   });
 });

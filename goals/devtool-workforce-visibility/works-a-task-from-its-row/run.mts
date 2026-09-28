@@ -271,7 +271,8 @@ function expectedText(key: string, value: unknown): string {
 /** Whether the open row's text for one field shows the ledger's value. */
 function shows(key: string, shown: string, value: unknown): boolean {
   if (key === "attempts") return shown.split("/")[0]!.trim() === String(value);
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+  // The caller skips null, so an "object" here is a record or an array.
+  if (typeof value === "object" && !Array.isArray(value)) {
     // Structured values are pretty-printed: compare without whitespace.
     return shown.replace(/\s+/g, "") === JSON.stringify(value).replace(/\s+/g, "");
   }

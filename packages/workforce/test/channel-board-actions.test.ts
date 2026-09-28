@@ -483,6 +483,19 @@ describe("a channel's board task actions", () => {
     expect(names.some((name) => name.endsWith("eng_platform_triage"))).toBe(false);
   });
 
+  it("refuses two opted-in boards whose action names would be the same, at bind", () => {
+    // `eng.feature.work` and `eng_feature.work` both qualify as
+    // `eng_feature_work`. Merged into one actions map, the later board's
+    // actions would silently replace the earlier's, and that board's rows
+    // would be settled on the other ledger.
+    expect(() =>
+      channelInstances([
+        record("eng.feature", { boards: ["work"], boardActions: true }),
+        record("eng_feature", { boards: ["work"], boardActions: true })
+      ])
+    ).toThrow(/eng\.feature\.work.*eng_feature\.work|eng_feature\.work.*eng\.feature\.work/);
+  });
+
   it("refuses a value that is not true or false, by name, at bind", () => {
     expect(() =>
       channelInstances([record("eng.feature", { boards: ["triage"], boardActions: "yes" })])

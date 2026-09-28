@@ -882,7 +882,7 @@ export interface TaskToolActionsBoard {
   readonly collectionId: string;
   readonly backing: string;
   /** Composed by each action, so the board's ledger is installed with it. */
-  readonly capability: DefinedCapability<any, any>;
+  readonly capability: DefinedCapability;
 }
 
 /**
@@ -907,6 +907,10 @@ export interface TaskToolActionsBoard {
  *   its own session).
  *
  * These are public actions: anyone who can call the flow can call them.
+ *
+ * The qualifier is not injective: `a.b` and `a_b` both give `a_b`. A flow that
+ * spreads two boards' actions whose ids qualify alike gets one set of names,
+ * and the later spread replaces the earlier. Give such boards distinct ids.
  *
  * @throws When the board's backing is not `resource`. A request- or
  *   sequencer-backed ledger is gone when the request that filed its rows ends,

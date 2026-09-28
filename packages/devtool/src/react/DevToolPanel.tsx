@@ -499,8 +499,11 @@ function PanelContent({ className }: { className?: string }) {
   const handleSendAction = useCallback(
     async (action: string, input: unknown): Promise<RowDispatch> => {
       if (!activeFlowId || !effectiveSessionId) return undefined;
-      const stillCurrent = sessionFence.begin();
-      if (stillCurrent === null) return undefined;
+      // `isCurrent`, not `begin`: a dispatch is not a read. Two dispatches in
+      // one session are two requests, not two answers to one question, so a
+      // later one must not retire an earlier one's answer; only leaving the
+      // workspace does. Two Tasks-tab rows can each have one in flight.
+      if (!sessionFence.isCurrent()) return undefined;
       // Re-read the dispatch-run axis at the START of the call, which is what
       // `docs/architecture/server-and-client.md` specifies and what
       // `useSession` does. The reason it is the start rather than the end: the
@@ -525,7 +528,7 @@ function PanelContent({ className }: { className?: string }) {
       // `sessionFence` is the panel's record of which session the workspace is
       // on, mirrored during render, so it is the right thing to compare against
       // rather than a second generation counter.
-      if (!stillCurrent()) return undefined;
+      if (!sessionFence.isCurrent()) return undefined;
       // A dispatch that threw carries no request, only its message.
       if (response != null && !("request" in response)) {
         return { error: response.error };

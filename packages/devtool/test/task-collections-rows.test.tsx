@@ -10,7 +10,7 @@
  * cannot pass by matching the same words somewhere else on the page.
  */
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { TaskCollectionsView } from "../src/react/components/workspace/task-collections-view";

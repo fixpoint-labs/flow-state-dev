@@ -44,12 +44,17 @@ function takesTaskId(schema: ActionInputSchema | undefined): boolean {
 /**
  * The actions a row on `collectionId` offers, in the flow's order.
  *
+ * A task tool (`<tool>_<suffix>`) is this board's only when its suffix IS this
+ * board's, compared whole: `cancelTask_feature_work` also ends with `_work`,
+ * and is not the `work` board's. Any other action is generic unless its name
+ * ends with a listed board's suffix; then it belongs to the board whose suffix
+ * is the longest match.
+ *
  * @param actions The flow's public action names.
  * @param schemas Their input schemas, as the flow list reports them.
  * @param collectionId The board the row is on.
- * @param boardIds Every board the tab lists for this flow. An action whose
- *   name ends with another listed board's suffix is that board's, so it is
- *   told apart from a generic one.
+ * @param boardIds Every board the tab lists for this flow, so an app action
+ *   suffixed for another board is told apart from a generic one.
  */
 export function taskActionsFor(
   actions: readonly string[],
@@ -57,16 +62,18 @@ export function taskActionsFor(
   collectionId: string,
   boardIds: readonly string[]
 ): string[] {
-  const own = `_${taskToolSuffix(collectionId)}`;
-  const others = boardIds.filter((id) => id !== collectionId).map((id) => `_${taskToolSuffix(id)}`);
+  const own = taskToolSuffix(collectionId);
+  const suffixes = [...new Set([collectionId, ...boardIds].map(taskToolSuffix))];
   return actions.filter((name) => {
     if (!takesTaskId(schemas?.[name])) return false;
-    if (name.endsWith(own)) return true;
-    if (others.some((suffix) => name.endsWith(suffix))) return false;
-    // A task tool for a board the tab does not list (one with no tasks yet)
-    // is still that board's, never a generic action.
-    if (TASK_TOOLS.some((tool) => name.startsWith(`${tool}_`))) return false;
-    return true;
+    // A task tool names its board whole, listed or not (a board with no tasks
+    // yet is not listed, and its tools are still never generic).
+    const tool = TASK_TOOLS.find((candidate) => name.startsWith(`${candidate}_`));
+    if (tool !== undefined) return name.slice(tool.length + 1) === own;
+    const owner = suffixes
+      .filter((suffix) => name.endsWith(`_${suffix}`))
+      .reduce<string | undefined>((best, suffix) => (best === undefined || suffix.length > best.length ? suffix : best), undefined);
+    return owner === undefined || owner === own;
   });
 }
 
@@ -83,8 +90,9 @@ export type RequestOutcomeSource = {
  *
  * - `pending` — the request has not finished (or has not been listed yet).
  * - `ok` — the root block returned something other than a refusal.
- * - `refused` — the root block returned `{ ok: false, error }`: a guarded verb
- *   said no, and wrote nothing.
+ * - `refused` — the root block returned `{ ok: false, error }` (a guarded verb
+ *   said no) or a declined task write (`{ outcome: "declined" }`), and wrote
+ *   nothing.
  * - `failed` — the request failed, or the dispatch itself threw.
  * - `unknown` — the request finished with no root trace to read (trace
  *   observability off), so the result cannot be told.
@@ -118,7 +126,9 @@ export function outcomeOf(
 ): RowActionOutcome {
   const request = requests.find((candidate) => candidate.requestId === requestId);
   if (request === undefined) return { state: "pending" };
-  const root = (request.rawItems ?? []).find((item): item is TraceLike => {
+  // The last root trace: the raw log keeps the root's `in_progress` entry
+  // ahead of the one that carries its result.
+  const root = [...(request.rawItems ?? [])].reverse().find((item): item is TraceLike => {
     const trace = item as TraceLike;
     return trace.type === "block_trace" && trace.provenance?.parentBlockInstanceId === undefined;
   });
@@ -129,6 +139,9 @@ export function outcomeOf(
   if (root?.status === "completed") {
     const value = root.output?.kind === "inline" ? root.output.value : undefined;
     if (isRefusal(value)) return { state: "refused", message: value.error };
+    if (isDeclined(value)) {
+      return { state: "refused", message: `Declined (${value.reason}): the task is ${value.status}.` };
+    }
     return { state: "ok", output: value };
   }
   if (request.status === "completed") return { state: "unknown" };
@@ -143,5 +156,19 @@ function isRefusal(value: unknown): value is { ok: false; error: string } {
     value !== null &&
     (value as { ok?: unknown }).ok === false &&
     typeof (value as { error?: unknown }).error === "string"
+  );
+}
+
+/**
+ * A task write the ledger declined (`TaskWriteOutcome`'s `declined` arm), as an
+ * app action that returns the write's outcome (an `answer`) reports it. It
+ * wrote nothing, so it reads as a refusal.
+ */
+function isDeclined(value: unknown): value is { outcome: "declined"; reason: string; status: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { outcome?: unknown }).outcome === "declined" &&
+    typeof (value as { reason?: unknown }).reason === "string"
   );
 }

@@ -171,13 +171,15 @@ vi.mock("../src/react/components/workspace/suspensions-view", () => ({
 }));
 
 // Same idea for the action bar: `handleSendAction` awaits the dispatch, so it
-// is the panel's one callback that can resume across a session change.
+// is the panel's one callback that can resume across a session change. What
+// each call answered is kept, because a Tasks-tab row reads its outcome from it.
+const sendAnswers: Array<Promise<unknown>> = [];
 vi.mock("../src/react/components/workspace/action-bar", () => ({
   ActionBar: ({
     onSendAction,
   }: {
-    onSendAction: (action: string, input: unknown) => void;
-  }) => <button onClick={() => onSendAction("run", {})}>send-stub</button>,
+    onSendAction: (action: string, input: unknown) => Promise<unknown>;
+  }) => <button onClick={() => sendAnswers.push(onSendAction("run", {}))}>send-stub</button>,
 }));
 
 // The third work-starting path: the per-row Continue action for an interrupted
@@ -200,6 +202,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     requestsState.requests = [];
     requestsState.refresh = vi.fn();
     liveModeCalls.length = 0;
+    sendAnswers.length = 0;
     devToolState.activeSessionId = "sess_1";
     devToolState.workspaceToken = 0;
     sendAction.mockReset().mockResolvedValue(null);
@@ -382,6 +385,37 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     });
 
     expect(latestDispatchedId()).toBe("req_from_send");
+  });
+
+  it("answers two dispatches started together in one session with their own requests", async () => {
+    // Two Tasks-tab rows can each send an action before the first POST comes
+    // back. Both actions run on the server, so each row has to be told which
+    // request is its own: a dispatch is not a read, and a later one does not
+    // make an earlier one's answer stale. Only leaving the session does.
+    const resolvers: Array<(value: unknown) => void> = [];
+    for (let i = 0; i < 2; i += 1) {
+      sendAction.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolvers.push(resolve);
+        })
+      );
+    }
+
+    await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.click(screen.getByText("send-stub"));
+      fireEvent.click(screen.getByText("send-stub"));
+    });
+
+    // The second comes back first; the first is still owed its answer.
+    await act(async () => {
+      resolvers[1]!({ request: { id: "req_second" } });
+      resolvers[0]!({ request: { id: "req_first" } });
+      await Promise.resolve();
+    });
+
+    expect(await sendAnswers[0]).toEqual({ requestId: "req_first" });
+    expect(await sendAnswers[1]).toEqual({ requestId: "req_second" });
   });
 
   it("clears dispatchedRequestId when the session changes, so live mode can follow the new one", async () => {
