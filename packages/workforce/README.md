@@ -1120,9 +1120,12 @@ organization scope resolves against it inside the channel, including file-declar
 channel board's rows. A session's organization is fixed when the session is created, so open your
 channels as a caller whose verified identity already carries the organization you want them in.
 
-A record declares six keys and no others: `flow` (which kind, optional), `description`, `members`,
-`boards`, `instructions` (or a body, which is the same setting), and `routing` (see the channels
-guide, "Routing a channel"). The list is closed and checked
+A record declares seven keys and no others: `flow` (which kind, optional), `description`, `members`,
+`boards`, `instructions` (or a body, which is the same setting), `routing` (see the channels
+guide, "Routing a channel"), and `boardActions`. `boardActions: true` exposes each of the channel's
+boards' task tools as channel actions (`cancelTask_<channel>_<board>` and its seven siblings), each
+working only in its own channel's session; it is off by default, because anyone who can reach the
+channel can then settle or reassign its rows. The list is closed and checked
 at `channelInstances`: an undeclared key, an `id:`, a `system:`, or a body alongside `instructions:`
 each refuse by name.
 
