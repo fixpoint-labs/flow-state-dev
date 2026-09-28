@@ -1,27 +1,32 @@
 /**
- * Goal check: from the kitchen-sink page, a person talks to an agent seat and
- * posts to a channel, and after a reload both conversations are still there,
- * showing who said what.
+ * Goal check: from the kitchen-sink page, a person talks to a specialist and
+ * posts to the support channel, and after a reload both conversations are
+ * still there, showing who said what.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
  *
- * Three legs, in one real browser against the app's PRODUCTION build (built
+ * Two legs, in one real browser against the app's PRODUCTION build (built
  * here, never assumed), on its scripted model:
  *
- *   desk  post a unique line to the channel from its panel; reload; the line is
- *         in the channel's transcript, labelled with the app's one user.
- *   otto  start a conversation on the agent seat from its row, send a unique
- *         message; reload; the message is there as the person's turn and the
- *         scripted reply is under it.
- *   wren  a seat whose kind takes no messages has no composer and says why.
+ *   channel  post a unique line to `support.help` from its panel; reload; the
+ *            line is in the channel's transcript, labelled with the app's one
+ *            user.
+ *   seat     start a conversation on `support.devices` from its row, send a
+ *            unique message; reload; the message is there as the person's
+ *            turn and the scripted reply is under it.
+ *
+ * The third leg this check once had, a seat whose kind takes no messages, has
+ * no seat to run on: every seat in this roster is an `agent`, and the rail
+ * lists only the kinds the shell names. It is checked on the panel itself, in
+ * `apps/kitchen-sink/test/picked-session-panel.test.tsx`.
  *
  * Everything graded is read after the reload, so only what the server kept can
  * pass. The page draws no optimistic copy of either side.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/keeps-both-sides-across-a-reload/run.mts
- * Controls: GOAL_CONTROL=no-post-item       (must FAIL at the desk leg only)
- *           GOAL_CONTROL=drop-user-message  (must FAIL at the otto leg only)
- * Held-out: GOAL_CHANNEL=<another built-in channel> GOAL_SEAT=<another agent seat>
+ * Controls: GOAL_CONTROL=no-post-item       (must FAIL at the channel leg only)
+ *           GOAL_CONTROL=drop-user-message  (must FAIL at the seat leg only)
+ * Held-out: GOAL_SEAT=<another specialist>
  */
 import { randomUUID } from "node:crypto";
 import type { Page, Route } from "playwright";
@@ -45,19 +50,19 @@ interface Fixture {
   port: number;
   channel: { kind: string; id: string; label: string };
   seat: { kind: string; id: string; marker: string; replyMarker: string };
-  readOnlySeat: { kind: string; id: string };
 }
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 const ORIGIN = `http://127.0.0.1:${fixture.port}`;
-const CHANNEL = process.env.GOAL_CHANNEL ?? fixture.channel.id;
+// The roster has one channel, so only the seat has a held-out override.
+const CHANNEL = fixture.channel.id;
 const SEAT = process.env.GOAL_SEAT ?? fixture.seat.id;
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 
 /** The one leg each control must redden, and only that one. */
 const EXPECTED: Record<string, string> = {
-  "no-post-item": "desk",
-  "drop-user-message": "otto",
+  "no-post-item": "channel",
+  "drop-user-message": "seat",
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -152,7 +157,7 @@ await runGoal(async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await applyControl(page);
 
-    // ---- desk: post, reload, read ---------------------------------------
+    // ---- channel: post, reload, read -------------------------------------
     await openShell(page);
     await open(page, fixture.channel.kind);
     await row(page, CHANNEL).click();
@@ -168,14 +173,14 @@ await runGoal(async () => {
     const lines = await readUntil(() => transcript(page), (ls) => ls.some((l) => l.body === line));
     const found = lines.filter((l) => l.body === line);
     if (found.length !== 1) {
-      fail("desk", `after the reload, ${CHANNEL}'s transcript holds ${found.length} copies of the posted line "${line}" (want 1); it shows ${lines.length} lines`);
+      fail("channel", `after the reload, ${CHANNEL}'s transcript holds ${found.length} copies of the posted line "${line}" (want 1); it shows ${lines.length} lines`);
     } else if (found[0]!.label !== fixture.channel.label) {
-      fail("desk", `the posted line reads as "${found[0]!.label}", not "${fixture.channel.label}"`);
+      fail("channel", `the posted line reads as "${found[0]!.label}", not "${fixture.channel.label}"`);
     } else {
-      evidence.push(`desk: after a reload, ${CHANNEL} shows "${line}" labelled ${found[0]!.label}, once`);
+      evidence.push(`channel: after a reload, ${CHANNEL} shows "${line}" labelled ${found[0]!.label}, once`);
     }
 
-    // ---- otto: a new conversation, a message, reload, read ---------------
+    // ---- seat: a new conversation, a message, reload, read ---------------
     await open(page, fixture.seat.kind);
     await open(page, SEAT);
     await newConversation(page, SEAT);
@@ -187,7 +192,7 @@ await runGoal(async () => {
     await readUntil(() => conversation(page), (ms) => ms.some((m) => m.text.includes(fixture.seat.replyMarker)));
 
     if (sessionId === null) {
-      fail("otto", `"New conversation" on ${SEAT} opened no conversation in the rail`);
+      fail("seat", `"New conversation" on ${SEAT} opened no conversation in the rail`);
     } else {
       await page.reload();
       await openShell(page);
@@ -201,35 +206,18 @@ await runGoal(async () => {
       const asked = messages.findIndex((m) => m.role === "user" && m.text.includes(message));
       const answered = messages.findIndex((m) => m.role === "assistant" && m.text.includes(fixture.seat.replyMarker));
       if (asked === -1) {
-        fail("otto", `after the reload, ${SEAT}'s conversation does not hold the person's message "${message}" as their turn (roles on screen: ${messages.map((m) => m.role).join(", ") || "none"})`);
+        fail("seat", `after the reload, ${SEAT}'s conversation does not hold the person's message "${message}" as their turn (roles on screen: ${messages.map((m) => m.role).join(", ") || "none"})`);
       }
       if (answered === -1) {
-        fail("otto", `after the reload, ${SEAT}'s conversation holds no scripted reply (${fixture.seat.replyMarker})`);
+        fail("seat", `after the reload, ${SEAT}'s conversation holds no scripted reply (${fixture.seat.replyMarker})`);
       } else if (asked !== -1 && answered < asked) {
-        fail("otto", `the reply sits above the message it answers`);
+        fail("seat", `the reply sits above the message it answers`);
       }
       if (asked !== -1 && answered > asked) {
-        evidence.push(`otto: after a reload, ${SEAT}'s conversation ${sessionId} shows the message as the user's turn and the scripted reply under it`);
+        evidence.push(`seat: after a reload, ${SEAT}'s conversation ${sessionId} shows the message as the user's turn and the scripted reply under it`);
       }
     }
 
-    // ---- wren: no composer, and the reason -------------------------------
-    await open(page, fixture.readOnlySeat.kind);
-    await open(page, fixture.readOnlySeat.id);
-    await newConversation(page, fixture.readOnlySeat.id);
-    // The previous seat's panel is still up until this one replaces it.
-    await readUntil(
-      () => rail(page).locator(`ul[data-leaf="${fixture.readOnlySeat.id}"] [aria-current="true"]`).count(),
-      (n) => n === 1,
-    );
-    await page.waitForTimeout(500);
-    const composers = await panel(page).locator('[data-testid="picked-composer"]').count();
-    const reason = (await panel(page).locator('[data-testid="picked-read-only"]').textContent()) ?? "";
-    if (composers !== 0 || reason.trim().length === 0) {
-      fail("wren", `${fixture.readOnlySeat.id} shows ${composers} composer(s) and reason "${reason}" (want none, and a reason)`);
-    } else {
-      evidence.push(`wren: ${fixture.readOnlySeat.id} has no composer and says "${reason.trim()}"`);
-    }
   } finally {
     await browser.close();
     server?.stop();

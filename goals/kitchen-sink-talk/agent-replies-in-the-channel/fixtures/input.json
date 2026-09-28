@@ -1,11 +1,13 @@
 {
   "port": 3040,
-  "channel": { "kind": "channel", "id": "support.desk" },
-  "replier": { "kind": "agent", "id": "support.otto" },
-  "agents": [
-    { "kind": "agent", "id": "support.iris" },
-    { "kind": "agent", "id": "support.otto" }
+  "channel": { "kind": "channel", "id": "support.help" },
+  "replier": { "kind": "agent", "id": "support.devices" },
+  "others": [
+    { "kind": "agent", "id": "support.accounts" },
+    { "kind": "agent", "id": "support.fsd" },
+    { "kind": "agent", "id": "support.general" }
   ],
+  "route": "[route:support.devices]",
   "marker": "[scenario:reply-in-channel]",
   "lineMarker": "[reply:in-channel]"
 }

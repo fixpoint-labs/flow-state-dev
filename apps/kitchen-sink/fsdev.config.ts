@@ -97,7 +97,7 @@ for (const failedPath of workforce.errors) {
   console.error(`[workforce] could not read ${failedPath}`);
 }
 
-// Seats are addressed by their own ids (`support.ada`, `support.grace`, …),
+// Seats are addressed by their own ids (`support.devices`, `support.general`, …),
 // which is what a caller puts on the URL and what `fsdev run` takes.
 const seatFlows = Object.fromEntries(
   workforce.seats.map((seat) => [seat.id, seat])

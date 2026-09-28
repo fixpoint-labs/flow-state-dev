@@ -1,13 +1,14 @@
 /**
  * Goal check — `fsdev run` runs a seat in the app's own organization, so a
- * hire made from the terminal lands where the app's users can see it.
+ * conversation started from the terminal is stored where the app's users can
+ * see it.
  *
- * Real model, real path: `fsdev run support.mara` in kitchen-sink over the
+ * Real model, real path: `fsdev run support.general` in kitchen-sink over the
  * filesystem store, then a zero-model read of the same store. The store
  * decides, not the transcript. See goal.md for the contract.
  *
- * Needs kitchen-sink's host resolver (FIX-1500 PR-B). Before it, the run ends
- * refused in the development organization — the FAIL this goal exists to turn.
+ * Needs kitchen-sink's host resolver (FIX-1500 PR-B). Before it, the run went
+ * to the development organization — the FAIL this goal exists to turn.
  *
  * Run: pnpm tsx goals/cli-principal/runs-in-the-apps-organization/run.mts
  */
@@ -17,25 +18,24 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { KITCHEN_SINK, goalTmpDir, loadFixture, readCapture, runFsdev, runGoal } from "../../lib/index.mts";
 
 type Fixture = {
-  manager: string;
+  seat: string;
   action: string;
-  seatPrefix: string;
   message: string;
   expect: { userId: string; orgId: string; from: string };
 };
 
 const fixture = loadFixture<Fixture>(import.meta.url);
-// A fresh seat per run: the filesystem store keeps earlier runs' hires.
-const seat = `${fixture.seatPrefix}${Date.now().toString(36)}`;
+// A fresh conversation per run: the filesystem store keeps earlier runs'.
+const sessionId = `sess_goal_cli_${Date.now().toString(36)}`;
 const CAPTURE = join(goalTmpDir("cli-principal"), "run.json");
-const ROSTER = "workforce/roster/";
 
 await runGoal(async () => {
   const exit = runFsdev({
     app: KITCHEN_SINK,
-    flow: fixture.manager,
+    flow: fixture.seat,
     action: fixture.action,
-    input: { message: fixture.message.replace("{seat}", seat) },
+    input: { message: fixture.message },
+    session: sessionId,
     capture: CAPTURE,
     env: { STORE_TYPE: "filesystem" },
   });
@@ -58,20 +58,25 @@ await runGoal(async () => {
     rootDir: join(KITCHEN_SINK, ".fsdev", "data"),
     developmentOnly: true,
   });
-  const inApp = Object.keys(await stores.resourceState.getByPrefix("org", fixture.expect.orgId, ROSTER));
-  const inPlaceholder = Object.keys(await stores.resourceState.getByPrefix("org", DEFAULT_ORG_ID, ROSTER));
-  const key = `${ROSTER}${seat}`;
-  if (!inApp.includes(key)) {
-    failures.push(`no roster row ${key} under ${fixture.expect.orgId} (found ${JSON.stringify(inApp)})`);
-  }
-  if (inPlaceholder.includes(key)) {
-    failures.push(`roster row ${key} landed under the development organization ${DEFAULT_ORG_ID}`);
+  const session = await stores.session.get(sessionId);
+  if (session === undefined) {
+    failures.push(`no conversation ${sessionId} in the store at all`);
+  } else {
+    if (session.flowId !== fixture.seat) {
+      failures.push(`conversation ${sessionId} belongs to ${JSON.stringify(session.flowId)}, not ${fixture.seat}`);
+    }
+    if (session.orgId === DEFAULT_ORG_ID) {
+      failures.push(`conversation ${sessionId} was stored under the development organization ${DEFAULT_ORG_ID}`);
+    } else if (session.orgId !== fixture.expect.orgId) {
+      failures.push(`conversation ${sessionId} was stored under ${JSON.stringify(session.orgId)}, not ${fixture.expect.orgId}`);
+    }
   }
 
   return {
     failures,
     evidence:
-      `principal ${JSON.stringify(principal)}; roster row ${key} under ${fixture.expect.orgId}, ` +
-      `none under ${DEFAULT_ORG_ID}; read from ${join(KITCHEN_SINK, ".fsdev", "data")} with no model`,
+      `principal ${JSON.stringify(principal)}; conversation ${sessionId} of ${session?.flowId ?? "nothing"} ` +
+      `stored under ${session?.orgId ?? "nothing"} for ${session?.userId ?? "nobody"}; ` +
+      `read from ${join(KITCHEN_SINK, ".fsdev", "data")} with no model`,
   };
 });

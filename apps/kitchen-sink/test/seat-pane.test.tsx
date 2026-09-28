@@ -17,6 +17,10 @@
  *       instructions.
  *   The org-visible case reads exactly one item, under the roster key the
  *   hire writes. Red: pass no `collectionRef` — the read goes to `roster`.
+ *
+ * And what a declared seat handles (FIX-1611 BR-1): its `WORKER.md`'s
+ * `description:`, drawn under its kind. Red: the pane before FIX-1611, which
+ * drew no description.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, waitFor, within } from "@testing-library/react";
@@ -54,8 +58,6 @@ function open(address: string, client: PanelItemSource): HTMLElement {
         kind="agent"
         address={address}
         resourceClient={client}
-        hireSessionId={async () => "hire-session"}
-        onHired={() => {}}
       />
     </FlowProvider>,
   );
@@ -85,12 +87,23 @@ describe("a seat opened in the rail", () => {
     expect(reads).toEqual([[HIRED_ROSTER_RESOURCE, "support.pat"]]);
   });
 
-  it("a seat declared in a worker file is not published, and reads nothing", async () => {
+  it("a seat declared in a worker file shows what it handles, is not published, and reads nothing", async () => {
     const { client, reads } = rosterWithPat();
-    const pane = open("support.iris", client);
+    const pane = open("support.devices", client);
     await settle();
 
+    expect(within(pane).getByTestId("seat-description").textContent).toBe(
+      "Printers, laptops, phones, wifi and anything else with a power button.",
+    );
     expect(pane.querySelector('[data-state="not-published"]')).not.toBeNull();
     expect(reads).toEqual([]);
+  });
+
+  it("a hired seat draws no description: only a declared seat's file has one", async () => {
+    const { client } = rosterWithPat();
+    const pane = open(`${ORG}.support.pat`, client);
+    await settle();
+
+    expect(within(pane).queryByTestId("seat-description")).toBeNull();
   });
 });

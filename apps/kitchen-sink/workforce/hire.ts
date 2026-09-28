@@ -1,67 +1,68 @@
 /**
  * Kitchen-sink's workforce, assembled from its own files.
  *
- * The point of this module is what it does *not* contain: no kind is named
- * here, and no block is. `kinds` and `blocks` come from `workforce.gen.ts`,
- * which `fsdev gen` writes from the tree beside this file, and the roster comes
- * from the `teams/` folders. Adding a kind means adding a file and re-running
+ * The point of this module is what it does *not* contain: no seat is named
+ * here, and no block is. `blocks` comes from `workforce.gen.ts`, which
+ * `fsdev gen` writes from the tree beside this file, and the roster comes from
+ * the `teams/` folders: one channel, `support.help`, and four specialists on
+ * the built-in `agent` kind. Adding a tool means adding a file and re-running
  * the command — there is no second place to edit.
  *
  * This subtree is the whole of the app's Layer 2 usage. Nothing in `app/`
- * reaches into it. Three edges lead in: `fsdev.config.ts`, which awaits the
- * hire below and spreads the seats into the map it serves, the
- * `workforce-admin` flow, which hires against `kitchenSinkKinds`, and the
- * `chat-agent` flow, whose `hireSeat` action (the rail's "Hire another") runs
- * on `kitchenSinkSeatHireOptions`. That first
+ * reaches into it. Two edges lead in: `fsdev.config.ts`, which awaits the hire
+ * below and spreads the seats into the map it serves, and the
+ * `workforce-admin` flow, which hires against `kitchenSinkKinds`. That first
  * edge is what makes the demonstration real — until it existed the bundler
  * never resolved `workforce.gen.ts`'s imports, so the claim this tree exists
  * to prove (a generated module of static imports survives a production build)
  * was asserted and untested (FIX-1429).
  *
- * One edge leads out: `lib/workforce-registrar`. The seat-hire tools on the
- * `agent` kind admit and release addresses through it, the same door the
- * admin flow and the boot reload use, so all three leave the provenance mark
- * `fire` reads.
+ * The channel is routed: each post from a person reaches the one specialist
+ * whose `description:` fits it (`routeByPurpose`, on `ROUTE_MODEL`), and that
+ * specialist's answer lands in the channel under its name.
  */
 import {
   channelBoardIds,
   channelInstances,
   channelPostCapability,
-  createSeatHireCapability,
-  createWorkforceCapability,
   defineAgentWorkerFlow,
   defineChannelFlow,
   hireWorkforce,
-  splitResourceModules,
-  HIRED_ROSTER_RESOURCE,
-  SEAT_INVENTORY_RESOURCE,
+  routeByPurpose,
   type ChannelManifest,
   type HireOptions,
-  type SeatHireCapabilityOptions,
 } from "@flow-state-dev/workforce";
 import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
+import { channelLandingControl } from "../lib/channel-landing-control";
 import { channelPostControl } from "../lib/channel-post-control";
-import { workforceRegistrar } from "../lib/workforce-registrar";
+import { withChannelRouteControl } from "../lib/channel-route-control";
+import { escalateControl } from "../lib/escalate-control";
+import { ROUTE_MODEL } from "../lib/models";
 import { notifyFor } from "./channel-notify";
-import { blocks, channelKinds, kinds, packageBlocks, resourceModules, seatBlocks } from "./workforce.gen";
+import { blocks, channelKinds, kinds, packageBlocks, seatBlocks } from "./workforce.gen";
 
 /**
- * What a `.ts` file in a `resources/` folder turned into.
- *
- * This tree's one module is a capability, so only that half is used here; a
- * module that exported a plain resource would come back on `resources` and be
- * spread into a flow's own resource map beside the Markdown documents. Read
- * once at module scope, not per hire.
+ * `post-to-channel`, so a specialist can answer in a channel it belongs to,
+ * under its own name. Offered, not granted: only a seat whose file names the
+ * tool can post, and every specialist's does. The goal check's
+ * `post-without-author` control swaps in a stand-in, in test mode only.
  */
-const { capabilities } = splitResourceModules(resourceModules);
+const channelPost = channelPostControl() ?? channelPostCapability;
+
+/**
+ * The tool catalog: the scanned `workforce/blocks/` map, which holds
+ * `escalate`. The goal check's `no-filing` control swaps `escalate` for a
+ * stand-in that files nothing, in test mode only.
+ */
+const catalog = escalateControl(blocks) ?? blocks;
 
 /**
  * The kinds a seat may be hired into — generated, plus the built-in `agent`
- * carrying this tree's capabilities and tool catalog.
+ * carrying the post tool and the tool catalog.
  *
  * Exported because a runtime hire and the boot reload must hire against the
  * SAME map the file-declared roster does. Calling `defineAgentWorkerFlow` a
@@ -69,84 +70,18 @@ const { capabilities } = splitResourceModules(resourceModules);
  * a seat hired over `workforce-admin` would carry a different tool catalog from
  * its file-declared neighbours for no reason anyone stated.
  *
- * Declared before `agent` and filled in after it, because `agent` itself
- * carries the seat-hire tools, and those close over this object: a seat that
- * hires through them hires from this map, the same one the admin action and
- * the boot reload read.
- */
-export const kitchenSinkKinds: NonNullable<HireOptions["kinds"]> = { ...kinds };
-
-/**
- * How a seat hires and fires from its own tools: this app's kinds, and this
- * app's registrar as the door.
+ * `catalog` is the whole of the custom-tool recipe on the app's side: the
+ * scanned map IS a tool catalog, so a seat naming one of its keys in `tools:`
+ * can call it. The app decides what the catalog holds; each seat decides which
+ * of it to use, and a key nobody names reaches nobody.
  *
- * Exported so any other caller of the seat-hire blocks hires from the same map
- * through the same door.
- *
- * - `register` goes through `registerFromRoster`, so a seat hired this way is
- *   marked as minted from a roster row. The admin action's `fire` and the boot
- *   reload both depend on that mark.
- * - `unregister` releases only an address that mark covers. The registrar's
- *   own `unregister` releases whatever holds the address; a seat declared in
- *   `workforce/teams/` at the same address is removed by editing its folder,
- *   so here it is left registered and the fire reports `released: false`.
- * - No `allowKinds`: a seat may hire any kind the admin action may.
- * - No `channelBoards`: the unattended-board warning would be computed against
- *   the one seat just hired, and would name boards the file seats already drain.
- * - No organization: it comes from the caller's verified principal at the call.
+ * The goal check's `no-landing` control swaps the kind for one that answers
+ * and lands nothing, in test mode only.
  */
-export const kitchenSinkSeatHireOptions: SeatHireCapabilityOptions = {
-  kinds: kitchenSinkKinds,
-  register: (seat, pin) => workforceRegistrar.registerFromRoster(seat, { pin }),
-  unregister: (id) => workforceRegistrar.isFromRoster(id) && workforceRegistrar.unregister(id),
-  kindAt: (id) => workforceRegistrar.kindAt(id),
+export const kitchenSinkKinds: NonNullable<HireOptions["kinds"]> = {
+  ...kinds,
+  agent: channelLandingControl(catalog) ?? defineAgentWorkerFlow({ uses: [channelPost], catalog }),
 };
-
-/**
- * `hire` and `fire`, offered to every seat of the `agent` kind. Offered, not
- * granted: a seat still names them in its `tools:` before the model can call
- * them.
- */
-const seatHire = createSeatHireCapability(kitchenSinkSeatHireOptions);
-
-/**
- * `discover`, so an agent seat can ask which seats this organization has hired.
- *
- * The declared roster is empty because this app writes no inventory rows for
- * the seats its folders declare, so `discover` could not list them either way.
- * It lists runtime hires: the inventory row and the roster row a hire writes.
- */
-const discover = createWorkforceCapability({
-  roster: { workers: [], channels: [] },
-  inventory: { seats: SEAT_INVENTORY_RESOURCE },
-  hiredRoster: HIRED_ROSTER_RESOURCE,
-});
-
-/**
- * `post-to-channel`, so an agent seat can answer in a channel it belongs to,
- * under its own name. Offered, not granted: only a seat whose file names the
- * tool can post, and in this app that is `support.otto`. The goal check's
- * `post-without-author` control swaps in a stand-in, in test mode only.
- */
-const channelPost = channelPostControl() ?? channelPostCapability;
-
-/**
- * The built-in worker kind, carrying what the team's folder declared.
- *
- * Registered under `agent`, so it is the kind every seat that names no `flow:`
- * is hired into. The app decides WHICH capabilities the roster may reach; each
- * seat's own file decides which of their presets it wants, and a seat that
- * names none carries the kind's defaults.
- *
- * `catalog: blocks` is the whole of the custom-tool recipe on the app's side:
- * the scanned `workforce/blocks/` map IS a tool catalog, so a seat naming one
- * of its keys in `tools:` can call it. The app decides what the catalog holds;
- * each seat decides which of it to use, and a key nobody names reaches nobody.
- */
-kitchenSinkKinds.agent = defineAgentWorkerFlow({
-  uses: [...capabilities, seatHire, discover, channelPost],
-  catalog: blocks,
-});
 
 /** This directory — the workforce root, read at run time the way Markdown always is. */
 export const workforceRoot = dirname(fileURLToPath(import.meta.url));
@@ -206,7 +141,11 @@ export interface HiredWorkforce {
  */
 export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
   const { workers, errors, skillErrors, teamErrors, packageErrors } = await readWorkforce(workforceRoot);
-  const { channels, errors: channelErrors } = await readChannelsDirectory(workforceRoot);
+  const read = await readChannelsDirectory(workforceRoot);
+  const channelErrors = read.errors;
+  // The goal checks' `no-route` control takes the `routing:` lines off here,
+  // before anything is bound, in test mode only.
+  const channels = withChannelRouteControl(read.channels);
 
   // FATAL, unlike the worker-side errors below, and the published guide is why:
   // "a reported folder is a channel your app was supposed to have. Log a warning
@@ -255,9 +194,16 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
   // The generated map, plus the built-in under the key the binder seeds. No
   // kind of this app's own is named here: `channelKinds` carries whatever
   // files live under `flows/channels/`, and `channel` is the framework's own
-  // seed, rebuilt only to give it this app's fan-out block.
+  // seed, rebuilt to give it this app's fan-out block and its route. The route
+  // does nothing for a channel whose file has no `routing:` lines.
   const channelFlows = channelInstances(channels, {
-    kinds: { ...channelKinds, channel: defineChannelFlow({ notify: notifyFor(seats) }) },
+    kinds: {
+      ...channelKinds,
+      channel: defineChannelFlow({
+        notify: notifyFor(seats),
+        route: routeByPurpose(seats, { model: ROUTE_MODEL }),
+      }),
+    },
   });
 
   return {

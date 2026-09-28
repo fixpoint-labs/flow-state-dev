@@ -9,35 +9,18 @@
 // typecheck before anything has been generated.
 
 import type { BlockDefinition } from "@flow-state-dev/core";
-import type { ChannelInstancesOptions, HireOptions, ResourceModules } from "@flow-state-dev/workforce";
-import block_desk_note from "./blocks/desk-note";
-import channel_digest from "./flows/channels/digest";
-import worker_desk_clerk from "./flows/workers/desk-clerk";
-import worker_followup_runner from "./flows/workers/followup-runner";
-import resource_teams__support__research from "./teams/support/resources/research";
-import seatblock_support__iris__desk_summary from "./teams/support/workers/iris/blocks/desk-summary";
+import block_escalate from "./blocks/escalate";
 
-export const kinds = {
-  "desk-clerk": worker_desk_clerk,
-  "followup-runner": worker_followup_runner,
-} satisfies NonNullable<HireOptions["kinds"]>;
+export const kinds = {};
 
-export const channelKinds = {
-  "digest": channel_digest,
-} satisfies NonNullable<ChannelInstancesOptions["kinds"]>;
+export const channelKinds = {};
 
 export const blocks = {
-  "desk-note": block_desk_note,
+  "escalate": block_escalate,
 } satisfies Record<string, BlockDefinition>;
 
-export const resourceModules = {
-  "teams/support/research": resource_teams__support__research,
-} satisfies ResourceModules;
+export const resourceModules = {};
 
-export const seatBlocks = {
-  "support.iris": {
-    "desk-summary": seatblock_support__iris__desk_summary,
-  },
-} satisfies Record<string, Record<string, BlockDefinition>>;
+export const seatBlocks = {};
 
 export const packageBlocks = {};

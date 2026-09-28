@@ -34,10 +34,10 @@
  *         roster nothing in this app reads. Produced: the principal came back
  *         as `elsewhere`.
  *   V11 (settings shadow) — spread the row as `{ flow, ...settings }` in
- *         `packages/workforce/src/roster/rows.ts`: the hire is ACCEPTED and
- *         registers an `agent` under a row that says `desk-clerk`, and the
- *         fire that follows deletes the row and leaves it registered
- *         (`released: false`).
+ *         `packages/workforce/src/roster/rows.ts`: the hire takes the kind the
+ *         settings bag names, not the row's `agent`. This app carries one
+ *         kind, so the bag names one it does not carry and the hire is
+ *         refused where it should have been accepted.
  *   V15b — gate `fire` on `liveKind !== storedKind` alone: a file-declared
  *         seat carrying the row's OWN kind is unregistered (`released: true`).
  *
@@ -280,7 +280,7 @@ describe("V10 · the organization comes from the credential, never the body", ()
       envelope: {
         flowKind: "workforce-admin",
         action: "hire",
-        input: { orgId: OTHER_ORG, seatId: "support.ada", flow: "desk-clerk" },
+        input: { orgId: OTHER_ORG, seatId: "support.ada", flow: "agent" },
       },
     });
     expect(principal).toEqual({ userId: "workforce-admin", orgId: ORG });
@@ -295,15 +295,15 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
 
     const first = await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
-      settings: { desk: "front" },
+      flow: "agent",
+      settings: { model: "front-model" },
     });
     expectAccepted(first);
 
     const second = await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
-      settings: { desk: "back" },
+      flow: "agent",
+      settings: { model: "back-model" },
     });
     expectRefused(second, /already exists|support\.ada/i);
 
@@ -311,8 +311,8 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     // first hire supplied. An `upsert` would leave one row too, carrying
     // "back".
     const row = await storedRow(stores, "support.ada");
-    expect(row).toMatchObject({ flow: "desk-clerk", settings: { desk: "front" } });
-    expect(registrar.held.get(`${ORG}.~admin.support.ada`)?.config).toMatchObject({ desk: "front" });
+    expect(row).toMatchObject({ flow: "agent", settings: { model: "front-model" } });
+    expect(registrar.held.get(`${ORG}.~admin.support.ada`)?.config).toMatchObject({ model: "front-model" });
   });
 
   it("refuses when a ROW exists although no instance holds the address", async () => {
@@ -332,8 +332,8 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
 
     await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
-      settings: { desk: "front" },
+      flow: "agent",
+      settings: { model: "front-model" },
     });
     // The address is released; the row is left exactly where it was.
     registrar.held.delete(`${ORG}.~admin.support.ada`);
@@ -341,13 +341,13 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
 
     const second = await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
-      settings: { desk: "back" },
+      flow: "agent",
+      settings: { model: "back-model" },
     });
 
     expectRefused(second, /already exists|support\.ada/i);
     expect(await storedRow(stores, "support.ada")).toMatchObject({
-      settings: { desk: "front" },
+      settings: { model: "front-model" },
     });
   });
 
@@ -355,35 +355,32 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     // `settings` is a passthrough bag, so `settings.flow` is storable, and
     // `settingsOf` strips `flow` as reserved before the kind validates —
     // nothing downstream objects. With `hiredSeatManifest` spreading
-    // `{ flow: row.flow, ...row.settings }`, this hire mints and registers an
-    // `agent` while the stored row says `desk-clerk` forever.
+    // `{ flow: row.flow, ...row.settings }`, this hire would mint the kind the
+    // bag names while the stored row says `agent` forever.
     //
-    // The follow-on is the worse half, and it is asserted below: `fire` then
-    // reads a stored kind of `desk-clerk` against a live kind of `agent`,
-    // deletes the row, and leaves the instance registered — an address that
-    // answers with no row anywhere saying it should, for the life of the
-    // process.
+    // This app carries one kind, so the bag names one it does not carry: with
+    // the spread restored, the hire is refused for a kind the row never named
+    // and nothing is registered, where the row's own kind should have been
+    // hired. On an app with a second kind the same defect registers that kind
+    // under the row, and `fire` then strands it.
     //
     // Red state: restore that spread order in
-    // `packages/workforce/src/roster/rows.ts` and the kind assertion reads
-    // "agent" and the fire assertions read `released: false` with the seat
-    // still held.
+    // `packages/workforce/src/roster/rows.ts` and the hire is refused.
     const registrar = stubRegistrar();
     const flow = adminFlow();
     const stores = createInMemoryStores();
 
-    // Only the shadow key, deliberately: adding a `desk-clerk` setting would
-    // make the shadowed `agent` kind REFUSE the bag, and the hire would fail
-    // loudly — which is not the defect. The defect is that it succeeds.
+    // Only the shadow key, deliberately: adding a setting of its own would
+    // make the row's kind refuse the bag for a reason that is not the defect.
     const hired = await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
-      settings: { flow: "agent" },
+      flow: "agent",
+      settings: { flow: "desk-clerk" },
     });
     expectAccepted(hired);
 
-    expect(registrar.held.get(`${ORG}.~admin.support.ada`)?.kind).toBe("desk-clerk");
-    expect(await storedRow(stores, "support.ada")).toMatchObject({ flow: "desk-clerk" });
+    expect(registrar.held.get(`${ORG}.~admin.support.ada`)?.kind).toBe("agent");
+    expect(await storedRow(stores, "support.ada")).toMatchObject({ flow: "agent" });
 
     // The stored kind and the live kind agree, so the mismatch branch in
     // `fire` is unreachable for this row: the seat is released and nothing is
@@ -416,7 +413,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
 
     const result = await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
+      flow: "agent",
       settings: { aSettingTheKindDoesNotHave: true },
     });
     expectRefused(result, /aSettingTheKindDoesNotHave/);
@@ -437,7 +434,7 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
       flow,
       stores,
       "hire",
-      { seatId: "ada", flow: "desk-clerk", settings: {} },
+      { seatId: "ada", flow: "agent", settings: {} },
       `${ORG}.support`
     );
     expectRefused(result, /Organization id/);
@@ -453,13 +450,13 @@ describe("V12 · two hires of one seat arriving together", () => {
     const [a, b] = await Promise.all([
       callAdmin(flow, stores, "hire", {
         seatId: "support.ada",
-        flow: "desk-clerk",
-        settings: { desk: "front" },
+        flow: "agent",
+        settings: { model: "front-model" },
       }),
       callAdmin(flow, stores, "hire", {
         seatId: "support.ada",
-        flow: "desk-clerk",
-        settings: { desk: "back" },
+        flow: "agent",
+        settings: { model: "back-model" },
       }),
     ]);
 
@@ -482,8 +479,8 @@ describe("V13 · a registration that fails leaves nothing behind", () => {
 
     const result = await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
-      settings: { desk: "front" },
+      flow: "agent",
+      settings: { model: "front-model" },
     });
 
     expectRefused(result, /refused this seat/);
@@ -502,8 +499,8 @@ describe("fire", () => {
 
     await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
-      settings: { desk: "front" },
+      flow: "agent",
+      settings: { model: "front-model" },
     });
     const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
 
@@ -531,7 +528,7 @@ describe("fire", () => {
 
     await callAdmin(
       flow, stores, "hire",
-      { seatId: "support.ada", flow: "desk-clerk", settings: { desk: "front" } },
+      { seatId: "support.ada", flow: "agent", settings: { model: "front-model" } },
       OTHER_ORG
     );
     // Same seat id, different credential. The lookup is org-scoped.
@@ -564,8 +561,8 @@ describe("fire", () => {
 
     await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
-      settings: { desk: "front" },
+      flow: "agent",
+      settings: { model: "front-model" },
     });
 
     // The restart: the address is released and re-taken by a seat this app did
@@ -573,7 +570,7 @@ describe("fire", () => {
     workforceRegistrar.unregister(`${ORG}.~admin.support.ada`);
     registrar.held.set(`${ORG}.~admin.support.ada`, {
       id: `${ORG}.~admin.support.ada`,
-      kind: "desk-clerk",
+      kind: "agent",
     } as unknown as FlowInstance);
 
     const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
@@ -592,8 +589,8 @@ describe("fire", () => {
 
     await callAdmin(flow, stores, "hire", {
       seatId: "support.ada",
-      flow: "desk-clerk",
-      settings: { desk: "front" },
+      flow: "agent",
+      settings: { model: "front-model" },
     });
 
     // Something else takes the address between the hire and the fire. The
@@ -625,7 +622,7 @@ describe("user-owned addresses", () => {
         flow,
         stores,
         "hire",
-        { seatId: "research", flow: "desk-clerk", instructions: `${userId}-PRIVATE` },
+        { seatId: "research", flow: "agent", instructions: `${userId}-PRIVATE` },
         ORG,
         userId,
       );
@@ -644,7 +641,7 @@ describe("user-owned addresses", () => {
 describe("roster registration", () => {
   it("refuses a hired seat that arrives with no pin, and does not mark it", () => {
     const registrar = stubRegistrar();
-    const seat = { id: `${ORG}.research`, kind: "desk-clerk" } as FlowInstance;
+    const seat = { id: `${ORG}.research`, kind: "agent" } as FlowInstance;
     expect(() => workforceRegistrar.registerFromRoster(seat)).toThrow(/owner pin/);
     expect(registrar.held.has(seat.id)).toBe(false);
     expect(workforceRegistrar.isFromRoster(seat.id)).toBe(false);
@@ -661,7 +658,7 @@ describe("roster registration", () => {
     });
     const seat = {
       id: `${ORG}.x`,
-      kind: "desk-clerk",
+      kind: "agent",
       ownerPin: { orgId: ORG, userId: "alice" },
     } as FlowInstance;
     workforceRegistrar.registerFromRoster(seat);

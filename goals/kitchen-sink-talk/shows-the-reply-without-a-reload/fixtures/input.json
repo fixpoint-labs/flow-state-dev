@@ -1,7 +1,8 @@
 {
   "port": 3041,
-  "channel": { "kind": "channel", "id": "support.desk" },
-  "replier": { "kind": "agent", "id": "support.otto" },
+  "channel": { "kind": "channel", "id": "support.help" },
+  "replier": { "kind": "agent", "id": "support.devices" },
+  "route": "[route:support.devices]",
   "marker": "[scenario:reply-after-a-hold]",
   "lineMarker": "[reply:in-channel]",
   "lineWithinMs": 15000,

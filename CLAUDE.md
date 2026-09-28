@@ -150,7 +150,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@thought-fabric/core`              | Cognitive architecture primitives (attention, identity)                 |
 | `apps/devtool`                      | DevTool source app (builds into `@flow-state-dev/devtool`)              |
 | `apps/docs`                         | Documentation site (Docusaurus)                                         |
-| `apps/kitchen-sink`                 | Canonical reference app (Next.js) — hosts every subsystem, where features get tested end-to-end |
+| `apps/kitchen-sink`                 | Canonical reference app (Next.js): a support desk on Workforce, and the other subsystems it hosts. Features with no job in it are proven by fixture hosts under `goals/` |
 | `apps/pattern-benchmark`            | Cross-pattern benchmark suite over a fixed task suite + model           |
 
 

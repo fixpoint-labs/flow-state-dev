@@ -1,18 +1,19 @@
 # kitchen-sink-talk › it keeps both sides across a reload
 
-**Issue:** FIX-1585 (V6 and V7 of the spec's PLAN; the otto leg is the epic FIX-1592's leg a for `support.otto`)
+**Issue:** FIX-1585 (V6 and V7 of the spec's PLAN; the otto leg is the epic FIX-1592's leg a for `support.otto`); re-pointed by FIX-1611
 
-**Outcome:** From the kitchen-sink page, a person talks to an agent seat and posts to a channel, and after a reload both conversations are still there, showing who said what. The line posted to `support.desk` reads as `devuser`. The message sent to `support.otto` shows as the person's turn, with the seat's reply under it. A seat whose kind takes no messages (`support.wren`) has no composer and says why.
+**Outcome:** From the kitchen-sink page, a person talks to a specialist and posts to the support channel, and after a reload both conversations are still there, showing who said what. The line posted to `support.help` reads as `devuser`. The message sent to `support.devices` shows as the person's turn, with the seat's reply under it.
 
-**Input:** `fixtures/input.json`: the channel and its expected label, the agent seat and the scenario marker its scripted reply keys on, the read-only seat, and the port. Held-out: the posted line and the message carry a fresh token each run, and are graded by that token, so a line another run or test left in the shared channel can never be the one that passes. `GOAL_CHANNEL` and `GOAL_SEAT` point the same legs at another built-in channel and agent seat; a correct implementation still passes.
+**Re-pointed (FIX-1611).** The folder name is kept so its verdict history stays in one place. Until FIX-1611 this read `support.desk`, `support.otto`, and a third leg on `support.wren`, a seat whose kind took no messages. The legs are renamed for what they check: **desk** is now **channel**, **otto** is now **seat**. The wren leg has no seat to run on: every seat in this roster is an `agent`, and the rail lists only the kinds the shell names, so no seat of another kind reaches the page, whether hired or injected into the flow list. It moved to the panel itself, `apps/kitchen-sink/test/picked-session-panel.test.tsx` (a seat of a kind the shell has no ask for shows no composer and its reason); that case's red state is in FIX-1611's PR.
+
+**Input:** `fixtures/input.json`: the channel and its expected label, the specialist and the scenario marker its scripted reply keys on, and the port. Held-out: the posted line and the message carry a fresh token each run, and are graded by that token, so a line another run or test left in the shared channel can never be the one that passes. `GOAL_SEAT` points the seat leg at another specialist; a correct implementation still passes. The roster has one channel, so the channel leg has no override.
 
 **Signal:** one real browser against kitchen-sink's **production build** (built by the run, never assumed), served by `next start` on the scripted model and the in-memory store. Everything graded is read **after a reload**, so only what the server kept can pass.
 
-- **desk** (V6): post a unique line from the channel's panel; reload; the channel's transcript holds exactly one copy, labelled `devuser`.
-- **otto** (V7): "New conversation" on the seat's row, send a unique message; reload and reopen that conversation; a `user` message holds the text and an `assistant` message carrying the scripted reply marker sits below it.
-- **wren** (V7): the read-only seat's panel has no composer and shows a non-empty reason.
+- **channel** (FIX-1585 V6): post a unique line from the channel's panel; reload; the channel's transcript holds exactly one copy, labelled `devuser`.
+- **seat** (FIX-1585 V7): "New conversation" on the seat's row, send a unique message; reload and reopen that conversation; a `user` message holds the text and an `assistant` message carrying the scripted reply marker sits below it.
 
-**Anti-game:** a hollow pass would grade the page before the reload (the composer's own state or a streamed copy would pass), grade any line in the shared channel rather than this run's token, or run the seat leg on a `desk-clerk` seat, whose reply echoes the note and so hides a lost question. The check reads after the reload only, grades by the run's token, runs the seat leg on the `agent` kind, and checks the message's **role**, not only its text. A control that leaves its leg green, or reddens another leg, fails the run.
+**Anti-game:** a hollow pass would grade the page before the reload (the composer's own state or a streamed copy would pass), or grade any line in the shared channel rather than this run's token. The check reads after the reload only, grades by the run's token, runs the seat leg on the `agent` kind, and checks the message's **role**, not only its text. A control that leaves its leg green, or reddens another leg, fails the run.
 
 **Model:** n/a. kitchen-sink's scripted model answers the seat (epic FIX-1592 D3). The goal is what is kept and who said it, not what the reply says. Keyless.
 
@@ -20,10 +21,10 @@
 
 **Controls:** on the same command. Each strips one kind of kept item from everything the page is served (every session read and every action stream, before and after the reload), which is what the page sees when the server keeps none.
 
-- `GOAL_CONTROL=no-post-item`: no `channel-post` component items. Must FAIL at **desk** only.
-- `GOAL_CONTROL=drop-user-message`: no `user` message items. Must FAIL at **otto** only.
+- `GOAL_CONTROL=no-post-item`: no `channel-post` component items. Must FAIL at **channel** only.
+- `GOAL_CONTROL=drop-user-message`: no `user` message items. Must FAIL at **seat** only.
 
-The controls act at the network, not in the server, so the product carries no switch for them. The server half is proved by hand mutation, recorded below: `run` without its `userMessage`, rebuilt, fails the otto leg.
+The controls act at the network, not in the server, so the product carries no switch for them. The server half is proved by hand mutation, recorded below: `run` without its `userMessage`, rebuilt, fails the seat leg (then named otto).
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -35,3 +36,6 @@ The controls act at the network, not in the server, so the product carries no sw
 | 2026-09-25 | same | n/a | PASS | Held-out: `GOAL_CHANNEL=support.ada-wren GOAL_SEAT=support.iris`. ada-wren shows "goal line 58d8d0aa" labelled `devuser`, once; iris's conversation keeps the message as the user's turn with the reply under it; wren as above. |
 | 2026-09-25 | review round 1 (post awaited, composer settles on its own request, keyed by session) | n/a | PASS | desk "goal line f8d8f335" labelled `devuser`, once; otto `sess_1790377179812_3e4ad9c2c2f33` keeps the message as the user's turn with the reply under it; wren has no composer and says why. |
 | 2026-09-25 | same | n/a | FAIL (expected) | `GOAL_CONTROL=no-post-item`: `[desk] ... holds 0 copies of the posted line "goal line 224d06c0"`; `GOAL_CONTROL=drop-user-message`: `[otto] ... does not hold the person's message ... (roles on screen: assistant)`. Each reddened its own leg only. |
+| 2026-09-27 | FIX-1611 branch on 315976e5f, uncommitted | scripted | FAIL (control) | **Re-pointed** at `support.help` and `support.devices`; legs renamed **channel** and **seat**; the wren leg moved to `test/picked-session-panel.test.tsx` (see above). **`GOAL_CONTROL=no-post-item`, taken first.** Failed at **channel** only: after the reload `support.help`'s transcript held 0 copies of the posted line, and 0 lines at all. **seat** green. |
+| 2026-09-27 | FIX-1611 branch on 315976e5f, uncommitted | scripted | FAIL (control) | **Re-pointed.** `GOAL_CONTROL=drop-user-message`: failed at **seat** only: after the reload `support.devices`' conversation showed only `assistant` turns, not the person's message. **channel** green. |
+| 2026-09-27 | FIX-1611 branch on 315976e5f, uncommitted | scripted | **PASS** | **Re-pointed.** Fresh production build. After a reload `support.help` shows `goal line …` labelled `devuser`, once; `support.devices`' new conversation shows the message as the user's turn with the `[reply:talk-to-seat]` reply under it. |

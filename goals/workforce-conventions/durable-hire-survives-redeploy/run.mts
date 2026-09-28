@@ -7,7 +7,8 @@
  * ever written and fails the one thing this issue exists to deliver.
  *
  *   0  the CONTROL, asserted before anything else. The file-declared
- *      `support.ada` answers, and keeps answering across every restart below.
+ *      `support.general` answers, and keeps answering across every restart
+ *      below.
  *      A failure here means the probe is blind — the app is not serving, or the
  *      store was wiped — not that durability broke. Without it, a zero on any
  *      other leg means nothing.
@@ -16,12 +17,19 @@
  *      good one answers; the bad one is refused and leaves no address behind.
  *      A credential bound to another organization is refused outright.
  *
- *   2  HIRE a third carrying a token GENERATED AT CHECK TIME, then restart.
+ *   2  HIRE a third whose instructions carry a token GENERATED AT CHECK TIME,
+ *      then restart.
  *
  *   3  the DURABILITY leg. The token seat answers after the restart and its
  *      answer carries THAT token — read from what this check sent, never
  *      written into the check. A seat answering from a file-declared default,
  *      or from a kind's own default, has no way to produce it.
+ *
+ * Every seat is on the built-in `agent` kind, and every call asks it
+ * `[scenario:recall]`: the scripted model answers with each token it was
+ * handed before the question, and its instructions are among what it was
+ * handed. So a token in the answer is a token in the instructions the seat
+ * came back with.
  *
  *   4  the DEGRADE leg. A stored row is edited on disk to name a kind the code
  *      does not carry — which is what a real one looks like once a kind is
@@ -53,13 +61,15 @@ import { KITCHEN_SINK, loadFixture, runGoal } from "../../lib/index.mts";
 
 interface Fixture {
   userId: string;
-  note: string;
+  /** What every seat is asked: the recall scenario. */
+  ask: string;
+  /** The marker the recall answer carries. */
+  replyMarker: string;
   port: number;
   org: string;
   adminUser: string;
   otherOrg: string;
   controlSeat: string;
-  controlDesk: string;
   goodSeat: string;
   missingKindSeat: string;
   tokenSeat: string;
@@ -88,9 +98,9 @@ const SERVER_ENV = {
   FSD_ENV: "dev",
   STORE_TYPE: "filesystem",
   WORKFORCE_ADMIN_TOKENS: ADMIN_TOKENS,
-  // The clerk's answer calls a model: the scripted one, keyless. The goal
-  // grades the desk tag the kind writes from the seat's settings, not the
-  // model's words.
+  // A seat's answer calls a model: the scripted one, keyless. The goal grades
+  // the tokens the recall scenario names, which only the seat's instructions
+  // can hold, not the model's words.
   KITCHEN_SINK_TEST_MODE: "1",
 };
 
@@ -99,7 +109,7 @@ const SERVER_ENV = {
  * admin user who owns them.
  *
  * A FILE-declared seat does not: `hireKitchenSinkWorkforce` mints it under the
- * id its folders spell (`support.ada`), with no org segment, because a file is
+ * id its folders spell (`support.general`), with no org segment, because a file is
  * not hired into an organization. The control below therefore addresses the
  * bare id — using this helper for it is what made the first run of this check
  * report a blind probe, which is the control working rather than failing.
@@ -220,8 +230,8 @@ async function admin(action: "hire" | "fire", input: unknown, token = TOKEN): Pr
 }
 
 /**
- * Run a seat's `answer` action and return the text it put on the wire, or
- * `undefined` when the address does not resolve.
+ * Ask a seat the recall question through its `run` action and return the text
+ * it put on the wire, or `undefined` when the address does not resolve.
  *
  * Read off the inline SSE stream an `Accept: text/event-stream` POST returns —
  * the same stream a browser client reads, so nothing here is a back channel.
@@ -240,13 +250,13 @@ async function answerOf(seatAddress: string): Promise<string | undefined> {
   if (!created.ok) throw new Error(`${seatAddress}: creating a session returned ${created.status}`);
   const sessionId = ((await created.json()) as { session: { id: string } }).session.id;
 
-  const res = await fetch(`${ORIGIN}/api/flows/${seatAddress}/${sessionId}/actions/answer`, {
+  const res = await fetch(`${ORIGIN}/api/flows/${seatAddress}/${sessionId}/actions/run`, {
     method: "POST",
     headers: { ...seatHeaders(), accept: "text/event-stream" },
-    body: JSON.stringify({ userId: fixture.userId, orgId: fixture.org, input: { note: fixture.note } }),
+    body: JSON.stringify({ userId: fixture.userId, orgId: fixture.org, input: { message: fixture.ask } }),
   });
   if (res.status === 404) return undefined;
-  if (!res.ok) throw new Error(`${seatAddress}: its answer action returned ${res.status}`);
+  if (!res.ok) throw new Error(`${seatAddress}: its run action returned ${res.status}`);
 
   let said = "";
   for (const line of (await res.text()).split("\n")) {
@@ -339,7 +349,9 @@ function breakStoredKind(seatId: string): void {
 await runGoal(async () => {
   const failures: string[] = [];
   const evidence: string[] = [];
-  const token = `desk-${randomUUID()}`;
+  // Both shaped as the tokens the recall scenario names (`<word>-token-<id>`).
+  const token = `hire-token-${randomUUID().replace(/-/g, "")}`;
+  const goodToken = `good-token-${randomUUID().replace(/-/g, "")}`;
 
   // A run must never inherit a roster. Otherwise leg 3 could pass against a
   // seat an earlier run hired, which is the one false green that would look
@@ -355,13 +367,13 @@ await runGoal(async () => {
 
     // ---- (0) the control, before anything else -----------------------------
     const controlFirst = await answerOf(fixture.controlSeat);
-    if (controlFirst === undefined || !controlFirst.includes(fixture.controlDesk)) {
+    if (controlFirst === undefined || !controlFirst.includes(fixture.replyMarker)) {
       // Nothing below can mean anything if the app is not serving its
       // file-declared team, so this is reported on its own.
       return {
         failures: [
           `the probe is blind: the file-declared ${fixture.controlSeat} answered ` +
-            `${JSON.stringify(controlFirst)} rather than naming its "${fixture.controlDesk}" desk, so a ` +
+            `${JSON.stringify(controlFirst)} rather than a ${fixture.replyMarker} answer, so a ` +
             `failure on any durability leg below would not mean durability broke`,
         ],
         evidence: "",
@@ -372,24 +384,22 @@ await runGoal(async () => {
     const good = await admin("hire", {
       seatId: fixture.goodSeat,
       flow: fixture.kind,
-      settings: { desk: "back" },
-      instructions: "You work the back desk.",
+      instructions: `You take refund questions. Your case tag is ${goodToken}.`,
     });
     if (good.status !== 200) {
       failures.push(`hiring ${fixture.goodSeat} returned ${good.status}: ${good.body.slice(0, 400)}`);
     }
     const goodAnswer = await answerOf(address(fixture.goodSeat));
-    if (goodAnswer === undefined || !goodAnswer.includes("back")) {
+    if (goodAnswer === undefined || !goodAnswer.includes(goodToken)) {
       failures.push(
         `${address(fixture.goodSeat)} was hired but answered ${JSON.stringify(goodAnswer)} — it should ` +
-          `carry the desk the hire supplied, straight away, in this process`
+          `carry the instructions the hire supplied (${goodToken}), straight away, in this process`
       );
     }
 
     const refused = await admin("hire", {
       seatId: fixture.missingKindSeat,
       flow: fixture.missingKind,
-      settings: {},
     });
     if (refused.status === 200 && !refused.body.includes("error")) {
       failures.push(
@@ -404,7 +414,7 @@ await runGoal(async () => {
     // A credential bound to another organization administers nothing here.
     const elsewhere = await admin(
       "hire",
-      { seatId: fixture.otherOrgSeat, flow: fixture.kind, settings: { desk: "elsewhere" } },
+      { seatId: fixture.otherOrgSeat, flow: fixture.kind, instructions: "You answer for elsewhere." },
       OTHER_ORG_TOKEN
     );
     if (elsewhere.status !== 401) {
@@ -421,8 +431,7 @@ await runGoal(async () => {
     const tokenHire = await admin("hire", {
       seatId: fixture.tokenSeat,
       flow: fixture.kind,
-      settings: { desk: token },
-      instructions: "You work a desk named by the check.",
+      instructions: `You work a queue the check named: ${token}.`,
     });
     if (tokenHire.status !== 200) {
       failures.push(`hiring ${fixture.tokenSeat} returned ${tokenHire.status}: ${tokenHire.body.slice(0, 400)}`);
@@ -435,7 +444,7 @@ await runGoal(async () => {
       orgId: fixture.otherOrg,
       seatId: "support.spoof",
       flow: fixture.kind,
-      settings: { desk: "spoofed" },
+      instructions: "You were hired with a spoofed organization.",
     });
     if (await resolves(address("support.spoof", fixture.otherOrg))) {
       failures.push(
@@ -454,7 +463,7 @@ await runGoal(async () => {
     await restart();
 
     const controlAfter = await answerOf(fixture.controlSeat);
-    if (controlAfter === undefined || !controlAfter.includes(fixture.controlDesk)) {
+    if (controlAfter === undefined || !controlAfter.includes(fixture.replyMarker)) {
       failures.push(
         `after the restart the file-declared ${fixture.controlSeat} answered ${JSON.stringify(controlAfter)} — ` +
           `the control failed, so the durability result below is not interpretable`
@@ -470,13 +479,13 @@ await runGoal(async () => {
       failures.push(
         `${address(fixture.tokenSeat)} answered after the restart but said ${JSON.stringify(tokenAfter)}, ` +
           `which does not carry the token this check generated (${token}) — so it came back on a default ` +
-          `rather than on the settings the hire supplied`
+          `rather than on the instructions the hire supplied`
       );
     }
     evidence.push(
       `across a restart of the Next-built app: ${address(fixture.tokenSeat)} said ` +
         `${JSON.stringify(tokenAfter)} carrying the check-time token, control ${fixture.controlSeat} still ` +
-        `naming its "${fixture.controlDesk}" desk`
+        `answering (${JSON.stringify(controlAfter)})`
     );
 
     // ---- (4) the degrade leg ------------------------------------------------

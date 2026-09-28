@@ -6,11 +6,11 @@
  * assistant-generator, auto-title). Each gets its own mock instance below.
  * An `agent` seat answers through `agent-answer` (or
  * `agent-answer-with-activate-tool`, when the seat turns that tool on); both
- * share `agentSeatMock`, keyed on its own scenario markers, one of which
- * answers in a channel through `post-to-channel`. The `desk-clerk`
- * kind answers through `desk-clerk-answer`, scripted by `deskClerkMock`: one
- * scenario answers, the other files the note through the kind's
- * `desk-clerk-file` tool and then says so.
+ * share `agentSeatMock`, keyed on its own scenario markers: one answers in a
+ * channel through `post-to-channel`, one files a case through `escalate` and
+ * then says so, and one names the tokens the seat could see from before the
+ * turn. Under the goal checks' `no-history` control the scripted model is
+ * handed only the system messages and the latest turn.
  * A scenario can hold its answer for a while first (`holdMs`), which
  * `test/mock-flowstate.ts` applies before the model runs.
  * `policy: "allow"` (set in `test/mock-flowstate.ts`) catches anything else
@@ -34,15 +34,20 @@ import type {
 } from "@flow-state-dev/testing";
 import { mockEvaluationModel, mockGenerator } from "@flow-state-dev/testing";
 
+import { goalControl } from "./goal-control";
+
 type ScenarioScript = {
   /** Whether the latest user turn picks this scenario. */
   match: (turn: string) => boolean;
   /** How long the seat holds before answering, so a page can see it working. */
   holdMs?: number;
-  /** The steps, or a function of the turn and what this call's tools returned so far. */
+  /**
+   * The steps, or a function of the turn, what this call's tools returned so
+   * far, and the whole message list the model is handed.
+   */
   steps:
     | MockGeneratorScriptStep[]
-    | ((turn: string, toolResults: MockToolResult[]) => MockGeneratorScriptStep[]);
+    | ((turn: string, toolResults: MockToolResult[], messages: Message[]) => MockGeneratorScriptStep[]);
 };
 
 const SCENARIO_SCRIPTS: ScenarioScript[] = [
@@ -115,6 +120,46 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
     holdMs: 3_000,
     steps: replyInChannel,
   },
+  {
+    // What the seat can see from before this turn (FIX-1611 BR-19): every
+    // token in the system messages (where a routed post's recent lines land)
+    // and in the earlier turns of this conversation, and none from the turn
+    // itself. The reply names nothing it could not see, so a check reads what
+    // reached the model off the reply.
+    match: (turn) => turn.includes("[scenario:recall]"),
+    steps: (_turn, _toolResults, messages) => {
+      const seen = tokensBeforeLatestTurn(messages);
+      return [{ text: `[reply:recall] ${seen.length > 0 ? seen.join(" ") : "Nothing came before this."}` }];
+    },
+  },
+  {
+    // A case that needs a person (FIX-1611 BR-20). The first step calls
+    // `escalate` with the post's token in the case, so the real tool runs; the
+    // second says it filed, or, when the tool reports it filed nothing, says
+    // that instead. `[forge-author]` makes the call also name an author, a
+    // board and a channel of its own, which the tool's input does not carry.
+    match: (turn) => turn.includes("[scenario:needs-a-person]"),
+    steps: (turn, toolResults) => {
+      const token = TOKEN.exec(turn)?.[0] ?? "no-token";
+      const forged = turn.includes("[forge-author]")
+        ? { author: "support.fsd", board: "followups", channel: "support.elsewhere" }
+        : {};
+      return [
+        {
+          toolCalls: [
+            {
+              toolCallId: `tc_${token}`,
+              toolName: "escalate",
+              args: { case: `Needs a person: ${token}`, ...forged },
+            },
+          ],
+        },
+        unfiled(toolResults)
+          ? { text: "[reply:unfiled] Nothing was filed: filing is unavailable here." }
+          : { text: "[reply:escalated] Filed onto escalations." },
+      ];
+    },
+  },
 ];
 
 /**
@@ -141,52 +186,52 @@ function replyInChannel(turn: string): MockGeneratorScriptStep[] {
   ];
 }
 
-/**
- * The desk clerk's scenarios. `[scenario:clerk-answer]` answers in words the
- * note does not contain. `[scenario:clerk-file]` files the note through the
- * kind's `desk-clerk-file` tool, onto `escalations` unless the note names
- * another board as `[board:<name>]`, with the note's `clerk-token-…` in the
- * row's goal, then says where it went, or, when the tool reports that nothing
- * was filed, says that instead (`[clerk:unfiled]`).
- */
-const DESK_CLERK_SCRIPTS: ScenarioScript[] = [
-  {
-    match: (turn) => turn.includes("[scenario:clerk-answer]"),
-    steps: [{ text: "[clerk:answered] The desk has your note and will answer it here." }],
-  },
-  {
-    match: (turn) => turn.includes("[scenario:clerk-file]"),
-    steps: (turn, toolResults) => {
-      const board = /\[board:([a-z-]+)\]/.exec(turn)?.[1] ?? "escalations";
-      const token = /clerk-token-[a-z0-9]+/.exec(turn)?.[0] ?? "no-token";
-      // `[forge-author]` makes the model try to sign as another seat, which
-      // the tool must ignore: the author is the seat's own id.
-      const forged = turn.includes("[forge-author]") ? { author: "support.grace" } : {};
-      return [
-        {
-          toolCalls: [
-            {
-              toolCallId: `tc_${token}`,
-              toolName: "desk-clerk-file",
-              args: { board, goal: `Filed from the desk: ${token}`, ...forged },
-            },
-          ],
-        },
-        unfiled(toolResults)
-          ? { text: "[clerk:unfiled] Nothing was filed: filing is unavailable here." }
-          : { text: `[clerk:filed] Filed onto ${board}.` },
-      ];
-    },
-  },
-];
+/** A token a check mints into a post, and the only thing recall names. */
+const TOKEN = /[a-z]+-token-[a-z0-9]+/;
 
-/** Whether the clerk's filing tool reported that it filed nothing. */
+/** Whether `escalate` reported that it filed nothing. */
 function unfiled(toolResults: MockToolResult[]): boolean {
   return toolResults.some(
     (entry) =>
-      entry.toolName === "desk-clerk-file" &&
-      (entry.result as { filed?: unknown } | null)?.filed === false,
+      entry.toolName === "escalate" && (entry.result as { filed?: unknown } | null)?.filed === false,
   );
+}
+
+type Message = { role?: unknown; content?: unknown };
+
+/** The messages of a model call, or none when the input is not a message list. */
+function messagesOf(input: unknown): Message[] {
+  return Array.isArray(input) ? (input as Message[]).filter((m) => m !== null && typeof m === "object") : [];
+}
+
+/** The index of the latest user turn, or -1. */
+function latestUserIndex(messages: Message[]): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]!.role === "user") return i;
+  }
+  return -1;
+}
+
+/** Every token in the messages before the latest user turn, once each, in order. */
+function tokensBeforeLatestTurn(messages: Message[]): string[] {
+  const before = messages.slice(0, Math.max(latestUserIndex(messages), 0));
+  const found = before.flatMap((m) => JSON.stringify(m.content ?? "").match(new RegExp(TOKEN.source, "g")) ?? []);
+  return [...new Set(found)];
+}
+
+/**
+ * The messages the seat's model is handed, as the scripted model reads them.
+ *
+ * Under the goal checks' `no-history` control (test mode only, `goalControl`),
+ * only the system messages and the latest user turn: the conversation's
+ * earlier turns never reach the model, as if the kind kept no history. A check
+ * that a seat recalls an earlier turn must FAIL under it. The kind has no
+ * switch for this, and must not: a public option only a control would use.
+ */
+function asHeard(messages: Message[]): Message[] {
+  if (goalControl() !== "no-history") return messages;
+  const latest = latestUserIndex(messages);
+  return messages.filter((m, i) => m.role === "system" || i === latest);
 }
 
 /**
@@ -236,7 +281,7 @@ function buildScenarioMock(name: string, scripts: ScenarioScript[]): MockGenerat
     else byTurn.set(turn, i + 1);
     const steps =
       typeof scenario.steps === "function"
-        ? scenario.steps(turn, context?.toolResults ?? [])
+        ? scenario.steps(turn, context?.toolResults ?? [], asHeard(messagesOf(input)))
         : scenario.steps;
     return steps[Math.min(i, steps.length - 1)];
   };
@@ -276,9 +321,6 @@ export function holdBeforeAnswer(generator: string, input: unknown): number {
   const turn = latestUserTurn(input);
   return scripts.find((s) => s.match(turn))?.holdMs ?? 0;
 }
-
-/** The desk clerk's answering generator. */
-export const deskClerkMock = buildScenarioMock("desk-clerk-answer", DESK_CLERK_SCRIPTS);
 
 /**
  * A routed channel's evaluation. Reads the post from the state the route

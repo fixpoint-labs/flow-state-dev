@@ -11,41 +11,31 @@
  * One thing is substituted, below the wiring under test: the model.
  * `KITCHEN_SINK_TEST_MODE=1` makes the config build its model resolver from
  * `test/mock-flowstate`, which this file mocks with a scripted `agent-answer`,
- * so a seat's tool calls are fixed. The rail's hire door is the real one:
- * `chat-agent`'s `hireSeat` action, which declares no resolver and so takes
- * the host fallback.
+ * so a seat's answer is fixed.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1500/PLAN.md`), and the red
  * state each was seen in before its green was trusted:
  *
  *   V18 A session on the assistant's flow, on a seat and on a channel binds to
- *       `kitchen-sink`. A rail hire lands there whatever the body says, reads
- *       back through the rail's session and the assistant's roster, and mara's
- *       `discover` lists it. Red: remove `resolvePrincipal` from
- *       `fsdev.config.ts` — every session binds to `__fsd_default_org__` and
- *       the hire is refused (`Organization id "__fsd_default_org__" …`).
+ *       `kitchen-sink`, whatever the body says. Red: remove `resolvePrincipal`
+ *       from `fsdev.config.ts` — every session binds to `__fsd_default_org__`.
  *   V19 A store written before the app named its organization is not
  *       upgraded: it is wiped (the owner's call on #2159). The boot over one
  *       refuses to start, names every channel stored under another
  *       organization, and says to delete the store. The guard only reads: no
  *       channel is moved, rebound or deleted. Red: remove the guard in `fsdev.config.ts` — the boot fails with the
- *       bare `channel "support.ada-wren" could not be opened — Request failed
+ *       bare `channel "support.help" could not be opened — Request failed
  *       (403)`, which names neither the cause nor the fix.
- *   V11 (inside V18's hire case) A rail hire whose body and input both name
- *       `orgId: "globex"` lands in the session's organization. The assertion
- *       is where the seat ended up, not that the call succeeded. Red: have
- *       the sequence read the input's `orgId` — the seat registers at
- *       `globex.support.pat` and the `kitchen-sink` address is empty.
- *   V14 A rail hire survives the process that made it, at node level. (a) The
- *       row is in the durable store, read out of band. (b) A second boot over
- *       the same location serves the seat and the rail reads its row. The
- *       negative control is part of the case: a third boot over an EMPTY
- *       location must not have it, or (b) could be passing off a cache in
- *       this process rather than the store.
  *   V22 With `acme:t1,kitchen-sink:t2`, the `acme` token is refused (401) and
- *       named in the boot log, and the `kitchen-sink` token's `fire` releases a
- *       rail hire and a mara hire. Red: accept the `acme` binding — its token
+ *       named in the boot log, and the `kitchen-sink` token's `fire` releases
+ *       the seat its `hire` made. Red: accept the `acme` binding — its token
  *       resolves, and its fire answers `This organization hired no seat`.
+ *
+ * V11 and V14 were proven through the rail's hire, and left with it (FIX-1611
+ * D3): an operator's hire landing in `kitchen-sink` whatever its body names is
+ * `workforce-admin.test.ts` V10, and one surviving a restart is
+ * `hired-seat-auth.test.ts` and the goal check
+ * `goals/workforce-conventions/durable-hire-survives-redeploy/`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -54,7 +44,7 @@ import path from "node:path";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFilesystemStores, createFlowState, filesystemStores, type FlowState } from "@flow-state-dev/engine";
 import { createSessionClient } from "@flow-state-dev/client";
-import { openChannels, HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
+import { openChannels } from "@flow-state-dev/workforce";
 
 type ScriptStep =
   | { toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> }
@@ -82,9 +72,6 @@ vi.mock("@/test/mock-flowstate", async () => {
 vi.setConfig({ testTimeout: 30_000 });
 
 const ORG = "kitchen-sink";
-/** The flow the rail's session runs on, and the one carrying its hire door. */
-const RAIL = "chat-agent";
-const ADDR = (seatId: string) => `${ORG}.${seatId}`;
 
 type Router = Awaited<ReturnType<FlowState["getRouter"]>>;
 
@@ -164,130 +151,52 @@ async function act(router: Router, flowId: string, action: string, sessionId: st
   return call(router, "POST", [flowId, "actions", action], { userId: "someone-else", sessionId, input, ...extra }, headers);
 }
 
-/** Hire through the rail's door. `orgId` names another organization in the body and in the input, as a caller could. */
-async function hireFromRail(router: Router, seatId: string, orgId?: string) {
-  const session = await openSession(router, RAIL);
-  const named = orgId === undefined ? {} : { orgId };
-  const hired = await act(router, RAIL, "hireSeat", session.id!, { seatId, flow: "agent", instructions: "Takes refunds.", ...named }, named);
-  return { session, hired };
-}
-
-const hireScript = (seatId: string): ScriptStep[] => [
-  { toolCalls: [{ toolCallId: "h1", toolName: "hire", args: { seatId, flow: "agent" } }] },
-  { text: "hired" },
-];
-
 // ---------------------------------------------------------------------------
 
 describe("V18 · one organization, from the host resolver", () => {
   it("binds the assistant's flow, a seat and a channel to kitchen-sink, whatever the body says", async () => {
     const { router } = await bootApp();
 
-    for (const flowId of ["chat-agent", "support.ada", "support.mara", "channel"]) {
+    for (const flowId of ["chat-agent", "support.devices", "support.general", "channel"]) {
       const opened = await openSession(router, flowId, { orgId: "globex" });
       expect(opened.status, `${flowId}: ${opened.text}`).toBe(201);
       expect(opened.orgId, flowId).toBe(ORG);
     }
-    // And the channels the boot itself opened.
-    const desk = await call(router, "GET", ["sessions", "support.desk"]);
-    expect(desk.status, desk.text).toBe(200);
-    expect(json(desk.text).session.orgId).toBe(ORG);
+    // And the channel the boot itself opened.
+    const help = await call(router, "GET", ["sessions", "support.help"]);
+    expect(help.status, help.text).toBe(200);
+    expect(json(help.text).session.orgId).toBe(ORG);
   });
 
-  it("lands a rail hire in kitchen-sink, reads it back on the rail and the assistant, and mara's discover lists it", async () => {
-    const { runtime, router } = await bootApp({
-      steps: [{ toolCalls: [{ toolCallId: "d1", toolName: "discover", args: {} }] }, { text: "done" }],
-    });
-
-    const { session, hired } = await hireFromRail(router, "support.pat", "globex");
-    expect(session.orgId).toBe(ORG);
-    expect(hired.text).not.toMatch(/Organization id|"type":"error"/);
-    // Where the seat ended up, not whether the call said ok.
-    expect(runtime.registry.get(ADDR("support.pat"))?.kind).toBe("agent");
-    expect(runtime.registry.get("globex.support.pat")).toBeUndefined();
-
-    // The rail's own read, through the session that hired, and through
-    // another of the assistant's sessions: the same organization's row.
-    for (const sessionId of [session.id!, (await openSession(router, RAIL)).id!]) {
-      const onRail = await call(router, "GET", ["sessions", sessionId, "resources", HIRED_ROSTER_RESOURCE, "support.pat"]);
-      expect(onRail.status, onRail.text).toBe(200);
-      expect(onRail.text).toContain("Takes refunds.");
-    }
-
-    // The hired seat opens for the visitor: its pin is kitchen-sink, and so are they.
-    const opened = await openSession(router, ADDR("support.pat"));
-    expect(opened.status, opened.text).toBe(201);
-
-    // A file-declared seat, in another request, sees the hire.
-    const mara = await openSession(router, "support.mara");
-    const ran = await act(router, "support.mara", "run", mara.id!, { message: "who is around?" });
-    expect(ran.text).toContain(ADDR("support.pat"));
-  });
-});
-
-describe("V14 · a rail hire outlives the process that made it", () => {
-  /** End a boot the way a process exit would, so the next import builds a new one. */
-  async function shutDown(flowstate: FlowState): Promise<void> {
-    await flowstate.dispose();
-    delete (globalThis as { __fsdFlowstate?: FlowState }).__fsdFlowstate;
-  }
-
-  it("is in the store out of band, is served by a fresh boot over it, and not by one over an empty store", async () => {
-    const dataDir = await mkdtemp(path.join(tmpdir(), "ks-rail-hire-"));
-    const emptyDir = await mkdtemp(path.join(tmpdir(), "ks-rail-hire-empty-"));
-    cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
-    cleanups.push(() => rm(emptyDir, { recursive: true, force: true }));
-
-    const first = await bootApp({ dataDir });
-    const { hired } = await hireFromRail(first.router, "support.pat");
-    expect(hired.text).not.toMatch(/"type":"error"/);
-    await shutDown(first.flowstate);
-
-    // (a) Out of band: a store handle this test opened, not the runtime's.
-    const rows = await storeAt(dataDir).resourceState.getByPrefix("org", ORG, "workforce/roster/");
-    expect(Object.keys(rows)).toEqual(["workforce/roster/support.pat"]);
-    expect(rows["workforce/roster/support.pat"]!.state).toMatchObject({ flow: "agent", instructions: "Takes refunds." });
-
-    // (b) A new boot over the same location serves the seat, and the rail reads it.
-    const second = await bootApp({ dataDir });
-    expect(second.runtime.registry.get(ADDR("support.pat"))?.kind).toBe("agent");
-    const rail = await openSession(second.router, RAIL);
-    const read = await call(second.router, "GET", ["sessions", rail.id!, "resources", HIRED_ROSTER_RESOURCE, "support.pat"]);
-    expect(read.status, read.text).toBe(200);
-    expect(read.text).toContain("Takes refunds.");
-    await shutDown(second.flowstate);
-
-    // The control: the same boot over an empty location has no such seat.
-    const empty = await bootApp({ dataDir: emptyDir });
-    expect(empty.runtime.registry.get(ADDR("support.pat"))).toBeUndefined();
-  });
 });
 
 describe("V22 · every admin token is bound to kitchen-sink", () => {
-  it("refuses and names an acme token, and the kitchen-sink token fires a rail hire and a mara hire", async () => {
-    const { runtime, router, log } = await bootApp({
-      tokens: "acme:t1,kitchen-sink:t2",
-      steps: hireScript("support.quinn"),
-    });
+  it("refuses and names an acme token, and the kitchen-sink token fires the seat it hired", async () => {
+    const { runtime, router, log } = await bootApp({ tokens: "acme:t1,kitchen-sink:t2" });
 
     expect(log.join("\n")).toMatch(/names organization "acme"/);
 
-    // The rail's hire, and mara's, both in the one organization.
-    await hireFromRail(router, "support.pat");
-    const mara = await openSession(router, "support.mara");
-    await act(router, "support.mara", "run", mara.id!, { message: "hire quinn" });
-    expect(runtime.registry.get(ADDR("support.pat"))?.kind).toBe("agent");
-    expect(runtime.registry.get(ADDR("support.quinn"))?.kind).toBe("agent");
+    // The operator's hire, pinned to the organization and the admin user.
+    const seat = `${ORG}.~workforce-admin.support.pat`;
+    const hired = await act(
+      router,
+      "workforce-admin",
+      "hire",
+      "admin-hire",
+      { seatId: "support.pat", flow: "agent", instructions: "Takes refunds." },
+      {},
+      { authorization: "Bearer t2" },
+    );
+    expect(hired.text).not.toMatch(/"type":"error"/);
+    expect(runtime.registry.get(seat)?.kind).toBe("agent");
 
     const acme = await act(router, "workforce-admin", "fire", "admin-acme", { seatId: "support.pat" }, {}, { authorization: "Bearer t1" });
     expect(acme.status, acme.text).toBe(401);
-    expect(runtime.registry.get(ADDR("support.pat"))).toBeDefined();
+    expect(runtime.registry.get(seat)).toBeDefined();
 
-    for (const seatId of ["support.pat", "support.quinn"]) {
-      const fired = await act(router, "workforce-admin", "fire", `admin-${seatId}`, { seatId }, {}, { authorization: "Bearer t2" });
-      expect(fired.text).toContain('"released":true');
-      expect(runtime.registry.get(ADDR(seatId))).toBeUndefined();
-    }
+    const fired = await act(router, "workforce-admin", "fire", "admin-fire", { seatId: "support.pat" }, {}, { authorization: "Bearer t2" });
+    expect(fired.text).toContain('"released":true');
+    expect(runtime.registry.get(seat)).toBeUndefined();
   });
 });
 
@@ -345,8 +254,8 @@ describe("V19 · a store written before the app named its organization", () => {
     await rm(path.join(dataDir, ".fsdev", "data"), { recursive: true, force: true });
 
     const { router } = await bootApp({ dataDir });
-    const desk = await call(router, "GET", ["sessions", "support.desk"]);
-    expect(desk.status, desk.text).toBe(200);
-    expect(json(desk.text).session.orgId).toBe(ORG);
+    const help = await call(router, "GET", ["sessions", "support.help"]);
+    expect(help.status, help.text).toBe(200);
+    expect(json(help.text).session.orgId).toBe(ORG);
   });
 });

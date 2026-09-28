@@ -1,21 +1,24 @@
 /**
- * Goal check: a person posts to `support.desk`, and `support.otto`'s reply
- * appears in that channel under its own name, is still there after a reload,
- * and wakes nobody.
+ * Goal check: a person posts to `support.help`, and the specialist the route
+ * picks, `support.devices`, answers in that channel under its own name through
+ * its `post-to-channel` tool. The line is still there after a reload, and
+ * wakes nobody.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
  *
  * One real browser against the app's PRODUCTION build (built here, never
  * assumed), on its scripted model, keyless. Two posts from the channel's
- * panel, each carrying a fresh token, then one reload. Three legs, graded per
- * post:
+ * panel, each naming the specialist in `[route:<member>]` and carrying a fresh
+ * token, then one reload. Three legs, graded per post:
  *
  *   line        the channel shows exactly one line carrying the post's token
- *               and the line marker: otto's reply, kept by the channel.
- *   author      that line is labelled `support.otto`.
- *   woken-once  `support.iris` and `support.otto` each list one run of the
- *               channel, holding the token in exactly one turn: the person's
- *               post. A second turn with the token is otto's line waking a seat.
+ *               and the line marker: the specialist's answer, kept by the
+ *               channel.
+ *   author      that line is labelled `support.devices`.
+ *   woken-once  `support.devices` lists one run of the channel, holding the
+ *               token in exactly one turn: the person's post. The members the
+ *               route passed over hold no run with the token. A second turn,
+ *               or another member's run, is the specialist's line waking a seat.
  *
  * Everything graded is read off the page after a reload, so only what the
  * server kept can pass.
@@ -50,7 +53,10 @@ interface Fixture {
   port: number;
   channel: Seat;
   replier: Seat;
-  agents: Seat[];
+  /** The members the route passes over. */
+  others: Seat[];
+  /** The tag the scripted route reads to pick who answers. */
+  route: string;
   marker: string;
   lineMarker: string;
 }
@@ -60,10 +66,12 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 
 /** The legs each control must redden, and only those. */
 const EXPECTED: Record<string, string[]> = {
-  // The wake's author filter dropped: otto's line, still signed, wakes both agents.
+  // The wake's author filter dropped: the specialist's line, still signed, is
+  // a seat's post, so it fans out unrouted and wakes every member.
   "no-author-filter": ["woken-once"],
   // The tool sends no author: the line reads as the principal, and a line with
-  // no author is a person's line to the fan-out, so it wakes both agents too.
+  // no author is a person's post, so the route places it and a seat hears the
+  // specialist's own words.
   "post-without-author": ["author", "woken-once"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
@@ -90,8 +98,8 @@ async function post(page: Page, line: string): Promise<void> {
 }
 
 /**
- * Let otto's line land and both agents answer before the reload, then give a
- * wrongly woken seat time to run. Not graded: whatever did not happen fails
+ * Let the specialist's line land and its answer finish before the reload, then
+ * give a wrongly woken seat time to run. Not graded: whatever did not happen fails
  * on the page below.
  */
 async function settle(page: Page, origin: string, token: string): Promise<void> {
@@ -112,7 +120,7 @@ async function settle(page: Page, origin: string, token: string): Promise<void> 
     return false;
   };
   await readUntil(
-    async () => (await channelHolds()) && (await Promise.all(fixture.agents.map((s) => answered(s.id)))).every(Boolean),
+    async () => (await channelHolds()) && (await answered(fixture.replier.id)),
     (done) => done,
     20_000,
   );
@@ -150,8 +158,8 @@ await runGoal(async () => {
   const run = randomUUID().replace(/-/g, "").slice(0, 10);
   const tokens = [`reply-token-a${run}`, `reply-token-b${run}`];
   const lines = [
-    `${fixture.marker} ${tokens[0]} when do refunds post?`,
-    `${fixture.marker} ${tokens[1]} and exchanges, the same day?`,
+    `${fixture.route} ${fixture.marker} ${tokens[0]} the office printer shows offline again`,
+    `${fixture.route} ${fixture.marker} ${tokens[1]} and the one on the second floor, the same fix?`,
   ];
 
   buildKitchenSink();
@@ -199,13 +207,11 @@ await runGoal(async () => {
       evidence.push(`${fixture.channel.id}: one line for ${token}, labelled ${replies[0]!.label}: ${JSON.stringify(replies[0]!.text)}`);
     }
 
-    // ---- each agent heard each post once, and never otto's line ------------
-    for (const seat of fixture.agents) {
-      const runs = await channelRunsOf(page, origin, seat);
-      if (runs.length !== 1) {
-        fail("woken-once", `${seat.id} lists ${runs.length} runs of ${fixture.channel.id} (want 1)`);
-        continue;
-      }
+    // ---- the specialist heard each post once, and nobody heard its line ----
+    const runs = await channelRunsOf(page, origin, fixture.replier);
+    if (runs.length !== 1) {
+      fail("woken-once", `${fixture.replier.id} lists ${runs.length} runs of ${fixture.channel.id} (want 1)`);
+    } else {
       let once = true;
       for (const token of tokens) {
         const heard = runs[0]!.filter((m) => m.role === "user" && m.text.includes(token));
@@ -213,11 +219,20 @@ await runGoal(async () => {
           once = false;
           fail(
             "woken-once",
-            `${seat.id} heard ${token} in ${heard.length} turns (want 1, the person's post): ${JSON.stringify(heard.map((m) => m.text))}`,
+            `${fixture.replier.id} heard ${token} in ${heard.length} turns (want 1, the person's post): ${JSON.stringify(heard.map((m) => m.text))}`,
           );
         }
       }
-      if (once) evidence.push(`${seat.id}: one run of ${fixture.channel.id}, each token heard once, in the person's post`);
+      if (once) evidence.push(`${fixture.replier.id}: one run of ${fixture.channel.id}, each token heard once, in the person's post`);
+    }
+    for (const seat of fixture.others) {
+      const theirs = await channelRunsOf(page, origin, seat);
+      const holding = theirs.filter((ms) => ms.some((m) => tokens.some((t) => m.text.includes(t))));
+      if (holding.length > 0) {
+        fail("woken-once", `${seat.id} holds ${holding.length} run(s) of ${fixture.channel.id} with a post's token: the specialist's line woke it`);
+      } else {
+        evidence.push(`${seat.id}: none of its ${theirs.length} runs of ${fixture.channel.id} holds either token`);
+      }
     }
   } finally {
     await browser.close();

@@ -97,7 +97,7 @@ describe("a channel's panel", () => {
       "channel",
       session({
         items: [
-          line("1", "from a seat", { author: "support.ada", principal: "devuser" }),
+          line("1", "from a seat", { author: "support.devices", principal: "devuser" }),
           { id: "noise", type: "message", role: "assistant", content: [] },
           line("2", "from the page", { principal: "devuser" }),
           line("3", "from the digest kind"),
@@ -107,14 +107,14 @@ describe("a channel's panel", () => {
     const labels = screen.getAllByTestId("channel-line-label").map((el) => el.textContent);
     const bodies = screen.getAllByTestId("channel-line-body").map((el) => el.textContent);
     expect(bodies).toEqual(["from a seat", "from the page", "from the digest kind"]);
-    expect(labels).toEqual(["support.ada", "devuser", "unattributed"]);
+    expect(labels).toEqual(["support.devices", "devuser", "unattributed"]);
     // The stream is not drawn for a channel: its transcript is.
     expect(screen.queryByTestId("stream-items")).toBeNull();
   });
 
-  it("shows an empty transcript and still posts, when the kind emits no channel-post item", async () => {
+  it("shows an empty transcript and still posts, when the session holds no channel-post item", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
-    panel("digest", session({ items: [{ id: "x", type: "message", role: "assistant", content: [] }], sendAction }));
+    panel("channel", session({ items: [{ id: "x", type: "message", role: "assistant", content: [] }], sendAction }));
     expect(screen.queryAllByTestId("channel-line")).toHaveLength(0);
     await type("Post to this channel", "hello");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -239,7 +239,6 @@ describe("switching picks", () => {
 describe("a seat's panel", () => {
   it.each([
     ["agent", "run", { message: "where is my refund?" }],
-    ["desk-clerk", "answer", { note: "where is my refund?" }],
   ])("a %s seat sends its kind's own action", async (kind, action, input) => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
     panel(kind, session({ sendAction }));
@@ -252,10 +251,13 @@ describe("a seat's panel", () => {
     expect(sendAction.mock.calls[0]).toEqual([action, input]);
   });
 
-  it("a seat whose kind takes no messages has no composer, and says why", () => {
-    panel("followup-runner", session());
+  // FIX-1611 BR-15.
+  it("a seat of a kind the page has no action for has no composer, and says so", () => {
+    panel("a-kind-this-page-does-not-know", session());
     expect(screen.queryByTestId("picked-composer")).toBeNull();
-    expect(screen.getByTestId("picked-read-only").textContent).toContain("runs rows from a board");
+    expect(screen.getByTestId("picked-read-only").textContent).toBe(
+      "This a-kind-this-page-does-not-know seat takes no messages from this page.",
+    );
     expect(screen.queryByText(/go to the assistant/)).toBeNull();
   });
 });
@@ -266,24 +268,24 @@ describe("who is working", () => {
     view.rerender(<PickedSessionPanel session={s} kind={kind} requestStatus={requestStatus} conversation={null} />);
 
   it.each(["channel", "agent"])("a %s panel names each unfinished run by its flow", (kind) => {
-    panel(kind, session({ childSessions: [{ id: "run-1", flowId: "support.otto", status: "active" }] }));
-    expect(rows()).toEqual(["support.otto is working"]);
+    panel(kind, session({ childSessions: [{ id: "run-1", flowId: "support.devices", status: "active" }] }));
+    expect(rows()).toEqual(["support.devices is working"]);
   });
 
   it("clears the row when the run finishes, however it ends, and keeps the line it posted", () => {
-    const working = [{ id: "run-1", flowId: "support.otto", status: "active" }];
+    const working = [{ id: "run-1", flowId: "support.devices", status: "active" }];
     const view = panel("channel", session({ childSessions: working }));
-    expect(rows()).toEqual(["support.otto is working"]);
+    expect(rows()).toEqual(["support.devices is working"]);
 
     for (const status of ["completed", "failed", "incomplete", "aborted"]) {
       rerender(view, "channel", session({ childSessions: working }));
-      expect(rows()).toEqual(["support.otto is working"]);
+      expect(rows()).toEqual(["support.devices is working"]);
       rerender(
         view,
         "channel",
         session({
-          childSessions: [{ id: "run-1", flowId: "support.otto", status }],
-          items: [line("o", "refunds post on Fridays", { author: "support.otto" })],
+          childSessions: [{ id: "run-1", flowId: "support.devices", status }],
+          items: [line("o", "refunds post on Fridays", { author: "support.devices" })],
         }),
       );
       expect(rows()).toEqual([]);
@@ -294,7 +296,7 @@ describe("who is working", () => {
   });
 
   it("reads a run with no status, which has no run to speak of, as not working", () => {
-    panel("channel", session({ childSessions: [{ id: "run-1", flowId: "support.otto" }] }));
+    panel("channel", session({ childSessions: [{ id: "run-1", flowId: "support.devices" }] }));
     expect(rows()).toEqual([]);
   });
 
@@ -303,23 +305,23 @@ describe("who is working", () => {
       "channel",
       session({
         childSessions: [
-          { id: "run-1", flowId: "support.otto", status: "active" },
-          { id: "run-2", flowId: "support.ada", status: "active" },
+          { id: "run-1", flowId: "support.devices", status: "active" },
+          { id: "run-2", flowId: "support.accounts", status: "active" },
         ],
       }),
     );
-    expect(rows()).toEqual(["support.otto is working", "support.ada is working"]);
+    expect(rows()).toEqual(["support.devices is working", "support.accounts is working"]);
     rerender(
       view,
       "channel",
       session({
         childSessions: [
-          { id: "run-1", flowId: "support.otto", status: "completed" },
-          { id: "run-2", flowId: "support.ada", status: "active" },
+          { id: "run-1", flowId: "support.devices", status: "completed" },
+          { id: "run-2", flowId: "support.accounts", status: "active" },
         ],
       }),
     );
-    expect(rows()).toEqual(["support.ada is working"]);
+    expect(rows()).toEqual(["support.accounts is working"]);
   });
 
   it("shows a run with no recorded flow as background work, not a seat", () => {
@@ -331,30 +333,30 @@ describe("who is working", () => {
   // finished since. The row says when it was true, not that it is true now.
   it("says a row was true at the last check while the list could not be read again", () => {
     const working = [
-      { id: "run-1", flowId: "support.otto", status: "active" },
+      { id: "run-1", flowId: "support.devices", status: "active" },
       { id: "run-2", status: "active" },
     ];
     const view = panel("channel", session({ childSessions: working, childSessionsStale: true }));
     expect(rows()).toEqual([
-      "support.otto was working at the last check",
+      "support.devices was working at the last check",
       "Background work was running at the last check",
     ]);
 
     rerender(view, "channel", session({ childSessions: working }));
-    expect(rows()).toEqual(["support.otto is working", "Background work is running"]);
+    expect(rows()).toEqual(["support.devices is working", "Background work is running"]);
   });
 
   it("keeps no timer of its own, and keeps the draft, as lines land and runs end", async () => {
     vi.useFakeTimers();
     try {
-      const view = panel("channel", session({ childSessions: [{ id: "run-1", flowId: "support.otto", status: "active" }] }));
+      const view = panel("channel", session({ childSessions: [{ id: "run-1", flowId: "support.devices", status: "active" }] }));
       fireEvent.change(screen.getByLabelText("Post to this channel"), { target: { value: "half a thought" } });
       rerender(
         view,
         "channel",
         session({
-          childSessions: [{ id: "run-1", flowId: "support.otto", status: "completed" }],
-          items: [line("o", "refunds post on Fridays", { author: "support.otto" })],
+          childSessions: [{ id: "run-1", flowId: "support.devices", status: "completed" }],
+          items: [line("o", "refunds post on Fridays", { author: "support.devices" })],
         }),
       );
       expect(vi.getTimerCount()).toBe(0);

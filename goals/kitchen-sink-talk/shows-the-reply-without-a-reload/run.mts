@@ -1,26 +1,31 @@
 /**
- * Goal check: with `support.desk` open, a person sees `support.otto` working
- * on their post and then its reply, without reloading.
+ * Goal check: with `support.help` open, a person sees the specialist their
+ * post was routed to, `support.devices`, working on it and then its reply,
+ * without reloading.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
  *
  * One real browser against the app's PRODUCTION build (built here, never
- * assumed), on its scripted model, keyless. The scripted otto holds its answer
- * about three seconds, so "working" has time to show. Two posts from the
- * channel's panel, the second while otto works on the first; then a third,
- * with otto's own conversation for the channel open in a second tab. The page
+ * assumed), on its scripted model, keyless. Each post names its specialist
+ * (`[route:support.devices]`), which the scripted route picks; the second,
+ * sent before the first is answered, goes to the same specialist. The
+ * scripted specialist holds its answer about three seconds, so "working" has
+ * time to show. Two posts from the channel's panel, the second while the
+ * specialist works on the first; then a third, with the specialist's own
+ * conversation for the channel open in a second tab. The page
  * is never reloaded until the last leg. Four legs, graded per post:
  *
- *   working  `support.otto is working` shows in the channel's panel before
- *            otto's line for the post does, and before the next post is sent
+ *   working  `support.devices is working` shows in the channel's panel
+ *            before its line for the post does, and before the next post is sent
  *            (a Send re-reads the runs on any page); for the second post,
- *            after otto's line for the first is in, since the row is the same.
- *   line     within 15 s of Send, the open panel shows otto's line carrying
- *            the post's token and the line marker, labelled `support.otto`
+ *            after its line for the first is in, since the row is the same.
+ *   line     within 15 s of Send, the open panel shows the specialist's line
+ *            carrying the post's token and the line marker, labelled
+ *            `support.devices`
  *            (a second copy is graded under once); the working row is gone
- *            once otto's run ends.
- *            For the third post, otto's open conversation shows the post
- *            heard and otto's answer after it, in the second tab.
+ *            once its run ends.
+ *            For the third post, the specialist's open conversation shows the
+ *            post heard and its answer after it, in the second tab.
  *   once     no line shows twice while the page is open, and after the one
  *            reload each post and each reply shows exactly once.
  *   no-poll  at most two snapshot reads by the page between Send and the line.
@@ -30,7 +35,7 @@
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/shows-the-reply-without-a-reload/run.mts
  * Controls: GOAL_CONTROL=no-live  (must FAIL at working and line, and nothing else)
- *           GOAL_CONTROL=main     (today's main, from a checkout of it: the same)
+ *           GOAL_CONTROL=main     (the app before the live view, from a checkout of it: the same)
  */
 import { randomUUID } from "node:crypto";
 import type { Page } from "playwright";
@@ -57,6 +62,8 @@ interface Fixture {
   port: number;
   channel: Seat;
   replier: Seat;
+  /** What a post carries to be routed to `replier`. */
+  route: string;
   marker: string;
   lineMarker: string;
   lineWithinMs: number;
@@ -71,8 +78,9 @@ const EXPECTED: Record<string, string[]> = {
   // The panels don't ask to follow their session: the page stays silent
   // until a reload, so "working" never shows and neither does the line.
   "no-live": ["working", "line"],
-  // Today's main, run from a checkout of it with these files copied in. The
-  // app knows no control by this name; it tells this run which legs must fail.
+  // The app before the live view, run from a checkout of it with these files
+  // copied in. The app knows no control by this name; it tells this run which
+  // legs must fail.
   main: ["working", "line"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
@@ -117,7 +125,7 @@ interface Line {
   text: string;
 }
 
-/** The channel's panel as drawn: whether otto shows as working, and every line. */
+/** The channel's panel as drawn: whether the specialist shows as working, and every line. */
 async function readChannel(page: Page): Promise<{ at: number; working: boolean; lines: Line[] }> {
   const drawn = panel(page);
   const [working, lines] = await Promise.all([
@@ -136,12 +144,12 @@ interface Post {
   token: string;
   line: string;
   sentAt: number;
-  /** The first reading that showed otto working, with this post's line not yet in. */
+  /** The first reading that showed the specialist working, with this post's line not yet in. */
   workingAt?: number;
-  /** The first reading that showed otto's line for this post. */
+  /** The first reading that showed the specialist's line for this post. */
   lineAt?: number;
   label?: string;
-  /** The most copies of the post, and of otto's line for it, any one reading showed. */
+  /** The most copies of the post, and of the specialist's line for it, any one reading showed. */
   mostPosts: number;
   mostReplies: number;
 }
@@ -154,10 +162,10 @@ const postsOf = (lines: Line[], token: string) =>
 /**
  * Fold one reading of the channel into what each sent post has seen so far.
  *
- * A reading counts as otto working on a post only when nothing else could have
- * put the row there. Otto working on an earlier post shows the same row, so
- * every earlier post's line must be in: for the second post, the row must
- * still show after otto has answered the first. And a Send re-reads the runs
+ * A reading counts as the specialist working on a post only when nothing else
+ * could have put the row there. The specialist working on an earlier post
+ * shows the same row, so every earlier post's line must be in: for the second post, the row
+ * must still show after it has answered the first. And a Send re-reads the runs
  * even on a page that doesn't follow its session, so the reading must come
  * before the next post is sent.
  */
@@ -210,7 +218,7 @@ await runGoal(async () => {
     `and store credit?`,
   ].map((ask, i) => {
     const token = `reply-token-${"abc"[i]}${run}`;
-    return { token, line: `${fixture.marker} ${token} ${ask}`, sentAt: 0, mostPosts: 0, mostReplies: 0 };
+    return { token, line: `${fixture.route} ${fixture.marker} ${token} ${ask}`, sentAt: 0, mostPosts: 0, mostReplies: 0 };
   });
   const [first, second, third] = posts as [Post, Post, Post];
   const secs = (from: number, to: number | undefined) => (to === undefined ? "never" : `+${((to - from) / 1000).toFixed(1)}s`);
@@ -227,7 +235,7 @@ await runGoal(async () => {
     const reads = snapshotReads(page);
     await openChannel(page, origin);
 
-    // ---- two posts, the second while otto works on the first ---------------
+    // ---- two posts, the second while the specialist works on the first -----
     await send(page, posts, first);
     for (let r = await readChannel(page); ; r = await readChannel(page)) {
       observe(posts, r);
@@ -241,7 +249,7 @@ await runGoal(async () => {
       observe(posts, await readChannel(page));
       await sleep(100);
     }
-    // Otto's run ends right after its line; give the row a few seconds to go.
+    // The specialist's run ends right after its line; give the row a few seconds to go.
     let clearedAt: number | undefined;
     const lastLine = Math.max(...channelPosts.map((p) => p.lineAt ?? 0));
     if (channelPosts.every((p) => p.lineAt !== undefined)) {
@@ -259,7 +267,7 @@ await runGoal(async () => {
     for (const [i, post] of channelPosts.entries()) {
       const name = `post ${i + 1} (${post.token})`;
       if (post.workingAt === undefined) {
-        const after = i === 0 ? ", before the next post was sent" : ", once otto had answered the earlier post";
+        const after = i === 0 ? ", before the next post was sent" : `, once ${fixture.replier.id} had answered the earlier post`;
         fail("working", `${name}: the panel never showed "${fixture.replier.id} is working" before its line${after} (line ${secs(post.sentAt, post.lineAt)})`);
       }
       if (post.lineAt === undefined || post.lineAt > post.sentAt + fixture.lineWithinMs) {
@@ -275,13 +283,13 @@ await runGoal(async () => {
     }
     if (channelPosts.every((p) => p.lineAt !== undefined)) {
       if (clearedAt === undefined) {
-        fail("line", `"${fixture.replier.id} is working" still showed 5s after otto's last line`);
+        fail("line", `"${fixture.replier.id} is working" still showed 5s after its last line`);
       } else {
         evidence.push(`working gone ${secs(lastLine, clearedAt)} after the last line`);
       }
     }
 
-    // ---- a third post, heard in otto's own conversation in a second tab ----
+    // ---- a third post, heard in the specialist's own conversation in a second tab
     const seatPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const seatReads = snapshotReads(seatPage);
     await openPage(seatPage, origin);
@@ -310,14 +318,14 @@ await runGoal(async () => {
       fail("line", `post 3 (${third.token}): ${fixture.replier.id}'s open conversation never showed the post heard and its answer, with no reload`);
     }
     if (seatWindow > fixture.maxSnapshotReads) {
-      fail("no-poll", `post 3 (${third.token}): the second tab read a snapshot ${seatWindow} times between Send and otto's answer (at most ${fixture.maxSnapshotReads})`);
+      fail("no-poll", `post 3 (${third.token}): the second tab read a snapshot ${seatWindow} times between Send and ${fixture.replier.id}'s answer (at most ${fixture.maxSnapshotReads})`);
     }
     evidence.push(`post 3 (${third.token}): heard and answered in ${fixture.replier.id}'s open conversation ${secs(third.sentAt, heardAt)}, ${seatWindow} snapshot reads`);
 
     // ---- once: nothing twice while open, then each line once after a reload
     for (const post of posts) {
       if (post.mostPosts > 1 || post.mostReplies > 1) {
-        fail("once", `${post.token}: while the page was open, one reading showed the post ${post.mostPosts} times and otto's line ${post.mostReplies} times`);
+        fail("once", `${post.token}: while the page was open, one reading showed the post ${post.mostPosts} times and ${fixture.replier.id}'s line ${post.mostReplies} times`);
       }
     }
     // Let the server hold every answer before the reload, so the reload grades
@@ -344,7 +352,7 @@ await runGoal(async () => {
       const mine = postsOf(drawn, post.token).length;
       const theirs = replies(drawn, post.token).length;
       if (mine !== 1 || theirs !== 1) {
-        fail("once", `after the reload, ${post.token} shows as a post ${mine} times and as otto's line ${theirs} times (want 1 and 1)`);
+        fail("once", `after the reload, ${post.token} shows as a post ${mine} times and as ${fixture.replier.id}'s line ${theirs} times (want 1 and 1)`);
       }
     }
     evidence.push(`after the reload, each of the ${posts.length} posts and its reply shows once`);

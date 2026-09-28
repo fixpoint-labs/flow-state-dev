@@ -1,12 +1,12 @@
 # Kitchen Sink
 
-The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a team, gives that team channels and boards, and shows all of it in a shell whose navigator, roster and board columns are imported from `@flow-state-dev/react`.
+The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a team, gives that team a channel and a board, and shows all of it in a shell whose navigator, roster and board columns are imported from `@flow-state-dev/react`.
 
 Kitchen sink is a reference app, not a minimal example. It hosts every subsystem and is where features get tested end to end. For small, focused, copy-paste-able demos see `examples/`.
 
 ## What to read first
 
-- `workforce/` — the team, its channel kinds and its `CHANNEL.md` instances. This is the authoring path, and the shortest route to understanding the app.
+- `workforce/` — the support team: four specialists and the channel that sends each post to one of them. This is the authoring path, and the shortest route to understanding the app.
 - `app/page.tsx` — the shell: one navigator on the left, the stream in the middle, boards and the roster on the right.
 - `flows/` — the flows the app serves, including `chat-agent`, the assistant the stream talks to.
 
@@ -50,69 +50,87 @@ Exported as `richTextComponentFlow` (`kind: "rich-text-component"`). Consumed by
 
 ### The support team (`workforce/`)
 
-A hired team, declared in files rather than wired in code. Each seat is a `WORKER.md` under `workforce/teams/support/workers/`, and its frontmatter is the whole of its configuration: which flow kind it runs, and the settings that kind offers. `support.ada` and `support.grace` both run the `desk-clerk` kind and declare different desks; `support.iris` and `support.otto` run the built-in agent kind with different tools, and `support.mara` runs it too, naming `hire` and `fire`: she can add a seat to the team, which the section on hiring below covers. `support.ada` is a desk clerk: ask it something and a model answers, or, when the note needs someone else, files it onto `followups` or `escalations`.
+The support team is one channel and four specialists, declared in files rather than wired in code.
 
-Open `support.desk` and post. Every agent seat on the channel gets the post and runs once on it, and `support.otto` answers in the channel itself, under its own name, because its `WORKER.md` names the `post-to-channel` tool. A post an agent writes wakes nobody, so two agents in a channel don't answer each other forever.
+Open `support.help` in the rail and ask a question. The channel sends each post to the one specialist whose job fits it: `support.devices` for printers, laptops, phones and wifi, `support.accounts` for sign-in and billing, `support.fsd` for questions about building with flow-state-dev, and `support.general` for anything else. You see which specialist is working on it, then its answer as a line under its name, without reloading.
 
-Worker kinds, blocks and capabilities are picked up the same way: a file under `workforce/flows/workers/`, `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That generated module is committed, so the *code* an app can run is fixed when you run the command. No code is discovered while the app runs, which is what lets a bundler see it.
+The rail lists the channels the files declare. A store kept from an earlier version of the app can still hold other channels' sessions; they stay in the store and don't show in the rail.
 
-The roster is the other half, and it is read at boot: `hireKitchenSinkWorkforce()` walks `workforce/teams/` and hires a seat per `WORKER.md`. So the kinds are decided at generate time and the seats at startup, which is why adding a kind takes `fsdev gen` and adding a seat takes only a restart.
+Each specialist is a `WORKER.md` under `workforce/teams/support/workers/`. Its `description:` is its job, and it is what the channel reads to decide who answers:
 
-Each seat is addressed by its own id, so a seat answers on the same route as any other flow. The desk clerk's `answer` calls a model, so it needs the same model key the rest of the app uses; without one the call fails with the provider's error rather than answering. Its reply starts with the desk its `WORKER.md` sets, `[front desk]` for Ada and `[back desk]` for Grace, and the rest is the model's.
+```md
+---
+description: Printers, laptops, phones, wifi and anything else with a power button.
+tools: [post-to-channel, escalate]
+---
 
-Filing needs the in-process dispatcher. Run the app with `FSD_BULLMQ_DISPATCH=1` and the clerk still answers, but says it cannot file.
+You are the support team's devices specialist. Answer in a sentence or two, and say plainly
+when you don't know. When a case needs a person, file it with `escalate` and say you did.
+```
 
+None of the four names a `flow:`, so all of them run on the built-in agent kind.
+
+#### How a post finds its specialist
+
+Routing is two lines in `workforce/teams/support/channels/help/CHANNEL.md`:
+
+```md
+routing:
+  fallback: support.general
+```
+
+and one in `workforce/hire.ts`, where the channel kind is built with `routeByPurpose(seats, { model: ROUTE_MODEL })`. For each post from a person, if their last post is still waiting on a specialist, this one goes there too. Otherwise one evaluator call picks a specialist from the four descriptions, reading the channel's recent lines along with the post. (An evaluator is a block that answers a typed question with one model call.) If that call fails, `support.general` takes the post. Only the chosen specialist hears it.
+
+`ROUTE_MODEL` lives in `lib/models.ts`. It has to be a model that can evaluate, and not every chat model can: see [Evaluation models](../docs/docs/fundamentals/models.md#evaluation-models).
+
+The specialist answers with the channel's last 20 lines in view, so "where can I buy it?" finds its "it" even when the laptop came up with a different specialist. Its own conversation for the channel keeps only the posts routed to it and its answers, so something said further back, to someone else, may need saying again.
+
+Take the `routing:` lines out and every specialist hears every post, which is what a channel does by default.
+
+#### When a case needs a person
+
+A specialist that decides a case needs a person calls `escalate`, a tool in `workforce/blocks/escalate.ts`. It files one row onto the channel's `escalations` board through the channel's own `fileTask` action, signed with the specialist's own id, and the specialist says so in its answer. The model chooses only what the row says. The rows show in the team panel's `escalations` column.
+
+Only the channel's members can file there. Any other seat given the tool is told nothing was filed, and nothing is sent to the channel.
+
+Nobody works `escalations` in this app, and the boot says so:
+
+```
+[workforce] channel "support.help" holds board "escalations" (ledger
+"support.help.escalations"), and no flow hired in this call declares it. …
+```
+
+Rows piling up with nothing said is the one failure a declared board can produce in silence, so the reference ships in the state that shows you the message.
+
+Filing needs the in-process dispatcher. Run the app with `FSD_BULLMQ_DISPATCH=1` and a specialist still answers, but says it couldn't file.
+
+#### Talking to one specialist
+
+Open a specialist in the rail and start a new conversation to talk to it directly. That conversation is separate from the channel and keeps both sides across a reload. The specialist sees the earlier turns of that conversation and nothing from any other.
 
 ```bash
-# A note to the front desk, from the CLI
-pnpm fsdev run support.ada answer -i '{"note":"is the printer fixed?"}'
-
-# Or over HTTP
-curl -X POST localhost:3000/api/flows/support.ada/actions/answer \
-  -H 'content-type: application/json' \
-  -d '{"input":{"note":"is the printer fixed?"},"userId":"you"}'
+pnpm fsdev run support.devices run -i '{"message":"My phone stopped charging."}'
 ```
 
-Or open the seat in the app's rail and type the note there. The page calls the same action.
+#### Where the pieces come from
 
-Adding a seat means adding a folder and restarting; adding a kind means adding a file and re-running `fsdev gen`. There is no second place to edit.
+Tools, blocks and capabilities come from files too: a file under `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That module is committed, so the code an app can run is fixed when you run the command, which is what lets a bundler see it. The roster is read at boot: `hireKitchenSinkWorkforce()` walks `workforce/teams/` and hires a seat per `WORKER.md`. Adding a specialist means a folder, a line in the channel's `members:`, and a restart. Adding a tool means a file and `fsdev gen`.
 
-#### Channels
+Channels are opened at boot, and opening is idempotent. Re-opening is not a migration: an open channel keeps the members and charter it was opened with, so on a persistent store a new specialist doesn't join a channel that is already open. `boards:` and `routing:` are the exceptions, read from the file on every boot.
 
-The team also has three channels, under `workforce/teams/support/channels/`. Each one is a folder with a `CHANNEL.md` in it, and each is here to show a different thing.
-
-`desk` is the ordinary case: the built-in kind, five members, and two boards declared as plain names: `boards: [followups, escalations]`. The framework mints a ledger per name from where the folder sits, so `followups` is stored as `support.desk.followups` and no file writes that. `ada-wren` is a direct message between two seats, with no `flow:` line, because a direct message is not a kind of its own. It is a channel with a roster of two. `noticeboard` is the case that *is* different: it names `flow: digest`, a kind under `workforce/flows/channels/`, whose `read` returns only the most recent lines. A kind of your own cannot hold a board, which is why the boards are on `desk` and not here.
-
-The `followups` board has a seat that runs it. `support.wren` is on the `followup-runner` kind, which names the board in code (`channelBoard("support.desk", "followups")`), declares it as a resource, and exposes its drain. A seat sees the boards it names and no others.
-
-Posting to a channel reaches its members, and never the member who wrote the post. An agent seat runs on a post a person writes: `support.iris` and `support.otto` each answer once, in a conversation of their own for that channel, which you find under the seat in the rail. A post a seat writes runs nobody. The `desk-clerk` and `followup-runner` seats get a line naming them and nothing more. The wake is Workforce's `wakeMemberSeats`. `workforce/channel-notify.ts` is the fallback: it sends this app's name-only line to every member whose seat can't hear a post.
-
-The check is on the claimed `author`, which the channel does not verify, so the skip is only as good as the claim. An app with a real identity model should compare whatever it resolves a caller to.
-
-**Nothing is wired to `escalations`.** Start the app and the boot says so:
-
-```
-[workforce] channel "support.desk" holds board "escalations" (ledger
-"support.desk.escalations"), and no flow hired in this call declares it. …
-```
-
-The clerk files there when a note needs a person, so this is where you see those rows wait. It files through the channel's own `fileTask` action, the same one any flow can call, and it declares no board itself, which is why the warning stays.
-
-That is the one failure a declared board can produce in silence: rows filed there sit pending with nothing said. The reference ships in the state that shows you the message. Wire a seat to it the way `followup-runner` wires `followups` and the line goes away.
-
-Channels are opened at boot and opening is idempotent, so restarting over an unchanged tree does nothing. But re-opening is not a migration: a channel that is already open keeps the members and the charter it was opened with, and editing those files does not reach it. `boards:` is the exception: the board list is rebuilt from the files on every boot, so a board added to an open channel's file is usable after a restart.
+A seat's post wakes nobody, so a specialist's answer never sets off another. The check is on the claimed `author`, which the channel does not verify; an app with a real identity model should compare whatever it resolves a caller to.
 
 Which organization the channel sessions land in comes from the caller's verified identity, not from anything a file declares. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a channel runs in](../docs/docs/workforce/channels.md#which-organization-a-channel-runs-in).
 
 #### One organization
 
-This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both are set in `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request. It applies to every flow that doesn't bring its own resolver, which means every page, seat and channel, so nobody calling the app can pick another organization. It is a stand-in for real sign-in, and it means **anyone who can open a deployed copy of this app can hire and fire its seats**. If you deploy it somewhere other people can reach, put sign-in in front of it or remove the hire paths first.
+This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both are set in `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request. It applies to every flow that doesn't bring its own resolver, which means every page, seat and channel, so nobody calling the app can pick another organization. It is a stand-in for real sign-in, and it means **anyone who can open a deployed copy of this app can post to its channel and talk to its seats, on your model key**. If you deploy it somewhere other people can reach, put sign-in in front of it first.
 
 **If the app refuses to start with `[workforce] this store was written before kitchen-sink ran as organization "kitchen-sink"`**, the store holds channel sessions from another organization, and the message names each one with the organization it belongs to. That data can't be carried over, so delete the store and restart. For the local filesystem profile, delete `.fsdev/data` (or the whole `.fsdev` folder). For Postgres, point `FSD_DB_URL` at an empty database.
 
 #### Hiring while the app runs
 
-Seats can also be hired while the app is running, which is the other half of the demonstration. `support.ada` and the rest are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.bo`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
+Seats can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
 
 The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set. The variable takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names, never what the request body says:
 
@@ -122,64 +140,37 @@ export WORKFORCE_ADMIN_TOKENS="kitchen-sink:dev-token"
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
   -H 'content-type: application/json' \
   -H "authorization: Bearer dev-token" \
-  -d '{"userId":"you","input":{"seatId":"support.bo","flow":"desk-clerk","settings":{"desk":"back"},"instructions":"You work the back desk."}}'
+  -d '{"userId":"you","input":{"seatId":"support.new-hire","flow":"agent","instructions":"You take refund questions."}}'
 ```
 
-The admin hire goes over HTTP because the admin flow checks a token and the CLI carries none. The rail's **Hire another** and mara's `hire` tool don't need a token.
+The admin hire goes over HTTP because the admin flow checks a token and the CLI carries none.
 
 The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
 
-The admin flow also has a `fire` action. It removes any seat hired while the app runs: from the web app's rail, by a seat's own `hire` tool (see [A seat that hires](#a-seat-that-hires)), or by the admin action itself. Seats the admin action hires don't show in the rail.
+The admin flow also has a `fire` action, which removes a seat the admin action hired. A hired seat doesn't show in the rail and doesn't join `support.help`: a channel's members are the ones its file names. Hiring from the page comes back once a hired specialist can join the channel.
 
 The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The seat carries the admin flow's resolver, so a request with no token, or a token it doesn't recognize, gets `401` from that resolver before the pin is checked. Call it with any configured token:
 
 ```bash
-curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.bo/actions/answer \
+curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.new-hire/actions/run \
   -H 'content-type: application/json' \
   -H "authorization: Bearer dev-token" \
-  -d '{"userId":"you","input":{"note":"Where is my order?"}}'
+  -d '{"userId":"you","input":{"message":"Where is my order?"}}'
 ```
 
 Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
 
-#### A seat that hires
-
-The admin action is how an operator adds a seat. `support.mara` is how a seat does it.
-
-Her `WORKER.md` names two tools, and that is all she declares:
-
-```yaml
----
-description: Staffs the support desk — hires a seat of a kind the app already has, and fires one it hired.
-tools: [hire, fire]
----
-```
-
-The tools come from `createSeatHireCapability`, which `workforce/hire.ts` adds to the built-in agent kind next to the team's own capability. Adding it to a kind puts `hire` and `fire` in that kind's catalog, and a seat still has to name them. Iris and otto run the same kind and can't hire, because their files don't ask for it. The same file also adds `discover`, so any agent seat can ask which seats this organization has hired.
-
-A hire names a kind this app already carries (`agent`, `desk-clerk` or `followup-runner`, the same list the admin action offers) and a seat id. It can't invent a kind. The seat answers straight away at `<org>.<seatId>`, and it's written to the same roster the admin action writes. So on a persistent store it comes back after a restart. Mara can fire only the seats she, or another seat, hired this way. A seat declared in a folder is removed by editing the folder, and a seat the admin action hired belongs to the operator who hired it.
-
-Firing releases the address, and `discover` stops listing the seat. The seat's row in the live inventory stays, because that list records what was ever registered.
-
-**From the CLI, mara hires too.** A hired seat's address starts with its organization. In the app she runs as `kitchen-sink`, like every seat, and `fsdev run` asks the app's resolver the same question, so it runs as the same `devuser` in `kitchen-sink` and the hire lands where the app's pages see it:
-
-```bash
-pnpm fsdev run support.mara run -i '{"message":"Hire support.pat, an agent seat that takes refunds."}'
-```
-
-The wiring is the part to copy: `workforce/hire.ts`, which adds `createSeatHireCapability` to the agent kind, and mara's `workforce/teams/support/workers/mara/WORKER.md`, which names `hire` and `fire`. In an app whose seats run under an organization its callers verified, those same two files hire. The app's tests (`test/manager-seat.test.ts`) show it working under a named organization.
-
 ## Web Application (`app/`)
 
 - Three-column layout: a `FlowNavigator` rail over channels, seats and the assistant's conversations; the stream; and a standing panel with the roster and the channel boards (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too
-- **Seats**: Open a seat in the rail to see its kind, under its row. A seat hired while the app runs also shows its instructions. A seat declared in a folder doesn't. **Hire another** adds a seat of the same kind to the app's organization. It appears in the rail and the roster without a reload (the rail collapses briefly while it refreshes), and it is still there after a restart on a persistent store. Hires run on a conversation of their own, listed as **Seat hires**, so they never land in yours
+- **Seats**: Open a seat in the rail to see its kind, under its row
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
 - **Client data bar**: Live display of mode status, request count, user preferences
 - **Mode selector**: Chat / Plan / Review tabs that feed into `sendAction`
 - **Session management**: Create and switch between the assistant's sessions from its row in the rail. A seat's row has **New conversation** too
-- **Channels**: Open one in the rail to read its transcript and post to it. Your post calls the channel's own `post` action, the same one `fsdev run` calls, and it appears as `devuser`, the one user this app runs as. Every member is notified. `support.noticeboard` is the exception: its `digest` kind keeps no poster and notifies no one. Lines a seat posts appear as the channel keeps them, and each seat working on your post shows as working until it finishes
-- **Seats**: Open a seat's conversation to talk to it. The composer calls the action the seat's kind answers with: `run` for `agent` seats such as `support.otto`, `answer` for `desk-clerk` seats. Your message and the reply both stay in the conversation. `support.wren` runs board rows and has nothing to answer with, so its conversation stays read-only and says so
+- **Channels**: Open `support.help` in the rail to read it and post. Your post calls the channel's own `post` action, the same one `fsdev run` calls, and appears as `devuser`, the one user this app runs as. Lines other requests post appear while the view is open, and the view shows which specialist is working
+- **Seats**: Open a specialist's conversation to talk to it directly. Your message and its reply stay in that conversation
 - **Tool call visualization**: Inline display of tool invocations with args + output via AI Elements Tool component
 - **Streaming indicators**: PromptInputSubmit status, Shimmer for status items, skeleton cards for in-progress blocks
 
@@ -268,8 +259,8 @@ apps/kitchen-sink/
       schemas.ts             Shared Zod schemas
       prompts.ts             Mode prompts
       blocks/                Individual block definitions
-    workforce-admin/         The admin hire and fire actions
-  workforce/                 The support team: teams/, kinds under flows/, workforce.gen.ts
+    workforce-admin/         The operator's hire and fire actions
+  workforce/                 The support team: teams/, the escalate tool under blocks/, workforce.gen.ts
   components/
     flow-state/              Shared item-renderer UI (installed from @flow-state-dev/ui)
     chat-agent/              chat-agent-specific renderers
