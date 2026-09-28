@@ -2049,6 +2049,12 @@ function createStreamEmissionState(
     messageItem: null as Record<string, unknown> | null,
     messageEmitted: false,
     accumulated: "",
+    // Set by the owned step loop when a new step starts after text was
+    // already written; the step's first text then opens with a paragraph
+    // break, so text written before a tool call and text written after it
+    // do not run together in the one message. The legacy single-call stream
+    // carries no step boundaries and never sets it.
+    stepBreakPending: false,
     resolvedIdentity,
     finalResult: undefined as GeneratorModelResult | undefined,
   };
@@ -2165,13 +2171,18 @@ async function handleGeneratorStreamChunk(
       }
       s.messageEmitted = true;
     }
-    s.accumulated += chunk.textDelta;
+    let delta = chunk.textDelta;
+    if (s.stepBreakPending && delta.length > 0) {
+      delta = `\n\n${delta}`;
+      s.stepBreakPending = false;
+    }
+    s.accumulated += delta;
     if (emit) {
       await ctx.response.emit({
         type: "content.delta",
         itemId: s.itemId,
         contentIndex: s.contentPartIndex,
-        delta: chunk.textDelta
+        delta
       });
     }
   } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
@@ -2512,6 +2523,7 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
     // Reset so this step's `finish` chunk is what we read below, not a
     // previous step's.
     s.finalResult = undefined;
+    s.stepBreakPending = s.accumulated.length > 0;
     for await (const chunk of prep.stepModel.streamStep!({
       messages,
       tools: activeStepTools(toolset, activeToolNames),
