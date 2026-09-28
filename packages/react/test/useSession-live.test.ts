@@ -136,7 +136,7 @@ function runs(ids: string[]): SessionStreamEvent {
     sessionId: "sess1",
     at: 1,
     type: "session.runs",
-    runs: ids.map((id) => ({ id, parentSessionId: "sess1", createdAt: 1, updatedAt: 1, flowId: `seat.${id}` }))
+    runs: ids.map((id) => ({ id, parentSessionId: "sess1", createdAt: 1, updatedAt: 1, flowId: `child.${id}` }))
   };
 }
 
@@ -303,11 +303,11 @@ describe("useSession live", () => {
     sessionClientMock.getSessionState.mockResolvedValue(snapshot([message("req_mine", "m0", "hello", 1)]));
     const { result } = await mountLive();
 
-    deliver(item("req_seat", message("req_seat", "m1", "from the seat", 2)));
-    expect(texts(result.current.items)).toEqual(["hello", "from the seat"]);
+    deliver(item("req_other", message("req_other", "m1", "from another writer", 2)));
+    expect(texts(result.current.items)).toEqual(["hello", "from another writer"]);
 
-    deliver(item("req_seat", message("req_seat", "m1", "from the seat", 2)));
-    expect(texts(result.current.items)).toEqual(["hello", "from the seat"]);
+    deliver(item("req_other", message("req_other", "m1", "from another writer", 2)));
+    expect(texts(result.current.items)).toEqual(["hello", "from another writer"]);
   });
 
   it("drops the live copy of an item its own request already delivered (BR-3)", async () => {
@@ -376,7 +376,7 @@ describe("useSession live", () => {
     const { result } = await mountLive();
     const requestReads = sessionClientMock.listSessionRequests.mock.calls.length;
 
-    deliver(item("req_seat", message("req_seat", "m1", "from the seat", 2)));
+    deliver(item("req_other", message("req_other", "m1", "from another writer", 2)));
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.latestRequest).toBeNull();
     expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(requestReads);
@@ -393,7 +393,7 @@ describe("useSession live", () => {
     act(() => {
       refreshing = result.current.refresh();
     });
-    deliver(item("req_seat", message("req_seat", "m1", "arrived mid-read", 2)));
+    deliver(item("req_other", message("req_other", "m1", "arrived mid-read", 2)));
 
     await act(async () => {
       // Read before the line was kept, so it doesn't hold it.
@@ -416,7 +416,7 @@ describe("useSession live", () => {
     act(() => {
       refreshing = result.current.refresh();
     });
-    deliver(item("req_seat", message("req_seat", "m1", "arrived mid-read", 2)));
+    deliver(item("req_other", message("req_other", "m1", "arrived mid-read", 2)));
 
     // The tab sleeps for two minutes before the read lands.
     const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 120_000);
@@ -435,7 +435,7 @@ describe("useSession live", () => {
   // began after a line arrived holds it, or shows it is gone.
   it("drops a live item a snapshot lacks whose read began after it arrived", async () => {
     const { result } = await mountLive();
-    deliver(item("req_seat", message("req_seat", "m1", "since removed", 2)));
+    deliver(item("req_other", message("req_other", "m1", "since removed", 2)));
     expect(texts(result.current.items)).toEqual(["since removed"]);
 
     await act(async () => {
@@ -468,14 +468,14 @@ describe("useSession live", () => {
       act(() => {
         older = result.current.refresh();
       });
-      deliver(item("req_seat", message("req_seat", "m1", "kept", 2)));
+      deliver(item("req_other", message("req_other", "m1", "kept", 2)));
       act(() => {
         newer = result.current.refresh();
       });
 
       // The newer read holds the line and settles it.
       await act(async () => {
-        reads[1]!.resolve({ ...snapshot([message("req_seat", "m1", "kept", 2)], 20), clientData: { session: { step: 2 } } });
+        reads[1]!.resolve({ ...snapshot([message("req_other", "m1", "kept", 2)], 20), clientData: { session: { step: 2 } } });
         await newer;
       });
       // The older read began before the line arrived, and lands last.
@@ -887,9 +887,9 @@ describe("useSession live", () => {
     // same copy, read later, settles the one the view holds.
     it("takes a later snapshot's copy of a finished item that has gained a part since", async () => {
       const { result } = await mountLive();
-      deliver(item("req_seat", message("req_seat", "m1", "Hello there", 2)));
+      deliver(item("req_other", message("req_other", "m1", "Hello there", 2)));
 
-      const voiced = message("req_seat", "m1", "Hello there", 2) as unknown as { content: unknown[] };
+      const voiced = message("req_other", "m1", "Hello there", 2) as unknown as { content: unknown[] };
       voiced.content.push({ type: "output_audio", audio: "AAAA", mediaType: "audio/mpeg" });
       sessionClientMock.getSessionState.mockResolvedValueOnce(snapshot([voiced as unknown as OutputItem]));
       await act(async () => {
@@ -1018,7 +1018,7 @@ describe("useSession live", () => {
 
   it("re-reads the runs on a nudge and keeps a run the page lacks (BR-7, BR-23)", async () => {
     sessionClientMock.listChildSessions.mockResolvedValue([
-      { id: "run_new", parentSessionId: "sess1", createdAt: 5, updatedAt: 5, flowId: "seat.run_new", status: "active" }
+      { id: "run_new", parentSessionId: "sess1", createdAt: 5, updatedAt: 5, flowId: "child.run_new", status: "active" }
     ]);
     const { result } = await mountLive();
     await waitFor(() => expect(result.current.childSessions).toHaveLength(1));
@@ -1030,8 +1030,8 @@ describe("useSession live", () => {
     );
     await waitFor(() =>
       expect(result.current.childSessions.map((row) => [row.id, row.status, row.flowId])).toEqual([
-        ["run_new", "active", "seat.run_new"],
-        ["run_old", "active", "seat.run_old"]
+        ["run_new", "active", "child.run_new"],
+        ["run_old", "active", "child.run_old"]
       ])
     );
 
@@ -1052,7 +1052,7 @@ describe("useSession live", () => {
   // re-read keeps them, and marked stale so none reads as working.
   describe("when the stream stops following the session", () => {
     const page = () => [
-      { id: "run_new", parentSessionId: "sess1", createdAt: 5, updatedAt: 5, flowId: "seat.run_new", status: "active" }
+      { id: "run_new", parentSessionId: "sess1", createdAt: 5, updatedAt: 5, flowId: "child.run_new", status: "active" }
     ];
 
     function openStream() {

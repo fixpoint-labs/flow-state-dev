@@ -708,7 +708,7 @@ describe("a run waiting to start", () => {
             block: dispatcher({
               name: "spawn",
               action: "work",
-              session: { key: () => "seat" },
+              session: { key: () => "child1" },
               payload: () => ({})
             })
           }
@@ -722,7 +722,7 @@ describe("a run waiting to start", () => {
     router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
     await seedSession(stores, Date.now() - 600_000);
     const anHourAgo = Date.now() - 3_600_000;
-    let child = "seat";
+    let child = "child1";
     if (action === "deliver") {
       await keepRun(stores, child, anHourAgo, "completed");
     } else {
@@ -792,22 +792,22 @@ describe("a run waiting to start", () => {
     const stores = createInMemoryStores();
     router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
     await seedSession(stores, Date.now() - 600_000);
-    await keepRun(stores, "seat", Date.now() - 3_600_000, "completed");
-    const before = (await stores.session.get("seat"))!;
+    await keepRun(stores, "child1", Date.now() - 3_600_000, "completed");
+    const before = (await stores.session.get("child1"))!;
 
     await router.POST(
-      new Request("http://localhost/api/flows/chat/seat/actions/ping", {
+      new Request("http://localhost/api/flows/chat/child1/actions/ping", {
         method: "POST",
         body: JSON.stringify({ userId: "mallory", input: {} })
       }),
-      { params: { path: ["chat", "seat", "actions", "ping"] } }
+      { params: { path: ["chat", "child1", "actions", "ping"] } }
     );
     await until(
-      async () => (await stores.request.list({ sessionId: "seat" })).every((r) => r.status !== "in_progress"),
+      async () => (await stores.request.list({ sessionId: "child1" })).every((r) => r.status !== "in_progress"),
       "the request was settled"
     );
 
-    const after = (await stores.session.get("seat"))!;
+    const after = (await stores.session.get("child1"))!;
     expect({ version: after.version, updatedAt: after.updatedAt }).toEqual({
       version: before.version,
       updatedAt: before.updatedAt
@@ -838,23 +838,23 @@ describe("a run waiting to start", () => {
     const stores = createInMemoryStores();
     router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
     await seedSession(stores, Date.now() - 600_000);
-    await keepRun(stores, "seat", Date.now() - 3_600_000, "completed");
-    const before = (await stores.session.get("seat"))!;
+    await keepRun(stores, "child1", Date.now() - 3_600_000, "completed");
+    const before = (await stores.session.get("child1"))!;
 
     await router.POST(
-      new Request("http://localhost/api/flows/chat/seat/actions/ping", {
+      new Request("http://localhost/api/flows/chat/child1/actions/ping", {
         method: "POST",
         headers: { "x-org": "org_other" },
         body: JSON.stringify({ userId: "alice", input: {} })
       }),
-      { params: { path: ["chat", "seat", "actions", "ping"] } }
+      { params: { path: ["chat", "child1", "actions", "ping"] } }
     );
     await until(
-      async () => (await stores.request.list({ sessionId: "seat" })).every((r) => r.status !== "in_progress"),
+      async () => (await stores.request.list({ sessionId: "child1" })).every((r) => r.status !== "in_progress"),
       "the request was settled"
     );
 
-    const after = (await stores.session.get("seat"))!;
+    const after = (await stores.session.get("child1"))!;
     expect({ version: after.version, updatedAt: after.updatedAt }).toEqual({
       version: before.version,
       updatedAt: before.updatedAt
@@ -901,7 +901,7 @@ describe("a run waiting to start", () => {
     const stores = createInMemoryStores();
     router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
     await seedSession(stores, Date.now() - 600_000);
-    if (present) await keepRun(stores, "seat", Date.now() - 3_600_000, "completed");
+    if (present) await keepRun(stores, "child1", Date.now() - 3_600_000, "completed");
 
     // Once the request's record is written, which is after its admission read
     // the child and before the move reads it again.
@@ -909,13 +909,13 @@ describe("a run waiting to start", () => {
     let replaced: SessionRecord | undefined;
     vi.spyOn(stores.request, "set").mockImplementation(async (id, record, mode) => {
       const written = await set(id, record, mode);
-      if (replaced === undefined && mode === "absent" && record.sessionId === "seat") {
-        if (!present) await keepRun(stores, "seat", Date.now() - 3_600_000, "completed");
-        const child = (await stores.session.get("seat"))!;
-        await stores.session.delete("seat");
+      if (replaced === undefined && mode === "absent" && record.sessionId === "child1") {
+        if (!present) await keepRun(stores, "child1", Date.now() - 3_600_000, "completed");
+        const child = (await stores.session.get("child1"))!;
+        await stores.session.delete("child1");
         replaced = { ...child, ...again };
-        await stores.session.set("seat", replaced, "any");
-        replaced = (await stores.session.get("seat"))!;
+        await stores.session.set("child1", replaced, "any");
+        replaced = (await stores.session.get("child1"))!;
       }
       return written;
     });
@@ -924,18 +924,18 @@ describe("a run waiting to start", () => {
       expect((await post(router, "hold", {})).status).toBe(202);
       await until(() => holding, "the other request holds the key");
       const res = await router.POST(
-        new Request("http://localhost/api/flows/chat/seat/actions/ping", {
+        new Request("http://localhost/api/flows/chat/child1/actions/ping", {
           method: "POST",
           body: JSON.stringify({ userId: "alice", input: {} })
         }),
-        { params: { path: ["chat", "seat", "actions", "ping"] } }
+        { params: { path: ["chat", "child1", "actions", "ping"] } }
       );
       expect(res.status).toBe(202);
       await until(() => replaced !== undefined, "the child replaced");
       // Well past the move, and the run still waits behind the other request.
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      const after = (await stores.session.get("seat"))!;
+      const after = (await stores.session.get("child1"))!;
       expect({ version: after.version, updatedAt: after.updatedAt }).toEqual({
         version: replaced!.version,
         updatedAt: replaced!.updatedAt
@@ -1171,7 +1171,7 @@ describe("a run the stream already named", () => {
     const { stores } = built;
     await seedSession(stores, Date.now() - 600_000);
     // Found by the first read of runs only: nothing about it has moved in an hour.
-    await keepRun(stores, "seat", Date.now() - 3_600_000, "in_progress");
+    await keepRun(stores, "child1", Date.now() - 3_600_000, "in_progress");
 
     const controller = new AbortController();
     const res = await router.GET(
@@ -1183,21 +1183,21 @@ describe("a run the stream already named", () => {
       events.flatMap((event) => (event.type === "session.runs" ? [event.runs.map((run) => run.id)] : []));
     try {
       await until(() => runNotices().length > 0, "the opening notice");
-      expect(runNotices()[0]).toEqual(["seat"]);
+      expect(runNotices()[0]).toEqual(["child1"]);
 
-      const child = (await stores.session.get("seat"))!;
-      await stores.session.delete("seat");
+      const child = (await stores.session.get("child1"))!;
+      await stores.session.delete("child1");
       if (recreatedBy !== undefined) {
         const anHourAgo = Date.now() - 3_600_000;
         await stores.session.set(
-          "seat",
+          "child1",
           { ...child, userId: recreatedBy, lineageId: "lin_again", createdAt: anHourAgo + 1, updatedAt: anHourAgo + 1 },
           "any"
         );
       }
 
       await until(() => runNotices().at(-1)?.length === 0, "the run to go");
-      expect((await stores.request.get("req_seat"))?.status).toBe("in_progress");
+      expect((await stores.request.get("req_child1"))?.status).toBe("in_progress");
     } finally {
       controller.abort();
     }
