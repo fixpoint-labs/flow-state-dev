@@ -26,7 +26,7 @@ pnpm fsdev run chat-agent run \
   --session new-tool-test \
   --capture /tmp/chat-run.json
 
-# 3. Read what happened: every tool call the run made.
+# 3. Read what happened: one tool_output item for each tool call the run made.
 jq -c '.events[] | select(.type=="item_added" and .item.type=="tool_output")' /tmp/chat-run.json
 ```
 

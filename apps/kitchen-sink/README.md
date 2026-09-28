@@ -49,7 +49,7 @@ The chat agent either answers in the turn or files the work to a durable board, 
 
 The support team is one channel and four specialists, declared in files rather than wired in code.
 
-Open `support.help` in the rail and ask a question. The channel sends each post to the one specialist whose job fits it: `support.devices` for printers, laptops, phones and wifi, `support.accounts` for sign-in and billing, `support.fsd` for questions about building with flow-state-dev, and `support.general` for anything else. You see which specialist is working on it, then its answer as a line under its name, without reloading.
+Open `support.help` in the rail (expand `channel`, under Channels, to find it) and ask a question. The channel sends each post to the one specialist whose job fits it: `support.devices` for printers, laptops, phones and wifi, `support.accounts` for sign-in and billing, `support.fsd` for questions about building with flow-state-dev, and `support.general` for anything else. You see which specialist is working on it, then its answer as a line under its name, without reloading. The specialist can show as working for a few seconds after its answer appears, while it finishes its run, filing a case for instance.
 
 The rail lists the channels the files declare. A store kept from an earlier version of the app can still hold other channels' sessions; they stay in the store and don't show in the rail.
 
@@ -78,7 +78,7 @@ routing:
 
 and one in `workforce/hire.ts`, where the channel kind is built with `routeByPurpose(seats, { model: ROUTE_MODEL })`. For each post from a person, if their last post is still waiting on a specialist, this one goes there too. Otherwise one evaluator call picks a specialist from the four descriptions, reading the channel's recent lines along with the post. (An evaluator is a block that answers a typed question with one model call.) If that call fails, `support.general` takes the post. Only the chosen specialist hears it.
 
-`ROUTE_MODEL` lives in `lib/models.ts`. It has to be a model that can evaluate, and not every chat model can: see [Evaluation models](../docs/docs/fundamentals/models.md#evaluation-models).
+`ROUTE_MODEL` lives in `lib/models.ts`. It has to be a model that can evaluate, and not every chat model can: see [Evaluation models](../docs/docs/fundamentals/models.md#evaluation-models). The specialists answer on the [`chat` intent](../docs/docs/fundamentals/models.md#intents) under `models.intents` in `fsdev.config.ts`, because no `WORKER.md` names a `model:` of its own.
 
 The specialist answers with the channel's last 20 lines in view, so "where can I buy it?" finds its "it" even when the laptop came up with a different specialist. Its own conversation for the channel keeps only the posts routed to it and its answers, so something said further back, to someone else, may need saying again.
 
@@ -103,7 +103,7 @@ Filed cases stay `pending` for a person to read. In an app of your own, that war
 
 ### Talking to one specialist
 
-Open a specialist in the rail and press the **+** on its row (its tooltip says New conversation) to talk to it directly. That conversation is separate from the channel and keeps both sides across a reload. The specialist sees the earlier turns of that conversation and nothing from any other.
+To talk to a specialist directly, expand `agent` under Seats in the rail, open the specialist, and press the **+** on its row (its tooltip says New conversation). That conversation is separate from the channel and keeps both sides across a reload. The specialist sees the earlier turns of that conversation and nothing from any other. A case it files with `escalate` from here lands on `support.help`'s `escalations` board, in the team panel's list with the cases filed from the channel.
 
 ```bash
 pnpm fsdev run support.devices run -i '{"message":"My phone stopped charging."}'

@@ -392,7 +392,7 @@ question about a printer should reach the one specialist who handles devices and
 Routing does that: each post from a person goes to one member, picked by what the post is about,
 and that member's answer shows in the channel.
 
-Turn it on in the channel's file by naming the member who takes whatever fits nobody else:
+Turn it on in the channel's file by naming a fallback, the member who takes a post the route can't place:
 
 ```md
 ---
@@ -444,7 +444,9 @@ For each post from a person, in this order:
 3. **The fallback.** If the call fails, or answers with anything outside the choices, the
    fallback member takes the post. A model that can't evaluate fails every call, so every post
    goes to the fallback. If the person posting can't reach any seat of the fallback's, nobody
-   answers, and the route records why.
+   answers, and the route records why. A fallback with a description is also one of the choices
+   in step 2, so a description such as "Anything that fits none of the other specialists" lets the
+   evaluator send it the posts that fit nobody else.
 
 Only that member receives the post. Nobody else in the channel is told about it. A post a seat
 wrote is never routed and wakes nobody, as in any channel.
