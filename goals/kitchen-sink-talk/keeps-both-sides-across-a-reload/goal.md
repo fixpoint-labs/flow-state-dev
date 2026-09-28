@@ -19,12 +19,12 @@
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/keeps-both-sides-across-a-reload/run.mts`
 
-**Controls:** on the same command. Each strips one kind of kept item from everything the page is served (every session read and every action stream, before and after the reload), which is what the page sees when the server keeps none.
+**Controls:** on the same command. Each strips one kind of kept item from everything the page is served (every session read, every action stream and the live session stream, before and after the reload), which is what the page sees when the server keeps none.
 
 - `GOAL_CONTROL=no-post-item`: no `channel-post` component items. Must FAIL at **channel** only.
 - `GOAL_CONTROL=drop-user-message`: no `user` message items. Must FAIL at **seat** only.
 
-The controls act at the network, not in the server, so the product carries no switch for them. The server half is proved by hand mutation, recorded below: `run` without its `userMessage`, rebuilt, fails the seat leg (then named otto).
+The controls act at the page's `fetch`, not in the server, so the product carries no switch for them. Not with Playwright's routing: the live session stream never ends, and a routed response is read whole before the page gets any of it, so each stream is filtered frame by frame as it arrives. The server half is proved by hand mutation, recorded below: `run` without its `userMessage`, rebuilt, fails the seat leg (then named otto).
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -39,3 +39,7 @@ The controls act at the network, not in the server, so the product carries no sw
 | 2026-09-27 | FIX-1611 branch on 315976e5f, uncommitted | scripted | FAIL (control) | **Re-pointed** at `support.help` and `support.devices`; legs renamed **channel** and **seat**; the wren leg moved to `test/picked-session-panel.test.tsx` (see above). **`GOAL_CONTROL=no-post-item`, taken first.** Failed at **channel** only: after the reload `support.help`'s transcript held 0 copies of the posted line, and 0 lines at all. **seat** green. |
 | 2026-09-27 | FIX-1611 branch on 315976e5f, uncommitted | scripted | FAIL (control) | **Re-pointed.** `GOAL_CONTROL=drop-user-message`: failed at **seat** only: after the reload `support.devices`' conversation showed only `assistant` turns, not the person's message. **channel** green. |
 | 2026-09-27 | FIX-1611 branch on 315976e5f, uncommitted | scripted | **PASS** | **Re-pointed.** Fresh production build. After a reload `support.help` shows `goal line …` labelled `devuser`, once; `support.devices`' new conversation shows the message as the user's turn with the `[reply:talk-to-seat]` reply under it. |
+| 2026-09-28 | `main` at 9a55b79e4 | scripted | FAIL (control defect) | **Both controls stopped failing** once FIX-1609's live session stream landed: it delivers the items the controls strip, and the check filtered only the `/state` read and the action streams. `GOAL_CONTROL=no-post-item`: `[control] … left the channel leg green`. `GOAL_CONTROL=drop-user-message`: `[control] … left the seat leg green`. |
+| 2026-09-28 | `fix/fix-1623` (FIX-1625) on 9a55b79e4, uncommitted | scripted | FAIL (control) | **Filtered at the page's `fetch`**, the live session stream included. `GOAL_CONTROL=no-post-item`: failed at **channel** only: after the reload `support.help`'s transcript holds 0 copies of the posted line, and 0 lines. **seat** green. |
+| 2026-09-28 | `fix/fix-1623` (FIX-1625) on 9a55b79e4, uncommitted | scripted | FAIL (control) | `GOAL_CONTROL=drop-user-message`: failed at **seat** only: after the reload `support.devices`' conversation does not hold the person's message as their turn (roles on screen: `assistant`). **channel** green. |
+| 2026-09-28 | `fix/fix-1623` (FIX-1625) on 9a55b79e4, uncommitted | scripted | **PASS** | Fresh production build. After a reload `support.help` shows `goal line …` labelled `devuser`, once; `support.devices`' new conversation shows the message as the user's turn with the `[reply:talk-to-seat]` reply under it. |

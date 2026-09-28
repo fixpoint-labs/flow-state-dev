@@ -16,7 +16,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handler } from "@flow-state-dev/core";
-import type { ChannelManifest } from "@flow-state-dev/workforce";
+import { channelPostCapability, type ChannelManifest } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 import { goalControl, pageGoalControl } from "@/lib/goal-control";
@@ -83,7 +83,7 @@ describe("V4 · every control is read through the gate, and only in this app (BR
   const routed = [{ id: "support.help", declared: { routing: { fallback: "support.general" } } }] as unknown as ChannelManifest[];
 
   const controls: Array<[name: string, apply: () => Promise<{ swapped: boolean }>]> = [
-    ["no-landing", async () => ({ swapped: (await import("@/lib/channel-landing-control")).channelLandingControl(catalog) !== undefined })],
+    ["no-landing", async () => ({ swapped: (await import("@/lib/channel-landing-control")).channelLandingControl(catalog, channelPostCapability) !== undefined })],
     ["no-filing", async () => ({ swapped: (await import("@/lib/escalate-control")).escalateControl(catalog) !== undefined })],
     ["no-route", async () => ({ swapped: (await import("@/lib/channel-route-control")).withChannelRouteControl(routed) !== routed })],
     ["name-only-notify", async () => ({ swapped: (await import("@/lib/channel-wake-control")).withChannelWakeControl(wake) !== wake })],

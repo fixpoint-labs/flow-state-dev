@@ -76,11 +76,11 @@ const catalog = escalateControl(blocks) ?? blocks;
  * of it to use, and a key nobody names reaches nobody.
  *
  * The goal check's `no-landing` control swaps the kind for one that answers
- * and lands nothing, in test mode only.
+ * with the same tools and lands no text answer, in test mode only.
  */
 export const kitchenSinkKinds: NonNullable<HireOptions["kinds"]> = {
   ...kinds,
-  agent: channelLandingControl(catalog) ?? defineAgentWorkerFlow({ uses: [channelPost], catalog }),
+  agent: channelLandingControl(catalog, channelPost) ?? defineAgentWorkerFlow({ uses: [channelPost], catalog }),
 };
 
 /** This directory — the workforce root, read at run time the way Markdown always is. */
