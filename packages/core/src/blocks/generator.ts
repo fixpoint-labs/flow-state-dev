@@ -2049,12 +2049,6 @@ function createStreamEmissionState(
     messageItem: null as Record<string, unknown> | null,
     messageEmitted: false,
     accumulated: "",
-    // Set by the owned step loop when a new step starts after text was
-    // already written; the step's first text then opens with a paragraph
-    // break, so text written before a tool call and text written after it
-    // do not run together in the one message. The legacy single-call stream
-    // carries no step boundaries and never sets it.
-    stepBreakPending: false,
     resolvedIdentity,
     finalResult: undefined as GeneratorModelResult | undefined,
   };
@@ -2171,18 +2165,13 @@ async function handleGeneratorStreamChunk(
       }
       s.messageEmitted = true;
     }
-    let delta = chunk.textDelta;
-    if (s.stepBreakPending && delta.length > 0) {
-      delta = `\n\n${delta}`;
-      s.stepBreakPending = false;
-    }
-    s.accumulated += delta;
+    s.accumulated += chunk.textDelta;
     if (emit) {
       await ctx.response.emit({
         type: "content.delta",
         itemId: s.itemId,
         contentIndex: s.contentPartIndex,
-        delta
+        delta: chunk.textDelta
       });
     }
   } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
@@ -2523,8 +2512,10 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
     // Reset so this step's `finish` chunk is what we read below, not a
     // previous step's.
     s.finalResult = undefined;
-    s.stepBreakPending = s.accumulated.length > 0;
-    for await (const chunk of prep.stepModel.streamStep!({
+    // Owned loop only. The shared chunk handler stays a plain append; a
+    // tool-only step never consumes this, so it adds no break of its own.
+    let paragraphBreak = s.accumulated.length > 0;
+    for await (const raw of prep.stepModel.streamStep!({
       messages,
       tools: activeStepTools(toolset, activeToolNames),
       providerTools: providerTools.length > 0 ? providerTools : undefined,
@@ -2533,7 +2524,12 @@ async function executeOwnedStreamingGeneration<TInput, TOutput>(
       providerOptions: resolvedProviderOpts,
       caching: resolvedCaching,
     })) {
-      await handleGeneratorStreamChunk(remapChunkToolNames(chunk, toolset), s, ctx);
+      let chunk = remapChunkToolNames(raw, toolset);
+      if (paragraphBreak && chunk.type === "text_delta" && chunk.textDelta) {
+        paragraphBreak = false;
+        chunk = { ...chunk, textDelta: `\n\n${chunk.textDelta}` };
+      }
+      await handleGeneratorStreamChunk(chunk, s, ctx);
     }
 
     // Widened read: the handler mutates `s.finalResult` inside the loop, so
