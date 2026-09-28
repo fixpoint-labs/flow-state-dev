@@ -685,6 +685,16 @@ import { BoardColumns } from "@flow-state-dev/react";
 <BoardColumns sessionId={sessionId} boardRef="engineering.incidents.followups" />
 ```
 
+To show the board as a list that picks up each new task as it is filed, read it through the channel's own session and add `live`:
+
+```tsx
+import { BoardList } from "@flow-state-dev/react";
+
+<BoardList sessionId="engineering.incidents" boardRef="engineering.incidents.followups" live />
+```
+
+Every task filed through `fileTask` shows up on the list. Status changes a worker makes while draining the board show only after something else makes the list read again, such as a remount. See [A board as a list](./ui.md#a-board-as-a-list).
+
 Board ledgers are organization-scoped, so the read resolves against the organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`, `assignee`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`.
 
 ### Working the rows

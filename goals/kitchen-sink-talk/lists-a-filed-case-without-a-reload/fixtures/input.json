@@ -1,0 +1,11 @@
+{
+  "port": 3042,
+  "channel": { "kind": "channel", "id": "support.help", "board": "escalations" },
+  "seat": "support.devices",
+  "specialists": ["support.devices", "support.accounts", "support.fsd", "support.general"],
+  "marker": "[scenario:needs-a-person]",
+  "status": "pending",
+  "rowWithinMs": 10000,
+  "maxBoardReads": 2,
+  "idleMs": 10000
+}

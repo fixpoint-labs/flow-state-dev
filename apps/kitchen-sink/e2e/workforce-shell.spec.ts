@@ -88,8 +88,12 @@ test("the rail opens a channel kind into conversations and a seat kind into seat
   await expect(rail(page).getByRole("list", { name: "Channels" })).toBeVisible();
   await expect(rail(page).getByRole("list", { name: "Seats" })).toBeVisible();
   // Drawing the rail reads no session list of its own. The one read at load
-  // is the assistant's, for the conversation the stream opens on.
-  await page.waitForLoadState("networkidle");
+  // is the assistant's, for the conversation the stream opens on. The team
+  // panel's live board holds its channel's stream open, so the page never goes
+  // network-idle: wait for the board's first read, then the half-second quiet
+  // that network-idle means.
+  await expect(page.getByTestId("board-support.help.escalations").locator('[data-panel="board"]')).toBeVisible();
+  await page.waitForTimeout(500);
   expect(requests.take().filter((url) => !url.includes("flowKind=chat-agent"))).toEqual([]);
 
   // A channel kind is a singleton: its row is the leaf, so opening it lands
