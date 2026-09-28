@@ -116,7 +116,7 @@ Each row is a `ChildSessionSummary`:
 | `createdAt` / `updatedAt` | `number` | |
 | `topic` | `string \| undefined` | Display label: the key the run's session was derived from. |
 | `coordinate` | `string \| undefined` | Display label for the entry running it. |
-| `status` | `ChildSessionStatus \| undefined` | Absent until the run has executed something. |
+| `status` | `ChildSessionStatus \| undefined` | Absent until a run has been dispatched into the session. |
 | `flowId` | `string \| undefined` | The flow instance that owns the run; the address to read it through. Absent on a row that records no owner. |
 
 The table is the whole row. The server sends this named field set rather than a session record, so there is no `flowKind`, `userId` or `title` on it.

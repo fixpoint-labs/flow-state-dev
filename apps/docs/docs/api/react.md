@@ -94,9 +94,9 @@ session.refresh();
 
 `childSessions` lists the dispatch runs started from this session: work that outlives the turn and runs in a session of its own. Each entry is a `ChildSessionSummary`. The list sits apart from `items`, and nothing a run produces is folded into the conversation.
 
-It is current as of the reader's last interaction, re-read on mount, at the start of each action, and on `refresh()`, and with `live: true` whenever a run starts or finishes. Without `live`, nothing updates it while they wait. A row's `status` is absent until its work has run something, and `"active"` means only *not finished*. See [What `status` tells you](/docs/server/background-work#what-status-tells-you).
+It is current as of the reader's last interaction: re-read on mount, at the start of each action, and on `refresh()`. With `live: true` it is also re-read when a run is dispatched, even one still waiting its turn, and again when the run finishes. Without `live`, nothing updates it while they wait. A row's `status` is absent until a run has been dispatched into its session, and `"active"` means only *not finished*. See [What `status` tells you](/docs/server/background-work#what-status-tells-you).
 
-`live` defaults to `false`. When `true`, the hook also hears requests it didn't send and keeps `childSessions` current as runs start and finish. See [Hearing requests you didn't send](/docs/client/react#hearing-requests-you-didnt-send).
+`live` defaults to `false`. When `true`, the hook also hears requests it didn't send and keeps `childSessions` current as runs are dispatched and finish. See [Hearing requests you didn't send](/docs/client/react#hearing-requests-you-didnt-send).
 
 The list holds 25 rows by default; pass `childSessions: { limit }` in the hook's options for a different page size. `childSessionsStale` turns `true` on a failed re-read, cleared by the next successful one, and on a `limit` above the server's cap, cleared only by asking for a page that fits. The rows already read stay either way — the hook never empties the list. [Background work](/docs/client/react#background-work) walks through rendering the panel.
 

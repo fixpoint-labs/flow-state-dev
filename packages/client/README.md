@@ -191,10 +191,10 @@ all three with `== null`.
 happening right now. `"active"` asserts only that the work hasn't finished: queued,
 mid-run, and paused waiting for a person all read `"active"`, and so does work whose
 worker died, until the server records otherwise. The terminal values are
-`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A run that has never
-executed anything carries no `status` at all. Don't fold that absence into one of the five
-values. Your own label for it, like `"Not started"`, is fine; mapping it to
-`"active"` claims work is under way before it started.
+`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A row whose session has had
+no run dispatched into it carries no `status` at all. Don't fold that absence into one of the
+five values. Your own label for it, like `"Not started"`, is fine; mapping it to
+`"active"` claims a run is pending when none has been dispatched.
 
 A session that started nothing resolves to `[]`; an unknown session, or one the
 caller isn't allowed to read, rejects with `ClientHttpError`. There is no counterpart
