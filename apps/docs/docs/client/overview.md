@@ -111,7 +111,7 @@ await sessions.updateSessionMetadata("sess_1", {
 });
 ```
 
-Fields are merged — only the fields you include are changed. Omitting `title` leaves the existing title untouched, even one another writer sets while your edit is in flight. If the session keeps changing too fast for your edit to land, the call throws `ClientHttpError` with `status` 409 and changes nothing, and you can send the same edit again. A 409 whose `body` is `{ error: "migration-required" }` is different: the session needs migrating, and retrying won't clear it. See [Who owns a record](/docs/persistence/overview#who-owns-a-record).
+Fields are merged — only the fields you include are changed. Omitting `title` leaves the existing title untouched, even one another writer sets while your edit is in flight. If the session keeps changing too fast for your edit to land, the call throws `ClientHttpError` with `status` 409 and changes nothing, and you can send the same edit again. A 409 whose `body` is `{ error: "migration-required" }` is different: the session needs migrating, and retrying won't clear it. See [Who owns a record](/docs/persistence/overview#who-owns-a-record). If the session is deleted, or replaced by a new session under the same id, while your edit is being applied, the call throws `ClientHttpError` with `status` 404 and changes nothing.
 
 **Fetching session state:**
 
@@ -123,6 +123,14 @@ const snapshot = await sessions.getSessionState("sess_1", {
 ```
 
 `getSessionState` returns state snapshots with clientData. Use `includeItems` to get the session item log. Specify which clientData keys you need.
+
+**Deleting a session:**
+
+```ts
+await sessions.deleteSession("sess_1");
+```
+
+If the same user, in the same organization, later creates a session under that id, the new session treats the deleted session's requests and background runs as its own: they show in its snapshot, its live stream and its background-work list. Give a new session a new id.
 
 **Listing sessions:**
 

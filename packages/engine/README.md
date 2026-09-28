@@ -434,12 +434,16 @@ the full contract.
 
 `GET /api/flows/sessions/:sessionId/stream` is a server-sent-events stream of
 one session: each finished item from any request in it, including requests
-another tab, person or agent sent, and the session's unfinished runs. It is
-authorized and refused exactly as the session snapshot
-(`GET /api/flows/sessions/:sessionId/state`) is, before anything is streamed.
-An unknown session answers `404`, and one that needs migrating `409`
-(`migration-required`). `createSessionSSEClient` in `@flow-state-dev/client`
-reads it.
+another tab, person or agent sent, and the session's unfinished runs. Like the
+snapshot, it shows only requests made under the session's owner and
+organization, so a request the server refused because its user or organization
+didn't match the session's never appears. It is authorized and refused exactly
+as the session snapshot (`GET /api/flows/sessions/:sessionId/state`) is, before
+anything is streamed. An unknown session answers `404`, and one that needs
+migrating `409` (`migration-required`). In an app that authenticates, both
+routes can also answer `404` when the session is replaced by a new one under
+the same id while the request is being answered. `createSessionSSEClient` in
+`@flow-state-dev/client` reads it.
 
 Query parameters, both optional:
 
@@ -478,9 +482,21 @@ The server reads the store about once a second per open stream, and each read
 costs what is running or recently changed, not the session's history. Every
 server reads the same store, so a line written on one instance reaches a view
 held by another. The server closes the connection after at most 15 minutes;
-reconnect with `since` to carry on, as `createSessionSSEClient` does. That
-client stops for good, without an error, on a `401`, `403`, `404`, `409` or
-`501`. A store adapter shows it serves the stream with
+reconnect with `since` to carry on, as `createSessionSSEClient` does. It also
+closes the connection when the session is deleted or replaced by a new session
+under the same id. The
+reconnect then answers `404` if the session is gone, or `403` if the app
+authenticates and another user or organization now holds the id. If the same
+owner created the session again, or the app doesn't authenticate, the
+reconnect follows the new session. `createSessionSSEClient` stops for good,
+without an error, on a `401`, `403`, `404`, `409` or `501`.
+
+A session deleted and created again under the same id, by the same owner in
+the same organization, treats the earlier session's requests and dispatch runs
+as its own: they show in its snapshot, its stream and its list of runs. Give a
+new session a new id.
+
+A store adapter shows it serves the stream with
 `createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
 
 ## Store list options

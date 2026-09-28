@@ -120,7 +120,7 @@ The background-work list stays current too. The hook re-reads `session.childSess
 const working = channel.childSessions.filter((run) => run.status === "active");
 ```
 
-A live view holds a connection open while it is mounted, and the server reads the session about once a second for it. Leave `live` off for a view only one person writes to; the request stream already carries everything there. If the server doesn't offer the stream, or refuses it, the view behaves as if you hadn't asked, with no error. A dropped connection reconnects on its own and fills in what it missed. Access is checked when a connection opens, and the server closes each one after at most 15 minutes, so revoking someone's access to the session takes effect within 15 minutes.
+A live view holds a connection open while it is mounted, and the server reads the session about once a second for it. Leave `live` off for a view only one person writes to; the request stream already carries everything there. If the server doesn't offer the stream, or refuses it, the view behaves as if you hadn't asked, with no error. The stream stops the same way when the session is deleted while the view is open, or, if the app authenticates, when a session of another user or organization takes its id. A dropped connection reconnects on its own and fills in what it missed. Access is checked when a connection opens, and the server closes each one after at most 15 minutes, so revoking someone's access to the session takes effect within 15 minutes.
 
 ### Background work
 

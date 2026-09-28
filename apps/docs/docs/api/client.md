@@ -207,6 +207,8 @@ The snapshot's items come in `compareItemOrder` order: `ts`, then `itemIndex`, t
 
 It reconnects with backoff, including when the server closes the connection after at most 15 minutes, and passes back the server time it last heard so the server resends what it might have missed. So the same copy of an item can arrive more than once, after a reconnect or when it was saved just before the snapshot's `at`. An item one request emits more than once under the same id, such as a keyed component, also arrives once per emission, each copy with its own `ts` and `itemIndex`. Holding items by request id and item id, keeping the copy that sorts later and letting a finished copy replace an in-progress one, as above, handles both. It stops, without retrying, when the server refuses the session or has no such route.
 
+The server also ends the connection when the session is deleted or replaced by a new session under the same id. The client reconnects as usual. If the session is gone, the reconnect gets 404; if the app authenticates and another user or organization now holds the id, it gets 403. Either one stops the client through `onStop`, with no error. If the same owner created the session again, or the app doesn't authenticate, the client follows the new session.
+
 ### `createRequestStreamStore()` and `bindStoreToCallbacks(store, options?)`
 
 Accumulate a request's SSE events into a sorted, canonical item view outside React. `createRequestStreamStore()` returns a `RequestStreamStore`; `bindStoreToCallbacks` adapts it to the `RequestSSECallbacks` shape so you can spread it into `createSSEClient` or `createSSEClientFromResponse`.
