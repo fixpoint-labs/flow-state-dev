@@ -19,11 +19,12 @@ type ActionBarProps = {
   sessionId: string | null;
   availableActions: string[];
   actionSchemas?: Record<string, ActionInputSchema>;
-  onSendAction: (action: string, input: unknown) => Promise<void>;
+  onSendAction: (action: string, input: unknown) => Promise<unknown>;
   isSending: boolean;
 };
 
-function getDefaults(schema: ActionInputSchema | undefined): Record<string, unknown> {
+/** Each field's default, or an enum's first value, as the form starts. */
+export function getDefaults(schema: ActionInputSchema | undefined): Record<string, unknown> {
   if (!schema || schema.type !== "object") return {};
   const defaults: Record<string, unknown> = {};
   for (const [key, field] of Object.entries(schema.fields)) {
@@ -36,11 +37,13 @@ function getDefaults(schema: ActionInputSchema | undefined): Record<string, unkn
   return defaults;
 }
 
-function isRenderable(schema: ActionInputSchema | undefined): boolean {
+/** Whether a schema has fields a form can draw. */
+export function isRenderable(schema: ActionInputSchema | undefined): boolean {
   return schema !== undefined && schema.type === "object" && Object.keys(schema.fields).length > 0;
 }
 
-function buildInputFromForm(
+/** The action input a filled form stands for; empty optional fields are left out. */
+export function buildInputFromForm(
   schema: ActionInputSchema,
   values: Record<string, unknown>
 ): unknown {

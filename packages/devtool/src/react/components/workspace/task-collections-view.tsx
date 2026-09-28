@@ -28,8 +28,8 @@
  * `task-row-body`. Open rows are held here, keyed by board and task id, so a
  * streamed change re-renders a row without closing it.
  */
-import { useCallback, useMemo, useState } from "react";
-import type { ChildSessionSummary } from "@flow-state-dev/client";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import type { ActionInputSchema, ChildSessionSummary } from "@flow-state-dev/client";
 import { ChevronRight, ClipboardList, Layers } from "lucide-react";
 import {
   groupCollections,
@@ -47,6 +47,20 @@ import type { Truncation } from "../../hooks/use-dispatch-runs";
 import { EmptyState } from "../shared/empty-state";
 import { Badge } from "../ui/badge";
 import { TaskRowBody } from "./task-row-body";
+import { TaskRowActions, type RowDispatch } from "./task-row-actions";
+import { taskActionsFor, type RequestOutcomeSource } from "../../lib/task-actions";
+
+/**
+ * What a row needs to change its task: the viewed flow's actions, the panel's
+ * dispatch, and the session's requests to read an outcome from. Absent, rows
+ * are read-only and show no Actions strip.
+ */
+export type RowActions = {
+  names: readonly string[];
+  schemas?: Record<string, ActionInputSchema>;
+  run: (action: string, input: unknown) => Promise<RowDispatch>;
+  requests: readonly RequestOutcomeSource[];
+};
 
 type Props = {
   /**
@@ -66,14 +80,26 @@ type Props = {
   truncation: Truncation;
   /** Open the dispatch run running a task. */
   onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
+  /** The viewed flow's task actions. Omitted, rows only read. */
+  rowActions?: RowActions;
 };
 
-export function TaskCollectionsView({ items, dispatchRuns, truncation, onOpenDispatchRun }: Props) {
+export function TaskCollectionsView({
+  items,
+  dispatchRuns,
+  truncation,
+  onOpenDispatchRun,
+  rowActions,
+}: Props) {
   const collections = useMemo(() => groupCollections(items), [items]);
   const byTask = useMemo(
     () => linkDispatchRunsToTasks(dispatchRuns ?? [], collections).byTask,
     [dispatchRuns, collections]
   );
+  // Every board the tab lists, so a row tells another board's suffixed action
+  // from a generic one.
+  const boardIds = useMemo(() => collections.map((collection) => collection.id), [collections]);
+
   // Open rows, keyed by board and task. Held above the rows so a streamed
   // change, which re-renders every row, never closes one.
   const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
@@ -105,6 +131,8 @@ export function TaskCollectionsView({ items, dispatchRuns, truncation, onOpenDis
           onOpenDispatchRun={onOpenDispatchRun}
           openRows={openRows}
           onToggleRow={toggleRow}
+          rowActions={rowActions}
+          boardIds={boardIds}
         />
       ))}
     </div>
@@ -118,6 +146,8 @@ function CollectionCard({
   onOpenDispatchRun,
   openRows,
   onToggleRow,
+  rowActions,
+  boardIds,
 }: {
   collection: CollectionView;
   byTask: ReadonlyMap<string, ChildSessionSummary>;
@@ -125,7 +155,17 @@ function CollectionCard({
   onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
   openRows: ReadonlySet<string>;
   onToggleRow: (key: string) => void;
+  rowActions?: RowActions;
+  boardIds: readonly string[];
 }) {
+  // Once per board, not per row.
+  const actionNames = useMemo(
+    () =>
+      rowActions === undefined
+        ? undefined
+        : taskActionsFor(rowActions.names, rowActions.schemas, collection.id, boardIds),
+    [rowActions?.names, rowActions?.schemas, collection.id, boardIds]
+  );
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
   // THE PREDICATE IS THE PRESENCE OF THE FIELD, and status is out of it
@@ -188,6 +228,19 @@ function CollectionCard({
                 dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
                 truncation={truncation}
                 onOpenDispatchRun={onOpenDispatchRun}
+                actions={
+                  rowActions === undefined || actionNames === undefined
+                    ? undefined
+                    : (taskId) => (
+                        <TaskRowActions
+                          taskId={taskId}
+                          actions={actionNames}
+                          schemas={rowActions.schemas}
+                          run={rowActions.run}
+                          requests={rowActions.requests}
+                        />
+                      )
+                }
               />
             );
           })}
@@ -218,6 +271,7 @@ function TaskRow({
   dispatchRun,
   truncation,
   onOpenDispatchRun,
+  actions,
 }: {
   entry: ResolvedTask;
   rowId: string;
@@ -228,6 +282,8 @@ function TaskRow({
   dispatchRun?: ChildSessionSummary;
   truncation: Truncation;
   onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
+  /** The Actions strip for this row's task, when the panel supplies actions. */
+  actions?: (taskId: string) => ReactNode;
 }) {
   const { task } = entry;
   const bodyId = bodyIdOf(rowId);
@@ -288,7 +344,11 @@ function TaskRow({
           {runLink}
         </span>
       </div>
-      {open && <TaskRowBody entry={entry} id={bodyId} />}
+      {open && (
+        <TaskRowBody entry={entry} id={bodyId}>
+          {actions?.(task.id)}
+        </TaskRowBody>
+      )}
     </li>
   );
 }

@@ -26,7 +26,8 @@ import { FlowRail } from "./components/flows/flow-rail";
 import { SettingsSheet } from "./components/shared/settings-sheet";
 import { StreamView, type RequestGroup } from "./components/workspace/stream-view";
 import { TraceView } from "./components/workspace/trace-view";
-import { TaskCollectionsView } from "./components/workspace/task-collections-view";
+import { TaskCollectionsView, type RowActions } from "./components/workspace/task-collections-view";
+import type { RowDispatch } from "./components/workspace/task-row-actions";
 import { DispatchRunNodes } from "./components/workspace/dispatch-run-nodes";
 import { SuspensionsView } from "./components/workspace/suspensions-view";
 import {
@@ -491,11 +492,15 @@ function PanelContent({ className }: { className?: string }) {
   //   `handleOpenDispatchRun` — synchronous click handlers with no await before
   //   their writes, so there is no window in which the session can move
   //   underneath them.
+  //
+  // It answers with what it dispatched — the request id, or why the dispatch
+  // failed — so a Tasks-tab row can read its own action's outcome from that
+  // request's root trace (FIX-1629). The action bar ignores the answer.
   const handleSendAction = useCallback(
-    async (action: string, input: unknown) => {
-      if (!activeFlowId || !effectiveSessionId) return;
+    async (action: string, input: unknown): Promise<RowDispatch> => {
+      if (!activeFlowId || !effectiveSessionId) return undefined;
       const stillCurrent = sessionFence.begin();
-      if (stillCurrent === null) return;
+      if (stillCurrent === null) return undefined;
       // Re-read the dispatch-run axis at the START of the call, which is what
       // `docs/architecture/server-and-client.md` specifies and what
       // `useSession` does. The reason it is the start rather than the end: the
@@ -520,13 +525,32 @@ function PanelContent({ className }: { className?: string }) {
       // `sessionFence` is the panel's record of which session the workspace is
       // on, mirrored during render, so it is the right thing to compare against
       // rather than a second generation counter.
-      if (!stillCurrent()) return;
+      if (!stillCurrent()) return undefined;
+      // A dispatch that threw carries no request, only its message.
+      if (response != null && !("request" in response)) {
+        return { error: response.error };
+      }
       if (response?.request.id) {
         setActiveRequestId(response.request.id);
         setDispatchedRequestId(response.request.id);
+        return { requestId: response.request.id };
       }
+      return undefined;
     },
     [activeFlowId, effectiveSessionId, sendAction, refreshDispatchRuns, sessionFence],
+  );
+
+  // The Tasks tab changes a task only through the viewed flow's own actions,
+  // on this same dispatch path, and reads each outcome from the session's
+  // requests (FIX-1629).
+  const rowActions = useMemo<RowActions>(
+    () => ({
+      names: activeFlow?.actions ?? [],
+      schemas: activeFlow?.actionSchemas,
+      run: handleSendAction,
+      requests: requestGroups,
+    }),
+    [activeFlow?.actions, activeFlow?.actionSchemas, handleSendAction, requestGroups],
   );
 
   // After a suspension is resolved, re-attach the live stream to the continued
@@ -875,6 +899,7 @@ function PanelContent({ className }: { className?: string }) {
                 dispatchRuns={dispatchRuns}
                 truncation={dispatchRunsTruncation}
                 onOpenDispatchRun={handleOpenDispatchRun}
+                rowActions={rowActions}
               />
             </TabsContent>
 

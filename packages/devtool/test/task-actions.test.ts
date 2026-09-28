@@ -1,0 +1,68 @@
+/**
+ * Which of the viewed flow's actions a Tasks-tab row offers.
+ *
+ * The signal is the input, not the name: an action whose input requires a
+ * string `taskId` acts on one task, so an app's own `answer` qualifies beside
+ * the framework's task tools. A board's task tools carry the board in their
+ * name, and are offered only on that board's rows.
+ */
+import { describe, expect, it } from "vitest";
+import type { ActionInputSchema } from "@flow-state-dev/client";
+import { taskActionsFor, taskToolSuffix } from "../src/react/lib/task-actions";
+
+const takesTaskId: ActionInputSchema = {
+  type: "object",
+  fields: { taskId: { type: "string", required: true }, reason: { type: "string", required: false } },
+};
+const optionalTaskId: ActionInputSchema = {
+  type: "object",
+  fields: { taskId: { type: "string", required: false } },
+};
+const numericTaskId: ActionInputSchema = {
+  type: "object",
+  fields: { taskId: { type: "number", required: true } },
+};
+const noTaskId: ActionInputSchema = { type: "object", fields: { goal: { type: "string", required: true } } };
+
+describe("taskActionsFor", () => {
+  it("offers an action whose input requires a string taskId, and no other", () => {
+    const schemas = { answer: takesTaskId, maybe: optionalTaskId, numeric: numericTaskId, file: noTaskId };
+    expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer"]);
+  });
+
+  it("offers a board's own tools only on that board, and a generic action on every board", () => {
+    const schemas = {
+      answer: takesTaskId,
+      cancelTask_a_one: takesTaskId,
+      cancelTask_b_two: takesTaskId,
+    };
+    const names = Object.keys(schemas);
+    const boards = ["a.one", "b.two"];
+    expect(taskActionsFor(names, schemas, "a.one", boards)).toEqual(["answer", "cancelTask_a_one"]);
+    expect(taskActionsFor(names, schemas, "b.two", boards)).toEqual(["answer", "cancelTask_b_two"]);
+  });
+
+  it("scopes an app's own suffixed action the same way", () => {
+    const schemas = { answer_a_one: takesTaskId, answer: takesTaskId };
+    expect(taskActionsFor(Object.keys(schemas), schemas, "b.two", ["a.one", "b.two"])).toEqual(["answer"]);
+  });
+
+  it("keeps a task tool for a board the tab does not list off every other board", () => {
+    // A board with no tasks yet is not listed, so its tools match no listed
+    // suffix. They are still a board's tools, not generic actions.
+    const schemas = { cancelTask_quiet_board: takesTaskId, answer: takesTaskId };
+    expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer"]);
+  });
+
+  it("offers nothing when the flow has no schemas", () => {
+    expect(taskActionsFor(["answer"], undefined, "issues", ["issues"])).toEqual([]);
+  });
+});
+
+describe("taskToolSuffix (mirrors orchestration's rule)", () => {
+  it("turns every character outside [a-zA-Z0-9_-] into an underscore", () => {
+    expect(taskToolSuffix("eng.feature.work")).toBe("eng_feature_work");
+    expect(taskToolSuffix("support.help.escalations")).toBe("support_help_escalations");
+    expect(taskToolSuffix("a-b_c")).toBe("a-b_c");
+  });
+});
