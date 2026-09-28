@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionRequestSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 import { describeReadError } from "../lib/instance-ownership";
 import { useWorkspaceFence } from "./use-workspace-fence";
+
+/** A read in flight, and the one follow-up read callers who joined it asked for. */
+type Flight = {
+  identity: readonly unknown[];
+  done: Promise<void>;
+  next: Promise<void> | null;
+};
 
 /** Stable empty list, so a stale hold does not hand back a new array each render. */
 const EMPTY_REQUESTS: SessionRequestSummary[] = [];
@@ -36,7 +43,7 @@ export function useSessionRequests(sessionId: string | null) {
   });
   const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
 
-  const refresh = useCallback(async () => {
+  const read = useCallback(async () => {
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
     if (!sessionId) {
@@ -81,6 +88,35 @@ export function useSessionRequests(sessionId: string | null) {
     config.userId,
     autoRecoverInterrupted,
   ]);
+
+  // Single-flight. Every `read` begins a fence that retires the read before
+  // it, and several callers refresh this list on their own schedules (the
+  // Tasks tab's row poll, live mode's fallback poll, the stream's end, focus,
+  // the manual button). Two callers whose slow reads overlapped would retire
+  // each other's answers, and on a slow connection no snapshot would land. So
+  // a refresh while a read for the same identity is in flight does not start
+  // one: it joins, and asks for exactly one read after it, however many
+  // callers ask, since a caller may need rows newer than that read's start.
+  // A refresh for another identity (the workspace moved) starts at once, and
+  // its fence retires the old read as before.
+  const flightRef = useRef<Flight | null>(null);
+  const latestRefreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const refresh = useCallback((): Promise<void> => {
+    // A closure made for a previous identity reads nothing (see `begin`).
+    if (!fence.isCurrent()) return Promise.resolve();
+    const flight = flightRef.current;
+    if (flight !== null && fence.holds(flight.identity)) {
+      flight.next ??= flight.done.then(() => latestRefreshRef.current());
+      return flight.next;
+    }
+    const entry: Flight = { identity: fence.identity, done: Promise.resolve(), next: null };
+    flightRef.current = entry;
+    entry.done = read().finally(() => {
+      if (flightRef.current === entry) flightRef.current = null;
+    });
+    return entry.done;
+  }, [fence, read]);
+  latestRefreshRef.current = refresh;
 
   useEffect(() => {
     void refresh();
