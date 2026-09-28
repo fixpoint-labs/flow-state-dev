@@ -27,12 +27,14 @@ the **position** of an element means. If the thing is a graph, mermaid wins on e
 | Issue | **What changes** — the thing before and after, side by side, same vocabulary | SVG when position carries it (a drawer, a fence, a stack); mermaid pair otherwise | `SPEC.md` | **Yes**, this one always |
 | Issue | **How it reaches the seat** — the mechanism as a path through layers | mermaid `flowchart LR`, ≤ 10 nodes | `SPEC.md` | No |
 | Issue | **The decision tree** — the issue, its decisions, what each rejected | mermaid `flowchart TD` | `DECISIONS.md` | No |
-| Issue | **A decision's picture** — a matrix, a layer boundary, a grid of moments | SVG, one per decision that needs it, usually zero or one | `DECISIONS.md` beside its card | No |
+| Issue | **The trade-off** — one per decision on the sign-off: the options side by side on the rows that decide it, the row it comes down to, what it locks in, what would flip it | SVG (options aligned on the same rows), fixed layout — see [below](#the-trade-off--one-per-decision-someone-signs) | `DECISIONS.md` beside its card | **Yes**, under its sign-off line |
+| Issue | **A decision's mechanism** — a matrix, a layer boundary, a grid of moments | SVG, only when the trade-off can't carry it, usually zero | `DECISIONS.md` beside its card | No |
 | Issue | **A rule's picture** — a fence with the paths that cross it | SVG, with a mermaid companion listing the same paths by name | `BUSINESS-RULES.md` | No |
 | Issue | **The build DAG** — surfaces in build order | mermaid `flowchart TD` | `PLAN.md` | No |
 | Epic | **How we'll know it's met** — the closure issue's goal check, one path per leg, with the control that must FAIL | mermaid `flowchart LR`, ≤ 8 nodes | `SPEC.md`, under the goal | **Yes**, as a mermaid fence |
 | Epic | **What's in the box** — in the box · composed in by the app · replaced in one line · not built | SVG (containment and a fence) | `SPEC.md` | **Yes** |
 | Epic | **How the issues flow into each other** — the dependency graph, with what each hands the next | mermaid `flowchart LR`, amended when scope or dependencies change | `SPEC.md` beside the dated set table | No (linked) |
+| Epic | **The trade-off** — one per cross-cutting call on the sign-off, the objective included; same layout as an issue's | SVG | `DECISIONS.md` beside its card | **Yes**, under its sign-off line |
 | Epic | **Who owns what** — rule × issue, each rule with exactly one owner | SVG (a matrix) | `DECISIONS.md` | **Yes** |
 | Epic | **The path** — one lane per issue against time, dated bars, a now line, the critical path | SVG (lanes against time), amended when the plan changes, not per status tick | `PLAN.md` | **Yes** |
 | Project | **The territory** — owned here · the substrate assembled but owned elsewhere · outside the project, with the fence that separates them | SVG (containment and a fence) | `SPEC.md` | **Yes** |
@@ -181,6 +183,49 @@ Copy the classes *and* the properties they resolve to into the file.
 from outside*, `--gone` is *removed / the now line*. Keep those meanings across a set's figures so
 a reader learns the palette once.
 
+### The trade-off — one per decision someone signs
+
+Every decision on `SPEC.md`'s sign-off gets one, beside its card in `DECISIONS.md`, and so does
+every live fork. The PR body pins the figure of each decision *its* sign-off lists, which can be
+fewer: an epic PR often names the objective and one call, while `SPEC.md` signs all three. The
+goal's sign-off line gets none (its picture is *how we'll know*), and neither does a card the
+filters sent to the collapsed engineering block. The prose already says *what* was chosen.
+The figure shows **what the choice comes down to**: the options on the same rows, so the eye
+reads across, with the one row that settled it marked.
+
+The layout is fixed so a reviewer learns it once. Copy
+[`figures/trade-off.svg`](figures/trade-off.svg), the worked example's D1, and change the words:
+
+![A worked trade-off: where a reconnecting client puts its resume cursor. Header and query param, chosen, beside header only. The row that decides it is a proxy that strips the header; the price is two entry points; a browser client is a tie. Locks in a public format in two places; flips if no proxy strips the header](figures/trade-off.svg)
+
+| Part | What goes there |
+|---|---|
+| **The call** | `D<N> · THE CALL`, then the fork as a plain question. The question, not the answer: the answer is the column marked chosen |
+| **The options** | The chosen one first, solid `--code`, tagged `CHOSEN`. What it was chosen instead of beside it, dashed and muted, tagged `INSTEAD OF`. Two columns by default. A third only when the card's *Instead of* names two options a reader
+would weigh; then the three columns sit at `x=212 · 452 · 692`, 224 wide, with shorter cell
+text. Anything past that stays in *considered and dropped*. On a **live fork** nothing is chosen yet: the recommendation is tagged `RECOMMENDED` with a dashed `--code` border, and every other option keeps the muted border |
+| **The rows** | Two to four criteria, each the same row across every option. A cell opens with `+` (a gain, `--code`), `−` (a cost, `--gone`) or `=` (a tie), then a bold line and a small one. A tie row earns its place only when a reader would otherwise assume a difference |
+| **Decides it** | Exactly one row, first, in an `--accent-soft` band with a bar and a `▸ DECIDES IT` tag |
+| **Locks in · Flips if** | Two cells at the foot: the card's *Locks in*, as a consequence, and the fact that would reverse the call. That is the card's *what would change my mind* where it has one; otherwise it is the *Because*, stated as the fact that would have to stop being true |
+
+Three rules make it more than the card redrawn:
+
+- **The chosen column carries at least one `−`.** An option with no cost is not a trade-off. It
+  is the mechanism, and it belongs in the PR's *what this does*, not in the sign-off.
+- **If you can't name the row that decides it, the decision isn't ready to ask for.** Drawing the
+  figure is where "on balance" gets caught, before a reviewer has to catch it.
+- **Draw it from the card, not beside it.** *Instead of* is the other column, *Because* is the
+  deciding row, *Locks in* is the foot. The card stays the text record; the figure adds the
+  alignment, which a three-row table can't show. A figure that disagrees with its card is a
+  defect in both. A markdown comparison table could carry the rows, but block 3 of a PR takes
+  no tables ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3), and a table can't
+  mark the deciding row or keep a cost red.
+
+Name it `figures/d<N>-<slug>.svg` beside card `dN`, and a live fork `figures/open-<slug>.svg`, so
+check 7 below can pair each card with its figure. The sentence under it names the deciding row
+and what it did to the losing option, in about fifteen words: *"It comes down to a proxy that
+strips the header: header-only stops resuming without an error."*
+
 ### Look at it before you commit it
 
 A figure nobody rendered is how a wrong one ships. Headless Chromium is on every cloud VM and
@@ -210,10 +255,12 @@ SVG, at `--force-device-scale-factor=2`, and keep the SVG as the file that gets 
 
 A spec or epic PR body carries the figures the table above marks. *How we'll know it's met* is
 mermaid, so it is pasted into the body as a fence and needs no pin. The SVGs (*what changes* at
-issue altitude; the box, the ownership matrix and the path at epic altitude) go as raw-content
-images pinned to a commit. The implementation PR for a spec-backed
-issue carries the same issue-altitude figures again, pinned to the `main` commit that last touched
-each one, so the reviewer of the code sees the intent it answers to (`issue-implement` Step 9).
+issue altitude; the box, the ownership matrix and the path at epic altitude; a trade-off under
+each sign-off decision at both) go as raw-content images pinned to a commit. The implementation
+PR for a spec-backed issue carries the same issue-altitude figures again, except the trade-offs,
+pinned to the `main` commit that last touched each one, so the reviewer of the code sees the
+intent it answers to (`issue-implement` Step 9). The trade-offs stay behind because those
+decisions were settled at the spec gate; the implementation PR's block 3 says so in one line.
 The *how we'll know* fence goes beside the goal verdict, so the PASS and the control's FAIL are
 read against the picture that promised them:
 
@@ -306,6 +353,14 @@ for f in "$D"/*.md; do echo "$f $(awk '/^```/{f=!f; next} !f' "$f" | wc -w)"; do
 
 # 6. The nav line — line 3 names the required set (Evolution when present), the current one bold; must print nothing
 for f in "$D"/*.md; do sed -n 3p "$f" | grep -qE 'Spec.*Decisions.*Rules.*Plan' || echo "$f: no nav line"; done
+
+# 7. Every decision card has its trade-off — names each card without one; each named card must be
+#    one the filters sent to the engineering block, and a live fork needs figures/open-<slug>.svg
+for n in $(grep -oE '<a name="d[0-9]+"' "$D"/DECISIONS.md | grep -oE '[0-9]+'); do
+  grep -qE "figures/d$n-" "$D"/DECISIONS.md || echo "d$n: no trade-off figure"
+done
+#    …and every figure a document references exists — must print nothing
+grep -ohE 'figures/[A-Za-z0-9._-]+\.svg' "$D"/*.md | sort -u | while read -r f; do [ -f "$D/$f" ] || echo "missing: $f"; done
 ```
 
 Check 2 covers node labels `[…]` and edge labels `|…|`, scoped to fence contents so a markdown

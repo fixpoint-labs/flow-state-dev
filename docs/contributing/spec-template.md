@@ -159,14 +159,17 @@ Optional comments do not require another design round merely to reach zero comme
 *(Authored fresh for every spec PR. The layout and the rules are
 [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md); what follows is the spec-PR instance.
 Budget ~475 prose words above the fold. The body is not another spec document: every line
-in it is in `SPEC.md` too, shorter.)*
+in it is in `SPEC.md` too, shorter. The one thing it takes from elsewhere is each decision's
+trade-off figure, which lives beside its card in `DECISIONS.md`.)*
 
 The people table from `SPEC.md`, cut to five rows. Then **the goal**, in its one sentence,
 the *how we'll know* figure (a mermaid fence, pasted as text) with its sentence, and one line
 naming the goal check and the control that must fail. The *what changes* figure, as a pinned raw
 image ([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence. One line
-on **how**. Then **Sign off**: the decisions, numbered, hardest first, each a bold line and an
-*If wrong:* clause, with the one to weigh named and a pointer to the decisions doc. Then
+on **how**. Then **Sign off**: the decisions, hardest first, each a subheading stating it, its
+trade-off figure pinned ([`spec-figures.md`](spec-figures.md) → "The trade-off"), and one line
+naming the row it came down to and *If wrong:*, with the one to weigh named and a pointer to the
+decisions doc. Then
 **Reviewers · look here**: one to three items, each naming where and the question, plus what is
 deliberately not here. Then the links line: the document set, Linear issue, epic, what
 it builds on, and that merge follows approval and required checks. Then the collapsed contract.
@@ -211,13 +214,29 @@ it builds on, and that merge follows approval and required checks. Then the coll
 > **The goal, at that size.** If wrong: we ship a resume the user can't feel, or hold the issue
 > open for a need it was never meant to meet.
 >
-> 1. **The cursor rides both a header and a query param; the query param wins.** If wrong: a
->    public string format we don't validate, locked in, with two entry points to keep in step.
-> 2. **A reconnect to a finished request replays the tail and closes.** If wrong: the stream
->    quietly becomes a history API, which the store is supposed to be.
-> 3. **No cursor means today, byte for byte.** If wrong: the server holds per-client state.
+> ### The cursor rides both a header and a query param; the query param wins · D1
 >
-> **Open: none.** Number 1 is the one to weigh. Reasoning and what lost:
+> <img src="https://raw.githubusercontent.com/<owner>/<repo>/<sha>/specs/issues/<ISSUE-ID>/figures/d1-cursor.svg" width="940" alt="Header and query param, chosen, beside header only. Decides it: a proxy that strips the header. Price: two entry points. Locks in a public format in two places; flips if no proxy strips the header" />
+>
+> It comes down to a proxy that strips the header: header-only stops resuming, with no error.
+> **If wrong:** a public string format we don't validate, locked in, with two entry points to
+> keep in step.
+>
+> ### A reconnect to a finished request replays the tail and closes · D2
+>
+> <img src="https://raw.githubusercontent.com/<owner>/<repo>/<sha>/specs/issues/<ISSUE-ID>/figures/d2-finished.svg" width="940" alt="Replay the tail and close, chosen, beside a distinct already-finished status. Decides it: what every client has to write. Price: the log stays complete for the request's life" />
+>
+> It comes down to client code: a distinct status is a branch in every client. **If wrong:**
+> the stream quietly becomes a history API, which the store is supposed to be.
+>
+> ### No cursor means today, byte for byte · D3
+>
+> <img src="https://raw.githubusercontent.com/<owner>/<repo>/<sha>/specs/issues/<ISSUE-ID>/figures/d3-no-cursor.svg" width="940" alt="Today's behaviour without a cursor, chosen, beside resume from last-seen on the server. Decides it: per-client state the server must expire. Price: resume is opt-in, forever" />
+>
+> It comes down to server state: resuming by default means remembering every client.
+> **If wrong:** the server holds per-client state, and something has to expire it.
+>
+> **Open: none.** D1 is the one to weigh. Reasoning and what lost:
 > [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 >
 > ## Reviewers · look here
@@ -242,12 +261,14 @@ it builds on, and that merge follows approval and required checks. Then the coll
 > </details>
 > ```
 
-Two things about that body. **The sign-off lines are the compact form** of
-[`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3: a ratified decision is one bold line
-plus its cost, because the reader is confirming a direction, not weighing a fork. **A live fork
-is not compact**: it gets the full six-part shape from
-[`asking-for-decisions.md`](asking-for-decisions.md), under its own heading, above the ratified
-ones. Zero to two per spec; more than that and the direction isn't ready for review.
+Two things about that body. **The sign-off is the compact form** of
+[`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3: a ratified decision is its heading,
+its trade-off figure, and one line, because the reader is confirming a direction, not weighing a
+fork. The figure shows what the call came down to; the argument stays in `DECISIONS.md`. **A
+live fork is not compact**: it gets its trade-off figure, the recommendation marked, and the full
+six-part shape from [`asking-for-decisions.md`](asking-for-decisions.md), under its own heading,
+above the ratified ones. Zero to two per spec; more than that and the direction isn't ready for
+review.
 
 ---
 
@@ -268,7 +289,8 @@ after, and what am I signing*, in observable behaviour with no file paths. Secti
 5. **Optionally, one more figure** where a quantity carries the argument — what a turn costs,
    what a request carries — and **one mermaid** for the mechanism as a path through layers.
 6. **What stays as it is** — the neighbours a reader would otherwise assume changed.
-7. **Sign off** — **the goal first**, unnumbered, with its *If wrong:*: approval certifies the
+7. **Sign off** — here, one-liners with no figures; the trade-offs stay beside their cards, and
+   only the PR body pins them (see "The PR body"). **The goal first**, unnumbered, with its *If wrong:*: approval certifies the
    goal's size as much as the approach. Then the numbered decisions as one-liners linking to
    their cards, each with *If wrong:*, and the one to weigh named. **Open: none**, or the live
    forks named.
@@ -451,9 +473,11 @@ open or settled, then how the document got here. Sections, in order:
 1. **The tree** — one mermaid: the issue, its decisions as solid edges, what each rejected as a
    dashed edge with the reason on the label. Solid edges are what the reader is signing.
 2. **One card per decision**, anchored `<a name="dN"></a>` so `SPEC.md` can link to it. A table
-   with three rows — **Instead of** · **Because** · **Locks in** — then a paragraph reading the
-   card, and a figure beside the decision when position carries it (a layer boundary, a grid of
-   moments). **At most three decisions**, only the calls that shape the outcome; each is a
+   with three rows — **Instead of** · **Because** · **Locks in** — then its **trade-off figure**,
+   `figures/dN-<slug>.svg`, with the sentence naming the row it came down to
+   ([`spec-figures.md`](spec-figures.md) → "The trade-off"), unless the filters sent the card to
+   the engineering block. The PR body pins the same file under the decision's sign-off heading. A second figure only when the decision's mechanism is itself
+   positional (a layer boundary, a grid of moments). **At most three decisions**, only the calls that shape the outcome; each is a
    business decision or it does not belong here (the filters in
    [`asking-for-decisions.md`](asking-for-decisions.md) → "What reaches them at all").
    **Write *Locks in* as a consequence**: what we can no longer change cheaply, who is affected,
@@ -499,6 +523,10 @@ open or settled, then how the document got here. Sections, in order:
 > | **Because** | An intermediary that strips `Last-Event-ID` would silently disable resume, which is worse than carrying two encodings of one value. The SSE spec already defines the header, so the common path adds no public option |
 > | **Locks in** | The format is load-bearing for any client, ours or not, and both entry points have to stay in step. Changing it later is a breaking change to a string we don't validate |
 >
+> ![Where a reconnecting client puts its resume cursor: header and query param, chosen, beside header only. Decides it: a proxy that strips the header. Price: two entry points. A browser client is a tie](figures/d1-cursor.svg)
+>
+> It comes down to a proxy that strips the header: header-only stops resuming, with no error.
+>
 > **What would change my mind:** evidence that no proxy we run behind strips the header. Then
 > one encoding is strictly better, and the query param is dropped before it ships.
 >
@@ -510,6 +538,10 @@ open or settled, then how the document got here. Sections, in order:
 > | **Instead of** | A distinct "already finished" status code the client has to branch on |
 > | **Because** | One response shape for every reattach. A cursor past the end of the log is an ordinary empty replay, not an error, so the client needs no special case |
 > | **Locks in** | The persisted log is read on the stream path, so it has to stay complete for a request's lifetime. Serving a request the client was *never* attached to stays refused: that is a history read |
+>
+> ![What a reattach to a finished request gets: replay the tail and close, chosen, beside a distinct already-finished status. Decides it: what every client has to write. Price: the log stays complete for the request's life](figures/d2-finished.svg)
+>
+> It comes down to client code: a distinct status is a branch in every client, forever.
 >
 > ![A grid of three reattach moments by two request states: mid-flight replays from the cursor, finished replays the tail then closes, never-attached is refused](figures/reattach-grid.svg)
 >
@@ -524,6 +556,10 @@ open or settled, then how the document got here. Sections, in order:
 > | **Instead of** | Defaulting to resume-from-last-seen server-side |
 > | **Because** | The server would hold per-client state, and something would have to expire it. A client that sends no cursor is the common case for the whole first release |
 > | **Locks in** | Resume is opt-in by the client, forever. A client that wants it says so |
+>
+> ![What happens without a cursor: today's behaviour, chosen, beside resume from last-seen on the server. Decides it: per-client state the server must expire. Price: resume is opt-in, forever](figures/d3-no-cursor.svg)
+>
+> It comes down to server state: resuming by default means remembering every client.
 >
 > ## Decided, not asked
 >

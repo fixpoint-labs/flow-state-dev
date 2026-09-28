@@ -66,8 +66,8 @@ Take the single action the dispatch calls for:
   later dispatch for an epic that has no closure issue (one that predates the rule), file it
   and wire every open child to block it.
   Then write the set — `SPEC.md` (the teams table, why now, the goal and how we'll know it's met, *what's in the box* and its figure, the set table with status, the dependency graph,
-  what stays, the sign-off), `DECISIONS.md` (the tree, the cross-cutting cards, the ownership
-  matrix figure), `BUSINESS-RULES.md`, `PLAN.md`, and `DOCS.md` — the shared reader narrative,
+  what stays, the sign-off), `DECISIONS.md` (the tree, the cross-cutting cards each with its
+  trade-off figure, the ownership matrix figure), `BUSINESS-RULES.md`, `PLAN.md`, and `DOCS.md` — the shared reader narrative,
   concrete proposed prose/examples, target create/update/remove operations, and issue ownership.
   Add conditional `EVOLUTION.md` for one or several predecessors: exact prior anchors,
   retained/amended/superseded portions, evidence, replacement, and compatibility/migration.
@@ -89,15 +89,15 @@ Take the single action the dispatch calls for:
   the instance and [`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md)
   the rules. The teams table; the goal, its *how we'll know* fence and its check line; the box figure, pinned to the commit that holds it; why now; the
   set in one line with the as-of counts and a link to the live table; the path and the ownership
-  matrix, pinned, each with its sentence; the sign-off in compact form (three is the ceiling,
-  live forks included); *Reviewers · look here* at epic altitude; the links line; the contract
+  matrix, pinned, each with its sentence; the sign-off in compact form, each decision with its trade-off
+  figure pinned under its heading (three is the ceiling, live forks included); *Reviewers · look here* at epic altitude; the links line; the contract
   collapsed and pasted **verbatim**. **Budget ~525 words.** Pin every image to the commit SHA
   and use the raw-content URL — a branch URL is cached stale by GitHub's image proxy and a blob
   URL doesn't render. Read the stored body back ([`spec-figures.md`](../../docs/contributing/spec-figures.md) →
   "In the PR body"). A `src` with no backtick renders, and a later edit keeps it — do not drop
   the figures because an update is assumed to kill them. If a `src` comes back with a backtick
   in it, don't fight that write: leave a link to `SPEC.md`'s blob view in their place and
-  return the three clean `<img>` lines in `pins:` (the lines you sent, not the stored ones);
+  return the clean `<img>` lines in `pins:` (the lines you sent, not the stored ones);
   and **never rewrite a body a person has pasted an image into** — return the new pins instead.
 
 - **End-state POC** (when the coordinator dispatches one): build it under

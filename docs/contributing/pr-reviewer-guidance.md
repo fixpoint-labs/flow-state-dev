@@ -200,25 +200,42 @@ they're being informed or asked.
 have; the substance goes in the heading, and the number, if the spec has one, goes after it.
 
 **The compact form, on a spec or epic PR only.** There the reader is *ratifying* decisions a
-spec already argues in full one click away, so each ratified decision is one numbered line — the
-decision in bold, then *If wrong:* and its cost — under a `## Sign off` heading, hardest first,
-with the one to weigh named and a link to `DECISIONS.md`:
+spec already argues in full one click away, so the argument doesn't come along — but what the
+decision *comes down to* does, because that is the part a reader can disagree with at a glance.
+Each ratified decision is a subheading stating it, with its card's number after, then its
+**trade-off figure** ([`spec-figures.md`](spec-figures.md) → "The trade-off"), pinned, then one
+line: the row it came down to, then *If wrong:* and its cost. All of it under `## Sign off`,
+hardest first, with the one to weigh named and a link to `DECISIONS.md`:
 
 ```md
 ## Sign off
 
-1. **A skill beside a worker is reachable, not always-on.** If wrong: the first thing people
-   try looks broken.
-2. **A seat holds a copy. Refresh is deliberate and replaces the folder whole.** If wrong:
-   withdrawn instructions stay live, or a refresh destroys edits someone expected to keep.
+### A skill beside a worker is reachable, not always-on · D1
 
-**Open: none.** Number 1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
+<img src="https://raw.githubusercontent.com/<owner>/<repo>/<sha>/specs/issues/<ISSUE-ID>/figures/d1-reachable.svg" width="940" alt="…" />
+
+It comes down to prompt cost: always-on pays for every skill on every turn. **If wrong:** the
+first thing people try looks broken.
+
+### A seat holds a copy. Refresh is deliberate and replaces the folder whole · D2
+
+<img src="…/figures/d2-copy.svg" width="940" alt="…" />
+
+It comes down to a teammate's edit: live-linked, it changes a seat mid-task. **If wrong:**
+withdrawn instructions stay live, or a refresh destroys edits someone expected to keep.
+
+**Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 ```
 
+The line under the figure stays one line, and it stands without the picture: a reader whose
+images don't load still has each decision, what it came down to, and its cost.
+
 A **live fork is never compact**: it keeps its own subheading and the full six-part shape, above
-the ratified lines. And the compact form stays on spec and epic PRs — on an implementation PR
-the decisions were made while building and the body is the only place they're written down, so
-each keeps its subheading and two bullets.
+the ratified lines, with its trade-off figure under the heading, the recommended option marked.
+The *trade-off* part of the six then reads the figure in a sentence rather than restating it.
+And the compact form stays on spec and epic PRs — on an implementation PR the decisions were
+made while building and the body is the only place they're written down, so each keeps its
+subheading and two bullets, and no trade-off figure: the diff is the review there.
 
 **Write the *If this is wrong* bullet in consequences, not mechanism.** "A permanently
 ambiguous public guard surface, or a migration third parties didn't need" is a cost a product
@@ -440,7 +457,7 @@ and publish it, and account for the relevant predecessors in `EVOLUTION.md`.
 ## Where each block is authored
 
 - **Spec PR** — blocks 1–3 are `SPEC.md`'s goal block, its people table, its figure, and the decisions that
-  passed the filters in compact form, condensed by `issue-spec` Step 6; the instance and the
+  passed the filters in compact form, each with its trade-off figure from `DECISIONS.md`, condensed by `issue-spec` Step 6; the instance and the
   contract are [`spec-template.md`](spec-template.md) → "The PR body" and "How to review this".
 - **Epic PR** — authored by `epic-agent` for its reviewed revision; later meaningful
   amendments get follow-up PRs rather than rewriting the merged original. The instance
