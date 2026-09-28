@@ -717,6 +717,14 @@ export type SessionSSECallbacks = {
    * without the stream.
    */
   onStop?: (reason: { status: number }) => void;
+  /**
+   * The connection dropped and the client will try again after its backoff.
+   * `attempt` counts the tries since the stream last delivered an event: 1 is
+   * the reconnect after an ordinary close, such as the server's own after 15
+   * minutes; 2 or more means a try has failed since. Until a connection
+   * delivers again, what the stream last said may no longer be current.
+   */
+  onReconnecting?: (event: { attempt: number }) => void;
   /** An event the client could not parse. Connection drops are retried, not reported. */
   onError?: (error: Error) => void;
 };

@@ -189,18 +189,45 @@ describe("createSessionSSEClient", () => {
     expect(afterDelivery).toBeLessThan(78);
   });
 
+  // A caller showing what the stream last said needs to know when that stops
+  // being current: 1 is the routine reconnect after a close, 2 or more means a
+  // try has failed since the stream last delivered.
+  it("says each time it will try again, counting the tries since the stream last delivered", async () => {
+    let calls = 0;
+    const fetcher: ClientFetch = (async () => {
+      calls += 1;
+      if (calls === 1) return ended(frame(runsEvent(1, ["run_1"])));
+      if (calls === 4) return ended(frame(runsEvent(2, [])));
+      return new Response("down", { status: 503 });
+    }) as ClientFetch;
+    const attempts: number[] = [];
+    handles.push(
+      createSessionSSEClient({
+        sessionId: "s1",
+        fetcher,
+        retry: { initialDelayMs: 5, maxDelayMs: 20 },
+        onReconnecting: ({ attempt }) => attempts.push(attempt)
+      })
+    );
+
+    await until(() => attempts.length >= 5);
+    expect(attempts.slice(0, 5)).toEqual([1, 2, 3, 1, 2]);
+  });
+
   it.each([404, 501, 401, 403])(
     "stops quietly on %i: no error, no retry (BR-15, BR-16)",
     async (status) => {
       const fetcher = vi.fn(async () => new Response("{}", { status }));
       const onStop = vi.fn();
       const onError = vi.fn();
+      const onReconnecting = vi.fn();
       const handle = createSessionSSEClient({
         sessionId: "s1",
         fetcher: fetcher as unknown as ClientFetch,
         retry: { initialDelayMs: 5 },
         onStop,
-        onError
+        onError,
+        onReconnecting
       });
       handles.push(handle);
 
@@ -209,6 +236,7 @@ describe("createSessionSSEClient", () => {
       expect(onStop).toHaveBeenCalledWith({ status });
       expect(fetcher).toHaveBeenCalledTimes(1);
       expect(onError).not.toHaveBeenCalled();
+      expect(onReconnecting).not.toHaveBeenCalled();
       expect(handle.stopped).toBe(true);
     }
   );

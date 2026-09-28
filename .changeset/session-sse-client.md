@@ -7,3 +7,5 @@ Add `createSessionSSEClient(options)`, a client for the whole-session stream. It
 `createRequestStreamStore` takes an optional `keyOf`, the key each item is held under (default: its id). A store that holds more than one request's items keys by request and item id, since two requests can keep the same id.
 
 `SessionStateSnapshotResponse` has an optional `at`, and `createSessionSSEClient`'s `since` accepts it. `compareItemOrder` breaks a tie on time and index by request id, then item id, where it used to return 0.
+
+`createSessionSSEClient` takes `onReconnecting`, called before each reconnect with how many tries there have been since the stream last delivered an event: 1 after an ordinary close, 2 or more once a try has failed.

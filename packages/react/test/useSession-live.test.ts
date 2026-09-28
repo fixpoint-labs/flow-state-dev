@@ -365,6 +365,174 @@ describe("useSession live", () => {
     expect(result.current.items).toEqual([]);
   });
 
+  // Snapshot reads overlap: the mount read, a request's closing read,
+  // `refresh()`. The one requested last is the newest, whichever lands last.
+  describe("two snapshot reads in flight at once", () => {
+    /** Hold every snapshot read until the case releases it, in request order. */
+    function holdReads() {
+      const reads: Array<{ resolve: (value: unknown) => void; reject: (cause: unknown) => void }> = [];
+      sessionClientMock.getSessionState.mockImplementation(
+        () => new Promise((resolve, reject) => reads.push({ resolve, reject }))
+      );
+      return reads;
+    }
+
+    it("never lets the older read undo the newer one", async () => {
+      const { result } = await mountLive();
+      sessionClientMock.getSession
+        .mockResolvedValueOnce({ id: "sess1", flowKind: "demo", userId: "devuser", createdAt: 0, updatedAt: 0, title: "older" })
+        .mockResolvedValueOnce({ id: "sess1", flowKind: "demo", userId: "devuser", createdAt: 0, updatedAt: 0, title: "newer" });
+      const reads = holdReads();
+
+      let older: Promise<void> = Promise.resolve();
+      let newer: Promise<void> = Promise.resolve();
+      act(() => {
+        older = result.current.refresh();
+      });
+      deliver(item("req_seat", message("req_seat", "m1", "kept", 2)));
+      act(() => {
+        newer = result.current.refresh();
+      });
+
+      // The newer read holds the line and settles it.
+      await act(async () => {
+        reads[1]!.resolve({ ...snapshot([message("req_seat", "m1", "kept", 2)], 20), clientData: { session: { step: 2 } } });
+        await newer;
+      });
+      // The older read began before the line arrived, and lands last.
+      await act(async () => {
+        reads[0]!.resolve({ ...snapshot([], 10), clientData: { session: { step: 1 } } });
+        await older;
+      });
+
+      expect(texts(result.current.items)).toEqual(["kept"]);
+      expect(result.current.snapshot?.clientData).toEqual({ session: { step: 2 } });
+      expect(result.current.detail?.title).toBe("newer");
+    });
+
+    it("shows no error when the older read fails after the newer one landed", async () => {
+      const { result } = await mountLive();
+      const reads = holdReads();
+
+      let older: Promise<void> = Promise.resolve();
+      let newer: Promise<void> = Promise.resolve();
+      act(() => {
+        older = result.current.refresh();
+        newer = result.current.refresh();
+      });
+      await act(async () => {
+        reads[1]!.resolve(snapshot([], 20));
+        await newer;
+      });
+      await act(async () => {
+        reads[0]!.reject(new Error("connection reset"));
+        await older;
+      });
+
+      expect(result.current.error).toBeNull();
+    });
+
+    it("never lets a read of the previous session land on the next one", async () => {
+      const view = await mountLive();
+      const reads = holdReads();
+      let refreshing: Promise<void> = Promise.resolve();
+      act(() => {
+        refreshing = view.result.current.refresh();
+      });
+
+      view.rerender({ id: "sess2" });
+      await waitFor(() => expect(reads).toHaveLength(2));
+
+      // The previous session's read lands first, while the next one's is still out.
+      await act(async () => {
+        reads[0]!.resolve(snapshot([message("req_1", "m1", "first session", 2)]));
+        await refreshing;
+      });
+      expect(texts(view.result.current.items)).toEqual([]);
+
+      await act(async () => {
+        reads[1]!.resolve({ ...snapshot([message("req_2", "m2", "second session", 3)]), sessionId: "sess2" });
+      });
+      await waitFor(() => expect(texts(view.result.current.items)).toEqual(["second session"]));
+    });
+  });
+
+  // The snapshot is read a page at a time, by offset. Retention removing a
+  // request, or a keyed item emitted again, moves what the later pages hold.
+  describe("a snapshot longer than a page", () => {
+    const history = (count: number): OutputItem[] =>
+      Array.from({ length: count }, (_, i) =>
+        message(`req_${String(i).padStart(3, "0")}`, `m${i}`, `line ${i}`, i + 1)
+      );
+
+    /** Serve the session's history by offset, as the route does; `onRead` runs after each page is cut. */
+    function serve(current: () => OutputItem[], onRead: () => void = () => {}) {
+      sessionClientMock.getSessionState.mockImplementation(
+        async (_id: string, options: { offset?: number; limit?: number } = {}) => {
+          const all = current();
+          const offset = options.offset ?? 0;
+          const limit = options.limit ?? 100;
+          const page = all.slice(offset, offset + limit);
+          onRead();
+          return {
+            ...snapshot(page, 10),
+            pagination: {
+              offset,
+              limit,
+              total: all.length,
+              hasMore: offset + limit < all.length,
+              nextOffset: Math.min(offset + limit, all.length)
+            }
+          };
+        }
+      );
+    }
+
+    async function mount() {
+      const view = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+      await waitFor(() => expect(view.result.current.isLoading).toBe(false));
+      return view;
+    }
+
+    it("reads a history that holds still whole, every item once", async () => {
+      const kept = history(250);
+      serve(() => kept);
+      const { result } = await mount();
+      expect(texts(result.current.items)).toEqual(kept.map(textOf));
+    });
+
+    it("starts over when a request on a page already read is removed, so no item is skipped", async () => {
+      let kept = history(150);
+      let pages = 0;
+      serve(
+        () => kept,
+        () => {
+          pages += 1;
+          // Retention removes the oldest request just after the first page is read.
+          if (pages === 1) kept = kept.slice(1);
+        }
+      );
+      const { result } = await mount();
+      expect(result.current.error).toBeNull();
+      expect(texts(result.current.items)).toEqual(kept.map(textOf));
+      expect(texts(result.current.items)).toContain("line 100");
+    });
+
+    it("gives up with an error, rather than show part of the history as all of it, when it never holds still", async () => {
+      let kept = history(150);
+      serve(
+        () => kept,
+        () => {
+          kept = kept.slice(1);
+        }
+      );
+      const { result } = await mount();
+      expect(result.current.error).not.toBeNull();
+      expect(result.current.items).toEqual([]);
+      expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(10);
+    });
+  });
+
   // The view shows the user's message the moment it is sent, until the
   // server's copy replaces it. That copy can come from either stream.
   describe("the message the view shows while it sends", () => {
@@ -693,6 +861,83 @@ describe("useSession live", () => {
     );
   });
 
+  // While the stream follows the session, "active" reads as working. Once it
+  // stops following, the rows are the last the view heard: kept, as a failed
+  // re-read keeps them, and marked stale so none reads as working.
+  describe("when the stream stops following the session", () => {
+    const page = () => [
+      { id: "run_new", parentSessionId: "sess1", createdAt: 5, updatedAt: 5, flowId: "seat.run_new", status: "active" }
+    ];
+
+    function openStream() {
+      const open = streams.filter((s) => !s.closed);
+      return open[open.length - 1]!.options;
+    }
+
+    async function mountFollowing() {
+      sessionClientMock.listChildSessions.mockResolvedValue(page());
+      const view = await mountLive();
+      deliver(runs(["run_new", "run_old"]));
+      await waitFor(() => expect(view.result.current.childSessions).toHaveLength(2));
+      expect(view.result.current.childSessionsStale).toBe(false);
+      return view;
+    }
+
+    it("marks the rows stale for good once the stream is refused after following", async () => {
+      const { result } = await mountFollowing();
+
+      // The session is deleted: the server closes, and the reconnect is refused.
+      act(() => openStream().onStop?.({ status: 404 }));
+      expect(result.current.childSessionsStale).toBe(true);
+      expect(result.current.childSessions.map((row) => row.id)).toEqual(["run_new", "run_old"]);
+
+      // A later read of the page succeeds, but nothing follows the session now.
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(result.current.childSessionsStale).toBe(true);
+    });
+
+    it("marks the rows stale while a reconnect is failing, and current again once the stream names the runs", async () => {
+      const { result } = await mountFollowing();
+
+      // The routine close every 15 minutes: one reconnect, about a second.
+      act(() => openStream().onReconnecting?.({ attempt: 1 }));
+      expect(result.current.childSessionsStale).toBe(false);
+
+      // That reconnect failed.
+      act(() => openStream().onReconnecting?.({ attempt: 2 }));
+      expect(result.current.childSessionsStale).toBe(true);
+      expect(result.current.childSessions.map((row) => row.id)).toEqual(["run_new", "run_old"]);
+
+      // Back: a connection names the runs first.
+      deliver(runs(["run_new"]));
+      await waitFor(() => expect(result.current.childSessionsStale).toBe(false));
+      expect(result.current.childSessions.map((row) => row.id)).toEqual(["run_new"]);
+    });
+
+    it("leaves the view as it would be without live when refused before it named anything (BR-16)", async () => {
+      sessionClientMock.listChildSessions.mockResolvedValue(page());
+      const { result } = await mountLive();
+      await waitFor(() => expect(result.current.childSessions).toHaveLength(1));
+
+      act(() => openStream().onStop?.({ status: 404 }));
+      expect(result.current.childSessionsStale).toBe(false);
+    });
+
+    it("starts the next session's view current", async () => {
+      const view = await mountFollowing();
+      act(() => openStream().onStop?.({ status: 404 }));
+      expect(view.result.current.childSessionsStale).toBe(true);
+
+      sessionClientMock.getSessionState.mockResolvedValue({ ...snapshot(), sessionId: "sess2" });
+      view.rerender({ id: "sess2" });
+      await waitFor(() => expect(streams.filter((s) => !s.closed)).toHaveLength(1));
+      await waitFor(() => expect(streams.at(-1)!.options.sessionId).toBe("sess2"));
+      expect(view.result.current.childSessionsStale).toBe(false);
+    });
+  });
+
   it("closes on unmount, and on a session switch opens for the new session after its snapshot", async () => {
     const view = await mountLive();
     const first = streams[0];
@@ -721,5 +966,6 @@ describe("useSession live", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toContain("/api/flows/sessions/sess1/stream");
     expect(result.current.error).toBeNull();
+    expect(result.current.childSessionsStale).toBe(false);
   });
 });

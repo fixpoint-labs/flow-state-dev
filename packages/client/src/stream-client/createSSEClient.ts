@@ -377,7 +377,8 @@ const SESSION_STREAM_STOP_STATUSES: ReadonlySet<number> = new Set([401, 403, 404
  * The connection is expected to drop: the network, a host's time limit, the
  * server's own close after at most 15 minutes. Each time, the client
  * reconnects with backoff and hands back the last server time it heard, so
- * nothing kept in between is missed. The stream starts a few seconds before
+ * nothing kept in between is missed; `onReconnecting` says each try is coming,
+ * and how many there have been since the stream last delivered. The stream starts a few seconds before
  * `since`, so an item can arrive again: across a reconnect, or when the
  * snapshot that gave `since` already held it. An item a request emits more
  * than once under one id arrives once per emission. Tell items apart by
@@ -412,6 +413,7 @@ export function createSessionSSEClient(
       timer = undefined;
       void connect();
     }, delay);
+    options.onReconnecting?.({ attempt });
   };
 
   const connect = async (): Promise<void> => {
