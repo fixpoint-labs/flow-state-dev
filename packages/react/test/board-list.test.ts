@@ -46,8 +46,8 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 
 import { BoardList, boardListPropNames } from "../src/components/panels/BoardList";
 
-const BOARD = "support.help.escalations";
-const SESSION = "support.help";
+const BOARD = "eng.feature.triage";
+const SESSION = "s1";
 
 type Row = { topic: string; clientData: unknown };
 
@@ -138,7 +138,7 @@ function component(
   } as unknown as OutputItem;
 }
 
-/** A `task-change` for `board`, carrying the whole row the way the channel's log does. */
+/** A `task-change` for `board`, carrying the whole row the way the session's item log does. */
 function taskChange(requestId: string, board: string, taskId: string, ts: number, task: Record<string, unknown> = {}) {
   return component(
     requestId,
@@ -178,9 +178,9 @@ afterEach(() => {
 describe("BoardList · the list (V1)", () => {
   it("draws one row per task with its status word, newest first, and no status columns (BR-2, BR-3)", async () => {
     const source = fixedSource([
-      card("t-old", "completed", { title: "Old case", createdAt: 1_000 }),
+      card("t-old", "completed", { title: "Old task", createdAt: 1_000 }),
       card("t-undated", "cancelled", { goal: "No date on this one" }),
-      card("t-new", "pending", { title: "New case", createdAt: 3_000, assignee: "support.devices" }),
+      card("t-new", "pending", { title: "New task", createdAt: 3_000, assignee: "ada" }),
       card("t-mid", "in_progress", { createdAt: 2_000 })
     ]);
     render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, resourceClient: source }));
@@ -192,7 +192,7 @@ describe("BoardList · the list (V1)", () => {
     expect(document.querySelector("[data-column]")).toBeNull();
     // Each row: the label (title, else goal, else id) and the status word.
     const text = (id: string) => document.querySelector(`li[data-task-id="${id}"]`)?.textContent;
-    expect(text("t-new")).toBe("New casependingsupport.devices");
+    expect(text("t-new")).toBe("New taskpendingada");
     expect(text("t-undated")).toBe("No date on this onecancelled");
     expect(text("t-mid")).toBe("t-midin_progress");
     expect(source.listCollectionItems).toHaveBeenCalledWith(SESSION, BOARD, {});
@@ -203,13 +203,13 @@ describe("BoardList · the list (V1)", () => {
       createElement(BoardList, {
         sessionId: SESSION,
         boardRef: BOARD,
-        resourceClient: fixedSource([card("t-1", "escalated_to_legal"), card("t-2", "awaiting_review")])
+        resourceClient: fixedSource([card("t-1", "blocked_upstream"), card("t-2", "awaiting_review")])
       })
     );
     await waitFor(() => expect(rowIds()).toHaveLength(2));
     const status = (id: string) =>
       document.querySelector(`li[data-task-id="${id}"] [data-task-status]`)?.textContent;
-    expect(status("t-1")).toBe("escalated_to_legal");
+    expect(status("t-1")).toBe("blocked_upstream");
     expect(status("t-2")).toBe("parked");
   });
 
@@ -337,11 +337,11 @@ describe("BoardList · live (V2)", () => {
     expect(document.body.textContent).not.toContain("author");
   });
 
-  it("reads nothing for another board's change, a channel line, or an item that is not a component (BR-10)", async () => {
+  it("reads nothing for another board's change, another kind of component, or an item that is not a component (BR-10)", async () => {
     const { source } = await mountLive();
     deliver(opening(100));
-    deliver(itemEvent(200, "req_1", taskChange("req_1", "support.help.followups", "t-9", Date.now())));
-    deliver(itemEvent(200, "req_1", component("req_1", "cp_1", "channel-post", { body: "hello", collectionId: BOARD }, Date.now())));
+    deliver(itemEvent(200, "req_1", taskChange("req_1", "eng.feature.backlog", "t-9", Date.now())));
+    deliver(itemEvent(200, "req_1", component("req_1", "cp_1", "note", { body: "hello", collectionId: BOARD }, Date.now())));
     deliver(
       itemEvent(200, "req_1", {
         ...(taskChange("req_1", BOARD, "t-8", Date.now()) as unknown as Record<string, unknown>),
@@ -368,7 +368,7 @@ describe("BoardList · live (V2)", () => {
     expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
   });
 
-  it("reads once more after the first read when a filing lands while that read pages", async () => {
+  it("reads once more after the first read when a change lands while that read pages", async () => {
     const source = heldSource([]);
     render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, resourceClient: source, fetcher: vi.fn(), live: true }));
     deliver(opening(100));
@@ -388,7 +388,7 @@ describe("BoardList · live (V2)", () => {
   it("reads nothing for the history its first connection replays from before the first read (BR-12)", async () => {
     const source = heldSource([card("t-1", "pending"), card("t-2", "pending")]);
     render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, resourceClient: source, fetcher: vi.fn(), live: true }));
-    // The first connection's first read reaches back a minute: two filings from 30 s ago.
+    // The first connection's first read reaches back a minute: two changes from 30 s ago.
     const longAgo = Date.now() - 30_000;
     deliver(opening(100));
     deliver(itemEvent(100, "req_a", taskChange("req_a", BOARD, "t-1", longAgo)));
@@ -472,7 +472,7 @@ describe("BoardList · live (V2)", () => {
     const view = render(createElement(BoardList, { ...props, boardRef: BOARD }));
     const first = streams[0]!;
     // The old board's read is still open when the board changes.
-    view.rerender(createElement(BoardList, { ...props, boardRef: "support.help.followups" }));
+    view.rerender(createElement(BoardList, { ...props, boardRef: "eng.feature.backlog" }));
     expect(first.closed).toBe(true);
     expect(streams.filter((s) => !s.closed)).toHaveLength(1);
     source.setRows([card("t-2", "pending")]);

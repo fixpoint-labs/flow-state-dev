@@ -39,8 +39,8 @@ type BoardListCommonProps = {
   /** The session the read is addressed to, and, with `live`, the one the list follows. */
   readonly sessionId: string;
   /**
-   * The key the session's flow declares this board's ledger under — the minted
-   * `<channelId>.<boardName>`. One path segment, so it carries no slash.
+   * The key the session's flow declares this board's ledger under. One path
+   * segment, so it carries no slash.
    */
   readonly boardRef: string;
   /** Rows to request per page. The list reads every page regardless. */
