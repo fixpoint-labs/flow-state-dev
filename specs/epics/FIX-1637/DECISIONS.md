@@ -87,8 +87,8 @@ It comes down to the export check: the canceled topic bus on the page fails the 
 ![Who owns what: eight rules by FIX-1639, FIX-1638, FIX-1640 and the closure FIX-1642. FIX-1639 owns the page, the fence statement, the project's verified-caller rule, the drift fixes and the contributor line; it owns the table and the terms under D1, with dashed cells showing FIX-1638 and FIX-1640 owning them, and FIX-1638 owning the verified-caller rule, if D1 re-splits. The closure owns the proof and consumes every other rule](figures/ownership.svg)
 
 Every rule has one owner today, the project's PR-1 included. The dashed cells are where
-ownership moves if the owner answers D1 with a re-split; nothing else changes. FIX-1641 owns no
-rule and has no column: it consumes ER-6.
+ownership moves if the owner answers D1 with a re-split; nothing else changes. FIX-1641 and
+FIX-1643 own no rule and have no column: they consume ER-6.
 
 ## Decided, not asked
 
@@ -112,6 +112,13 @@ rule and has no column: it consumes ER-6.
   not because the closure checks it: the run proves the page alone. The page never waits for it.
 - **The page lives in the guides site.** Placement in the sidebar is FIX-1639's; the closure
   starts from the nav, so it must be reachable there.
+- **FIX-1643's subscribe and route shapes stay in the example too.** Filed during review, with
+  its examples PR (#2372) open as a draft: the host registers GitHub once through today's
+  webhook transport adapter, then per-session subscribe and one webhook with route rules
+  compiling to today's webhook bindings and `dispatcher()`, in `examples/wake-subscribe`. A
+  soft-related sibling of FIX-1641, not its child. ER-6 holds on the same terms: the page may
+  link the example, teaches neither style as a framework feature, and never waits for it; it
+  blocks the closure only because every child does.
 
 ## Decided in review, recorded so no child reopens them
 
@@ -135,8 +142,8 @@ rule and has no column: it consumes ER-6.
 ## What the end-state POC showed
 
 No end-state POC. Docs only, and the assembled surface is one page; the closure run is the
-end-state check. FIX-1641 is a child's exploration of authoring shapes, not a test of the
-set's division.
+end-state check. FIX-1641 and FIX-1643 are children's explorations of authoring shapes, not
+tests of the set's division.
 
 ## How it got here
 
@@ -149,5 +156,8 @@ set's division.
   turned D3's `notification` row from removed to reworded, took `.sideChain()` off the
   keeps-going row, and scoped the fence to the effective dispatcher. FIX-1641's block on the
   closure kept and explained. No decision reversed.
+- **Set membership, 2026-09-29.** The owner filed FIX-1643 (subscribe and route POC) at 13:18Z
+  as a child, soft-related to FIX-1641, with examples PR #2372. It was wired to block the
+  closure. No decision changed.
 
 **Open: D1.**

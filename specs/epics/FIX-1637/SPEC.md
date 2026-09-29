@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 5 issues · docs only, no runtime change · Framework simplification & cleanup
+Epic · 6 issues · docs only, no runtime change · Framework simplification & cleanup
 ([project spec #2367](https://github.com/fixpoint-labs/flow-state-dev/pull/2367)) · Goal 4,
 keep the foundation honest ([`docs/objectives.md`](../../../docs/objectives.md)) ·
 [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637)
@@ -85,12 +85,14 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | [FIX-1638](https://linear.app/fixpoint-labs/issue/FIX-1638) · config matrix | The flow / host / ops table | **Proposed: folded into FIX-1639** ([D1](DECISIONS.md#d1), open) | Backlog |
 | [FIX-1640](https://linear.app/fixpoint-labs/issue/FIX-1640) · terms | Wake, dispatch, schedule tick; `epic-wake` moves to contributor docs | **Proposed: folded into FIX-1639** ([D1](DECISIONS.md#d1), open) | Backlog |
 | [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641) · wake authoring POC | Three authoring shapes in an examples package, each compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2369](https://github.com/fixpoint-labs/flow-state-dev/pull/2369) open, draft |
-| [FIX-1642](https://linear.app/fixpoint-labs/issue/FIX-1642) · closure · **required** | The QA plan: the page followed as written on one `main` commit | Proves the whole ([ER-15](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by FIX-1638, 1639, 1640, 1641 |
+| [FIX-1643](https://linear.app/fixpoint-labs/issue/FIX-1643) · subscribe and route POC | The host registers GitHub once, then two routing styles in an examples package: per-session subscribe, and one webhook with route rules compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. A sibling of FIX-1641, soft-related, not its child. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2372](https://github.com/fixpoint-labs/flow-state-dev/pull/2372) open, draft |
+| [FIX-1642](https://linear.app/fixpoint-labs/issue/FIX-1642) · closure · **required** | The QA plan: the page followed as written on one `main` commit | Proves the whole ([ER-15](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by FIX-1638, 1639, 1640, 1641, 1643 |
 
-**One page, two children proposed to fold, one POC, and the closure.** Smaller if D1 holds;
+**One page, two children proposed to fold, two POCs, and the closure.** Smaller if D1 holds;
 zero only if a nav change were enough, and it isn't ([D2](DECISIONS.md#d2)). FIX-1638 and
 FIX-1640 stay open in Linear until the owner answers D1. FIX-1641 was filed while this spec
-was written and runs beside the page, not before it; like every child it blocks the closure.
+was written and FIX-1643 during its review. Both run beside the page, not before it; like every
+child each blocks the closure.
 
 ## How the issues flow into each other
 
@@ -103,13 +105,15 @@ flowchart LR
   M --> Z
   G --> Z
   E["FIX-1641 · wake authoring POC"] -->|"lands or closes first"| Z
+  S["FIX-1643 · subscribe and route POC"] -->|"lands or closes first"| Z
 ```
 
 Solid edges are blocked-by; dashed edges into FIX-1639 are the proposed fold, and the one from
 FIX-1634 is an input from another epic. If D1 re-splits, FIX-1638 and FIX-1640 publish beside
-FIX-1639 and all still block the closure. FIX-1641 hands the page nothing it must wait for,
-and the closure does not check it. It blocks the closure only because every child does: the run
-waits for #2369 to merge, or for the owner to close FIX-1641 with its findings filed to FIX-1639.
+FIX-1639 and all still block the closure. FIX-1641 and FIX-1643 hand the page nothing it
+must wait for, and the closure checks neither. Each blocks the closure only because every child
+does: the run waits for #2369 and #2372 to merge, or for the owner to close each POC with its
+findings filed to FIX-1639. The two are soft-related siblings, so no edge joins them.
 
 ## What stays as it is
 
