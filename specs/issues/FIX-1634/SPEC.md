@@ -105,11 +105,14 @@ races a real conversation in production.
 
 1. **[D1](DECISIONS.md#d1) · On a queue host the session's concurrency policy governs every run,
    not only deliveries.** If wrong: BullMQ apps that declared `queue` or `reject` and relied on
-   it being ignored get slower bursts or 409s after upgrading.
-2. **[D2](DECISIONS.md#d2) · Cross-process arbitration is something the queue adapter supplies;
-   BullMQ supplies it on its Redis, and an adapter without it keeps the named refusal.** If
-   wrong: two public calls (take a place, give it back) that every queue adapter must
-   implement; waiting for the turn stays private to the adapter.
+   it being ignored get slower bursts or 409s after upgrading, and at worst a long-running
+   `queue` app on the 30s default wait budget sees terminal timeouts. Default: no opt-out flag;
+   the changeset leads with the change and says to declare `allow` per flow.
+2. **[D2](DECISIONS.md#d2) · The queue adapter supplies an ordered-lease backend under the
+   engine's one arbiter; BullMQ supplies it on its Redis, and an adapter without it keeps the
+   named refusal.** The public contract is the backend's four calls: take, is-my-turn, give back,
+   renew. Policy stays in the engine. If wrong: a four-call contract every queue adapter must
+   implement.
 
 **Open: none.** Number 1 is the one to weigh: it changes behaviour for existing BullMQ apps.
 Reasoning: [DECISIONS.md](DECISIONS.md). Cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).

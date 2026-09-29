@@ -22,10 +22,11 @@ Voice rules most at risk here: no internal issue numbers on `apps/docs`, no "now
 > process of the deployment, the web process and each worker. A run takes its place on the key
 > when it is accepted, and waits for its turn in whichever worker picks it up. A worker never
 > spends one of its slots waiting: a run whose turn hasn't come goes back on the queue. Order is
-> the order runs were accepted in, and the wait budget is the same as on one server.
+> the order runs were accepted in. The wait budget is the same as on one server and counts only
+> time spent waiting for the session, not time spent queued behind unrelated work.
 >
-> If the process running the holder dies, the key frees once that run stops heartbeating, so the
-> next run waits at most the stale threshold. If the queue adapter's store can't be reached when
+> If the process running the holder dies, the key frees within the stale threshold, and the next
+> run starts. If the queue adapter's store can't be reached when
 > a run needs a place, the run is not started and the caller is told why. It never runs without
 > the policy.
 >
@@ -61,6 +62,10 @@ After the table:
 >
 > A delivery into an existing session (`dispatcher()` with `session: { id }`) runs here, under the
 > recipient's policy. Declare `concurrency: "allow"` on an entry that should run in parallel.
+>
+> When you upgrade, roll out workers before the processes that enqueue. A job enqueued by the new
+> release and picked up by a worker from the release before runs once without the policy, and its
+> session can then wait up to the stale threshold before the next run starts.
 
 ## UPDATE · `packages/core/README.md` · the refusal table's `external-dispatcher` row
 
@@ -70,10 +75,11 @@ After the table:
 
 Append to the `WorkerAdapter` bullet:
 
-> An adapter may also supply a cross-process concurrency arbiter. When it does, `createFlowState`
-> uses it for every run in the process, in process or queued, and an `id` delivery through the
-> adapter's dispatcher is accepted. An adapter without one keeps the `external-dispatcher` refusal
-> for `id` deliveries.
+> An adapter may also supply an ordered-lease backend for concurrency. When it does,
+> `createFlowState` runs its one concurrency arbiter over that backend for every run in the
+> process, in process or queued, and an `id` delivery through the adapter's dispatcher is
+> accepted. The backend stores ordered leases only; the policy stays in the engine. An adapter
+> without one keeps the `external-dispatcher` refusal for `id` deliveries.
 
 The member's name and signature are pinned in PR-A and written in here then.
 
@@ -108,13 +114,37 @@ flow-to-flow post paragraph, the refusal list, and the refusal table's row.
 
 > `host.usesExternalDispatcher` says whether `dispatch` hands the run to another process. A
 > request-host operation refuses a `dispatcher()` delivering into an existing session (`{ id }`)
-> with `external-dispatcher` only when the host is external **and** its arbiter is not
-> cross-process. With a cross-process arbiter, supplied by the worker adapter, every dispatch on
-> the external branch takes its place on the concurrency key before anything is written, carries
-> it on the envelope, and the worker waits for its turn and gives it back.
+> with `external-dispatcher` only when the host is external **and** the worker adapter supplied
+> no lease backend. With one, the process's single arbiter runs over it: every dispatch on the
+> external branch takes its place on the concurrency key before anything is written, carries it
+> on the envelope, and the worker waits for its turn and gives it back.
 
 Also retire the arbiter note "v1 enforces the policy for the in-process dispatcher only" in the
 same file wherever it is restated.
+
+## UPDATE · `docs/architecture/action-forms.md` · the `{ id }` sentence
+
+"and is refused under an external dispatcher (`usesExternalDispatcher`, refusal
+`external-dispatcher`) because the run would start on another process against a session this one
+cannot fence" becomes:
+
+> and is refused under an external dispatcher whose worker adapter supplies no lease backend
+> (refusal `external-dispatcher`), because the run would start on another process with no
+> arbiter shared across processes to hold the recipient's policy.
+
+## UPDATE · `docs/architecture/dispatched-work.md` · the shared-child concurrency sentence
+
+"Only the in-process dispatcher enforces it: with an external dispatcher the host skips
+arbitration (`createInboundTransportHost.ts`), so rows sharing a child can overlap there" becomes:
+
+> It is enforced wherever the process's arbiter can see every run: in process, or on an external
+> dispatcher whose worker adapter supplies a lease backend. A dispatcher passed directly, with no
+> backend, still skips arbitration, so rows sharing a child can overlap there.
+
+## UPDATE · `docs/contributing/architecture-reference.md` · the action-forms bullet
+
+Its unconditional "`{ id }` … refused under an external dispatcher" clause gains the same
+condition: refused only when the worker adapter supplies no lease backend.
 
 ## UPDATE, conditional · the keeping-flows-alive page's fence sentence
 
