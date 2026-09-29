@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 356" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path after D1, as of 29 September 2026. An input lane for FIX-1634 under FIX-1635, Backlog, which nothing here waits on. This epic spec done: approved and merged at the gate on 29 September, with the now line just past it. FIX-1639's spec and then the page, ahead. FIX-1641 and FIX-1643, the two examples POCs, with no bars: parked by the owner, beside the page and off the critical path; Linear holds their state. The closure FIX-1642: its QA plan written beside FIX-1639, and its run after the page merges. The critical path runs gate, FIX-1639 spec, the page, the closure run. FIX-1638 and FIX-1640 have no lane: D1 folded them into FIX-1639 and both are canceled.">
+<svg viewBox="0 0 940 428" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path, as of 29 September 2026. An input lane for FIX-1634 under FIX-1635, Backlog, which nothing here waits on. This epic spec merged with D1 answered, ending at the gate just before the now line. FIX-1639's spec and then the page, after the gate. FIX-1641, the wake authoring examples, in flight, its PRs in review after the now line, beside the page and off the critical path. FIX-1643, the subscribe and route examples, the same. FIX-1644, the folder wake config examples, the same. FIX-1645, the wake principal plan: its sketch landed before the now line, the owner's lock after it, off the critical path. The closure FIX-1642: its QA plan written beside FIX-1639, and its run after the page merges. A footnote: FIX-1638 and FIX-1640 have no lane, folded into FIX-1639 by D1 and canceled. The critical path runs gate, FIX-1639 spec, the page, the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -9,7 +9,7 @@
               --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .bg    { fill:var(--surface); }
-    .done  { fill:var(--code); stroke:none; }
+    .flight{ fill:var(--accent); stroke:none; }
     .todo  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
     .axis  { stroke:var(--rule); stroke-width:1; }
     .now   { stroke:var(--gone); stroke-width:1.4; }
@@ -24,23 +24,23 @@
              font-size:9.5px; letter-spacing:.06em; }
     .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="356"/>
+  <rect class="bg" x="0" y="0" width="940" height="428"/>
 
-  <text class="t-lbl" x="16" y="18">THE PATH AFTER D1 &#8212; GATE PASSED, ONE WRITER</text>
+  <text class="t-lbl" x="16" y="18">THE PATH &#8212; ONE WRITER, THE GATE PASSED</text>
   <path class="axis" d="M220 40 L924 40"/>
-  <text class="t-s" x="376" y="32" text-anchor="end">gate &#183; merged 29 Sep</text>
-  <text class="t-now" x="394" y="32">now</text>
+  <text class="t-now" x="300" y="32">gate &#183; now &#183; 29 Sep</text>
   <text class="t-s" x="600" y="32">ahead &#183; not scheduled</text>
-  <path class="now" d="M390 40 L390 296"/>
+  <path class="now" d="M380 40 L380 378"/>
 
   <g id="input">
     <text class="t-in" x="16" y="70">FIX-1634 &#183; input</text>
-    <text class="t-s" x="228" y="70">Backlog under FIX-1635 &#183; nothing here waits on it</text>
+    <text class="t-s" x="228" y="70">Backlog under FIX-1635</text>
+    <text class="t-s" x="396" y="70">nothing here waits on it</text>
   </g>
   <g id="epic-spec">
     <text class="t-ln" x="16" y="112">FIX-1637 &#183; this spec</text>
-    <rect class="done" x="300" y="98" width="80" height="22" rx="3"/>
-    <text class="t-w" x="306" y="113">merged</text>
+    <rect class="flight" x="300" y="98" width="80" height="22" rx="3"/>
+    <text class="t-w" x="306" y="113">merged &#183; D1</text>
   </g>
   <g id="page">
     <text class="t-ln" x="16" y="154">FIX-1639 &#183; the page</text>
@@ -51,20 +51,40 @@
   </g>
   <g id="poc">
     <text class="t-ln" x="16" y="196">FIX-1641 &#183; wake POC</text>
-    <text class="t-s" x="396" y="196">examples #2369 &#183; parked by the owner &#183; off the critical path</text>
+    <rect class="flight" x="300" y="182" width="80" height="22" rx="3"/>
+    <text class="t-w" x="306" y="197">examples</text>
+    <rect class="todo" x="396" y="182" width="150" height="22" rx="3"/>
+    <text class="t-s" x="404" y="197">review &#183; #2369 #2370</text>
   </g>
   <g id="poc-subscribe">
     <text class="t-ln" x="16" y="238">FIX-1643 &#183; subscribe POC</text>
-    <text class="t-s" x="396" y="238">examples #2372 &#183; parked by the owner &#183; off the critical path</text>
+    <rect class="flight" x="300" y="224" width="80" height="22" rx="3"/>
+    <text class="t-w" x="306" y="239">examples</text>
+    <rect class="todo" x="396" y="224" width="150" height="22" rx="3"/>
+    <text class="t-s" x="404" y="239">review &#183; #2372</text>
+  </g>
+  <g id="poc-folder">
+    <text class="t-ln" x="16" y="280">FIX-1644 &#183; folder POC</text>
+    <rect class="flight" x="300" y="266" width="80" height="22" rx="3"/>
+    <text class="t-w" x="306" y="281">examples</text>
+    <rect class="todo" x="396" y="266" width="150" height="22" rx="3"/>
+    <text class="t-s" x="404" y="281">review &#183; #2374</text>
+  </g>
+  <g id="plan">
+    <text class="t-ln" x="16" y="322">FIX-1645 &#183; principal plan</text>
+    <rect class="flight" x="300" y="308" width="80" height="22" rx="3"/>
+    <text class="t-w" x="306" y="323">sketch</text>
+    <rect class="todo" x="396" y="308" width="150" height="22" rx="3"/>
+    <text class="t-s" x="404" y="323">owner lock</text>
   </g>
   <g id="closure">
-    <text class="t-ln" x="16" y="280">FIX-1642 &#183; closure</text>
-    <rect class="todo" x="396" y="266" width="150" height="22" rx="3"/>
-    <text class="t-s" x="404" y="281">QA plan</text>
-    <rect class="todo" x="732" y="266" width="170" height="22" rx="3"/>
-    <text class="t-s" x="740" y="281">run on one main commit</text>
+    <text class="t-ln" x="16" y="364">FIX-1642 &#183; closure</text>
+    <rect class="todo" x="396" y="350" width="150" height="22" rx="3"/>
+    <text class="t-s" x="404" y="365">QA plan</text>
+    <rect class="todo" x="732" y="350" width="170" height="22" rx="3"/>
+    <text class="t-s" x="740" y="365">run on one main commit</text>
   </g>
-  <path class="crit" d="M380 109 L396 151 M724 151 L740 266"/>
-  <text class="t-g" x="16" y="324">Critical path: gate &#8594; FIX-1639 spec &#8594; the page &#8594; the closure run. FIX-1639 writes alone.</text>
-  <text class="t-s" x="16" y="342">FIX-1638 and FIX-1640 have no lane: D1 folded them into FIX-1639 and both are canceled.</text>
+  <path class="crit" d="M380 109 L396 151 M724 151 L740 350"/>
+  <text class="t-s" x="16" y="394">FIX-1638 &#183; FIX-1640: no lane &#183; folded into FIX-1639 by D1 &#183; canceled</text>
+  <text class="t-g" x="16" y="414">Critical path: gate &#8594; FIX-1639 spec &#8594; the page &#8594; the closure run. FIX-1639 writes alone.</text>
 </svg>

@@ -28,6 +28,10 @@ flowchart TD
 | **Because** | All three describe the same five surfaces: webhook ingress, schedule dispatch, `dispatcher()`, the `{ id }` / `{ key }` policy, channels and boards. Three isolated writers produce three phrasings of one thing, the drift `polish-docs` exists to clean. The split also costs two extra spec gates and a cross-spec pass for a three-column table and three definitions |
 | **Locks in** | FIX-1639 publishes everything: the flow / host / ops table and the terms are sections of the one page. FIX-1638 and FIX-1640 are canceled as folded, and their blocks on FIX-1642 are removed. The `epic-wake` entry is one line in `docs/contributing/`, not published docs |
 
+**Decided.** The owner, in session on 2026-09-29: fold. It is the recommendation this spec put
+to the gate, so it changes no direction. Every deliverable still ships; only the ticket count
+changed.
+
 **What would change my mind:** the owner wanting the table or the terms reviewable on their own
 schedule, say for FIX-453's architecture work or a design partner. Re-splitting would reopen
 two children, not this epic.
@@ -73,7 +77,8 @@ It comes down to the export check: the canceled topic bus on the page fails the 
 ![Who owns what: eight rules by FIX-1639, the page, and FIX-1642, the closure. FIX-1639 owns the path, the table and its event row, the terms, the queue-host fence, the project's verified-caller rule, the drift fixes and links, and the contributor epic-wake line. The closure owns the proof, which FIX-1639 consumes, and consumes every other rule](figures/ownership.svg)
 
 Every rule has one owner, the project's PR-1 included, and after D1 that owner is FIX-1639 for
-all but the proof. FIX-1641 and FIX-1643 own no rule and have no column: they consume ER-6.
+all but the proof. FIX-1641, FIX-1643, FIX-1644 and FIX-1645 own no rule and have no column:
+they consume ER-6.
 
 ## Decided, not asked
 
@@ -104,6 +109,16 @@ all but the proof. FIX-1641 and FIX-1643 own no rule and have no column: they co
   soft-related sibling of FIX-1641, not its child. ER-6 holds on the same terms: the page may
   link the example, teaches neither style as a framework feature, and never waits for it; it
   blocks the closure only because every child does.
+- **FIX-1644's folder convention stays in the example as well.** Filed with its examples PR
+  (#2374) as an unlocked exploration: the worker or channel folder holds the wake files,
+  transports register the way flows and blocks do, and seats reference them. A third soft-related
+  sibling; ER-6 holds on the same terms, and it blocks the closure only because every child does.
+- **FIX-1645 is a plan in this set, not a build.** The owner placed it under this epic rather
+  than FIX-1635: a sketch of who a wake runs as and which trust lane admits it. It changes no
+  runtime and the page teaches none of it; the page's caller story stays PR-1's verified caller.
+  Its own gate (no folder wakes ship as a product before the sketch) binds work outside this
+  epic, since nothing here ships a framework API. It blocks the closure like every child, so
+  the wrap waits for the owner to lock or close it; the page never does.
 
 ## Decided in review, recorded so no child reopens them
 
@@ -127,8 +142,8 @@ all but the proof. FIX-1641 and FIX-1643 own no rule and have no column: they co
 ## What the end-state POC showed
 
 No end-state POC. Docs only, and the assembled surface is one page; the closure run is the
-end-state check. FIX-1641 and FIX-1643 are children's explorations of authoring shapes, not
-tests of the set's division.
+end-state check. FIX-1641, FIX-1643 and FIX-1644 are children's explorations of authoring
+shapes, not tests of the set's division.
 
 ## How it got here
 
@@ -146,9 +161,12 @@ tests of the set's division.
   closure. No decision changed.
 - **D1 answered, 2026-09-29, after merge.** The owner folded FIX-1638 and FIX-1640 into
   FIX-1639, as recommended; both are canceled in Linear and their blocks on FIX-1642 removed.
-  This follow-up records it and drops the re-split cells.
-- **POCs parked, 2026-09-29.** The owner parked the wake POCs (FIX-1641, FIX-1643, FIX-1644
-  and the FIX-1645 plan) pending a likely move out of this epic. Until that settles, Linear
-  holds their membership; the set table adds no rows for them.
+  This follow-up records it and drops the re-split cells. Separately, the Process guards check
+  that was red on `main` at merge time (#2359 put `spec/_projects/public-launch/` there) is being
+  fixed outside this epic.
+- **Set membership, recorded after merge.** The owner filed FIX-1644 (folder wake config POC,
+  examples PR #2374) at 19:31Z and FIX-1645 (wake principal plan) at 19:50Z, both as children
+  wired to block the closure, minutes before the spec merged without them. Review of the
+  follow-up caught the gap; this adds both to the set. No decision changed.
 
 **Nothing open.**
