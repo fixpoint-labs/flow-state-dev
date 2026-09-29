@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 424" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: eight cross-cutting rules by three issues, FIX-1655 the design system, FIX-1662 the App Lab shell, and FIX-1663 the closure. FIX-1655 owns ER-2, one token set through the existing contracts; ER-3, a neutral theme and no App Lab value in FSD; ER-6, no forks, with skin gaps fixed where the component lives; and ER-9, final visuals waiting for the Claude Design hand-back. FIX-1662 owns ER-1, every surface reached; ER-4, a second Lab with no shell code; and ER-5, named empty states. FIX-1663 owns ER-13, the proof. Every other filled cell consumes; a dash means the rule does not touch that issue.">
+     aria-label="Who owns what: eight cross-cutting rules by three issues, FIX-1655 the design system, FIX-1662 the App Lab shell, and FIX-1663 the closure. FIX-1655 owns ER-2, one token set through the existing contracts; ER-3, neutral defaults and no App Lab value in FSD; ER-6, no restyled copies, with skin gaps fixed at the source and a re-sync check; and ER-9, final visuals waiting for the Claude Design hand-back. FIX-1662 owns ER-1, every surface reached; ER-4, a second Lab with no shell code; and ER-5, named empty states. FIX-1663 owns ER-13, the proof. Every other filled cell consumes; a dash means the rule does not touch that issue.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -40,7 +40,7 @@
     <text class="t-use" x="752" y="124">consumes</text>
   </g>
   <g id="er3">
-    <text class="t-row" x="16" y="168">ER-3 neutral theme, no App Lab in FSD</text>
+    <text class="t-row" x="16" y="168">ER-3 neutral defaults, no App Lab in FSD</text>
     <rect class="own" x="372" y="146" width="172" height="36" rx="3"/>
     <text class="t-own" x="384" y="168">OWNS</text>
     <rect class="use" x="556" y="146" width="172" height="36" rx="3"/>
@@ -65,7 +65,7 @@
     <text class="t-use" x="752" y="256">consumes</text>
   </g>
   <g id="er6">
-    <text class="t-row" x="16" y="300">ER-6 no forks, fix where it lives</text>
+    <text class="t-row" x="16" y="300">ER-6 no restyled copies, re-synced</text>
     <rect class="own" x="372" y="278" width="172" height="36" rx="3"/>
     <text class="t-own" x="384" y="300">OWNS</text>
     <rect class="use" x="556" y="278" width="172" height="36" rx="3"/>

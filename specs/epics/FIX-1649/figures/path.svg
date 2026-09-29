@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 29 September 2026, in phases rather than dates because Cycle PM has not scheduled the build. Now is this epic spec in review, before the gate. An input lane for the refined design: the wireframes go to Claude Design with Jake at the gate and the hand-back comes back, a vertical line that gates final visuals only. An input lane for the sibling epics FIX-1650 to 1652, which nothing waits on. FIX-1655: its spec, then the token contract, neutral theme and skin fixes before the hand-back, then the App Lab theme values after it. FIX-1662: its spec, then regions, destinations and bindings before the hand-back, then its final visual pass after it. FIX-1663: its QA plan written beside the two, then its run after both merge. The critical path runs the gate, the hand-back, the two final passes and the closure run.">
+     aria-label="The path as of 29 September 2026, in phases rather than dates because Cycle PM has not scheduled the build. Now is this epic spec in review, before the gate. An input lane for the refined design: the wireframes go to Claude Design with Jake at the gate and the hand-back comes back, a vertical line that gates final visuals only. An input lane for the sibling epics FIX-1650 to 1652, which nothing waits on. FIX-1655: its spec, then the token contract with neutral defaults, skin fixes and the re-sync check before the hand-back, then the App Lab theme values after it. FIX-1662: its spec, then regions, destinations and bindings before the hand-back, then its final visual pass after it. FIX-1663: its QA plan written beside the two, then its run after both merge. The critical path runs the gate, the hand-back, the two final passes and the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -56,7 +56,7 @@
     <rect class="todo" x="296" y="172" width="80" height="22" rx="3"/>
     <text class="t-s" x="304" y="187">spec</text>
     <rect class="todo" x="384" y="172" width="248" height="22" rx="3"/>
-    <text class="t-s" x="392" y="187">contract &#183; neutral theme &#183; skin fixes</text>
+    <text class="t-s" x="392" y="187">contract &#183; defaults &#183; fixes &#183; re-sync</text>
     <rect class="todo" x="648" y="172" width="130" height="22" rx="3"/>
     <text class="t-s" x="656" y="187">App Lab theme values</text>
   </g>

@@ -99,7 +99,7 @@
   <g id="notes">
     <rect class="note" x="16" y="530" width="908" height="98"/>
     <text class="t-n" x="28" y="548">The four surfaces are tabs on the open channel, and the tab is part of the address, so a link opens the same view. Stream and board reuse shipped FSD UI</text>
-    <text class="t-n" x="28" y="564">(the conversation, tool and approval components; the board panels), skinned through the design system, never forked. The stream shows seats by name.</text>
+    <text class="t-n" x="28" y="564">(the conversation, tool and approval components; the board panels), skinned through the design system, never restyled. The stream shows seats by name.</text>
     <text class="t-n" x="28" y="580">Brief reads the declared resource the work started from; results lists what runs produced. What a brief and a result mean for engineering work is</text>
     <text class="t-n" x="28" y="596">FIX-1651's (eng workstream kit); the shell shows what the Lab's tree declares and the runs return, and invents no field.</text>
     <text class="t-n" x="28" y="612">Ochre: the active tab and the primary action on an approval. Board columns follow the board's own states, not a fixed three.</text>

@@ -32,9 +32,6 @@ copy of either.
 
 ## What comes back, and where it goes
 
-The refined design is an input to [FIX-1655](https://linear.app/fixpoint-labs/issue/FIX-1655)
-(the design system's token values and the App Lab theme) and to
-[FIX-1662](https://linear.app/fixpoint-labs/issue/FIX-1662) (the shell's final layout).
-Neither merges final visuals before it arrives ([ER-9](../../BUSINESS-RULES.md#how-the-set-is-run)).
-If it moves a region, a section or a destination away from what is fixed above, that is a
-change to the epic, made by a follow-up spec PR, not by either child alone.
+The refined design sets the App Lab theme's values and the shell's final layout. Who takes
+what from it, and what waits for it, is in
+[the plan](../../PLAN.md#the-design-hand-back-is-an-input-not-a-child).

@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box: App Lab under labs, with four regions, a rail, a sidebar holding NEEDS YOU, channels and ON SHIFT, a centre with stream, board, brief and results, and a run inspector, reaching five destinations with named empty states; a private design-system package with one token set, a neutral theme and the App Lab theme, mapped onto the theme contracts FSD components already have; and skin fixes made where the reused components live, eleven ui registry components today. Reused and skinned, not forked: the react navigator, roster, board panels and seat detail, the ui conversation, tool, approval and prompt components, and the devtool's full trace, one link away. Filled by sibling epics: projects and workstreams, attention. Not built, below a fence: new L1 nouns, a Heartbeats, Paperclip or Grok Bot clone, a factory or Conductor shell, kitchen-sink as the shell, the Thought Fabric attention domain, a design system per Lab, forks of FSD UI.">
+     aria-label="What's in the box. In the box: App Lab under labs, with four regions, a rail, a sidebar holding NEEDS YOU, channels and ON SHIFT, a centre with stream, board, brief and results, and a run inspector, reaching five destinations with named empty states; a private design-system package holding the App Lab theme, which overrides the token set's neutral defaults and maps onto the theme contracts FSD components already have; and skin fixes made at the source of reused registry components, with App Lab's copies re-synced, never edited. Reused and skinned, not restyled: the react navigator, roster, board panels and seat detail, the ui conversation, tool, approval and prompt components, and the devtool's full trace, one link away. Filled by sibling epics: projects and workstreams, attention. Not built, below a fence: new L1 nouns, a Heartbeats, Paperclip or Grok Bot clone, a factory or Conductor shell, kitchen-sink as the shell, the Thought Fabric attention domain, a design system per Lab, restyled copies of FSD UI.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -37,19 +37,19 @@
     <text class="t-s" x="44" y="208">FIX-1662</text>
     <rect class="held" x="300" y="56" width="260" height="96" rx="4"/>
     <text class="t-b" x="312" y="80">design system &#183; private package</text>
-    <text class="t-s" x="312" y="98">one token set &#183; neutral theme</text>
-    <text class="t-s" x="312" y="113">App Lab theme: beige, black, yellow</text>
+    <text class="t-s" x="312" y="98">App Lab theme: beige, black, yellow</text>
+    <text class="t-s" x="312" y="113">overrides the neutral token defaults</text>
     <text class="t-s" x="312" y="128">mapped onto the existing contracts</text>
     <text class="t-s" x="312" y="146">FIX-1655</text>
     <rect class="held" x="300" y="162" width="260" height="60" rx="4"/>
-    <text class="t-b" x="312" y="184">skin fixes where they live</text>
-    <text class="t-s" x="312" y="202">11 ui registry components today</text>
+    <text class="t-b" x="312" y="184">skin fixes at the source</text>
+    <text class="t-s" x="312" y="202">registry copies re-synced, never edited</text>
     <text class="t-s" x="312" y="216">FIX-1655</text>
   </g>
 
   <g id="reused">
     <rect class="comp" x="592" y="24" width="332" height="120" rx="5"/>
-    <text class="t-lbl" x="608" y="44">REUSED AND SKINNED, NOT FORKED</text>
+    <text class="t-lbl" x="608" y="44">REUSED AND SKINNED, NOT RESTYLED</text>
     <text class="t-b" x="608" y="68">FSD UI that already ships</text>
     <text class="t-s" x="608" y="88">react: navigator &#183; roster &#183; board panels</text>
     <text class="t-s" x="608" y="104">seat detail &#183; ui: conversation &#183; tool</text>
@@ -69,6 +69,6 @@
     <text class="t-non" x="32" y="276">NOT BUILT &#8212; THE PRD'S INVENT-KILLS</text>
     <text class="t-s" x="32" y="298">no L1 Agent, Team, Channel, MessageBoard or required Project &#183; no Workforce import in the design system</text>
     <text class="t-s" x="32" y="316">no Heartbeats, Paperclip or Grok Bot clone &#183; no factory or Conductor shell &#183; kitchen-sink is not the shell</text>
-    <text class="t-s" x="32" y="334">no Thought Fabric attention &#183; no design system per Lab &#183; no fork of FSD UI &#183; no App Lab value in FSD</text>
+    <text class="t-s" x="32" y="334">no Thought Fabric attention &#183; no design system per Lab &#183; no restyled copy of FSD UI &#183; no App Lab value in FSD</text>
   </g>
 </svg>

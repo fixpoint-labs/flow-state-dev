@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Open fork for Jake: is App Lab one app that opens any Lab, or a chrome kit each Lab's own app imports? Recommended: one app, where a Lab is the Workforce tree it opens. It comes down to the first row, what a Lab is: a Workforce tree, per D-12, so no Lab writes UI, where the kit makes each Lab an app carrying its own host, routes and auth. Second row: nothing extra to build now, where the kit is a package with one consumer that amends FIX-1455 D5. The price, third row: a Lab cannot have a screen of its own until the shell grows a place for one. Locks in the closure's leg b opening a second tree by configuration, with the chrome inside App Lab. Flips if DevForce or CyberForce must ship as separate products with screens only they have."
+<svg viewBox="0 0 940 420" role="img" aria-label="Open fork for Jake: is App Lab one app that opens any Lab, or a chrome kit each Lab's own app imports? Recommended: one app, where a Lab is the Workforce tree it opens. It comes down to the first row, what a Lab is: a Workforce tree, per D-12, so no Lab writes UI, where the kit makes each Lab an app carrying its own host, routes and auth. Second row: nothing extra to build now, where the kit is a package with one consumer that amends FIX-1455 D5. The price, third row: a Lab cannot have a screen of its own until the shell grows a place for one. Locks in the closure's leg b opening a second tree with no shell code, whichever load path FIX-1662 picks, with the chrome inside App Lab. Flips if DevForce or CyberForce must ship as separate products with screens only they have."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -90,7 +90,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Leg b opens a second tree by configuration</text>
+    <text class="t-b" x="32" y="371">Leg b opens a second tree, no shell code</text>
     <text class="t-s" x="32" y="389">the chrome stays inside App Lab</text>
   </g>
 

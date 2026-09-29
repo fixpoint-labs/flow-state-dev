@@ -23,8 +23,8 @@ Jake. The refined design he hands back is linked on FIX-1649 and consumed by:
 
 | Consumer | Takes from it | Before it arrives |
 |---|---|---|
-| **FIX-1655** | The App Lab theme's token values | Token names, the neutral theme, skin fixes in reused components |
-| **FIX-1662** | Final proportions, density and states' look | Regions, destinations, bindings, empty states, in the neutral theme |
+| **FIX-1655** | The App Lab theme's token values | Token names and neutral defaults, skin fixes at the source, the re-sync check |
+| **FIX-1662** | Final proportions, density and states' look | Regions, destinations, bindings, empty states, on the neutral defaults |
 
 Neither child merges final visuals before it is linked. If it moves what the wireframes fix,
 that is an amendment to this epic ([ER-10](BUSINESS-RULES.md#how-the-set-is-run)).
@@ -33,7 +33,7 @@ that is an amendment to this epic ([ER-10](BUSINESS-RULES.md#how-the-set-is-run)
 
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
-| **FIX-1655** design system | spec → impl PR, theme values after the hand-back | The existing theme contracts · D2 · the refined design | The private package: token set, neutral and App Lab themes, the mapping; skin fixes in the eleven registry components | FIX-1662's final pass · the closure | Medium |
+| **FIX-1655** design system | spec → impl PR, theme values after the hand-back | The existing theme contracts · D2 · the refined design | The token set's neutral defaults beside the components; the private package with the App Lab theme and the mapping; skin fixes at the source of the registry components with fixed palette colours; the re-sync check | FIX-1662's final pass · the closure | Medium |
 | **FIX-1662** App Lab shell | spec → impl PR, final pass after the hand-back | FIX-1655's token names · the wireframes · shipped react panels and ui components · a Lab's tree, org required | `labs/app-lab`: four regions, five destinations, empty states, the devtool trace link | The closure | Large (D1's split trigger applies) |
 | **FIX-1663** closure · required | spec (the QA plan) → runs until one is clean → PR | Both children merged, on one `main` commit · the DevForce lab tree, and the pentest lab tree for leg b | The committed browser check, a QA report, a child for every finding | The wrap | Medium, repeats per finding |
 
@@ -53,22 +53,21 @@ Linear links for live state. The build is a Cycle 2 candidate: Cycle PM decides 
    FIX-1662 does its final visual pass. A structural change goes to an amendment first.
 3. **Both merge** → the closure run, on one `main` commit. A finding is filed as a child of
    FIX-1649 that blocks FIX-1663; the whole plan runs again after the last fix merges.
-4. **Jake answers the [open fork](DECISIONS.md#open) the other way** → leg b becomes a second
-   app importing the chrome, and FIX-1662 grows a package export. No new child.
+
+The plan is written on the [open fork](DECISIONS.md#open)'s recommended answer;
+[what changes under the kit](DECISIONS.md#if-kit) is stated with the fork.
 
 ## Coordination seams to watch
 
 | Seam | Between | Rule |
 |---|---|---|
 | The token names | FIX-1655 and FIX-1662 | 1655 names them in its spec; 1662 uses those names and never hardcodes a value |
-| A reused component that won't take the skin | FIX-1655 and FIX-1662 | 1662 reports it; 1655 fixes it where it lives (ER-6) |
+| A reused component that won't take the skin | FIX-1655 and FIX-1662 | 1662 reports it; 1655 fixes it at its source and App Lab's copy is re-synced (ER-6) |
 | An empty state a sibling fills | FIX-1662 and FIX-1650 to 1652 | The shell keeps the destination and its address; the sibling supplies the content |
 
 ## Not children, deliberately
 
-FIX-1650, FIX-1651, FIX-1652 (meaning of the destinations) · FIX-1653 (review and GitHub wake,
-an adjacent Lab surface) · FIX-1637 (wake spine, a docs pointer only) · FIX-1455 and FIX-1592
-(kitchen-sink) · the DevForce Lab product.
+Listed once, with the reason for each, in [what stays as it is](SPEC.md#what-stays-as-it-is).
 
 ## Wrap
 

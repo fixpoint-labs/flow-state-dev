@@ -30,8 +30,8 @@ Publisher: FIX-1655, once its token mapping ships.
 > }
 > ```
 >
-> Change a token and every component follows. Nothing here needs a class override or a copy
-> of a component; if a component ignores a token, that's a bug in the component.
+> Change a token and every component follows. Nothing here needs a class override or an edit
+> to a component you copied in; if a component ignores a token, that's a bug in the component.
 
 ## CREATE · `labs/app-lab/README.md` · opening
 
@@ -64,7 +64,7 @@ its README.
 | The token paragraph and example above | FIX-1655 | This document; the full token list in its `DOCS.md` |
 | The design-system package README and the registry components' colour notes in `packages/ui/README.md` | FIX-1655 | Its `DOCS.md` |
 | The App Lab README opening above, how to open a Lab, the `labs/README.md` row | FIX-1662 | This document and its `DOCS.md` |
-| Nothing in `apps/docs` about App Lab itself | — | App Lab is a private lab, not a published product. Revisit if the open fork's answer makes the chrome a package |
+| Nothing in `apps/docs` about App Lab itself | — | App Lab is a private lab, not a published product |
 
 Publish each specific with its implementation. The App Lab opening waits until every
 destination it names is reachable.
