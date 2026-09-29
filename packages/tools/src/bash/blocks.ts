@@ -50,7 +50,7 @@ import {
   principalFromContext,
   scopeComponents,
 } from "@flow-state-dev/workspace";
-import type { Projection } from "@flow-state-dev/workspace";
+import type { Projection, ScopePrincipal } from "@flow-state-dev/workspace";
 import { createHash } from "node:crypto";
 import { KEEP_MARKER, isScratch } from "./sandbox-place";
 import {
@@ -211,15 +211,12 @@ function isPending(value: RegistryValue): value is { pending: Promise<SandboxEnt
   return (value as { pending?: Promise<SandboxEntry> }).pending !== undefined;
 }
 
-/** Identity fields available on the block execution context. */
-interface ScopeIdentity {
-  sessionId: string;
-  requestId: string;
-  userId?: string;
-  orgId?: string;
-  /** The framework's tenant boundary. Absent in a single-tenant app. */
-  tenantId?: string;
-}
+/**
+ * Identity fields available on the block execution context: the workspace
+ * package's principal, so a field it adds (the request's incarnation) is never
+ * dropped between `principalFromContext` and the scope key.
+ */
+type ScopeIdentity = ScopePrincipal;
 
 /** Reserved workspace subdirectory for agent scratch space. Never persisted. */
 
