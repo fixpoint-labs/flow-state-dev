@@ -215,6 +215,24 @@ describe("outcomeOf", () => {
       expect(outcomeOf(request(items), "r1")).toEqual({ state: "refused", message: "task is terminal" });
     });
 
+    it("reads a request a hook failed after the action refused as failed, and keeps the refusal's words", () => {
+      // The request's own verdict comes first (BR-15): it failed. The action's
+      // refusal is still worth reading, so it rides along.
+      const items = [
+        trace("completed", actionInput, { ok: false, error: "task is terminal" }),
+        trace("failed", hookInput, undefined, "onCompleted threw"),
+      ];
+      expect(outcomeOf(withStatus("failed", items), "r1")).toEqual({
+        state: "failed",
+        message: "onCompleted threw (the action itself refused: task is terminal)",
+      });
+    });
+
+    it("waits for the request to finish before reading an answer its hooks could still overturn", () => {
+      const items = [trace("completed", actionInput, { ok: true })];
+      expect(outcomeOf(withStatus("in_progress", items), "r1")).toEqual({ state: "pending" });
+    });
+
     it("reads a request that failed in a hook after the action answered ok as failed, never as success", () => {
       const items = [
         trace("completed", actionInput, { ok: true }),

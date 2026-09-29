@@ -91,9 +91,21 @@ describe("a collapsed row", () => {
     const goal = rowOf("task-full").querySelector<HTMLElement>('[data-slot="goal"]')!;
     const reason = rowOf("task-full").querySelector<HTMLElement>('[data-slot="reason"]')!;
     expect(goal.className).toContain("truncate");
-    expect(goal.getAttribute("title")).toBe(full.goal);
+    expect(goal.getAttribute("title")).toBe(full.title);
     expect(reason.className).toContain("truncate");
     expect(reason.getAttribute("title")).toBe(full.feedback);
+  });
+
+  it("BR-1 · names the task by its title when it has one, else its goal", () => {
+    // The substrate's plan-UI contract: `title ?? goal`, so a list of verbose
+    // self-contained goals stays scannable. The goal is in the open row.
+    render(
+      view([taskItem(full, 0), taskItem({ id: "task-untitled", goal: "just a goal", status: "pending" }, 1)])
+    );
+    const slot = (taskId: string) => rowOf(taskId).querySelector<HTMLElement>('[data-slot="goal"]')!;
+    expect(slot("task-full").textContent).toBe(full.title);
+    expect(slot("task-untitled").textContent).toBe("just a goal");
+    expect(slot("task-untitled").getAttribute("title")).toBe("just a goal");
   });
 
   it("BR-2 · lets goal and reason shrink rather than push the row wider", () => {

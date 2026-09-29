@@ -305,8 +305,10 @@ function TaskRow({
             />
             <StatusPill status={task.status} />
           </span>
-          <span data-slot="goal" className="min-w-0 truncate text-slate-200" title={task.goal}>
-            {task.goal}
+          {/* `title ?? goal`, the substrate's plan-UI contract: a verbose
+              goal stays in the open row, and the list stays scannable. */}
+          <span data-slot="goal" className="min-w-0 truncate text-slate-200" title={task.title ?? task.goal}>
+            {task.title ?? task.goal}
           </span>
           {showReason && (
             // Rendered exactly as the row carries it — not trimmed, not

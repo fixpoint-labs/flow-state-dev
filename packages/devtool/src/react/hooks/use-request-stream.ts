@@ -246,20 +246,33 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
     };
   }, [flowId, workspaceToken, requestId, startingAfter, lastEventId, enabled, reconnectToken, baseUrl, bearerToken, close, scheduleFlush, flushNow, buildSnapshot, onSessionMetadataChanged]);
 
+  // The snapshot and the status are replaced in an effect, so in the render in
+  // which `requestId` changes they still describe the previous request. Hand
+  // back only what belongs to the request asked for: every consumer keys what
+  // it reads here by the current id, and would file the old request's items,
+  // raw log and status under the new one.
+  const current = streamState !== null && streamState.requestId === requestId ? streamState : null;
+  const currentStatus: StreamStatus =
+    streamState === null || current !== null
+      ? streamStatus
+      : enabled && flowId && requestId
+        ? "connecting"
+        : "idle";
+
   const items = useMemo(
-    () => streamState
-      ? streamState.itemOrder
-          .map((id) => streamState.items.get(id))
+    () => current
+      ? current.itemOrder
+          .map((id) => current.items.get(id))
           .filter((item): item is OutputItem => item !== undefined)
       : [],
-    [streamState],
+    [current],
   );
 
   return {
-    streamState,
-    streamStatus,
+    streamState: current,
+    streamStatus: currentStatus,
     error,
     items,
-    lastSequenceNumber: streamState?.lastSequenceNumber ?? 0,
+    lastSequenceNumber: current?.lastSequenceNumber ?? 0,
   };
 }

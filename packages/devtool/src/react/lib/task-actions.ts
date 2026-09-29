@@ -157,8 +157,10 @@ type TraceLike = {
  * them) is resolved against the request's own items first. If any reference
  * in it, at any depth, has no target, the resolved value has a hole where the
  * refusal may have been, so it reads as `unknown` rather than being
- * classified. A request that failed after the action answered (a hook threw)
- * reads as failed, never as success.
+ * classified. The request's own status is read before the action's answer:
+ * while it runs, a hook can still fail it, so the answer waits; a request that
+ * ended in anything but `completed` reads as failed, carrying the action's
+ * refusal when it had one.
  */
 export function outcomeOf(
   requests: readonly RequestOutcomeSource[],
@@ -170,29 +172,37 @@ export function outcomeOf(
   const roots = mergedRootTraces(request.rawItems ?? []);
   const isHook = (trace: TraceLike) => isHookInput(resolveInput(trace, lookup), requestId);
   const root = [...roots].reverse().find((trace) => !isHook(trace));
-  const requestEnded = request.status !== "completed" && request.status !== "in_progress" && request.status !== "suspended";
 
+  // Order matters. A failed action is failed whatever happens after it. Then
+  // the request's own verdict: until it ends, a hook can still fail it, so a
+  // completed action is not yet an answer; once it has ended in anything but
+  // `completed`, it failed (BR-15), even if the action itself answered.
   if (root?.status === "failed") {
     return { state: "failed", message: root.error?.message ?? "The action failed." };
   }
-  if (root?.status === "completed") {
-    if (root.output !== undefined && hasUnresolvedRef(root.output, lookup, 0)) {
-      return { state: "unknown", reason: "not-retained" };
-    }
-    const value = resolveBlockValueInternal(root.output, lookup);
-    if (isRefusal(value)) return { state: "refused", message: refusalMessage(value.error) };
-    if (isDeclined(value)) return { state: "refused", message: declinedMessage(value) };
-    if (requestEnded) {
-      // The action answered, then something after it (a hook) failed the request.
-      const failedHook = [...roots].reverse().find((trace) => trace.status === "failed");
-      return { state: "failed", message: failedHook?.error?.message ?? `The request ended ${request.status}.` };
-    }
-    return { state: "ok", output: value };
+  if (request.status === "in_progress" || request.status === "suspended") return { state: "pending" };
+  if (request.status !== "completed") {
+    const failedHook = [...roots].reverse().find((trace) => trace.status === "failed");
+    const message = failedHook?.error?.message ?? `The request ended ${request.status}.`;
+    const answer = root?.status === "completed" ? classifyAnswer(root, lookup) : undefined;
+    return {
+      state: "failed",
+      message: answer?.state === "refused" ? `${message} (the action itself refused: ${answer.message})` : message,
+    };
   }
-  if (request.status === "completed") return { state: "unknown", reason: "no-trace" };
-  if (!requestEnded) return { state: "pending" };
-  // failed, aborted, interrupted, incomplete: it ended without a result.
-  return { state: "failed", message: `The request ended ${request.status}.` };
+  if (root?.status !== "completed") return { state: "unknown", reason: "no-trace" };
+  return classifyAnswer(root, lookup);
+}
+
+/** What a completed action root answered: a refusal, success, or a hole where the answer was. */
+function classifyAnswer(root: TraceLike, lookup: ItemLookup): RowActionOutcome {
+  if (root.output !== undefined && hasUnresolvedRef(root.output, lookup, 0)) {
+    return { state: "unknown", reason: "not-retained" };
+  }
+  const value = resolveBlockValueInternal(root.output, lookup);
+  if (isRefusal(value)) return { state: "refused", message: refusalMessage(value.error) };
+  if (isDeclined(value)) return { state: "refused", message: declinedMessage(value) };
+  return { state: "ok", output: value };
 }
 
 /** Every root `block_trace`, one per item id with its entries merged in log order. */

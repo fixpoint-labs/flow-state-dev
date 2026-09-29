@@ -401,12 +401,15 @@ function PanelContent({ className }: { className?: string }) {
     // Rule: while the stream is actively connected it's the real-time truth;
     // once it settles, show whichever side is furthest along. Every other
     // request uses its list status.
-    const liveStreamStatus = streamState?.status;
+    // The stream slot holds one request at a time; read it only for that id.
+    const streamFor = (id: string) =>
+      streamState != null && streamState.requestId === id ? streamState : undefined;
     const streamIsLive =
       streamStatus === "streaming" || streamStatus === "connecting";
     const groups: RequestGroup[] = [];
     for (const req of requests) {
-      const isWatched = req.id === streamRequestId && liveStreamStatus !== undefined;
+      const liveStreamStatus = streamFor(req.id)?.status;
+      const isWatched = liveStreamStatus !== undefined;
       const status = isWatched
         ? streamIsLive
           ? liveStreamStatus
@@ -432,9 +435,9 @@ function PanelContent({ className }: { className?: string }) {
         rawItems: settled
           ? mergeRawItems(
               req.items!,
-              liveRawItems.get(req.id) ?? (isWatched ? streamState?.rawItems : undefined) ?? streamRawItems.get(req.id),
+              liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? streamRawItems.get(req.id),
             )
-          : (liveRawItems.get(req.id) ?? (isWatched ? streamState?.rawItems : undefined) ?? req.items ?? []),
+          : (liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? req.items ?? []),
         source: req.source,
         metadata: req.metadata,
       });
@@ -443,10 +446,10 @@ function PanelContent({ className }: { className?: string }) {
       groups.push({
         requestId: activeRequestId,
         action: lastResponse?.request.actionName ?? "action",
-        status: liveStreamStatus ?? "in_progress",
+        status: streamFor(activeRequestId)?.status ?? "in_progress",
         startedAt: Date.now(),
         items: liveItems.get(activeRequestId) ?? [],
-        rawItems: liveRawItems.get(activeRequestId) ?? streamState?.rawItems ?? [],
+        rawItems: liveRawItems.get(activeRequestId) ?? streamFor(activeRequestId)?.rawItems ?? [],
       });
     }
     return groups;
@@ -707,10 +710,10 @@ function PanelContent({ className }: { className?: string }) {
       // boundary rows the first update would otherwise overwrite
       // `liveRawItems` with. Mirrors the same raw-then-canonical priority
       // `groups` above uses when rendering this row's Trace tab.
-      const isWatched = requestId === streamRequestId && streamState !== undefined;
+      const watched = streamState != null && streamState.requestId === requestId ? streamState : undefined;
       const existingItems =
         liveRawItems.get(requestId) ??
-        (isWatched ? streamState?.rawItems : undefined) ??
+        watched?.rawItems ??
         liveItems.get(requestId) ??
         req?.items ??
         [];
@@ -728,7 +731,6 @@ function PanelContent({ className }: { className?: string }) {
       liveItems,
       liveRawItems,
       streamState,
-      streamRequestId,
       continueRequest,
       refreshDispatchRuns,
     ],

@@ -589,6 +589,32 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     expect(groupA?.rawItems).toEqual([...polled, transientRoot]);
   });
 
+  it("does not give a just-dispatched request another request's stream log or status", async () => {
+    // The stream can be on another request than the one just dispatched (a
+    // replay holds the slot). The not-yet-listed request's group must not
+    // borrow that request's traces, or its row reads another action's answer.
+    sendAction.mockResolvedValueOnce({ request: { id: "req_b" } });
+    streamMock.streamState = {
+      requestId: "req_a",
+      status: "completed",
+      rawItems: [{ id: "a_root", type: "block_trace" }],
+    };
+    await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+
+    const groupB = lastRowRequests.find((group) => group.requestId === "req_b") as
+      | { rawItems: unknown[]; status: string }
+      | undefined;
+    expect(groupB?.rawItems).toEqual([]);
+    expect(groupB?.status).toBe("in_progress");
+  });
+
   it("clears dispatchedRequestId when the session changes, so live mode can follow the new one", async () => {
     const { rerender } = await act(async () => render(<DevToolPanel userId="u1" />));
 
