@@ -189,6 +189,27 @@ describe("two same-owner contexts racing to create one absent id", () => {
     expect(await storedIncarnation(stores)).toBe(winner.incarnation);
   });
 
+  it("leaves the handed-off record the same request as the one read before it, on purpose", async () => {
+    // The hand-off overwrites `createdAt`, so before incarnations a read
+    // taken before a same-owner retry and one taken after disagreed. The
+    // session stream's re-read (`isSameRequest`) now treats the retry as the
+    // request it is.
+    const stores = createInMemoryStores();
+    const flow = flowCapturing([]);
+    const build = (at: number) =>
+      createInitialRequestRecord(
+        { requestId: REQUEST_ID, flowKind: FLOW, flowId: FLOW, actionName: "run", userId: "alice" },
+        at
+      );
+    await claimRequestRecord(stores, flow, build(1_000));
+    const before = (await stores.request.get(REQUEST_ID))!;
+    await claimRequestRecord(stores, flow, build(2_000));
+    const after = (await stores.request.get(REQUEST_ID))!;
+
+    expect(after.createdAt).not.toBe(before.createdAt);
+    expect(isSameRequest(before, after)).toBe(true);
+  });
+
   it("keeps a legacy holder's derived identity through the hand-off", async () => {
     const stores = createInMemoryStores();
     const flow = flowCapturing([]);

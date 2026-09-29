@@ -251,7 +251,7 @@ With the local provider, each workspace is a directory under
 
 | `scope` | One workspace per | Reach for it when |
 | --- | --- | --- |
-| `run` | request (not request id) | Several agents work at once and must not see each other's half-finished files. |
+| `run` | request | Several agents work at once and must not see each other's half-finished files. |
 | `session` *(default)* | session | A conversation's runs should build on each other. |
 | `user` | user | Work should carry across a user's sessions. |
 | `org` | org | Work is shared across everyone in an org. |
@@ -268,11 +268,13 @@ across tenants by design, and a tenant segment would split the sharing they
 exist to provide.
 
 A `run` workspace belongs to one request, and its path also carries that
-request's incarnation, a token set when the request was first recorded:
+request's incarnation, a token that identifies this particular request:
 `.fsdev/workspaces/run/<tenant>/<id>/<incarnation>/`. A retry or a resume of
-the same request lands in the same directory. A later request that happens to
-reuse the id, whether from another user or from the same one after retention
-deleted the first request, gets a new, empty directory.
+the same request lands in the same directory. Once the first request's record
+is deleted, for example by the flow's
+[session retention](/docs/configuration/flow#session), a new request that
+reuses the id gets a new, empty directory, whether it comes from another user
+in the tenant or from the same one.
 
 Directories from finished requests stay on disk. Nothing reads them again, so
 clean them up on whatever schedule suits you.

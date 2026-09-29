@@ -118,7 +118,7 @@ ctx.session.identity  // { type: "session", id, userId, orgId? }
 ctx.user.identity     // { type: "user", id }
 ctx.org?.identity     // { type: "org", id, ... }
 ctx.request.identity  // { type: "request", id }
-ctx.request.incarnation // stamped once when this request is first recorded
+ctx.request.incarnation // same across retries and resumes of this request
 ```
 
 `ScopeIdentity` is:
@@ -134,7 +134,7 @@ type ScopeIdentity = {
 
 Both fields are optional on `ScopeIdentity`, but every action execution supplies a `userId` and an `orgId`. Call `runAction` yourself and you pass both: a blank or missing `orgId` throws `OrgRequiredError` before anything is written, so pass the organization you verified, or [`DEFAULT_ORG_ID`](/docs/server/authentication#every-request-runs-in-an-organization) for single-organization development. Through a transport you pass neither. The server takes both from the resolved principal, and nothing in the request body can name the organization. `sessionId` is optional, and when it is omitted the framework auto-creates an ephemeral session.
 
-A request id can be chosen by the caller, and once a request's record is gone (session retention deletes old ones) the same id can name a new request. `ctx.request.incarnation` tells them apart. It is a random token set once, when the request is first recorded, and a retry or a resume of that request reads the same value. If you key anything of your own on a request id, such as a scratch directory or a cache that outlives the request, key it on `incarnation` as well. Why a request id is an address and not an ownership is covered in [Ids you choose are addresses](/docs/server/authentication#ids-you-choose-are-addresses).
+A request id can be chosen by the caller, and once a request's record is gone (session retention deletes old ones) the same id can name a new request. `ctx.request.incarnation` tells the two requests apart. It is a random token that stays the same for this request, including retries and resumes. If you key anything of your own on a request id, such as a scratch directory or a cache that outlives the request, key it on `incarnation` as well. See [Ids you choose are addresses](/docs/server/authentication#ids-you-choose-are-addresses) for what a caller-chosen id does and doesn't give you.
 
 ## What a write tells you {#what-a-write-tells-you}
 

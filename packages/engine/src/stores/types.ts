@@ -718,6 +718,11 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * an absent one, `{ applied: false, status: undefined }`, with nothing
    * written. A caller that checked who owns the record passes it, so the write
    * cannot land on a record that check never saw.
+   *
+   * `createdAt` is not the request's identity: two records under one id can
+   * share a millisecond, and a same-owner hand-off rewrites it. The identity
+   * is {@link RequestRecord.incarnation}; moving this fence onto it is an open
+   * follow-up.
    */
   setFieldsIfStatus(
     id: string,

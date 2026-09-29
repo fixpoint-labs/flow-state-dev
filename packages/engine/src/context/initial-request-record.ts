@@ -11,8 +11,8 @@
  * used for the entire execution — it must be complete, not a placeholder.
  *
  * Given identical inputs the two call sites produce an identical record, apart
- * from the freshly minted `incarnation` (see below). The
- * inputs are not always identical: the host stamps `startedAtMs` at enqueue
+ * from the freshly minted `incarnation` (see below). The inputs are not always
+ * identical: the host stamps `startedAtMs` at enqueue
  * (vs worker-start) and carries `orgId` from the envelope rather than the
  * resolved org record. Both are record metadata only — execution-time org
  * resolution uses the separately-loaded org record — so a difference never
