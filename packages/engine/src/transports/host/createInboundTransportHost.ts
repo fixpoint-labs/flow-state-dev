@@ -25,6 +25,7 @@ import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../../st
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
+  assertSessionAdmitted,
   FlowInstanceBindingMismatchError,
   RequestOwnerMismatchError,
   UserBindingMismatchError
@@ -154,6 +155,21 @@ export type CreateInboundTransportHostOptions = {
  * `failedAtMs` is stamped only for the failure, since it is the field readers
  * key on for "this broke"; an abort carries `updatedAt` and its status.
  */
+/**
+ * Whether `error` is an admission refused before this dispatch wrote anything:
+ * another flow instance's record, another principal's request, or another
+ * user's session. The record under the id, if any, is not this dispatch's to
+ * terminate: it belongs to someone else, or it is the caller's own earlier
+ * request under an id it reused.
+ */
+function isRefusedAdmission(error: unknown): boolean {
+  return (
+    error instanceof FlowInstanceBindingMismatchError ||
+    error instanceof RequestOwnerMismatchError ||
+    error instanceof UserBindingMismatchError
+  );
+}
+
 async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
   requestId: string,
@@ -575,38 +591,11 @@ export function createInboundTransportHost(
       session = await stores.session.get(
         resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
       );
-      // A tenant-key collision is refused later by the tenant binding; only a
-      // session this tenant can see is judged for ownership here. Another
-      // user's session first, and before the flow instance, as `runAction`
-      // judges it: the caller learns nothing of it, not even which flow holds it.
-      if (
-        session !== undefined &&
-        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
-        session.userId !== dispatchEnvelope.userId
-      ) {
-        throw new UserBindingMismatchError(
-          dispatchEnvelope.sessionId,
-          session.userId,
-          dispatchEnvelope.userId
-        );
-      }
-      if (
-        session !== undefined &&
-        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
-        !ownsRecord(flow, session)
-      ) {
-        // One refusal shape for every door: the same helper `runAction` and
-        // `createExecutionContext` raise with, so a legacy row is named the
-        // same way (a migration, not a wrong address) whichever path reached it.
-        const refusal = foreignRecordRefusal(flow, session);
-        throw new FlowInstanceBindingMismatchError(
-          "session",
-          dispatchEnvelope.sessionId,
-          flow.id,
-          refusal.detail,
-          refusal.reason
-        );
-      }
+      assertSessionAdmitted(flow, session, {
+        sessionId: dispatchEnvelope.sessionId,
+        userId: dispatchEnvelope.userId,
+        tenantId: dispatchEnvelope.tenantId
+      });
     }
     const active = await stores.activeRequests.get(dispatchEnvelope.requestId);
     if (active !== undefined && !ownsRecord(flow, active)) {
@@ -951,11 +940,9 @@ export function createInboundTransportHost(
             await gateStart(() => Promise.reject(error)).catch(() => undefined);
           }
           // Only a record this dispatch wrote is its to terminate — a refused
-          // admission never touched the foreign owner's.
-          if (
-            !(error instanceof FlowInstanceBindingMismatchError) &&
-            !(error instanceof RequestOwnerMismatchError)
-          ) {
+          // admission never touched the foreign owner's, nor the caller's own
+          // earlier request under the id it reused.
+          if (!isRefusedAdmission(error)) {
             await terminateUnenqueuedRequest(stores, requestId);
           }
           throw error;
@@ -1039,10 +1026,13 @@ export function createInboundTransportHost(
               // that never happened. Left `in_progress`, it would outlive the
               // entry the `finally` below removes and be invisible to the
               // sweeper. Only the admission-time refusal, handled above, found
-              // a record that was never ours.
+              // a record that was never ours. A session another user created
+              // under the id while the run waited is refused the same way, and
+              // the stub it leaves is ours to settle.
               if (
                 error instanceof ConcurrencyQueueTimeoutError ||
-                error instanceof FlowInstanceBindingMismatchError
+                error instanceof FlowInstanceBindingMismatchError ||
+                error instanceof UserBindingMismatchError
               ) {
                 await terminateUnenqueuedRequest(stores, requestId);
               }
@@ -1133,10 +1123,7 @@ export function createInboundTransportHost(
             // entry, which would otherwise leave the sweeper nothing to reap and
             // the record stuck in_progress forever. A refused admission wrote
             // nothing and terminates nothing — the record it found is not ours.
-            if (
-              !(error instanceof FlowInstanceBindingMismatchError) &&
-              !(error instanceof RequestOwnerMismatchError)
-            ) {
+            if (!isRefusedAdmission(error)) {
               await terminateUnenqueuedRequest(stores, requestId);
             }
             throw error;

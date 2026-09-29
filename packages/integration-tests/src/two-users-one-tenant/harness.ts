@@ -37,10 +37,19 @@ export type TwoUserServer = {
   close(): Promise<void>;
 };
 
+/** What a case may turn on in the server, beyond the defaults every case gets. */
+export type TwoUserServerOptions = {
+  /** Serve the session debug routes, as a development deployment does. */
+  debugEndpointsEnabled?: boolean;
+};
+
 /**
  * Start a server hosting `flows`. Call `close()` in `afterEach`/`afterAll`.
  */
-export async function startTwoUserServer(flows: FlowInstance[]): Promise<TwoUserServer> {
+export async function startTwoUserServer(
+  flows: FlowInstance[],
+  options: TwoUserServerOptions = {}
+): Promise<TwoUserServer> {
   const dir = await mkdtemp(join(tmpdir(), "fsd-two-users-"));
   const stores: SQLiteStoreRegistry = createSQLiteStores({ filename: join(dir, "store.db") });
   const registry = createFlowRegistry();
@@ -48,6 +57,9 @@ export async function startTwoUserServer(flows: FlowInstance[]): Promise<TwoUser
   const router = createFlowApiRouter({
     registry,
     stores,
+    ...(options.debugEndpointsEnabled === undefined
+      ? {}
+      : { debugEndpointsEnabled: options.debugEndpointsEnabled }),
     resolvePrincipal: (context) => {
       const userId = context.request?.headers.get(USER_HEADER);
       return userId == null || userId === "" ? null : { userId, orgId: ORG_ID };

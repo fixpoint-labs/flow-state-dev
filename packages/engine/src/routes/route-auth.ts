@@ -479,21 +479,25 @@ export async function authorizeManagementRoute(
     throw error;
   }
 
+  // Another user's session is not found, exactly as an id nobody has used
+  // is. A session id is an address that travels in URLs, so holding one
+  // proves nothing; a 403 here would tell the caller the id is in use. Ahead
+  // of the held refusal below: a legacy session's `migration-required` names
+  // something about the record, and is its owner's to hear, not another
+  // user's.
+  if (subject.kind === "session" && owner !== undefined && principal.userId !== owner) {
+    return {
+      denied: hiddenSessionResponse(route, subject.sessionId),
+      sessionHidden: true
+    };
+  }
+
   // The caller has now proven who they are, so the held refusal costs nothing
   // to give. Before the owner and organization checks: a record that cannot be
   // admitted at all is answered as such rather than as somebody else's.
   if (pendingDenial !== undefined) return { denied: pendingDenial };
 
   if (owner !== undefined && principal.userId !== owner) {
-    // Another user's session is not found, exactly as an id nobody has used
-    // is. A session id is an address that travels in URLs, so holding one
-    // proves nothing; a 403 here would tell the caller the id is in use.
-    if (subject.kind === "session") {
-      return {
-        denied: hiddenSessionResponse(route, subject.sessionId),
-        sessionHidden: true
-      };
-    }
     // A request-addressed route still answers 403 "not yours"; its not-found
     // shape is decided with the request routes, not here.
     return {
