@@ -786,8 +786,9 @@ const noteDeliveryRefusal = handler({
 /**
  * Absorb a refused hand-off — the fan-out request could not be started at all.
  *
- * Reached on a host whose dispatcher hands work to an external queue, where a
- * delivery into an existing session refuses `external-dispatcher` by name. The
+ * Reached on a host whose dispatcher hands work to an external queue with no
+ * shared lease backend, where a delivery into an existing session refuses
+ * `external-dispatcher` by name. The
  * post is already appended and stays appended: a client post on such a host
  * still works, and only the waking does not.
  *

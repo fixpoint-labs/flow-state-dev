@@ -258,7 +258,9 @@ for the full contract reference and a walk-through of authoring a custom
 adapter.
 
 A flow's concurrency policy is enforced once at the host dispatch seam — the
-in-process dispatcher gates the run there, so every transport inherits the
+in-process dispatcher gates the run there (and, over a shared lease backend,
+the host takes an external run's place before enqueueing; see below), so every
+transport inherits the
 same behavior and adapters only map the outcome to their native response.
 When a `reject` policy drops a competing request, `host.dispatch` throws
 `ConcurrencyRejectedError` synchronously over the default in-memory backend

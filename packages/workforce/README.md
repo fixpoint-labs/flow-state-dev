@@ -1205,9 +1205,11 @@ const postToStandup = dispatcher({
 Address `{ id }`, never `{ key }`: a key-derived session resolves to a different session for every
 poster, so the channel never sees the post. Nothing detects that mistake.
 
-A flow-to-flow post needs in-process dispatch. On a deployment whose dispatcher hands work to an
-external queue and whose adapter supplies no shared lease backend, a post into an opened channel is refused with `external-dispatcher`. A post through the public action route is
-written, but its notify block never runs: no member is woken and a routed channel doesn't answer.
+A flow-to-flow post works where dispatch runs in process, or where queue workers share a lease
+backend (`WorkerAdapter.leaseBackend`). On a deployment whose dispatcher hands work to an external
+queue and whose adapter supplies no shared lease backend, a post into an opened channel is refused
+with `external-dispatcher`. A post through the public action route is written there, but its
+notify block never runs: no member is woken and a routed channel doesn't answer.
 
 A post into a session nobody opened refuses `channel-not-bound` and writes nothing. The shared
 instance answers for every session id and the action path creates what it does not find, so
@@ -1365,9 +1367,10 @@ answer. If it is cancelled before the route is recorded in `channelRouteLedger`,
 answers, though the fan-out ends `aborted`. After a cancel, a `channel-route` item can name a member
 who was never woken.
 
-Routing needs in-process dispatch. Behind a dispatcher that hands work to an external queue, such
-as BullMQ, a post is written but its notify block never runs, so no member is picked or woken and
-nothing answers.
+Routing works where dispatch runs in process, or where queue workers share a lease backend
+(`WorkerAdapter.leaseBackend`). Behind a dispatcher that hands work to an external queue without
+one, such as BullMQ today, a post is written but its notify block never runs, so no member is
+picked or woken and nothing answers.
 
 ### Registering your own kind
 
@@ -1953,7 +1956,7 @@ the root exports, and reaches no Node built-in.
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. |
 | `wakeMemberSeats(seats, options?)` | The notify block that wakes each member seat declaring `onChannelPost`, never on a post with an `author`. `options.fallback` runs for members whose seat can't hear a post. |
-| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each post from a person goes to one member: the member the person's last post was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `channel-route`), else the declared fallback. A member of the built-in `agent` kind answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line, once per post. Needs in-process dispatch. Throws without a `model`. |
+| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each post from a person goes to one member: the member the person's last post was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `channel-route`), else the declared fallback. A member of the built-in `agent` kind answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
 | `channelRouteRecordSchema` / `ChannelRouteRecord` / `CHANNEL_ROUTE_COMPONENT` / `CHANNEL_ROUTE_EVALUATOR` | One route decision as it is kept on the channel's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"channel-route"`. |
 | `ChannelRoute` / `ChannelRouting` | What `routeByPurpose` returns, and a channel file's `routing:` as read (`{ fallback }`). |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |

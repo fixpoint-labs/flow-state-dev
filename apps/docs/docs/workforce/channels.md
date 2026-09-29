@@ -528,8 +528,9 @@ its view. A seat woken in an unrouted channel, or talked to directly, gets no li
   name a member who was never woken.
 - One model per channel kind. Two channels on the same kind route with the same model.
 - A change to `routing:` waits for the next start.
-- It needs dispatch in the same process. Behind a dispatcher that hands work to an external queue,
-  such as BullMQ, a post is written but no member is picked or woken, and nothing answers. See
+- It needs dispatch in the same process, or queue workers that share a lease backend. Behind a
+  dispatcher that hands work to an external queue without one, such as BullMQ today, a post is
+  written but no member is picked or woken, and nothing answers. See
   [Where posting from another flow works](#where-posting-from-another-flow-works-and-where-it-doesnt).
 
 ### Testing a routed channel
@@ -799,7 +800,7 @@ Different members, a different charter and a different set of boards are not a d
 
 ## Where posting from another flow works, and where it doesn't
 
-Posting from another flow needs dispatch to run in the same process. On a deployment whose dispatcher hands work to an external queue and whose workers share no lease backend, a post into an opened channel is refused with `external-dispatcher`.
+Posting from another flow works when dispatch runs in the same process, or when the queue workers share a lease backend (`WorkerAdapter.leaseBackend`). On a deployment whose dispatcher hands work to an external queue and whose workers share no lease backend, a post into an opened channel is refused with `external-dispatcher`.
 
 On that kind of deployment, a post from a client is written to the channel, but no member is [woken](#waking-members), and a [routed channel](#routing-a-channel) never picks a member or answers.
 
