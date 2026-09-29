@@ -14,7 +14,7 @@
  * recipient never runs. An app whose resolver names one gets the recipient
  * run under that organization, the sender's own.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { ORG_ID, startTwoUserServer, waitFor, type TwoUserServer } from "./harness";
@@ -70,16 +70,9 @@ function billingFlow(arrivals: Arrival[]) {
   })();
 }
 
-let server: TwoUserServer | undefined;
-
-afterEach(async () => {
-  await server?.close();
-  server = undefined;
-});
-
 /** POST shipping's `notify` as `userId`; returns the response status. */
-async function notify(userId: string, orderId: string): Promise<number> {
-  const response = await server!.as(userId)(`/shipping/s_${orderId}/actions/notify`, {
+async function notify(server: TwoUserServer, userId: string, orderId: string): Promise<number> {
+  const response = await server.as(userId)(`/shipping/s_${orderId}/actions/notify`, {
     method: "POST",
     body: JSON.stringify({ input: { orderId } })
   });
@@ -87,29 +80,43 @@ async function notify(userId: string, orderId: string): Promise<number> {
 }
 
 describe("a cross-flow dispatch", () => {
-  it("never runs the recipient for a caller the door would refuse for want of an organization", async () => {
-    const arrivals: Arrival[] = [];
-    server = await startTwoUserServer([shippingFlow(), billingFlow(arrivals)], { orgId: null });
+  let server: TwoUserServer;
+  let arrivals: Arrival[];
 
-    // The resolver verified alice and named no organization.
-    expect(await notify("alice", "o_orgless")).toBe(401);
-
-    // A refused call starts nothing. Give a dispatch that did start the time
-    // the positive case below needs to land, then check nothing did.
-    await new Promise((r) => setTimeout(r, 300));
-    expect(arrivals).toEqual([]);
+  afterEach(async () => {
+    await server.close();
   });
 
-  it("runs the recipient under the sender's verified organization", async () => {
-    const arrivals: Arrival[] = [];
-    server = await startTwoUserServer([shippingFlow(), billingFlow(arrivals)]);
+  describe("from an app whose resolver names no organization", () => {
+    beforeEach(async () => {
+      arrivals = [];
+      server = await startTwoUserServer([shippingFlow(), billingFlow(arrivals)], { orgId: null });
+    });
 
-    expect(await notify("alice", "o_1")).toBe(202);
+    it("never runs the recipient: the door refuses the caller first", async () => {
+      // The resolver verified alice and named no organization.
+      expect(await notify(server, "alice", "o_orgless")).toBe(401);
 
-    const arrival = await waitFor(
-      async () => arrivals.find((a) => a.orderId === "o_1"),
-      "billing's charge entry to run"
-    );
-    expect(arrival).toEqual({ orderId: "o_1", userId: "alice", orgId: ORG_ID });
+      // The door answers 401 while resolving the caller, before anything is
+      // dispatched, so once the refusal is back nothing can have started.
+      expect(arrivals).toEqual([]);
+    });
+  });
+
+  describe("from an app whose resolver names one", () => {
+    beforeEach(async () => {
+      arrivals = [];
+      server = await startTwoUserServer([shippingFlow(), billingFlow(arrivals)]);
+    });
+
+    it("runs the recipient under the sender's verified organization", async () => {
+      expect(await notify(server, "alice", "o_1")).toBe(202);
+
+      const arrival = await waitFor(
+        async () => arrivals.find((a) => a.orderId === "o_1"),
+        "billing's charge entry to run"
+      );
+      expect(arrival).toEqual({ orderId: "o_1", userId: "alice", orgId: ORG_ID });
+    });
   });
 });
