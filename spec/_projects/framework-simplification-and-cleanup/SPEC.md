@@ -14,7 +14,7 @@ public release, when a fix breaks the fewest people.
 |---|---|
 | **Winning when** | A builder can take every FSD doc, type and default at its word: nothing declared is silently dropped, no job makes them choose between two primitives, a reachable host is not open by default, and a common job such as keeping a flow alive has one published path. Nothing a builder can do today is cut to get there |
 | **The read** | Open issues labelled **Bug** in this project. Almost every one is a statement the runtime contradicts. **26 today; zero is done.** It rises when a bug is found as well as falls when one is fixed, so read it beside what was filed that week |
-| **Now** | 2 epics done · 1 in flight · 1 not started. 58 open issues, **52 under no epic**. No finish date: the Linear target, May 22, passed with the original pass ([Decisions](DECISIONS.md) → Open) |
+| **Now** | 2 epics done · 2 in flight. 66 open issues, **55 under no epic**. No finish date: the Linear target, May 22, passed with the original pass ([Decisions](DECISIONS.md) → Open) |
 | **Kill line** | If a surface cut here keeps coming back within a release because builders needed it, the project is aimed at the wrong thing. What changes is layering, hiding power behind progressive disclosure, not the remaining cut list |
 
 ![The territory: four things this project owns (declared equals real, one of each, honest defaults, one published path); the substrate it touches but others own (Public Launch hard gates, Workforce channels and boards, orchestration dispatch and schedules, the core block kinds); and what it never does (collapse block kinds or state scopes, remove capabilities, ship login, mint a product noun).](figures/territory.svg)
@@ -23,16 +23,16 @@ Above the fence is what this project changes; below it is what its epics touch b
 own. The fence is one test: does the change make an existing statement true, or remove a second of
 something? A change that adds a capability belongs to another project.
 
-## The epics — derived live 2026-09-29 12:32 UTC
+## The epics — derived live 2026-09-29 19:54 UTC
 
 | Epic | Outcome it owns | State | Surface |
 |---|---|---|---|
 | [FIX-1127](https://linear.app/fixpoint-labs/issue/FIX-1127) · **declared surface** | Everything FSD declares or documents is true: four flow options that were silently dropped, a crash on the getting-started path, a resource declaration that leaked between blocks | **done** · 3/3 · Aug 12 | [PR #1249](https://github.com/fixpoint-labs/flow-state-dev/pull/1249), closed at wrap |
 | [FIX-1157](https://linear.app/fixpoint-labs/issue/FIX-1157) · **durable storage** | Scope state and resources offer the same verbs where safe; the asymmetry is stated once | **done** · 6/7, 1 canceled · Aug 28 | [PR #1365](https://github.com/fixpoint-labs/flow-state-dev/pull/1365), closed at wrap |
 | [FIX-1503](https://linear.app/fixpoint-labs/issue/FIX-1503) · **verified identity** | A reachable host requires a verified principal on every `/api/flows` route but the mint | **in flight** · 0/1 filed, 3 unfiled | [`specs/epics/FIX-1503/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1503), merged Sep 22 |
-| [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637) · **keeping flows alive** | One published path for how a flow stays alive 24/7, with no new product noun | *not started* · 0/3 · filed today | Epic spec opening on `epic/keeping-flows-alive` |
+| [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637) · **keeping flows alive** | One published path for how a flow stays alive 24/7, with no new product noun | **in flight** · 0/8 · direction merged today | [`specs/epics/FIX-1637/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1637), merged Sep 29 |
 
-2 done · 1 in flight · 1 not started. Every state above is re-derived from Linear and the child
+2 done · 2 in flight · 0 not started. Every state above is re-derived from Linear and the child
 implementation PRs each refresh.
 
 **One state disagrees with its surface.** FIX-1503's direction merged on Sep 22, which is
