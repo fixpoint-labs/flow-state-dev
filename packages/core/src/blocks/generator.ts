@@ -1836,7 +1836,9 @@ async function applyGeneratorResume(args: {
  * `tool_call_progress` synthesis, repair, final message emission — runs
  * unchanged. A text turn's `text` is every step's text joined the way the
  * streaming twin joins it (a blank line before a step that writes text after
- * earlier text), so the same turn returns the same text streamed or not. A
+ * earlier text), so the same turn returns the same text streamed or not.
+ * Steps rebuilt on resume only seed the conversation, as in the streaming
+ * twin, so a resumed turn's text starts at its resumed step. A
  * structured turn never streams and keeps the final step's text, so chatter
  * before a tool call can't corrupt a JSON answer carried as text.
  */
@@ -1927,7 +1929,7 @@ async function runOwnedGenerateLoop(params: {
     });
 
     last = step;
-    if (step.text) {
+    if (params.outputSchema === undefined && step.text) {
       text += text.length > 0 ? `\n\n${step.text}` : step.text;
     }
     if (step.resolvedIdentity !== undefined) {
@@ -1998,7 +2000,7 @@ async function runOwnedGenerateLoop(params: {
   }
 
   return {
-    text: params.outputSchema === undefined && text.length > 0 ? text : last?.text,
+    text: text.length > 0 ? text : last?.text,
     structuredOutput: last?.structuredOutput,
     toolCalls: remapStepToolCalls(last?.toolCalls, toolset),
     finishReason: last?.finishReason,

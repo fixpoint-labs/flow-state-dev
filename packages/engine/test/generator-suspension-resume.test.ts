@@ -840,4 +840,45 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     expect(JSON.stringify(step1[0]!.output)).toContain("the gist");
     expect(JSON.stringify(seen[1]!.messages)).not.toContain("s3cr3t");
   });
+  // A resumed turn's answer starts at the step it resumed on. Steps recorded
+  // before the suspension seed the model's conversation (so it still knows
+  // what it said) but are not replayed into the output, streamed or not.
+  it("resumed text turn: output starts at the resumed step; pre-suspension text only seeds the conversation", async () => {
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: "gate?" });
+        return { ok: true };
+      },
+    });
+
+    const { model, seen } = stepModel([
+      () => ({
+        text: "Checking with a reviewer.",
+        toolCalls: [{ toolCallId: "c1", toolName: "gate", args: {} }],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "Approved and done.", finishReason: "stop" }),
+    ]);
+
+    const gen = generator({ name: "agent", model, prompt: "p", tools: [gate] });
+    const flow = defineFlow({
+      kind: "gen-resume-text",
+      actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+    })({ id: "gen-resume-text" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow, actionName: "run", input: {}, userId: "u1", stores,
+      runtimeConfig: { durabilityProvider: provider },
+    });
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const resumed = await resolve(flow, stores, provider, initial.requestId!, suspension, "approve");
+
+    expect(resumed.output).toBe("Approved and done.");
+    expect(JSON.stringify(seen[1]!.messages)).toContain("Checking with a reviewer.");
+  });
 });
