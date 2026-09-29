@@ -7,6 +7,13 @@
  * requests that claim a different identity are rejected here rather than
  * silently routed against the loaded session's data.
  */
+import {
+  foreignRecordRefusal,
+  ownsRecord,
+  type OwnedRecord,
+  type OwnerIdentity
+} from "./record-owner";
+import { tenantMatches } from "../stores/scope-keys";
 
 /**
  * Thrown when a request supplies a `userId` that doesn't match the user the
@@ -140,5 +147,36 @@ export class RequestOwnerMismatchError extends Error {
     super(`Request ${requestId} belongs to another principal and cannot be used by this caller.`);
     this.name = "RequestOwnerMismatchError";
     this.requestId = requestId;
+  }
+}
+
+/**
+ * Refuse a loaded session this caller must not run in.
+ *
+ * Another user's session is refused first, then another flow instance's, so
+ * the refusal names neither the owner nor which flow holds the session. A
+ * session in another tenant is left alone: the tenant binding refuses a key
+ * collision later, and it is not an ownership fact. No session is nothing
+ * to admit. `runAction` and the transport host both admit through this, so
+ * the order cannot drift between the direct path and a queued one.
+ */
+export function assertSessionAdmitted(
+  flow: OwnerIdentity & { id: string },
+  session: (OwnedRecord & { userId: string; tenantId?: string }) | undefined,
+  caller: { sessionId: string; userId: string; tenantId?: string }
+): void {
+  if (session === undefined || !tenantMatches(session.tenantId, caller.tenantId)) return;
+  if (session.userId !== caller.userId) {
+    throw new UserBindingMismatchError(caller.sessionId, session.userId, caller.userId);
+  }
+  if (!ownsRecord(flow, session)) {
+    const refusal = foreignRecordRefusal(flow, session);
+    throw new FlowInstanceBindingMismatchError(
+      "session",
+      caller.sessionId,
+      flow.id,
+      refusal.detail,
+      refusal.reason
+    );
   }
 }

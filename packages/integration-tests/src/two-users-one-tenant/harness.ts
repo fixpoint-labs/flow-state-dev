@@ -41,8 +41,10 @@ export type TwoUserServer = {
   close(): Promise<void>;
 };
 
-/** What a case may add to the server beyond its flows. */
+/** What a case may turn on in the server, beyond the defaults every case gets. */
 export type TwoUserServerOptions = {
+  /** Serve the session debug routes, as a development deployment does. */
+  debugEndpointsEnabled?: boolean;
   /**
    * Inbound transports mounted beside HTTP, for a case whose hole depends on
    * which transport a request arrived on.
@@ -65,6 +67,9 @@ export async function startTwoUserServer(
     registry,
     stores,
     adapters: options.adapters,
+    ...(options.debugEndpointsEnabled === undefined
+      ? {}
+      : { debugEndpointsEnabled: options.debugEndpointsEnabled }),
     resolvePrincipal: (context) => {
       const userId = context.request?.headers.get(USER_HEADER);
       return userId == null || userId === "" ? null : { userId, orgId: ORG_ID };

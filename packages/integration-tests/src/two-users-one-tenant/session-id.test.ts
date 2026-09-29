@@ -183,3 +183,27 @@ describe("a session id another user in the tenant knows", () => {
     expect(again.status).toBe(202);
   });
 });
+
+describe("a session id another user knows, with debug endpoints on", () => {
+  it.each([
+    ["GET", "/sessions/:id/debug/suspensions"],
+    ["GET", "/sessions/:id/debug/resources"]
+  ])("%s %s answers the second user as if the session did not exist", async (method, path) => {
+    await server.close();
+    server = await startTwoUserServer([notesFlow("notes")(), notesFlow("memos")()], {
+      debugEndpointsEnabled: true
+    });
+    const alice = server.as("alice");
+    const bob = server.as("bob");
+    await aliceWrites(alice);
+
+    const probe = (id: string) => answer(bob, method, path.replace(":id", id), id);
+    const unused = await probe(UNUSED_SESSION);
+    const alices = await probe(ALICE_SESSION);
+
+    expect(alices).toEqual(unused);
+    expect(alices.status).toBe(404);
+    // Alice reads her own through the same route.
+    expect((await alice(path.replace(":id", ALICE_SESSION))).status).toBe(200);
+  });
+});

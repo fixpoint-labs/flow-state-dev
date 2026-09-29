@@ -332,6 +332,24 @@ describe("C4 · the organization boundary on the management surface", () => {
       expect(body.error).toBe("migration-required");
     });
 
+    it("answers another user's unattributed session as an unused id, and keeps the 409 for its owner", async () => {
+      // `migration-required` says something about the record: that it exists,
+      // and that it predates organizations. That is its owner's to hear.
+      // Another user gets what an id nobody has used gets them.
+      const { router, stores } = buildRouter([twoAxisFlow()]);
+      await seedSession(stores, { id: "legacy", flowKind: "secure", userId: "dana" });
+
+      const other = await call(router, "GET", ["sessions", "legacy"], { user: "erin", org: "acme" });
+      const unused = await call(router, "GET", ["sessions", "unused"], { user: "erin", org: "acme" });
+      expect(other.status).toBe(404);
+      expect(await other.json()).toEqual({ error: 'Unknown session "legacy"' });
+      expect(unused.status).toBe(404);
+      expect(await unused.json()).toEqual({ error: 'Unknown session "unused"' });
+
+      const owner = await call(router, "GET", ["sessions", "legacy"], { user: "dana", org: "acme" });
+      expect(owner.status).toBe(409);
+    });
+
     it("leaves the unattributed record untouched after refusing it", async () => {
       const { router, stores } = buildRouter([twoAxisFlow()]);
       await seedSession(stores, { id: "legacy", flowKind: "secure", userId: "dana" });

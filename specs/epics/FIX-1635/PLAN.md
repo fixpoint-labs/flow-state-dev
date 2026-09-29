@@ -20,7 +20,7 @@ The dependency graph is in [the spec](SPEC.md#how-the-issues-flow-into-each-othe
 |---|---|---|---|---|---|
 | **FIX-1018** request id | direct | Current `main` (ER-17) | ER-3, and its case in the HTTP suite; the docs line (ER-20) | FIX-1286 · FIX-1634 | Medium |
 | **FIX-1286** run workspace | spec → impl | ER-3 | ER-4, or a test proving ER-3 already delivers it | The closure | Small, or none |
-| **FIX-1022** session key | direct | Current `main` | ER-5, with legacy keys still read by their owner | The closure | Medium |
+| **FIX-1022** session key | direct | Current `main` | ER-5 as a not-found answer; the session key is unchanged, so nothing migrates | The closure | Medium |
 | **FIX-1021** re-entry | direct | Current `main` | ER-6 | The closure | Small, likely a test |
 | **FIX-1046** sibling flow | direct | Current `main` | ER-7 | The closure | Small |
 | **FIX-1328** cross-flow admission | direct | FIX-1442's org rule | ER-8 | The closure | Small, likely a test |
@@ -56,7 +56,7 @@ FIX-1628 matches).
 | Seam | Between | Rule |
 |---|---|---|
 | The request write on the queue and external-dispatcher branches (`createInboundTransportHost`) | FIX-1018 and FIX-1634 | 1018 guards it first; 1634 delivers through it and keeps the guard |
-| Session adoption checks (`createExecutionContext`) | FIX-1022 and FIX-1046 | Each adds its own binding beside user, tenant and org; whichever lands second rebases, never merges the two |
+| Session admission (`assertSessionAdmitted`, used by `runAction` and the host) and adoption checks (`createExecutionContext`) | FIX-1022 and FIX-1046 | Each adds its own binding beside user, tenant and org; whichever lands second rebases, never merges the two |
 | Session and request routes' owner checks | FIX-1022, FIX-1046, FIX-1021 | Not-found for another user's record, one shape across all three |
 | The run-scope key | FIX-1018 and FIX-1286 | 1286 changes it only if 1018's binding leaves a shared workspace |
 | `server/authentication.md` | FIX-1018, FIX-1022, FIX-1046 | 1018 publishes the id rule; the others link to it |
