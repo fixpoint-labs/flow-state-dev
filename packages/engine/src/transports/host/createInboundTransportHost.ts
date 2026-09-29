@@ -25,9 +25,9 @@ import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../../st
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
+  assertSessionAdmitted,
   FlowInstanceBindingMismatchError,
-  RequestOwnerMismatchError,
-  UserBindingMismatchError
+  RequestOwnerMismatchError
 } from "../../context/binding-errors";
 import { claimRequestRecord, principalOwnsRequest } from "../../context/request-principal";
 import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
@@ -575,38 +575,11 @@ export function createInboundTransportHost(
       session = await stores.session.get(
         resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
       );
-      // A tenant-key collision is refused later by the tenant binding; only a
-      // session this tenant can see is judged for ownership here. Another
-      // user's session first, and before the flow instance, as `runAction`
-      // judges it: the caller learns nothing of it, not even which flow holds it.
-      if (
-        session !== undefined &&
-        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
-        session.userId !== dispatchEnvelope.userId
-      ) {
-        throw new UserBindingMismatchError(
-          dispatchEnvelope.sessionId,
-          session.userId,
-          dispatchEnvelope.userId
-        );
-      }
-      if (
-        session !== undefined &&
-        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
-        !ownsRecord(flow, session)
-      ) {
-        // One refusal shape for every door: the same helper `runAction` and
-        // `createExecutionContext` raise with, so a legacy row is named the
-        // same way (a migration, not a wrong address) whichever path reached it.
-        const refusal = foreignRecordRefusal(flow, session);
-        throw new FlowInstanceBindingMismatchError(
-          "session",
-          dispatchEnvelope.sessionId,
-          flow.id,
-          refusal.detail,
-          refusal.reason
-        );
-      }
+      assertSessionAdmitted(flow, session, {
+        sessionId: dispatchEnvelope.sessionId,
+        userId: dispatchEnvelope.userId,
+        tenantId: dispatchEnvelope.tenantId
+      });
     }
     const active = await stores.activeRequests.get(dispatchEnvelope.requestId);
     if (active !== undefined && !ownsRecord(flow, active)) {
