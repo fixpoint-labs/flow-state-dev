@@ -35,24 +35,31 @@ parts; FIX-1639's own spec drafts the rest.
 > |---|---|---|
 > | `{ key: (input) => string }` | a session derived from the key, created on first use | Works |
 > | `{ id: (input) => string }` | a session that already exists | Refused before anything starts |
+> | `{ from: true }` | the session that dispatched this run, as a reply | Refused when the run is on a process that hands work to the queue |
 >
 > On a host whose dispatcher hands work to an external queue, such as `bullmqWorker` in
-> `colocated` or `dispatch-only` mode, a delivery into an existing session throws
-> `DispatchRefusedError` with `refused: "external-dispatcher"`. Nothing is enqueued. A
-> `{ key }` dispatch, a webhook delivery and a schedule tick all run normally there. The
-> refusal applies only to a running flow sending work into a session that already exists. A
-> `worker-only` process installs no dispatcher, so dispatch from a run it executes stays in
-> process and is not refused.
+> `colocated` or `dispatch-only` mode, or a custom dispatcher without `dispatchLocal`, a
+> delivery into a session that already exists throws `DispatchRefusedError` with
+> `refused: "external-dispatcher"`. Nothing is enqueued. A `{ key }` dispatch, a webhook
+> delivery and a schedule tick all run normally there.
+>
+> The refusal follows the process the sending run is in. A reply from a run on a `colocated`
+> consumer is refused. A `worker-only` consumer installs no dispatcher, so a reply from a run
+> it executes goes in process and is not refused.
 >
 > On such a host, a Workforce channel inherits the refusal: a client's post is written,
 > but no member is woken, and posting into the channel from another flow is refused the same way.
 >
-> If your work has to reach a session that already exists, run dispatch in process for that
-> flow, or design the hand-off so the receiving side starts from a key.
+> If you need a hand-off's result back in the conversation that started it, start the work
+> with a `{ key }` and have it write what it found to state both sides read, such as a user- or
+> org-scoped resource or a task board. Or serve the flow from a host with no queue worker, and
+> accept that its runs aren't retried.
 
-The last paragraph is a proposal. FIX-1639 confirms both routes work on `main` before
-publishing it. If either doesn't, the paragraph says only what does, and the page says
-plainly that there is no queue-host route yet (ER-4).
+FIX-1639's D1 ([#2403](https://github.com/fixpoint-labs/flow-state-dev/pull/2403)) settled
+this by running it: the first draft here had two rows, missing the reply, and proposed running
+dispatch in process for one flow, which no host offers because the queue is set on the whole
+host. #2403 holds the final wording; if its reply check changes it, it is corrected there
+(ER-4).
 
 ### Where each setting lives
 
@@ -107,6 +114,12 @@ the value and the DevTool labels it. Proposed row, drift fix only:
 
 > | `notification` | No built-in transport sends it. A custom transport may use it, and the DevTool labels those requests *Notification* |
 
+## UPDATE · `apps/docs/docs/server/background-work.md` · the refusal table
+
+The `external-dispatcher` row gains the reply, a drift fix (ER-9), so this page and the new
+one agree. FIX-1639's `DOCS.md` ([#2403](https://github.com/fixpoint-labs/flow-state-dev/pull/2403))
+drafts the row.
+
 ## UPDATE · link lines, nothing else
 
 - `apps/docs/guides/background-work.md` · *Nearby, and often confused* — one line: waking a
@@ -123,13 +136,13 @@ Contributor docs, not published. Append one sentence:
 
 ## Unchanged, deliberately
 
-*Dispatched work*'s refusal table and the channels page's *Where posting from another flow
-works* already state the fence correctly and stay as they are. No per-cloud page is written.
+The channels page's *Where posting from another flow works* already states the fence
+correctly and stays as it is. No per-cloud page is written.
 
 ## Ownership
 
 | Material | Publisher | Specific draft |
 |---|---|---|
 | The page, its opening, the fence, the table, the terms, the channel-or-board section | FIX-1639 | This document, then FIX-1639's `DOCS.md` |
-| Drift fix, link lines and the contributor `epic-wake` line | FIX-1639 | This document |
-| The fence sentence, once `{ id }` works on a queue | FIX-1634 | Its own docs work |
+| Drift fixes, link lines and the contributor `epic-wake` line | FIX-1639 | This document; the refusal-table row in FIX-1639's `DOCS.md` |
+| The fence, once `{ id }` and a reply work on a queue | FIX-1634 | Its own docs work |

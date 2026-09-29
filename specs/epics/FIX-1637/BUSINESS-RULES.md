@@ -10,10 +10,10 @@ the terms as its sections.
 
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | One page, reachable from the docs site nav, carries the path in order: webhooks → schedules → outliving a turn → `{ id }` vs `{ key }` with the queue-host fence → channels vs boards | FIX-1639 | The closure run starts from the nav |
+| ER-1 | One page, reachable from the docs site nav, carries the path in order: webhooks → schedules → outliving a turn → `{ key }`, `{ id }` and a reply, with the queue-host fence → channels vs boards | FIX-1639 | The closure run starts from the nav |
 | ER-2 | A flow / host / ops table covers a webhook, a schedule, and an event from another flow or system. Every cell names a shipped export, a config key, or "your infrastructure" | FIX-1639 | The closure's export check |
 | ER-3 | *Wake*, *dispatch* and *schedule tick* are defined once, one sentence each, in words the linked reference pages agree with | FIX-1639 | FIX-1639's review · the closure's gap sweep |
-| ER-4 | The queue-host fence is stated plainly on the page: on a host whose effective dispatcher hands work to an external queue, `session: { id }` is refused with `external-dispatcher` before anything starts (a `worker-only` process runs dispatch in process and does not refuse); `{ key }` and every transport dispatch run. It names what a builder can do instead, and invents no workaround noun | FIX-1639 | The closure, against the runtime on a BullMQ host |
+| ER-4 | The queue-host fence is stated plainly on the page, in three rows. `{ key }` works. `session: { id }` is refused with `external-dispatcher` before anything starts on a host whose dispatcher hands work to an external queue (`colocated`, `dispatch-only`, or a custom dispatcher without `dispatchLocal`). A `{ from: true }` reply is refused the same way when the process running the queued run has such a dispatcher; on a `worker-only` consumer it runs in process. Every transport dispatch runs. It names what a builder can do instead (start from a `{ key }` and write results to shared state both sides read, or use a host with no queue) and invents no workaround noun. [#2403](https://github.com/fixpoint-labs/flow-state-dev/pull/2403) holds the final wording | FIX-1639 | The closure, against the runtime on a BullMQ host |
 | ER-5 | The event row names only doors that ship (D3) | FIX-1639 | The closure's export check |
 
 ## Inherited from the project

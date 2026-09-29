@@ -122,7 +122,8 @@ all but the proof. FIX-1641 and FIX-1643 own no rule and have no column: they co
   `dispatcher()` alone.
 - **The fence follows the effective dispatcher, not the host's package.** A `bullmqWorker`
   process in `worker-only` mode installs no dispatcher and does not refuse `{ id }`; `colocated`
-  and `dispatch-only` do, as does a custom dispatcher without `dispatchLocal`.
+  and `dispatch-only` do, as does a custom dispatcher without `dispatchLocal`. A reply follows
+  the process running the queued run the same way.
 
 ## What the end-state POC showed
 
@@ -150,5 +151,15 @@ tests of the set's division.
 - **POCs parked, 2026-09-29.** The owner parked the wake POCs (FIX-1641, FIX-1643, FIX-1644
   and the FIX-1645 plan) pending a likely move out of this epic. Until that settles, Linear
   holds their membership; the set table adds no rows for them.
+- **Lead measure restated, 2026-09-29.** The restraint pass dropped FIX-1639's own goal check
+  ([#2403](https://github.com/fixpoint-labs/flow-state-dev/pull/2403)): docs-only, it is proven
+  by its page-facts POC plus the docs build, and the closure FIX-1642
+  ([#2402](https://github.com/fixpoint-labs/flow-state-dev/pull/2402)) alone proves the page
+  followed as written.
+- **Queue-host fence corrected, 2026-09-29.** FIX-1639's D1 (#2403) ran the draft: a
+  `{ from: true }` reply is refused too where the running process has a queue dispatcher, and
+  no host dispatches in process per flow. The fence is three rows, the way out is a `{ key }`
+  plus shared state or a host with no queue, and #2403 holds the wording. A correction to what
+  the approved goal already asks the page to state, not a direction change.
 
 **Nothing open.**
