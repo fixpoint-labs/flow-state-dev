@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 8 issues, 2 folded into the page by [D1](DECISIONS.md#d1) · docs only, no runtime change · Framework simplification & cleanup
+Epic · one page and its closure, two children folded in by [D1](DECISIONS.md#d1), the wake POCs parked; Linear holds the membership · docs only, no runtime change · Framework simplification & cleanup
 ([project spec #2367](https://github.com/fixpoint-labs/flow-state-dev/pull/2367)) · Goal 4,
 keep the foundation honest ([`docs/objectives.md`](../../../docs/objectives.md)) ·
 [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637)
@@ -65,7 +65,7 @@ The control is what makes a pass mean the page is true, not just readable.
 | | |
 |---|---|
 | **Lead measure** | The set's goal-proven issues, named: FIX-1639's own check (its fixture follows its draft page) is the only one. **None today** |
-| **Not doing** | No runtime or API change, the FIX-1634 `{ id }` fix included: it stays under FIX-1635, a pointer only · no Heartbeats or Paperclip product noun, no clone page · no new L1 Channel, Board, Agent, Team or Outbox · no reviving the canceled Relay family (FIX-1197, FIX-1230, FIX-1231) · no rewrite of the webhook, schedule, dispatched-work or channels pages beyond fixing drift and linking · no per-cloud deployment how-to · no live-UI or fan-out work (FIX-1506, FIX-1622) · `epic-wake` never appears in published docs · no L2 adopt filed for FIX-1634 · no folder wake config or trust-lane runtime: FIX-1644 explores the one and FIX-1645 plans the other, and neither ships here |
+| **Not doing** | No runtime or API change, the FIX-1634 `{ id }` fix included: it stays under FIX-1635, a pointer only · no Heartbeats or Paperclip product noun, no clone page · no new L1 Channel, Board, Agent, Team or Outbox · no reviving the canceled Relay family (FIX-1197, FIX-1230, FIX-1231) · no rewrite of the webhook, schedule, dispatched-work or channels pages beyond fixing drift and linking · no per-cloud deployment how-to · no live-UI or fan-out work (FIX-1506, FIX-1622) · `epic-wake` never appears in published docs · no L2 adopt filed for FIX-1634 |
 | **Kill line** | If writing the page shows a builder cannot keep a flow alive 24/7 with shipped features alone (the honest page would be mostly "not yet"), stop and file the runtime gap instead. If the existing pages already give the path and only discovery is broken, a nav or index change replaces the page |
 
 ## What's in the box
@@ -84,16 +84,11 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | [FIX-1639](https://linear.app/fixpoint-labs/issue/FIX-1639) · the page | The published page: the path, the `{ id }` / `{ key }` fence, the terms block and the flow / host / ops table; drift fixes and links on the pages it leans on | The substance. By [D1](DECISIONS.md#d1) it carries all three deliverables | Backlog · spec route |
 | [FIX-1638](https://linear.app/fixpoint-labs/issue/FIX-1638) · config matrix | Nothing on its own: the flow / host / ops table is a section of FIX-1639's page | **Folded into FIX-1639** ([D1](DECISIONS.md#d1), decided) | Canceled as folded |
 | [FIX-1640](https://linear.app/fixpoint-labs/issue/FIX-1640) · terms | Nothing on its own: the terms are a section of FIX-1639's page, and the `epic-wake` line is FIX-1639's | **Folded into FIX-1639** ([D1](DECISIONS.md#d1), decided) | Canceled as folded |
-| [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641) · wake authoring POC | Three authoring shapes in an examples package, each compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2369](https://github.com/fixpoint-labs/flow-state-dev/pull/2369) open, draft |
-| [FIX-1643](https://linear.app/fixpoint-labs/issue/FIX-1643) · subscribe and route POC | The host registers GitHub once, then two routing styles in an examples package: per-session subscribe, and one webhook with route rules compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. A sibling of FIX-1641, soft-related, not its child. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2372](https://github.com/fixpoint-labs/flow-state-dev/pull/2372) open, draft |
-| [FIX-1644](https://linear.app/fixpoint-labs/issue/FIX-1644) · folder wake config POC | Wake config as a file convention: the worker or channel folder holds the wake files, transports register the way flows and blocks do, and seats reference the registrations. Examples and a short write-up | Exploration the owner filed with the Architect, not locked; evidence, not surface. A sibling of FIX-1641 and FIX-1643, soft-related. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | In Review · examples [#2374](https://github.com/fixpoint-labs/flow-state-dev/pull/2374) open, draft |
-| [FIX-1645](https://linear.app/fixpoint-labs/issue/FIX-1645) · wake principal plan | A written sketch of who a wake runs as and which trust lane admits it: untrusted edge vs trusted internal, an org actor for org webhooks, seat vs org cron | The owner placed it here, not under FIX-1635. A plan, not a build: it changes no runtime, and the page never teaches it ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · sketch on the issue; two of its three questions await the owner |
+| [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641) · wake authoring POC | Three authoring shapes in an examples package, each compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Parked by the owner · examples [#2369](https://github.com/fixpoint-labs/flow-state-dev/pull/2369) · Linear holds its state |
+| [FIX-1643](https://linear.app/fixpoint-labs/issue/FIX-1643) · subscribe and route POC | The host registers GitHub once, then two routing styles in an examples package: per-session subscribe, and one webhook with route rules compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. A sibling of FIX-1641, soft-related, not its child. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Parked by the owner · examples [#2372](https://github.com/fixpoint-labs/flow-state-dev/pull/2372) · Linear holds its state |
 | [FIX-1642](https://linear.app/fixpoint-labs/issue/FIX-1642) · closure · **required** | The QA plan: the page followed as written on one `main` commit | Proves the whole ([ER-15](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by every other open child; Linear holds the list |
 
-**One page, three POCs, a plan, and the closure.** The set would be zero only if a nav change
-were enough, and it isn't ([D2](DECISIONS.md#d2)). FIX-1641 was filed while this spec was
-written, FIX-1643 during its review, and FIX-1644 and FIX-1645 in the hour before it merged.
-All four run beside the page, not before it; like every child each blocks the closure.
+FIX-1638 and FIX-1640 are folded into the page and canceled ([D1](DECISIONS.md#d1)).
 
 ## How the issues flow into each other
 
@@ -103,17 +98,13 @@ flowchart LR
   P -->|"the published page"| Z["FIX-1642 · closure · required"]
   E["FIX-1641 · wake authoring POC"] -->|"lands or closes first"| Z
   S["FIX-1643 · subscribe and route POC"] -->|"lands or closes first"| Z
-  C["FIX-1644 · folder wake config POC"] -->|"lands or closes first"| Z
-  W["FIX-1645 · wake principal plan"] -->|"owner locks or closes first"| Z
 ```
 
 Solid edges are blocked-by; the dashed edge from FIX-1634 is an input from another epic.
-FIX-1638 and FIX-1640 have no node: D1 folded them into FIX-1639 and they are canceled. The
-three POCs and the plan hand the page nothing it must wait for, and the closure checks none of
-them. Each blocks the closure only because every child does: the run waits for each examples PR
-to merge, or for the owner to close the POC with its findings filed to FIX-1639, and for the
-owner to lock FIX-1645's sketch or close it. They are soft-related siblings, so no edge joins
-them. FIX-1645 gates shipping folder wakes as a product, which is outside this epic.
+FIX-1638 and FIX-1640 have no node: D1 folded them into FIX-1639 and they are canceled. FIX-1641 and FIX-1643 hand the page nothing it
+must wait for, and the closure checks neither. Each blocks the closure only because every child
+does: the run waits for #2369 and #2372 to merge, or for the owner to close each POC with its
+findings filed to FIX-1639. The two are soft-related siblings, so no edge joins them.
 
 ## What stays as it is
 

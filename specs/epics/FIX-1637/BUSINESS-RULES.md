@@ -26,7 +26,7 @@ the terms as its sections.
 
 | # | Rule | Because |
 |---|---|---|
-| ER-6 | Change runtime code or a public API, or soften or remove the `external-dispatcher` refusal in prose. An example's user-land helper or folder convention (FIX-1641, FIX-1643, FIX-1644) is not a framework API and is never taught as one. FIX-1645's trust lanes, org actor and binding principal are a plan, never taught as shipped | Docs epic. The fix is FIX-1634's, under FIX-1635. FIX-1645 gates folder wakes as a product, outside this epic |
+| ER-6 | Change runtime code or a public API, or soften or remove the `external-dispatcher` refusal in prose. An example's user-land helper (FIX-1641, FIX-1643) is not a framework API and is never taught as one | Docs epic. The fix is FIX-1634's, under FIX-1635 |
 | ER-7 | Mint a product noun: Heartbeats, a Paperclip clone page, a wake inbox, or Channel, Board, Agent, Team or Outbox as a Layer 1 concept | The PRD's invent-kills. Channels and boards are Workforce, taught as they ship |
 | ER-8 | Put `epic-wake`, Conductor, DevForce, an internal issue number, or Relay vocabulary in `apps/docs` | The outsider rule. The one `epic-wake` line lives in `docs/contributing/` |
 | ER-9 | Rewrite an existing reference page. Allowed: a drift fix where the page disagrees with `main`, and a link to the new page | Their substance is right; the path between them is what's missing |
