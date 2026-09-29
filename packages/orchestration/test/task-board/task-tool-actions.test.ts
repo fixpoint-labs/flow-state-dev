@@ -83,15 +83,27 @@ async function host(options: { declareResource?: boolean } = {}) {
 
   const settleAsWorker = handler({
     name: "settle-as-worker",
-    inputSchema: z.object({ taskId: z.string(), claim: z.unknown() }),
+    inputSchema: z.object({ taskId: z.string(), claim: z.unknown(), fail: z.boolean().optional() }),
     outputSchema: z.unknown(),
     uses: [board.capability],
     execute: async (input, ctx) => {
       const tasks = await ledger(ctx);
-      return tasks.complete(input.taskId, "worker's result", {
-        ifAllowed: true,
-        claim: input.claim as TaskClaimTicket,
-      });
+      const options = { ifAllowed: true, claim: input.claim as TaskClaimTicket };
+      return input.fail === true
+        ? tasks.fail(input.taskId, "worker's error", options)
+        : tasks.complete(input.taskId, "worker's result", options);
+    },
+  });
+
+  // A row with a retry budget, which `addTask` does not take.
+  const fileRetryable = handler({
+    name: "file-retryable",
+    inputSchema: z.object({ maxAttempts: z.number() }),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (input, ctx) => {
+      const tasks = await ledger(ctx);
+      return (await tasks.addTask({ goal: "a retryable row", maxAttempts: input.maxAttempts })).id;
     },
   });
 
@@ -102,6 +114,7 @@ async function host(options: { declareResource?: boolean } = {}) {
       drain: { block: board.drain },
       claimOne: { block: claimOne },
       settleAsWorker: { block: settleAsWorker },
+      fileRetryable: { block: fileRetryable },
       ...taskToolActions(board),
     },
   } as never);
@@ -325,10 +338,9 @@ describe("taskToolActions — an action settles over a worker's claim (BR-25)", 
     }
   });
 
-  it("refuses to block a row a worker holds, so every settlement over a claim finishes the row", async () => {
-    // Why the worker's result above declines as `terminal` and never as
-    // `lost-claim`: of BR-25's four verbs, only the terminal ones are legal
-    // on an in-progress row.
+  it("refuses to block a row a worker holds, and leaves the worker's claim standing", async () => {
+    // `blockTask` is not one of the moves that can take a row from its worker:
+    // on an in-progress row it is an illegal transition, so nothing changes.
     const h = await host();
     try {
       const taskId = await h.file();
@@ -339,6 +351,31 @@ describe("taskToolActions — an action settles over a worker's claim (BR-25)", 
       expect((await h.act("settleAsWorker", { taskId, claim })).output).toEqual({ outcome: "recorded" });
     } finally {
       await h.dispose();
+    }
+  });
+
+  it("sends a held row with retries left back to pending on failTask, and drops the worker's later result either way", async () => {
+    // A retrying fail leaves the row open, so the displaced worker's result is
+    // not declined `terminal`: the reason depends on what the worker sends.
+    for (const workerFails of [false, true]) {
+      const h = await host();
+      try {
+        const taskId = (await h.act("fileRetryable", { maxAttempts: 3 })).output as string;
+        const claim = (await h.act("claimOne", {})).output as TaskClaimTicket;
+        expect(claim.taskId).toBe(taskId);
+
+        const failed = await h.act(`failTask_${h.id}`, { taskId, error: "from the row" });
+        expect(failed.output).toEqual({ ok: true });
+        const requeued = await h.row(taskId);
+        expect(requeued?.status).toBe("pending");
+
+        const late = await h.act("settleAsWorker", { taskId, claim, fail: workerFails });
+        expect(late.output).toMatchObject({ outcome: "declined", reason: workerFails ? "lost-claim" : "disallowed" });
+        // Nothing the worker sent was written.
+        expect(await h.row(taskId)).toEqual(requeued);
+      } finally {
+        await h.dispose();
+      }
     }
   });
 
