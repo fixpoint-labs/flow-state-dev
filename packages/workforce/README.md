@@ -1206,7 +1206,7 @@ Address `{ id }`, never `{ key }`: a key-derived session resolves to a different
 poster, so the channel never sees the post. Nothing detects that mistake.
 
 A flow-to-flow post needs in-process dispatch. On a deployment whose dispatcher hands work to an
-external queue, a post into an opened channel is refused with `external-dispatcher`. A post through the public action route is
+external queue and whose adapter supplies no shared lease backend, a post into an opened channel is refused with `external-dispatcher`. A post through the public action route is
 written, but its notify block never runs: no member is woken and a routed channel doesn't answer.
 
 A post into a session nobody opened refuses `channel-not-bound` and writes nothing. The shared
@@ -1641,8 +1641,8 @@ The tool returns once the post is handed to the channel, as `{ handedTo, note }`
 channel, such as an author who is not a member, lands on the channel's request, not in the seat's
 turn. A refusal at dispatch fails the call by name: `session-not-found` for an id nobody opened,
 `session-not-addressable` for a session on another channel kind, and `external-dispatcher` behind
-a dispatcher that hands work to an external queue. The tool works only where dispatch runs in
-process.
+a dispatcher that hands work to an external queue without a shared lease backend. The tool works
+only where dispatch runs in process or is arbitrated over a shared lease backend.
 
 In a routed channel, a routed member of the built-in `agent` kind has a non-empty reply handed to
 the channel as its answer, whether or not it calls the tool. A tool call into that channel during
@@ -2042,7 +2042,7 @@ the root exports, and reaches no Node built-in.
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
-| `external-dispatcher` | A flow-to-flow post into an opened channel on a host whose dispatcher hands work to an external queue. A post through the public action route is written, but its notify block never runs: no member is woken and a routed channel doesn't answer |
+| `external-dispatcher` | A flow-to-flow post into an opened channel on a host whose dispatcher hands work to an external queue and shares no lease backend. A post through the public action route is written, but its notify block never runs: no member is woken and a routed channel doesn't answer |
 | Inventory id is not one path segment | `membershipKey` and `membershipPrefix` throw, naming the offending argument: an empty id, one containing `/` or `\`, or `.` and `..` |
 | Unknown kind on `hire` | The tool, listing the hireable kinds. Writes nothing. |
 | Address already served | The `hire` tool, naming the address and the live kind. Writes nothing. |

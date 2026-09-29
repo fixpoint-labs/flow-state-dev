@@ -160,7 +160,7 @@ Copies that differ by more than their name declare `configSchema` on the definit
 
 Any entry can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it on the entry — an action, an `internal` entry, a task-board entry, or a webhook / schedule binding — or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `entry.concurrency ?? flow.request.concurrency ?? "allow"`, the same ladder for every dispatch type.
 
-The policy is enforced by the in-process dispatcher. A deployment that hands dispatches to an external queue skips it, so requests on the same key can overlap there.
+The policy is enforced by the in-process dispatcher, or across worker processes when the worker adapter supplies a shared lease backend (`WorkerAdapter.leaseBackend`). A deployment that hands dispatches to an external queue whose adapter supplies no shared lease backend skips it, so requests on the same key can overlap there.
 
 `ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently).
 
@@ -712,7 +712,7 @@ At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-r
 | `key-occupied` | A `key` derived a child id already held by a record that is not this request's child. |
 | `no-dispatch-operation` | This process executes requests but was not wired to dispatch one. |
 | `dispatch-rejected` | The host refused before starting, such as a `reject` concurrency policy whose key is held. |
-| `external-dispatcher` | An `id` target on a host whose dispatcher runs requests in another process (a queue adapter); delivery into an existing session is refused there. |
+| `external-dispatcher` | An `id` target on a host whose dispatcher runs requests in another process (a queue adapter) and that shares no lease backend; delivery into an existing session is refused there. |
 
 Every refusal is decided before anything is dispatched, so a `.rescue()` on the dispatcher can branch on `refused` knowing nothing started. A `key` or `id` function that returns an empty string throws a plain `Error` naming the block. On a context no runtime wired (a hand-built test context), the block throws `NoDispatchSeamError` (`code: "no-dispatch-seam"`); attach a `DispatchSeam` under the `DISPATCH_SEAM` symbol key to test one.
 

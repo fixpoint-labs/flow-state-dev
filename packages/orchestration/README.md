@@ -426,9 +426,9 @@ else `allow`). An explicit `concurrency` on the entry wins:
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
 ```
 
-The in-process dispatcher applies that policy. On a deployment that hands
-dispatches to an external queue, the run starts in another worker and the entry's
-`concurrency` does not gate it.
+The in-process dispatcher applies that policy, and so do queue workers that share
+a lease backend. On a deployment that hands dispatches to an external queue without
+one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
 Only a named seat hands off: `defaultWorker` and a uniform `workers` block have no
 seat name and so no assignee to route by.

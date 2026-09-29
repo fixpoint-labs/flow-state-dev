@@ -183,6 +183,8 @@ interface InboundTransportHost {
   resolvePrincipal(ctx: PrincipalResolutionContext): Promise<ResolvedPrincipal>;
   /** True when `dispatch` hands the run to another process (a queue adapter). */
   readonly usesExternalDispatcher: boolean;
+  /** True when that external work is arbitrated over a lease backend the worker processes share. */
+  readonly arbitratesExternalDispatch?: boolean;
 }
 ```
 

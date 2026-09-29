@@ -385,7 +385,7 @@ A run that handles several tasks does so under its entry's `concurrency` policy.
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
 ```
 
-The in-process dispatcher applies that policy. On a deployment that hands dispatches to an external queue, the run starts in another worker and the entry's `concurrency` does not gate it.
+The in-process dispatcher applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
 ### What the board requires
 

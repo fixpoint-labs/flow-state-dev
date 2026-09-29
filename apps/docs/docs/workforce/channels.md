@@ -605,8 +605,8 @@ What it won't do:
   refusal shows up as a failed request on the channel's session.
 - Only the built-in channel kind takes these posts. A channel id nobody opened, or one on another
   kind, fails the call by name.
-- It needs dispatch to run in process. Behind a host that hands dispatch to an external queue,
-  the tool call fails with `external-dispatcher`.
+- It needs dispatch to run in process, or queue workers that share a lease backend. Behind a host
+  that hands dispatch to an external queue without one, the tool call fails with `external-dispatcher`.
 - The channel can't verify the name. The server sets it, and the line is stored with
   `authorVerified: false` like any other post.
 
@@ -672,7 +672,7 @@ const fileOntoDesk = dispatcher({
 
 The model picks the board and writes the goal. The `author` is the seat's own `seatId`, which hiring gives every seat, not something the model chooses. The tool's result is the dispatch, not the row: the row is written when the channel runs `fileTask`, a moment later. If the channel refuses it, say because the author is not a member, the model has already been told the filing was sent, and the refusal is a failed request on the channel's session.
 
-The dispatch goes into an existing session by its id, which needs the in-process dispatcher. Under an external dispatcher such as BullMQ it is refused with a `DispatchRefusedError` whose `refused` is `"external-dispatcher"`. To tell the model the board is unavailable rather than letting the tool fail, put the dispatcher in a sequencer and handle the error in the sequencer's `.rescue()`.
+The dispatch goes into an existing session by its id, which needs the in-process dispatcher or queue workers that share a lease backend. Under an external dispatcher without one, such as BullMQ today, it is refused with a `DispatchRefusedError` whose `refused` is `"external-dispatcher"`. To tell the model the board is unavailable rather than letting the tool fail, put the dispatcher in a sequencer and handle the error in the sequencer's `.rescue()`.
 
 `readBoard` gives back every row on one board. The channel's own `read` lists what it holds, by name:
 
@@ -799,7 +799,7 @@ Different members, a different charter and a different set of boards are not a d
 
 ## Where posting from another flow works, and where it doesn't
 
-Posting from another flow needs dispatch to run in the same process. On a deployment whose dispatcher hands work to an external queue, a post into an opened channel is refused with `external-dispatcher`.
+Posting from another flow needs dispatch to run in the same process. On a deployment whose dispatcher hands work to an external queue and whose workers share no lease backend, a post into an opened channel is refused with `external-dispatcher`.
 
 On that kind of deployment, a post from a client is written to the channel, but no member is [woken](#waking-members), and a [routed channel](#routing-a-channel) never picks a member or answers.
 
