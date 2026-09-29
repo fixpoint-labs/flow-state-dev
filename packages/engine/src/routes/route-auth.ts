@@ -36,6 +36,8 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { flowAuthenticates } from "./instance-caller";
+import { unknownRequestStatusResponse } from "./request-status-routes";
+import { unknownRequestStreamResponse } from "./stream-routes";
 
 /** Wiring the guard needs; all of it is already built by `createFlowRouteHandlers`. */
 export type RouteAuthContext = {
@@ -104,6 +106,21 @@ function hiddenSessionResponse(route: ParsedFlowRoute, sessionId: string): Respo
   return route.kind.startsWith("debug_")
     ? jsonResponse(404, { error: "session_not_found" })
     : unknownSessionResponse(sessionId);
+}
+
+/**
+ * The answer a request read gives for an id with no request behind it, given
+ * for a request another user owns. Undefined for a request route that acts
+ * rather than reads.
+ */
+function hiddenRequestResponse(
+  request: Request,
+  route: ParsedFlowRoute,
+  registry: FlowRegistry
+): Response | undefined {
+  if (route.kind === "request_status") return unknownRequestStatusResponse(route.requestId);
+  if (route.kind === "request_stream") return unknownRequestStreamResponse(request, route, registry);
+  return undefined;
 }
 
 /**
@@ -494,8 +511,12 @@ export async function authorizeManagementRoute(
         sessionHidden: true
       };
     }
-    // A request-addressed route still answers 403 "not yours"; its not-found
-    // shape is decided with the request routes, not here.
+    // The same for a request's reads, its status and its stream: a request
+    // id travels in headers, bodies and URLs, so another user's is answered
+    // as an id nobody has used. The request routes that act on a request
+    // (abort, resume, retry, continue) still answer 403 "not yours".
+    const hidden = hiddenRequestResponse(request, route, ctx.registry);
+    if (hidden !== undefined) return { denied: hidden };
     return {
       denied: jsonResponse(403, {
         error: "Caller is not the owner of the requested resource"

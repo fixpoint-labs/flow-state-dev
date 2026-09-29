@@ -147,6 +147,14 @@ export function isCheckedSession(
  * to show. Every key is present, so an `undefined` tenant or organization
  * exact-matches unbound records rather than lifting the filter.
  *
+ * And the session's own flow, as the request listing filters it: its kind,
+ * and its owning instance when the session records one. The session's flow is
+ * what admitted the caller, so it never authorizes another flow's run. Today
+ * admission refuses a run of any other instance into a session, but a session
+ * written before that check can hold one, and a read of the session must not
+ * serve its items. A legacy session with no owning instance keeps the kind
+ * filter alone, as the listing does.
+ *
  * @param sessionId The bare session id, as request records carry it.
  * @param session The session's own record, already read for the caller's tenant.
  * @param tenantId The caller's tenant.
@@ -155,8 +163,22 @@ export function sessionRequestScope(
   sessionId: string,
   session: SessionRecord,
   tenantId: string | undefined
-): { sessionId: string; tenantId: string | undefined; userId: string; orgId: string | undefined } {
-  return { sessionId, tenantId, userId: session.userId, orgId: session.orgId ?? undefined };
+): {
+  sessionId: string;
+  tenantId: string | undefined;
+  userId: string;
+  orgId: string | undefined;
+  flowKind: string;
+  flowId?: string;
+} {
+  return {
+    sessionId,
+    tenantId,
+    userId: session.userId,
+    orgId: session.orgId ?? undefined,
+    flowKind: session.flowKind,
+    ...(session.flowId != null ? { flowId: session.flowId } : {})
+  };
 }
 
 // `extractBareTopic` now lives in core alongside `getPatternPrefix` /

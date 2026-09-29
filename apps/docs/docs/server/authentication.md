@@ -426,6 +426,10 @@ address and the stored owner have to agree before the resolver is consulted:
 The owner id is an address, not an authorization. Knowing that a session is
 `review-east`'s gives a caller nothing the resolver would not grant anyway.
 
+A session's reads show only its owning flow's runs: its request list, its state
+with items, and its stream. Passing a session's check never gets a caller
+another flow's history.
+
 No endpoint on the flow API enumerates across owners. A caller reaches
 background work through the conversation that started it; there is no mode that
 returns every session on the server.
@@ -448,10 +452,12 @@ An id tells the framework where to look. It never says who owns what's there.
 If another user already has a request under `req_7f3a`, your call still
 succeeds, as your own request, under an id the response gives you in the
 `x-request-id` header and the 202 body. Their request is untouched, and sending
-`req_7f3a` again lands on that same request of yours. Reading their request's
-stream or status, or resuming it, is refused: with a resolver configured, those
-routes check the caller against the user and organization stored on the
-request, not against knowing the id.
+`req_7f3a` again lands on that same request of yours. With a resolver
+configured, the request routes check the caller against the user and
+organization stored on the request, not against knowing the id. Asking for
+their request's status or stream gets you the same `404` an id nobody has used
+gets, so the answer doesn't even say the id is taken. Acting on it, say
+resuming or aborting it, is refused with a `403`.
 
 Session ids are addresses too, and they turn up in URLs all the time. What
 differs is what reusing one gets you. With a resolver configured, if another

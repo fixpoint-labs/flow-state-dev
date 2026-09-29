@@ -73,6 +73,37 @@ function shouldEmitToWire(
 }
 
 
+/**
+ * What the request stream answers for an id with no request and no events
+ * behind it, and (from the route guard) for another user's request, so the
+ * two cannot be told apart. An unknown flow is named first, as the handler
+ * names it. Otherwise: without a resume cursor, a 404; with one, an empty
+ * 200, because a resuming client that already consumed the whole log is
+ * owed "nothing new" rather than a spurious 404.
+ */
+export function unknownRequestStreamResponse(
+  request: Request,
+  route: Extract<ParsedFlowRoute, { kind: "request_stream" }>,
+  registry: Pick<FlowRegistry, "get">
+): Response {
+  if (registry.get(route.flowKind) === undefined) {
+    return jsonResponse(404, {
+      error: `Unknown flow "${route.flowKind}"`
+    });
+  }
+  const cursor = resolveRequestReplayCursor({
+    requestId: route.requestId,
+    lastEventId: request.headers.get("last-event-id"),
+    startingAfter: new URL(request.url).searchParams.get("starting_after")
+  });
+  if (cursor.sequenceNumber === undefined) {
+    return jsonResponse(404, {
+      error: `Unknown request "${route.requestId}"`
+    });
+  }
+  return new Response("", { status: 200, headers: SSE_HEADERS });
+}
+
 export async function handleRequestStream(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "request_stream" }>,
@@ -191,16 +222,7 @@ export async function handleRequestStream(
       cursor.sequenceNumber
     );
     if (events.length === 0) {
-      // Without a cursor, an empty read means the request is genuinely
-      // unknown → 404. With a cursor, the resuming client already consumed
-      // the whole log; there's just nothing new, so return an empty 200
-      // rather than a spurious 404.
-      if (cursor.sequenceNumber === undefined) {
-        return jsonResponse(404, {
-          error: `Unknown request "${route.requestId}"`
-        });
-      }
-      return new Response("", { status: 200, headers: SSE_HEADERS });
+      return unknownRequestStreamResponse(request, route, ctx.registry);
     }
     let replay = replayRequestEvents({
       requestId: route.requestId,

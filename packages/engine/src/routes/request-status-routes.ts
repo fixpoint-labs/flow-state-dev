@@ -20,6 +20,16 @@ type RequestStatusRouteContext = {
 };
 
 /**
+ * What the status route answers for a request the caller cannot see: an id
+ * no one has used, another flow's request, and (from the route guard)
+ * another user's. One copy, so all three match character for character and
+ * the answer never says whether the id is in use.
+ */
+export function unknownRequestStatusResponse(requestId: string): Response {
+  return jsonResponse(404, { error: `Request "${requestId}" not found` });
+}
+
+/**
  * GET /api/flows/:flowKind/requests/:requestId/status
  *
  * - 200 with `RequestStatusSnapshot` when the request exists.
@@ -37,18 +47,14 @@ export async function handleGetRequestStatus(
 
   const record = await ctx.stores.request.get(requestId);
   if (record === undefined) {
-    return jsonResponse(404, {
-      error: `Request "${requestId}" not found`
-    });
+    return unknownRequestStatusResponse(requestId);
   }
 
   // The addressed instance must own the record; a same-kind peer's request
   // is not found here, same as another flow's.
   const flow = ctx.registry.get(route.flowKind);
   if (flow === undefined || !ownsRecord(flow, record)) {
-    return jsonResponse(404, {
-      error: `Request "${requestId}" not found`
-    });
+    return unknownRequestStatusResponse(requestId);
   }
 
   const active = await ctx.stores.activeRequests.get(requestId);
