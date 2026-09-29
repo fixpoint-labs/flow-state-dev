@@ -11,11 +11,11 @@ register the way seats and blocks already do: **a folder is the
 registration**. A worker or channel folder then **references** those
 ids, or writes a seat-local clock.
 
-[FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637/epic-keeping-flows-alive-247).
-Sibling explore to [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641/poc-wake-authoring-shapes-worker-md-vs-flow-config)
+[FIX-1644](https://linear.app/fixpoint-labs/issue/FIX-1644/poc-wake-config-by-file-convention-frontmatter)
+under [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637/epic-keeping-flows-alive-247).
+Soft-related sibling to [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641/poc-wake-authoring-shapes-worker-md-vs-flow-config)
 (#2369 / #2370) and [FIX-1643](https://linear.app/fixpoint-labs/issue/FIX-1643/poc-register-providerstransports-workerchannel-subscribe-route-rules)
-(#2372). No child id yet — cite the epic until LM files one. **Explore —
-not locked.** Not a product pick.
+(#2372) — not a child of either. **Explore — not locked.** Not a product pick.
 
 This example does not mint a Heartbeats product, does not implement
 FIX-1634, and does not reopen FIX-441 NotificationFlow.

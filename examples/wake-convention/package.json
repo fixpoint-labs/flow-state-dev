@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Explore: transports + events register by file convention; worker/channel folders own wakes (FIX-1637). Examples only — not a product.",
+  "description": "Explore: transports + events register by file convention; worker/channel folders own wakes (FIX-1644 / FIX-1637). Examples only — not a product.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root .",
