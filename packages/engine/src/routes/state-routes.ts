@@ -19,11 +19,11 @@ import {
   loadTenantSession,
   unknownSessionResponse,
   parseClientDataFilter,
-  sessionRequestScope,
   snapshotItemsOf,
   sortItems
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
+import { sessionRequestScope } from "../context/session-request-scope";
 import {
   buildProjectedResourceContextFromSession,
   getPersistedData

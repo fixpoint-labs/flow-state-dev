@@ -108,6 +108,7 @@ import {
   type RequestPrincipal
 } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
+import { sessionRequestScope } from "./session-request-scope";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
   outputItemToSessionItem,
@@ -650,11 +651,19 @@ export async function createExecutionContext<
     // `orderBy:"startedAtMs"` makes the windowed selection robust to
     // out-of-order metadata writes. `items` reconstruct cross-turn history.
     stores.request.list({
-      sessionId,
-      // Always pass the tenant (possibly undefined) so history exact-matches
-      // this tenant and never crosses into another tenant's requests for the
-      // same bare session id (FIX-682).
-      tenantId: options.tenantId,
+      // The session's reads and its history share one filter: tenant (always
+      // passed, possibly undefined, so it exact-matches and never crosses into
+      // another tenant's requests for the same bare id), owner, organization
+      // and flow. A session stored before admission bound runs to its flow and
+      // owner can hold another flow's, a peer instance's or another user's
+      // run; none is this run's history. With no session yet, the scope is the
+      // record this run is about to create, and any other the checks below
+      // would adopt must match it or be refused.
+      ...sessionRequestScope(
+        sessionId,
+        loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
+        options.tenantId
+      ),
       status: "completed",
       limit: historyWindowTurns,
       orderBy: "startedAtMs",
