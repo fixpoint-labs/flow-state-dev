@@ -32,7 +32,7 @@ It comes down to a gap on the page: the worker fills it from memory, and the run
 |---|---|
 | **Instead of** | (a) The closure worker builds the fixture from the page. (b) A fixture the runner owns, checked against the page, with no reader at all |
 | **Because** | The epic's anti-game is *no reading the source to fill a gap the page left*, and its *not done if* includes a reader who must leave the page's links. Only a reader that never had the source can fail those. (a) The worker has read the code for this plan and can't un-know it. (b) Proves the runtime, not that the page gets a builder there; it is the smaller goal SPEC.md rejects |
-| **Locks in** | Each full run dispatches one reader with a pinned brief, packed packages in a scratch project outside the workspace, and the site served locally. Its transcript is audited: a read under `node_modules` or the workspace, or a page more than one link from the page, voids the run. The reader keeps a gap log, and every entry is a finding. The same reader, given the planted page, must report the planted option rather than build around it |
+| **Locks in** | Each full run dispatches one reader with a pinned brief, packed packages in a scratch project outside the workspace, and the site served locally. Its transcript is audited: a read under `node_modules` or the workspace, or a page more than one link from the page, voids the run. The reader keeps a gap log, and every entry is a finding. One reader per run: the planted controls go to the scan, not to a second reader |
 
 **What would change my mind:** a runnable example project, linked from the page and built in
 CI. Then the reader leg shrinks to "the example matches the page".
@@ -57,20 +57,21 @@ more often than it catches drift. Then it moves to the by-hand tier.
 
 - **The run starts from Linear, not from the set table.** Every issue Linear lists as blocking
   this one is merged or closed, and CI is green on the chosen commit. FIX-1638 and FIX-1640
-  are canceled as folded and add nothing.
+  are canceled as folded and add nothing; epic amendment
+  [#2394](https://github.com/fixpoint-labs/flow-state-dev/pull/2394) records that, and this spec
+  merges after it. Linear is read again just before the closure PR opens.
 - **The wake POCs are not checked.** FIX-1641, 1643, 1644 and FIX-1645 are parked by the owner
   and may leave the epic. While Linear lists one as blocking, the run waits for it; it never
   runs one's check.
 - **The fixture is model-free.** Wakes and hand-off are the point; handler blocks keep the run
   keyless and repeatable.
-- **`worker-only` is checked when the page says it does not refuse.** A statement on the page
-  is a claim the fence leg owes, so the coordinator's "optional" becomes required as long as
-  ER-4's sentence is published.
-- **The channel sentence is checked if the page keeps it.** It is a runtime claim in the fence
-  section, so it runs on the same host.
-- **The product-noun sweep is literal for ER-8's names and judged for *heartbeat*.**
-  `epic-wake`, Conductor, DevForce, Relay and issue ids are whole-word bans over `apps/docs`;
-  *heartbeat* may appear only in its liveness sense, which the page's terms block itself uses.
+- **The fence runs in one mode, the reader's own host.** That is what the epic's Proof asks:
+  `{ id }` refused by name and `{ key }` runs, plus `{ from: true }` refused by name, which
+  FIX-1639's page states. The other topologies and the channel sentence are runtime claims the
+  engine and workforce tests already own (`dispatch-delivery-guards.test.ts`,
+  `channel-post-fences.test.ts`).
+- **The noun sweep is the epic's *not done if*.** `epic-wake` and Heartbeats nouns, whole word,
+  over `apps/docs`. The wider ER-8 bans are FIX-1639's review.
 
 ## Considered and dropped
 
@@ -94,3 +95,4 @@ invented names and failed for a real name on the wrong owner, on `main` c63ee231
 - **Draft** — the closure's QA plan, framed as the epic's goal check run by a reader who can't
   see the code; four parts on one commit, a POC showing why the name scan must resolve against
   the owning type, and the scan kept in CI after the wrap.
+- Restraint pass (coordinator, 2026-09-29): trimmed to the approved Proof; see PR comment.

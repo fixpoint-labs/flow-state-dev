@@ -12,8 +12,8 @@ required · runs after every child Linear lists as blocking it
 |---|---|---|
 | **decides whether the epic is done** | FIX-1639's own check, on its draft, on its own commit | One report on one `main` commit: the page followed from the nav by a reader who can't see the code, every name resolved, the fence run on Redis, each control's FAIL |
 | **wants a flow woken by a webhook and a clock, with work that keeps going** | Nobody has built one from the published docs alone | Proven: a fixture built from the page and its links answers a signed webhook and a schedule tick, and its handed-off work finishes after the request returned |
-| **runs on BullMQ** | The page's refusal sentence is checked by nobody against the runtime | Proven on real Redis in `colocated` and `dispatch-only`: `{ id }` refused by name, nothing enqueued, `{ key }` runs; `worker-only` does not refuse, if the page says so |
-| **meets *wake*, *dispatch*, *tick*, or a channel and a board** | Each child checks its own words | Proven: the reader answers from the page alone, and the pages it links agree |
+| **runs on BullMQ** | The page's refusal sentence is checked by nobody against the runtime | Proven on real Redis, on the reader's own `dispatch-only` host with a worker: `{ id }` and `{ from: true }` refused by name, nothing enqueued, `{ key }` runs |
+| **meets *wake*, *dispatch*, *tick*, or a channel and a board** | Each child checks its own words | Proven: the reader answers from the page alone, and no page it links contradicts it |
 | **renames an export next year** | Nothing notices the page now lies | CI fails the rename until the page is fixed ([D2](DECISIONS.md#d2)) |
 
 ## The goal, and how we'll know it's met
@@ -29,7 +29,7 @@ runtime.**
 | **The real need** | The [epic's goal](../../epics/FIX-1637/SPEC.md#the-goal-and-how-well-know-its-met), proved the way the [closure rule](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa) asks: a real app, the real path, the surface a builder touches |
 | **Smaller, and rejected** | "Check every name on the page resolves." It proves the page names real things, not that a builder can get from them to a running flow; the [POC](poc/page-key-scan/README.md) shows a flat check also passes a real option on the wrong object |
 | **Bigger, and not this issue's** | Making `{ id }` work on BullMQ (FIX-1634) · checking the wake POCs (FIX-1641, 1643, 1644, FIX-1645) · a per-cloud deploy run |
-| **Not done if** | The reader reads the source, or leaves the page's links, to finish · a name resolves only by a flat lookup · the fence holds in one mode only · the handed-off work could have run inside the request · a control never failed · checks on different commits · a finding deferred |
+| **Not done if** | The reader reads the source, or leaves the page's links, to finish · a name resolves only by a flat lookup · the handed-off work could have run inside the request · a control never failed · checks on different commits · a finding deferred |
 
 ```mermaid
 flowchart LR
@@ -37,7 +37,7 @@ flowchart LR
   R --> F["its fixture · webhook wake · schedule tick · hand-off"]
   F -->|"over HTTP"| B["runs · work lands after the response"]
   M --> K["every name on the page · resolved against the type it is passed to"]
-  M --> Q["BullMQ on Redis · colocated · dispatch-only · worker-only"]
+  M --> Q["BullMQ on Redis · the reader's dispatch-only host"]
   Q -->|"matches the page's fence"| OK["PASS · the epic's goal is met"]
   B --> OK
   K --> OK
@@ -52,15 +52,16 @@ queue's own job counts.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/keeping-flows-alive/follows-the-page-as-written/`: the reader leg, then [PLAN.md → Checks](PLAN.md#checks) legs A to D on the fixture, on one commit |
+| **Goal check** | `goals/keeping-flows-alive/follows-the-page-as-written/`: one reader (leg A), then [PLAN.md → Checks](PLAN.md#checks) legs B to D on its fixture, on one commit |
 | **Model** | None for the fixture, which uses handler blocks. The reader is an agent dispatched per run ([D1](DECISIONS.md#d1)) |
-| **Signal** | The fixture's effects read back over HTTP and from its store, after the response that started them; the fence's outcome per mode against the page's claims; the scan's totality line |
+| **Signal** | The fixture's effects read back over HTTP and from its store, after the response that started them; the fence's outcome on the fixture's host against the page's three claims; the scan's totality line |
 | **Input** | A held-out app brief the reader builds to: a provider, a schedule id, a token per run, a latch the hand-off waits on |
 | **Anti-game** | The reader has no checkout and no package source, and its transcript is audited. Nothing asserts on a child's own test, a 202 alone, or the reader's claim that it worked |
 | **Control that must fail** | A planted option, of both kinds the POC found; a flipped fence sentence; an inline hand-off. Each fails its own leg, by name ([PLAN.md → Controls](PLAN.md#controls)) |
 
-Part 2 walks the terms and the channel-or-board reader; part 3 re-runs FIX-1639's check; part
-4 sweeps the epic's seams and its *not done if*. All on the same commit.
+Part 2 walks the terms and the channel-or-board journeys. Part 3 skips FIX-1639's check, which
+part 1 already walks. Part 4 sweeps four things: the seams, the epic's *not done if* nouns, the
+terms' agreement and the verified caller. All on the same commit.
 
 ## What changes
 

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 380" role="img" aria-label="Today: FIX-1639's own check follows its draft page on its own commit, and nothing ties the page to the code once it merges. After: one main commit carries four parts. Part 1, the page followed as written by a reader who cannot see the code, with the name scan, the fence on Redis and the controls. Part 2, the terms and channel-or-board journeys. Part 3, FIX-1639's check. Part 4, the gap sweep. A finding is filed and sends the whole stack round again on a fresh commit. After the wrap, the name scan keeps running in CI."
+<svg viewBox="0 0 940 380" role="img" aria-label="Today: FIX-1639's own check follows its draft page on its own commit, and nothing ties the page to the code once it merges. After: one main commit carries four parts. Part 1, the page followed as written by one reader who cannot see the code, with the name scan, the fence on Redis on the reader's own host and four controls. Part 2, the terms and channel-or-board journeys. Part 3, only what part 1 does not walk of FIX-1639's check. Part 4, a four-item gap sweep. A finding is filed and sends the whole stack round again on a fresh commit. After the wrap, the name scan keeps running in CI."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -46,9 +46,9 @@
     <rect class="n-in" x="40" y="218" width="520" height="30" rx="5"/>
     <text class="t-s" x="54" y="237">Part 2 · the terms and channel-or-board journeys</text>
     <rect class="n-in" x="40" y="254" width="520" height="30" rx="5"/>
-    <text class="t-s" x="54" y="273">Part 3 · FIX-1639's own check, re-run</text>
+    <text class="t-s" x="54" y="273">Part 3 · only what part 1 doesn't walk of FIX-1639's check</text>
     <rect class="n-in" x="40" y="290" width="520" height="30" rx="5"/>
-    <text class="t-s" x="54" y="309">Part 4 · seams, not-done-if states, changed pages</text>
+    <text class="t-s" x="54" y="309">Part 4 · seams · not-done-if nouns · terms agree · verified caller</text>
     <path class="loop" d="M560 305 C 600 305, 600 188, 560 188"/>
     <text class="t-gone" x="604" y="250">a finding: filed, then</text>
     <text class="t-gone" x="604" y="264">the whole stack again</text>

@@ -10,8 +10,8 @@ step or report line that shows the rule held.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| QR-1 | Any issue Linear lists as blocking FIX-1642 is open, or CI is red on `main` | No run. The list is read from Linear at run time, not from the epic's set table; the owner may move the wake POCs out of the epic, and then they stop blocking | The report quotes the blocked-by list it read, with each issue's state |
-| QR-2 | A child joins the epic mid-run | It blocks this issue; the run in flight cannot open the closure PR | The epic wake |
+| QR-1 | Any issue Linear lists as blocking FIX-1642 is open, or CI is red on `main` | No run. The list is read from Linear at run time, not from the epic's set table; the owner may move the wake POCs out of the epic, and then they stop blocking. It is read again after part 4, immediately before the closure PR opens | The report quotes the blocked-by list it read both times, with each issue's state |
+| QR-2 | A child joins the epic mid-run | It blocks this issue. The re-read before the PR finds it open, and the run in flight opens no closure PR | The second blocked-by read in the report |
 | QR-3 | The start conditions hold | One `main` commit is picked, and every check in parts 1 to 4 runs against it | Every verdict row carries that SHA |
 
 ## What a run runs on
@@ -22,7 +22,7 @@ step or report line that shows the rule held.
 | QR-5 | The reader works | It gets the site's root URL, the app brief and the scratch project. It reads nothing under `node_modules`, the workspace or the web beyond the local site, and no page more than one link from the page. Its transcript is kept | The transcript audit ([D1](DECISIONS.md#d1)) |
 | QR-6 | The audit finds a forbidden read | The run is void, not failed: it proves nothing either way, and runs again with a new reader | Report |
 | QR-7 | The reader cannot continue without something the page doesn't say | It logs the gap and stops that part. Each entry in its gap log is a finding | The gap log in the report |
-| QR-8 | The fence leg runs | On a real Redis, in `colocated`, in `dispatch-only` with a separate worker process, and in `worker-only` while the page says it does not refuse. Redis absent fails the run; it is never skipped | Leg D's per-mode rows |
+| QR-8 | The fence leg runs | On a real Redis, on the reader's own fixture host: `dispatch-only` with a separate worker process. Redis absent fails the run; it is never skipped | Leg D's rows |
 | QR-9 | Anything calls the fixture | Over HTTP, as a caller would: a webhook signed as its provider signs it, a schedule tick with the scheduler's secret, never a `userId` in the body (project PR-1) | Legs B and C |
 | QR-10 | No provider key is set | The fixture runs anyway; it uses no model | Leg B |
 
@@ -34,8 +34,8 @@ step or report line that shows the rule held.
 | QR-12 | A name on the page resolves only in a flat lookup, not on the type it is passed to | A finding | Leg C |
 | QR-13 | The page's fence says one thing and a mode does another | A finding against the page, never a change to the runtime (epic ER-6). If FIX-1634 has shipped and the page still states the refusal, the finding is FIX-1634's docs work (epic ER-14) | Leg D |
 | QR-14 | Part 2 runs | The terms and channel-or-board journeys pass | J1, J2 |
-| QR-15 | Part 3 runs | FIX-1639's own goal check passes as its merged spec names it, with its control failing. Any other child Linear lists as merged and blocking has its check re-run too; canceled ones have none | P3 |
-| QR-16 | Part 4 runs | Each row holds, and each *not done if* state is shown absent | P4 |
+| QR-15 | Part 3 runs | FIX-1639's check is skipped where part 1 walks it; only the parts the reader leg doesn't reach are re-run, if any. Any other child Linear lists as merged and blocking has its check re-run; canceled ones have none | [Part 3](PLAN.md#checks) |
+| QR-16 | Part 4 runs | Its four checks hold. Term disagreements are reported as contradictions only | [Part 4](PLAN.md#part-4--gap-sweep) |
 
 ## What happens to a finding
 

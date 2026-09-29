@@ -15,16 +15,18 @@ node specs/issues/FIX-1642/poc/page-key-scan/scan.mjs /tmp/page-draft.md --quote
 node specs/issues/FIX-1642/poc/page-key-scan/scan.mjs /tmp/page-draft.md --quoted --plant 'bullmqWorker({ connection, inlineDispatch: true })'
 node specs/issues/FIX-1642/poc/page-key-scan/scan.mjs /tmp/page-draft.md --quoted --plant 'refused: "queue-host"'
 node specs/issues/FIX-1642/poc/page-key-scan/scan.mjs /tmp/page-draft.md --quoted --plant 'schedules.static.<id>.priority'
+node specs/issues/FIX-1642/poc/page-key-scan/scan.mjs /tmp/page-draft.md --quoted --plant 'GET /api/flows/:flowKind/webhooks/:provider'
 ```
 
 **What it showed, on `main` at c63ee231:**
 
 | Run | Result |
 |---|---|
-| The draft page, as written | PASS, 36 of 36 tokens: exports, config keys, both mounted routes, the `@flow-state-dev/bullmq/schedules` entry, the three worker modes, `refused: "external-dispatcher"` |
+| The draft page, as written | PASS, 36 of 36 tokens: exports, config keys, both mounted routes (method and path), the `@flow-state-dev/bullmq/schedules` entry, the three worker modes, `refused: "external-dispatcher"` |
 | Planted `inlineDispatch` on `bullmqWorker` | FAIL, names `inlineDispatch` |
 | Planted `refused: "queue-host"` | FAIL, names `"queue-host"` |
 | Planted `schedules.static.<id>.priority` | **PASS, wrongly.** `priority` is a real option, of BullMQ's enqueue options, not of a schedule |
+| Planted `GET` on the webhook route | FAIL, names `GET /api/flows/:flowKind/webhooks/:provider`: only `POST` is mounted there. Routes are compared as method and path together |
 
 **So.** The premise holds for an invented name: 76 entry points, the routes and the literals are
 enough to resolve every token the draft names, and the totality rule works. It fails for a real

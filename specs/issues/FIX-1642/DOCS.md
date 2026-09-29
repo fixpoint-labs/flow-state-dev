@@ -10,8 +10,8 @@ publishes nothing a user of the framework reads.
   [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met) in the `goals/README.md`
   format. It is not site content.
 - **What it checks** is the keeping-flows-alive page and every page it links, followed as
-  written, and the pages the set changed ([PLAN.md → Part 4](PLAN.md#part-4--gap-sweep)). A page
-  that fails is a finding, fixed on its own route, never edited in the closure PR.
+  written, plus a noun grep over `apps/docs` ([PLAN.md → Part 4](PLAN.md#part-4--gap-sweep)). A
+  page that fails is a finding, fixed on its own route, never edited in the closure PR.
 - **The CI step's failure message** is contributor-facing: it names the token, the type it was
   resolved against, and the page line. That wording is the implementer's.
 - **The epic's docs polish** runs at wrap, after this issue closes. It is not this issue's.

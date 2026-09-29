@@ -9,9 +9,9 @@
  *
  * No dependencies: a regex walk of each shipped package's `exports` entries
  * (following `export … from`), a property-name index, a string-literal index
- * and the mounted route templates. The committed check replaces the property
- * index with the TypeScript checker, rooted at the call each key is passed to
- * (see PLAN.md → the scan); this POC only shows the shape holds.
+ * and the mounted routes, each as method + path. The committed check replaces
+ * the property index with the TypeScript checker, rooted at the call each key
+ * is passed to (see PLAN.md → the scan); this POC only shows the shape holds.
  *
  * Usage:
  *   node scan.mjs <page.md> [--quoted] [--plant "<token>"]
@@ -95,7 +95,8 @@ for (const pkg of readdirSync(join(ROOT, "packages"))) {
     // Method signatures on builders and interfaces (`sideChain(`, `tap<T>(`) are keys a page may name too.
     for (const m of text.matchAll(/^\s*(?:readonly\s+)?([A-Za-z_$][\w$]*)\??\s*(?:<[^>\n]*>)?\(/gm)) properties.add(m[1]);
     for (const m of text.matchAll(/["']([\w-]+)["']/g)) literals.add(m[1]);
-    for (const m of text.matchAll(/path:\s*`\$\{basePath\}([^`]+)`/g)) routes.add(normRoute(m[1]));
+    // A route is its method and its path together: a page's `GET` on a POST-only path must fail.
+    for (const m of text.matchAll(/method:\s*"(GET|POST|PUT|PATCH|DELETE)",\s*path:\s*`\$\{basePath\}([^`]+)`/g)) routes.add(`${m[1]} ${normRoute(m[2])}`);
   }
 }
 
@@ -110,7 +111,6 @@ const tokens = [...new Set([...text.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]))]
 if (plant) tokens.push(plant);
 
 // ---- classify every token (totality) ---------------------------------------
-const PLACEHOLDER = /^<[^>]+>$/;
 const failures = [];
 const report = [];
 
@@ -124,7 +124,7 @@ function classify(tok) {
   const t = tok.trim();
   let m;
   if ((m = t.match(/^(@flow-state-dev\/[\w-]+(?:\/[\w-]+)?)$/))) return exportsBySpecifier.has(m[1]) ? ["package entry"] : [null, m[1]];
-  if ((m = t.match(/^(GET|POST|PUT|DELETE)\s+(\/\S+)$/))) return routes.has(normRoute(m[2])) ? ["route"] : [null, m[2]];
+  if ((m = t.match(/^(GET|POST|PUT|PATCH|DELETE)\s+(\/\S+)$/))) return routes.has(`${m[1]} ${normRoute(m[2])}`) ? ["route"] : [null, `${m[1]} ${m[2]}`];
   if ((m = t.match(/^([A-Za-z_$][\w$]*):\s*"([\w-]+)"$/))) {
     if (!properties.has(m[1])) return [null, m[1]];
     return literals.has(m[2]) ? ["key = literal"] : [null, `"${m[2]}"`];
