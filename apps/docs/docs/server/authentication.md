@@ -354,8 +354,9 @@ The framework resolves a principal through your hook on each of those
 requests, then checks that the principal owns what the URL addressed. A
 session or request belongs to the `userId` it was created under. A caller
 holding a valid credential for a different user gets a `404` for someone
-else's session, the same answer as for an id nobody has used, and a `403` for
-someone else's request. The record's organization is checked as well, so one
+else's session, the same answer as for an id nobody has used. Reading someone
+else's request, its status or its stream, gets the same answer an unused id
+does too. Acting on it, say resuming or aborting it, is refused. The record's organization is checked as well, so one
 person who belongs to two organizations cannot reach the first one's session
 while acting for the second:
 
@@ -457,7 +458,7 @@ configured, the request routes check the caller against the user and
 organization stored on the request, not against knowing the id. Asking for
 their request's status or stream gets you the same `404` an id nobody has used
 gets, so the answer doesn't even say the id is taken. Acting on it, say
-resuming or aborting it, is refused with a `403`.
+resuming or aborting it, is refused.
 
 Session ids are addresses too, and they turn up in URLs all the time. With a
 resolver configured, if another user already has a session under the id you

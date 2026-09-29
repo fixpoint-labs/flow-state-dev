@@ -34,6 +34,7 @@ import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { normalizeResourceState } from "../resources/normalize-resource-state";
 import { sortItemsChronologically } from "../utils/sort";
+import { resolveRequestReplayCursor } from "../streaming/resume";
 
 export const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8"
@@ -117,6 +118,48 @@ export async function loadTenantSession(
  */
 export function unknownSessionResponse(sessionId: string): Response {
   return jsonResponse(404, { error: `Unknown session "${sessionId}"` });
+}
+
+/**
+ * What the request status route answers for a request the caller cannot
+ * see: an id no one has used, another flow's request, and (from the route
+ * guard) another user's. One copy, so all three match character for
+ * character and the answer never says whether the id is in use. Its words
+ * differ from the stream's own not-found; each route keeps its own.
+ */
+export function unknownRequestStatusResponse(requestId: string): Response {
+  return jsonResponse(404, { error: `Request "${requestId}" not found` });
+}
+
+/**
+ * What the request stream answers for an id with no request and no events
+ * behind it, and (from the route guard) for a request the caller may not
+ * read, so the two cannot be told apart. An unknown flow is named first, as
+ * the handler names it. Otherwise: without a resume cursor, a 404; with one,
+ * an empty 200, because a resuming client that already consumed the whole
+ * log is owed "nothing new" rather than a spurious 404.
+ */
+export function unknownRequestStreamResponse(
+  request: Request,
+  route: { flowKind: string; requestId: string },
+  registry: Pick<FlowRegistry, "get">
+): Response {
+  if (registry.get(route.flowKind) === undefined) {
+    return jsonResponse(404, {
+      error: `Unknown flow "${route.flowKind}"`
+    });
+  }
+  const cursor = resolveRequestReplayCursor({
+    requestId: route.requestId,
+    lastEventId: request.headers.get("last-event-id"),
+    startingAfter: new URL(request.url).searchParams.get("starting_after")
+  });
+  if (cursor.sequenceNumber === undefined) {
+    return jsonResponse(404, {
+      error: `Unknown request "${route.requestId}"`
+    });
+  }
+  return new Response("", { status: 200, headers: SSE_HEADERS });
 }
 
 /**

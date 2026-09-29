@@ -32,7 +32,8 @@ import {
   getString,
   jsonResponse,
   parseJsonBody,
-  SSE_HEADERS
+  SSE_HEADERS,
+  unknownRequestStreamResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -72,37 +73,6 @@ function shouldEmitToWire(
   return true;
 }
 
-
-/**
- * What the request stream answers for an id with no request and no events
- * behind it, and (from the route guard) for another user's request, so the
- * two cannot be told apart. An unknown flow is named first, as the handler
- * names it. Otherwise: without a resume cursor, a 404; with one, an empty
- * 200, because a resuming client that already consumed the whole log is
- * owed "nothing new" rather than a spurious 404.
- */
-export function unknownRequestStreamResponse(
-  request: Request,
-  route: Extract<ParsedFlowRoute, { kind: "request_stream" }>,
-  registry: Pick<FlowRegistry, "get">
-): Response {
-  if (registry.get(route.flowKind) === undefined) {
-    return jsonResponse(404, {
-      error: `Unknown flow "${route.flowKind}"`
-    });
-  }
-  const cursor = resolveRequestReplayCursor({
-    requestId: route.requestId,
-    lastEventId: request.headers.get("last-event-id"),
-    startingAfter: new URL(request.url).searchParams.get("starting_after")
-  });
-  if (cursor.sequenceNumber === undefined) {
-    return jsonResponse(404, {
-      error: `Unknown request "${route.requestId}"`
-    });
-  }
-  return new Response("", { status: 200, headers: SSE_HEADERS });
-}
 
 export async function handleRequestStream(
   request: Request,

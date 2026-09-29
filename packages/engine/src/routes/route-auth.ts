@@ -32,12 +32,12 @@ import {
   jsonResponse,
   loadTenantSession,
   refuseUnattributedRecord,
+  unknownRequestStatusResponse,
+  unknownRequestStreamResponse,
   unknownSessionResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { flowAuthenticates } from "./instance-caller";
-import { unknownRequestStatusResponse } from "./request-status-routes";
-import { unknownRequestStreamResponse } from "./stream-routes";
 
 /** Wiring the guard needs; all of it is already built by `createFlowRouteHandlers`. */
 export type RouteAuthContext = {
@@ -398,7 +398,19 @@ export async function authorizeManagementRoute(
       // carries the same `userId` — keeps that window authorized instead of
       // letting it through unchecked.
       const active = await ctx.stores.activeRequests.get(subject.requestId);
-      if (active === undefined) return ALLOWED;
+      if (active === undefined) {
+        // No record and no in-flight entry: nothing names an owner. The stream
+        // would still replay an event log that outlived its record (evicted
+        // by retention, or older than event cleanup), by id alone, to
+        // whoever asks. In an app that authenticates, no caller can be
+        // checked against a log with no owner, so it is answered as an id
+        // nobody has used, its owner included. Every other request route
+        // has nothing to serve without a record, and answers that itself.
+        if (route.kind === "request_stream") {
+          return { denied: unknownRequestStreamResponse(request, route, ctx.registry) };
+        }
+        return ALLOWED;
+      }
       const resolved = ownerFlowOf(ctx, active);
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;

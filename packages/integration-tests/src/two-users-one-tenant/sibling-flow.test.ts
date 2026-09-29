@@ -55,6 +55,13 @@ const vault = defineFlow({
   }
 });
 
+/** Keeps one item of history per session, so an older request's record is evicted. */
+const diary = defineFlow({
+  kind: "diary",
+  actions: { write: writeAction("diary") },
+  session: { retention: { maxItems: 1 } }
+});
+
 const SESSION = "s_mixed";
 const NOTE_TEXT = "alice's shopping list";
 const VAULT_SECRET = "alice's vault combination";
@@ -62,7 +69,7 @@ const VAULT_SECRET = "alice's vault combination";
 let server: TwoUserServer;
 
 beforeEach(async () => {
-  server = await startTwoUserServer([notes(), vault()]);
+  server = await startTwoUserServer([notes(), vault(), diary()]);
 });
 
 afterEach(async () => {
@@ -200,5 +207,37 @@ describe("a request id another user in the tenant knows", () => {
     // Still Alice's, as it was.
     const own = await alice(path.replace(":id", aliceRequestId).split("?")[0]!);
     expect(own.status).toBe(200);
+  });
+});
+
+describe("a request whose record is gone but whose events remain", () => {
+  it("answers the second user as an unused id, not with the owner's replay", async () => {
+    const alice = server.as("alice");
+    const bob = server.as("bob");
+
+    // Alice's first entry, then a second whose retention evicts the first's record.
+    const first = await alice(`/diary/s_diary/actions/write`, {
+      method: "POST",
+      body: JSON.stringify({ input: { text: NOTE_TEXT } })
+    });
+    expect(first.status).toBe(202);
+    const firstId = first.headers.get("x-request-id")!;
+    expect(await settled(alice, "diary", firstId)).toBe("completed");
+    const second = await alice(`/diary/s_diary/actions/write`, {
+      method: "POST",
+      body: JSON.stringify({ input: { text: "a later entry" } })
+    });
+    expect(second.status).toBe(202);
+    const secondId = second.headers.get("x-request-id")!;
+    expect(await settled(alice, "diary", secondId)).toBe("completed");
+    await waitFor(async () => {
+      const status = await alice(`/diary/requests/${firstId}/status`);
+      return status.status === 404 ? true : undefined;
+    }, "the first request's record to be evicted");
+
+    const unused = await answer(bob, `/diary/requests/req_unused/stream`, "req_unused");
+    const evicted = await answer(bob, `/diary/requests/${firstId}/stream`, firstId);
+    expect(evicted).toEqual(unused);
+    expect(evicted.body).not.toContain(NOTE_TEXT);
   });
 });

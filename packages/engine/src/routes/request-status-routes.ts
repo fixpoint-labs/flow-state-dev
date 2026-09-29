@@ -11,23 +11,13 @@ import type { RequestStatusSnapshot } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
-import { jsonResponse } from "./route-utils";
+import { jsonResponse, unknownRequestStatusResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 type RequestStatusRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
 };
-
-/**
- * What the status route answers for a request the caller cannot see: an id
- * no one has used, another flow's request, and (from the route guard)
- * another user's. One copy, so all three match character for character and
- * the answer never says whether the id is in use.
- */
-export function unknownRequestStatusResponse(requestId: string): Response {
-  return jsonResponse(404, { error: `Request "${requestId}" not found` });
-}
 
 /**
  * GET /api/flows/:flowKind/requests/:requestId/status
