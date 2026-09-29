@@ -355,8 +355,12 @@ requests, then checks that the principal owns what the URL addressed. A
 session or request belongs to the `userId` it was created under. A caller
 holding a valid credential for a different user gets a `404` for someone
 else's session, the same answer as for an id nobody has used. Someone else's
-request gets that same `404` when the call would retry, continue, resume or
-abort it, and a `403` when it reads the request's status or stream. The record's organization is checked as well, so one
+request gets that same `404`, whether the call reads its status or stream or
+would retry, continue, resume or abort it. A request stream resumed from a
+cursor (`starting_after` or `Last-Event-ID`) is the one read that answers
+differently for an unused id, with an empty `200`, and someone else's request
+gets that too. Creating a session is the one write that shows an id is taken:
+it answers `409` whoever holds the id. The record's organization is checked as well, so one
 person who belongs to two organizations cannot reach the first one's session
 while acting for the second:
 
@@ -407,9 +411,10 @@ request in the path, and the framework loads that record and checks its owner
 before your handler runs. `GET
 /api/flows/sessions/:sessionId/children` — the [sessions started
 under](./background-work.md) a conversation — is one of these. Its answer is
-scoped to the addressed conversation's owner, tenant, org and flow, all read
-from the stored record, so a child inherits the parent conversation's access
-rules rather than getting its own.
+scoped to the addressed conversation's owner, tenant and org, all read from the
+stored record, so a child inherits the parent conversation's access rules
+rather than getting its own. It is not scoped to a flow: work the conversation
+handed to another flow is listed too.
 
 The flow that governs such a read is the one recorded as the record's owner,
 not one the caller names. A session created through `review-east` is checked by
@@ -426,6 +431,12 @@ address and the stored owner have to agree before the resolver is consulted:
 
 The owner id is an address, not an authorization. Knowing that a session is
 `review-east`'s gives a caller nothing the resolver would not grant anyway.
+
+A session's request history keeps to its owning flow. Its request list, its
+state with items, and its stream show only requests that flow ran, so passing a
+session's check never gets a caller another flow's requests or items. The
+sessions it started are listed as the children route lists them, in its
+stream too, including work handed to another flow.
 
 No endpoint on the flow API enumerates across owners. A caller reaches
 background work through the conversation that started it; there is no mode that
@@ -449,10 +460,14 @@ An id tells the framework where to look. It never says who owns what's there.
 If another user already has a request under `req_7f3a`, your call still
 succeeds, as your own request, under an id the response gives you in the
 `x-request-id` header and the 202 body. Their request is untouched, and sending
-`req_7f3a` again lands on that same request of yours. Reading their request's
-stream or status, or resuming it, is refused: with a resolver configured, those
-routes check the caller against the user and organization stored on the
-request, not against knowing the id.
+`req_7f3a` again lands on that same request of yours. With a resolver
+configured, the request routes check the caller against the user and
+organization stored on the request, not against knowing the id. Anything you
+ask of their request, its status, its stream, a retry, a continue, a resume or
+an abort,
+gets you the same answer an id nobody has used gets, so it doesn't even say the
+id is taken. That's a `404`, except for a stream you resume from a cursor,
+which answers an empty `200` either way.
 
 Session ids are addresses too, and they turn up in URLs all the time. With a
 resolver configured, if another user already has a session under the id you
