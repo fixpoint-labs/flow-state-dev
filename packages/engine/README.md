@@ -323,7 +323,8 @@ and the debug endpoints resolve a principal the same way, and additionally
 require that principal to own the session or request the URL addresses. Another
 user's session or request is answered exactly as an id nobody has used (a
 `404`, or an empty `200` on a request stream resumed from a cursor), on every
-session and request route. Endpoints that span every flow (`GET /sessions`,
+route that addresses an existing session or request. Creating a session is the
+exception: an id already in use answers `409`, whoever holds it. Endpoints that span every flow (`GET /sessions`,
 `GET /active-requests`) resolve through the host-level fallback and scope their
 results to the caller. Reached without one, they return rows from flows with no
 resolver of their own to any caller. Either way, a row owned by a flow instance
