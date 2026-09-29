@@ -33,7 +33,7 @@ this issue discharges it.
 
 The fence paragraph, the table's third column and the reference refusal row all say the same
 thing, in the same words where they overlap. They describe today's behavior and are owned by the
-worker-queue epic FIX-1635: when its FIX-1634 ships, all three are rewritten or removed (ER-14,
+hard-gates epic FIX-1635: when its FIX-1634 ships, all three are rewritten or removed (ER-14,
 [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656)).
 
 ## What the page never teaches

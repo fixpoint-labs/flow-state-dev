@@ -12,18 +12,20 @@
  *     reference page that already publishes it.
  *  3. TOTALITY: a span with no classification fails the run. A new name added to the page
  *     without a check here is a failure, not a pass.
- *  4. ROUTE: a concrete `/api/flows/<segment>/…` route on the page names a flow the page's
+ *  4. ROUTE: a concrete `/api/flows/<segment>/…` route on the page names a `kind` the page's
  *     code declares. The segment is the registered instance's id, which for a singleton is
- *     its `kind`; `createFlowState` registers `Object.values(flows)`, so the map key is not
- *     the address. Checked against the engine and core source that make it so.
+ *     its `kind`; the `flows` map key is not the address. Proved at runtime, once per run: a
+ *     `kind: "billing"` flow registered as `flows: { payments: billing() }` answers a webhook
+ *     at `/api/flows/billing/…` and 404s `flow_not_found` at `/api/flows/payments/…`.
  *
  * Controls, each must FAIL:
  *   CONTROL=planted       the page gains `notifyTopic`, classified as a core export
  *   CONTROL=unclassified  the page gains `madeUpOption` with no classification
  *   CONTROL=false-option  the page gains `dispatcher({ delay })`, classified as a dispatcher
  *                         option: proves the type walk rejects an option that doesn't exist
- *   CONTROL=wrong-segment the page gains a webhook route addressed by a map key the page's
- *                         code never declares as a kind (`payments`)
+ *   CONTROL=wrong-segment the page's host registers the flow as `flows: { payments: billing() }`
+ *                         and gains a webhook route addressed by that map key (`payments`),
+ *                         which is not the flow's kind
  *
  * Run from the repo root:  pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
  * After publishing:         PAGE=apps/docs/guides/keeping-a-flow-running.md pnpm exec tsx …
@@ -50,7 +52,10 @@ let quoted = PAGE
 if (CONTROL === "planted") quoted.push("Subscribe other flows with `notifyTopic`.");
 if (CONTROL === "unclassified") quoted.push("Set `madeUpOption` on the host.");
 if (CONTROL === "false-option") quoted.push("Send it later with `dispatcher({ delay })`.");
-if (CONTROL === "wrong-segment") quoted.push("Point Stripe at `POST /api/flows/payments/webhooks/stripe`.");
+if (CONTROL === "wrong-segment") {
+  quoted = quoted.map((l) => l.replace("flows: { billing: billing() }", "flows: { payments: billing() }"));
+  quoted.push("Point Stripe at `POST /api/flows/payments/webhooks/stripe`.");
+}
 
 const fences: string[] = [];
 const prose: string[] = [];
@@ -144,17 +149,63 @@ const S = (file: string, text: string): Check => () => {
   const p = join(ROOT, file);
   return existsSync(p) && readFileSync(p, "utf8").includes(text) ? null : `"${text}" not in ${file}`;
 };
+/**
+ * What addresses `/api/flows/<segment>/…` on the shipped runtime: a `kind: "billing"` flow
+ * registered under the map key `payments`, then one webhook POST to each segment.
+ */
+async function probeRouteAddress(): Promise<{ kind: number; mapKey: number }> {
+  const { z } = await import("zod");
+  const core = await import("../../../../../packages/core/src/index.ts");
+  const engine = await import("../../../../../packages/engine/src/index.ts");
+  const quiet = { log: console.log, info: console.info, warn: console.warn, debug: console.debug };
+  console.log = console.info = console.warn = console.debug = () => {};
+  try {
+    const work = core.handler({ name: "work", inputSchema: z.object({}), outputSchema: z.object({}),
+      execute: async () => ({}) });
+    const billing = core.defineFlow({
+      kind: "billing", actions: {},
+      authentication: { defaultUserId: "system", requireUser: false },
+      webhooks: { stripe: { on: { "invoice.paid": core.defineWebhookBinding({ block: work, input: () => ({}) }) } } }
+    });
+    const state = engine.createFlowState({
+      flows: { payments: billing() },
+      stores: { default: { primary: engine.inMemoryStores() } },
+      adapters: [engine.createWebhookTransportAdapter({
+        providers: { stripe: { verify: () => true, eventType: (p) => (p as { type: string }).type } }
+      })]
+    });
+    const router = await state.getRouter();
+    const post = async (seg: string) => (await router.POST(
+      new Request(`http://localhost/api/flows/${seg}/webhooks/stripe`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "invoice.paid" })
+      }),
+      { params: { path: [seg, "webhooks", "stripe"] } }
+    )).status;
+    const result = { kind: await post("billing"), mapKey: await post("payments") };
+    await new Promise((r) => setTimeout(r, 20));
+    await state.dispose();
+    return result;
+  } finally {
+    Object.assign(console, quiet);
+  }
+}
+const ROUTE_PROBE = await probeRouteAddress();
+
 /** The route's flow segment is a `kind` the page's code declares (singleton id = kind). */
 const ROUTE = (span: string): Check => () => {
   const seg = /\/api\/flows\/([^/]+)\//.exec(span)?.[1];
   const kinds = new Set(fences.flatMap((f) => [...f.matchAll(/kind:\s*"([^"]+)"/g)].map((m) => m[1]!)));
+  const mapKeys = new Set(fences.flatMap((f) => [...f.matchAll(/flows:\s*\{\s*(\w+):/g)].map((m) => m[1]!)));
   if (seg === undefined) return `no flow segment in ${span}`;
-  if (!kinds.has(seg)) return `segment "${seg}" is not a kind the page declares (${[...kinds].join(", ")})`;
-  const why =
-    S("packages/engine/src/flowstate/createFlowState.ts", "for (const flow of Object.values(options.flows))")() ??
-    S("packages/engine/src/registry/flow-registry.ts", "this.flowsById.set(flow.id, flow)")() ??
-    S("packages/core/src/flow/defineFlow.ts", "return suppliedId ?? flowKind;")();
-  return why;
+  if (ROUTE_PROBE.kind !== 202 || ROUTE_PROBE.mapKey !== 404) {
+    return `the runtime no longer addresses the route by kind (kind → ${ROUTE_PROBE.kind}, map key → ${ROUTE_PROBE.mapKey})`;
+  }
+  if (!kinds.has(seg)) {
+    return `segment "${seg}" is not a kind the page declares (${[...kinds].join(", ")})` +
+      (mapKeys.has(seg) ? `; it is the \`flows\` map key, which the route ignores` : "");
+  }
+  return null;
 };
 const PKG = (spec: string): Check => () => (existsSync(join(pkgDir(spec), "package.json")) ? null : `${spec} missing`);
 
@@ -186,6 +237,8 @@ const MANIFEST: Record<string, Check[]> = {
   dispatchLocal: [P("@flow-state-dev/engine", "InProcessDispatcher", "dispatchLocal"),
     S("packages/engine/src/transports/host/createInboundTransportHost.ts", '"dispatchLocal" in effectiveDispatcher')],
   adapters: [P("@flow-state-dev/engine", "CreateFlowStateOptions", "adapters")],
+  flows: [P("@flow-state-dev/engine", "CreateFlowStateOptions", "flows")],
+  kind: [P("@flow-state-dev/core", "FlowDefinition", "kind"), ROUTE("POST /api/flows/billing/webhooks/stripe")],
   "authentication.resolvePrincipal": [P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal")],
   resolvePrincipal: [P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal")],
   "ctx.source": [P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal", "(0)", "source")],

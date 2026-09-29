@@ -93,8 +93,9 @@ Frontmatter: `title: Keeping a flow running`, `sidebar_label: Keeping a flow run
 > });
 > ```
 >
-> Point Stripe at `POST /api/flows/billing/webhooks/stripe`. A delivery with a bad signature is
-> refused before any block runs. A good one gets a `202` straight away, and the run carries on
+> Point Stripe at `POST /api/flows/billing/webhooks/stripe`. The path names the flow by its
+> `kind`, not by its key in `flows`. A delivery with a bad signature is refused before any
+> block runs. A good one gets a `202` straight away, and the run carries on
 > after the response has gone, so a slow block never makes the provider retry.
 >
 > That holds on a server that stays up. A serverless host such as Vercel freezes the function
@@ -205,7 +206,7 @@ Frontmatter: `title: Keeping a flow running`, `sidebar_label: Keeping a flow run
 > |---|---|---|
 > | `{ key: (input) => string }` | a session derived from the key, created on first use | Works |
 > | `{ id: (input) => string }` | a session that already exists | Refused before anything starts |
-> | `{ from: true }` | the session that dispatched this run, as a reply | Refused when the run is on a process that hands work to the queue |
+> | `{ from: true }` | the session that dispatched this run, as a reply | Refused when the run sending it is on a process that hands work to the queue; in process from a `worker-only` worker |
 >
 > On a host whose dispatcher hands work to an external queue, such as `bullmqWorker` in
 > `colocated` or `dispatch-only` mode, or a custom dispatcher without `dispatchLocal`, a
@@ -333,4 +334,6 @@ Contributor docs, not published. Append one sentence to the bullet:
 ## Ownership
 
 FIX-1639 publishes everything above. The fence rows, the fence paragraph and the refusal row
-are owned by the worker-queue epic: [EVOLUTION → Owned elsewhere](EVOLUTION.md).
+are owned by the hard-gates epic [FIX-1635](https://linear.app/fixpoint-labs/issue/FIX-1635), whose
+FIX-1634 changes the behavior they describe; [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656)
+tracks their rewrite. See [EVOLUTION → Owned elsewhere](EVOLUTION.md).

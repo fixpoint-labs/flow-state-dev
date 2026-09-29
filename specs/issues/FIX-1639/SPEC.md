@@ -55,7 +55,7 @@ One page in the nav, five one-line edits beside it, and everything below the fen
   | `session` | Runs in | On a host that hands work to a queue |
   | `{ key: (input) => string }` | a session derived from the key | Works |
   | `{ id: (input) => string }` | a session that already exists | Refused before anything starts |
-+ | `{ from: true }` | the session that dispatched this run, as a reply | Refused when the run is on a process that hands work to the queue |
++ | `{ from: true }` | the session that dispatched this run, as a reply | Refused when the run sending it is on a process that hands work to the queue; in process from a `worker-only` worker |
 
 - If your work has to reach a session that already exists, run dispatch in process for that
 - flow, or design the hand-off so the receiving side starts from a key.
@@ -66,7 +66,7 @@ One page in the nav, five one-line edits beside it, and everything below the fen
 
 ## What stays as it is
 
-- **The refusal.** The page states it; FIX-1634, under the worker-queue epic FIX-1635, owns
+- **The refusal.** The page states it; FIX-1634, under the hard-gates epic FIX-1635, owns
   changing it, and [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) tracks the
   page's rewrite when it lands.
 - **The reference pages and guides** it links: linked, and fixed only where they disagree with

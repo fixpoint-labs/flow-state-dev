@@ -14,7 +14,7 @@ package changes; BP-022).
 | S1 | `apps/docs/guides/keeping-a-flow-running.md` | **Create** from [DOCS.md](DOCS.md), through `docs-writer` then `docs-editor` | BR-1–BR-14, BR-18 |
 | S2 | `apps/docs/sidebarsGuides.ts` | Insert the page as a top-level item directly before the `Webhooks` category (D2) | BR-1 |
 | S3 | `apps/docs/docs/advanced/inbound-transports.md` · *Known sources*, and `docs/architecture/inbound-transports.md` · the same table | Reword the `notification` row in both, same words; keep the value in the list above it | ER-9 |
-| S4 | `apps/docs/docs/server/background-work.md` · refusal table | `external-dispatcher` row names `id` and a `{ from: true }` reply from a process that enqueues (D1) | ER-9 |
+| S4 | `apps/docs/docs/server/background-work.md` · refusal table | `external-dispatcher` row names `id` and a `{ from: true }` reply from a process that enqueues, and says a `worker-only` worker's reply goes in process (D1) | ER-9 |
 | S5 | `background-work.md` guide, `webhooks.md`, `scheduled.md` | One link each, nothing else | ER-9 |
 | S6 | `docs/contributing/orchestration.md` · the `epic-wake` bullet | Append the one sentence in DOCS.md | ER-8 |
 
@@ -46,7 +46,7 @@ V0, V1 and V2 each run once, in the implementation PR: V0 on DOCS.md before writ
 on the final page. No goal check: docs only ([SPEC](SPEC.md#the-goal-and-how-well-know-its-met)).
 
 Second path (BP-035): F5 is the other topology (a `worker-only` worker), and `names.mts`'s
-`CONTROL=wrong-segment` checks a route addressed by something other than the flow's `kind`.
+`CONTROL=wrong-segment` checks a route addressed by the `flows` map key rather than the flow's `kind`.
 
 ## Pinned names
 

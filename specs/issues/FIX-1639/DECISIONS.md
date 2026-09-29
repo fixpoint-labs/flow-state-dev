@@ -79,6 +79,9 @@ It comes down to what the page opens with: filed under *Background work*, webhoo
   Raised in Codex review of #2403; the epic's ER-4 (#2394) carries the same condition.
 - **A webhook whose `sessionId` names an existing session still runs on a queue host** —
   **CONFIRMED**, F4. The refusal is a flow-to-flow delivery rule, not a transport one.
+- **A webhook or schedule route names the flow by its `kind`, not its key in `flows`** —
+  **CONFIRMED** on the runtime: a `kind: "billing"` flow registered as `payments` answers at
+  `/api/flows/billing/…` and 404s at `/api/flows/payments/…`. `names.mts` re-proves it each run.
 - **Every name the draft uses resolves on `main`, and every code fence compiles** —
   **CONFIRMED**, with a control each that fails on what it plants.
   [poc/page-facts](poc/page-facts/README.md).
@@ -95,8 +98,8 @@ It comes down to what the page opens with: filed under *Background work*, webhoo
 - **Amendment** — Codex review of #2403: D1 narrowed to the process that runs the reply (F5);
   the samples fixed to compile (`actions`, an instantiated flow, an `orgId`, a typed key) and a
   compile check added; `onBackgroundWork` for serverless hosts; the architecture doc's
-  `notification` row added to S3; V1 for S3/S4 made a targeted row check. The fence rows are
-  owned by the worker-queue epic FIX-1635; [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656)
-  tracks their rewrite.
+  `notification` row added to S3; V1 for S3/S4 made a targeted row check; the route segment
+  proved to be the flow's `kind`. The fence rows are owned by the hard-gates epic FIX-1635;
+  [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) tracks their rewrite.
 
 **Open: none.**
