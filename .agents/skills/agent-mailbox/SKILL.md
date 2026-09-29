@@ -229,8 +229,8 @@ Then hand it to **`fsd-qa`**, which pulls the branch and runs the check on a loc
 2. **Post one `kind: ask`, `to: fsd-qa`**, answerable without our repo open: the repository
    and branch, **the commit SHA to test**, the setup and run commands, what PASS looks like
    (the goal's Signal), the control that must FAIL and how to switch it on, and what to send
-   back: PASS or FAIL per leg, the control's FAIL, the SHA it tested, and a screenshot or log
-   excerpt as evidence.
+   back: PASS or FAIL per leg, the control's FAIL with the assertions it named, the SHA it
+   tested, and a screenshot or log excerpt as evidence.
 3. **The reply is the verdict.** Quote it in the implementation PR's goal verdict with a link
    to the comment. It counts only for the SHA it names; after a new push, ask again.
 4. **Silence is not a result.** Mailbox delivery is best-effort, so on each wake read the

@@ -7,7 +7,7 @@
 **Anti-game:** <what a hollow pass would look like, and what the check must NOT assert on. Required.>
 **Model:** real — openai/gpt-5.4-mini
 **Run:** `pnpm tsx goals/<describe>/<it>/run.mts`
-**Controls:** <`GOAL_CONTROL=<name>` on the same command, and the legs it must fail. Omit if none.>
+**Controls:** <`GOAL_CONTROL=<name>` on the same command, and the assertions it must fail, by name. Omit if none.>
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
