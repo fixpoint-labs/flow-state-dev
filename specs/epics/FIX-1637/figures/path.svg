@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 344" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path, as of 29 September 2026. An input lane for FIX-1634 under FIX-1635, Backlog, which nothing here waits on. This epic spec in review, ending at the now line and the gate. FIX-1639's spec and then the page, after the gate. FIX-1638 and FIX-1640 with no bars, marked as a proposed fold pending D1. The closure FIX-1642: its QA plan written beside FIX-1639, and its run after the page merges. The critical path runs gate, FIX-1639 spec, the page, the closure run.">
+<svg viewBox="0 0 940 386" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path, as of 29 September 2026. An input lane for FIX-1634 under FIX-1635, Backlog, which nothing here waits on. This epic spec in review, ending at the now line and the gate. FIX-1639's spec and then the page, after the gate. FIX-1638 and FIX-1640 with no bars, marked as a proposed fold pending D1. FIX-1641, the wake authoring examples, in flight with its PR in review, beside the page and off the critical path. The closure FIX-1642: its QA plan written beside FIX-1639, and its run after the page merges. The critical path runs gate, FIX-1639 spec, the page, the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -24,13 +24,13 @@
              font-size:9.5px; letter-spacing:.06em; }
     .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="344"/>
+  <rect class="bg" x="0" y="0" width="940" height="386"/>
 
   <text class="t-lbl" x="16" y="18">THE PATH &#8212; ONE WRITER, ONE WAIT AT THE GATE</text>
   <path class="axis" d="M220 40 L924 40"/>
   <text class="t-now" x="330" y="32">now &#183; 29 Sep &#183; gate</text>
   <text class="t-s" x="600" y="32">ahead &#183; not scheduled</text>
-  <path class="now" d="M380 40 L380 304"/>
+  <path class="now" d="M380 40 L380 346"/>
 
   <g id="input">
     <text class="t-in" x="16" y="70">FIX-1634 &#183; input</text>
@@ -56,13 +56,20 @@
     <text class="t-ln" x="16" y="238">FIX-1640 &#183; terms</text>
     <text class="t-g" x="396" y="238">proposed fold into FIX-1639 &#183; pending D1</text>
   </g>
-  <g id="closure">
-    <text class="t-ln" x="16" y="280">FIX-1642 &#183; closure</text>
+  <g id="poc">
+    <text class="t-ln" x="16" y="280">FIX-1641 &#183; wake POC</text>
+    <rect class="flight" x="300" y="266" width="80" height="22" rx="3"/>
+    <text class="t-w" x="306" y="281">examples</text>
     <rect class="todo" x="396" y="266" width="150" height="22" rx="3"/>
-    <text class="t-s" x="404" y="281">QA plan</text>
-    <rect class="todo" x="732" y="266" width="170" height="22" rx="3"/>
-    <text class="t-s" x="740" y="281">run on one main commit</text>
+    <text class="t-s" x="404" y="281">review &#183; #2369</text>
   </g>
-  <path class="crit" d="M380 109 L396 151 M724 151 L740 266"/>
-  <text class="t-g" x="16" y="330">Critical path: gate &#8594; FIX-1639 spec &#8594; the page &#8594; the closure run. A re-split adds two lanes beside FIX-1639, not after it.</text>
+  <g id="closure">
+    <text class="t-ln" x="16" y="322">FIX-1642 &#183; closure</text>
+    <rect class="todo" x="396" y="308" width="150" height="22" rx="3"/>
+    <text class="t-s" x="404" y="323">QA plan</text>
+    <rect class="todo" x="732" y="308" width="170" height="22" rx="3"/>
+    <text class="t-s" x="740" y="323">run on one main commit</text>
+  </g>
+  <path class="crit" d="M380 109 L396 151 M724 151 L740 308"/>
+  <text class="t-g" x="16" y="372">Critical path: gate &#8594; FIX-1639 spec &#8594; the page &#8594; the closure run. A re-split adds two lanes beside FIX-1639, not after it.</text>
 </svg>

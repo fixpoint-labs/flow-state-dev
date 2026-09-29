@@ -87,7 +87,8 @@ It comes down to the export check: a canceled API on the page fails the Proof.
 ![Who owns what: eight rules by FIX-1639, FIX-1638, FIX-1640 and the closure FIX-1642. FIX-1639 owns the page, the fence statement, the project's verified-caller rule, the drift fixes and the contributor line; it owns the table and the terms under D1, with dashed cells showing FIX-1638 and FIX-1640 owning them, and FIX-1638 owning the verified-caller rule, if D1 re-splits. The closure owns the proof and consumes every other rule](figures/ownership.svg)
 
 Every rule has one owner today, the project's PR-1 included. The dashed cells are where
-ownership moves if the owner answers D1 with a re-split; nothing else changes.
+ownership moves if the owner answers D1 with a re-split; nothing else changes. FIX-1641 owns no
+rule and has no column: it consumes ER-6.
 
 ## Decided, not asked
 
@@ -103,6 +104,11 @@ ownership moves if the owner answers D1 with a re-split; nothing else changes.
   one reconciles them to what the reference pages do.
 - **The ops column names what fires, and links.** It never says how to deploy on a cloud. The
   per-scheduler and deploy guides already exist.
+- **FIX-1641's authoring shapes stay in the example.** Filed while this spec was written, with
+  its examples PR (#2369) already open: a `WORKER.md` wake block, today's flow-level bindings,
+  and a `wakes:` alias, each compiled by user-land code in `examples/wake-authoring` to the
+  bindings that ship. No framework API changes, so ER-6 holds. The page may link the example
+  and teaches neither as a framework feature. It blocks the closure like any child.
 - **The page lives in the guides site.** Placement in the sidebar is FIX-1639's; the closure
   starts from the nav, so it must be reachable there.
 
@@ -120,6 +126,7 @@ end-state check.
 - **Drafted (2026-09-29)** from the owner's PRD and the Architect's guidance on FIX-1637,
   FIX-1638, FIX-1639 and FIX-1640. Checking the guidance against `main` found FIX-441
   canceled (D3), a stale `notification` source row, and the per-scheduler guides already
-  published. Closure FIX-1642 filed.
+  published. Closure FIX-1642 filed. FIX-1641 (wake authoring POC) joined the same hour and
+  was wired to block it. Project rule PR-1 inherited from the project spec (#2367).
 
 **Open: D1.**
