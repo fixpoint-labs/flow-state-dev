@@ -1,0 +1,68 @@
+<svg viewBox="0 0 940 252" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The arc: four epic lanes from Aug 10 to Sep 29. The declared-surface epic, FIX-1127, ran from 15:37 to 23:56 UTC on Aug 12 and is done. Durable storage, FIX-1157, ran from Aug 13 to Aug 28 and is done. Verified identity, FIX-1503, had its direction approved on Sep 22 at 13:20 UTC and its bar runs to the now line with no child filed. Keeping flows alive, FIX-1637, was filed on Sep 29 and has no bar. The now line is Sep 29, 12:32 UTC.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .tick   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
+    .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .now    { stroke:var(--gone); stroke-width:1.6; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-lane { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
+  </style>
+
+  <!-- 13.5px per day: x = 200 + 13.5 * (days since Aug 10 00:00 UTC).
+       FIX-1127 Aug 12 15:37 = 235.8 to 23:56 = 240.5 · FIX-1157 Aug 13 23:15 = 253.6 to Aug 28 19:58 = 454.2
+       FIX-1503 spec merged Sep 22 13:20 = 788.0 · now Sep 29 12:32 = 882.0 -->
+  <g id="axis">
+    <text class="t-lbl" x="16" y="20">EPIC</text>
+    <text class="t-lbl" x="200" y="20">AUG 10</text>
+    <text class="t-lbl" x="335" y="20">AUG 20</text>
+    <text class="t-lbl" x="470" y="20">AUG 30</text>
+    <text class="t-lbl" x="605" y="20">SEP 9</text>
+    <text class="t-lbl" x="740" y="20">SEP 19</text>
+    <path class="axis" d="M200 30 H900"/>
+    <path class="tick" d="M200 30 V224 M335 30 V224 M470 30 V224 M605 30 V224 M740 30 V224 M875 30 V224"/>
+  </g>
+
+  <g id="declared-surface">
+    <text class="t-lane" x="16" y="56">declared surface</text>
+    <text class="t-s"    x="16" y="70">FIX-1127 · 3/3</text>
+    <rect class="done" x="235.8" y="42" width="4.7" height="26" rx="1"/>
+    <text class="t-s" x="250" y="59">one day · Aug 12 · wrapped</text>
+  </g>
+
+  <g id="durable-storage">
+    <text class="t-lane" x="16" y="104">durable storage</text>
+    <text class="t-s"    x="16" y="118">FIX-1157 · 6/7</text>
+    <rect class="done" x="253.6" y="90" width="200.6" height="26" rx="4"/>
+    <text class="t-s" x="462" y="107">Aug 13 · re-scoped Aug 20 · wrapped Aug 28</text>
+  </g>
+
+  <g id="verified-identity">
+    <text class="t-lane" x="16" y="152">verified identity</text>
+    <text class="t-s"    x="16" y="166">FIX-1503 · 0/1 filed</text>
+    <rect class="flight" x="788" y="138" width="94" height="26" rx="4"/>
+    <text class="t-s" x="780" y="155" text-anchor="end">direction approved Sep 22 · no child filed</text>
+  </g>
+
+  <g id="keeping-flows-alive">
+    <text class="t-lane" x="16" y="200">keeping flows alive</text>
+    <text class="t-s"    x="16" y="214">FIX-1637 · not started</text>
+    <text class="t-s" x="866" y="202" text-anchor="end">filed Sep 29 · epic spec opening</text>
+  </g>
+
+  <g id="now">
+    <path class="now" d="M882 30 V236"/>
+    <text class="t-now" x="876" y="246" text-anchor="end">NOW · SEP 29 12:32</text>
+  </g>
+</svg>
