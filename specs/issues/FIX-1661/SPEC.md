@@ -35,7 +35,7 @@ reconstruction, because the engine said so.**
 
 ```mermaid
 flowchart LR
-  H["fixture flow · five hard cases · shipped DevTool"] --> R["run each from its row · stream slot moves between them"]
+  H["fixture flow · five row legs plus api · shipped DevTool"] --> R["run each from its row · stream slot moves between them"]
   R --> S["what each row shows"]
   S -->|"matches what the action returned · every case"| P["PASS"]
   C["control · server omits the result"] -.-> R
@@ -48,7 +48,7 @@ traces would pass under the control, so the control must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/devtool-workforce-visibility/reads-a-row-actions-result/`, new. Chromium, shipped DevTool bundle, a fixture host with no model. The implementer runs it; verdict in the PR |
-| **Signal** | Five legs, each a row action whose answer the fixture fixes: **handover** (a transient action refuses, then another row's dispatch takes the stream), **hook** (a refusal under the flow's completion hooks), **ref** (a success whose value is held by reference), **suspend** (pending while suspended, then the answer after a resume), **hook-fails** (the action answered, then a hook failed it). Each row shows exactly its fixed answer. **api**: the session's request list carries the same result for all five, without asking for items |
+| **Signal** | Five row legs plus **api**. Each row leg is a row action whose answer the fixture fixes: **handover** (a transient action refuses, then another row's dispatch takes the stream), **hook** (a refusal under the flow's completion hooks), **ref** (a success whose value is held by reference), **suspend** (pending while suspended, then the answer after a resume), **hook-fails** (the action answered, then a hook failed it). Each row shows exactly its fixed answer. **api**: the session's request list carries the same result for all five, without asking for items |
 | **Input** | The fixture's five actions and their held-out answers. Swapped answers must pass too |
 | **Anti-game** | No reading the store for what the screen shows; rows found by task id; no reload; `outcomeOf` unit tests don't count |
 | **Control that must fail** | `GOAL_CONTROL=no-result`: the host strips `result` from the list response. Every leg must FAIL, each row reading *not reported*. Today's `main` must FAIL **api** only; its rows pass by reconstruction, which is why `main` can't be the control |

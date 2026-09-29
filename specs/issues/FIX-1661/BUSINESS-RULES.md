@@ -54,6 +54,6 @@ result is a sentence, not an error (BR-17).
 
 ## Acceptance criteria this issue owns
 
-- The goal check passes all six legs, and `GOAL_CONTROL=no-result` fails every leg as named.
+- The goal check passes all five row legs plus **api**, and `GOAL_CONTROL=no-result` fails every leg as named.
 - FIX-1629's `works-a-task-from-its-row` still passes, refuse leg included.
 - FIX-1660's regression test still passes, or is replaced by BR-18's.

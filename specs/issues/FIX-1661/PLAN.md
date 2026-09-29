@@ -16,7 +16,7 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 | S5 | `client` · `SessionRequestSummary` | Add `result`, same shape, `== null` guard documented | BR-11, BR-12 |
 | S6 | `devtool` · `lib/task-actions.ts` `outcomeOf` | Read `status` + `result` only. Keep the refusal and declined classifiers. **Remove** root-trace merging, hook detection, reference walking, `lastErrorItemMessage`, and the `no-trace` / `not-retained` reasons; `unknown` gets one reason, `not-reported` | BR-13–BR-17, BR-21 |
 | S7 | `devtool` · `DevToolPanel.tsx` | Rows get `{ requestId, status, result }` from the polled list. **Remove** the stream-log cache (`streamRawItems`, `mergeRawItems`) if the row was its only reader; if the Stream tab needs it for transient traces, keep it and cut only the row's use. The row poll stays | BR-13, BR-18, BR-21 |
-| S8 | `goals/devtool-workforce-visibility/reads-a-row-actions-result/` | New goal check with its own fixture host: a durable board, `taskToolActions`, and app actions shaped as the five legs. Host flag `GOAL_CONTROL=no-result` strips `result` from list responses | goal |
+| S8 | `goals/devtool-workforce-visibility/reads-a-row-actions-result/` | New goal check with its own fixture host: a durable board, `taskToolActions`, and app actions shaped as the five row legs (the **api** leg reads the list response). Host flag `GOAL_CONTROL=no-result` strips `result` from list responses | goal |
 | S9 | Docs and release notes | [DOCS.md](DOCS.md). One changeset, `minor`, for `engine` and `client` (a new public field); `devtool` `patch` if it publishes | — |
 
 ## Sequence
@@ -103,6 +103,34 @@ V3 confirms it on every adapter. No counted facts, so no factual-base checker.
   list above is what `main` had at `70f777def`; `createExecutionContext.ts` and
   `reactive-dispatch.ts` set `failed` on items and block results, not on the record.
 - Check whether the Stream tab reads `streamRawItems` for transient traces before removing it (S7).
+
+## Notes from review
+
+From the Cursor review that approved the direction (review 5359480595). None changes the
+design; weigh each at implement time.
+
+- **V2 totality scan is heavy.** The scan over every `stores.request.set` / `patchRequestRecord`
+  final-status write will fight refactors and largely duplicates S4's one-test-per-writer plus
+  the implement-time re-list. Alternative: one exported builder used at the three known terminal
+  writers (`runAction`, the setup-failure settle, `terminateUnenqueuedRequest`), each with a
+  direct test; drop V2's grep/AST check or replace it with a one-line implementer checklist.
+  If V2 is softened, update BR-5's "Proved by" cell to match so the two don't diverge.
+- **V5 grep test.** A grep that the deleted reconstruction helpers are gone stacks with the
+  `outcomeOf` table tests and the VG `GOAL_CONTROL=no-result` control, and the control is what
+  actually proves D2. Consider dropping the grep requirement.
+- **One named wire type.** `ExecutionResult` and `normalizeError` already exist on the terminal
+  path. Consider a single exported type (e.g. `RequestActionResult`) in `engine`, re-exported on
+  `client`, built via `normalizeError` → `{ code, message }`, instead of repeating
+  `{ output?: unknown; error?: { code, message } }` inline in S1, S5 and the docs tables. Same
+  pattern as `input` on `RequestRecord` / `SessionRequestSummary`.
+- **Decision figures.** The D1 / D2 / Open SVGs in DECISIONS.md repeat the tables beneath them;
+  the mermaid tree plus `what-changes.svg` may be enough for gate readers. Optional polish.
+- **Row poll with `includeItems: false`.** Once rows read only `status` + `result` (S6), the
+  DevTool row poll may not need `includeItems: true`, which is most of today's poll cost. A
+  free perf win, not required for correctness; consider it alongside S7.
+- **Oversized outputs.** D1 stores action outputs on history; BR-9 covers non-JSON values, but
+  very large JSON outputs are underspecified if that matters for your flows. Capping
+  `result.output` on the wire was listed as a product call, not a mandate.
 
 ## Follow-ups
 
