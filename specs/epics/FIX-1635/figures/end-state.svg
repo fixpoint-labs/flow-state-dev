@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 470" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, what an app gets from the release: the packed release imports and DevTool carries its client assets (FIX-1431, FIX-1334); a request or session id a caller chooses never reaches another user's records (FIX-1018, FIX-1286, FIX-1022); public entry points admit on the stored record and the target flow's rules (FIX-1021, FIX-1046, FIX-1328); resource guards throw or refuse (FIX-1256, FIX-1261, shipped); a queue host delivers into an existing session (FIX-1634); a non-streaming turn keeps every step's text (FIX-1628). The fence: no Workforce word below Workforce; org stays required; no refusal deleted without its guarantee; each hole proved over HTTP against installed packages. Composed in by the app: its principal resolver, its tenant header, its queue host and Redis. Replaced in one line: the resolver, and the re-entry allow-list. Not built: first-hour DX, the Tier B leftovers, Workforce adopting queue delivery, kitchen-sink polish.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .out   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .door  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .fence { stroke:var(--code); stroke-width:2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-d   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="600" height="316" rx="6"/>
+    <text class="t-lbl" x="32" y="38">IN THE BOX &#183; WHAT AN APP GETS FROM THE RELEASE</text>
+    <rect class="door" x="32" y="50" width="184" height="80" rx="4"/>
+    <text class="t-b" x="42" y="70">the release loads</text>
+    <text class="t-s" x="42" y="88">every package imports;</text>
+    <text class="t-s" x="42" y="101">DevTool has its assets</text>
+    <text class="t-ok" x="42" y="120">FIX-1431 &#183; FIX-1334</text>
+    <rect class="door" x="224" y="50" width="184" height="80" rx="4"/>
+    <text class="t-b" x="234" y="70">an id is an address</text>
+    <text class="t-s" x="234" y="88">another user's request or</text>
+    <text class="t-s" x="234" y="101">session id reaches nothing</text>
+    <text class="t-ok" x="234" y="120">FIX-1018 &#183; 1286 &#183; 1022</text>
+    <rect class="door" x="416" y="50" width="184" height="80" rx="4"/>
+    <text class="t-b" x="426" y="70">entry points admit</text>
+    <text class="t-s" x="426" y="88">on the stored record and</text>
+    <text class="t-s" x="426" y="101">the target flow's rules</text>
+    <text class="t-ok" x="426" y="120">FIX-1021 &#183; 1046 &#183; 1328</text>
+    <rect class="door" x="32" y="140" width="184" height="80" rx="4"/>
+    <text class="t-b" x="42" y="160">guards hold</text>
+    <text class="t-s" x="42" y="178">invalid writes throw;</text>
+    <text class="t-s" x="42" y="191">writable: false refuses</text>
+    <text class="t-ok" x="42" y="210">FIX-1256 &#183; 1261 &#183; shipped</text>
+    <rect class="door" x="224" y="140" width="184" height="80" rx="4"/>
+    <text class="t-b" x="234" y="160">queue-host delivery</text>
+    <text class="t-s" x="234" y="178">into an existing session,</text>
+    <text class="t-s" x="234" y="191">under its concurrency</text>
+    <text class="t-ok" x="234" y="210">FIX-1634 &#183; Layer 1</text>
+    <rect class="door" x="416" y="140" width="184" height="80" rx="4"/>
+    <text class="t-b" x="426" y="160">one turn, one text</text>
+    <text class="t-s" x="426" y="178">non-streaming keeps</text>
+    <text class="t-s" x="426" y="191">every step's text</text>
+    <text class="t-ok" x="426" y="210">FIX-1628</text>
+    <path class="fence" d="M32 236 L600 236"/>
+    <text class="t-ok" x="32" y="256">THE FENCE</text>
+    <text class="t-s" x="32" y="274">no Workforce word in core, engine, client or react &#183; org stays required (FIX-1442)</text>
+    <text class="t-s" x="32" y="292">no named refusal deleted without the guarantee it protected</text>
+    <text class="t-s" x="32" y="310">each hole proved over HTTP, against installed packages, not source</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="632" y="16" width="292" height="316" rx="6"/>
+    <text class="t-lbl" x="648" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-d" x="648" y="66">its principal resolver</text>
+    <text class="t-s" x="648" y="82">who the caller is; the framework</text>
+    <text class="t-s" x="648" y="96">decides what that caller owns</text>
+    <text class="t-d" x="648" y="126">its tenant header</text>
+    <text class="t-s" x="648" y="142">the wall between tenants,</text>
+    <text class="t-s" x="648" y="156">unchanged by this epic</text>
+    <text class="t-d" x="648" y="186">its queue host</text>
+    <text class="t-s" x="648" y="202">BullMQ and Redis, when it</text>
+    <text class="t-s" x="648" y="216">runs work out of process</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="app" x="16" y="346" width="908" height="50" rx="6"/>
+    <text class="t-lbl" x="32" y="366">REPLACED IN ONE LINE</text>
+    <text class="t-d" x="32" y="386">the resolver: one hook per flow or per host</text>
+    <text class="t-d" x="440" y="386">the re-entry allow-list: publicReentrySources</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="out" x="16" y="408" width="908" height="50" rx="6"/>
+    <text class="t-lbl" x="32" y="428">NOT BUILT</text>
+    <text class="t-go" x="32" y="446">first-hour DX (FIX-1161) &#183; the Tier B leftovers &#183; Workforce adopting queue delivery &#183; kitchen-sink polish &#183; ops repair</text>
+  </g>
+</svg>

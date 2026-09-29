@@ -1,0 +1,125 @@
+<svg viewBox="0 0 940 472" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: fourteen rules by the ten open children and the closure issue. ER-1, every package imports, packed: FIX-1431 builds it; FIX-1636 consumes it. ER-2, DevTool ships its assets: FIX-1334 builds it; FIX-1636 consumes it. ER-3, a request id reaches only its owner: FIX-1018 builds it; FIX-1286 consumes it; FIX-1634 consumes it; FIX-1636 consumes it. ER-4, no shared run workspace: FIX-1286 builds it; FIX-1636 consumes it. ER-5, a session id reaches only its owner: FIX-1022 builds it; FIX-1636 consumes it. ER-6, re-entry by allow-list only: FIX-1021 builds it; FIX-1636 consumes it. ER-7, a flow never reads a sibling's: FIX-1046 builds it; FIX-1636 consumes it. ER-8, cross-flow admits like ingress: FIX-1328 builds it; FIX-1636 consumes it. ER-9, an invalid write throws: FIX-1636 consumes it (shipped · FIX-1256). ER-10, writable: false refuses: FIX-1636 consumes it (shipped · FIX-1261). ER-11, queue host delivers: FIX-1634 builds it; FIX-1636 consumes it. ER-12, one turn, one text: FIX-1628 builds it; FIX-1636 consumes it. ER-18, FIX-1018 lands first: FIX-1018 builds it; FIX-1286 consumes it; FIX-1634 consumes it. ER-20, the proof, on one main commit: FIX-1636 builds it. Every rule has exactly one owner.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .grid  { stroke:var(--rule); stroke-width:1; }
+    .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-sub { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-con { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-in  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="472"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#183; ONE OWNER PER RULE</text>
+  <g id="columns">
+    <text class="t-col" x="330" y="46">1018</text><text class="t-sub" x="330" y="58">req id</text>
+    <text class="t-col" x="384" y="46">1286</text><text class="t-sub" x="384" y="58">workspace</text>
+    <text class="t-col" x="438" y="46">1022</text><text class="t-sub" x="438" y="58">session</text>
+    <text class="t-col" x="492" y="46">1021</text><text class="t-sub" x="492" y="58">re-entry</text>
+    <text class="t-col" x="546" y="46">1046</text><text class="t-sub" x="546" y="58">sibling</text>
+    <text class="t-col" x="600" y="46">1328</text><text class="t-sub" x="600" y="58">x-flow</text>
+    <text class="t-col" x="654" y="46">1431</text><text class="t-sub" x="654" y="58">dist</text>
+    <text class="t-col" x="708" y="46">1334</text><text class="t-sub" x="708" y="58">devtool</text>
+    <text class="t-col" x="762" y="46">1634</text><text class="t-sub" x="762" y="58">queue</text>
+    <text class="t-col" x="816" y="46">1628</text><text class="t-sub" x="816" y="58">text</text>
+    <text class="t-col" x="870" y="46">1636</text><text class="t-sub" x="870" y="58">closure</text>
+    <path class="grid" d="M16 64 L924 64"/>
+  </g>
+  <g id="r1">
+    <text class="t-row" x="16" y="83">ER-1 &#183; every package imports, packed</text>
+    <rect class="own" x="649" y="68" width="46" height="20" rx="3"/><text class="t-own" x="654" y="83">builds</text>
+    <text class="t-con" x="870" y="83">uses</text>
+    <path class="grid" d="M16 90 L924 90"/>
+  </g>
+  <g id="r2">
+    <text class="t-row" x="16" y="109">ER-2 &#183; DevTool ships its assets</text>
+    <rect class="own" x="703" y="94" width="46" height="20" rx="3"/><text class="t-own" x="708" y="109">builds</text>
+    <text class="t-con" x="870" y="109">uses</text>
+    <path class="grid" d="M16 116 L924 116"/>
+  </g>
+  <g id="r3">
+    <text class="t-row" x="16" y="135">ER-3 &#183; a request id reaches only its owner</text>
+    <rect class="own" x="325" y="120" width="46" height="20" rx="3"/><text class="t-own" x="330" y="135">builds</text>
+    <text class="t-con" x="384" y="135">uses</text>
+    <text class="t-con" x="762" y="135">uses</text>
+    <text class="t-con" x="870" y="135">uses</text>
+    <path class="grid" d="M16 142 L924 142"/>
+  </g>
+  <g id="r4">
+    <text class="t-row" x="16" y="161">ER-4 &#183; no shared run workspace</text>
+    <rect class="own" x="379" y="146" width="46" height="20" rx="3"/><text class="t-own" x="384" y="161">builds</text>
+    <text class="t-con" x="870" y="161">uses</text>
+    <path class="grid" d="M16 168 L924 168"/>
+  </g>
+  <g id="r5">
+    <text class="t-row" x="16" y="187">ER-5 &#183; a session id reaches only its owner</text>
+    <rect class="own" x="433" y="172" width="46" height="20" rx="3"/><text class="t-own" x="438" y="187">builds</text>
+    <text class="t-con" x="870" y="187">uses</text>
+    <path class="grid" d="M16 194 L924 194"/>
+  </g>
+  <g id="r6">
+    <text class="t-row" x="16" y="213">ER-6 &#183; re-entry by allow-list only</text>
+    <rect class="own" x="487" y="198" width="46" height="20" rx="3"/><text class="t-own" x="492" y="213">builds</text>
+    <text class="t-con" x="870" y="213">uses</text>
+    <path class="grid" d="M16 220 L924 220"/>
+  </g>
+  <g id="r7">
+    <text class="t-row" x="16" y="239">ER-7 &#183; a flow never reads a sibling's</text>
+    <rect class="own" x="541" y="224" width="46" height="20" rx="3"/><text class="t-own" x="546" y="239">builds</text>
+    <text class="t-con" x="870" y="239">uses</text>
+    <path class="grid" d="M16 246 L924 246"/>
+  </g>
+  <g id="r8">
+    <text class="t-row" x="16" y="265">ER-8 &#183; cross-flow admits like ingress</text>
+    <rect class="own" x="595" y="250" width="46" height="20" rx="3"/><text class="t-own" x="600" y="265">builds</text>
+    <text class="t-con" x="870" y="265">uses</text>
+    <path class="grid" d="M16 272 L924 272"/>
+  </g>
+  <g id="r9">
+    <text class="t-row" x="16" y="291">ER-9 &#183; an invalid write throws</text>
+    <text class="t-in" x="230" y="291">shipped &#183; FIX-1256</text>
+    <text class="t-con" x="870" y="291">uses</text>
+    <path class="grid" d="M16 298 L924 298"/>
+  </g>
+  <g id="r10">
+    <text class="t-row" x="16" y="317">ER-10 &#183; writable: false refuses</text>
+    <text class="t-in" x="230" y="317">shipped &#183; FIX-1261</text>
+    <text class="t-con" x="870" y="317">uses</text>
+    <path class="grid" d="M16 324 L924 324"/>
+  </g>
+  <g id="r11">
+    <text class="t-row" x="16" y="343">ER-11 &#183; queue host delivers</text>
+    <rect class="own" x="757" y="328" width="46" height="20" rx="3"/><text class="t-own" x="762" y="343">builds</text>
+    <text class="t-con" x="870" y="343">uses</text>
+    <path class="grid" d="M16 350 L924 350"/>
+  </g>
+  <g id="r12">
+    <text class="t-row" x="16" y="369">ER-12 &#183; one turn, one text</text>
+    <rect class="own" x="811" y="354" width="46" height="20" rx="3"/><text class="t-own" x="816" y="369">builds</text>
+    <text class="t-con" x="870" y="369">uses</text>
+    <path class="grid" d="M16 376 L924 376"/>
+  </g>
+  <g id="r13">
+    <text class="t-row" x="16" y="395">ER-18 &#183; FIX-1018 lands first</text>
+    <rect class="own" x="325" y="380" width="46" height="20" rx="3"/><text class="t-own" x="330" y="395">builds</text>
+    <text class="t-con" x="384" y="395">uses</text>
+    <text class="t-con" x="762" y="395">uses</text>
+    <path class="grid" d="M16 402 L924 402"/>
+  </g>
+  <g id="r14">
+    <text class="t-row" x="16" y="421">ER-20 &#183; the proof, on one main commit</text>
+    <rect class="own" x="865" y="406" width="46" height="20" rx="3"/><text class="t-own" x="870" y="421">builds</text>
+    <path class="grid" d="M16 428 L924 428"/>
+  </g>
+  <text class="t-sub" x="16" y="460">builds: owns and ships it &#183; uses: consumes it as is, must not re-decide &#183; shipped rows are re-verified by the closure</text>
+</svg>

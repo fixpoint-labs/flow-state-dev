@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 440" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 29 September 2026, drawn in steps rather than dates because the epic is unscheduled. Shipped: FIX-1256, FIX-1261 and FIX-1510. Now: this spec in review; nothing starts until it merges. Step 1, in parallel: FIX-1018 reproduces and fixes; the principal bugs FIX-1022, 1021, 1046 and 1328, and the release bugs FIX-1431 and 1334, each reproduce first; FIX-1628; the specs for FIX-1286 and FIX-1634, the longest bar; the closure QA plan. Step 2: FIX-1286 and FIX-1634 implement after FIX-1018 merges. Step 3: the closure run on one main commit, its PR, then wrap. The critical path runs from FIX-1018 through FIX-1634's implementation to the closure run.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .todo   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .tick   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 3; }
+    .now    { stroke:var(--gone); stroke-width:1.4; }
+    .crit   { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-ln   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-in   { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g    { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+  <text class="t-lbl" x="16" y="18">THE PATH &#183; AS OF 29 SEP 2026 &#183; UNSCHEDULED, SO THE AXIS IS ORDER, NOT DATES</text>
+
+  <g id="axis">
+    <path class="axis" d="M232 44 L924 44"/>
+    <text class="t-s" x="232" y="36">shipped</text>
+    <path class="tick" d="M364 44 L364 372"/>
+    <text class="t-s" x="370" y="36">step 1</text>
+    <path class="tick" d="M572 44 L572 372"/>
+    <text class="t-s" x="578" y="36">step 2</text>
+    <path class="tick" d="M728 44 L728 372"/>
+    <text class="t-s" x="734" y="36">step 3</text>
+    <path class="now" d="M336 52 L336 372"/>
+    <text class="t-now" x="312" y="36">now</text>
+  </g>
+
+  <g id="shipped">
+    <text class="t-ln" x="16" y="72">shipped &#183; 1256 &#183; 1261 &#183; 1510</text>
+    <rect class="done" x="232" y="60" width="64" height="18" rx="3"/>
+    <text class="t-s" x="238" y="73">merged</text>
+    <text class="t-in" x="370" y="73">re-verified by the closure run, not reopened</text>
+  </g>
+  <g id="this-spec">
+    <text class="t-ln" x="16" y="97">this epic spec</text>
+    <rect class="flight" x="300" y="84" width="56" height="18" rx="3"/>
+    <text class="t-s" x="306" y="97">review</text>
+    <text class="t-in" x="370" y="97">nothing starts until it merges</text>
+  </g>
+  <path class="axis" d="M16 114 L924 114"/>
+
+  <g id="l-1018">
+    <text class="t-ln" x="16" y="142">FIX-1018 &#183; request id</text>
+    <rect class="todo" x="368" y="130" width="124" height="18" rx="3"/>
+    <text class="t-s" x="374" y="143">reproduce &#8594; fix</text>
+  </g>
+  <g id="l-principal">
+    <text class="t-ln" x="16" y="174">1022 &#183; 1021 &#183; 1046 &#183; 1328</text>
+    <rect class="todo" x="368" y="162" width="156" height="18" rx="3"/>
+    <text class="t-s" x="374" y="175">reproduce &#8594; fix or test</text>
+  </g>
+  <g id="l-release">
+    <text class="t-ln" x="16" y="206">1431 &#183; 1334 &#183; the release</text>
+    <rect class="todo" x="368" y="194" width="156" height="18" rx="3"/>
+    <text class="t-s" x="374" y="207">reproduce &#8594; fix or test</text>
+  </g>
+  <g id="l-1628">
+    <text class="t-ln" x="16" y="238">FIX-1628 &#183; text</text>
+    <rect class="todo" x="368" y="226" width="84" height="18" rx="3"/>
+    <text class="t-s" x="374" y="239">fix</text>
+  </g>
+  <g id="l-1286">
+    <text class="t-ln" x="16" y="270">FIX-1286 &#183; workspace</text>
+    <rect class="todo" x="368" y="258" width="104" height="18" rx="3"/>
+    <text class="t-s" x="374" y="271">spec</text>
+    <rect class="todo" x="576" y="258" width="72" height="18" rx="3"/>
+    <text class="t-s" x="582" y="271">impl</text>
+  </g>
+  <g id="l-1634">
+    <text class="t-ln" x="16" y="302">FIX-1634 &#183; queue delivery</text>
+    <rect class="todo" x="368" y="290" width="192" height="18" rx="3"/>
+    <text class="t-s" x="374" y="303">spec &#183; Layer 1</text>
+    <rect class="todo" x="576" y="290" width="140" height="18" rx="3"/>
+    <text class="t-s" x="582" y="303">impl</text>
+  </g>
+  <g id="l-1636">
+    <text class="t-ln" x="16" y="342">FIX-1636 &#183; closure &#8594; wrap</text>
+    <rect class="todo" x="368" y="330" width="112" height="18" rx="3"/>
+    <text class="t-s" x="374" y="343">QA plan</text>
+    <rect class="todo" x="732" y="330" width="176" height="18" rx="3"/>
+    <text class="t-s" x="738" y="343">run &#8594; PR &#8594; wrap</text>
+  </g>
+  <path class="axis" d="M16 372 L924 372"/>
+
+  <g id="links">
+    <path class="crit" d="M492 139 L566 139 L566 299 L576 299"/>
+    <path class="crit" d="M566 267 L576 267"/>
+    <path class="crit" d="M716 299 L722 299 L722 339 L732 339"/>
+  </g>
+  <text class="t-g" x="16" y="398">Critical path: FIX-1018 &#8594; FIX-1634 impl &#8594; FIX-1636 run on one main commit &#8594; closure PR merged &#8594; wrap.</text>
+  <text class="t-in" x="16" y="416">FIX-1286 and FIX-1634 wait for FIX-1018 only to implement. Green bars are merged; dashed bars are not started.</text>
+</svg>
