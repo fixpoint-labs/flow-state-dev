@@ -12,7 +12,7 @@ required · runs after every child Linear lists as blocking it
 |---|---|---|
 | **decides whether the epic is done** | FIX-1639's own check, on its draft, on its own commit | One report on one `main` commit: the page followed from the nav by a reader who can't see the code, every name resolved, the fence run on Redis, each control's FAIL |
 | **wants a flow woken by a webhook and a clock, with work that keeps going** | Nobody has built one from the published docs alone | Proven: a fixture built from the page and its links answers a signed webhook and a schedule tick, and its handed-off work finishes after the request returned |
-| **runs on BullMQ** | The page's refusal sentence is checked by nobody against the runtime | Proven on real Redis, on the reader's own `dispatch-only` host with a worker: `{ id }` and `{ from: true }` refused by name, nothing enqueued, `{ key }` runs |
+| **runs on BullMQ** | The page's refusal sentence is checked by nobody against the runtime | Proven on real Redis, on the reader's own host (a `dispatch-only` producer and a worker): `{ id }` refused by name, nothing enqueued; a `{ from: true }` reply as the page's topology rule says; `{ key }` runs |
 | **meets *wake*, *dispatch*, *tick*, or a channel and a board** | Each child checks its own words | Proven: the reader answers from the page alone, and no page it links contradicts it |
 | **renames an export next year** | Nothing notices the page now lies | CI fails the rename until the page is fixed ([D2](DECISIONS.md#d2)) |
 

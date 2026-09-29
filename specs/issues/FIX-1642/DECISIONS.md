@@ -66,10 +66,11 @@ more often than it catches drift. Then it moves to the by-hand tier.
 - **The fixture is model-free.** Wakes and hand-off are the point; handler blocks keep the run
   keyless and repeatable.
 - **The fence runs in one mode, the reader's own host.** That is what the epic's Proof asks:
-  `{ id }` refused by name and `{ key }` runs, plus `{ from: true }` refused by name, which
-  FIX-1639's page states. The other topologies and the channel sentence are runtime claims the
-  engine and workforce tests already own (`dispatch-delivery-guards.test.ts`,
-  `channel-post-fences.test.ts`).
+  `{ id }` refused by name and `{ key }` runs, plus a `{ from: true }` reply as FIX-1639's page
+  states its topology rule (not refused from a `worker-only` consumer). A colocated refusal, if
+  the page states one, is the one extra assertion. The other topologies and the channel sentence
+  are runtime claims the engine and workforce tests already own
+  (`dispatch-delivery-guards.test.ts`, `channel-post-fences.test.ts`).
 - **The noun sweep is the epic's *not done if*.** `epic-wake` and Heartbeats nouns, whole word,
   over `apps/docs`. The wider ER-8 bans are FIX-1639's review.
 

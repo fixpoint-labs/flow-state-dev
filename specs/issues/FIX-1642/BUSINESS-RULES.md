@@ -22,7 +22,7 @@ step or report line that shows the rule held.
 | QR-5 | The reader works | It gets the site's root URL, the app brief and the scratch project. It reads nothing under `node_modules`, the workspace or the web beyond the local site, and no page more than one link from the page. Its transcript is kept | The transcript audit ([D1](DECISIONS.md#d1)) |
 | QR-6 | The audit finds a forbidden read | The run is void, not failed: it proves nothing either way, and runs again with a new reader | Report |
 | QR-7 | The reader cannot continue without something the page doesn't say | It logs the gap and stops that part. Each entry in its gap log is a finding | The gap log in the report |
-| QR-8 | The fence leg runs | On a real Redis, on the reader's own fixture host: `dispatch-only` with a separate worker process. Redis absent fails the run; it is never skipped | Leg D's rows |
+| QR-8 | The fence leg runs | On a real Redis, on the reader's own fixture host: `dispatch-only` with a separate worker process, plus one colocated process on the same Redis only if the page states a colocated `{ from: true }` refusal. Redis absent fails the run; it is never skipped | Leg D's rows |
 | QR-9 | Anything calls the fixture | Over HTTP, as a caller would: a webhook signed as its provider signs it, a schedule tick with the scheduler's secret, never a `userId` in the body (project PR-1) | Legs B and C |
 | QR-10 | No provider key is set | The fixture runs anyway; it uses no model | Leg B |
 

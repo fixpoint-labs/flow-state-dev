@@ -16,7 +16,7 @@ otherwise, and this plan's start conditions rest on it.
 
 | ID | Where | Change |
 |---|---|---|
-| S1 | `goals/keeping-flows-alive/follows-the-page-as-written/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met); `reader-brief.md`, the app brief; `claims.json`, the fence's three claims (`{ id }` refused by name, `{ from: true }` refused by name, `{ key }` runs), each with its page anchor; `run.mts`, which builds the site and the packs, serves them, then runs legs A to D, the journeys' mechanical parts and part 4 on the reader's fixture |
+| S1 | `goals/keeping-flows-alive/follows-the-page-as-written/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met); `reader-brief.md`, the app brief; `claims.json`, the fence's three claims (`{ id }`, `{ from: true }` and `{ key }`), each with its page anchor and read from the page's own wording; `run.mts`, which builds the site and the packs, serves them, then runs legs A to D, the journeys' mechanical parts and part 4 on the reader's fixture |
 | S2 | The scan | One implementation, called by leg C and by CI. Reads the published page only. Totality: every inline code token and every code fence is classified, or it fails. Keys resolve against the type they are passed to; routes by method and path together ([below](#the-scan)) |
 | S3 | `.github/workflows/ci.yml`, the job that builds packages | One step running S2 over the page ([D2](DECISIONS.md#d2)) |
 | S4 | S1's controls | Each acts on a scratch copy of the page or of the fixture, never the tree |
@@ -57,7 +57,7 @@ and its gap log.
 | B3 | **Hand-off.** After B1's and B2's responses arrive, each follow-up's effect is absent. The runner then opens the latch the brief names; each effect appears within 30 s, carrying its token. The fixture runs as the brief asks, `dispatch-only` with a worker process |
 | B4 | **Into an existing session.** The brief's note reaches the customer's existing session by the route the page gives instead of `{ id }` on this host |
 | C | S2 over the published page: every token resolved on its owning type; totality line printed |
-| D | On the reader's own fixture host (`dispatch-only` with a worker, per the brief), each of the three claims in `claims.json` holds and its anchor is on the page: `{ id }` throws `DispatchRefusedError` with `refused: "external-dispatcher"`, the queue's job counts and the target session unchanged; `{ from: true }`, a reply into the sending conversation, is refused the same way; `{ key }` enqueues and completes. The other topologies and the channel sentence are runtime claims their own tests own: `packages/engine/test/context/dispatch-delivery-guards.test.ts` and `packages/workforce/test/channel-post-fences.test.ts` |
+| D | On the reader's own fixture host (a `dispatch-only` producer and a `worker-only` consumer, per the brief, on one Redis), each of the three claims in `claims.json` holds and its anchor is on the page. `{ id }` from the producer throws `DispatchRefusedError` with `refused: "external-dispatcher"`, the queue's job counts and the target session unchanged. `{ from: true }`, a reply into the sending conversation, holds as the page's topology rule states it: from the `worker-only` consumer it runs in process and is **not** refused. `{ key }` enqueues and completes. If the page also says a colocated consumer's reply is refused, that is the one extra assertion: one colocated process on the same Redis, its `{ from: true }` refused `external-dispatcher`. No other mode runs. The other topologies and the channel sentence are runtime claims their own tests own: `packages/engine/test/context/dispatch-delivery-guards.test.ts` and `packages/workforce/test/channel-post-fences.test.ts` |
 | J1 | **Terms.** The page defines *wake*, *dispatch* and *schedule tick* once each. The reader answers the brief's three term questions with the page's own sentence |
 | J2 | **Channel or board.** The reader answers the brief's question with a channel for the conversation and a board for the work, reaching both linked pages within one link |
 
@@ -149,8 +149,9 @@ names fail by name; a real option on the wrong object passes a flat lookup. Sett
   parts of its check, if any, the reader leg doesn't reach (part 3).
 - Query Linear's blocked-by list for FIX-1642 again after part 4, immediately before opening
   the closure PR. Any blocker now open stops the PR (QR-2).
-- `claims.json` tracks FIX-1639's merged page wording: its spec (#2403) widens the fence to
-  `{ from: true }`, so the claims are the page's sentences as merged, not this plan's paraphrase.
+- The claims are re-read from FIX-1639's merged page at run time; #2403 is the source of truth
+  for the fence's final wording, including the `{ from: true }` topology rule. This plan's
+  paraphrase never overrides the page.
 - If FIX-1634 ships first, `claims.json` follows the page as FIX-1634's docs work leaves it.
 - The reader is a general-purpose agent with a shell in the scratch project; keep its transcript.
 
