@@ -54,7 +54,7 @@ exists to catch.
 |---|---|
 | **Goal check** | The closure issue's goal check ([FIX-1663](https://linear.app/fixpoint-labs/issue/FIX-1663)), in a browser, on one `main` commit after every other child merges ([ER-12](BUSINESS-RULES.md#how-the-set-is-run)) |
 | **Signal** | Leg a: from App Lab's first screen, every sidebar section, centre surface, the inspector and all five destinations are reached; a post in a channel shows its answer in the stream and the working seat in the inspector. Leg b: a second tree opens by configuration alone. Leg c: computed styles on every reused component carry no App Lab value |
-| **Input** | The DevForce lab's declared tree (`goals/devforce-lab/lab/workforce/`) with a real model, under a real org; a second declared tree already in the repo for leg b |
+| **Input** | The DevForce lab's declared tree (`goals/devforce-lab/lab/workforce/`) with a real model, under a real org; for leg b, the pentest lab's tree (`goals/pentest-lab/lab/workforce/`), the nearest to CyberForce in the repo. Kitchen-sink's tree is not a stand-in for either leg |
 | **Anti-game** | No asserting on a child's own tests. No App Lab code that names the second tree. No component excluded from leg c's sweep |
 | **Control that must fail** | One reused component given a hardcoded App Lab colour: leg c must FAIL naming it. Today's `main`: legs a and b fail |
 

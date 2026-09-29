@@ -35,7 +35,7 @@ that is an amendment to this epic ([ER-10](BUSINESS-RULES.md#how-the-set-is-run)
 |---|---|---|---|---|---|
 | **FIX-1655** design system | spec → impl PR, theme values after the hand-back | The existing theme contracts · D2 · the refined design | The private package: token set, neutral and App Lab themes, the mapping; skin fixes in the eleven registry components | FIX-1662's final pass · the closure | Medium |
 | **FIX-1662** App Lab shell | spec → impl PR, final pass after the hand-back | FIX-1655's token names · the wireframes · shipped react panels and ui components · a Lab's tree, org required | `labs/app-lab`: four regions, five destinations, empty states, the devtool trace link | The closure | Large (D1's split trigger applies) |
-| **FIX-1663** closure · required | spec (the QA plan) → runs until one is clean → PR | Both children merged, on one `main` commit · the DevForce lab tree and a second tree | The committed browser check, a QA report, a child for every finding | The wrap | Medium, repeats per finding |
+| **FIX-1663** closure · required | spec (the QA plan) → runs until one is clean → PR | Both children merged, on one `main` commit · the DevForce lab tree, and the pentest lab tree for leg b | The committed browser check, a QA report, a child for every finding | The wrap | Medium, repeats per finding |
 
 FIX-1655 carries no Kind label in Linear, so its route defaults to spec. FIX-1662 is a Feature;
 FIX-1663 an Improvement.
