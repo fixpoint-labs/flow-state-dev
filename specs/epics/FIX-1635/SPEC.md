@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 12 children and a closure issue · Public Launch · Goal 4, keep the foundation honest,
+Epic · 12 child issues (FIX-1510 ships under FIX-1261) and a closure issue · Public Launch · Goal 4, keep the foundation honest,
 with Goal 3 ([`docs/objectives.md`](../../../docs/objectives.md)) ·
 [FIX-1635](https://linear.app/fixpoint-labs/issue/FIX-1635) · child set locked by the owner
 with the FSD Architect, 2026-09-29
@@ -35,27 +35,29 @@ and none of the holes this epic names can be reached over real HTTP.**
 
 ```mermaid
 flowchart LR
-  A["pack every package · install into an empty project"] --> L1["leg a · import each, start a server"]
-  L1 --> L2["leg b · two users, one tenant, one leg per hole over HTTP"]
+  A["pack every package · install into an empty project"] --> L1["leg a · import each, start a server · standing CI job"]
+  L1 --> L2["leg b · the children's HTTP suite · two users, one tenant, one case per hole"]
   L1 --> L3["leg c · BullMQ host with real Redis"]
   L2 --> R["what each caller gets back"]
   L3 --> R
   R -->|"every leg holds"| P["PASS · the epic's goal is met"]
-  C["control · last npm release, or the commit before each fix"] -.-> R
+  C["control · the 0.1.1 tarball for leg a"] -.-> R
   R -.->|"under the control"| F["must FAIL · names its leg"]
 ```
 
-Leg a is the one no child's own test reaches. Leg b is where each hole is asked for as an
-attacker would ask for it.
+Leg a is the one no child's own test reaches, so it becomes a standing CI job the moment
+FIX-1431 lands it, not a step that runs once at the end. Leg b is where each hole is asked for
+as an attacker would ask for it: each child adds its own case, and the closure runs them all
+against the installed tarballs.
 
 | How we verify | |
 |---|---|
-| **Goal check** | [FIX-1636](https://linear.app/fixpoint-labs/issue/FIX-1636)'s QA plan, on one `main` commit after every other child merges ([ER-20](BUSINESS-RULES.md#the-closure)) |
-| **Model** | Scripted and keyless. The generator leg asserts on text a scripted model wrote, not on a model's quality |
-| **Signal** | **a:** every packed package imports in an empty ESM project, and DevTool serves its client assets from the installed copy. **b:** as user B in user A's tenant, each named hole returns not-found or refused, and A's records are unchanged afterwards. **c:** a delivery into an existing session runs the recipient on a queue-backed host |
+| **Goal check** | [FIX-1636](https://linear.app/fixpoint-labs/issue/FIX-1636)'s QA plan, on one `main` commit after every other child merges. It reuses the leg a job and runs the children's suite; it builds no leg of its own ([ER-19](BUSINESS-RULES.md#the-closure)) |
+| **Model** | Scripted and keyless. FIX-1628's case in leg b asserts on text a scripted model wrote, not on a model's quality |
+| **Signal** | **a:** every packed package imports in an empty ESM project, and DevTool serves its client assets from the installed copy. **b:** as user B in user A's tenant, each named hole returns not-found or refused, except a reused request id, which succeeds as B's own request; A's records and items are unchanged afterwards either way. A multi-step non-streamed turn returns the text the streamed turn does. **c:** a delivery into an existing session runs the recipient on a queue-backed host |
 | **Input** | Ids B learns the way an attacker would: A's request id from a response header, A's session id from a URL |
 | **Anti-game** | No leg imports from `src`, calls a store or engine function directly, or runs against a workspace link. Each passes while a consumer still breaks |
-| **Control that must fail** | Leg a against the last published npm version. Each leg b and c case against the commit just before its fix merged, including fixes that shipped before this epic ([D2](DECISIONS.md#d2)) |
+| **Control that must fail** | Leg a against the 0.1.1 tarball, pinned in the job, never "the latest release". Each leg b and c case fails on the commit before its hole closed, including holes closed before this epic ([D2](DECISIONS.md#d2)). The child proves that when it lands the case and records the commit ([ER-16](BUSINESS-RULES.md#what-no-child-may-do)); the closure never rebuilds an old commit |
 
 ## What's in the box
 
@@ -72,7 +74,7 @@ spec PR by design.
 | Issue | What it delivers | Why the set needs it | Route · status |
 |---|---|---|---|
 | [FIX-1256](https://linear.app/fixpoint-labs/issue/FIX-1256) · invalid resource write | Throws instead of resetting state | Silent data loss | direct · **Done** · [#1469](https://github.com/fixpoint-labs/flow-state-dev/pull/1469) |
-| [FIX-1261](https://linear.app/fixpoint-labs/issue/FIX-1261), remainder [FIX-1510](https://linear.app/fixpoint-labs/issue/FIX-1510) · `writable: false` on collections | Refused on every write-shaped path | A guard a neighbour bypasses | direct · **Done** · [#1470](https://github.com/fixpoint-labs/flow-state-dev/pull/1470), [#2047](https://github.com/fixpoint-labs/flow-state-dev/pull/2047) |
+| [FIX-1261](https://linear.app/fixpoint-labs/issue/FIX-1261), remainder [FIX-1510](https://linear.app/fixpoint-labs/issue/FIX-1510) (its sub-issue) · `writable: false` on collections | Refused on every write to an existing instance, and on delete; creating a missing key stays open | A guard a neighbour bypasses | direct · **Done** · [#1470](https://github.com/fixpoint-labs/flow-state-dev/pull/1470), [#2047](https://github.com/fixpoint-labs/flow-state-dev/pull/2047) |
 | [FIX-1018](https://linear.app/fixpoint-labs/issue/FIX-1018) · request id reparenting | A caller's request id cannot reach another user's record or items | Confirmed cross-user read; first of the principal cluster ([D3](DECISIONS.md#d3)) | direct · Backlog |
 | [FIX-1286](https://linear.app/fixpoint-labs/issue/FIX-1286) · run-scoped workspace | Two users with one request id never share a sandbox | Its issue asks for a decision, not a patch | spec · Backlog · blocked by 1018 |
 | [FIX-1022](https://linear.app/fixpoint-labs/issue/FIX-1022) · session key has no principal | Another user's session id is not found | Same-tenant session read | direct · Todo |
@@ -85,7 +87,7 @@ spec PR by design.
 | [FIX-1628](https://linear.app/fixpoint-labs/issue/FIX-1628) · non-streaming text drop | A multi-step turn keeps every step's text | Same turn, two answers | direct · Backlog |
 | [FIX-1636](https://linear.app/fixpoint-labs/issue/FIX-1636) · closure · **required** | The QA plan, run on one `main` commit | The only child that runs the release as a consumer does | spec · Backlog · blocked by every open child |
 
-**3 done · 10 open · the closure.** Could it be smaller? The set is the owner's, locked with
+**12 children: 2 done, 10 open, plus FIX-1510 done under FIX-1261 · the closure.** Could it be smaller? The set is the owner's, locked with
 the Architect, and this spec does not reopen it. What can shrink is the work: several tickets
 predate later passes on `main`, so each direct-route worker reproduces first, and a hole that
 is already closed closes with a test instead of a rewrite ([D2](DECISIONS.md#d2)).

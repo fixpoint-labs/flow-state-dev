@@ -18,17 +18,17 @@ The dependency graph is in [the spec](SPEC.md#how-the-issues-flow-into-each-othe
 
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
-| **FIX-1018** request id | direct | Current `main` (ER-17) | ER-3; the docs line (ER-21) | FIX-1286 · FIX-1634 | Medium |
+| **FIX-1018** request id | direct | Current `main` (ER-17) | ER-3, and its case in the HTTP suite; the docs line (ER-20) | FIX-1286 · FIX-1634 | Medium |
 | **FIX-1286** run workspace | spec → impl | ER-3 | ER-4, or a test proving ER-3 already delivers it | The closure | Small, or none |
 | **FIX-1022** session key | direct | Current `main` | ER-5, with legacy keys still read by their owner | The closure | Medium |
 | **FIX-1021** re-entry | direct | Current `main` | ER-6 | The closure | Small, likely a test |
 | **FIX-1046** sibling flow | direct | Current `main` | ER-7 | The closure | Small |
 | **FIX-1328** cross-flow admission | direct | FIX-1442's org rule | ER-8 | The closure | Small, likely a test |
-| **FIX-1431** `dist` extensions | direct | Current `main` | ER-1 | The closure | Small, likely a test |
-| **FIX-1334** DevTool assets | direct | Current `main` | ER-2 | The closure | Small, likely a test |
+| **FIX-1431** `dist` extensions | direct | Current `main` | ER-1, and leg a as a standing CI job, controlled by the 0.1.1 tarball | FIX-1334's check · the closure | Small, plus the job |
+| **FIX-1334** DevTool assets | direct | Leg a's job | ER-2, as a check in leg a | The closure | Small, likely a test |
 | **FIX-1634** queue delivery | spec → impl | ER-3 · FIX-1302's refusal | ER-11, Layer 1 only | The closure; later, a Workforce adopt child | Large |
 | **FIX-1628** non-streaming text | direct | FIX-1626's join rule | ER-12 | The closure | Small |
-| **FIX-1636** closure · required | spec (the QA plan) → runs until clean → PR | Every other child, merged, on one `main` commit | The committed release check, a QA report, a bug child per finding | Wrap | Large, repeats per retest |
+| **FIX-1636** closure · required | spec (the QA plan) → runs until clean → PR | Every other child, merged, on one `main` commit · leg a's job · the children's HTTP suite | The suite run against installed tarballs with a real Redis, a QA report, a bug child per finding | Wrap | Large, repeats per retest |
 
 "Likely a test" is not a diagnosis. Each worker's **first step is reproducing the ticket's hole
 on current `main`** (ER-17): FIX-1442, FIX-999's re-entry allow-list, the ESM-extension build
@@ -60,7 +60,8 @@ FIX-1628 matches).
 | Session and request routes' owner checks | FIX-1022, FIX-1046, FIX-1021 | Not-found for another user's record, one shape across all three |
 | The run-scope key | FIX-1018 and FIX-1286 | 1286 changes it only if 1018's binding leaves a shared workspace |
 | `server/authentication.md` | FIX-1018, FIX-1022, FIX-1046 | 1018 publishes the id rule; the others link to it |
-| The publish path (`release:build`, CI's `dist` check) | FIX-1431 and FIX-1334 | One release build; neither adds a second |
+| The publish path (`release:build`, CI's `dist` check) and leg a's job | FIX-1431 and FIX-1334 | One release build and one leg a job: 1431 creates it, 1334 adds to it, neither adds a second |
+| The shared HTTP suite | FIX-1018, 1286, 1022, 1021, 1046, 1328, 1634, 1628 and FIX-1636 | One location. The first child to land creates it; each adds only its own case; the closure runs it and never rewrites a case |
 
 ## Not children, deliberately
 
@@ -70,6 +71,6 @@ its Layer 1 shape merges.
 
 ## Wrap
 
-When ER-20 holds: the lessons pass, a docs polish over the authentication and background-work
+When ER-19 and ER-20 hold: the lessons pass, a docs polish over the authentication and background-work
 pages, and a completion report in Linear. The original merged spec PR stays as the review
 record.

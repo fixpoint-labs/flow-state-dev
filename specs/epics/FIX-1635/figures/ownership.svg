@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 472" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: fourteen rules by the ten open children and the closure issue. ER-1, every package imports, packed: FIX-1431 builds it; FIX-1636 consumes it. ER-2, DevTool ships its assets: FIX-1334 builds it; FIX-1636 consumes it. ER-3, a request id reaches only its owner: FIX-1018 builds it; FIX-1286 consumes it; FIX-1634 consumes it; FIX-1636 consumes it. ER-4, no shared run workspace: FIX-1286 builds it; FIX-1636 consumes it. ER-5, a session id reaches only its owner: FIX-1022 builds it; FIX-1636 consumes it. ER-6, re-entry by allow-list only: FIX-1021 builds it; FIX-1636 consumes it. ER-7, a flow never reads a sibling's: FIX-1046 builds it; FIX-1636 consumes it. ER-8, cross-flow admits like ingress: FIX-1328 builds it; FIX-1636 consumes it. ER-9, an invalid write throws: FIX-1636 consumes it (shipped · FIX-1256). ER-10, writable: false refuses: FIX-1636 consumes it (shipped · FIX-1261). ER-11, queue host delivers: FIX-1634 builds it; FIX-1636 consumes it. ER-12, one turn, one text: FIX-1628 builds it; FIX-1636 consumes it. ER-18, FIX-1018 lands first: FIX-1018 builds it; FIX-1286 consumes it; FIX-1634 consumes it. ER-20, the proof, on one main commit: FIX-1636 builds it. Every rule has exactly one owner.">
+<svg viewBox="0 0 940 446" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: thirteen rules by the ten open children and the closure issue. ER-1, every package imports, packed: FIX-1431 builds it, as a standing CI job; FIX-1334 consumes it; FIX-1636 consumes it. ER-2, DevTool ships its assets: FIX-1334 builds it; FIX-1636 consumes it. ER-3, a request id reaches only its owner: FIX-1018 builds it; FIX-1286 consumes it; FIX-1634 consumes it; FIX-1636 consumes it. ER-4, no shared run workspace: FIX-1286 builds it; FIX-1636 consumes it. ER-5, a session id reaches only its owner: FIX-1022 builds it; FIX-1636 consumes it. ER-6, re-entry by allow-list only: FIX-1021 builds it; FIX-1636 consumes it. ER-7, a flow never reads a sibling's: FIX-1046 builds it; FIX-1636 consumes it. ER-8, cross-flow admits like ingress: FIX-1328 builds it; FIX-1636 consumes it. ER-9, an invalid write throws: FIX-1636 consumes it (shipped · FIX-1256). ER-10, writable: false refuses existing-instance writes: FIX-1636 consumes it (shipped · FIX-1261). ER-11, queue host delivers: FIX-1634 builds it; FIX-1636 consumes it. ER-12, one turn, one text: FIX-1628 builds it; FIX-1636 consumes it. ER-19, the children's suite run on installed tarballs, one main commit: FIX-1636 builds it. Every rule has exactly one owner; the fence and run rules bind every child and are listed in the rules document.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -19,7 +19,7 @@
     .t-con { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-in  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="472"/>
+  <rect class="bg" x="0" y="0" width="940" height="446"/>
   <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#183; ONE OWNER PER RULE</text>
   <g id="columns">
     <text class="t-col" x="330" y="46">1018</text><text class="t-sub" x="330" y="58">req id</text>
@@ -38,6 +38,7 @@
   <g id="r1">
     <text class="t-row" x="16" y="83">ER-1 &#183; every package imports, packed</text>
     <rect class="own" x="649" y="68" width="46" height="20" rx="3"/><text class="t-own" x="654" y="83">builds</text>
+    <text class="t-con" x="708" y="83">uses</text>
     <text class="t-con" x="870" y="83">uses</text>
     <path class="grid" d="M16 90 L924 90"/>
   </g>
@@ -109,17 +110,10 @@
     <text class="t-con" x="870" y="369">uses</text>
     <path class="grid" d="M16 376 L924 376"/>
   </g>
-  <g id="r13">
-    <text class="t-row" x="16" y="395">ER-18 &#183; FIX-1018 lands first</text>
-    <rect class="own" x="325" y="380" width="46" height="20" rx="3"/><text class="t-own" x="330" y="395">builds</text>
-    <text class="t-con" x="384" y="395">uses</text>
-    <text class="t-con" x="762" y="395">uses</text>
+  <g id="r14">
+    <text class="t-row" x="16" y="395">ER-19 &#183; the suite, on installed tarballs</text>
+    <rect class="own" x="865" y="380" width="46" height="20" rx="3"/><text class="t-own" x="870" y="395">builds</text>
     <path class="grid" d="M16 402 L924 402"/>
   </g>
-  <g id="r14">
-    <text class="t-row" x="16" y="421">ER-20 &#183; the proof, on one main commit</text>
-    <rect class="own" x="865" y="406" width="46" height="20" rx="3"/><text class="t-own" x="870" y="421">builds</text>
-    <path class="grid" d="M16 428 L924 428"/>
-  </g>
-  <text class="t-sub" x="16" y="460">builds: owns and ships it &#183; uses: consumes it as is, must not re-decide &#183; shipped rows are re-verified by the closure</text>
+  <text class="t-sub" x="16" y="434">builds: owns and ships it &#183; uses: consumes it as is, must not re-decide &#183; shipped rows are re-verified by the closure</text>
 </svg>

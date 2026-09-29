@@ -6,36 +6,34 @@ One shared story changes: which ids a caller may choose, and what choosing one g
 Most children change behaviour the docs already promise (a package imports, a guard refuses),
 so they publish nothing new. The specifics below belong to the child that ships them.
 
-## UPDATE · `apps/docs/docs/server/authentication.md` · new subsection after "Addressed routes, and what they scope by"
+## The shared promise · UPDATE `apps/docs/docs/server/authentication.md`
 
-> ### Ids you choose are addresses
->
-> A client can pick its own ids. An action call may carry a `requestId`, and most routes name
-> a session by id. That is useful: a retried call with the same `requestId` is recognised as
-> the same request instead of starting a second one.
->
-> An id is never proof of ownership. A request or a session belongs to the user and
-> organization it was created under, and an id someone else created reaches nothing of yours.
-> Send another user's `requestId` and you get your own request, not theirs. Send another
-> user's session id and you get a `404`, the same answer as an id that doesn't exist.
->
-> ```
-> POST /api/flows/chat/actions/send   bob's, requestId req_1 (alice's)  -> bob's own request
-> GET  /api/flows/sessions/s_alice    bob's, same tenant               -> 404
-> ```
->
-> So you don't need to make ids unguessable to keep users apart. Ids still leak in headers,
-> URLs and logs, and nothing here relies on them staying secret.
+A new subsection after "Addressed routes, and what they scope by", **"Ids you choose are
+addresses"**. What it has to tell a reader:
 
-The example routes are illustrative until FIX-1018's `DOCS.md` fixes the exact paths and
-status codes against the shipped behaviour.
+- A client may choose its own ids: a `requestId` on an action call, a session id on most
+  routes. A retried call with the same `requestId` is the same request, not a second one.
+- An id is never proof of ownership. Another user's `requestId` gets the caller its own
+  request; another user's session id is a `404`, the same as an id that doesn't exist.
+- So ids need not be unguessable to keep users apart. They leak in headers, URLs and logs,
+  and nothing relies on them staying secret.
+
+FIX-1018 writes the prose and its example routes, against the behaviour it ships, in its own
+PR. This document holds the intent and who publishes what, not a second copy of the draft.
+
+## UPDATE · `docs/architecture/state-and-scopes.md` · "What `requestId` gates, not tenant"
+
+The section calls a request id an unguessable capability that authorizes stream attach and
+resume alone. After FIX-1018 it is an address scoped to its owner, and the section says what
+attach and resume check instead ([EVOLUTION.md](EVOLUTION.md)).
 
 ## Ownership
 
 | Material | Publisher | Specific draft |
 |---|---|---|
-| "Ids you choose are addresses", above | FIX-1018, once its behaviour is verified | This document |
-| The session-id half of the example, and legacy session keys | FIX-1022 | Its PR; links here |
+| "Ids you choose are addresses", above | FIX-1018, once its behaviour is verified | FIX-1018's PR |
+| The request-id section of `state-and-scopes.md` | FIX-1018 | FIX-1018's PR |
+| The session-id half of the example, and legacy session keys | FIX-1022 | Its PR; links to FIX-1018's subsection |
 | A session's flow does not authorize another flow's history | FIX-1046 | Its PR; one sentence in "Addressed routes" |
 | The `external-dispatcher` row in `server/background-work.md`'s refusal table, narrowed to what a queue host still can't honour | FIX-1634 | Its `DOCS.md` |
 | `writable` on collections | Shipped with FIX-1510 | None |

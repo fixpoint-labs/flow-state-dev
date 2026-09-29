@@ -3,7 +3,8 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The calls that sit above any single child. The child set itself is not one of them: the owner
-locked it with the FSD Architect on 2026-09-29, including what is out of the epic. Two cards
+locked it with the FSD Architect on 2026-09-29, including what is out of the epic. "Twelve"
+below is that locked set of child issues; FIX-1510 shipped as FIX-1261's sub-issue. Two cards
 are the sign-off; the third is an engineering call recorded so no child reopens it.
 
 ## The tree
@@ -65,10 +66,12 @@ It comes down to a confirmed leak: the design question should not hold the fix f
 
 ## Who owns what
 
-![Who owns what: fourteen rules by the open children and the closure issue. Each security, integrity, packaging, queue and generator rule has one child that builds it; FIX-1286 and FIX-1634 consume FIX-1018's binding; the closure issue builds the proof and consumes every other rule.](figures/ownership.svg)
+![Who owns what: thirteen rules by the open children and the closure issue. Each security, integrity, packaging, queue and generator rule has one child that builds it; FIX-1286 and FIX-1634 consume FIX-1018's binding, and FIX-1334 builds on FIX-1431's leg a job; the closure issue runs the children's suite on installed tarballs and consumes every other rule.](figures/ownership.svg)
 
-Every rule has one owner. A *consumes* cell is a place a child must not re-decide: FIX-1286
-and FIX-1634 build on FIX-1018's binding rather than inventing their own.
+Every rule a child builds has one owner. A *consumes* cell is a place a child must not
+re-decide: FIX-1286 and FIX-1634 build on FIX-1018's binding rather than inventing their own.
+The fence and run rules bind every child, so they are not columns here; each names its owner
+and where it's checked in [BUSINESS-RULES.md](BUSINESS-RULES.md#what-no-child-may-do).
 
 ## Decided in review, recorded so no child reopens them
 
@@ -83,6 +86,18 @@ and FIX-1634 build on FIX-1018's binding rather than inventing their own.
 - **FIX-1628 stays scoped** to the non-streaming step loop.
 - **The done rows are re-verified, not reopened.** The closure plan re-runs their tests; a
   failure is a new bug child.
+- **Leg a is a standing CI job, not a closure step** (round 1). FIX-1431 lands the pack,
+  install and import job and FIX-1334 adds DevTool's assets to it; the closure reuses it. Its
+  control is the 0.1.1 tarball, pinned, because "the latest release" stops failing once
+  anything newer is published.
+- **Each child owns its HTTP case and its control** (round 1). The children with a hole or a
+  behaviour to prove over HTTP add a case to one shared suite, and prove it fails on the commit
+  before the hole closed. The closure runs the suite against installed tarballs and never
+  rebuilds an old commit.
+- **No shared owner-check rule** (round 1). The principal children keep their parallel
+  bindings and one not-found shape. A shared owner-scoped lookup is FIX-1018's to offer if its
+  reproduction produces one; the others may use it, and nothing waits for it.
+- **FIX-1286's route stays spec** (round 1). D3 already lets it close as proved by FIX-1018.
 
 ## What the end-state POC showed
 
@@ -93,5 +108,9 @@ is the whole-set proof.
 
 - **Drafted (Sep 29)** from the owner's locked set and the Architect's clusters; the closure
   issue FIX-1636 filed; FIX-1018 wired to block FIX-1286 and FIX-1634.
+- **Round 1 (Sep 29)** folded a second-look review, the Architect's stamp on it, and the Cursor
+  and Codex inline comments: leg a moved into standing CI, the children own their HTTP cases,
+  ER-3 names attach and resume, ER-10 matches the shipped create-if-absent contract, and the
+  rules were trimmed to ones with an owner.
 
 **Open: none.**
