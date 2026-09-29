@@ -37,6 +37,11 @@ export type TwoUserServer = {
   readonly api: string;
   /** A `fetch` that authenticates as `userId` in the shared tenant. */
   as(userId: string): (path: string, init?: RequestInit) => Promise<Response>;
+  /**
+   * The server's stores. Only for leaving a record the way an older release
+   * wrote it, before a case probes it over HTTP; a probe never uses them.
+   */
+  readonly stores: SQLiteStoreRegistry;
   /** Stop the server and delete its database. */
   close(): Promise<void>;
 };
@@ -85,6 +90,7 @@ export async function startTwoUserServer(
 
   return {
     api,
+    stores,
     as: (userId) => (path, init) =>
       fetch(`${api}${path}`, {
         ...init,

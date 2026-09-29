@@ -506,18 +506,27 @@ export async function authorizeManagementRoute(
     };
   }
 
+  // The routes that re-enter or stop a request answer another user's request
+  // as they answer an id nobody has used, for the same reason and, like the
+  // session above, ahead of the held refusal. The other request-addressed
+  // routes still answer 403 "not yours" below.
+  if (
+    subject.kind === "request" &&
+    REQUEST_CONTROL_ROUTES.has(route.kind) &&
+    owner !== undefined &&
+    principal.userId !== owner
+  ) {
+    return { denied: unknownRequestResponse(subject.requestId) };
+  }
+
   // The caller has now proven who they are, so the held refusal costs nothing
   // to give. Before the owner and organization checks: a record that cannot be
   // admitted at all is answered as such rather than as somebody else's.
   if (pendingDenial !== undefined) return { denied: pendingDenial };
 
   if (owner !== undefined && principal.userId !== owner) {
-    // The routes that re-enter or stop a request answer another user's
-    // request as they answer an id nobody has used, for the same reason. The
-    // other request-addressed routes still answer 403 "not yours".
-    if (subject.kind === "request" && REQUEST_CONTROL_ROUTES.has(route.kind)) {
-      return { denied: unknownRequestResponse(subject.requestId) };
-    }
+    // A request-addressed route still answers 403 "not yours"; its not-found
+    // shape is decided with the request routes, not here.
     return {
       denied: jsonResponse(403, {
         error: "Caller is not the owner of the requested resource"

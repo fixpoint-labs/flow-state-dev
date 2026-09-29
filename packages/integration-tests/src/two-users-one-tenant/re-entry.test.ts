@@ -233,6 +233,27 @@ describe("another user's request id", () => {
     const { request } = (await response.json()) as { request: { retryOf: string } };
     expect(request.retryOf).toBe(aliceRequest);
   });
+
+  it.each(ROUTES)(
+    "%s answers it as an unused id when it predates organizations, as only its owner learns",
+    async (_route, call) => {
+      const alice = server.as("alice");
+      const bob = server.as("bob");
+      const aliceRequest = await start(alice, "fail", ALICE_SESSION);
+      await statusOf(alice, aliceRequest, "failed");
+      // Leave the record as a release before organizations wrote it.
+      const record = await server.stores.request.get(aliceRequest);
+      await server.stores.request.set(aliceRequest, { ...record!, orgId: undefined }, "any");
+
+      const unused = await answer(await call(bob, UNUSED_REQUEST), UNUSED_REQUEST);
+      const probed = await answer(await call(bob, aliceRequest), aliceRequest);
+      expect(probed).toEqual(unused);
+      // Its owner is told it needs migrating.
+      const own = await call(alice, aliceRequest);
+      expect(own.status).toBe(409);
+      expect(((await own.json()) as { error: string }).error).toBe("migration-required");
+    }
+  );
 });
 
 describe("a request that arrived on a transport not open to re-entry", () => {
