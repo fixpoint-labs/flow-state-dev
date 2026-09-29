@@ -14,7 +14,9 @@
  *   2. `npm install` all the tarballs, in one call, into an empty ESM project,
  *      so each package's workspace dependencies resolve to the tarball beside
  *      it and not to the last version on the registry;
- *   3. run each check in {@link CHECKS} against that project.
+ *   3. run each check in {@link CHECKS} against that project: the installed
+ *      copies are the packed ones, every entry point imports, a server starts
+ *      and answers an action, and DevTool serves its client assets.
  *
  * `--control` runs the same install and import path against the published
  * `@flow-state-dev/core@0.1.1` tarball, pinned by its integrity hash, and
@@ -239,6 +241,30 @@ export const CHECKS = [
       // tail of a crash, is what names the failure.
       const out = `${res.stderr ?? ""}\n${res.stdout ?? ""}`;
       const verdict = out.split("\n").find((l) => l.startsWith("serve: FAIL"));
+      return [`exit ${res.status ?? res.signal}: ${verdict ?? out.trim().slice(-800)}`];
+    },
+  },
+  {
+    // DevTool's client app (`dist-client`) comes from `build:assets`, not the
+    // package's `build`, and `pnpm pack` does not run the `prepublishOnly`
+    // guard that refuses a publish without it. So a release build that drops
+    // the asset step packs cleanly and every import above still passes. This
+    // asks the installed copy for its assets and serves them as `fsdev dev`
+    // does, which is the first thing that breaks for a consumer.
+    name: "DevTool serves its client assets from the installed copy",
+    run(project) {
+      copyFileSync(join(FIXTURES, "serve-devtool.mjs"), join(project.dir, "serve-devtool.mjs"));
+      const res = spawnSync(process.execPath, ["serve-devtool.mjs"], {
+        cwd: project.dir,
+        encoding: "utf8",
+        timeout: 60_000,
+      });
+      if (res.status === 0 && res.stdout.includes("devtool: ok")) {
+        log(`    ${res.stdout.trim().split("\n").pop()}`);
+        return [];
+      }
+      const out = `${res.stderr ?? ""}\n${res.stdout ?? ""}`;
+      const verdict = out.split("\n").find((l) => l.startsWith("devtool: FAIL"));
       return [`exit ${res.status ?? res.signal}: ${verdict ?? out.trim().slice(-800)}`];
     },
   },
