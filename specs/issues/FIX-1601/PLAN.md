@@ -39,11 +39,11 @@ Each leg asserts on the open page, then reloads once at its end and asserts agai
 
 | ID | Passes when |
 |---|---|
-| P1a | **Leg a, ask `support`.** Post `[route:support.devices]`, a scenario that answers in text and never calls the post tool (`[scenario:wake]` today) and token A. `support.devices` shows working, then one line carrying A under its name within 15 s, and the row clears. Nobody else works or answers |
-| P1b | **Leg b, one per post.** Three posts, each after the previous answer shows, else FIX-1610's hold applies: `[route:support.devices]` B1, `[route:support.accounts]` B2, B3 unmarked for the fallback. Each answers through the post tool (`[scenario:reply-in-channel]` today). `devices`, `accounts` and `general` each work once and land one line with their token; nobody else works. Each one's `support` conversation holds only its posts: `devices` A and B1, `accounts` B2, `general` B3 |
+| P1a | **Leg a, ask `support`.** Post `[route:support.devices]`, a scenario that answers in text and never calls the post tool and holds a few seconds first, so the working row has time to show (`[scenario:wake-after-a-hold]` today), and token A. `support.devices` shows working, then one line answering A under its name within 15 s, and the row clears. Nobody else works or answers |
+| P1b | **Leg b, one per post.** Three posts, each after the previous answer shows, else FIX-1610's hold applies: `[route:support.devices]` B1, `[route:support.accounts]` B2, B3 unmarked for the fallback. Each answers through the post tool after the same hold (`[scenario:reply-after-a-hold]` today). `devices`, `accounts` and `general` each work once and land one line with their token; nobody else works. Each one's `support` conversation holds only its posts: `devices` A and B1, `accounts` B2, `general` B3 |
 | P1c | **Leg c, direct talk.** **c1:** "New conversation" on `support.devices`, `[scenario:talk-to-seat]` and C1: C1 is the person's turn, a reply under it. **c2:** there, send the recall scenario, which answers with the tokens its model was sent from earlier turns: the reply names C1 and no token from legs a or b. `support` shows neither C1 nor a reply |
 | P1s | **The smoke** (`GOAL_LIVE=1`). Five posts or more to `support`, each after the previous answer: device, account, FSD and unclear questions, and a follow-up leaning on an earlier line (FIX-1610 D4). FIX-1610's `poc/route-choice` posts are the default text. Each gets exactly one answer line within two minutes, and a clearly worded post reaches the specialist its purpose names. The follow-up's answer comes from its antecedent's specialist and names that subject; the report quotes both |
-| P2e | **The escalation ([epic ER-25](../../epics/FIX-1592/BUSINESS-RULES.md#what-a-person-gets)).** Ask `support` with FIX-1611's needs-a-person scenario and token E. The specialist's line says it filed; the `escalations` column shows one row carrying E. Nobody drains it; the unattended-`escalations` warning still logs |
+| P2e | **The escalation ([epic ER-25](../../epics/FIX-1592/BUSINESS-RULES.md#what-a-person-gets)).** Ask `support` with FIX-1611's needs-a-person scenario and token E. The specialist's line says it filed; the `escalations` list shows one row carrying E. Nobody drains it; the unattended-`escalations` warning still logs |
 | P3.1 | Every child's check passes with its held-outs, each control failing its own leg: FIX-1585, 1589, 1590 and 1594's in `goals/kitchen-sink-talk/`, as re-pointed by FIX-1611; FIX-1602's `goals/workforce-channels/a-fresh-host-wakes-its-member-agents/`; FIX-1609's `goals/kitchen-sink-talk/shows-the-reply-without-a-reload/`; FIX-1610's `goals/workforce-channels/a-routed-post-gets-one-answer/`, where `no-transcript` and `no-context` fail its follow-up and context legs, live leg on the smoke's key; FIX-1611's own; FIX-1612's regression test; FIX-1594's external-dispatcher test |
 | P3.2 | ER-18, as re-pointed by FIX-1611: `goals/workforce-conventions/a-channel-holds-the-work-a-seat-drains/`; `goals/workforce-conventions/code-comes-from-files-alone/`, its planted registration still failing leg c; `goals/workforce-conventions/durable-hire-survives-redeploy/` ([D3](DECISIONS.md#d3)); `goals/cli-principal/runs-in-the-apps-organization/`, on the smoke's key |
 | P3.3 | `apps/kitchen-sink/e2e/`, as re-pointed by FIX-1611, passes with `--workers=1`, FIX-1609's no-reload case included. FIX-1600's test follows QR-7 |
@@ -57,16 +57,16 @@ reddens another leg, or is missing from the commit is a finding.
 | Control | Removes | Must fail | Stays green | Named by |
 |---|---|---|---|---|
 | Today's `main` | The live view and the route (QR-5b) | a · b | c1 | Epic ER-17 |
-| `GOAL_CONTROL=no-live` | The panel's live view | a · b | c | FIX-1609 |
-| `no-landing` | Landing without a tool call | a | b · c | FIX-1610 |
-| `no-route` | `support`'s routing line | a · b | c | FIX-1610 |
-| `drop-user-message` | Leg c's person turns | c | a · b | FIX-1585 |
-| The no-history control | The seat sending its earlier turns | c2 | a · b · c1 | FIX-1612; its kitchen-sink switch ships with FIX-1611 |
-| The filing control | Filing onto `escalations` | Part 2 | a to c | FIX-1611 |
+| `GOAL_CONTROL=no-live` | The panel's live view and the escalations list's | a · b · Part 2 | c · seg | FIX-1609, FIX-1622 |
+| `no-landing` | Landing without a tool call | a · Part 2 | b · c · seg | FIX-1610 |
+| `no-route` | `support`'s routing line | a · b · Part 2 | c · seg | FIX-1610 |
+| `drop-user-message` | Leg c's person turns | c | a · b · seg · Part 2 | FIX-1585 |
+| The no-history control | The seat sending its earlier turns | c2 | a · b · c1 · seg · Part 2 | FIX-1612; its kitchen-sink switch ships with FIX-1611 |
+| The filing control | Filing onto `escalations` | Part 2 | a to c · seg | FIX-1611 |
 
 `no-live` and `no-route` each break a and b on their own: without the live view, a's answer never
 shows unreloaded and b waits on each answer; without the route, every member wakes (ER-2),
-failing a's "nobody else works" and b's one per post.
+failing a's "nobody else works" and b's one per post. Three also break part 2: without the live view the list shows the filed row only after a reload; without landing, the filed-case answer, which calls no post tool, never lands; without the route, every member files it, and its answer, which calls no post tool, lands for nobody.
 
 `no-landing` and `no-route` act in FIX-1610's fixture host. FIX-1611 brings them, the no-history and
 filing controls, and the recall and needs-a-person scenarios to kitchen-sink (ER-7).
