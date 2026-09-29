@@ -763,6 +763,22 @@ export function createInboundTransportHost(
       });
     };
 
+    /**
+     * Undo an admission that never started. No place yet means nothing was
+     * written. A place we hold goes back, and a stub we wrote is marked
+     * failed: the `finally` below only drops the activeRequests entry, so an
+     * `in_progress` record would otherwise stick. A foreign record under this
+     * id is not ours.
+     */
+    const releaseHeldAdmission = async (error: unknown): Promise<never> => {
+      if (held === undefined) throw error;
+      await held.release();
+      if (!isRefusedAdmission(error)) {
+        await terminateUnenqueuedRequest(stores, requestId);
+      }
+      throw error;
+    };
+
     // The config this dispatch runs under. Normally the host's own; a detached
     // child carries the LAUNCHING request's, because the caller may have derived
     // one the host was never built with — `fsdev run` does, so `--model` reaches
@@ -967,23 +983,7 @@ export function createInboundTransportHost(
           .then(() => {
             entryOwned = true;
           })
-          .catch(async (error: unknown) => {
-          // Refused or unreachable at admission: nothing was taken and nothing
-          // written, so there is nothing to give back or terminate.
-          if (held === undefined) throw error;
-          // The place was taken before these writes, and only `run` gives it
-          // back — which is reached only once materialization succeeds. Give it
-          // back here, so the failed dispatch does not hold the key until the
-          // process restarts.
-          await held.release();
-          // Only a record this dispatch wrote is its to terminate — a refused
-          // admission never touched the foreign owner's, nor the caller's own
-          // earlier request under the id it reused.
-          if (!isRefusedAdmission(error)) {
-            await terminateUnenqueuedRequest(stores, requestId);
-          }
-          throw error;
-        });
+          .catch(releaseHeldAdmission);
 
         // This branch defers a start, so it needs the same acceptance signal the
         // external branch has (FIX-999). `accepted` was previously left
@@ -1160,24 +1160,7 @@ export function createInboundTransportHost(
             place === undefined ? dispatchEnvelope : { ...dispatchEnvelope, leasePlace: place }
           );
         })
-        .catch(async (error: unknown) => {
-            // Refused or unreachable at admission: nothing was taken, written
-            // or enqueued.
-            if (held === undefined) throw error;
-            await held.release();
-            // Materialization or the enqueue failed: the job is not running and
-            // never will. Terminate the in_progress record we may have written —
-            // the record can land before the entry write fails, and a failed
-            // enqueue leaves a fully-written record — so it doesn't outlive the
-            // job. The `finally` below only deregisters the activeRequests
-            // entry, which would otherwise leave the sweeper nothing to reap and
-            // the record stuck in_progress forever. A refused admission wrote
-            // nothing and terminates nothing — the record it found is not ours.
-            if (!isRefusedAdmission(error)) {
-              await terminateUnenqueuedRequest(stores, requestId);
-            }
-            throw error;
-          });
+        .catch(releaseHeldAdmission);
 
       accepted = acceptance.then(() => undefined);
       finished = acceptance.then((handle) => handle.finished);
