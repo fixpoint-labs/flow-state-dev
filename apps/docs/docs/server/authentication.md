@@ -32,7 +32,7 @@ is internally consistent with the rest of the runtime. Two checks:
 
 - **Session binding.** Once a session is created with `userId: A`, later
   requests claiming `userId: B` against that session are refused with
-  `UserBindingMismatchError` before they're accepted. Same for `orgId` via
+  `UserBindingMismatchError`, and nothing from them is written. Same for `orgId` via
   `OrgBindingMismatchError`. See [Session consistency check](#session-consistency-check).
 - **Schema compatibility.** If two flows on the same server declare
   incompatible `user.stateSchema` (or `org.stateSchema`) shapes,
@@ -459,19 +459,18 @@ their request's status or stream gets you the same `404` an id nobody has used
 gets, so the answer doesn't even say the id is taken. Acting on it, say
 resuming or aborting it, is refused with a `403`.
 
-Session ids are addresses too, and they turn up in URLs all the time. What
-differs is what reusing one gets you. With a resolver configured, if another
-user already has a session under the id you send, you get the same
-`404 Unknown session` you'd get for an id nobody has used, on every session
-route and on an action posted into it. Nothing of their session reaches you,
-not even whose it is, and nothing you send is written into it. The one place
-the id still shows it's taken is creating a session with it, which answers
-`409` whoever holds it; pick a fresh id and carry on.
+Session ids are addresses too, and they turn up in URLs all the time. With a
+resolver configured, if another user already has a session under the id you
+send, you get the same `404 Unknown session` you'd get for an id nobody has
+used, on every session route and on an action posted into it. Nothing of their
+session reaches you, not even whose it is, and nothing you send is written into
+it. The one place the id shows it's taken is creating a session with it, which
+answers `409` whoever holds it. Pick a fresh id and retry.
 
 ```
-GET  /api/flows/sessions/s_42                  bob's, s_42 belongs to alice  -> 404
-POST /api/flows/support/s_42/actions/reply     bob's, s_42 belongs to alice  -> 404
-POST /api/flows/support/sessions              bob's, body {sessionId: "s_42"} -> 409
+GET  /api/flows/sessions/s_42               bob's, s_42 belongs to alice   -> 404
+POST /api/flows/support/s_42/actions/reply  bob's, s_42 belongs to alice   -> 404
+POST /api/flows/support/sessions            bob's, body sessionId "s_42"   -> 409
 ```
 
 So ids don't have to be unguessable to keep users apart. They show up in

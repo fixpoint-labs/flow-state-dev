@@ -683,7 +683,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleDebugListSuspensions(request, route, {
           registry: options.registry,
           stores,
-          debug: debugConfig
+          debug: debugConfig,
+          tenantId
         });
       }
 

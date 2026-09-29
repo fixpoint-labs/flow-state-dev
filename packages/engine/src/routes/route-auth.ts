@@ -496,27 +496,34 @@ export async function authorizeManagementRoute(
     throw error;
   }
 
+  // Another user's session is not found, exactly as an id nobody has used
+  // is. A session id is an address that travels in URLs, so holding one
+  // proves nothing; a 403 here would tell the caller the id is in use. Ahead
+  // of the held refusal below: a legacy session's `migration-required` names
+  // something about the record, and is its owner's to hear, not another
+  // user's.
+  if (subject.kind === "session" && owner !== undefined && principal.userId !== owner) {
+    return {
+      denied: hiddenSessionResponse(route, subject.sessionId),
+      sessionHidden: true
+    };
+  }
+  // The same for a request's reads, its status and its stream: a request id
+  // travels in headers, bodies and URLs, so another user's is answered as an
+  // id nobody has used, a legacy one included.
+  if (subject.kind === "request" && owner !== undefined && principal.userId !== owner) {
+    const hidden = hiddenRequestResponse(request, route, ctx.registry);
+    if (hidden !== undefined) return { denied: hidden };
+  }
+
   // The caller has now proven who they are, so the held refusal costs nothing
   // to give. Before the owner and organization checks: a record that cannot be
   // admitted at all is answered as such rather than as somebody else's.
   if (pendingDenial !== undefined) return { denied: pendingDenial };
 
   if (owner !== undefined && principal.userId !== owner) {
-    // Another user's session is not found, exactly as an id nobody has used
-    // is. A session id is an address that travels in URLs, so holding one
-    // proves nothing; a 403 here would tell the caller the id is in use.
-    if (subject.kind === "session") {
-      return {
-        denied: hiddenSessionResponse(route, subject.sessionId),
-        sessionHidden: true
-      };
-    }
-    // The same for a request's reads, its status and its stream: a request
-    // id travels in headers, bodies and URLs, so another user's is answered
-    // as an id nobody has used. The request routes that act on a request
-    // (abort, resume, retry, continue) still answer 403 "not yours".
-    const hidden = hiddenRequestResponse(request, route, ctx.registry);
-    if (hidden !== undefined) return { denied: hidden };
+    // The routes that act on a request (abort, resume, retry, continue)
+    // answer 403 "not yours"; its reads were answered above.
     return {
       denied: jsonResponse(403, {
         error: "Caller is not the owner of the requested resource"
