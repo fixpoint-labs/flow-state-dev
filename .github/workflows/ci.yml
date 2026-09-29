@@ -119,7 +119,7 @@ jobs:
       - name: Release build
         run: pnpm release:build
 
-      - name: Pack, install into an empty project, import each, start a server
+      - name: Pack, install into an empty project, import each, start a server, serve DevTool
         run: node scripts/packed-install/run.mjs
 
       # The control: the same install-and-import path against the published

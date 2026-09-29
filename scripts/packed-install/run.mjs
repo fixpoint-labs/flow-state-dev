@@ -14,7 +14,9 @@
  *   2. `npm install` all the tarballs, in one call, into an empty ESM project,
  *      so each package's workspace dependencies resolve to the tarball beside
  *      it and not to the last version on the registry;
- *   3. run each check in {@link CHECKS} against that project.
+ *   3. run each check in {@link CHECKS} against that project: the installed
+ *      copies are the packed ones, every entry point imports, a server starts
+ *      and answers an action, and DevTool serves its client assets.
  *
  * `--control` runs the same install and import path against the published
  * `@flow-state-dev/core@0.1.1` tarball, pinned by its integrity hash, and
@@ -241,22 +243,40 @@ export const CHECKS = [
   },
   {
     name: "a server starts and answers an action",
-    run(project) {
-      copyFileSync(join(FIXTURES, "serve.mjs"), join(project.dir, "serve.mjs"));
-      const res = spawnSync(process.execPath, ["serve.mjs"], {
-        cwd: project.dir,
-        encoding: "utf8",
-        timeout: 60_000,
-      });
-      if (res.status === 0 && res.stdout.includes("serve: ok")) return [];
-      // The engine logs freely to stderr; the fixture's own verdict, or the
-      // tail of a crash, is what names the failure.
-      const out = `${res.stderr ?? ""}\n${res.stdout ?? ""}`;
-      const verdict = out.split("\n").find((l) => l.startsWith("serve: FAIL"));
-      return [`exit ${res.status ?? res.signal}: ${verdict ?? out.trim().slice(-800)}`];
-    },
+    run: (project) => runFixture(project, "serve.mjs", "serve"),
+  },
+  {
+    // `pnpm pack` skips prepublishOnly, so a missing dist-client still packs and still imports.
+    name: "DevTool serves its client assets from the installed copy",
+    run: (project) => runFixture(project, "serve-devtool.mjs", "devtool"),
   },
 ];
+
+/**
+ * Copy one fixture into the consumer project and run it there. `stem` is its
+ * verdict prefix: the fixture prints `<stem>: ok` on success and
+ * `<stem>: FAIL at <step>: …` otherwise. Returns the check's failures: empty
+ * on pass, else the fixture's own verdict or, after a crash, the tail of its
+ * output.
+ */
+function runFixture(project, file, stem) {
+  copyFileSync(join(FIXTURES, file), join(project.dir, file));
+  const res = spawnSync(process.execPath, [file], {
+    cwd: project.dir,
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  const ok = (res.stdout ?? "").split("\n").find((l) => l.startsWith(`${stem}: ok`));
+  if (res.status === 0 && ok) {
+    log(`    ${ok}`);
+    return [];
+  }
+  // The engine logs freely to stderr; the fixture's own verdict, or the tail
+  // of a crash, is what names the failure.
+  const out = `${res.stderr ?? ""}\n${res.stdout ?? ""}`;
+  const verdict = out.split("\n").find((l) => l.startsWith(`${stem}: FAIL`));
+  return [`exit ${res.status ?? res.signal}: ${verdict ?? out.trim().slice(-800)}`];
+}
 
 /**
  * Import again, with their optional peers now installed, the subpaths the first
