@@ -517,10 +517,10 @@ async function patchRequestRecord(
   stores: StoreRegistry,
   requestId: string,
   patch: Partial<RequestRecord>
-): Promise<void> {
+): Promise<number | undefined> {
   const current = await stores.request.get(requestId);
   if (current === undefined) {
-    return;
+    return undefined;
   }
 
   const sanitized = patch.items !== undefined
@@ -535,6 +535,7 @@ async function patchRequestRecord(
     { ...current, ...sanitized, updatedAt: Date.now() },
     "any"
   );
+  return current.createdAt;
 }
 
 /** Statuses a run leaves its record in when it has finished for good. */
@@ -545,24 +546,29 @@ const FINALIZABLE_STATUSES = ["completed", "failed", "aborted", "interrupted"] a
  * write before leaving the active registry. Session retention deletes a
  * request only once this is set.
  *
- * Conditional on the record still existing in a terminal status, so it never
- * recreates a record a sibling has already deleted, and never stamps one a new
- * run has taken back to `in_progress`. A failure is logged, not thrown: the
- * run has succeeded or failed already, and an unstamped record is only kept
- * longer.
+ * Conditional on this run's own record (`recordCreatedAt`, the `createdAt`
+ * of the record its terminal patch wrote) still existing in a terminal
+ * status. So it never recreates a record a sibling has already deleted, never
+ * stamps a new request that has since taken the id, and never stamps one a
+ * new run has taken back to `in_progress`. With no terminal record to fence
+ * on there is nothing to stamp. A failure is logged, not thrown: the run has
+ * succeeded or failed already, and an unstamped record is only kept longer.
  */
 async function finalizeRequestRecord(
   stores: StoreRegistry,
   requestId: string,
+  recordCreatedAt: number | undefined,
   logger: RuntimeLogger
 ): Promise<void> {
+  if (recordCreatedAt === undefined) return;
   const now = Date.now();
   try {
     await stores.request.setFieldsIfStatus(
       requestId,
       { finalizedAtMs: now },
       FINALIZABLE_STATUSES,
-      now
+      now,
+      recordCreatedAt
     );
   } catch (err) {
     logRuntimeEvent(logger, "warn", "[flow-state] request finalization failed", {
@@ -1079,6 +1085,9 @@ export async function runActionInternal<
   // the timer running through `onFinished` so the heartbeat shows the run is
   // still alive, but there is nothing left to cancel.
   let abortPollClosed = false;
+  // `createdAt` of the record this run's terminal patch wrote, so the final
+  // `finalizedAtMs` stamp lands on that record and no other.
+  let terminalRecordCreatedAt: number | undefined;
 
   /**
    * One abort-intent poll. Reads the narrow projection rather than the record —
@@ -2138,7 +2147,7 @@ export async function runActionInternal<
 
     const completedAt = Date.now();
     const items = itemsToPersist();
-    await patchRequestRecord(options.stores, requestId, {
+    terminalRecordCreatedAt = await patchRequestRecord(options.stores, requestId, {
       status: terminalStatus,
       completedAtMs: completedAt,
       items
@@ -2255,7 +2264,7 @@ export async function runActionInternal<
 
     // The run has nothing left to write under this id.
     stopHeartbeatTimer();
-    await finalizeRequestRecord(options.stores, requestId, logger);
+    await finalizeRequestRecord(options.stores, requestId, terminalRecordCreatedAt, logger);
 
     // Deregister abort controller and active registry
     deregisterAbortController(requestId);
@@ -2415,7 +2424,7 @@ export async function runActionInternal<
         await flushTraces();
 
         const abortedAt = Date.now();
-        await patchRequestRecord(options.stores, requestId, {
+        terminalRecordCreatedAt = await patchRequestRecord(options.stores, requestId, {
           status: "aborted",
           abortedAt,
           items: itemsToPersist()
@@ -2447,7 +2456,7 @@ export async function runActionInternal<
         await flushCheckpoints();
         await flushTraces();
 
-        await patchRequestRecord(options.stores, requestId, {
+        terminalRecordCreatedAt = await patchRequestRecord(options.stores, requestId, {
           status: "interrupted",
           interruptedAt: Date.now(),
           items: itemsToPersist()
@@ -2481,7 +2490,7 @@ export async function runActionInternal<
       await flushTraces();
 
       const failedAt = Date.now();
-      await patchRequestRecord(options.stores, requestId, {
+      terminalRecordCreatedAt = await patchRequestRecord(options.stores, requestId, {
         status: "failed",
         failedAtMs: failedAt,
         items: itemsToPersist()
@@ -2520,7 +2529,7 @@ export async function runActionInternal<
       });
     }
 
-    await finalizeRequestRecord(options.stores, requestId, logger);
+    await finalizeRequestRecord(options.stores, requestId, terminalRecordCreatedAt, logger);
 
     // Deregister abort controller and active registry
     deregisterAbortController(requestId);

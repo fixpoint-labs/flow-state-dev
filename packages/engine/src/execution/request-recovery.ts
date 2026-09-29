@@ -122,7 +122,8 @@ export async function detectInterruptedRequests(options: {
     // `finalizedAtMs`, so a stale entry over a terminal, unstamped record is a
     // run that died in its last steps. Nothing is left to write under the id:
     // stamp it here so session retention can evict it. Conditional on the
-    // status just read, so it never recreates or resurrects a record.
+    // record just read (its status and `createdAt`), so it never recreates a
+    // record or stamps another request that has since taken the id.
     if (
       requestRecord !== undefined &&
       requestRecord.finalizedAtMs === null &&
@@ -134,7 +135,8 @@ export async function detectInterruptedRequests(options: {
         entry.requestId,
         { finalizedAtMs: now },
         [requestRecord.status],
-        now
+        now,
+        requestRecord.createdAt
       );
     }
 

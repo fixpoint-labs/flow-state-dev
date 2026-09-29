@@ -97,6 +97,33 @@ describe("request finalization", () => {
     expect(await stores.request.get("req_deleted_in_tail")).toBeUndefined();
   });
 
+  it("does not stamp another request that took the id while onFinished was running", async () => {
+    // Stamping the newcomer would tell retention its run had finished while
+    // it may still be writing.
+    const stores = createInMemoryStores();
+    const flow = makeFlow(async ({ requestId }) => {
+      const mine = await stores.request.get(requestId);
+      await stores.request.delete(requestId);
+      if (mine === undefined) return;
+      await stores.request.set(
+        requestId,
+        {
+          ...mine,
+          userId: "someone-else",
+          createdAt: mine.createdAt + 1,
+          finalizedAtMs: null
+        },
+        "any"
+      );
+    });
+
+    await run(stores, flow, "req_taken_in_tail");
+
+    const newcomer = await stores.request.get("req_taken_in_tail");
+    expect(newcomer?.userId).toBe("someone-else");
+    expect(newcomer?.finalizedAtMs).toBeNull();
+  });
+
   it("keeps heartbeating while onFinished runs, so a slow finish is not taken for a dead run", async () => {
     const stores = createInMemoryStores();
     let beatDuringOnFinished: number | undefined;
