@@ -455,12 +455,18 @@ export function createPostgresRequestStore(
       // Events and runOnce results go with the record: ids are
       // caller-supplied, so a later request may take this one, and a replay
       // of it must not surface this run's events.
+      //
+      // Children first, record last. The executor has no transaction, so the
+      // order is what keeps this safe: a failed child delete leaves the record
+      // (the delete can be retried, and nothing is left without an owner), and
+      // the id cannot be claimed again until the record is gone, by which time
+      // no child cleanup is left to hit the new owner's rows.
       await Promise.all([
         executor.query("DELETE FROM request_items WHERE request_id = $1", [id]),
         executor.query("DELETE FROM request_events WHERE request_id = $1", [id]),
-        executor.query("DELETE FROM request_runonce WHERE request_id = $1", [id]),
-        base.delete(id)
+        executor.query("DELETE FROM request_runonce WHERE request_id = $1", [id])
       ]);
+      await base.delete(id);
       clearItemMaps(id);
     },
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
