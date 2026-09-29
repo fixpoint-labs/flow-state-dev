@@ -82,6 +82,54 @@ jobs:
       - name: OMP mailbox regressions
         run: node --test .omp/test/mailbox.test.mjs
 
+  # What a consumer gets from `npm install`: every publishable package packed
+  # the way `changeset publish` packs it, installed into an empty ESM project,
+  # imported entry point by entry point, then a server started from the
+  # installed copies. Every other job resolves packages through `src` over a
+  # workspace link, which is how 0.1.1 passed all of them and failed on its
+  # first import. `release:build`, not `packages:build`, so the tarballs hold
+  # what a release ships, DevTool's client assets included.
+  # One job for this, extended rather than duplicated: new checks go in the
+  # script's CHECKS list. The script header owns the rest.
+  packed-install:
+    name: Packed release installs and imports
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Restore Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-
+
+      - name: Release build
+        run: pnpm release:build
+
+      - name: Pack, install into an empty project, import each, start a server
+        run: node scripts/packed-install/run.mjs
+
+      # The control: the same install-and-import path against the published
+      # 0.1.1 core, pinned by its hash. It passes only if that tarball fails
+      # on an extensionless import in dist, so a check that has gone blind
+      # turns this step red. Pinned, never "latest": a latest release that
+      # works would make the control pass for the wrong reason.
+      - name: Control fails against the 0.1.1 tarball
+        run: node scripts/packed-install/run.mjs --control
+
   guards:
     name: Process guards
     runs-on: ubuntu-latest
