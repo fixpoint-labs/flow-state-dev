@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3: the event row names only doors that ship, chosen, instead of the cross-flow event bus the Architect's guidance named. It comes down to the first row: notify and NotificationFlow are not exported because their issue was canceled, so a reader copying them gets code that does not compile and the epic's export check fails. The price is the second row: no one-to-many topic in the row; one event reaching several flows is one dispatcher per receiver or a router. Third row: both options describe another system arriving through an adapter. Locks in two shipped lines in the event row and the removal of a stale notification source row. Flips if a pub/sub surface ships before the page publishes."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3: the event row names only doors that ship, chosen, with dispatcher as the shipped cross-flow bus, instead of FIX-441's topic bus the Architect's guidance named. It comes down to the first row: notify and NotificationFlow are not exported because their issue was canceled, so a reader copying them gets code that does not compile and the epic's export check fails. The price is the second row: no one-to-many topic in the row; one event reaching several flows is one dispatcher per receiver or a router. Third row: both options describe another system arriving through an adapter. Locks in two shipped lines in the event row, dispatcher first, and the notification source row reworded, not removed. Flips if a pub/sub surface ships before the page publishes."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -46,7 +46,7 @@
     <text class="t-h c-code" x="228" y="112">Only doors that ship</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">The cross-flow event bus</text>
+    <text class="t-h c-lost" x="592" y="112">FIX-441's topic bus</text>
   </g>
 
   <g id="row-decides">
@@ -57,7 +57,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Code compiles</text>
-    <text class="t-s" x="248" y="179">dispatcher with flowKind, a custom adapter</text>
+    <text class="t-s" x="248" y="179">dispatcher is the cross-flow bus, and ships</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Code doesn't compile</text>
     <text class="t-s" x="612" y="179">notify and NotificationFlow aren't exported</text>
@@ -89,7 +89,7 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">Two shipped lines in the event row</text>
-    <text class="t-s" x="32" y="389">and the stale notification source row removed</text>
+    <text class="t-s" x="32" y="389">and the notification source row reworded, not removed</text>
   </g>
 
   <g id="flips-if">

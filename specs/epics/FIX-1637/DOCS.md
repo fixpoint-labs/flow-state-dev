@@ -36,12 +36,15 @@ parts; FIX-1639's own spec drafts the rest.
 > | `{ key: (input) => string }` | a session derived from the key, created on first use | Works |
 > | `{ id: (input) => string }` | a session that already exists | Refused before anything starts |
 >
-> On a queue-backed host, such as one using `bullmqWorker`, a delivery into an existing session
-> throws `DispatchRefusedError` with `refused: "external-dispatcher"`. Nothing is enqueued. A
+> On a host whose dispatcher hands work to an external queue, such as `bullmqWorker` in
+> `colocated` or `dispatch-only` mode, a delivery into an existing session throws
+> `DispatchRefusedError` with `refused: "external-dispatcher"`. Nothing is enqueued. A
 > `{ key }` dispatch, a webhook delivery and a schedule tick all run normally there. The
-> refusal applies only to a running flow sending work into a session that already exists.
+> refusal applies only to a running flow sending work into a session that already exists. A
+> `worker-only` process installs no dispatcher, so dispatch from a run it executes stays in
+> process and is not refused.
 >
-> On a queue-backed host, a Workforce channel inherits the refusal: a client's post is written,
+> On such a host, a Workforce channel inherits the refusal: a client's post is written,
 > but no member is woken, and posting into the channel from another flow is refused the same way.
 >
 > If your work has to reach a session that already exists, run dispatch in process for that
@@ -59,7 +62,10 @@ plainly that there is no queue-host route yet (ER-4).
 > | **A schedule** to start a run | `schedules.static.<id>`, a `defineScheduleBinding` with `cron` and `block`; or `schedules.resolve` for schedules stored at runtime; `authentication.resolvePrincipal`, for example `createBearerSecretPrincipalResolver` | `createScheduledTransportAdapter()` in `adapters`; a schedule index when one tick fans out to many stored schedules | A scheduler that calls `POST /api/flows/:flowKind/schedules/:scheduleId/dispatch` on time: Vercel Cron, Cloud Scheduler, EventBridge, or BullMQ's repeatable jobs through `@flow-state-dev/bullmq/schedules` |
 > | **Another flow** to start a run | On the sender, `dispatcher({ flowKind, action, session })`; on the receiver, `internal.actions.<action>` | Both flows registered on the same `createFlowState` | Nothing |
 > | **Another system** (a queue, an event bus) to start a run | The entry it should run | A custom inbound transport adapter in `adapters` | Whatever delivers to your adapter |
-> | **Work to continue** after the request returns | `dispatcher()` into `internal.actions`, or `.sideChain()` in a sequencer | `worker: bullmqWorker({ connection })` for queue-backed runs, and its mode | Redis, and a worker process when the web tier runs `dispatch-only` |
+> | **Work to continue** after the request returns | `dispatcher()` into `internal.actions` | `worker: bullmqWorker({ connection })` for queue-backed runs, and its mode | Redis, and a worker process when the web tier runs `dispatch-only` |
+>
+> A `.sideChain()` is not this row: it runs beside the request, and the request stays open
+> until it settles.
 >
 > Your infrastructure decides *when* something fires. FSD decides what runs once it does. The
 > scheduler and deployment guides cover the infrastructure column for each platform.
@@ -95,8 +101,11 @@ no example that relies on it.
 
 ## UPDATE · `apps/docs/docs/advanced/inbound-transports.md` · *Known sources*
 
-Remove the `notification` row, and `notification` from the list of known values above it.
-It names cross-flow event subscribers, which don't ship (D3). Drift fix only.
+Reword the `notification` row; keep the value in the list above it. The row describes
+cross-flow event subscribers, which don't ship (D3), while core's `InboundSource` still lists
+the value and the DevTool labels it. Proposed row, drift fix only:
+
+> | `notification` | No built-in transport sends it. A custom transport may use it, and the DevTool labels those requests *Notification* |
 
 ## UPDATE · link lines, nothing else
 

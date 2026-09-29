@@ -13,7 +13,7 @@ keep the foundation honest ([`docs/objectives.md`](../../../docs/objectives.md))
 |---|---|---|
 | **wants a flow to react to an outside service** | Finds *Webhooks* under Engine › Hosting. Nothing joins it to schedules or to work that keeps going | One page walks webhook, then schedule, then the hand-off, and links each reference page |
 | **wants a flow to run on a clock** | Reads *Scheduled actions*, *Schedule index* and four scheduler guides to learn which parts are theirs | One table says what goes in the flow, what goes on the host, and what their scheduler must call |
-| **runs on a queue-backed host (BullMQ)** | Meets the `{ id }` refusal as one row of a refusal table, or as a channel that never answers | Reads before building: `{ key }` works there, `{ id }` is refused by name, and what to do instead |
+| **runs on a queue-backed host (BullMQ)** | Meets the `{ id }` refusal as one row of a refusal table, or as a channel that never answers | Reads before building: where the host's dispatcher hands work to the queue, `{ key }` works, `{ id }` is refused by name, and what to do instead |
 | **meets *wake*, *dispatch*, *tick*** | Sees the words used across pages, defined nowhere. *Heartbeat* on these pages means a running request's liveness | Gets each defined once, in a sentence |
 | **uses Workforce channels and boards** | Reads an 800-line channels page to tell the conversation from the work list | Reads one section: a channel holds the conversation, a board holds the work, with links |
 
@@ -58,7 +58,7 @@ The control is what makes a pass mean the page is true, not just readable.
 |---|---|
 | **Goal check** | The closure issue ([FIX-1642](https://linear.app/fixpoint-labs/issue/FIX-1642)) on one `main` commit after every other child merges ([ER-15](BUSINESS-RULES.md#the-closure)) |
 | **Signal** | A QA run starts at the docs site nav and uses only the page and its links. It builds a fixture flow woken by a webhook and by a schedule that hands off work finishing after the request returns. Every API name and config key on the page and its table resolves to a shipped export. The page's BullMQ `session: { id }` statement matches the runtime: `DispatchRefusedError`, `refused: "external-dispatcher"`, while `{ key }` runs |
-| **Input** | The published page as written, a real BullMQ host with Redis, and the webhook and schedule endpoints called over HTTP |
+| **Input** | The published page as written, a real BullMQ host with Redis whose dispatcher hands work to the queue (`colocated` or `dispatch-only`), and the webhook and schedule endpoints called over HTTP |
 | **Anti-game** | No reading the source to fill a gap the page left. No asserting on a child's own test |
 | **Control that must fail** | A planted false claim, an option that does not exist, on the page: the run must fail on it |
 
@@ -70,7 +70,7 @@ The control is what makes a pass mean the page is true, not just readable.
 
 ## What's in the box
 
-![What's in the box: one published page holding the path from webhook to schedule to hand-off, the id vs key section with the queue-host fence, the flow / host / ops table, and three defined terms. Linked, not rewritten: the eight reference pages and the scheduler and deploy guides. Replaced in one line: a stale event-subscriber source row, and the epic-wake definition moving to contributor docs. Not built, below a fence: the id fix, a Heartbeats noun, new L1 nouns, Relay, a per-cloud deploy guide, live UI](figures/end-state.svg)
+![What's in the box: one published page holding the path from webhook to schedule to hand-off, the id vs key section with the queue-host fence, the flow / host / ops table, and three defined terms. Linked, not rewritten: the eight reference pages and the scheduler and deploy guides. Reworded in one line: the notification source row, and the epic-wake definition moving to contributor docs. Not built, below a fence: the id fix, a Heartbeats noun, new L1 nouns, Relay, a per-cloud deploy guide, live UI](figures/end-state.svg)
 
 The box is one page; everything it leans on already ships. The fence keeps a docs epic from
 becoming a runtime or product one.
@@ -84,13 +84,13 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | [FIX-1639](https://linear.app/fixpoint-labs/issue/FIX-1639) · the page | The published page: the path, the `{ id }` / `{ key }` fence, the terms block and the flow / host / ops table; drift fixes and links on the pages it leans on | The substance. Under [D1](DECISIONS.md#d1) it carries all three deliverables | Backlog · spec route |
 | [FIX-1638](https://linear.app/fixpoint-labs/issue/FIX-1638) · config matrix | The flow / host / ops table | **Proposed: folded into FIX-1639** ([D1](DECISIONS.md#d1), open) | Backlog |
 | [FIX-1640](https://linear.app/fixpoint-labs/issue/FIX-1640) · terms | Wake, dispatch, schedule tick; `epic-wake` moves to contributor docs | **Proposed: folded into FIX-1639** ([D1](DECISIONS.md#d1), open) | Backlog |
-| [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641) · wake authoring POC | Three authoring shapes in an examples package, each compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2369](https://github.com/fixpoint-labs/flow-state-dev/pull/2369) open |
+| [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641) · wake authoring POC | Three authoring shapes in an examples package, each compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2369](https://github.com/fixpoint-labs/flow-state-dev/pull/2369) open, draft |
 | [FIX-1642](https://linear.app/fixpoint-labs/issue/FIX-1642) · closure · **required** | The QA plan: the page followed as written on one `main` commit | Proves the whole ([ER-15](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by FIX-1638, 1639, 1640, 1641 |
 
 **One page, two children proposed to fold, one POC, and the closure.** Smaller if D1 holds;
 zero only if a nav change were enough, and it isn't ([D2](DECISIONS.md#d2)). FIX-1638 and
 FIX-1640 stay open in Linear until the owner answers D1. FIX-1641 was filed while this spec
-was written and runs beside the page, not before it.
+was written and runs beside the page, not before it; like every child it blocks the closure.
 
 ## How the issues flow into each other
 
@@ -102,12 +102,14 @@ flowchart LR
   P -->|"the published page"| Z["FIX-1642 · closure · required"]
   M --> Z
   G --> Z
-  E["FIX-1641 · wake authoring POC"] -->|"examples, findings"| Z
+  E["FIX-1641 · wake authoring POC"] -->|"lands or closes first"| Z
 ```
 
 Solid edges are blocked-by; dashed edges into FIX-1639 are the proposed fold, and the one from
 FIX-1634 is an input from another epic. If D1 re-splits, FIX-1638 and FIX-1640 publish beside
-FIX-1639 and all still block the closure. FIX-1641 hands the page nothing it must wait for.
+FIX-1639 and all still block the closure. FIX-1641 hands the page nothing it must wait for,
+and the closure does not check it. It blocks the closure only because every child does: the run
+waits for #2369 to merge, or for the owner to close FIX-1641 with its findings filed to FIX-1639.
 
 ## What stays as it is
 
@@ -126,8 +128,9 @@ a runtime gap gets documented instead of fixed.
    yours.** If wrong: one fold to re-split, or three pages drift apart describing one thing.
 2. **[D2](DECISIONS.md#d2) · A new page, not a nav change.** If wrong: a page that repeats what
    a sidebar entry would have found.
-3. **[D3](DECISIONS.md#d3) · The event row names only doors that ship.** If wrong: a reader
-   builds on a cross-flow event bus that was canceled.
+3. **[D3](DECISIONS.md#d3) · The event row names only doors that ship.** `dispatcher()` is the
+   cross-flow bus that ships; FIX-441's topic bus is the one left out. If wrong: a reader builds
+   on `.notify` and `NotificationFlow`, which were canceled.
 
 **Open: D1.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). Rules:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).

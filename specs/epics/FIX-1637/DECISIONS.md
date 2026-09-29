@@ -16,7 +16,7 @@ flowchart TD
   D2 -.->|"rejected"| X2["a nav or index change only"]
   D2 -.->|"rejected"| X2b["grow the Work that outlives the turn guide"]
   E --> D3["D3 · the event row names only shipped doors"]
-  D3 -.->|"rejected"| X3["the cross-flow event bus · notify and NotificationFlow"]
+  D3 -.->|"rejected"| X3["FIX-441's topic bus · notify and NotificationFlow"]
 ```
 
 <a name="d1"></a>
@@ -71,16 +71,16 @@ It comes down to what's missing: a nav entry can point at pages, not supply the 
 
 | | |
 |---|---|
-| **Instead of** | The Architect's suggested event-ingress row on FIX-1638: the cross-flow event bus, `.notify(topic)` and `NotificationFlow` subscribers, cited as Done history |
-| **Because** | That issue, [FIX-441](https://linear.app/fixpoint-labs/issue/FIX-441), is **Canceled**, and neither name is exported. The Proof requires every key on the page to resolve to a shipped export. What ships: another flow on the same server sends with `dispatcher({ flowKind, action, session })` into the receiver's `internal.actions`; any other source (a queue, a bus) mounts a custom `InboundTransportAdapter`. Workforce's channel wake is the L2 fan-out and belongs to the channels section |
-| **Locks in** | The table's event row has two lines, both shipped. One event to many flows is one dispatcher per receiver, or a router. FIX-1639 removes the stale `notification` row from *Inbound transports → Known sources* as drift |
+| **Instead of** | The Architect's suggested event-ingress row on FIX-1638: FIX-441's topic, or notification, bus (`.notify(topic)` and `NotificationFlow` subscribers), cited as Done history. Only that bus is rejected. Cross-flow delivery itself ships and stays on the row |
+| **Because** | [FIX-441](https://linear.app/fixpoint-labs/issue/FIX-441) is **Canceled**, and neither name is exported. The Proof requires every key on the page to resolve to a shipped export. What ships: **`dispatcher({ flowKind, action, session })` into the receiver's `internal.actions` is the cross-flow bus**, for another flow on the same server; any other source (a queue, a bus) mounts a custom `InboundTransportAdapter`. Workforce's channel wake is the L2 fan-out and belongs to the channels section |
+| **Locks in** | The table's event row has two lines, both shipped, and the first names `dispatcher()`. One event to many flows is one dispatcher per receiver, or a router. FIX-1639 rewords the `notification` row in *Inbound transports → Known sources* as drift: it keeps the value, since core's `InboundSource` still lists it and the DevTool still labels it, and stops describing it as cross-flow event subscribers, which no shipped transport emits. FIX-441 is soft-related, never reopened |
 
 **What would change my mind:** a pub/sub surface shipping before FIX-1639 publishes. Then the
 row names it.
 
-![Only shipped doors, chosen, beside the cross-flow event bus the guidance named. Decides it: notify and NotificationFlow are not exported, so a reader's code fails to compile. Price: no one-to-many topic in the row. Locks in two shipped lines in the event row. Flips if a pub/sub surface ships first](figures/d3-shipped-doors.svg)
+![Only shipped doors, chosen, with dispatcher as the cross-flow bus, beside FIX-441's topic bus the guidance named. Decides it: notify and NotificationFlow are not exported, so a reader's code fails to compile. Price: no one-to-many topic in the row. Locks in two shipped lines in the event row and the notification source row reworded, not removed. Flips if a pub/sub surface ships first](figures/d3-shipped-doors.svg)
 
-It comes down to the export check: a canceled API on the page fails the Proof.
+It comes down to the export check: the canceled topic bus on the page fails the Proof.
 
 ## Who owns what
 
@@ -108,25 +108,46 @@ rule and has no column: it consumes ER-6.
   its examples PR (#2369) already open: a `WORKER.md` wake block, today's flow-level bindings,
   and a `wakes:` alias, each compiled by user-land code in `examples/wake-authoring` to the
   bindings that ship. No framework API changes, so ER-6 holds. The page may link the example
-  and teaches neither as a framework feature. It blocks the closure like any child.
+  and teaches neither as a framework feature. It blocks the closure because every child does,
+  not because the closure checks it: the run proves the page alone. The page never waits for it.
 - **The page lives in the guides site.** Placement in the sidebar is FIX-1639's; the closure
   starts from the nav, so it must be reachable there.
 
 ## Decided in review, recorded so no child reopens them
 
-Nothing yet.
+- **FIX-1641 stays a child and keeps its block on the closure.** Review asked to unblock it,
+  since the run proves only the page. The closure rule wires every child
+  ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)),
+  so the closure run waits for #2369 to merge or for the owner to close FIX-1641 with its
+  findings filed to FIX-1639, which drops the block. The page does not wait either way.
+- **D3 rejects the topic bus only.** Owner clarification on the PR: `dispatcher()` into
+  `internal.actions` is the shipped cross-flow bus and the event row names it. The invent-kill
+  is FIX-441's `.notify` / `NotificationFlow`.
+- **The `notification` source row is reworded, not removed.** The runtime still recognizes the
+  value, so removing it would make the docs disagree with the DevTool.
+- **After-request work is a dispatched run, never a side chain.** `.sideChain()` is
+  request-scoped: the request stays open until it settles. The table's keeps-going row names
+  `dispatcher()` alone.
+- **The fence follows the effective dispatcher, not the host's package.** A `bullmqWorker`
+  process in `worker-only` mode installs no dispatcher and does not refuse `{ id }`; `colocated`
+  and `dispatch-only` do, as does a custom dispatcher without `dispatchLocal`.
 
 ## What the end-state POC showed
 
 No end-state POC. Docs only, and the assembled surface is one page; the closure run is the
-end-state check.
+end-state check. FIX-1641 is a child's exploration of authoring shapes, not a test of the
+set's division.
 
 ## How it got here
 
 - **Drafted (2026-09-29)** from the owner's PRD and the Architect's guidance on FIX-1637,
   FIX-1638, FIX-1639 and FIX-1640. Checking the guidance against `main` found FIX-441
-  canceled (D3), a stale `notification` source row, and the per-scheduler guides already
+  canceled (D3), a `notification` source row still describing its subscribers, and the per-scheduler guides already
   published. Closure FIX-1642 filed. FIX-1641 (wake authoring POC) joined the same hour and
   was wired to block it. Project rule PR-1 inherited from the project spec (#2367).
+- **Review, 2026-09-29.** The owner narrowed D3's rejection to the topic bus. Codex's checks
+  turned D3's `notification` row from removed to reworded, took `.sideChain()` off the
+  keeps-going row, and scoped the fence to the effective dispatcher. FIX-1641's block on the
+  closure kept and explained. No decision reversed.
 
 **Open: D1.**

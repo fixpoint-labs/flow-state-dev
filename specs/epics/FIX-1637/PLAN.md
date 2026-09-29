@@ -12,7 +12,10 @@ write the page; that's FIX-1639's own spec. IDs cross-reference [DECISIONS.md](D
 
 A straight line with one wait: the gate, where D1 decides whether FIX-1639 writes alone.
 FIX-1641's examples run beside it and are already in review. The
-closure's QA plan is written while the page is, and its run waits for the page to merge.
+closure's QA plan is written while the page is, and its run waits for the page to merge, and
+for FIX-1641 to land or close, since every child blocks the closure. A #2369 that outlasts the
+page would put FIX-1641 on the critical path; the owner can close it with its findings filed to
+FIX-1639 instead.
 FIX-1634 is drawn as an input that nothing waits on. The dependency graph is in
 [the spec](SPEC.md#how-the-issues-flow-into-each-other); this adds time.
 
@@ -24,7 +27,7 @@ FIX-1634 is drawn as an input that nothing waits on. The dependency graph is in
 | **FIX-1638** config matrix | proposed fold (D1) | — | Under a re-split: the table, as its own page | The closure run | Small |
 | **FIX-1640** terms | proposed fold (D1) | — | Under a re-split: the terms block and the contributor line | The closure run | Small |
 | **FIX-1641** wake authoring POC | examples PR (#2369) | Today's webhook and schedule bindings | Three authoring shapes in `examples/wake-authoring`, user-land only, and a write-up | The closure run; findings to FIX-1639 if any | Small |
-| **FIX-1642** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit · a BullMQ host with Redis | The committed checks and the QA report; a child for every finding | The epic's wrap | Small, repeats per finding |
+| **FIX-1642** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit · a BullMQ host with Redis whose dispatcher hands work to the queue | The committed checks and the QA report; a child for every finding | The epic's wrap | Small, repeats per finding |
 
 FIX-1638, FIX-1639, FIX-1640 and FIX-1641 carry no Kind label in Linear, so their route defaults to spec. The
 Architect's note on FIX-1638 suggests no spec unless a fork appears; that's the coordinator's
@@ -53,7 +56,7 @@ FIX-1635. Nothing here waits on it.
 |---|---|---|
 | The `{ id }` fence sentence | FIX-1639 and FIX-1634 | FIX-1639 states it as the runtime has it; FIX-1634 owns changing it |
 | *Work that outlives the turn* | FIX-1639 and that guide | The guide stays the step-3 map; the page links it, never repeats its table |
-| *Inbound transports → Known sources* | FIX-1639 and FIX-453 | FIX-1639 removes the stale `notification` row; FIX-453's later architecture pass inherits the fix |
+| *Inbound transports → Known sources* | FIX-1639 and FIX-453 | FIX-1639 rewords the `notification` row and keeps the value; FIX-453's later architecture pass inherits the fix |
 | The examples vs the page | FIX-1641 and FIX-1639 | The page teaches only framework exports. It may link the example, and never presents its `wakes:` alias or `WORKER.md` wake frontmatter as a framework feature |
 | Terms vs the table (only on a re-split) | FIX-1638 and FIX-1640 | Each reads the other's draft before publishing; the page links both |
 

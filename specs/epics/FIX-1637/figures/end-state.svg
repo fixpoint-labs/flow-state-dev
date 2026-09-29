@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box: one published page holding the path from webhooks to schedules to work that keeps going, the id versus key section with the queue-host fence, the flow, host and ops table, and three defined terms. Linked, not rewritten: the reference pages for webhooks, scheduled actions, the schedule index, dispatched work, work that outlives the turn, inbound transports, channels and the BullMQ guide, plus the scheduler and deploy guides. Replaced in one line: a stale event-subscriber source row, and the epic-wake definition, which moves to contributor docs. Not built, below a fence: the id fix, a Heartbeats noun, new Layer 1 nouns, Relay, a per-cloud deploy guide, live UI.">
+     aria-label="What's in the box: one published page holding the path from webhooks to schedules to work that keeps going, the id versus key section with the queue-host fence, the flow, host and ops table, and three defined terms. Linked, not rewritten: the reference pages for webhooks, scheduled actions, the schedule index, dispatched work, work that outlives the turn, inbound transports, channels and the BullMQ guide, plus the scheduler and deploy guides. Reworded in one line: the notification source row, and the epic-wake definition, which moves to contributor docs. Not built, below a fence: the id fix, a Heartbeats noun, new Layer 1 nouns, Relay, a per-cloud deploy guide, live UI.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -55,8 +55,8 @@
 
   <g id="replaced">
     <rect class="repl" x="592" y="156" width="332" height="80" rx="5"/>
-    <text class="t-lbl" x="608" y="176">REPLACED IN ONE LINE</text>
-    <text class="t-b" x="608" y="198">stale notification source row</text>
+    <text class="t-lbl" x="608" y="176">REWORDED IN ONE LINE</text>
+    <text class="t-b" x="608" y="198">notification source row</text>
     <text class="t-s" x="608" y="218">epic-wake: to contributor docs</text>
   </g>
 
