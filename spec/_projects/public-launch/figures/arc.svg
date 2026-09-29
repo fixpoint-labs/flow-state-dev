@@ -1,0 +1,64 @@
+<svg viewBox="0 0 940 236" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The arc of Public Launch from August 1 to November 30, 2026, as of September 29. The first hour, FIX-1161, has an open in-flight bar from August 20 to the now line. The hard gates, FIX-1635, was filed on September 29 and has no bar yet. The docs, brand and demo bar and the launch cut are not filed and have empty lanes.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .lane   { fill:none; stroke:var(--rule); stroke-width:1; }
+    .grid   { stroke:var(--rule); stroke-width:1; }
+    .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .now    { stroke:var(--gone); stroke-width:1.6; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-p    { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-style:italic; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+
+  <!-- axis: Aug 1 = x260, Dec 1 = x920, 5.41px per day -->
+  <g id="axis">
+    <path class="grid" d="M260 30 V214 M427.7 30 V214 M590 30 V214 M757.7 30 V214 M920 30 V214"/>
+    <text class="t-lbl" x="264" y="24">AUG</text>
+    <text class="t-lbl" x="432" y="24">SEP</text>
+    <text class="t-lbl" x="594" y="24">OCT</text>
+    <text class="t-lbl" x="762" y="24">NOV</text>
+  </g>
+
+  <g id="lane-first-hour">
+    <rect class="lane" x="16" y="34" width="904" height="42"/>
+    <text class="t-b" x="28" y="54">first hour</text>
+    <text class="t-s" x="28" y="68">FIX-1161 · in flight</text>
+    <rect class="flight" x="362.8" y="44" width="216.4" height="22" rx="3"/>
+    <text class="t-s" x="370" y="59">since Aug 20 · open</text>
+  </g>
+
+  <g id="lane-hard-gates">
+    <rect class="lane" x="16" y="80" width="904" height="42"/>
+    <text class="t-b" x="28" y="100">hard gates</text>
+    <text class="t-s" x="28" y="114">FIX-1635 · not started</text>
+    <text class="t-s" x="585" y="105">filed Sep 29 · no bar until approved</text>
+  </g>
+
+  <g id="lane-docs-bar">
+    <rect class="lane" x="16" y="126" width="904" height="42" stroke-dasharray="4 3"/>
+    <text class="t-p" x="28" y="146">docs, brand and demo bar</text>
+    <text class="t-s" x="28" y="160">FIX-XXX · not filed</text>
+  </g>
+
+  <g id="lane-launch-cut">
+    <rect class="lane" x="16" y="172" width="904" height="42" stroke-dasharray="4 3"/>
+    <text class="t-p" x="28" y="192">the launch cut</text>
+    <text class="t-s" x="28" y="206">FIX-XXX · not filed</text>
+  </g>
+
+  <g id="now">
+    <path class="now" d="M579.2 30 V220"/>
+    <text class="t-now" x="584" y="230">now · Sep 29</text>
+  </g>
+</svg>
