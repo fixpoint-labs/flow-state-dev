@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, where does arbitration across worker processes live? Chosen: the queue adapter supplies it, BullMQ on its Redis. Instead of: the shared store's leases, or deleting the refusal. It comes down to the first row, arrival order, which a queue policy promises: the adapter keeps it and wakes the next waiter; a store lease holds one request with no order, so waiters poll and race; deleting the refusal keeps none. Second row, an adapter that cannot arbitrate: under the choice it is refused by name; the store option covers every host; deletion lets it run silently unarbitrated. The price is the third row: each queue adapter builds its own arbiter, where the store option is built once in the engine and deletion builds nothing. Locks in: an optional member on the worker-adapter contract, and external-dispatcher kept with a narrower meaning. Flips if: a second queue adapter can store but not order waiters."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, where does arbitration across worker processes live? Chosen: the queue adapter supplies it, BullMQ on its Redis. Instead of: the shared store's leases, or deleting the refusal. It comes down to the first row, arrival order, which a queue policy promises: the adapter keeps it and wakes the next waiter; a store lease holds one request with no order, so waiters poll and race; deleting the refusal keeps none. Second row, an adapter that cannot arbitrate: under the choice it is refused by name; the store option covers every host; deletion lets it run silently unarbitrated. The price is the third row: each queue adapter builds its own arbiter behind two public calls, take a place and give it back, with waiting for the turn kept inside the adapter; the store option is built once in the engine and deletion builds nothing. Locks in: an optional member on the worker-adapter contract with two calls, take and give back, the place carried on the dispatch envelope, and external-dispatcher kept with a narrower meaning. Flips if: a second queue adapter can store but not order waiters."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -83,7 +83,7 @@
     <text class="t-lbl" x="32" y="280">WHO BUILDS IT</text>
     <text class="mark minus" x="228" y="286">−</text>
     <text class="t-b" x="248" y="285">Each queue adapter</text>
-    <text class="t-s" x="248" y="303">BullMQ ships one; others write theirs</text>
+    <text class="t-s" x="248" y="303">two public calls; waiting stays inside</text>
     <text class="mark plus" x="468" y="286">+</text>
     <text class="t-b" x="488" y="285">The engine, once</text>
     <text class="t-s" x="488" y="303">every adapter inherits it</text>
@@ -95,8 +95,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">An optional member on the worker-adapter contract</text>
-    <text class="t-s" x="32" y="389">external-dispatcher stays, with a narrower meaning</text>
+    <text class="t-b" x="32" y="371">Two calls on the worker adapter: take, give back</text>
+    <text class="t-s" x="32" y="389">the place rides the envelope; refusal kept, narrower</text>
   </g>
 
   <g id="flips-if">

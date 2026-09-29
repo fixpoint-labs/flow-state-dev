@@ -52,4 +52,7 @@ characterization held as written:
   rebuilding it.
 - **control:** refused `external-dispatcher`, nothing enqueued.
 
-P2 is load-bearing enough to keep, so PLAN's V5 graduates it into `bullmq`'s own tests.
+P1 and P2 are load-bearing enough to keep, so they graduate through PLAN's VP gate: a
+`REDIS_URL`-gated test in `packages/bullmq` that makes the same claims through the real
+`dispatcher()` `{ id }` envelope, not the `delivery: "child"` shortcut used here. Until VP passes,
+this POC is their only evidence.

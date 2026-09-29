@@ -12,6 +12,11 @@ at `5886ca846`.
 | [FIX-837](https://linear.app/fixpoint-labs/issue/FIX-837): the concurrency policy is enforced for the in-process dispatcher only; external dispatch skips arbitration, deferred to a durable substrate ([FIX-830](https://linear.app/fixpoint-labs/issue/FIX-830)). Carried by the arbiter's header in `engine/src/transports/concurrency/arbiter.ts` and the host's `isExternalDispatcher ? allow` | **Superseded in part**, for adapters that supply cross-process arbitration. The in-process arbiter, the three policies, the key ladder and the wait budget are retained | Same POC, P1. The deferral's worry, a `reject` key freed at enqueue, is met by giving the place back at run end in the worker | [D1](DECISIONS.md#d1), [PLAN S1–S3](PLAN.md#surfaces) | Existing BullMQ apps with a declared `queue` or `reject` see it enforced; `allow` is unchanged. Multi-server with no queue stays single-instance |
 | [FIX-1637 ER-4](../../epics/FIX-1637/BUSINESS-RULES.md): the keeping-flows-alive page states that `{ id }` is refused on a queue host | **Amended** when this ships, as that epic's ER-14 assigns | The statement becomes false on `bullmqWorker` | [DOCS.md](DOCS.md#update-conditional--the-keeping-flows-alive-pages-fence-sentence) | Docs only |
 
+**Timing with FIX-1637.** That epic's goal signal expects `{ id }` on BullMQ to be refused
+`external-dispatcher`, which is true until this issue ships and false after. Its signal should
+name which behaviour it checks: before FIX-1634, the refusal; after, the delivery runs (this
+issue's goal check).
+
 FIX-830 is a related spike, not a replaced design: if it lands a substrate that can order
 waiters, D2's *what would change my mind* applies. FIX-1018 is a dependency (its request-record
 fence is consumed), and the canceled Relay issues are not revived

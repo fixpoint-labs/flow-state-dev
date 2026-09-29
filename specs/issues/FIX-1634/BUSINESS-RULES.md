@@ -24,7 +24,7 @@ HTTP suite.
 | BR-6 | Runs into one session under `queue`, landing in different worker processes: deliveries, HTTP actions, webhooks, schedules | One at a time, in acceptance order | The case · **one-at-a-time** |
 | BR-7 | `reject`, and the key is held | A delivery is refused `dispatch-rejected`; an HTTP action gets the 409 naming the in-flight request, as in process. No request record is left for the refused caller | CI |
 | BR-8 | `allow`, or key `none` | No place is taken; the run starts as today | CI |
-| BR-9 | More runs wait on one key than a worker has slots, and the holder is still queued (say, in retry backoff) | The holder runs. Waiting never holds a slot | CI, real Redis |
+| BR-9 | More runs wait on one key than a worker has slots, and the holder is still queued (say, in retry backoff) | The holder runs. Waiting never holds a slot. Waiters back off with jitter rather than spin, and a give-back starts the next waiter without it waiting out its delay | CI, real Redis, a stress case |
 | BR-10 | A run waits longer than the flow's wait budget | It fails `ConcurrencyQueueTimeoutError`, its record terminal, as in process | CI |
 | BR-11 | The process running the holder dies | The key frees once the run stops heartbeating, within the stale threshold; the next run starts | CI, a killed worker |
 | BR-12 | BullMQ retries a failed attempt | It keeps its place; the key frees when the job is done for good | CI |
@@ -38,7 +38,7 @@ HTTP suite.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-18 | The recipient is deleted and recreated between acceptance and the worker's run | The worker drops the delivery and reconciles its record; the replacement's history is unchanged. Its place is given up | POC P2, graduated to CI |
+| BR-18 | The recipient is deleted and recreated between acceptance and the worker's run | The worker drops the delivery and reconciles its record; the replacement's history is unchanged. Its place is given up | POC P2; graduated only by PLAN VP, on the real `{ id }` path |
 | BR-19 | A job carries no approved lineage (older release) | The owner, tenant and org guards alone, as today | Existing suite |
 
 ## What is still refused by name

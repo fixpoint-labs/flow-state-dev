@@ -43,9 +43,9 @@ one session. Then deliveries-only is enough, and existing BullMQ apps keep today
 |---|---|
 | **Instead of** | Arbitrating on the shared store's leases, so every host gets it with no adapter work · or deleting the refusal for every external dispatcher |
 | **Because** | `queue` promises arrival order, and a queue waiter must be woken rather than poll. Redis gives BullMQ both, and BullMQ already needs it. The store's lease is one holder per request id, with no order, and whether it is shared across processes depends on the store adapter. An adapter that can't arbitrate must still fail loudly ([ER-14](../../epics/FIX-1635/BUSINESS-RULES.md#what-no-child-may-do)) |
-| **Locks in** | A public, optional member on the worker-adapter contract, which a third-party queue adapter implements or keeps the refusal. `external-dispatcher` stays in the refusal vocabulary with a narrower meaning. Every process of a deployment arbitrates through the one the adapter supplies, including `worker-only` processes |
+| **Locks in** | A public, optional member on the worker-adapter contract with two calls, **take a place** and **give it back**, plus the place carried on the dispatch envelope. A third-party queue adapter implements those two or keeps the refusal. How a worker waits for its turn, and how it requeues, stay private to each adapter (BullMQ's live in `packages/bullmq`) until a second adapter needs a shared shape. `external-dispatcher` stays in the refusal vocabulary with a narrower meaning. Every process of a deployment arbitrates through the one the adapter supplies, including `worker-only` processes |
 
-![D2, where cross-process arbitration lives: the queue adapter, chosen, beside the store's leases and deleting the refusal. Decides it: arrival order, which only the adapter keeps. Price: each adapter builds its own. Flips if a second adapter can store but not order.](figures/d2-adapter-supplies.svg)
+![D2, where cross-process arbitration lives: the queue adapter, chosen, beside the store's leases and deleting the refusal. Decides it: arrival order, which only the adapter keeps. Price: each adapter builds its own, behind two public calls. Flips if a second adapter can store but not order.](figures/d2-adapter-supplies.svg)
 
 It comes down to arrival order: a lease can hold a session but cannot line runs up behind it.
 
@@ -95,11 +95,17 @@ store can. Then the store is the better home, and the adapter member becomes a d
 - **A queue host applies no concurrency policy to any run today** — **CONFIRMED**. Two `queue`
   runs into one session overlap on BullMQ and serialize in process. This is D1's premise.
   ([POC P1](poc/queue-path/README.md))
+- Both rest on the POC until [PLAN VP](PLAN.md#checks) passes in PR-B: the same claims through the
+  real `{ id }` dispatcher envelope, in a `REDIS_URL`-gated test in `packages/bullmq`.
 
 ## How it got here
 
 - **Draft** — framed as the refusal guarding two guarantees, one of which a POC showed already
   holds; chose cross-process arbitration for every queue-host run, supplied by the adapter, with
   the refusal kept for adapters that can't; two PRs, engine then BullMQ.
+- **Round 1** (Cursor review): D2's public surface narrowed to two calls, take and give back,
+  plus the place on the envelope; waiting for the turn stays private to BullMQ. The plan gained
+  a jittered-requeue guardrail, an explicit wake on give-back, the VP graduation gate and a
+  minimal proof set. D1 unchanged.
 
 **Open: none.**

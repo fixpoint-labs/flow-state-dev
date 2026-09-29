@@ -108,7 +108,8 @@ races a real conversation in production.
    it being ignored get slower bursts or 409s after upgrading.
 2. **[D2](DECISIONS.md#d2) · Cross-process arbitration is something the queue adapter supplies;
    BullMQ supplies it on its Redis, and an adapter without it keeps the named refusal.** If
-   wrong: a second public contract for queue adapters to implement.
+   wrong: two public calls (take a place, give it back) that every queue adapter must
+   implement; waiting for the turn stays private to the adapter.
 
 **Open: none.** Number 1 is the one to weigh: it changes behaviour for existing BullMQ apps.
 Reasoning: [DECISIONS.md](DECISIONS.md). Cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
